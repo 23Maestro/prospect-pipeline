@@ -13,10 +13,9 @@ import { formatDistanceToNow } from 'date-fns';
 import { fetchInboxThreads, enrichMessagesWithDetails } from './lib/npid-mcp';
 import { NPIDInboxMessage } from './types/video-team';
 
-// Direct call to Python server
-async function callPythonServer(method: string, args: any = {}) {
+// Direct call to Python server with proper timeout handling
+async function callPythonServer(method: string, args: any = {}, timeoutMs: number = 30000) {
   const { spawn } = await import('child_process');
-  const { promisify } = await import('util');
   
   return new Promise((resolve, reject) => {
     const python = spawn('python3', [
@@ -24,26 +23,60 @@ async function callPythonServer(method: string, args: any = {}) {
     ]);
     
     let output = '';
-    let error = '';
+    let errorOutput = '';
+    let timeoutHandle: NodeJS.Timeout;
+    let responseReceived = false;
+    
+    // Set timeout for the entire operation
+    timeoutHandle = setTimeout(() => {
+      if (!responseReceived) {
+        python.kill();
+        reject(new Error(`Python server timeout after ${timeoutMs}ms. Error log: ${errorOutput}`));
+      }
+    }, timeoutMs);
     
     python.stdout.on('data', (data) => {
       output += data.toString();
+      
+      // Try to parse as soon as we have a complete JSON response
+      try {
+        const lines = output.trim().split('\n');
+        for (const line of lines) {
+          if (line.trim()) {
+            const result = JSON.parse(line);
+            if (result.id === 1) {
+              responseReceived = true;
+              clearTimeout(timeoutHandle);
+              python.kill();
+              resolve(result);
+              return;
+            }
+          }
+        }
+      } catch (e) {
+        // Not a complete JSON yet, keep waiting
+      }
     });
     
     python.stderr.on('data', (data) => {
-      error += data.toString();
+      errorOutput += data.toString();
+      // Log stderr but don't fail on it (Python server logs to stderr)
+      console.log('[Python stderr]:', data.toString());
+    });
+    
+    python.on('error', (err) => {
+      clearTimeout(timeoutHandle);
+      reject(new Error(`Failed to start Python process: ${err.message}`));
     });
     
     python.on('close', (code) => {
-      if (code === 0) {
-        try {
-          const result = JSON.parse(output);
-          resolve(result);
-        } catch (e) {
-          reject(new Error('Failed to parse Python output'));
+      clearTimeout(timeoutHandle);
+      if (!responseReceived) {
+        if (code !== 0) {
+          reject(new Error(`Python process exited with code ${code}. Error: ${errorOutput}`));
+        } else {
+          reject(new Error(`Python process closed without response. Output: ${output}`));
         }
-      } else {
-        reject(new Error(`Python process failed: ${error}`));
       }
     });
     
@@ -52,7 +85,7 @@ async function callPythonServer(method: string, args: any = {}) {
       id: 1,
       method: method,
       arguments: args
-    });
+    }) + '\n';
     
     python.stdin.write(request);
     python.stdin.end();
