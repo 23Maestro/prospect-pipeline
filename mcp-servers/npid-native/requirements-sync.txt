@@ -1,0 +1,11 @@
+# NPID Video Progress Sync Requirements
+# Uses saved Playwright state - NO TOKENS NEEDED!
+
+playwright>=1.40.0
+asyncio
+json
+os
+pathlib
+datetime
+typing
+re

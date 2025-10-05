@@ -47,7 +47,9 @@
     "@notionhq/client": "^2.2.0",
     "@raycast/api": "^1.60.0",
     "@raycast/utils": "^2.2.1",
-    "date-fns": "^4.1.0"
+    "@supabase/supabase-js": "^2.58.0",
+    "date-fns": "^4.1.0",
+    "playwright": "^1.55.1"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.1.1",

@@ -13,6 +13,52 @@ import { formatDistanceToNow } from 'date-fns';
 import { fetchInboxThreads, enrichMessagesWithDetails } from './lib/npid-mcp';
 import { NPIDInboxMessage } from './types/video-team';
 
+// Direct call to Python server
+async function callPythonServer(method: string, args: any = {}) {
+  const { spawn } = await import('child_process');
+  const { promisify } = await import('util');
+  
+  return new Promise((resolve, reject) => {
+    const python = spawn('python3', [
+      '/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py'
+    ]);
+    
+    let output = '';
+    let error = '';
+    
+    python.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    python.stderr.on('data', (data) => {
+      error += data.toString();
+    });
+    
+    python.on('close', (code) => {
+      if (code === 0) {
+        try {
+          const result = JSON.parse(output);
+          resolve(result);
+        } catch (e) {
+          reject(new Error('Failed to parse Python output'));
+        }
+      } else {
+        reject(new Error(`Python process failed: ${error}`));
+      }
+    });
+    
+    // Send the request
+    const request = JSON.stringify({
+      id: 1,
+      method: method,
+      arguments: args
+    });
+    
+    python.stdin.write(request);
+    python.stdin.end();
+  });
+}
+
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
   message,
@@ -82,20 +128,48 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Fetch all threads using the same HTML parsing system
-      const basicThreads = await fetchInboxThreads();
-      const withDetails = await enrichMessagesWithDetails(basicThreads);
+      // Call Python server directly to get threads with assignment status
+      const result = await callPythonServer('get_inbox_threads', { limit: 50 }) as any;
+      
+      if (result.status !== 'ok') {
+        throw new Error(result.message || 'Failed to fetch threads');
+      }
 
-      // Filter for ASSIGNED messages (opposite of assign command)
-      const assignedMessages = withDetails.filter((message) => message.status === 'assigned');
+      // Filter for ASSIGNED messages (status === 'assigned')
+      const assignedMessages = result.threads.filter((thread: any) => thread.status === 'assigned');
 
-      setMessages(assignedMessages);
-      console.log('🔍 READ INBOX: Setting messages in UI:', assignedMessages.length);
-      console.log('🔍 READ INBOX: First message:', assignedMessages[0]);
+      // Convert to NPIDInboxMessage format
+      const messages: NPIDInboxMessage[] = assignedMessages.map((thread: any) => ({
+        id: thread.id,
+        itemCode: thread.itemcode || thread.id,
+        thread_id: thread.id,
+        player_id: '',
+        contactid: '',
+        name: thread.name,
+        email: thread.email,
+        subject: thread.subject || '',
+        content: '',
+        preview: thread.subject || '',
+        status: 'assigned',
+        timestamp: thread.timestamp,
+        timeStampDisplay: null,
+        timeStampIso: null,
+        is_reply_with_signature: false,
+        isUnread: false,
+        stage: undefined,
+        videoStatus: undefined,
+        canAssign: false,
+        attachments: [],
+        athleteLinks: undefined,
+      }));
+
+      setMessages(messages);
+      console.log('🔍 READ INBOX: Setting messages in UI:', messages.length);
+      console.log('🔍 READ INBOX: First message:', messages[0]);
 
       await showToast({
         style: Toast.Style.Success,
-        title: `Found ${assignedMessages.length} assigned messages`,
+        title: `Found ${messages.length} assigned messages`,
         message: 'Ready to view and reply',
       });
     } catch (error) {

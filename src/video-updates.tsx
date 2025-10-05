@@ -1,5 +1,5 @@
-import React from 'react';
-import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
+import React, { useState, useEffect } from 'react';
+import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, List, Icon, Color } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import { exec } from 'child_process';
 import { promisify } from 'util';
@@ -7,17 +7,152 @@ import path from 'path';
 
 const execAsync = promisify(exec);
 
+// NPID Integration Functions
+async function callNPIDServer(method: string, args: any = {}) {
+  const { spawn } = await import('child_process');
+  
+  return new Promise((resolve, reject) => {
+    const python = spawn('python3', [
+      '/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py'
+    ]);
+    
+    let output = '';
+    let error = '';
+    
+    python.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    python.stderr.on('data', (data) => {
+      error += data.toString();
+    });
+    
+    python.on('close', (code) => {
+      if (code === 0) {
+        try {
+          const result = JSON.parse(output);
+          resolve(result);
+        } catch (e) {
+          reject(new Error('Failed to parse Python output'));
+        }
+      } else {
+        reject(new Error(`Python process failed: ${error}`));
+      }
+    });
+    
+    // Send the request
+    const request = JSON.stringify({
+      id: 1,
+      method: method,
+      arguments: args
+    });
+    
+    python.stdin.write(request);
+    python.stdin.end();
+  });
+}
+
+async function searchNPIDPlayer(query: string): Promise<NPIDPlayer[]> {
+  try {
+    const result = await callNPIDServer('search_player', { query }) as any;
+    if (result.status === 'ok') {
+      return result.results || [];
+    }
+    return [];
+  } catch (error) {
+    console.error('NPID search error:', error);
+    return [];
+  }
+}
+
+async function getNPIDPlayerDetails(playerId: string): Promise<NPIDPlayer | null> {
+  try {
+    const result = await callNPIDServer('get_athlete_details', { player_id: playerId }) as any;
+    if (result.status === 'ok' && result.data) {
+      const data = result.data;
+      return {
+        player_id: playerId,
+        name: data.name || 'Unknown Player',
+        grad_year: data.grad_year || '',
+        high_school: data.high_school || '',
+        city: data.location ? data.location.split(',')[0]?.trim() : '',
+        state: data.location ? data.location.split(',')[1]?.trim() : '',
+        positions: data.positions || '',
+        sport: data.sport || ''
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('NPID player details error:', error);
+    return null;
+  }
+}
+
 interface VideoUpdateFormValues {
   athleteName: string;
   youtubeLink: string;
   season: string;
   videoType: string;
+  playerId?: string;
+  searchMode: 'name' | 'id';
+}
+
+interface NPIDPlayer {
+  player_id: string;
+  name: string;
+  grad_year: string;
+  high_school: string;
+  city: string;
+  state: string;
+  positions: string;
+  sport: string;
 }
 
 export default function VideoUpdatesCommand(
   props: LaunchProps<{ draftValues: VideoUpdateFormValues }>,
 ) {
-  const { handleSubmit, itemProps, reset, focus } = useForm<VideoUpdateFormValues>({
+  const [searchResults, setSearchResults] = useState<NPIDPlayer[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
+
+  // Search for players when athlete name changes
+  useEffect(() => {
+    const searchPlayers = async () => {
+      if (values.athleteName && values.athleteName.length > 2 && values.searchMode === 'name') {
+        setIsSearching(true);
+        try {
+          const results = await searchNPIDPlayer(values.athleteName);
+          setSearchResults(results);
+        } catch (error) {
+          console.error('Search error:', error);
+          setSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    };
+
+    const timeoutId = setTimeout(searchPlayers, 500); // Debounce search
+    return () => clearTimeout(timeoutId);
+  }, [values.athleteName, values.searchMode]);
+
+  // Get player details when player ID is provided
+  useEffect(() => {
+    const getPlayerDetails = async () => {
+      if (values.playerId && values.searchMode === 'id') {
+        const player = await getNPIDPlayerDetails(values.playerId);
+        setSelectedPlayer(player);
+      } else {
+        setSelectedPlayer(null);
+      }
+    };
+
+    getPlayerDetails();
+  }, [values.playerId, values.searchMode]);
+
+  const { handleSubmit, itemProps, reset, focus, values } = useForm<VideoUpdateFormValues>({
     async onSubmit(formValues) {
       const toast = await showToast({
         style: Toast.Style.Animated,
@@ -25,80 +160,73 @@ export default function VideoUpdatesCommand(
       });
 
       try {
-        const pythonInterpreter = '/usr/local/bin/python3';
-        // Use absolute path to the script since we know exactly where it is
-        const scriptPath = '/Users/singleton23/Raycast/scout-singleton/scripts/video_updates.py';
-        
-        // Debug logging
-        console.log('Script path:', scriptPath);
+        // Determine the player ID to use
+        let playerId = formValues.playerId;
+        let athleteName = formValues.athleteName;
 
-        const escapeShellArg = (str: string) => `"${str.replace(/"/g, '\\"')}"`;
+        if (formValues.searchMode === 'name' && selectedPlayer) {
+          playerId = selectedPlayer.player_id;
+          athleteName = selectedPlayer.name;
+        }
 
-        const command = `${escapeShellArg(pythonInterpreter)} ${escapeShellArg(scriptPath)} --athlete_name ${escapeShellArg(formValues.athleteName)} --youtube_link ${escapeShellArg(formValues.youtubeLink)} --season ${escapeShellArg(formValues.season)} --video_type ${escapeShellArg(formValues.videoType)}`;
-
-        await toast.show();
-        toast.title = 'Running Python automation...';
-        toast.message = 'Opening browser to update profile. This may take a moment...';
-
-        console.log('Executing command:', command);
-        const { stdout, stderr } = await execAsync(command);
-
-        console.log('Python script stdout:', stdout);
-
-        if (stderr && stderr.includes('ERROR')) {
-          console.error('Python script stderr:', stderr);
+        if (!playerId) {
           toast.style = Toast.Style.Failure;
-          toast.title = 'Automation Error';
-          toast.message = stderr.substring(0, 200) + (stderr.length > 200 ? '...' : '');
+          toast.title = 'Player ID Required';
+          toast.message = 'Please search for and select a player or enter a Player ID.';
           return;
         }
 
-        if (stdout.includes('--- VIDEO UPDATE AND EMAIL AUTOMATION COMPLETED SUCCESSFULLY ---')) {
-          toast.style = Toast.Style.Success;
-          toast.title = 'Video Updated & Email Sent';
-          toast.message =
-            "The video has been added to the athlete's profile and 'Editing Done' email has been sent.";
-          reset();
-        } else if (stdout.includes('--- VIDEO UPDATE SUCCESSFUL BUT EMAIL AUTOMATION FAILED ---')) {
-          toast.style = Toast.Style.Success;
-          toast.title = 'Video Updated';
-          toast.message =
-            'Video added successfully, but email automation failed. Check logs for details.';
-          reset();
-        } else if (
-          stdout.includes('--- Video Update Script Finished') ||
-          stdout.includes('--- VIDEO UPDATE PROCESS COMPLETED SUCCESSFULLY ---')
-        ) {
-          toast.style = Toast.Style.Success;
-          toast.title = 'Video Updated Successfully';
-          toast.message = "The video has been added to the athlete's profile.";
-          reset();
-        } else {
+        // Use NPID integration for video updates
+        await toast.show();
+        toast.title = 'Updating NPID Profile...';
+        toast.message = `Updating video for ${athleteName} (ID: ${playerId})`;
+
+        try {
+          const result = await callNPIDServer('update_video_profile', {
+            player_id: playerId,
+            youtube_link: formValues.youtubeLink,
+            season: formValues.season,
+            video_type: formValues.videoType
+          }) as any;
+
+          if (result.status === 'ok' && result.data?.success) {
+            toast.style = Toast.Style.Success;
+            toast.title = 'Video Updated Successfully';
+            toast.message = `Video added to ${athleteName}'s NPID profile`;
+            reset();
+            setSelectedPlayer(null);
+            setSearchResults([]);
+          } else {
+            toast.style = Toast.Style.Failure;
+            toast.title = 'NPID Update Failed';
+            toast.message = result.message || 'Unknown error occurred';
+          }
+        } catch (updateError) {
+          console.error('NPID update error:', updateError);
           toast.style = Toast.Style.Failure;
-          toast.title = 'Video Update May Have Failed';
-          toast.message = 'Check the console logs for details.';
+          toast.title = 'NPID Update Error';
+          toast.message = updateError instanceof Error ? updateError.message : 'Failed to update NPID profile';
         }
       } catch (error: unknown) {
         console.error('Execution error:', error);
         toast.style = Toast.Style.Failure;
-        toast.title = 'Failed to Run Automation';
+        toast.title = 'Failed to Update NPID';
         if (error instanceof Error) {
           toast.message = error.message || 'An unexpected error occurred.';
         } else {
           toast.message = 'An unexpected error occurred.';
         }
-        if (typeof error === 'object' && error !== null) {
-          if ('stdout' in error && (error as { stdout: unknown }).stdout) {
-            console.error('Error stdout:', (error as { stdout: unknown }).stdout);
-          }
-          if ('stderr' in error && (error as { stderr: unknown }).stderr) {
-            console.error('Error stderr:', (error as { stderr: unknown }).stderr);
-          }
-        }
       }
     },
     validation: {
-      athleteName: FormValidation.Required,
+      athleteName: (value) => {
+        if (values.searchMode === 'name' && !value) return 'Athlete name is required for name search';
+        return undefined;
+      },
+      playerId: (value) => {
+        if (values.searchMode === 'id' && !value) return 'Player ID is required for ID search';
+        return undefined;
+      },
       youtubeLink: (value) => {
         if (!value) return 'The item is required';
         if (
@@ -117,6 +245,8 @@ export default function VideoUpdatesCommand(
       youtubeLink: '',
       season: 'Junior Season',
       videoType: 'Highlights',
+      playerId: '',
+      searchMode: 'name',
     },
   });
 
@@ -125,7 +255,7 @@ export default function VideoUpdatesCommand(
       enableDrafts
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Submit and Run Automation" onSubmit={handleSubmit} />
+          <Action.SubmitForm title="Update NPID Video Profile" onSubmit={handleSubmit} />
           <Action
             title="Focus Athlete Name"
             onAction={() => focus('athleteName')}
@@ -139,15 +269,57 @@ export default function VideoUpdatesCommand(
         </ActionPanel>
       }
     >
-      <Form.Description text="Enter the athlete's details to update their video profile and automatically send an 'Editing Done' email. The browser will open automatically to complete both processes." />
+      <Form.Description text="Enhanced NPID integration: Search for athletes by name or enter Player ID directly. Videos will be added to NPID profiles with automatic Notion sync." />
       <Form.Separator />
 
-      <Form.TextField
-        title="Student Athlete's Name"
-        placeholder="Enter full name"
-        {...itemProps.athleteName}
-        autoFocus
-      />
+      <Form.Dropdown title="Search Mode" {...itemProps.searchMode}>
+        <Form.Dropdown.Item value="name" title="Search by Name" />
+        <Form.Dropdown.Item value="id" title="Enter Player ID" />
+      </Form.Dropdown>
+
+      {values.searchMode === 'name' ? (
+        <>
+          <Form.TextField
+            title="Student Athlete's Name"
+            placeholder="Enter full name to search NPID"
+            {...itemProps.athleteName}
+            autoFocus
+          />
+          
+          {isSearching && (
+            <Form.Description text="🔍 Searching NPID database..." />
+          )}
+          
+          {searchResults.length > 0 && (
+            <>
+              <Form.Description text={`Found ${searchResults.length} matching players:`} />
+              {searchResults.slice(0, 5).map((player, index) => (
+                <Form.Description
+                  key={player.player_id}
+                  text={`${index + 1}. ${player.name} (${player.grad_year}) - ${player.high_school}, ${player.city}, ${player.state} - ID: ${player.player_id}`}
+                />
+              ))}
+              {searchResults.length > 5 && (
+                <Form.Description text={`... and ${searchResults.length - 5} more results`} />
+              )}
+            </>
+          )}
+        </>
+      ) : (
+        <Form.TextField
+          title="Player ID"
+          placeholder="Enter NPID Player ID"
+          {...itemProps.playerId}
+          autoFocus
+        />
+      )}
+
+      {selectedPlayer && (
+        <Form.Description 
+          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school}`} 
+        />
+      )}
+
       <Form.TextField
         title="YouTube Link"
         placeholder="e.g., https://www.youtube.com/watch?v=..."

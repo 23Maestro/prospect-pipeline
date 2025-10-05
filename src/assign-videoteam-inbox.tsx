@@ -21,6 +21,51 @@ import {
   fetchInboxThreads,
   resolveContactsForAssignment,
 } from './lib/npid-mcp-adapter';
+
+// Direct call to Python server
+async function callPythonServer(method: string, args: any = {}) {
+  const { spawn } = await import('child_process');
+  
+  return new Promise((resolve, reject) => {
+    const python = spawn('python3', [
+      '/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py'
+    ]);
+    
+    let output = '';
+    let error = '';
+    
+    python.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    python.stderr.on('data', (data) => {
+      error += data.toString();
+    });
+    
+    python.on('close', (code) => {
+      if (code === 0) {
+        try {
+          const result = JSON.parse(output);
+          resolve(result);
+        } catch (e) {
+          reject(new Error('Failed to parse Python output'));
+        }
+      } else {
+        reject(new Error(`Python process failed: ${error}`));
+      }
+    });
+    
+    // Send the request
+    const request = JSON.stringify({
+      id: 1,
+      method: method,
+      arguments: args
+    });
+    
+    python.stdin.write(request);
+    python.stdin.end();
+  });
+}
 import {
   NPIDInboxMessage,
   VideoTeamAssignmentModal,
@@ -282,56 +327,48 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Step 1: Fetch basic threads
-      const basicThreads = await fetchInboxThreads();
-      await showToast({
-        style: Toast.Style.Animated,
-        title: `Step 1: Found ${basicThreads.length} threads`,
-        message:
-          basicThreads.length === 0
-            ? 'DEBUG: No threads found - check HTML parsing'
-            : 'Checking thread details...',
-      });
-
-      // Step 2: Show first thread details for debugging
-      if (basicThreads.length > 0) {
-        const firstThread = basicThreads[0];
-        await showToast({
-          style: Toast.Style.Animated,
-          title: `First thread: ${firstThread.subject || 'No subject'}`,
-          message: `ID: ${firstThread.id}, canAssign: ${firstThread.canAssign}`,
-        });
+      // Call Python server directly to get threads with assignment status
+      const result = await callPythonServer('get_inbox_threads', { limit: 50 }) as any;
+      
+      if (result.status !== 'ok') {
+        throw new Error(result.message || 'Failed to fetch threads');
       }
 
-      // Step 3: Enrich with details
-      const withDetails = await enrichMessagesWithDetails(basicThreads);
+      // Filter for UNASSIGNED messages (can_assign === true)
+      const unassignedMessages = result.threads.filter((thread: any) => thread.can_assign === true);
+
+      // Convert to NPIDInboxMessage format
+      const messages: NPIDInboxMessage[] = unassignedMessages.map((thread: any) => ({
+        id: thread.id,
+        itemCode: thread.itemcode || thread.id,
+        thread_id: thread.id,
+        player_id: '',
+        contactid: '',
+        name: thread.name,
+        email: thread.email,
+        subject: thread.subject || '',
+        content: '',
+        preview: thread.subject || '',
+        status: 'unassigned',
+        timestamp: thread.timestamp,
+        timeStampDisplay: null,
+        timeStampIso: null,
+        is_reply_with_signature: false,
+        isUnread: true,
+        stage: undefined,
+        videoStatus: undefined,
+        canAssign: true,
+        attachments: [],
+        athleteLinks: undefined,
+      }));
+
       await showToast({
-        style: Toast.Style.Animated,
-        title: `Step 2: Enriched ${withDetails.length} threads`,
-        message: 'Filtering assignable messages...',
+        style: messages.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
+        title: `Found ${messages.length} assignable messages`,
+        message: messages.length === 0 ? 'All threads are assigned' : 'Ready to assign',
       });
 
-      // Step 4: Show filtering details
-      const assignableCount = withDetails.filter((m) => m.canAssign === true).length;
-      const unassignableCount = withDetails.filter((m) => m.canAssign === false).length;
-      const undefinedCount = withDetails.filter((m) => m.canAssign === undefined).length;
-
-      await showToast({
-        style: Toast.Style.Animated,
-        title: `Step 3: Filtering results`,
-        message: `Assignable: ${assignableCount}, Not: ${unassignableCount}, Undefined: ${undefinedCount}`,
-      });
-
-      // Step 5: Final filter
-      const unassigned = withDetails.filter((message) => message.canAssign !== false);
-
-      await showToast({
-        style: unassigned.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: `Final: ${unassigned.length} assignable messages`,
-        message: unassigned.length === 0 ? 'DEBUG: Check filtering logic' : 'Ready to assign',
-      });
-
-      setMessages(unassigned);
+      setMessages(messages);
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
