@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+
+  video-team-bridge:
+    build:
+      context: ./video-team-bridge
+      dockerfile: Dockerfile
+    container_name: video-team-bridge
+    environment:
+      - NPID_USERNAME=${NPID_USERNAME}
+      - NPID_PASSWORD=${NPID_PASSWORD}
+      - NPID_BASE_URL=${NPID_BASE_URL:-https://dashboard.nationalpid.com}
+      - NPID_PLAYWRIGHT_STATE_PATH=/app/state/playwright_state.json
+      - PLAYWRIGHT_HEADFUL=${PLAYWRIGHT_HEADFUL:-}
+    ports:
+      - "8812:8812"
+    volumes:
+      - /Users/singleton23/Raycast/scout-singleton/state:/app/state
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+  notion-bridge:
+    build:
+      context: ./notion-bridge
+      dockerfile: Dockerfile
+    container_name: notion-bridge
+    environment:
+      - NOTION_API_TOKEN=${NOTION_API_TOKEN}
+    ports:
+      - "8813:8813"
+    restart: unless-stopped
+    networks:
+      - mcp-network
+
+networks:
+  mcp-network:
+    driver: bridge

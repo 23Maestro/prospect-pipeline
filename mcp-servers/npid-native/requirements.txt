@@ -1,0 +1,2 @@
+playwright==1.52.0
+mcp>=1.9.4

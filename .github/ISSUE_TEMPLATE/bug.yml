@@ -1,0 +1,21 @@
+name: Bug report
+description: File a bug for a Raycast extension
+labels: [bug]
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+  - type: input
+    id: raycast
+    attributes:
+      label: Raycast version
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: 22.16.0
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots

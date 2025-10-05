@@ -1,0 +1,12 @@
+name: Feature request
+description: Propose a new capability
+labels: [enhancement]
+body:
+  - type: textarea
+    id: value
+    attributes:
+      label: User value
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal

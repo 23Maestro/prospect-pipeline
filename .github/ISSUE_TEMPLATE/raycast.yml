@@ -1,0 +1,12 @@
+name: Raycast-specific issue
+description: Command definitions, metadata, or store publish concerns
+labels: [raycast]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+  - type: textarea
+    id: commands
+    attributes:
+      label: Affected Raycast commands
