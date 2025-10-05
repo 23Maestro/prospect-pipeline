@@ -1,11 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, List, Icon, Color } from '@raycast/api';
+import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, getPreferenceValues } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-
-const execAsync = promisify(exec);
+import { Client } from '@notionhq/client';
 
 // NPID Integration Functions
 async function callNPIDServer(method: string, args: any = {}) {
@@ -88,6 +84,57 @@ async function getNPIDPlayerDetails(playerId: string): Promise<NPIDPlayer | null
   }
 }
 
+// Notion helpers (reuse Active Tasks filtering)
+type NotionTask = {
+  id: string;
+  name: string;
+  status: string;
+  playerId?: string;
+};
+
+function getNotion() {
+  const { notionToken } = getPreferenceValues();
+  return new Client({ auth: notionToken, notionVersion: '2022-06-28' });
+}
+
+async function fetchActiveNotionTasks(): Promise<NotionTask[]> {
+  const notion = getNotion();
+  const response = await notion.databases.query({
+    database_id: '19f4c8bd6c26805b9929dfa8eb290a86',
+    filter: {
+      or: [
+        { property: 'Status', status: { equals: 'Revise' } },
+        { property: 'Status', status: { equals: 'HUDL' } },
+        { property: 'Status', status: { equals: 'Dropbox' } },
+        { property: 'Status', status: { equals: 'Not Approved' } },
+        { property: 'Status', status: { equals: 'Uploads' } },
+      ],
+    },
+    sorts: [{ property: 'Due Date', direction: 'ascending' }],
+  });
+
+  return response.results.map((t: any) => ({
+    id: t.id,
+    name: t.properties?.['Name']?.title?.[0]?.plain_text || '',
+    status: t.properties?.['Status']?.status?.name || '',
+    playerId: t.properties?.['PlayerID']?.url || '',
+  }));
+}
+
+function parseNPIDfromUrl(url?: string): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const parts = u.pathname.split('/').filter(Boolean);
+    const last = parts[parts.length - 1];
+    if (!last) return null;
+    const idMatch = last.match(/[A-Za-z0-9_-]+/);
+    return idMatch ? idMatch[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 interface VideoUpdateFormValues {
   athleteName: string;
   youtubeLink: string;
@@ -95,6 +142,7 @@ interface VideoUpdateFormValues {
   videoType: string;
   playerId?: string;
   searchMode: 'name' | 'id';
+  notionTaskId?: string;
 }
 
 interface NPIDPlayer {
@@ -114,45 +162,9 @@ export default function VideoUpdatesCommand(
   const [searchResults, setSearchResults] = useState<NPIDPlayer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
+  const [activeTasks, setActiveTasks] = useState<NotionTask[]>([]);
 
-  // Search for players when athlete name changes
-  useEffect(() => {
-    const searchPlayers = async () => {
-      if (values.athleteName && values.athleteName.length > 2 && values.searchMode === 'name') {
-        setIsSearching(true);
-        try {
-          const results = await searchNPIDPlayer(values.athleteName);
-          setSearchResults(results);
-        } catch (error) {
-          console.error('Search error:', error);
-          setSearchResults([]);
-        } finally {
-          setIsSearching(false);
-        }
-      } else {
-        setSearchResults([]);
-      }
-    };
-
-    const timeoutId = setTimeout(searchPlayers, 500); // Debounce search
-    return () => clearTimeout(timeoutId);
-  }, [values.athleteName, values.searchMode]);
-
-  // Get player details when player ID is provided
-  useEffect(() => {
-    const getPlayerDetails = async () => {
-      if (values.playerId && values.searchMode === 'id') {
-        const player = await getNPIDPlayerDetails(values.playerId);
-        setSelectedPlayer(player);
-      } else {
-        setSelectedPlayer(null);
-      }
-    };
-
-    getPlayerDetails();
-  }, [values.playerId, values.searchMode]);
-
-  const { handleSubmit, itemProps, reset, focus, values } = useForm<VideoUpdateFormValues>({
+  const { handleSubmit, itemProps, reset, focus, values, setValue } = useForm<VideoUpdateFormValues>({
     async onSubmit(formValues) {
       const toast = await showToast({
         style: Toast.Style.Animated,
@@ -247,8 +259,74 @@ export default function VideoUpdatesCommand(
       videoType: 'Highlights',
       playerId: '',
       searchMode: 'name',
+      notionTaskId: '',
     },
   });
+
+  // Load active tasks from Notion on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const tasks = await fetchActiveNotionTasks();
+        setActiveTasks(tasks);
+      } catch (e) {
+        console.error('Failed to load Notion tasks', e);
+      }
+    })();
+  }, []);
+
+  // When a Notion task is selected, populate form fields
+  useEffect(() => {
+    if (!values.notionTaskId) return;
+    const task = activeTasks.find((t) => t.id === values.notionTaskId);
+    if (!task) return;
+    if (task.name) setValue('athleteName', task.name);
+    const npid = parseNPIDfromUrl(task.playerId);
+    if (npid) {
+      setValue('playerId', npid);
+      setValue('searchMode', 'id');
+    } else {
+      setValue('playerId', '');
+      setValue('searchMode', 'name');
+    }
+  }, [values.notionTaskId, activeTasks]);
+
+  // Search for players when athlete name changes
+  useEffect(() => {
+    const searchPlayers = async () => {
+      if (values.athleteName && values.athleteName.length > 2 && values.searchMode === 'name') {
+        setIsSearching(true);
+        try {
+          const results = await searchNPIDPlayer(values.athleteName);
+          setSearchResults(results);
+        } catch (error) {
+          console.error('Search error:', error);
+          setSearchResults([]);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    };
+
+    const timeoutId = setTimeout(searchPlayers, 500); // Debounce search
+    return () => clearTimeout(timeoutId);
+  }, [values.athleteName, values.searchMode]);
+
+  // Get player details when player ID is provided
+  useEffect(() => {
+    const getPlayerDetails = async () => {
+      if (values.playerId && values.searchMode === 'id') {
+        const player = await getNPIDPlayerDetails(values.playerId);
+        setSelectedPlayer(player);
+      } else {
+        setSelectedPlayer(null);
+      }
+    };
+
+    getPlayerDetails();
+  }, [values.playerId, values.searchMode]);
 
   return (
     <Form
@@ -269,6 +347,13 @@ export default function VideoUpdatesCommand(
         </ActionPanel>
       }
     >
+      <Form.Dropdown title="Student Athlete (Active)" {...itemProps.notionTaskId} placeholder="Select from Notion">
+        {activeTasks.map((t) => (
+          <Form.Dropdown.Item key={t.id} value={t.id} title={t.name || 'Untitled'} />
+        ))}
+      </Form.Dropdown>
+      <Form.Separator />
+
       <Form.Description text="Enhanced NPID integration: Search for athletes by name or enter Player ID directly. Videos will be added to NPID profiles with automatic Notion sync." />
       <Form.Separator />
 
