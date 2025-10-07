@@ -31,14 +31,6 @@ export interface MCPResponse<T = unknown> {
   error?: string;
 }
 
-// Session management for MCP Gateway
-const mcpSessionId: string | null = null;
-
-async function initializeMCPSession(): Promise<boolean> {
-  // Simple HTTP bridge - no session management needed
-  return true;
-}
-
 function extractMCPResult(result: unknown): unknown {
   if (!result) {
     return null;

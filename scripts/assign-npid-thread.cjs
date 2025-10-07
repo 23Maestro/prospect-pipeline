@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-env node */
 /**
  * NPID Thread Assignment - Standalone Script for n8n
  * Uses Playwright with 400-day saved session

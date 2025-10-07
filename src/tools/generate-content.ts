@@ -36,7 +36,6 @@ export default async function tool(input: Input): Promise<string> {
   const highSchool = (input.highSchool || "").trim();
   const city = (input.city || "").trim();
   const state = (input.state || "").trim();
-  const context = (input.additionalContext || "").trim();
 
   switch (input.contentType) {
     case "youtube-title": {

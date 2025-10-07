@@ -115,7 +115,7 @@ export async function callPythonServer<T = any>(
             }
           }
         }
-      } catch (e) {
+      } catch {
         // Not a complete JSON yet, keep waiting
       }
     });

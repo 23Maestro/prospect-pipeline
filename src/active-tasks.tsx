@@ -3,9 +3,6 @@ import { useEffect, useState } from "react";
 import { Client } from "@notionhq/client";
 import { getPreferenceValues } from "@raycast/api";
 
-// CORRECT DATABASE ID (without dashes)
-const DATABASE_ID = "19f4c8bd6c26805b9929dfa8eb290a86";
-
 type Task = {
   id: string;
   name: string;
