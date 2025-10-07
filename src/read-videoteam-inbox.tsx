@@ -9,88 +9,8 @@ import {
   Detail,
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
-import { formatDistanceToNow } from 'date-fns';
-import { fetchInboxThreads, enrichMessagesWithDetails } from './lib/npid-mcp';
 import { NPIDInboxMessage } from './types/video-team';
-
-// Direct call to Python server with proper timeout handling
-async function callPythonServer(method: string, args: any = {}, timeoutMs: number = 30000) {
-  const { spawn } = await import('child_process');
-  
-  return new Promise((resolve, reject) => {
-    const python = spawn('python3', [
-      '/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py'
-    ]);
-    
-    let output = '';
-    let errorOutput = '';
-    let timeoutHandle: NodeJS.Timeout;
-    let responseReceived = false;
-    
-    // Set timeout for the entire operation
-    timeoutHandle = setTimeout(() => {
-      if (!responseReceived) {
-        python.kill();
-        reject(new Error(`Python server timeout after ${timeoutMs}ms. Error log: ${errorOutput}`));
-      }
-    }, timeoutMs);
-    
-    python.stdout.on('data', (data) => {
-      output += data.toString();
-      
-      // Try to parse as soon as we have a complete JSON response
-      try {
-        const lines = output.trim().split('\n');
-        for (const line of lines) {
-          if (line.trim()) {
-            const result = JSON.parse(line);
-            if (result.id === 1) {
-              responseReceived = true;
-              clearTimeout(timeoutHandle);
-              python.kill();
-              resolve(result);
-              return;
-            }
-          }
-        }
-      } catch (e) {
-        // Not a complete JSON yet, keep waiting
-      }
-    });
-    
-    python.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      // Log stderr but don't fail on it (Python server logs to stderr)
-      console.log('[Python stderr]:', data.toString());
-    });
-    
-    python.on('error', (err) => {
-      clearTimeout(timeoutHandle);
-      reject(new Error(`Failed to start Python process: ${err.message}`));
-    });
-    
-    python.on('close', (code) => {
-      clearTimeout(timeoutHandle);
-      if (!responseReceived) {
-        if (code !== 0) {
-          reject(new Error(`Python process exited with code ${code}. Error: ${errorOutput}`));
-        } else {
-          reject(new Error(`Python process closed without response. Output: ${output}`));
-        }
-      }
-    });
-    
-    // Send the request
-    const request = JSON.stringify({
-      id: 1,
-      method: method,
-      arguments: args
-    }) + '\n';
-    
-    python.stdin.write(request);
-    python.stdin.end();
-  });
-}
+import { callPythonServer } from './lib/python-server-client';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({

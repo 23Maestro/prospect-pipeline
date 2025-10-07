@@ -2,55 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, getPreferenceValues } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import { Client } from '@notionhq/client';
-
-// NPID Integration Functions
-async function callNPIDServer(method: string, args: any = {}) {
-  const { spawn } = await import('child_process');
-  
-  return new Promise((resolve, reject) => {
-    const python = spawn('python3', [
-      '/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py'
-    ]);
-    
-    let output = '';
-    let error = '';
-    
-    python.stdout.on('data', (data) => {
-      output += data.toString();
-    });
-    
-    python.stderr.on('data', (data) => {
-      error += data.toString();
-    });
-    
-    python.on('close', (code) => {
-      if (code === 0) {
-        try {
-          const result = JSON.parse(output);
-          resolve(result);
-        } catch (e) {
-          reject(new Error('Failed to parse Python output'));
-        }
-      } else {
-        reject(new Error(`Python process failed: ${error}`));
-      }
-    });
-    
-    // Send the request
-    const request = JSON.stringify({
-      id: 1,
-      method: method,
-      arguments: args
-    });
-    
-    python.stdin.write(request);
-    python.stdin.end();
-  });
-}
+import { callPythonServer } from './lib/python-server-client';
 
 async function searchNPIDPlayer(query: string): Promise<NPIDPlayer[]> {
   try {
-    const result = await callNPIDServer('search_player', { query }) as any;
+    const result = await callPythonServer('search_player', { query }) as any;
     if (result.status === 'ok') {
       return result.results || [];
     }
@@ -63,7 +19,7 @@ async function searchNPIDPlayer(query: string): Promise<NPIDPlayer[]> {
 
 async function getNPIDPlayerDetails(playerId: string): Promise<NPIDPlayer | null> {
   try {
-    const result = await callNPIDServer('get_athlete_details', { player_id: playerId }) as any;
+    const result = await callPythonServer('get_athlete_details', { player_id: playerId }) as any;
     if (result.status === 'ok' && result.data) {
       const data = result.data;
       return {
@@ -194,7 +150,7 @@ export default function VideoUpdatesCommand(
         toast.message = `Updating video for ${athleteName} (ID: ${playerId})`;
 
         try {
-          const result = await callNPIDServer('update_video_profile', {
+          const result = await callPythonServer('update_video_profile', {
             player_id: playerId,
             youtube_link: formValues.youtubeLink,
             season: formValues.season,

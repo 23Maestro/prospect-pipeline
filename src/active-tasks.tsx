@@ -84,6 +84,7 @@ function formatDate(dateString: string): string {
 export default function ActiveTasks() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<string>("all");
 
   useEffect(() => {
     loadTasks();
@@ -105,24 +106,32 @@ export default function ActiveTasks() {
     }
   };
 
+  const filteredTasks = statusFilter === "all" 
+    ? tasks 
+    : tasks.filter(task => task.status === statusFilter);
+
   return (
     <List
       isLoading={isLoading}
       navigationTitle="Active Video Tasks"
       searchBarPlaceholder="Search video tasks..."
-      actions={
-        <ActionPanel>
-          <Action
-            title="Reload Tasks"
-            icon={Icon.ArrowClockwise}
-            onAction={loadTasks}
-            shortcut={{ modifiers: ["cmd"], key: "r" }}
-          />
-        </ActionPanel>
+      searchBarAccessory={
+        <List.Dropdown
+          tooltip="Filter by Status"
+          value={statusFilter}
+          onChange={setStatusFilter}
+        >
+          <List.Dropdown.Item title="All Statuses" value="all" />
+          <List.Dropdown.Item title="Revise" value="Revise" />
+          <List.Dropdown.Item title="HUDL" value="HUDL" />
+          <List.Dropdown.Item title="Dropbox" value="Dropbox" />
+          <List.Dropdown.Item title="Not Approved" value="Not Approved" />
+          <List.Dropdown.Item title="Uploads" value="Uploads" />
+        </List.Dropdown>
       }
     >
       <List.Section title="In Progress Tasks">
-        {tasks.map((task) => (
+        {filteredTasks.map((task) => (
           <List.Item
             key={task.id}
             title={task.name}
