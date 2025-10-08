@@ -2,7 +2,7 @@
 
 **Student-athlete video editing workflow automation for Raycast**
 
-A comprehensive Raycast extension that streamlines the video editing pipeline for student-athletes, integrating NPID (National Prospect ID), Notion, and n8n workflows for seamless task management and automation.
+A comprehensive Raycast extension that streamlines the video editing pipeline for student-athletes, integrating NPID (National Prospect ID), Notion, and for seamless task management and automation.
 
 ## ✨ Features
 
@@ -62,9 +62,7 @@ src/
 - **Notion Bridge**: Notion API integration
 - **Video Team Bridge**: Video team workflow automation
 
-### **n8n Workflows**
-- **pipeline.n8n_INBOX1**: Concurrent Playwright inbox scraper
-- **pipeline.n8n_ASSIGN2**: Concurrent Playwright assignment handler
+
 
 ---
 
