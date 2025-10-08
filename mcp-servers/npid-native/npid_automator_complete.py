@@ -207,10 +207,16 @@ class NpidAutomator:
         
         # Click the plus icon to open assignment modal
         if thread_id:
-            plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
-            if not plus_icon:
-                raise Exception(f"Plus icon not found for thread {thread_id}")
-            await plus_icon.click()
+            # Look for the assign_img div which contains the plus button
+            assign_img = await self.page.query_selector(f'#{thread_id} .assign_img')
+            if assign_img:
+                await assign_img.click()
+            else:
+                # Fallback: look for plus icon directly
+                plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
+                if not plus_icon:
+                    raise Exception(f"Plus icon not found for thread {thread_id}")
+                await plus_icon.click()
         
         # Wait for modal to open (Assigned Owner field appears)
         await self.page.wait_for_selector('select[name="owner"], input[name="owner"]', timeout=5000)
@@ -259,10 +265,16 @@ class NpidAutomator:
             await self.page.wait_for_timeout(2000)
         
         # Click the plus icon to open assignment modal
-        plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
-        if not plus_icon:
-            raise Exception(f"Plus icon not found for thread {thread_id}")
-        await plus_icon.click()
+        # Look for the assign_img div which contains the plus button
+        assign_img = await self.page.query_selector(f'#{thread_id} .assign_img')
+        if assign_img:
+            await assign_img.click()
+        else:
+            # Fallback: look for plus icon directly
+            plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
+            if not plus_icon:
+                raise Exception(f"Plus icon not found for thread {thread_id}")
+            await plus_icon.click()
         
         # Wait for modal to open (Assigned Owner field appears)
         await self.page.wait_for_selector('select[name="owner"], input[name="owner"]', timeout=5000)
