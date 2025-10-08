@@ -200,13 +200,21 @@ class NpidAutomator:
         """Get assignment modal data"""
         await self.ensure_browser()
         
-        # Click assign button
-        if thread_id:
-            await self.page.click(f'[data-message-id="{thread_id}"]', timeout=5000)
-            await self.page.wait_for_timeout(500)
+        # Ensure we're on inbox page
+        if "/videomailbox" not in self.page.url:
+            await self.page.goto(f"{self.base_url}/admin/videomailbox", wait_until="networkidle", timeout=30000)
+            await self.page.wait_for_timeout(2000)
         
-        await self.page.click('#assignvideoteam, button:has-text("Assign")', timeout=5000)
-        await self.page.wait_for_timeout(1500)
+        # Click the plus icon to open assignment modal
+        if thread_id:
+            plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
+            if not plus_icon:
+                raise Exception(f"Plus icon not found for thread {thread_id}")
+            await plus_icon.click()
+        
+        # Wait for modal to open (Assigned Owner field appears)
+        await self.page.wait_for_selector('select[name="owner"], input[name="owner"]', timeout=5000)
+        await self.page.wait_for_timeout(1000)
         
         # Extract modal options
         owners = await self.page.query_selector_all('select[name="owner"] option, input[name="owner"]')
@@ -245,13 +253,20 @@ class NpidAutomator:
         """Assign a thread to someone"""
         await self.ensure_browser()
         
-        # Click on thread
-        await self.page.click(f'[data-message-id="{thread_id}"], #{thread_id}', timeout=5000)
-        await self.page.wait_for_timeout(1000)
+        # Ensure we're on inbox page
+        if "/videomailbox" not in self.page.url:
+            await self.page.goto(f"{self.base_url}/admin/videomailbox", wait_until="networkidle", timeout=30000)
+            await self.page.wait_for_timeout(2000)
         
-        # Click assign button
-        await self.page.click('#assignvideoteam, button:has-text("Assign")', timeout=5000)
-        await self.page.wait_for_timeout(1500)
+        # Click the plus icon to open assignment modal
+        plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
+        if not plus_icon:
+            raise Exception(f"Plus icon not found for thread {thread_id}")
+        await plus_icon.click()
+        
+        # Wait for modal to open (Assigned Owner field appears)
+        await self.page.wait_for_selector('select[name="owner"], input[name="owner"]', timeout=5000)
+        await self.page.wait_for_timeout(1000)
         
         # Fill form
         await self.page.fill('select[name="owner"], input[name="owner"]', assignee)
