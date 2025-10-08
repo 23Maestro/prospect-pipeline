@@ -75,13 +75,25 @@ class NpidAutomator:
                 name_elem = await elem.query_selector('.msg-sendr-name')
                 name = (await name_elem.text_content()).strip() if name_elem else "Unknown"
                 
-                # Extract subject/preview from tit_univ
-                subject_elem = await elem.query_selector('.tit_univ')
+                # Extract ACTUAL subject from tit_line1 (not preview from tit_univ!)
+                subject_elem = await elem.query_selector('.tit_line1')
                 subject = ""
                 if subject_elem:
-                    subject_text = (await subject_elem.text_content()).strip()
-                    # Truncate long subjects
-                    subject = subject_text[:200] if len(subject_text) > 200 else subject_text
+                    subject = (await subject_elem.text_content()).strip()
+                
+                # Extract preview/content from tit_univ (but strip reply chains)
+                preview_elem = await elem.query_selector('.tit_univ')
+                preview = ""
+                if preview_elem:
+                    preview_text = (await preview_elem.text_content()).strip()
+                    # Strip reply chain - everything after "On ... Prospect ID Video ... wrote:"
+                    import re
+                    reply_pattern = r'On\s+.+?\s+Prospect\s+ID\s+Video\s+.+?wrote:'
+                    match = re.search(reply_pattern, preview_text, re.IGNORECASE | re.DOTALL)
+                    if match:
+                        preview = preview_text[:match.start()].strip()
+                    else:
+                        preview = preview_text[:300] if len(preview_text) > 300 else preview_text
                 
                 # Extract timestamp from date_css
                 time_elem = await elem.query_selector('.date_css')
@@ -105,6 +117,7 @@ class NpidAutomator:
                     "itemcode": item_code or "",
                     "name": name,
                     "subject": subject,
+                    "preview": preview,
                     "status": "assigned" if is_assigned else "unassigned",
                     "timestamp": timestamp,
                     "email": email,
@@ -116,20 +129,46 @@ class NpidAutomator:
         return threads
 
     async def get_thread_details(self, thread_id):
-        """Get details for a specific thread"""
+        """Get full email content by clicking thread and extracting from detail view"""
         await self.ensure_browser()
         
-        # Click on thread to open details
+        # Ensure we're on the inbox page
+        if "/videomailbox" not in self.page.url:
+            await self.page.goto(f"{self.base_url}/admin/videomailbox", wait_until="networkidle", timeout=30000)
+            await self.page.wait_for_timeout(2000)
+        
         try:
-            await self.page.click(f'[data-message-id="{thread_id}"]', timeout=5000)
-            await self.page.wait_for_timeout(1000)
+            # Click on the thread to open detail view (using correct selector)
+            clickable = await self.page.query_selector(f'#{thread_id} .rightTwo')
+            if not clickable:
+                raise Exception(f"Thread {thread_id} not found")
             
-            # Extract details from modal/detail view
-            content = await self.page.text_content('.message-content, .email-body, .thread-detail')
+            await clickable.click()
+            await self.page.wait_for_timeout(2000)
+            
+            # Extract email details from the detail view
+            # Subject from tit_line1 in detail view
+            subject_elem = await self.page.query_selector('.tit_line1')
+            subject = (await subject_elem.text_content()).strip() if subject_elem else ""
+            
+            # Get full message body from msgs_full
+            body_elem = await self.page.query_selector('.msgs_full')
+            full_content = ""
+            if body_elem:
+                body_text = (await body_elem.text_content()).strip()
+                # Strip reply chain - everything after "On ... Prospect ID Video ... wrote:"
+                import re
+                reply_pattern = r'On\s+.+?\s+Prospect\s+ID\s+Video\s+.+?wrote:'
+                match = re.search(reply_pattern, body_text, re.IGNORECASE | re.DOTALL)
+                if match:
+                    full_content = body_text[:match.start()].strip()
+                else:
+                    full_content = body_text
             
             return {
                 "id": thread_id,
-                "content": content or "",
+                "subject": subject,
+                "content": full_content,
                 "attachments": []
             }
         except Exception as e:

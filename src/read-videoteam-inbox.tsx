@@ -25,7 +25,7 @@ function EmailContentDetail({
   const downloadableAttachments =
     message.attachments?.filter((att) => att.downloadable && att.url) || [];
 
-  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n---\n\n${message.content}${
+  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${message.content || message.preview || 'No content available'}${
     hasAttachments
       ? `\n\n## 📎 Attachments (${message.attachments?.length})\n\n${message.attachments
           ?.map(
@@ -103,8 +103,8 @@ export default function InboxCheck() {
           name: thread.name,
           email: thread.email,
           subject: thread.subject || '',
-          content: '',
-          preview: thread.subject || '',
+          content: thread.preview || '',
+          preview: thread.preview || '',
           status: 'assigned',
           timestamp: thread.timestamp,
           timeStampDisplay: null,
@@ -148,8 +148,8 @@ export default function InboxCheck() {
         return (
           <List.Item
             key={message.id}
-            title={message.name}
-            subtitle={message.subject}
+            title={`${message.name} • ${message.subject}`}
+            subtitle={message.preview || 'No preview available'}
             accessories={[
               { text: message.timestamp || 'No date' },
               { icon: Icon.CheckCircle, tooltip: 'Assigned' },

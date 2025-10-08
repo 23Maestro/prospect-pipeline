@@ -69,21 +69,12 @@ function AssignmentModal({
   );
 
   const initialStage = useMemo(() => {
-    if (message.stage && modalData.stages.some((option) => option.value === message.stage)) {
-      return message.stage as TaskStage;
-    }
-    return (modalData.stages[0]?.value as TaskStage) ?? 'In Queue';
-  }, [message.stage, modalData.stages]);
+    return (modalData.stages[0]?.value as TaskStage) || '';
+  }, [modalData.stages]);
 
   const initialStatus = useMemo(() => {
-    if (
-      message.videoStatus &&
-      modalData.videoStatuses.some((option) => option.value === message.videoStatus)
-    ) {
-      return message.videoStatus as TaskStatus;
-    }
-    return (modalData.videoStatuses[0]?.value as TaskStatus) ?? 'Revisions';
-  }, [message.videoStatus, modalData.videoStatuses]);
+    return (modalData.videoStatuses[0]?.value as TaskStatus) || '';
+  }, [modalData.videoStatuses]);
 
   const [ownerId, setOwnerId] = useState<string>(initialOwnerId);
   const [contactId, setContactId] = useState<string>(contacts[0]?.contactId ?? '');
@@ -231,7 +222,7 @@ function EmailContentDetail({
     </Detail.Metadata>
   );
 
-  const markdown = `# ${message.subject}\n\n${message.content || message.preview}`;
+  const markdown = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${message.content || message.preview || 'No content available'}`;
 
   return (
     <Detail
@@ -303,8 +294,8 @@ export default function InboxCheck() {
           name: thread.name,
           email: thread.email,
           subject: thread.subject || '',
-          content: '',
-          preview: thread.subject || '',
+          content: thread.preview || '',
+          preview: thread.preview || '',
           status: 'unassigned',
           timestamp: thread.timestamp,
           timeStampDisplay: null,
@@ -442,11 +433,11 @@ export default function InboxCheck() {
         return (
           <List.Item
             key={message.id}
-            icon={{ source: Icon.Plus, tintColor: Color.Red }}
-            title={message.name || 'Unknown Sender'}
-            subtitle={message.subject}
+            icon={{ source: Icon.Plus, tintColor: Color.Green }}
+            title={`${message.name || 'Unknown Sender'} • ${message.subject}`}
+            subtitle={message.preview || 'No preview available'}
             accessories={accessories}
-            keywords={[message.subject, message.preview, message.email]}
+            keywords={[message.subject, message.preview, message.email, message.name]}
             actions={
               <ActionPanel>
                 <ActionPanel.Section>
