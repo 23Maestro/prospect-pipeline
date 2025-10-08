@@ -1,6 +1,7 @@
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import os from 'os';
 
 /**
  * Response from the Python NPID server
@@ -19,41 +20,31 @@ export interface PythonServerResponse<T = any> {
  * @throws Error if the resolved path does not exist
  */
 export function resolveNPIDServerPath(): string {
-  // Try environment variable first
+  const homeDir = os.homedir();
+  
+  // Prefer shell wrapper (handles venv activation)
+  const wrapperPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/run_server.sh');
+  if (fs.existsSync(wrapperPath)) {
+    return wrapperPath;
+  }
+
+  // Fallback to direct Python (may fail if venv not activated)
   const envPath = process.env.NPID_SERVER_PATH;
-  if (envPath) {
-    if (!fs.existsSync(envPath)) {
-      throw new Error(
-        `NPID_SERVER_PATH environment variable is set but file not found: ${envPath}\n` +
-        'Please check your environment configuration.'
-      );
-    }
+  if (envPath && fs.existsSync(envPath)) {
     return envPath;
   }
 
-  // Fall back to relative path from project root
-  // __dirname in a bundled Raycast extension points to the build output
-  // We need to go up from the build directory to find the project root
-  const relativePath = path.resolve(
-    __dirname,
-    '..',
-    '..',
-    'mcp-servers',
-    'npid-native',
-    'npid_simple_server.py'
-  );
-
-  if (!fs.existsSync(relativePath)) {
-    throw new Error(
-      `NPID Python server not found at: ${relativePath}\n\n` +
-      'Please either:\n' +
-      '1. Set the NPID_SERVER_PATH environment variable to the correct path, or\n' +
-      '2. Ensure the server exists at: mcp-servers/npid-native/npid_simple_server.py\n\n' +
-      `Expected location: ${relativePath}`
-    );
+  const pythonPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py');
+  if (fs.existsSync(pythonPath)) {
+    return pythonPath;
   }
 
-  return relativePath;
+  throw new Error(
+    `NPID server not found. Tried:\n` +
+    `  1. Wrapper: ${wrapperPath}\n` +
+    `  2. Env var: ${envPath || '(not set)'}\n` +
+    `  3. Direct: ${pythonPath}`
+  );
 }
 
 /**
@@ -77,9 +68,12 @@ export async function callPythonServer<T = any>(
   timeoutMs: number = 30000
 ): Promise<PythonServerResponse<T>> {
   const serverPath = resolveNPIDServerPath();
+  const isShellWrapper = serverPath.endsWith('.sh');
 
   return new Promise((resolve, reject) => {
-    const python = spawn('python3', [serverPath]);
+    const python = isShellWrapper 
+      ? spawn('/bin/bash', [serverPath])
+      : spawn('python3', [serverPath]);
     
     let output = '';
     let errorOutput = '';

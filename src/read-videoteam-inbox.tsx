@@ -10,6 +10,7 @@ import {
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
+import { supabase } from './lib/supabase-client';
 import { callPythonServer } from './lib/python-server-client';
 
 // Email Content Detail Component - Enhanced with Attachments
@@ -81,40 +82,41 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Call Python server directly to get threads with assignment status
-      const result = await callPythonServer('get_inbox_threads', { limit: 50 }) as any;
+      // Call Python server to get live inbox threads from NPID
+      const result = await callPythonServer('get_inbox_threads', { limit: 50 });
       
       if (result.status !== 'ok') {
-        throw new Error(result.message || 'Failed to fetch threads');
+        throw new Error(result.message || 'Failed to fetch inbox from NPID');
       }
 
-      // Filter for ASSIGNED messages (status === 'assigned')
-      const assignedMessages = result.threads.filter((thread: any) => thread.status === 'assigned');
+      const threads = result.data || [];
 
-      // Convert to NPIDInboxMessage format
-      const messages: NPIDInboxMessage[] = assignedMessages.map((thread: any) => ({
-        id: thread.id,
-        itemCode: thread.itemcode || thread.id,
-        thread_id: thread.id,
-        player_id: '',
-        contactid: '',
-        name: thread.name,
-        email: thread.email,
-        subject: thread.subject || '',
-        content: '',
-        preview: thread.subject || '',
-        status: 'assigned',
-        timestamp: thread.timestamp,
-        timeStampDisplay: null,
-        timeStampIso: null,
-        is_reply_with_signature: false,
-        isUnread: false,
-        stage: undefined,
-        videoStatus: undefined,
-        canAssign: false,
-        attachments: [],
-        athleteLinks: undefined,
-      }));
+      // Convert to NPIDInboxMessage format, filter for assigned only
+      const messages: NPIDInboxMessage[] = threads
+        .filter((thread: any) => thread.status === 'assigned')
+        .map((thread: any) => ({
+          id: thread.id,
+          itemCode: thread.itemcode || thread.id,
+          thread_id: thread.id,
+          player_id: '',
+          contactid: '',
+          name: thread.name,
+          email: thread.email,
+          subject: thread.subject || '',
+          content: '',
+          preview: thread.subject || '',
+          status: 'assigned',
+          timestamp: thread.timestamp,
+          timeStampDisplay: null,
+          timeStampIso: null,
+          is_reply_with_signature: false,
+          isUnread: false,
+          stage: undefined,
+          videoStatus: undefined,
+          canAssign: false,
+          attachments: [],
+          athleteLinks: undefined,
+        }));
 
       setMessages(messages);
       console.log('🔍 READ INBOX: Setting messages in UI:', messages.length);

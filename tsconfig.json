@@ -6,6 +6,6 @@
     "strict": true,
     "skipLibCheck": true,
     "jsx": "react-jsx",
-    "types": ["node", "react"]
+    "types": ["node"]
   }
 }

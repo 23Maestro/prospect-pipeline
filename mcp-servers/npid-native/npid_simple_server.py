@@ -14,7 +14,7 @@ async def get_inbox_threads(limit="50"):
     """Get inbox threads"""
     try:
         result = await automator.get_inbox_threads(int(limit))
-        return json.dumps({"status": "ok", "threads": result})
+        return json.dumps({"status": "ok", "data": result})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
 

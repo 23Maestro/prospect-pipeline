@@ -13,7 +13,7 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 class NpidAutomator:
     def __init__(self):
         self.base_url = "https://dashboard.nationalpid.com"
-        state_path = Path.home() / "Raycast/scout-singleton/state/playwright_state.json"
+        state_path = Path(__file__).parent / "playwright_state.json"
         self.state_path = state_path
         self.browser: Browser | None = None
         self.context: BrowserContext | None = None
@@ -53,13 +53,13 @@ class NpidAutomator:
         # Wait for page to fully load (inbox loads via AJAX)
         await self.page.wait_for_timeout(3000)
         
-        # NPID uses div.ImageProfile for each message
-        message_elements = await self.page.query_selector_all('#inbox_tab .ImageProfile')
+        # NPID uses div.ImageProfile for each message in #inbox_tab
+        message_elements = await self.page.query_selector_all('#inbox_tab div.ImageProfile')
         
         threads = []
         for elem in message_elements[:limit]:
             try:
-                # Get message ID from itemid attribute
+                # Get message ID from attributes
                 item_id = await elem.get_attribute('itemid')
                 item_code = await elem.get_attribute('itemcode')
                 message_id = await elem.get_attribute('id')
@@ -71,40 +71,37 @@ class NpidAutomator:
                 email_elem = await elem.query_selector('.hidden')
                 email = (await email_elem.text_content()).strip() if email_elem else ""
                 
-                # Extract name from title or first visible text
-                name_elem = await elem.query_selector('.tit_line1, .name, .from')
+                # Extract name from msg-sendr-name span
+                name_elem = await elem.query_selector('.msg-sendr-name')
                 name = (await name_elem.text_content()).strip() if name_elem else "Unknown"
                 
-                # Extract subject/preview from message content
-                subject_elem = await elem.query_selector('.tit_univ, .subject, .preview')
+                # Extract subject/preview from tit_univ
+                subject_elem = await elem.query_selector('.tit_univ')
                 subject = ""
                 if subject_elem:
                     subject_text = (await subject_elem.text_content()).strip()
                     # Truncate long subjects
                     subject = subject_text[:200] if len(subject_text) > 200 else subject_text
                 
-                # Extract timestamp
-                time_elem = await elem.query_selector('.time, .timestamp, .date')
-                timestamp = (await time_elem.text_content()).strip() if time_elem else ""
+                # Extract timestamp from date_css
+                time_elem = await elem.query_selector('.date_css')
+                timestamp = ""
+                if time_elem:
+                    timestamp_text = (await time_elem.text_content()).strip()
+                    # Get first line only (date, not time)
+                    timestamp = timestamp_text.split('\n')[0].strip() if timestamp_text else ""
                 
-                # Check assignment status by clicking the thread and looking for assign button
-                try:
-                    # Click the thread to load its details
-                    await elem.click()
-                    await self.page.wait_for_timeout(1000)  # Wait for AJAX
-                    
-                    # Check if assign button exists (means it's unassigned)
-                    assign_button = await self.page.query_selector('#assignvideoteam')
-                    can_assign = assign_button is not None
-                    is_assigned = not can_assign
-                    
-                except Exception as e:
-                    # If clicking fails, assume unassigned
-                    can_assign = True
-                    is_assigned = False
+                # Check assignment status by looking for plus icon (assignable) vs profile pic (assigned)
+                # Assignable threads have: <i class="fa fa-plus-circle assign_video_team">
+                # Assigned threads have: <img src*="PROFILE_IMG">
+                plus_icon = await elem.query_selector('.fa-plus-circle')
+                profile_img = await elem.query_selector('img[src*="PROFILE_IMG"]')
+                
+                can_assign = plus_icon is not None
+                is_assigned = profile_img is not None
                 
                 threads.append({
-                    "id": f"message_{item_id}",
+                    "id": message_id or f"message_{item_id}",
                     "itemcode": item_code or "",
                     "name": name,
                     "subject": subject,
