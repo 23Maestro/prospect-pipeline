@@ -8,7 +8,14 @@ import json
 import os
 import re
 from pathlib import Path
-from playwright.async_api import async_playwright, Browser, BrowserContext, Page
+from playwright.async_api import (
+    async_playwright,
+    Browser,
+    BrowserContext,
+    Page,
+    TimeoutError,
+    Error as PlaywrightError,
+)
 
 class NpidAutomator:
     def __init__(self):
@@ -256,48 +263,108 @@ class NpidAutomator:
         }
 
     async def assign_thread(self, thread_id, assignee, status=None, stage=None, contact_id=None):
-        """Assign a thread to someone"""
+        """
+        Assign a thread to someone with added resilience.
+        - Re-initializes driver on session failure.
+        - Fixes aria-hidden modals.
+        - Waits for modal visibility.
+        - Falls back to JS fetch() if form submission fails.
+        """
         await self.ensure_browser()
-        
-        # Ensure we're on inbox page
-        if "/videomailbox" not in self.page.url:
-            await self.page.goto(f"{self.base_url}/admin/videomailbox", wait_until="networkidle", timeout=30000)
-            await self.page.wait_for_timeout(2000)
-        
-        # Click the plus icon to open assignment modal
-        # Look for the assign_img div which contains the plus button
-        assign_img = await self.page.query_selector(f'#{thread_id} .assign_img')
-        if assign_img:
-            await assign_img.click()
-        else:
-            # Fallback: look for plus icon directly
-            plus_icon = await self.page.query_selector(f'#{thread_id} .fa-plus-circle')
-            if not plus_icon:
-                raise Exception(f"Plus icon not found for thread {thread_id}")
-            await plus_icon.click()
-        
-        # Wait for modal to open (Assigned Owner field appears)
-        await self.page.wait_for_selector('select[name="owner"], input[name="owner"]', timeout=5000)
-        await self.page.wait_for_timeout(1000)
-        
-        # Fill form
-        await self.page.fill('select[name="owner"], input[name="owner"]', assignee)
-        
-        if contact_id:
-            await self.page.fill('input[name="contact"], select[name="contact"]', contact_id)
-        
-        if stage:
-            await self.page.select_option('select[name="stage"]', stage)
-        
-        if status:
-            await self.page.select_option('select[name="status"]', status)
-        
-        # Submit
-        await self.page.click('button[type="submit"], button:has-text("Assign"), button:has-text("Save")')
-        
-        # Wait for success
-        await self.page.wait_for_selector('.success-message, .alert-success', timeout=10000)
-        
+
+        try:
+            # 1. Ensure we are on the correct page and session is valid
+            if "/videomailbox" not in self.page.url:
+                await self.page.goto(f"{self.base_url}/admin/videomailbox", wait_until="networkidle", timeout=20000)
+
+            if "/login" in self.page.url or "/signin" in self.page.url:
+                # Session is invalid, force re-initialization
+                await self.close() # Close existing browser
+                self.browser = self.context = self.page = None # Reset state
+                await self.ensure_browser() # Re-launch
+                await self.page.goto(f"{self.base_url}/admin/videomailbox", wait_until="networkidle", timeout=30000)
+                if "/login" in self.page.url or "/signin" in self.page.url:
+                    raise Exception("Session expired, and re-login failed.")
+
+            # 2. Open the assignment modal
+            assign_button_selector = f'#{thread_id} .assign_img, #{thread_id} .fa-plus-circle'
+            await self.page.click(assign_button_selector, timeout=10000)
+
+            # 3. Wait for modal, and force it to be visible
+            modal_selector = 'form[action*="assign"]'
+            await self.page.wait_for_selector(modal_selector, timeout=10000)
+
+            await self.page.evaluate(f"""
+                const modal = document.querySelector('{modal_selector}');
+                if (modal) {{
+                    let el = modal;
+                    while(el) {{
+                        if (el.getAttribute('aria-hidden') === 'true') el.removeAttribute('aria-hidden');
+                        if (el.style.display === 'none') el.style.display = 'block';
+                        el = el.parentElement;
+                    }}
+                }}
+            """)
+            await self.page.wait_for_timeout(500) # Give DOM time to update
+
+            # 4. Fill and submit the form
+            await self.page.fill('select[name="owner"], input[name="owner"]', assignee)
+            if contact_id:
+                await self.page.fill('input[name="contact"], select[name="contact"]', contact_id)
+            if stage:
+                await self.page.select_option('select[name="stage"]', stage)
+            if status:
+                await self.page.select_option('select[name="status"]', status)
+
+            await self.page.click('button[type="submit"], button:has-text("Assign"), button:has-text("Save")', timeout=7000)
+            await self.page.wait_for_selector('.success-message, .alert-success', timeout=10000)
+
+        except (TimeoutError, PlaywrightError) as e:
+            # 5. FALLBACK: If UI interaction fails, try a direct JS fetch()
+            try:
+                js_fallback_success = await self.page.evaluate("""
+                    async (args) => {
+                        const form = document.querySelector('form[action*="assign"]');
+                        if (!form) return { success: false, error: 'Fallback failed: Form not found' };
+
+                        const formData = new FormData(form);
+                        formData.set('owner', args.assignee);
+                        if (args.contact_id) formData.set('contact', args.contact_id);
+                        if (args.stage) formData.set('stage', args.stage);
+                        if (args.status) formData.set('status', args.status);
+
+                        // Manually add thread_id if it's in a hidden input
+                        const threadIdInput = form.querySelector('input[name="thread_id"], input[name="message_id"]');
+                        if (threadIdInput) {
+                            formData.set(threadIdInput.name, threadIdInput.value);
+                        }
+
+                        const response = await fetch(form.action, {
+                            method: 'POST',
+                            body: new URLSearchParams(formData),
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest' // Often required for AJAX endpoints
+                            }
+                        });
+
+                        if (response.ok) {
+                            const text = await response.text();
+                            // Check for success indicators in the response
+                            if (text.includes('success') || text.includes('Success')) {
+                                return { success: true };
+                            }
+                        }
+                        return { success: false, error: `Fallback fetch failed with status ${response.status}` };
+                    }
+                """, {"assignee": assignee, "contact_id": contact_id, "stage": stage, "status": status})
+
+                if not js_fallback_success.get("success"):
+                    error_message = js_fallback_success.get("error", "Unknown JS fallback error")
+                    raise Exception(f"Primary assignment failed and JS fallback also failed: {error_message}. Original error: {e}")
+
+            except Exception as js_e:
+                 raise Exception(f"An error occurred during JS fallback execution: {js_e}") from e
+
         return {"success": True, "thread_id": thread_id, "assigned_to": assignee}
 
     async def get_video_progress_data(self):
