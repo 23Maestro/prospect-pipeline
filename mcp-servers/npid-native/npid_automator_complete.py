@@ -19,6 +19,11 @@ from playwright.async_api import (
 
 class NpidAutomator:
     def __init__(self):
+        """
+        Initialize an NpidAutomator instance with default configuration and empty Playwright handles.
+        
+        Sets the dashboard base URL to https://dashboard.nationalpid.com, records the path for the Playwright persistent state file named `playwright_state.json` located beside this module, and initializes browser, context, and page attributes to None.
+        """
         self.base_url = "https://dashboard.nationalpid.com"
         state_path = Path(__file__).parent / "playwright_state.json"
         self.state_path = state_path
@@ -204,7 +209,26 @@ class NpidAutomator:
         return contacts
 
     async def get_assignment_modal_data(self, thread_id=None, contact_id=None):
-        """Get assignment modal data"""
+        """
+        Retrieve available assignment options from the assignment modal for a given thread.
+        
+        If thread_id is provided, the function opens the assignment modal for that thread; otherwise it assumes the modal (or relevant form) is already accessible. It then extracts available owner, stage, and status options and returns them along with the first owner as the default when present.
+        
+        Parameters:
+            thread_id (str | None): Optional DOM id of the thread whose assign control should be clicked to open the modal.
+            contact_id (str | None): Optional contact identifier (accepted for compatibility; not used by this routine).
+        
+        Returns:
+            dict: {
+                "owners": list of {"value": str, "label": str},
+                "stages": list of {"value": str, "label": str},
+                "videoStatuses": list of {"value": str, "label": str},
+                "defaultOwner": {"value": str, "label": str} | None
+            }
+        
+        Raises:
+            Exception: If a provided thread_id is present but no assign control (plus icon or assign_img) can be found for that thread.
+        """
         await self.ensure_browser()
         
         # Ensure we're on inbox page
@@ -264,11 +288,22 @@ class NpidAutomator:
 
     async def assign_thread(self, thread_id, assignee, status=None, stage=None, contact_id=None):
         """
-        Assign a thread to someone with added resilience.
-        - Re-initializes driver on session failure.
-        - Fixes aria-hidden modals.
-        - Waits for modal visibility.
-        - Falls back to JS fetch() if form submission fails.
+        Assigns a videomail thread to a specified user, ensuring the assignment completes via the UI and falling back to a direct JS fetch submission if needed.
+        
+        Attempts to open the assignment modal for the given thread, makes the modal visible if hidden, fills owner/contact/stage/status fields, and submits the form. If the session appears expired the browser context is reinitialized and the action retried. If UI interaction fails, a JavaScript fetch-based POST is attempted as a fallback.
+        
+        Parameters:
+        	thread_id (str): Identifier of the thread to assign.
+        	assignee (str): Identifier (value) of the owner to assign the thread to.
+        	status (str|None): Optional status value to set.
+        	stage (str|None): Optional stage value to set.
+        	contact_id (str|None): Optional contact identifier to associate with the assignment.
+        
+        Returns:
+        	dict: {"success": True, "thread_id": thread_id, "assigned_to": assignee} on success.
+        
+        Raises:
+        	Exception: If the session cannot be re-established, or if both the UI submission and the JS fallback fail.
         """
         await self.ensure_browser()
 
@@ -368,7 +403,27 @@ class NpidAutomator:
         return {"success": True, "thread_id": thread_id, "assigned_to": assignee}
 
     async def get_video_progress_data(self):
-        """Get video progress data from NPID using saved state - NO TOKENS!"""
+        """
+        Retrieve video progress entries from the NPID dashboard page.
+        
+        Extracts visible rows from the video progress page and returns a list of records with player and video workflow fields.
+        
+        Returns:
+            list[dict]: A list of dictionaries where each dictionary contains the keys:
+                - player_id (str)
+                - player_name (str)
+                - grad_year (str)
+                - high_school (str)
+                - location (str)
+                - positions (str)
+                - sport (str)
+                - video_progress_stage (str)
+                - video_progress_status (str)
+                - video_editor (str)
+        
+        Raises:
+            Exception: If the saved browser session is not authenticated (session expired / redirected to login).
+        """
         await self.ensure_browser()
         
         # Navigate to video progress page - saved state handles all auth
