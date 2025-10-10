@@ -18,6 +18,7 @@ import {
   fetchAssignmentDefaults,
   fetchAssignmentModal,
   resolveContactsForAssignment,
+  getInboxThreadsViaSSE,
 } from './lib/npid-mcp-adapter';
 import { supabase } from './lib/supabase-client';
 import { callPythonServer } from './lib/python-server-client';
@@ -273,41 +274,15 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Call Python server to get live inbox threads from NPID
-      const result = await callPythonServer('get_inbox_threads', { limit: 50 });
-      
-      if (result.status !== 'ok') {
-        throw new Error(result.message || 'Failed to fetch inbox from NPID');
-      }
+      // Use SSE streaming server for reliable inbox fetching
+      // Falls back to original method if SSE server is unavailable
+      const threads = await getInboxThreadsViaSSE(50);
 
-      const threads = result.data || [];
-
-      // Convert to NPIDInboxMessage format, filter for assignable only
-      const messages: NPIDInboxMessage[] = threads
-        .filter((thread: any) => thread.can_assign === true)
-        .map((thread: any) => ({
-          id: thread.id,
-          itemCode: thread.itemcode || thread.id,
-          thread_id: thread.id,
-          player_id: '',
-          contactid: '',
-          name: thread.name,
-          email: thread.email,
-          subject: thread.subject || '',
-          content: thread.preview || '',
-          preview: thread.preview || '',
-          status: 'unassigned',
-          timestamp: thread.timestamp,
-          timeStampDisplay: null,
-          timeStampIso: null,
-          is_reply_with_signature: false,
-          isUnread: true,
-          stage: undefined,
-          videoStatus: undefined,
-          canAssign: true,
-          attachments: [],
-          athleteLinks: undefined,
-        }));
+      // SSE already returns properly formatted NPIDInboxMessage objects
+      // Just filter for assignable ones
+      const messages: NPIDInboxMessage[] = threads.filter(
+        (thread: NPIDInboxMessage) => thread.canAssign === true
+      );
 
       await showToast({
         style: messages.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
@@ -366,8 +341,8 @@ export default function InboxCheck() {
             try {
               const payload: AssignVideoTeamPayload = {
                 messageId: message.id,
-                contactId: contact.contactId,
-                athleteMainId: contact.athleteMainId,
+                contactId: message.contactid,
+                athleteMainId: (message as NPIDInboxMessage & { athleteMainId: string | null }).athleteMainId,
                 ownerId,
                 stage,
                 status,

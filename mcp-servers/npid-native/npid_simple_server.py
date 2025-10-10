@@ -1,3 +1,4 @@
+#!/Users/singleton23/.pyenv/versions/3.12.3/bin/python3
 #!/usr/bin/env python3
 """
 Simplified NPID automation interface
@@ -13,7 +14,7 @@ automator = get_automator()
 async def get_inbox_threads(limit="50"):
     """Get inbox threads"""
     try:
-        result = await automator.get_inbox_threads(int(limit))
+        result = automator.get_inbox_threads(int(limit))
         return json.dumps({"status": "ok", "data": result})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
@@ -21,7 +22,7 @@ async def get_inbox_threads(limit="50"):
 async def get_thread_details(thread_id):
     """Get thread details"""
     try:
-        result = await automator.get_thread_details(thread_id)
+        result = automator.get_thread_details(thread_id)
         return json.dumps({"status": "ok", "thread": result})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
@@ -29,7 +30,7 @@ async def get_thread_details(thread_id):
 async def search_player(query):
     """Search for player"""
     try:
-        result = await automator.search_player(query)
+        result = automator.search_player(query)
         return json.dumps({"status": "ok", "results": result})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
@@ -37,7 +38,7 @@ async def search_player(query):
 async def get_assignment_modal_data(thread_id=None, contact_id=None):
     """Get assignment modal data"""
     try:
-        result = await automator.get_assignment_modal_data(
+        result = automator.get_assignment_modal_data(
             thread_id=thread_id,
             contact_id=contact_id
         )
@@ -48,7 +49,7 @@ async def get_assignment_modal_data(thread_id=None, contact_id=None):
 async def assign_thread(thread_id, assignee, status=None, stage=None, contact_id=None):
     """Assign thread"""
     try:
-        result = await automator.assign_thread(
+        result = automator.assign_thread(
             thread_id=thread_id,
             assignee=assignee,
             status=status,
@@ -62,7 +63,7 @@ async def assign_thread(thread_id, assignee, status=None, stage=None, contact_id
 async def get_video_progress():
     """Get video progress data"""
     try:
-        result = await automator.get_video_progress_data()
+        result = automator.get_video_progress_data()
         return json.dumps({"status": "ok", "data": result})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
@@ -70,7 +71,7 @@ async def get_video_progress():
 async def get_athlete_details(player_id):
     """Get athlete details by player ID"""
     try:
-        result = await automator.get_athlete_details(player_id)
+        result = automator.get_athlete_details(player_id)
         return json.dumps({"status": "ok", "data": result})
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
@@ -78,7 +79,7 @@ async def get_athlete_details(player_id):
 async def update_video_profile(player_id, youtube_link, season, video_type):
     """Update video profile for specific player"""
     try:
-        result = await automator.update_video_profile(
+        result = automator.update_video_profile(
             player_id=player_id,
             youtube_link=youtube_link,
             season=season,
@@ -99,21 +100,21 @@ async def handle_request(request):
         
         result = None
         if method == "get_inbox_threads":
-            result = await get_inbox_threads(**args)
+            result = get_inbox_threads(**args)
         elif method == "get_thread_details":
-            result = await get_thread_details(**args)
+            result = get_thread_details(**args)
         elif method == "search_player":
-            result = await search_player(**args)
+            result = search_player(**args)
         elif method == "get_assignment_modal_data":
-            result = await get_assignment_modal_data(**args)
+            result = get_assignment_modal_data(**args)
         elif method == "assign_thread":
-            result = await assign_thread(**args)
+            result = assign_thread(**args)
         elif method == "get_video_progress":
-            result = await get_video_progress(**args)
+            result = get_video_progress(**args)
         elif method == "get_athlete_details":
-            result = await get_athlete_details(**args)
+            result = get_athlete_details(**args)
         elif method == "update_video_profile":
-            result = await update_video_profile(**args)
+            result = update_video_profile(**args)
         else:
             result = json.dumps({"status": "error", "message": f"Unknown method: {method}"})
         
@@ -132,7 +133,7 @@ async def main():
             if not line:
                 break
             
-            response = await handle_request(line.strip())
+            response = handle_request(line.strip())
             print(response, flush=True)
         except Exception as e:
             print(json.dumps({"status": "error", "message": str(e)}), flush=True)

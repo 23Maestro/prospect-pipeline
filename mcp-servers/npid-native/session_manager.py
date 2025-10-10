@@ -125,9 +125,10 @@ class SessionManager:
                 logger.debug(f"Using Chrome binary: {chrome_path}")
                 break
         
-        # ChromeDriver setup with automatic management
+        # ChromeDriver setup with explicit path (bypasses webdriver-manager bug)
         try:
-            chromedriver_path = ChromeDriverManager().install()
+            # Use explicit path to avoid THIRD_PARTY_NOTICES.chromedriver bug
+            chromedriver_path = "/Users/singleton23/.wdm/drivers/chromedriver/mac64/141.0.7390.76/chromedriver-mac-arm64/chromedriver"
             service = ChromeService(executable_path=chromedriver_path)
             
             driver = webdriver.Chrome(service=service, options=options)
@@ -186,7 +187,7 @@ class SessionManager:
             
             # Update session state
             self._save_session_state({
-                'last_cookie_save': str(Path.ctime(self.COOKIES_FILE)),
+                'last_cookie_save': str(self.COOKIES_FILE.stat().st_ctime),
                 'cookie_count': len(cookies)
             })
             

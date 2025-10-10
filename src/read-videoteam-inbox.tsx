@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
 import { supabase } from './lib/supabase-client';
-import { callPythonServer } from './lib/python-server-client';
+import { getInboxThreadsViaSSE } from './lib/npid-mcp-adapter';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -82,52 +82,30 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Call Python server to get live inbox threads from NPID
-      const result = await callPythonServer('get_inbox_threads', { limit: 50 });
-      
-      if (result.status !== 'ok') {
-        throw new Error(result.message || 'Failed to fetch inbox from NPID');
-      }
+      // Use SSE streaming server for reliable inbox fetching
+      // Same method as assign-videoteam-inbox uses
+      const threads = await getInboxThreadsViaSSE(50);
 
-      const threads = result.data || [];
+      console.log('🔍 READ INBOX: Total threads from SSE:', threads.length);
+      console.log('🔍 READ INBOX: First thread:', threads[0]);
+      console.log('🔍 READ INBOX: Thread canAssign values:', threads.map(t => t.canAssign));
 
-      // Convert to NPIDInboxMessage format, filter for assigned only
-      const messages: NPIDInboxMessage[] = threads
-        .filter((thread: any) => thread.status === 'assigned')
-        .map((thread: any) => ({
-          id: thread.id,
-          itemCode: thread.itemcode || thread.id,
-          thread_id: thread.id,
-          player_id: '',
-          contactid: '',
-          name: thread.name,
-          email: thread.email,
-          subject: thread.subject || '',
-          content: thread.preview || '',
-          preview: thread.preview || '',
-          status: 'assigned',
-          timestamp: thread.timestamp,
-          timeStampDisplay: null,
-          timeStampIso: null,
-          is_reply_with_signature: false,
-          isUnread: false,
-          stage: undefined,
-          videoStatus: undefined,
-          canAssign: false,
-          attachments: [],
-          athleteLinks: undefined,
-        }));
+      // Filter for assigned threads only (opposite of assign command)
+      const messages: NPIDInboxMessage[] = threads.filter(
+        (thread: NPIDInboxMessage) => thread.canAssign === false
+      );
 
       setMessages(messages);
-      console.log('🔍 READ INBOX: Setting messages in UI:', messages.length);
-      console.log('🔍 READ INBOX: First message:', messages[0]);
+      console.log('🔍 READ INBOX: Filtered assigned messages:', messages.length);
+      console.log('🔍 READ INBOX: First assigned message:', messages[0]);
 
       await showToast({
-        style: Toast.Style.Success,
+        style: messages.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
         title: `Found ${messages.length} assigned messages`,
-        message: 'Ready to view and reply',
+        message: messages.length === 0 ? 'No assigned threads' : 'Ready to view and reply',
       });
     } catch (error) {
+      console.error('🔍 READ INBOX: Error loading inbox:', error);
       await showToast({
         style: Toast.Style.Failure,
         title: 'Failed to load inbox',
