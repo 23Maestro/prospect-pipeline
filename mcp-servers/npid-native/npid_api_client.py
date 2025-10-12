@@ -113,45 +113,63 @@ class NPIDAPIClient:
         if not self.authenticated:
             self.login()
     
-    def get_inbox_threads(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get inbox threads from video team inbox"""
+    def get_inbox_threads(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """Get inbox threads with dynamic pagination to fetch all pages"""
         self.ensure_authenticated()
         
-        params = {
-            'athleteid': '',
-            'user_timezone': 'America/New_York',
-            'type': 'inbox',
-            'is_mobile': '',
-            'filter_self': 'MeUn',  # Me + Unassigned
-            'refresh': 'false',
-            'page_start_number': '1',
-            'search_text': ''
-        }
+        all_threads = []
+        page = 1
+        max_pages = 3  # Safety limit (150 threads max)
         
-        resp = self.session.get(
-            f"{self.base_url}/rulestemplates/template/videoteammessagelist",
-            params=params
-        )
-        resp.raise_for_status()
+        while len(all_threads) < limit and page <= max_pages:
+            params = {
+                'athleteid': '',
+                'user_timezone': 'America/New_York',
+                'type': 'inbox',
+                'is_mobile': '',
+                'filter_self': 'MeUn',  # Me + Unassigned
+                'refresh': 'false',
+                'page_start_number': str(page),  # Dynamic page number
+                'search_text': ''
+            }
+            
+            resp = self.session.get(
+                f"{self.base_url}/rulestemplates/template/videoteammessagelist",
+                params=params
+            )
+            resp.raise_for_status()
+            
+            # Parse HTML response
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            message_elements = soup.select('div.ImageProfile')
+            
+            if not message_elements:  # No more threads on this page
+                print(f"📄 Page {page}: No more threads found", file=sys.stderr)
+                break
+            
+            page_threads = []
+            for elem in message_elements:
+                try:
+                    thread = self._parse_thread_element(elem)
+                    if thread:
+                        page_threads.append(thread)
+                except Exception as e:
+                    print(f"⚠️  Failed to parse thread: {e}", file=sys.stderr)
+                    continue
+            
+            all_threads.extend(page_threads)
+            print(f"📄 Page {page}: Found {len(page_threads)} threads (total: {len(all_threads)})", file=sys.stderr)
+            
+            # If we got fewer threads than expected, we've reached the end
+            if len(page_threads) < 50:  # Assuming 50 per page
+                break
+                
+            page += 1
         
-        # Parse HTML response
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        threads = []
-        
-        # Find all message containers (div.ImageProfile)
-        message_elements = soup.select('div.ImageProfile')
-        
-        for elem in message_elements[:limit]:
-            try:
-                thread = self._parse_thread_element(elem)
-                if thread:
-                    threads.append(thread)
-            except Exception as e:
-                print(f"⚠️  Failed to parse thread: {e}", file=sys.stderr)
-                continue
-        
-        print(f"✅ Found {len(threads)} inbox threads", file=sys.stderr)
-        return threads
+        # Return only up to the requested limit
+        result = all_threads[:limit]
+        print(f"✅ Found {len(result)} inbox threads across {page-1} pages", file=sys.stderr)
+        return result
     
     def _parse_thread_element(self, elem) -> Optional[Dict[str, Any]]:
         """Parse a single thread element from inbox HTML"""
@@ -196,8 +214,15 @@ class NPIDAPIClient:
         date_elem = elem.select_one('.date_css')
         timestamp = date_elem.text.strip() if date_elem else ""
         
-        # Check if assigned (has owner badge)
-        is_assigned = bool(elem.select_one('.msg-badge-owner'))
+        # Check if assigned - look for plus icon (➕) or assign button for unassigned
+        # Look for assign button or plus icon indicating unassigned status
+        assign_button = elem.select_one('.assign-button, [title*="assign"], [title*="Assign"]')
+        plus_icon = elem.select_one('text:contains("➕"), .plus-icon, [class*="plus"]')
+        owner_badge = elem.select_one('.msg-badge-owner, .owner-badge, [class*="owner"]')
+        
+        # If there's an assign button or plus icon, it's unassigned
+        # If there's an owner badge, it's assigned
+        is_assigned = bool(owner_badge) and not bool(assign_button or plus_icon)
         can_assign = not is_assigned
         
         # Extract attachments
