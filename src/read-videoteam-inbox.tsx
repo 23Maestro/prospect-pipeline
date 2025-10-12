@@ -82,26 +82,19 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Use REST API client for inbox fetching (no Selenium/Playwright)
-      const threads = await fetchInboxThreads(50);
+      // Fetch ONLY assigned threads (filter on API side)
+      // This will fetch across multiple pages (up to 100 threads total)
+      const threads = await fetchInboxThreads(100, 'assigned');
 
-      console.log('🔍 READ INBOX: Total threads from REST API:', threads.length);
+      console.log('🔍 READ INBOX: Total assigned threads from REST API:', threads.length);
       console.log('🔍 READ INBOX: First thread:', threads[0]);
-      console.log('🔍 READ INBOX: Thread canAssign values:', threads.map(t => t.canAssign));
 
-      // Filter for assigned threads only (opposite of assign command)
-      const messages: NPIDInboxMessage[] = threads.filter(
-        (thread: NPIDInboxMessage) => thread.canAssign === false
-      );
-
-      setMessages(messages);
-      console.log('🔍 READ INBOX: Filtered assigned messages:', messages.length);
-      console.log('🔍 READ INBOX: First assigned message:', messages[0]);
+      setMessages(threads);
 
       await showToast({
-        style: messages.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: `Found ${messages.length} assigned messages`,
-        message: messages.length === 0 ? 'No assigned threads' : 'Ready to view and reply',
+        style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
+        title: `Found ${threads.length} assigned messages`,
+        message: threads.length === 0 ? 'No assigned threads' : 'Ready to view and reply',
       });
     } catch (error) {
       console.error('🔍 READ INBOX: Error loading inbox:', error);

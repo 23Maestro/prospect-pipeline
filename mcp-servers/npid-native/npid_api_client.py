@@ -113,48 +113,79 @@ class NPIDAPIClient:
         if not self.authenticated:
             self.login()
     
-    def get_inbox_threads(self, limit: int = 50) -> List[Dict[str, Any]]:
-        """Get inbox threads from video team inbox"""
+    def get_inbox_threads(self, limit: int = 100, filter_assigned: str = 'both') -> List[Dict[str, Any]]:
+        """Get inbox threads from video team inbox with pagination
+        
+        Args:
+            limit: Maximum number of threads to return
+            filter_assigned: Filter by assignment status
+                - 'unassigned': Only unassigned threads (canAssign: true)
+                - 'assigned': Only assigned threads (canAssign: false)
+                - 'both': All threads (default)
+        """
         self.ensure_authenticated()
         
-        params = {
-            'athleteid': '',
-            'user_timezone': 'America/New_York',
-            'type': 'inbox',
-            'is_mobile': '',
-            'filter_self': 'MeUn',  # Me + Unassigned
-            'refresh': 'false',
-            'page_start_number': '1',
-            'search_text': ''
+        # Map filter to API parameter
+        filter_map = {
+            'unassigned': 'Un',      # Unassigned only
+            'assigned': 'Me',        # Assigned to me only
+            'both': 'MeUn'          # Both assigned and unassigned
         }
+        filter_self = filter_map.get(filter_assigned, 'MeUn')
         
-        resp = self.session.get(
-            f"{self.base_url}/rulestemplates/template/videoteammessagelist",
-            params=params
-        )
-        resp.raise_for_status()
+        all_threads = []
+        page = 1
+        max_pages = 3  # Safety limit (150 threads max)
         
-        # Parse HTML response
-        soup = BeautifulSoup(resp.text, 'html.parser')
-        threads = []
+        while len(all_threads) < limit and page <= max_pages:
+            params = {
+                'athleteid': '',
+                'user_timezone': 'America/New_York',
+                'type': 'inbox',
+                'is_mobile': '',
+                'filter_self': filter_self,
+                'refresh': 'false',
+                'page_start_number': str(page),
+                'search_text': ''
+            }
+            
+            resp = self.session.get(
+                f"{self.base_url}/rulestemplates/template/videoteammessagelist",
+                params=params
+            )
+            resp.raise_for_status()
+            
+            # Parse HTML response
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            message_elements = soup.select('div.ImageProfile')
+            
+            if not message_elements:
+                # No more threads on this page
+                break
+            
+            page_threads = []
+            for elem in message_elements:
+                try:
+                    thread = self._parse_thread_element(elem, filter_assigned)
+                    if thread:
+                        page_threads.append(thread)
+                except Exception as e:
+                    print(f"⚠️  Failed to parse thread: {e}", file=sys.stderr)
+                    continue
+            
+            all_threads.extend(page_threads)
+            print(f"✅ Page {page}: Found {len(page_threads)} threads ({len(all_threads)} total)", file=sys.stderr)
+            page += 1
         
-        # Find all message containers (div.ImageProfile)
-        message_elements = soup.select('div.ImageProfile')
-        
-        for elem in message_elements[:limit]:
-            try:
-                thread = self._parse_thread_element(elem)
-                if thread:
-                    threads.append(thread)
-            except Exception as e:
-                print(f"⚠️  Failed to parse thread: {e}", file=sys.stderr)
-                continue
-        
-        print(f"✅ Found {len(threads)} inbox threads", file=sys.stderr)
-        return threads
+        return all_threads[:limit]
     
-    def _parse_thread_element(self, elem) -> Optional[Dict[str, Any]]:
-        """Parse a single thread element from inbox HTML"""
+    def _parse_thread_element(self, elem, filter_assigned: str = 'both') -> Optional[Dict[str, Any]]:
+        """Parse a single thread element from inbox HTML
+        
+        Args:
+            elem: BeautifulSoup element for the thread
+            filter_assigned: The filter that was used ('unassigned', 'assigned', 'both')
+        """
         # Extract IDs
         item_id = elem.get('itemid')
         item_code = elem.get('itemcode')
@@ -196,9 +227,16 @@ class NPIDAPIClient:
         date_elem = elem.select_one('.date_css')
         timestamp = date_elem.text.strip() if date_elem else ""
         
-        # Check if assigned (has owner badge)
-        is_assigned = bool(elem.select_one('.msg-badge-owner'))
-        can_assign = not is_assigned
+        # Determine assignment status based on the filter used
+        # This is the KEY FIX: The API filter already separated assigned/unassigned!
+        if filter_assigned == 'unassigned':
+            can_assign = True  # filter_self='Un' returns only unassigned
+        elif filter_assigned == 'assigned':
+            can_assign = False  # filter_self='Me' returns only assigned
+        else:
+            # For 'both', we can't determine from HTML alone
+            # Default to true (assignable) for backwards compatibility
+            can_assign = True
         
         # Extract attachments
         attachments = []
@@ -406,8 +444,9 @@ def main():
             print(json.dumps({'success': result}))
         
         elif method == 'get_inbox_threads':
-            limit = args.get('limit', 50)
-            threads = client.get_inbox_threads(limit)
+            limit = args.get('limit', 100)
+            filter_assigned = args.get('filter_assigned', 'both')
+            threads = client.get_inbox_threads(limit, filter_assigned)
             print(json.dumps(threads))
         
         elif method == 'get_message_detail':

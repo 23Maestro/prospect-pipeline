@@ -274,21 +274,17 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Use REST API client for inbox fetching (no Selenium/Playwright)
-      const threads = await fetchInboxThreads(50);
-
-      // Filter for assignable threads only
-      const messages: NPIDInboxMessage[] = threads.filter(
-        (thread: NPIDInboxMessage) => thread.canAssign === true
-      );
+      // Fetch ONLY unassigned threads (filter on API side)
+      // This will fetch across multiple pages (up to 100 threads total)
+      const threads = await fetchInboxThreads(100, 'unassigned');
 
       await showToast({
-        style: messages.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: `Found ${messages.length} assignable messages`,
-        message: messages.length === 0 ? 'All threads are assigned' : 'Ready to assign',
+        style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
+        title: `Found ${threads.length} assignable messages`,
+        message: threads.length === 0 ? 'All threads are assigned' : 'Ready to assign',
       });
 
-      setMessages(messages);
+      setMessages(threads);
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
