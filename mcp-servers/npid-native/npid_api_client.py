@@ -196,8 +196,15 @@ class NPIDAPIClient:
         date_elem = elem.select_one('.date_css')
         timestamp = date_elem.text.strip() if date_elem else ""
         
-        # Check if assigned (has owner badge)
-        is_assigned = bool(elem.select_one('.msg-badge-owner'))
+        # Check if assigned - look for plus icon (➕) or assign button for unassigned
+        # Look for assign button or plus icon indicating unassigned status
+        assign_button = elem.select_one('.assign-button, [title*="assign"], [title*="Assign"]')
+        plus_icon = elem.select_one('text:contains("➕"), .plus-icon, [class*="plus"]')
+        owner_badge = elem.select_one('.msg-badge-owner, .owner-badge, [class*="owner"]')
+        
+        # If there's an assign button or plus icon, it's unassigned
+        # If there's an owner badge, it's assigned
+        is_assigned = bool(owner_badge) and not bool(assign_button or plus_icon)
         can_assign = not is_assigned
         
         # Extract attachments
