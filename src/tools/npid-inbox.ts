@@ -9,7 +9,7 @@ import os from 'os';
 
 const PYTHON_SERVER_PATH = join(
   os.homedir(),
-  'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py'
+  'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_api_server.py'
 );
 
 class NPIDInboxClient {

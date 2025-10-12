@@ -13,13 +13,11 @@ import {
 import { format } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AssignVideoTeamPayload,
-  assignVideoTeamMessage,
-  fetchAssignmentDefaults,
-  fetchAssignmentModal,
-  resolveContactsForAssignment,
-  getInboxThreadsViaSSE,
-} from './lib/npid-mcp-adapter';
+  apiAssignThread,
+  apiGetAssignmentModal,
+  apiResolveContacts,
+  apiGetInboxThreads,
+} from './lib/npid-api-adapter';
 import { supabase } from './lib/supabase-client';
 import { callPythonServer } from './lib/python-server-client';
 import {
@@ -95,20 +93,8 @@ function AssignmentModal({
       return;
     }
 
-    setIsLoadingDefaults(true);
-    fetchAssignmentDefaults(selected.contactId)
-      .then((defaults) => {
-        if (defaults.stage && modalData.stages.some((option) => option.value === defaults.stage)) {
-          setStage(defaults.stage as TaskStage);
-        }
-        if (
-          defaults.status &&
-          modalData.videoStatuses.some((option) => option.value === defaults.status)
-        ) {
-          setStatus(defaults.status as TaskStatus);
-        }
-      })
-      .finally(() => setIsLoadingDefaults(false));
+    // Optional: could fetch defaults if API supports it; skip for now
+    setIsLoadingDefaults(false);
   }, [contactId, contactLookup, modalData.stages, modalData.videoStatuses, searchFor]);
 
   const handleAssignment = async () => {
@@ -276,7 +262,7 @@ export default function InboxCheck() {
 
       // Use SSE streaming server for reliable inbox fetching
       // Falls back to original method if SSE server is unavailable
-      const threads = await getInboxThreadsViaSSE(50);
+      const threads = await apiGetInboxThreads(50);
 
       // SSE already returns properly formatted NPIDInboxMessage objects
       // Just filter for assignable ones
@@ -306,14 +292,10 @@ export default function InboxCheck() {
     const toast = await showToast({ style: Toast.Style.Animated, title: 'Preparing assignment…' });
 
     try {
-      const { modal: modalData, contacts: preloadedContacts } = await fetchAssignmentModal(
-        message.id,
-      );
+      const { modal: modalData, contacts: preloadedContacts } = await apiGetAssignmentModal(message.id);
       const searchValue = modalData.contactSearchValue || message.email || message.name;
-      const { contacts, searchForUsed } = await resolveContactsForAssignment(
-        searchValue,
-        modalData.defaultSearchFor,
-      );
+      const contacts = await apiResolveContacts(searchValue, modalData.defaultSearchFor);
+      const searchForUsed = contacts.length > 0 ? modalData.defaultSearchFor : modalData.defaultSearchFor;
 
       const contactPool = contacts.length > 0 ? contacts : preloadedContacts;
 
@@ -339,19 +321,12 @@ export default function InboxCheck() {
             });
 
             try {
-              const payload: AssignVideoTeamPayload = {
-                messageId: message.id,
-                contactId: message.contactid,
-                athleteMainId: (message as NPIDInboxMessage & { athleteMainId: string | null }).athleteMainId,
-                ownerId,
+              await apiAssignThread({
+                threadId: message.id,
+                assignee: ownerId,
                 stage,
                 status,
-                searchFor,
-                formToken: modalData.formToken,
-                contact: message.email,
-              };
-
-              await assignVideoTeamMessage(payload);
+              });
               const ownerName =
                 modalData.owners.find((owner) => owner.value === ownerId)?.label ??
                 'Jerami Singleton';
