@@ -17,8 +17,8 @@ import {
   assignVideoTeamMessage,
   fetchAssignmentDefaults,
   fetchAssignmentModal,
+  fetchInboxThreads,
   resolveContactsForAssignment,
-  getInboxThreadsViaSSE,
 } from './lib/npid-mcp-adapter';
 import { supabase } from './lib/supabase-client';
 import { callPythonServer } from './lib/python-server-client';
@@ -274,12 +274,10 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Use SSE streaming server for reliable inbox fetching
-      // Falls back to original method if SSE server is unavailable
-      const threads = await getInboxThreadsViaSSE(50);
+      // Use REST API client for inbox fetching (no Selenium/Playwright)
+      const threads = await fetchInboxThreads(50);
 
-      // SSE already returns properly formatted NPIDInboxMessage objects
-      // Just filter for assignable ones
+      // Filter for assignable threads only
       const messages: NPIDInboxMessage[] = threads.filter(
         (thread: NPIDInboxMessage) => thread.canAssign === true
       );

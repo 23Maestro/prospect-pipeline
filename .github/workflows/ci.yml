@@ -1,18 +1,64 @@
 name: CI
+
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main, develop ]
   pull_request:
-  workflow_dispatch:
+    branches: [ main ]
+
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run ESLint on TypeScript sources
+        run: npx eslint src/**/*.{ts,tsx} raycast-env.d.ts --max-warnings 0
+
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          node-version: "22.16.0"
-          cache: npm
-      - run: npm ci
-      - run: npm run lint --if-present
-      - run: npm run build --if-present
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Build Raycast extension
+        run: npm run build
+
+  python-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install Python dependencies
+        run: |
+          cd mcp-servers/npid-native
+          pip install -r requirements.txt
+          pip install flake8 black
+      
+      - name: Run Python linting
+        run: |
+          cd mcp-servers/npid-native
+          flake8 npid_api_client.py --max-line-length=100
+          black --check npid_api_client.py

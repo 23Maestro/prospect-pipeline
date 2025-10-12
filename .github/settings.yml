@@ -1,0 +1,118 @@
+repository:
+  name: prospect-pipeline
+  description: "NPID Video Team Inbox Management - Raycast Extension with REST API Integration"
+  homepage: https://github.com/singleton23/prospect-pipeline
+  topics: raycast, npid, video-team, inbox-management, rest-api
+  private: false
+  has_issues: true
+  has_projects: true
+  has_wiki: false
+  has_downloads: true
+  default_branch: main
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: true
+  delete_branch_on_merge: true
+
+# Labels for issue management
+labels:
+  # Type labels
+  - name: "Type: Bug"
+    color: "d73a4a"
+    description: "Something isn't working"
+  - name: "Type: Feature"
+    color: "0075ca"
+    description: "New feature or request"
+  - name: "Type: Enhancement"
+    color: "a2eeef"
+    description: "Improvement to existing functionality"
+  - name: "Type: Test"
+    color: "0e8a16"
+    description: "Testing related"
+  - name: "Type: Security"
+    color: "b60205"
+    description: "Security vulnerability or improvement"
+  - name: "Type: Question"
+    color: "d876e3"
+    description: "Further information is requested"
+
+  # Status labels
+  - name: "Status: Awaiting Review"
+    color: "fbca04"
+    description: "Waiting for code review"
+  - name: "Status: WIP"
+    color: "0052cc"
+    description: "Work in progress"
+  - name: "Status: Waiting"
+    color: "fef2c0"
+    description: "Waiting for response or dependency"
+  - name: "Status: Stale"
+    color: "ededed"
+    description: "No recent activity"
+
+  # Priority labels
+  - name: "Priority: High +"
+    color: "b60205"
+    description: "High priority issue"
+  - name: "Priority: Low -"
+    color: "0e8a16"
+    description: "Low priority issue"
+
+  # Component labels
+  - name: "Component: REST API"
+    color: "1d76db"
+    description: "Python REST API client"
+  - name: "Component: TypeScript"
+    color: "3178c6"
+    description: "TypeScript/Raycast code"
+  - name: "Component: Inbox"
+    color: "f9d71c"
+    description: "Inbox management functionality"
+  - name: "Component: Video Updates"
+    color: "ff6b6b"
+    description: "Video profile updates"
+  - name: "Component: Notion Sync"
+    color: "000000"
+    description: "Notion database integration"
+
+  # Special labels
+  - name: "Documentation"
+    color: "0075ca"
+    description: "Documentation improvements"
+  - name: "3rd party issue"
+    color: "ededed"
+    description: "Issue with external dependency"
+  - name: "good first issue"
+    color: "7057ff"
+    description: "Good for newcomers"
+  - name: "help wanted"
+    color: "008672"
+    description: "Extra attention is needed"
+
+  # OS specific
+  - name: "OS: macOS"
+    color: "000000"
+    description: "macOS specific issue"
+  - name: "OS: Windows"
+    color: "0078d4"
+    description: "Windows specific issue"
+  - name: "OS: Linux"
+    color: "fcc624"
+    description: "Linux specific issue"
+
+# Branch protection rules
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          - "lint"
+          - "build"
+          - "python-lint"
+      enforce_admins: false
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        dismiss_stale_reviews: true
+        require_code_owner_reviews: false
+      restrictions: null

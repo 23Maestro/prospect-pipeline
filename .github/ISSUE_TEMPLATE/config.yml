@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/singleton23/prospect-pipeline/blob/main/README.md
+    about: Check the documentation for usage instructions
+  - name: REST API Migration Guide
+    url: https://github.com/singleton23/prospect-pipeline/blob/main/REST_API_MIGRATION_COMPLETE.md
+    about: Complete guide for the REST API migration from Selenium

@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
 import { supabase } from './lib/supabase-client';
-import { getInboxThreadsViaSSE } from './lib/npid-mcp-adapter';
+import { fetchInboxThreads } from './lib/npid-mcp-adapter';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -82,11 +82,10 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Use SSE streaming server for reliable inbox fetching
-      // Same method as assign-videoteam-inbox uses
-      const threads = await getInboxThreadsViaSSE(50);
+      // Use REST API client for inbox fetching (no Selenium/Playwright)
+      const threads = await fetchInboxThreads(50);
 
-      console.log('🔍 READ INBOX: Total threads from SSE:', threads.length);
+      console.log('🔍 READ INBOX: Total threads from REST API:', threads.length);
       console.log('🔍 READ INBOX: First thread:', threads[0]);
       console.log('🔍 READ INBOX: Thread canAssign values:', threads.map(t => t.canAssign));
 

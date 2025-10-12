@@ -1,0 +1,30 @@
+# Automatically apply labels to issues based on keywords
+label-alias:
+  bug: "Type: Bug"
+  enhancement: "Type: Enhancement"
+  feature: "Type: Feature"
+  question: "Type: Question"
+  security: "Type: Security"
+  test: "Type: Test"
+  documentation: "Documentation"
+  help: "help wanted"
+  good-first-issue: "good first issue"
+  
+  # Component aliases
+  rest: "Component: REST API"
+  api: "Component: REST API"
+  typescript: "Component: TypeScript"
+  raycast: "Component: TypeScript"
+  inbox: "Component: Inbox"
+  video: "Component: Video Updates"
+  notion: "Component: Notion Sync"
+  
+  # Priority aliases
+  urgent: "Priority: High +"
+  high: "Priority: High +"
+  low: "Priority: Low -"
+  
+  # OS aliases
+  macos: "OS: macOS"
+  windows: "OS: Windows"
+  linux: "OS: Linux"
