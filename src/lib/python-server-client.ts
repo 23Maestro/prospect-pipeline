@@ -34,16 +34,24 @@ export function resolveNPIDServerPath(): string {
     return envPath;
   }
 
-  const pythonPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py');
-  if (fs.existsSync(pythonPath)) {
-    return pythonPath;
+  // Prefer JSON-RPC API server (REST-backed)
+  const apiServerPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_api_server.py');
+  if (fs.existsSync(apiServerPath)) {
+    return apiServerPath;
+  }
+
+  // Fallback: legacy simple server (broader legacy method coverage)
+  const legacyPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py');
+  if (fs.existsSync(legacyPath)) {
+    return legacyPath;
   }
 
   throw new Error(
     `NPID server not found. Tried:\n` +
     `  1. Wrapper: ${wrapperPath}\n` +
     `  2. Env var: ${envPath || '(not set)'}\n` +
-    `  3. Direct: ${pythonPath}`
+    `  3. API server: ${apiServerPath}\n` +
+    `  4. Legacy: ${legacyPath}`
   );
 }
 
