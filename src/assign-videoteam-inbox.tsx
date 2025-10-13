@@ -275,8 +275,8 @@ export default function InboxCheck() {
       setIsLoading(true);
 
       // Fetch ONLY unassigned threads (filter on API side)
-      // This will fetch across multiple pages (up to 100 threads total)
-      const threads = await fetchInboxThreads(100, 'unassigned');
+      // Only fetch 5 most recent unassigned threads
+      const threads = await fetchInboxThreads(5, 'unassigned');
 
       await showToast({
         style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,

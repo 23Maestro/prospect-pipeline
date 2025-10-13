@@ -1,15 +1,16 @@
 #!/Users/singleton23/.pyenv/versions/3.12.3/bin/python3
 #!/usr/bin/env python3
 """
-Simplified NPID automation interface
+Simplified NPID automation interface - REST API version
 No MCP wrapper - just exposes functions that can be called directly
 """
 import asyncio
 import json
 import sys
-from npid_automator_complete import get_automator
+from npid_api_client import NPIDAPIClient
 
-automator = get_automator()
+# Initialize REST API client (reuses session)
+api_client = NPIDAPIClient()
 
 async def get_inbox_threads(limit="50"):
     """Get inbox threads"""

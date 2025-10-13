@@ -125,17 +125,17 @@ class NPIDAPIClient:
         """
         self.ensure_authenticated()
         
-        # Map filter to API parameter
+        # Map filter to API parameter - the API handles the filtering!
         filter_map = {
             'unassigned': 'Un',      # Unassigned only
             'assigned': 'Me',        # Assigned to me only
-            'both': 'MeUn'          # Both assigned and unassigned
+            'both': 'Me/Un'          # Both assigned and unassigned
         }
-        filter_self = filter_map.get(filter_assigned, 'MeUn')
+        filter_self = filter_map.get(filter_assigned, 'Me/Un')
         
         all_threads = []
         page = 1
-        max_pages = 3  # Safety limit (150 threads max)
+        max_pages = 2  # Safety limit (100 threads max)
         
         while len(all_threads) < limit and page <= max_pages:
             params = {
@@ -400,24 +400,253 @@ class NPIDAPIClient:
         raise Exception(f"Assignment failed: {result}")
     
     def search_contacts(self, query: str, search_type: str = 'athlete') -> List[Dict[str, Any]]:
-        """Search for contacts (athletes/parents)"""
+        """Search for contacts (athletes/parents)
+        
+        Args:
+            query: Email or name to search for
+            search_type: 'athlete' or 'parent'
+        
+        Returns:
+            List of contact dictionaries with keys: contactId, name, sport, gradYear, state
+        """
         self.ensure_authenticated()
         
+        # Use the correct endpoint from HAR file
         params = {
-            'query': query,
-            'type': search_type
+            'search': query,
+            'searchfor': search_type  # 'athlete' or 'parent'
         }
         
         resp = self.session.get(
-            f"{self.base_url}/api/contacts/search",
+            f"{self.base_url}/template/calendaraccess/contactslist",
             params=params
         )
         
         if resp.status_code != 200:
+            print(f"⚠️  Contact search failed: {resp.status_code}", file=sys.stderr)
             return []
         
-        contacts = resp.json()
-        return contacts if isinstance(contacts, list) else []
+        # Parse HTML response
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        contacts = []
+        
+        # Find all table rows (skip header row)
+        rows = soup.select('tr')[1:]  # Skip first row (header)
+        
+        for row in rows:
+            try:
+                # Extract contact info from input element
+                input_elem = row.select_one('input.contactselected')
+                if not input_elem:
+                    continue
+                
+                contact_id = input_elem.get('contactid', '')
+                athlete_main_id = input_elem.get('athlete_main_id', '')
+                contact_name = input_elem.get('contactname', '')
+                
+                # Extract data from table cells
+                cells = row.select('td')
+                if len(cells) >= 5:
+                    # Cells: [Name, Ranking, GradYear, State, Sport, ...]
+                    ranking = cells[1].text.strip()
+                    grad_year = cells[2].text.strip()
+                    state = cells[3].text.strip()
+                    sport = cells[4].text.strip()
+                    
+                    contacts.append({
+                        'contactId': contact_id,
+                        'athleteMainId': athlete_main_id,
+                        'name': contact_name,
+                        'sport': sport,
+                        'gradYear': grad_year,
+                        'state': state,
+                        'ranking': ranking
+                    })
+            except Exception as e:
+                print(f"⚠️  Failed to parse contact row: {e}", file=sys.stderr)
+                continue
+        
+        print(f"✅ Found {len(contacts)} contacts for '{query}' ({search_type})", file=sys.stderr)
+        return contacts
+    
+    def search_player(self, query: str) -> List[Dict[str, Any]]:
+        """Search for players in NPID database"""
+        self.ensure_authenticated()
+        
+        params = {
+            'q': query,
+            'type': 'athlete'
+        }
+        
+        resp = self.session.get(
+            f"{self.base_url}/search/athletes",
+            params=params
+        )
+        
+        if resp.status_code != 200:
+            print(f"⚠️  Player search failed: {resp.status_code}", file=sys.stderr)
+            return []
+        
+        # Parse HTML response
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        results = []
+        
+        # Find athlete result elements (adjust selector based on actual HTML)
+        athlete_elements = soup.select('.athlete-result, .search-result')
+        
+        for elem in athlete_elements[:20]:  # Limit to top 20 results
+            try:
+                # Extract player ID from link
+                link = elem.select_one('a[href*="/athlete/"]')
+                if not link:
+                    continue
+                
+                href = link.get('href', '')
+                player_id = href.split('/athlete/')[-1].split('/')[0] if '/athlete/' in href else ''
+                
+                # Extract name
+                name_elem = elem.select_one('.athlete-name, .name, h3, h4')
+                name = name_elem.text.strip() if name_elem else 'Unknown'
+                
+                # Extract grad year
+                grad_elem = elem.select_one('.grad-year, .year')
+                grad_year = grad_elem.text.strip() if grad_elem else ''
+                
+                # Extract location
+                location_elem = elem.select_one('.location, .city-state')
+                location = location_elem.text.strip() if location_elem else ''
+                
+                # Extract high school
+                school_elem = elem.select_one('.school, .high-school')
+                school = school_elem.text.strip() if school_elem else ''
+                
+                results.append({
+                    'player_id': player_id,
+                    'name': name,
+                    'grad_year': grad_year,
+                    'location': location,
+                    'high_school': school,
+                    'url': f"{self.base_url}{href}" if not href.startswith('http') else href
+                })
+            except Exception as e:
+                print(f"⚠️  Failed to parse player result: {e}", file=sys.stderr)
+                continue
+        
+        print(f"✅ Found {len(results)} players matching '{query}'", file=sys.stderr)
+        return results
+    
+    def get_athlete_details(self, player_id: str) -> Dict[str, Any]:
+        """Get detailed information about an athlete"""
+        self.ensure_authenticated()
+        
+        resp = self.session.get(f"{self.base_url}/athlete/{player_id}")
+        resp.raise_for_status()
+        
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        
+        # Extract athlete details from profile page
+        details = {
+            'player_id': player_id,
+            'name': '',
+            'grad_year': '',
+            'high_school': '',
+            'location': '',
+            'positions': '',
+            'sport': '',
+            'videos': []
+        }
+        
+        # Extract name
+        name_elem = soup.select_one('.athlete-name, h1.profile-name, .profile-header h1')
+        if name_elem:
+            details['name'] = name_elem.text.strip()
+        
+        # Extract grad year
+        grad_elem = soup.select_one('.grad-year, .graduation-year')
+        if grad_elem:
+            details['grad_year'] = grad_elem.text.strip()
+        
+        # Extract high school
+        school_elem = soup.select_one('.high-school, .school-name')
+        if school_elem:
+            details['high_school'] = school_elem.text.strip()
+        
+        # Extract location
+        location_elem = soup.select_one('.location, .city-state')
+        if location_elem:
+            details['location'] = location_elem.text.strip()
+        
+        # Extract positions
+        position_elem = soup.select_one('.positions, .position')
+        if position_elem:
+            details['positions'] = position_elem.text.strip()
+        
+        # Extract sport
+        sport_elem = soup.select_one('.sport')
+        if sport_elem:
+            details['sport'] = sport_elem.text.strip()
+        
+        # Extract existing videos
+        video_elements = soup.select('.video-item, .highlight-video')
+        for video_elem in video_elements:
+            video_link = video_elem.select_one('a[href*="youtube.com"], a[href*="youtu.be"]')
+            if video_link:
+                details['videos'].append({
+                    'url': video_link.get('href', ''),
+                    'title': video_elem.text.strip()[:100]
+                })
+        
+        print(f"✅ Retrieved details for {details['name']} ({player_id})", file=sys.stderr)
+        return details
+    
+    def update_video_profile(self, player_id: str, youtube_link: str, season: str, video_type: str) -> Dict[str, Any]:
+        """Update athlete profile with new video"""
+        self.ensure_authenticated()
+        
+        # Get CSRF token from profile edit page
+        edit_page = self.session.get(f"{self.base_url}/athlete/{player_id}/edit")
+        edit_page.raise_for_status()
+        
+        soup = BeautifulSoup(edit_page.text, 'html.parser')
+        csrf_elem = soup.select_one('input[name="csrf_token"], input[name="_token"]')
+        csrf_token = csrf_elem.get('value', '') if csrf_elem else ''
+        
+        # Prepare video data
+        video_data = {
+            'csrf_token': csrf_token,
+            'player_id': player_id,
+            'video_url': youtube_link,
+            'season': season,
+            'video_type': video_type,
+            'action': 'add_video'
+        }
+        
+        print(f"🎬 Adding {video_type} video for player {player_id} ({season})", file=sys.stderr)
+        
+        # POST video update
+        resp = self.session.post(
+            f"{self.base_url}/athlete/{player_id}/videos/add",
+            data=video_data,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+        
+        if resp.status_code == 200 or resp.status_code == 302:
+            print(f"✅ Video added successfully to player {player_id}", file=sys.stderr)
+            return {
+                'success': True,
+                'player_id': player_id,
+                'video_url': youtube_link,
+                'season': season,
+                'video_type': video_type
+            }
+        else:
+            print(f"⚠️  Video update failed: {resp.status_code}", file=sys.stderr)
+            print(f"Response: {resp.text[:500]}", file=sys.stderr)
+            return {
+                'success': False,
+                'error': f"HTTP {resp.status_code}",
+                'message': resp.text[:200]
+            }
 
 
 def main():
@@ -431,6 +660,9 @@ def main():
         print("  get_assignment_modal")
         print("  assign_thread")
         print("  search_contacts")
+        print("  search_player")
+        print("  get_athlete_details")
+        print("  update_video_profile")
         sys.exit(1)
     
     method = sys.argv[1]
@@ -471,6 +703,25 @@ def main():
             result = client.search_contacts(
                 args['query'],
                 args.get('search_type', 'athlete')
+            )
+            print(json.dumps(result))
+        
+        elif method == 'search_player':
+            query = args['query']
+            results = client.search_player(query)
+            print(json.dumps(results))
+        
+        elif method == 'get_athlete_details':
+            player_id = args['player_id']
+            details = client.get_athlete_details(player_id)
+            print(json.dumps(details))
+        
+        elif method == 'update_video_profile':
+            result = client.update_video_profile(
+                args['player_id'],
+                args['youtube_link'],
+                args['season'],
+                args['video_type']
             )
             print(json.dumps(result))
         
