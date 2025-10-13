@@ -41,6 +41,7 @@ export interface NPIDInboxMessage {
   stage?: string;
   videoStatus?: string;
   canAssign?: boolean;
+  athleteMainId?: string | null;
   attachments?: VideoTeamAttachment[];
   athleteLinks?: {
     profile: string;
@@ -105,13 +106,14 @@ export interface VideoTeamContact {
   state: string | null;
   sport: string | null;
   videoEditor: string | null;
+  email?: string | null;
 }
 
 export interface VideoTeamAssignmentOwner {
   value: string;
   label: string;
-  color: string | null;
-  selected: boolean;
+  color?: string | null;
+  selected?: boolean;
 }
 
 export interface VideoTeamAssignmentOption {
@@ -128,6 +130,9 @@ export interface VideoTeamAssignmentModal {
   videoStatuses: VideoTeamAssignmentOption[];
   defaultSearchFor: VideoTeamSearchCategory;
   contactSearchValue: string;
+  contactTask?: string;
+  athleteMainId?: string | null;
+  contactFor: VideoTeamSearchCategory;
 }
 
 /**

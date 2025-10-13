@@ -119,6 +119,8 @@ export default function VideoUpdatesCommand(
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
   const [activeTasks, setActiveTasks] = useState<NotionTask[]>([]);
+  const [seasons, setSeasons] = useState<{value: string, title: string}[]>([]);
+  const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
 
   const { handleSubmit, itemProps, reset, focus, values, setValue } = useForm<VideoUpdateFormValues>({
     async onSubmit(formValues) {
@@ -160,10 +162,11 @@ export default function VideoUpdatesCommand(
           if (result.status === 'ok' && result.data?.success) {
             toast.style = Toast.Style.Success;
             toast.title = 'Video Updated Successfully';
-            toast.message = `Video added to ${athleteName}'s NPID profile`;
+            toast.message = `Video added to ${athleteName}\'s NPID profile`;
             reset();
             setSelectedPlayer(null);
             setSearchResults([]);
+            setSeasons([]);
           } else {
             toast.style = Toast.Style.Failure;
             toast.title = 'NPID Update Failed';
@@ -211,7 +214,7 @@ export default function VideoUpdatesCommand(
     initialValues: props.draftValues || {
       athleteName: '',
       youtubeLink: '',
-      season: 'Junior Season',
+      season: '',
       videoType: 'Highlights',
       playerId: '',
       searchMode: 'name',
@@ -255,6 +258,9 @@ export default function VideoUpdatesCommand(
         try {
           const results = await searchNPIDPlayer(values.athleteName);
           setSearchResults(results);
+          if (results.length > 0) {
+            setSelectedPlayer(results[0]);
+          }
         } catch (error) {
           console.error('Search error:', error);
           setSearchResults([]);
@@ -283,6 +289,37 @@ export default function VideoUpdatesCommand(
 
     getPlayerDetails();
   }, [values.playerId, values.searchMode]);
+
+  // Fetch seasons when video type or selected player changes
+  useEffect(() => {
+    const fetchSeasons = async () => {
+      if (values.videoType && selectedPlayer) {
+        setIsFetchingSeasons(true);
+        try {
+          const result = await callPythonServer('get_video_seasons', {
+            athlete_id: selectedPlayer.player_id,
+            sport_alias: selectedPlayer.sport,
+            video_type: values.videoType,
+            athlete_main_id: selectedPlayer.athlete_main_id,
+          }) as any;
+          if (result.status === 'ok' && result.data) {
+            setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.label })));
+            if (result.data.length > 0) {
+              setValue('season', result.data[0].value);
+            }
+          } else {
+            setSeasons([]);
+          }
+        } catch (error) {
+          console.error('Failed to fetch seasons', error);
+          setSeasons([]);
+        } finally {
+          setIsFetchingSeasons(false);
+        }
+      }
+    };
+    fetchSeasons();
+  }, [values.videoType, selectedPlayer]);
 
   return (
     <Form
@@ -367,19 +404,20 @@ export default function VideoUpdatesCommand(
         {...itemProps.youtubeLink}
       />
 
-      <Form.Dropdown title="Season" {...itemProps.season}>
-        <Form.Dropdown.Item value="7th Grade Season" title="7th Grade Season" />
-        <Form.Dropdown.Item value="8th Grade Season" title="8th Grade Season" />
-        <Form.Dropdown.Item value="Freshman Season" title="Freshman Season" />
-        <Form.Dropdown.Item value="Sophomore Season" title="Sophomore Season" />
-        <Form.Dropdown.Item value="Junior Season" title="Junior Season" />
-        <Form.Dropdown.Item value="Senior Season" title="Senior Season" />
-      </Form.Dropdown>
-
       <Form.Dropdown title="Video Type" {...itemProps.videoType}>
         <Form.Dropdown.Item value="Highlights" title="Highlights" />
         <Form.Dropdown.Item value="Skills" title="Skills" />
         <Form.Dropdown.Item value="Highlights | Skills" title="Highlights | Skills" />
+      </Form.Dropdown>
+
+      <Form.Dropdown title="Season" {...itemProps.season}>
+        {isFetchingSeasons ? (
+          <Form.Dropdown.Item value="" title="Loading seasons..." />
+        ) : (
+          seasons.map((s) => (
+            <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
+          ))
+        )}
       </Form.Dropdown>
     </Form>
   );

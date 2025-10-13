@@ -11,7 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
 import { supabase } from './lib/supabase-client';
-import { fetchInboxThreads } from './lib/npid-mcp-adapter';
+import { fetchInboxThreads, fetchMessageDetail } from './lib/npid-mcp-adapter';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -21,11 +21,48 @@ function EmailContentDetail({
   message: NPIDInboxMessage;
   onBack: () => void;
 }) {
+  const [fullContent, setFullContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadFullMessage = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
+
+        if (details && details.content) {
+          setFullContent(details.content);
+        } else {
+          // Fallback to preview if no content returned
+          setFullContent(message.content || message.preview || 'No content available');
+        }
+      } catch (err) {
+        console.error('Failed to fetch full message:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load full message');
+        // Fallback to preview on error
+        setFullContent(message.content || message.preview || 'No content available');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFullMessage();
+  }, [message.id, message.itemCode, message.content, message.preview]);
+
   const hasAttachments = message.attachments && message.attachments.length > 0;
   const downloadableAttachments =
     message.attachments?.filter((att) => att.downloadable && att.url) || [];
 
-  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${message.content || message.preview || 'No content available'}${
+  const contentToDisplay = isLoading
+    ? 'Loading full message...'
+    : fullContent || message.preview || 'No content available';
+
+  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${
+    error ? `\n\n> ⚠️ ${error}` : ''
+  }${
     hasAttachments
       ? `\n\n## 📎 Attachments (${message.attachments?.length})\n\n${message.attachments
           ?.map(
@@ -39,6 +76,7 @@ function EmailContentDetail({
   return (
     <Detail
       markdown={markdownContent}
+      isLoading={isLoading}
       actions={
         <ActionPanel>
           <ActionPanel.Section>

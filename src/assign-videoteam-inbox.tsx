@@ -18,6 +18,7 @@ import {
   fetchAssignmentDefaults,
   fetchAssignmentModal,
   fetchInboxThreads,
+  fetchMessageDetail,
   resolveContactsForAssignment,
 } from './lib/npid-mcp-adapter';
 import { supabase } from './lib/supabase-client';
@@ -65,8 +66,13 @@ function AssignmentModal({
   onCancel,
 }: AssignmentModalProps) {
   const initialOwnerId = useMemo(
-    () => modalData.defaultOwner?.value ?? modalData.owners[0]?.value ?? '',
+    () => modalData.defaultOwner?.value ?? modalData.owners[0]?.value ?? '1408164',
     [modalData.defaultOwner, modalData.owners],
+  );
+
+  const initialContactId = useMemo(
+    () => modalData.contactTask || contacts[0]?.contactId || '',
+    [modalData.contactTask, contacts],
   );
 
   const initialStage = useMemo(() => {
@@ -78,7 +84,7 @@ function AssignmentModal({
   }, [modalData.videoStatuses]);
 
   const [ownerId, setOwnerId] = useState<string>(initialOwnerId);
-  const [contactId, setContactId] = useState<string>(contacts[0]?.contactId ?? '');
+  const [contactId, setContactId] = useState<string>(initialContactId);
   const [stage, setStage] = useState<TaskStage>(initialStage);
   const [status, setStatus] = useState<TaskStatus>(initialStatus);
   const [isLoadingDefaults, setIsLoadingDefaults] = useState(false);
@@ -91,13 +97,24 @@ function AssignmentModal({
   useEffect(() => {
     const selected = contactLookup.get(contactId);
 
-    if (!selected || searchFor !== 'athlete') {
+    // Reset to modal defaults while we load overrides for this contact
+    const fallbackStage = (modalData.stages[0]?.value as TaskStage) || ('' as TaskStage);
+    const fallbackStatus = (modalData.videoStatuses[0]?.value as TaskStatus) || ('' as TaskStatus);
+    setStage(fallbackStage);
+    setStatus(fallbackStatus);
+
+    const athleteId = selected?.athleteMainId ?? modalData.athleteMainId ?? null;
+    if (!selected || !athleteId) {
       return;
     }
 
+    const currentContactId = selected.contactId;
     setIsLoadingDefaults(true);
     fetchAssignmentDefaults(selected.contactId)
       .then((defaults) => {
+        if (currentContactId !== contactId) {
+          return;
+        }
         if (defaults.stage && modalData.stages.some((option) => option.value === defaults.stage)) {
           setStage(defaults.stage as TaskStage);
         }
@@ -109,7 +126,7 @@ function AssignmentModal({
         }
       })
       .finally(() => setIsLoadingDefaults(false));
-  }, [contactId, contactLookup, modalData.stages, modalData.videoStatuses, searchFor]);
+  }, [contactId, contactLookup, modalData.athleteMainId, modalData.stages, modalData.videoStatuses]);
 
   const handleAssignment = async () => {
     const selectedContact = contactLookup.get(contactId);
@@ -156,7 +173,7 @@ function AssignmentModal({
           <Form.Dropdown.Item
             key={contact.contactId}
             value={contact.contactId}
-            title={contact.name}
+            title={contact.name || contact.email || contact.contactId}
             subtitle={[contact.sport, contact.gradYear, contact.state].filter(Boolean).join(' • ')}
           />
         ))}
@@ -195,6 +212,37 @@ function EmailContentDetail({
   onBack: () => void;
   onAssign: (message: NPIDInboxMessage) => void;
 }) {
+  const [fullContent, setFullContent] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadFullMessage = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
+
+        if (details && details.content) {
+          setFullContent(details.content);
+        } else {
+          // Fallback to preview if no content returned
+          setFullContent(message.content || message.preview || 'No content available');
+        }
+      } catch (err) {
+        console.error('Failed to fetch full message:', err);
+        setError(err instanceof Error ? err.message : 'Failed to load full message');
+        // Fallback to preview on error
+        setFullContent(message.content || message.preview || 'No content available');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadFullMessage();
+  }, [message.id, message.itemCode, message.content, message.preview]);
+
   const received = formatTimestamp(message);
 
   const metadata = (
@@ -223,13 +271,20 @@ function EmailContentDetail({
     </Detail.Metadata>
   );
 
-  const markdown = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${message.content || message.preview || 'No content available'}`;
+  const contentToDisplay = isLoading
+    ? 'Loading full message...'
+    : fullContent || message.preview || 'No content available';
+
+  const markdown = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${
+    error ? `\n\n> ⚠️ ${error}` : ''
+  }`;
 
   return (
     <Detail
       navigationTitle={message.subject}
       markdown={markdown}
       metadata={metadata}
+      isLoading={isLoading}
       actions={
         <ActionPanel>
           <ActionPanel.Section>
@@ -275,8 +330,8 @@ export default function InboxCheck() {
       setIsLoading(true);
 
       // Fetch ONLY unassigned threads (filter on API side)
-      // Only fetch 5 most recent unassigned threads
-      const threads = await fetchInboxThreads(5, 'unassigned');
+      // HARD LIMIT: Never show more than 15 unassigned threads
+      const threads = await fetchInboxThreads(15, 'unassigned');
 
       await showToast({
         style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
@@ -309,7 +364,30 @@ export default function InboxCheck() {
         modalData.defaultSearchFor,
       );
 
-      const contactPool = contacts.length > 0 ? contacts : preloadedContacts;
+      const usedSearchResults = contacts.length > 0;
+      let contactPool = usedSearchResults ? contacts : preloadedContacts;
+
+      const fallbackContact: VideoTeamContact | null =
+        modalData.contactTask && (modalData.athleteMainId || message.athleteMainId)
+          ? {
+              contactId: modalData.contactTask,
+              athleteMainId: modalData.athleteMainId ?? message.athleteMainId ?? null,
+              name: message.name || message.email || modalData.contactTask,
+              sport: null,
+              gradYear: null,
+              state: null,
+              top500: null,
+              videoEditor: null,
+              email: message.email,
+            }
+          : null;
+
+      if (
+        fallbackContact &&
+        !contactPool.some((contactOption) => contactOption.contactId === fallbackContact.contactId)
+      ) {
+        contactPool = [...contactPool, fallbackContact];
+      }
 
       if (contactPool.length === 0) {
         toast.style = Toast.Style.Failure;
@@ -318,6 +396,8 @@ export default function InboxCheck() {
         return;
       }
 
+      const effectiveSearchFor = usedSearchResults ? searchForUsed : modalData.contactFor;
+
       toast.hide();
 
       push(
@@ -325,7 +405,7 @@ export default function InboxCheck() {
           message={message}
           modalData={modalData}
           contacts={contactPool}
-          searchFor={searchForUsed}
+          searchFor={effectiveSearchFor}
           onAssign={async ({ ownerId, stage, status, contact, searchFor }) => {
             const assigningToast = await showToast({
               style: Toast.Style.Animated,
@@ -333,21 +413,28 @@ export default function InboxCheck() {
             });
 
             try {
+              const resolvedOwnerId = ownerId || '1408164';
+
               const payload: AssignVideoTeamPayload = {
                 messageId: message.id,
-                contactId: message.contactid,
-                athleteMainId: (message as NPIDInboxMessage & { athleteMainId: string | null }).athleteMainId,
-                ownerId,
-                stage,
-                status,
+                contactId: contact.contactId,
+                contact_id: contact.contactId,
+                athleteMainId:
+                  contact.athleteMainId ??
+                  modalData.athleteMainId ??
+                  (message as NPIDInboxMessage & { athleteMainId: string | null }).athleteMainId ??
+                  null,
+                ownerId: resolvedOwnerId,
+                stage: (stage || ('' as TaskStage)) as TaskStage,
+                status: (status || ('' as TaskStatus)) as TaskStatus,
                 searchFor,
                 formToken: modalData.formToken,
-                contact: message.email,
+                contact: contact.email ?? message.email,
               };
 
               await assignVideoTeamMessage(payload);
               const ownerName =
-                modalData.owners.find((owner) => owner.value === ownerId)?.label ??
+                modalData.owners.find((owner) => owner.value === resolvedOwnerId)?.label ??
                 'Jerami Singleton';
 
               assigningToast.style = Toast.Style.Success;
