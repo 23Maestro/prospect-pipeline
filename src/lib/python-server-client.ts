@@ -15,9 +15,14 @@ export interface PythonServerResponse<T = any> {
 }
 
 /**
- * Resolves the path to the NPID Python server script.
- * Priority: environment variable > relative path from project root
- * @throws Error if the resolved path does not exist
+ * Locate the filesystem path to the NPID Python server or its shell wrapper.
+ *
+ * Checks the user's home Raycast project location in this order: a shell wrapper that activates a venv, the
+ * path specified by the `NPID_SERVER_PATH` environment variable (if set), the JSON-RPC API server script, and
+ * a legacy simple server script. Throws if none of these candidates exist.
+ *
+ * @returns The filesystem path to the discovered server script or wrapper.
+ * @throws Error if no valid server path is found; the error message enumerates the attempted locations.
  */
 export function resolveNPIDServerPath(): string {
   const homeDir = os.homedir();
@@ -161,5 +166,4 @@ export async function callPythonServer<T = any>(
     python.stdin.end();
   });
 }
-
 
