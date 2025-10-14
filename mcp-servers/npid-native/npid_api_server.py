@@ -31,6 +31,19 @@ logger = logging.getLogger("npid-api-server")
 
 
 def make_client() -> NpidApiClient:
+    """
+    Create an NpidApiClient configured from environment variables.
+    
+    Reads the following environment variables to configure the client:
+    - NPID_BASE_URL
+    - NPID_USERNAME
+    - NPID_PASSWORD
+    - NPID_SESSION_PATH
+    - NPID_TIMEOUT (defaults to 30 seconds if unset)
+    
+    Returns:
+        NpidApiClient: Client configured with values sourced from the environment.
+    """
     return NpidApiClient(
         base_url=os.environ.get("NPID_BASE_URL"),
         username=os.environ.get("NPID_USERNAME"),
@@ -41,14 +54,43 @@ def make_client() -> NpidApiClient:
 
 
 def ok(id_value: Any, data: Any) -> str:
+    """
+    Format a successful JSON-RPC response line containing the given request id and payload.
+    
+    Parameters:
+        id_value (Any): The request identifier to include in the response `id` field.
+        data (Any): The response payload to include in the `data` field.
+    
+    Returns:
+        json_str (str): A JSON-encoded string with keys `id`, `status` set to `"ok"`, and `data`; encoding uses ensure_ascii=False.
+    """
     return json.dumps({"id": id_value, "status": "ok", "data": data}, ensure_ascii=False)
 
 
 def err(id_value: Any, message: str) -> str:
+    """
+    Format an error response for the JSON-RPC-over-stdio protocol as a single-line JSON string.
+    
+    Parameters:
+        id_value: The request identifier to include in the response (may be None).
+        message (str): Human-readable error message to include.
+    
+    Returns:
+        str: A JSON string containing `id`, `status` set to `"error"`, and `message`. ensure_ascii is disabled.
+    """
     return json.dumps({"id": id_value, "status": "error", "message": message}, ensure_ascii=False)
 
 
 def handle_request(raw: str) -> str:
+    """
+    Handle a single JSON-RPC request (one JSON object per line) and produce a single-line JSON response string.
+    
+    Parameters:
+        raw (str): A single-line JSON string with shape {"id": any, "method": str, "arguments": dict}. Supported methods: "login", "get_inbox_threads", "get_thread_details", "get_assignment_modal_data", "assign_thread", "search_player", "resolve_contacts". Required argument keys vary by method and missing required arguments yield an error response.
+    
+    Returns:
+        str: A JSON-formatted string representing the response object. On success the response has shape {"id": <id>, "status": "ok", "data": ...}; on error it has shape {"id": <id>, "status": "error", "message": "<error message>"}.
+    """
     try:
         req = json.loads(raw)
         req_id = req.get("id")
@@ -104,6 +146,11 @@ def handle_request(raw: str) -> str:
 
 
 def main() -> None:
+    """
+    Process newline-delimited JSON-RPC requests from standard input and emit single-line JSON responses to standard output.
+    
+    Reads each non-empty input line as a request, obtains a single-line JSON response for it, prints the response, and flushes stdout immediately.
+    """
     for line in sys.stdin:
         line = line.strip()
         if not line:

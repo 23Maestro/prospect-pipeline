@@ -45,6 +45,16 @@ class NpidApiClient:
         session_path: Optional[str] = None,
         timeout_seconds: int = 30,
     ) -> None:
+        """
+        Initialize the client with connection settings, credential resolution, session persistence location, and a requests session populated from saved cookies.
+        
+        Parameters:
+            base_url (Optional[str]): Base URL for the NPID dashboard; if not provided, uses the NPID_BASE_URL environment variable or "https://dashboard.nationalpid.com".
+            username (Optional[str]): Login email; if not provided, uses the NPID_USERNAME environment variable.
+            password (Optional[str]): Login password; if not provided, uses the NPID_PASSWORD environment variable.
+            session_path (Optional[str]): Filesystem path to store session cookies; if not provided, uses NPID_SESSION_PATH or defaults to ~/.cache/npid/rest-session/cookies.json. The containing directory is created if missing.
+            timeout_seconds (int): Request timeout in seconds; coerced to be at least 5 seconds.
+        """
         self.base_url: str = (base_url or os.environ.get("NPID_BASE_URL") or "https://dashboard.nationalpid.com").rstrip("/")
         self.username: Optional[str] = username or os.environ.get("NPID_USERNAME")
         self.password: Optional[str] = password or os.environ.get("NPID_PASSWORD")
@@ -59,6 +69,11 @@ class NpidApiClient:
 
     # --------------- Cookie persistence ---------------
     def _load_cookies(self) -> None:
+        """
+        Load persisted cookies from the configured session_path JSON file into the client's requests.Session.
+        
+        If the session_path does not exist this method returns without action. When a cookie file is present, it reads the JSON structure expected to contain a "cookies" list and updates the session's cookie jar with those entries. Any errors while reading or parsing the file are caught and the method returns without modifying the session.
+        """
         if not self.session_path.exists():
             return
         try:
@@ -80,6 +95,20 @@ class NpidApiClient:
             logger.warning("Failed to load cookies: %s", exc)
 
     def _save_cookies(self) -> None:
+        """
+        Save current session cookies to the configured session_path as a JSON file.
+        
+        Writes a JSON object with a "cookies" array where each entry contains:
+        - name: cookie name
+        - value: cookie value
+        - domain: cookie domain
+        - path: cookie path
+        - expires: cookie expiration timestamp or None
+        - secure: boolean indicating the Secure flag
+        - httponly: boolean indicating the HttpOnly flag
+        
+        If writing fails for any reason, the exception is caught and a warning is logged.
+        """
         try:
             export: List[Dict[str, Any]] = []
             for c in self.session.cookies:
@@ -101,9 +130,21 @@ class NpidApiClient:
 
     # --------------- CSRF helpers ---------------
     def _get_xsrf_cookie(self) -> str:
+        """
+        Return the value of the XSRF cookie used for CSRF protection.
+        
+        Returns:
+            The cookie value as a string if present, otherwise an empty string.
+        """
         return self.session.cookies.get("XSRF-TOKEN", "")
 
     def _csrf_headers(self) -> Dict[str, str]:
+        """
+        Return headers containing the XSRF/CSRF token if present.
+        
+        Returns:
+            dict: A mapping with keys "X-CSRF-TOKEN" and "X-XSRF-TOKEN" set to the XSRF token when available, otherwise an empty dict.
+        """
         xsrf = self._get_xsrf_cookie()
         if not xsrf:
             return {}
@@ -112,6 +153,18 @@ class NpidApiClient:
 
     # --------------- Auth ---------------
     def login(self, email: Optional[str] = None, password: Optional[str] = None) -> LoginResult:
+        """
+        Authenticate with the NPID dashboard and persist session cookies on success.
+        
+        Attempts to load the login page, extract a CSRF token if present, submit credentials, and save session cookies when authentication appears successful.
+        
+        Parameters:
+            email (Optional[str]): Email address to use for login. If omitted, the client's configured username is used.
+            password (Optional[str]): Password to use for login. If omitted, the client's configured password is used.
+        
+        Returns:
+            LoginResult: Result of the login attempt. `success` is `True` when authentication succeeded and cookies were saved; `status` contains the HTTP status code observed; `message` provides a short description.
+        """
         email = email or self.username
         password = password or self.password
         if not email or not password:
@@ -171,6 +224,11 @@ class NpidApiClient:
 
     def _ensure_logged_in(self) -> None:
         # Check if session appears valid by requesting a JSON endpoint
+        """
+        Verify that the client's session is authenticated and attempt re-login if not.
+        
+        Performs a quick GET request to the inbox JSON endpoint; if the response status is 401, 403, or 419 it attempts to re-authenticate by calling login(). On network/request errors it attempts a single login as well. Raises RuntimeError when a re-login attempt fails.
+        """
         try:
             res = self.session.get(f"{self.base_url}/videoteammsg/inbox", headers={"Accept": "application/json"}, timeout=self.timeout)
             if res.status_code in (401, 403, 419):
@@ -192,6 +250,21 @@ class NpidApiClient:
         params: Optional[Dict[str, Any]] = None,
         payload: Optional[Dict[str, Any]] = None,
     ) -> Tuple[Any, int]:
+        """
+        Perform an authenticated HTTP request to the API that expects JSON and return the parsed response and HTTP status.
+        
+        Parameters:
+            method (str): HTTP method to use (typically "GET" or "POST").
+            path (str): API path relative to the client's base URL (may start with or without a leading slash).
+            params (Optional[Dict[str, Any]]): Query parameters to include in the request.
+            payload (Optional[Dict[str, Any]]): JSON body to send for non-GET requests.
+        
+        Returns:
+            Tuple[Any, int]: A tuple where the first element is the parsed JSON response (or a dict with `status` and `text` if the body is not valid JSON) and the second element is the HTTP status code.
+        
+        Raises:
+            RuntimeError: If the underlying HTTP request fails (network error or other requests exceptions).
+        """
         self._ensure_logged_in()
 
         url = f"{self.base_url}{path if path.startswith('/') else '/' + path}"
@@ -222,32 +295,98 @@ class NpidApiClient:
 
     # --------------- High-level endpoints ---------------
     def get_inbox_threads(self, limit: int = 50) -> Any:
+        """
+        Fetches inbox threads from the NPID API.
+        
+        Parameters:
+            limit (int): Maximum number of threads to request.
+        
+        Returns:
+            The parsed JSON response containing the inbox threads (structure as returned by the API).
+        """
         data, _ = self.request_json("GET", "/videoteammsg/inbox", params={"limit": limit})
         return data
 
     def get_thread_details(self, thread_id: str) -> Any:
+        """
+        Fetches the details for a specific inbox thread.
+        
+        Parameters:
+            thread_id (str): ID of the inbox thread to retrieve.
+        
+        Returns:
+            Parsed JSON data representing the thread details.
+        """
         data, _ = self.request_json("GET", f"/videoteammsg/inbox/{thread_id}")
         return data
 
     def get_assignment_modal_data(self, thread_id: str) -> Any:
+        """
+        Fetch assignment-modal prefetch data for the specified inbox thread.
+        
+        Parameters:
+            thread_id (str): The inbox thread identifier to fetch assignment prefetch data for.
+        
+        Returns:
+            Any: The JSON-decoded response body from the assignment prefetch endpoint.
+        """
         data, _ = self.request_json("GET", f"/videoteammsg/inbox/{thread_id}/assignprefetch")
         return data
 
     def assign_thread(self, thread_id: str, assignee: str, status: str, stage: str) -> Any:
         # Both header and payload token to satisfy CSRF protections
+        """
+        Assigns a thread to a user and updates its status and stage.
+        
+        Parameters:
+            thread_id (str): Identifier of the thread to assign.
+            assignee (str): Identifier (e.g., username or id) of the assignee.
+            status (str): New status to set for the thread.
+            stage (str): New stage to set for the thread.
+        
+        Returns:
+            The parsed JSON response data from the assignment endpoint.
+        """
         payload = {"thread_id": thread_id, "assignee": assignee, "status": status, "stage": stage, "_token": self._get_xsrf_cookie()}
         data, _ = self.request_json("POST", "/videoteammsg/inbox/assign", payload=payload)
         return data
 
     def search_player(self, query: str) -> Any:
+        """
+        Searches the video progress index for players matching the given query.
+        
+        Parameters:
+            query (str): Text to search for (player name, email, or other searchable fields).
+        
+        Returns:
+            Any: Parsed JSON data returned by the videoprogress endpoint (usually a list or dict of matching player records).
+        """
         params = {"first_name": "", "last_name": "", "email": "", "sport": "0", "states": "0", "athlete_school": "0", "editorassigneddatefrom": "", "editorassigneddateto": "", "grad_year": "", "select_club_sport": "", "select_club_state": "", "select_club_name": "", "video_editor": "", "video_progress": "", "video_progress_stage": "", "video_progress_status": "", "search": query}
         data, _ = self.request_json("GET", "/videoteammsg/videoprogress", params=params)
         return data
 
     # --------------- Contact resolution (HTML scraping endpoints) ---------------
     def resolve_contacts(self, search: str, searchfor: str = "athlete") -> List[Dict[str, Any]]:
-        """Resolve contacts by parsing HTML returned from search endpoint.
-        Falls back to empty list if nothing found.
+        """
+        Resolve contacts matching a search query by fetching and parsing the contacts list HTML.
+        
+        Fetches the contacts list page for the provided query and returns a list of contact records extracted from the HTML. If the request or parsing fails, an empty list is returned.
+        
+        Parameters:
+            search (str): Text to search for.
+            searchfor (str): Target category to search for (for example "athlete"). Defaults to "athlete".
+        
+        Returns:
+            List[Dict[str, Any]]: A list of contact dictionaries with the following keys:
+                - contactId (str): The contact identifier from the page.
+                - athleteMainId (str | None): Associated athlete main id if present, otherwise None.
+                - name (str): Display name or a fallback identifier ("Unknown" if not available).
+                - top500: Always None in current implementation (placeholder for ranking).
+                - gradYear: Always None in current implementation (placeholder for graduation year).
+                - state: Always None in current implementation (placeholder for state).
+                - sport: Always None in current implementation (placeholder for sport).
+                - videoEditor: Always None in current implementation (placeholder for video editor).
+                - _raw (str): Additional raw metadata fragment extracted from nearby text, may be empty.
         """
         try:
             resp = self.session.get(

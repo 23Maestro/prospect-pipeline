@@ -13,7 +13,15 @@ import { NPIDInboxMessage } from './types/video-team';
 import { supabase } from './lib/supabase-client';
 import { apiGetInboxThreads } from './lib/npid-api-adapter';
 
-// Email Content Detail Component - Enhanced with Attachments
+/**
+ * Render a Detail view showing an email message, its attachments, and related actions.
+ *
+ * Displays message subject, sender, timestamp, and body (or preview), includes an Attachments section when present, exposes one-click download actions for attachments that have downloadable URLs, and provides copy-to-clipboard actions for sender name, email, and message ID.
+ *
+ * @param message - The inbox message to display, including metadata and an optional attachments array. Attachments with `downloadable` true and a `url` will be exposed as download actions.
+ * @param onBack - Callback invoked when the "Back to Inbox" action is triggered.
+ * @returns A Detail element containing the formatted message markdown and an action panel for navigation, downloads, and clipboard operations.
+ */
 function EmailContentDetail({
   message,
   onBack,
@@ -69,6 +77,14 @@ function EmailContentDetail({
   );
 }
 
+/**
+ * Displays the Videoteam inbox and manages loading and refreshing of assigned messages.
+ *
+ * Fetches assigned threads from the REST API, shows toast notifications for load results,
+ * and renders a list of messages with actions to view content, copy fields, download attachments, reply (placeholder), and reload.
+ *
+ * @returns A React component that renders a list of assigned inbox messages with actions for viewing, copying, downloading attachments, and reloading the inbox.
+ */
 export default function InboxCheck() {
   const [messages, setMessages] = useState<NPIDInboxMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);

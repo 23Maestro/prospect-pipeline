@@ -54,6 +54,19 @@ interface AssignmentModalProps {
   onCancel: () => void;
 }
 
+/**
+ * Render a form UI for assigning an inbox message to the Video Team.
+ *
+ * Renders a form that lets the user choose an owner, a contact, a video stage, and a video status for the given message, then submit or cancel the assignment.
+ *
+ * @param message - The inbox message being assigned; used to populate the form title and context
+ * @param modalData - Modal configuration including available owners, stages, and video statuses, and default selections
+ * @param contacts - Candidate contacts to populate the Contact dropdown
+ * @param searchFor - The contact category used to resolve and label the selected contact (e.g., "athlete")
+ * @param onAssign - Callback invoked with the chosen owner, stage, status, contact, and searchFor when the form is submitted
+ * @param onCancel - Callback invoked when the user cancels the assignment
+ * @returns The assignment form element with submission and cancellation actions
+ */
 function AssignmentModal({
   message,
   modalData,
@@ -247,6 +260,13 @@ function EmailContentDetail({
   );
 }
 
+/**
+ * Renders the "NPID Inbox (Unassigned)" list view, loads assignable inbox threads, and provides actions to view threads, resolve contacts, and assign threads to the Video Team.
+ *
+ * Performs network requests to fetch threads and assignment modal data, shows toasts for progress and errors, and navigates to message detail and assignment flows.
+ *
+ * @returns The React element representing the inbox list view.
+ */
 export default function InboxCheck() {
   const [messages, setMessages] = useState<NPIDInboxMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
