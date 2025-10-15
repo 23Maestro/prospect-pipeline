@@ -11,9 +11,10 @@ import logging
 from pathlib import Path
 from bs4 import BeautifulSoup
 from typing import Optional, Dict, List, Any
-from datetime import datetime
+
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 
 class NPIDAPIClient:
     def __init__(self):
@@ -23,10 +24,8 @@ class NPIDAPIClient:
         self.email = os.getenv('NPID_EMAIL', 'jsingleton@prospectid.com')
         self.password = os.getenv('NPID_PASSWORD', 'YBh@Y8Us@1&qwd$')
         self.authenticated = False
-        
-        # Load saved session if exists
         self._load_session()
-        
+
     def _load_session(self):
         """Load cookies from pickle file"""
         if self.cookie_file.exists():
@@ -37,7 +36,7 @@ class NPIDAPIClient:
                 logging.info(f"✅ Loaded session from {self.cookie_file}")
             except Exception:
                 logging.exception("⚠️  Failed to load session")
-    
+
     def _save_session(self):
         """Save cookies to pickle file"""
         try:
@@ -46,20 +45,17 @@ class NPIDAPIClient:
             logging.info(f"✅ Saved session to {self.cookie_file}")
         except Exception:
             logging.exception("⚠️  Failed to save session")
-    
+
     def _get_csrf_token(self) -> str:
         """Extract CSRF token from login page"""
         resp = self.session.get(f"{self.base_url}/auth/login")
         resp.raise_for_status()
-        
         soup = BeautifulSoup(resp.text, 'html.parser')
         token_input = soup.find('input', {'name': '_token'})
-        
         if not token_input or not token_input.get('value'):
             raise ValueError("Failed to extract CSRF token")
-        
         return token_input['value']
-    
+
     def validate_session(self) -> bool:
         """Check if current session is valid"""
         try:
@@ -70,28 +66,21 @@ class NPIDAPIClient:
         except Exception:
             logging.exception("Session validation error")
         return False
-    
+
     def login(self, force=False) -> bool:
         """Login with remember token for 400-day persistence"""
-        # Check if already authenticated
         if not force and self.validate_session():
             logging.info("✅ Already authenticated")
             self.authenticated = True
             return True
-        
         logging.info("🔐 Logging in...")
-        
-        # Get fresh CSRF token
         csrf_token = self._get_csrf_token()
-        
-        # Login with remember=on for 400-day cookie
         login_data = {
             'email': self.email,
             'password': self.password,
             '_token': csrf_token,
             'remember': 'on'
         }
-        
         resp = self.session.post(
             f"{self.base_url}/auth/login",
             data=login_data,
@@ -101,153 +90,105 @@ class NPIDAPIClient:
             },
             allow_redirects=False
         )
-        
-        # 302 redirect = success
         if resp.status_code == 302:
             logging.info("✅ Login successful")
             self.authenticated = True
             self._save_session()
             return True
-        
         raise Exception(f"Login failed: {resp.status_code}")
-    
+
     def ensure_authenticated(self):
         """Ensure we're authenticated before making requests"""
         if not self.authenticated:
             self.login()
-    
-    def get_inbox_threads(self, limit: int = 100, filter_assigned: str = 'both') -> List[Dict[str, Any]]:
-        """Get inbox threads from video team inbox with pagination
-        
-        Args:
-            limit: Maximum number of threads to return
-            filter_assigned: Filter by assignment status
-                - 'unassigned': Only unassigned threads (canAssign: true - has plus icon)
-                - 'assigned': Only assigned threads (canAssign: false - no plus icon)
-                - 'both': All threads (default)
-        """
+
+    def get_inbox_threads(
+        self, limit: int = 100, filter_assigned: str = 'both', exclude_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Get inbox threads from video team inbox with pagination"""
         self.ensure_authenticated()
-        
-        # Get ALL threads - we'll filter by plus icon presence
         all_threads = []
         page = 1
-        max_pages = 2  # Safety limit (100 threads max)
-        
+        max_pages = 2
         while len(all_threads) < limit and page <= max_pages:
             params = {
                 'athleteid': '',
                 'user_timezone': 'America/New_York',
                 'type': 'inbox',
                 'is_mobile': '',
-                'filter_self': 'Me/Un',  # Get all threads
+                'filter_self': 'Me/Un',
                 'refresh': 'false',
                 'page_start_number': str(page),
                 'search_text': ''
             }
-            
             resp = self.session.get(
                 f"{self.base_url}/rulestemplates/template/videoteammessagelist",
                 params=params
             )
             resp.raise_for_status()
-            
-            # Parse HTML response
             soup = BeautifulSoup(resp.text, 'html.parser')
             message_elements = soup.select('div.ImageProfile')
-            
             if not message_elements:
-                # No more threads on this page
                 break
-            
             page_threads = []
             for elem in message_elements:
+                if exclude_id and elem.get('id') == exclude_id:
+                    continue
                 try:
-                    # Check for plus icon (unassigned indicator)
                     plus_icon = elem.select_one('i.fa-plus-circle')
                     has_plus = plus_icon is not None
-                    
-                    # Apply filter based on plus icon presence
                     if filter_assigned == 'unassigned' and not has_plus:
-                        continue  # Skip assigned threads
+                        continue
                     if filter_assigned == 'assigned' and has_plus:
-                        continue  # Skip unassigned threads
-                    
+                        continue
                     thread = self._parse_thread_element(elem, filter_assigned)
                     if thread:
-                        # Set canAssign based on plus icon
                         thread['canAssign'] = has_plus
                         thread['can_assign'] = has_plus
                         page_threads.append(thread)
                 except Exception:
                     logging.exception("⚠️  Failed to parse thread")
                     continue
-            
             all_threads.extend(page_threads)
             logging.info(f"✅ Page {page}: Found {len(page_threads)} threads ({len(all_threads)} total)")
             page += 1
-        
         return all_threads[:limit]
-    
-    def _parse_thread_element(self, elem, filter_assigned: str = 'both') -> Optional[Dict[str, Any]]:
-        """Parse a single thread element from inbox HTML
-        
-        Args:
-            elem: BeautifulSoup element for the thread
-            filter_assigned: The filter that was used ('unassigned', 'assigned', 'both')
-        """
-        # Extract IDs
+
+    def _parse_thread_element(
+        self, elem, filter_assigned: str = 'both'
+    ) -> Optional[Dict[str, Any]]:
+        """Parse a single thread element from inbox HTML"""
         item_id = elem.get('itemid')
         item_code = elem.get('itemcode')
         message_id = elem.get('id')
-        
         if not item_id:
             return None
-        
-        # Extract email from hidden div
         email_elem = elem.select_one('.hidden')
         email = email_elem.text.strip() if email_elem else ""
-        
-        # Extract contact and athlete IDs
         contact_id = elem.get('contacttask', '')
         athlete_main_id = elem.get('athletemainid', '')
-        
-        # Extract name
         name_elem = elem.select_one('.msg-sendr-name')
         name = name_elem.text.strip() if name_elem else "Unknown"
-        
-        # Extract subject from tit_line1
         subject_elem = elem.select_one('.tit_line1')
         subject = subject_elem.text.strip() if subject_elem else ""
-        
-        # Extract preview from tit_univ (strip reply chains)
         preview_elem = elem.select_one('.tit_univ')
         preview = ""
         if preview_elem:
             preview_text = preview_elem.text.strip()
-            # Strip reply chain
             reply_pattern = r'On\s+.+?\s+Prospect\s+ID\s+Video\s+.+?wrote:'
             match = re.search(reply_pattern, preview_text, re.IGNORECASE | re.DOTALL)
             if match:
                 preview = preview_text[:match.start()].strip()
             else:
-                preview = preview_text[:300] if len(preview_text) > 300 else preview_text
-        
-        # Extract timestamp
+                preview = preview_text[:300]
         date_elem = elem.select_one('.date_css')
         timestamp = date_elem.text.strip() if date_elem else ""
-        
-        # Determine assignment status based on the filter used
-        # This is the KEY FIX: The API filter already separated assigned/unassigned!
         if filter_assigned == 'unassigned':
-            can_assign = True  # filter_self='Un' returns only unassigned
-        elif filter_assigned == 'assigned':
-            can_assign = False  # filter_self='Me' returns only assigned
-        else:
-            # For 'both', we can't determine from HTML alone
-            # Default to true (assignable) for backwards compatibility
             can_assign = True
-        
-        # Extract attachments
+        elif filter_assigned == 'assigned':
+            can_assign = False
+        else:
+            can_assign = True
         attachments = []
         attachment_elems = elem.select('.attachment-item')
         for att_elem in attachment_elems:
@@ -258,7 +199,6 @@ class NPIDAPIClient:
                 'url': att_url,
                 'downloadable': bool(att_url)
             })
-        
         return {
             'id': message_id or item_id,
             'itemCode': item_code or item_id,
@@ -269,7 +209,7 @@ class NPIDAPIClient:
             'email': email,
             'subject': subject,
             'preview': preview,
-            'content': preview,  # Use preview as content
+            'content': preview,
             'timestamp': timestamp,
             'timeStampIso': None,
             'can_assign': can_assign,
@@ -277,18 +217,15 @@ class NPIDAPIClient:
             'isUnread': 'unread' in elem.get('class', []),
             'attachments': attachments
         }
-    
+
     def get_message_detail(self, message_id: str, item_code: str) -> Dict[str, Any]:
         """Get detailed message content"""
         self.ensure_authenticated()
-
-        # API expects bare numeric ID value, strip known prefix if present
         clean_id = (
             message_id.replace('message_id', '', 1)
             if message_id and message_id.startswith('message_id')
             else message_id
         )
-
         params = {
             'message_id': clean_id,
             'itemcode': item_code,
@@ -296,7 +233,6 @@ class NPIDAPIClient:
             'user_timezone': 'America/New_York',
             'filter_self': 'Me/Un'
         }
-
         resp = self.session.get(
             f"{self.base_url}/rulestemplates/template/videoteammessage_subject",
             params=params,
@@ -305,45 +241,24 @@ class NPIDAPIClient:
                 'X-Requested-With': 'XMLHttpRequest'
             }
         )
-
         if resp.status_code != 200:
             logging.warning(f"⚠️  Failed to fetch message detail: {resp.status_code}")
-            return {
-                'message_id': clean_id,
-                'item_code': item_code,
-                'content': ''
-            }
-
+            return {'message_id': clean_id, 'item_code': item_code, 'content': ''}
         try:
-            # Strip leading/trailing whitespace from response
             response_text = resp.text.strip()
-
-            # The response is JSON containing full message data
             data = json.loads(response_text)
-
-            # Use message_plain (plain text) for better display in markdown
-            # Fallback to HTML message if plain text not available
-            content = data.get('message_plain', '')
-            if not content:
-                content = data.get('message', '')
-
-            # Strip reply chain - only show the most recent message
-            # Pattern: "On [date/time] [name] wrote:" or "On [date] at [time], [name] wrote:"
+            content = data.get('message_plain', '') or data.get('message', '')
             reply_patterns = [
-                r'\n\s*On\s+.+?\s+wrote:\s*\n',  # Standard "On ... wrote:" pattern
-                r'\n\s*On\s+.+?\s+at\s+.+?wrote:\s*\n',  # "On ... at ... wrote:" pattern
-                r'\n\s*-{2,}\s*On\s+.+?wrote:\s*-{2,}\s*\n',  # With dashes
+                r'\n\s*On\s+.+?\s+wrote:\s*\n',
+                r'\n\s*On\s+.+?\s+at\s+.+?wrote:\s*\n',
+                r'\n\s*-{2,}\s*On\s+.+?wrote:\s*-{2,}\s*\n',
             ]
-
             for pattern in reply_patterns:
                 match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
                 if match:
-                    # Keep only content before the reply chain
                     content = content[:match.start()].strip()
                     break
-
             logging.info(f"✅ Fetched message detail for {message_id} ({len(content)} chars)")
-
             return {
                 'message_id': clean_id,
                 'item_code': item_code,
@@ -354,93 +269,58 @@ class NPIDAPIClient:
                 'timestamp': data.get('time_stamp', '')
             }
         except Exception:
-            logging.exception(f"⚠️  Failed to parse message detail JSON. Response text: {resp.text[:500]}")
-            return {
-                'message_id': clean_id,
-                'item_code': item_code,
-                'content': ''
-            }
-    
+            logging.exception(f"⚠️  Failed to parse message detail JSON. Response: {resp.text[:500]}")
+            return {'message_id': clean_id, 'item_code': item_code, 'content': ''}
+
     def get_assignment_modal(self, message_id: str, item_code: str) -> Dict[str, Any]:
         """Get assignment modal data (owners, stages, statuses)"""
         self.ensure_authenticated()
-        
-        params = {
-            'message_id': message_id,
-            'itemcode': item_code
-        }
-        
+        params = {'message_id': message_id, 'itemcode': item_code}
         resp = self.session.get(
             f"{self.base_url}/rulestemplates/template/assignemailtovideoteam",
             params=params
         )
         resp.raise_for_status()
-        
         soup = BeautifulSoup(resp.text, 'html.parser')
-        
-        # Extract CSRF token
         token_input = soup.select_one('input[name="_token"]')
         form_token = token_input['value'] if token_input else ""
-        
-        # Extract owners dropdown
         owners = []
         owner_select = soup.select_one('select[name="videoscoutassignedto"]')
         if owner_select:
             for option in owner_select.select('option'):
-                owners.append({
-                    'value': option.get('value', '').strip(),
-                    'label': option.text.strip()
-                })
-        
-        # Extract stages dropdown (video progress stage)
+                owners.append({'value': option.get('value', '').strip(), 'label': option.text.strip()})
         stages = []
         stage_select = soup.select_one('select[name="video_progress_stage"]')
         if stage_select:
             for option in stage_select.select('option'):
-                stages.append({
-                    'value': option.get('value', '').strip(),
-                    'label': option.text.strip()
-                })
-        
-        # Extract video statuses dropdown (video progress status)
+                stages.append({'value': option.get('value', '').strip(), 'label': option.text.strip()})
         statuses = []
         status_select = soup.select_one('select[name="video_progress_status"]')
         if status_select:
             for option in status_select.select('option'):
-                statuses.append({
-                    'value': option.get('value', '').strip(),
-                    'label': option.text.strip()
-                })
-        
-        # Extract contact search value (email/name)
+                statuses.append({'value': option.get('value', '').strip(), 'label': option.text.strip()})
         contact_input = soup.select_one('input[name="contact"]')
         contact_search = contact_input.get('value', '') if contact_input else ""
-        
-        # Extract default search type
         contact_for_select = soup.select_one('select[name="contactfor"]')
         default_search_for = ''
         if contact_for_select:
             selected_option = contact_for_select.select_one('option[selected]')
-            default_search_for = selected_option.get('value', '').strip() if selected_option else contact_for_select.get('value', '').strip()
-        
-        # Extract hidden pre-filled IDs
+            default_search_for = (
+                selected_option.get('value', '').strip() if selected_option
+                else contact_for_select.get('value', '').strip()
+            )
         contact_task_input = soup.select_one('input[name="contact_task"]')
         contact_task = contact_task_input.get('value', '').strip() if contact_task_input else ""
-        
         athlete_input = soup.select_one('input[name="athlete_main_id"]')
         athlete_main_id = athlete_input.get('value', '').strip() if athlete_input else ""
-        
         message_id_input = soup.select_one('input[name="messageid"]')
         message_id_value = message_id_input.get('value', '').strip() if message_id_input else ""
-        
-        # Auto-select Jerami Singleton if present
         jerami_id = '1408164'
         default_owner = None
         if owners:
             default_owner = next((owner for owner in owners if owner['value'] == jerami_id), None)
             if not default_owner:
                 default_owner = owners[0]
-        
         return {
             'formToken': form_token,
             'owners': owners,
@@ -454,17 +334,14 @@ class NPIDAPIClient:
             'defaultOwner': default_owner,
             'contactFor': default_search_for or 'athlete'
         }
-    
+
     def assign_thread(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Assign a thread to video team"""
         self.ensure_authenticated()
-        
-        # Build form data
         contact_id = payload.get('contact_id', payload.get('contactId', ''))
         athlete_main_id = payload.get('athleteMainId', '')
         stage = payload.get('stage', '') or ''
         status = payload.get('status', '') or ''
-
         form_data = {
             'messageid': payload['messageId'],
             'videoscoutassignedto': payload['ownerId'],
@@ -480,95 +357,66 @@ class NPIDAPIClient:
             'videoprogressstatus': status,
             '_token': payload['formToken']
         }
-    
         resp = self.session.post(
             f"{self.base_url}/videoteammsg/assignvideoteam",
             data=form_data,
-            headers={
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         resp.raise_for_status()
-        
-        result = resp.json()
-        
+        if resp.status_code == 200 and not resp.text.strip():
+            logging.info(f"✅ Assigned thread {payload['messageId']} (empty response)")
+            return {'success': True}
+        try:
+            result = resp.json()
+        except json.JSONDecodeError:
+            logging.error(f"Failed to decode JSON. Status: {resp.status_code}, Body: {resp.text}")
+            raise Exception(f"Assignment response not valid JSON. Body: {resp.text[:500]}")
         if result.get('success'):
             logging.info(f"✅ Assigned thread {payload['messageId']}")
             return result
-        
         raise Exception(f"Assignment failed: {result}")
 
     def get_assignment_defaults(self, contact_id: str) -> Dict[str, Any]:
         """Fetch recommended stage/status for a contact"""
         self.ensure_authenticated()
-
         resp = self.session.get(
             f"{self.base_url}/rulestemplates/messageassigninfo",
             params={'contactid': contact_id},
             headers={'Accept': 'application/json'}
         )
         resp.raise_for_status()
-
         data = resp.json() if resp.text else {}
-        return {
-            'stage': data.get('stage'),
-            'status': data.get('video_progress_status')
-        }
-    
-    def search_contacts(self, query: str, search_type: str = 'athlete') -> List[Dict[str, Any]]:
-        """Search for contacts (athletes/parents)
-        
-        Args:
-            query: Email or name to search for
-            search_type: 'athlete' or 'parent'
-        
-        Returns:
-            List of contact dictionaries with keys: contactId, name, sport, gradYear, state
-        """
+        return {'stage': data.get('stage'), 'status': data.get('video_progress_status')}
+
+    def search_contacts(
+        self, query: str, search_type: str = 'athlete'
+    ) -> List[Dict[str, Any]]:
+        """Search for contacts (athletes/parents)"""
         self.ensure_authenticated()
-        
-        # Use the correct endpoint from HAR file
-        params = {
-            'search': query,
-            'searchfor': search_type  # 'athlete' or 'parent'
-        }
-        
+        params = {'search': query, 'searchfor': search_type}
         resp = self.session.get(
-            f"{self.base_url}/template/calendaraccess/contactslist",
-            params=params
+            f"{self.base_url}/template/calendaraccess/contactslist", params=params
         )
-        
         if resp.status_code != 200:
             logging.warning(f"⚠️  Contact search failed: {resp.status_code}")
             return []
-        
-        # Parse HTML response
         soup = BeautifulSoup(resp.text, 'html.parser')
         contacts = []
-        
-        # Find all table rows (skip header row)
-        rows = soup.select('tr')[1:]  # Skip first row (header)
-        
+        rows = soup.select('tr')[1:]
         for row in rows:
             try:
-                # Extract contact info from input element
                 input_elem = row.select_one('input.contactselected')
                 if not input_elem:
                     continue
-                
                 contact_id = input_elem.get('contactid', '')
                 athlete_main_id = input_elem.get('athlete_main_id', '')
                 contact_name = input_elem.get('contactname', '')
-                
-                # Extract data from table cells
                 cells = row.select('td')
                 if len(cells) >= 5:
-                    # Cells: [Name, Ranking, GradYear, State, Sport, ...]
                     ranking = cells[1].text.strip()
                     grad_year = cells[2].text.strip()
                     state = cells[3].text.strip()
                     sport = cells[4].text.strip()
-                    
                     contacts.append({
                         'contactId': contact_id,
                         'athleteMainId': athlete_main_id,
@@ -581,61 +429,35 @@ class NPIDAPIClient:
             except Exception:
                 logging.exception("⚠️  Failed to parse contact row")
                 continue
-        
         logging.info(f"✅ Found {len(contacts)} contacts for '{query}' ({search_type})")
         return contacts
-    
+
     def search_player(self, query: str) -> List[Dict[str, Any]]:
         """Search for players in NPID database"""
         self.ensure_authenticated()
-        
-        params = {
-            'q': query,
-            'type': 'athlete'
-        }
-        
-        resp = self.session.get(
-            f"{self.base_url}/search/athletes",
-            params=params
-        )
-        
+        params = {'q': query, 'type': 'athlete'}
+        resp = self.session.get(f"{self.base_url}/search/athletes", params=params)
         if resp.status_code != 200:
             logging.warning(f"⚠️  Player search failed: {resp.status_code}")
             return []
-        
-        # Parse HTML response
         soup = BeautifulSoup(resp.text, 'html.parser')
         results = []
-        
-        # Find athlete result elements (adjust selector based on actual HTML)
         athlete_elements = soup.select('.athlete-result, .search-result')
-        
-        for elem in athlete_elements[:20]:  # Limit to top 20 results
+        for elem in athlete_elements[:20]:
             try:
-                # Extract player ID from link
                 link = elem.select_one('a[href*="/athlete/"]')
                 if not link:
                     continue
-                
                 href = link.get('href', '')
                 player_id = href.split('/athlete/')[-1].split('/')[0] if '/athlete/' in href else ''
-                
-                # Extract name
                 name_elem = elem.select_one('.athlete-name, .name, h3, h4')
                 name = name_elem.text.strip() if name_elem else 'Unknown'
-                
-                # Extract grad year
                 grad_elem = elem.select_one('.grad-year, .year')
                 grad_year = grad_elem.text.strip() if grad_elem else ''
-                
-                # Extract location
                 location_elem = elem.select_one('.location, .city-state')
                 location = location_elem.text.strip() if location_elem else ''
-                
-                # Extract high school
                 school_elem = elem.select_one('.school, .high-school')
                 school = school_elem.text.strip() if school_elem else ''
-                
                 results.append({
                     'player_id': player_id,
                     'name': name,
@@ -647,67 +469,41 @@ class NPIDAPIClient:
             except Exception:
                 logging.exception("⚠️  Failed to parse player result")
                 continue
-        
         logging.info(f"✅ Found {len(results)} players matching '{query}'")
         return results
-    
+
     def get_athlete_details(self, player_id: str) -> Dict[str, Any]:
         """Get detailed information about an athlete"""
         self.ensure_authenticated()
-        
         resp = self.session.get(f"{self.base_url}/athlete/{player_id}")
         resp.raise_for_status()
-        
         soup = BeautifulSoup(resp.text, 'html.parser')
-
-        # Extract athlete_main_id from a hidden input
         athlete_main_id_input = soup.select_one('input[name="athlete_main_id"]')
         athlete_main_id = athlete_main_id_input.get('value', '') if athlete_main_id_input else ''
-        
-        # Extract athlete details from profile page
         details = {
             'player_id': player_id,
             'athlete_main_id': athlete_main_id,
-            'name': '',
-            'grad_year': '',
-            'high_school': '',
-            'location': '',
-            'positions': '',
-            'sport': '',
-            'videos': []
+            'name': '', 'grad_year': '', 'high_school': '', 'location': '',
+            'positions': '', 'sport': '', 'videos': []
         }
-        
-        # Extract name
         name_elem = soup.select_one('.athlete-name, h1.profile-name, .profile-header h1')
         if name_elem:
             details['name'] = name_elem.text.strip()
-        
-        # Extract grad year
         grad_elem = soup.select_one('.grad-year, .graduation-year')
         if grad_elem:
             details['grad_year'] = grad_elem.text.strip()
-        
-        # Extract high school
         school_elem = soup.select_one('.high-school, .school-name')
         if school_elem:
             details['high_school'] = school_elem.text.strip()
-        
-        # Extract location
         location_elem = soup.select_one('.location, .city-state')
         if location_elem:
             details['location'] = location_elem.text.strip()
-        
-        # Extract positions
         position_elem = soup.select_one('.positions, .position')
         if position_elem:
             details['positions'] = position_elem.text.strip()
-        
-        # Extract sport
         sport_elem = soup.select_one('.sport')
         if sport_elem:
             details['sport'] = sport_elem.text.strip()
-        
-        # Extract existing videos
         video_elements = soup.select('.video-item, .highlight-video')
         for video_elem in video_elements:
             video_link = video_elem.select_one('a[href*="youtube.com"], a[href*="youtu.be"]')
@@ -716,43 +512,36 @@ class NPIDAPIClient:
                     'url': video_link.get('href', ''),
                     'title': video_elem.text.strip()[:100]
                 })
-        
         logging.info(f"✅ Retrieved details for {details['name']} ({player_id})")
         return details
 
-    def get_video_seasons(self, athlete_id: str, sport_alias: str, video_type: str, athlete_main_id: str) -> List[Dict[str, Any]]:
+    def get_video_seasons(
+        self, athlete_id: str, sport_alias: str, video_type: str, athlete_main_id: str
+    ) -> List[Dict[str, Any]]:
         """Get available video seasons for a player."""
         self.ensure_authenticated()
-        
         params = {
             'athlete_id': athlete_id,
             'sport_alias': sport_alias,
             'video_type': video_type,
             'athlete_main_id': athlete_main_id
         }
-        
         resp = self.session.get(
-            f"{self.base_url}/template/videotemplate/videoseasons",
-            params=params
+            f"{self.base_url}/template/videotemplate/videoseasons", params=params
         )
         resp.raise_for_status()
-        
-        # Assuming the response is a JSON array of objects with 'value' and 'label'
         return resp.json()
-    
-    def update_video_profile(self, player_id: str, youtube_link: str, season: str, video_type: str) -> Dict[str, Any]:
+
+    def update_video_profile(
+        self, player_id: str, youtube_link: str, season: str, video_type: str
+    ) -> Dict[str, Any]:
         """Update athlete profile with new video"""
         self.ensure_authenticated()
-        
-        # Get CSRF token from profile edit page
         edit_page = self.session.get(f"{self.base_url}/athlete/{player_id}/edit")
         edit_page.raise_for_status()
-        
         soup = BeautifulSoup(edit_page.text, 'html.parser')
         csrf_elem = soup.select_one('input[name="csrf_token"], input[name="_token"]')
         csrf_token = csrf_elem.get('value', '') if csrf_elem else ''
-        
-        # Prepare video data
         video_data = {
             'csrf_token': csrf_token,
             'player_id': player_id,
@@ -761,31 +550,23 @@ class NPIDAPIClient:
             'video_type': video_type,
             'action': 'add_video'
         }
-        
         logging.info(f"🎬 Adding {video_type} video for player {player_id} ({season})")
-        
-        # POST video update
         resp = self.session.post(
             f"{self.base_url}/athlete/{player_id}/videos/add",
             data=video_data,
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
-        
-        if resp.status_code == 200 or resp.status_code == 302:
+        if resp.status_code in [200, 302]:
             logging.info(f"✅ Video added successfully to player {player_id}")
             return {
-                'success': True,
-                'player_id': player_id,
-                'video_url': youtube_link,
-                'season': season,
-                'video_type': video_type
+                'success': True, 'player_id': player_id, 'video_url': youtube_link,
+                'season': season, 'video_type': video_type
             }
         else:
             logging.warning(f"⚠️  Video update failed: {resp.status_code}")
             logging.warning(f"Response: {resp.text[:500]}")
             return {
-                'success': False,
-                'error': f"HTTP {resp.status_code}",
+                'success': False, 'error': f"HTTP {resp.status_code}",
                 'message': resp.text[:200]
             }
 
@@ -795,86 +576,59 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python3 npid_api_client.py <method> [json_args]")
         print("\nAvailable methods:")
-        print("  login")
-        print("  get_inbox_threads")
-        print("  get_message_detail")
-        print("  get_assignment_modal")
-        print("  assign_thread")
-        print("  search_contacts")
-        print("  search_player")
-        print("  get_athlete_details")
-        print("  update_video_profile")
+        print("  login, get_inbox_threads, get_message_detail, get_assignment_modal, "
+              "assign_thread, search_contacts, search_player, get_athlete_details, "
+              "update_video_profile")
         sys.exit(1)
-    
     method = sys.argv[1]
     args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
-    
     client = NPIDAPIClient()
-    
     try:
         if method == 'login':
             result = client.login()
             print(json.dumps({'success': result}))
-        
         elif method == 'get_inbox_threads':
             limit = args.get('limit', 100)
             filter_assigned = args.get('filter_assigned', 'both')
-            threads = client.get_inbox_threads(limit, filter_assigned)
+            exclude_id = args.get('exclude_id')
+            threads = client.get_inbox_threads(limit, filter_assigned, exclude_id)
             print(json.dumps(threads))
-        
         elif method == 'get_message_detail':
-            result = client.get_message_detail(
-                args['message_id'],
-                args['item_code']
-            )
+            result = client.get_message_detail(args['message_id'], args['item_code'])
             print(json.dumps(result))
-        
         elif method == 'get_assignment_modal':
             result = client.get_assignment_modal(
-                args['message_id'],
-                args.get('item_code', args['message_id'])
+                args['message_id'], args.get('item_code', args['message_id'])
             )
             print(json.dumps(result))
-        
         elif method == 'assign_thread':
             result = client.assign_thread(args)
             print(json.dumps(result))
-        
         elif method == 'get_assignment_defaults':
             result = client.get_assignment_defaults(args['contact_id'])
             print(json.dumps(result))
-        
         elif method == 'search_contacts':
             result = client.search_contacts(
-                args['query'],
-                args.get('search_type', 'athlete')
+                args['query'], args.get('search_type', 'athlete')
             )
             print(json.dumps(result))
-        
         elif method == 'search_player':
             query = args['query']
             results = client.search_player(query)
             print(json.dumps(results))
-        
         elif method == 'get_athlete_details':
             player_id = args['player_id']
             details = client.get_athlete_details(player_id)
             print(json.dumps(details))
-        
         elif method == 'update_video_profile':
             result = client.update_video_profile(
-                args['player_id'],
-                args['youtube_link'],
-                args['season'],
-                args['video_type']
+                args['player_id'], args['youtube_link'], args['season'], args['video_type']
             )
             print(json.dumps(result))
-        
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))
             sys.exit(1)
-    
-    except Exception as e:
+    except Exception:
         logging.exception("CLI execution failed")
         sys.exit(1)
 

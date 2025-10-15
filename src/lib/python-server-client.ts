@@ -1,157 +1,52 @@
-import { spawn } from 'child_process';
-import fs from 'fs';
-import path from 'path';
-import os from 'os';
+import { showToast, Toast } from "@raycast/api";
+import { spawn } from "child_process";
+import { chmod } from "fs/promises";
 
-/**
- * Response from the Python NPID server
- */
-export interface PythonServerResponse<T = any> {
-  id: number;
-  status: 'ok' | 'error';
-  message?: string;
-  data?: T;
-  [key: string]: any;
-}
+const PYTHON_SERVER_PATH = "/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_api_client.py";
 
-/**
- * Resolves the path to the NPID Python server script.
- * Priority: environment variable > relative path from project root
- * @throws Error if the resolved path does not exist
- */
-export function resolveNPIDServerPath(): string {
-  const homeDir = os.homedir();
-  
-  // Prefer shell wrapper (handles venv activation)
-  const wrapperPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/run_server.sh');
-  if (fs.existsSync(wrapperPath)) {
-    return wrapperPath;
-  }
-
-  // Fallback to direct Python (may fail if venv not activated)
-  const envPath = process.env.NPID_SERVER_PATH;
-  if (envPath && fs.existsSync(envPath)) {
-    return envPath;
-  }
-
-  const pythonPath = path.join(homeDir, 'Raycast/prospect-pipeline/mcp-servers/npid-native/npid_simple_server.py');
-  if (fs.existsSync(pythonPath)) {
-    return pythonPath;
-  }
-
-  throw new Error(
-    `NPID server not found. Tried:\n` +
-    `  1. Wrapper: ${wrapperPath}\n` +
-    `  2. Env var: ${envPath || '(not set)'}\n` +
-    `  3. Direct: ${pythonPath}`
-  );
-}
-
-/**
- * Calls the NPID Python server with proper timeout handling and incremental JSON parsing.
- * 
- * @param method - The Python server method to call (e.g., 'get_inbox_threads', 'search_player')
- * @param args - Arguments to pass to the method
- * @param timeoutMs - Timeout in milliseconds (default: 30000ms / 30 seconds)
- * @returns Promise that resolves with the server response
- * @throws Error if timeout occurs, process fails, or response parsing fails
- * 
- * @example
- * const result = await callPythonServer('search_player', { query: 'John Doe' });
- * if (result.status === 'ok') {
- *   console.log(result.data);
- * }
- */
-export async function callPythonServer<T = any>(
+export async function callPythonServer<T>(
   method: string,
-  args: any = {},
-  timeoutMs: number = 30000
-): Promise<PythonServerResponse<T>> {
-  const serverPath = resolveNPIDServerPath();
-  const isShellWrapper = serverPath.endsWith('.sh');
+  args: Record<string, unknown> = {}
+): Promise<T> {
+  try {
+    await chmod(PYTHON_SERVER_PATH, "755");
+  } catch (error) {
+    console.error("Failed to set executable permission:", error);
+    await showToast({
+      style: Toast.Style.Failure,
+      title: "Permission Error",
+      message: "Could not set executable permission on the Python script.",
+    });
+    throw new Error("Could not set executable permission on the Python script.");
+  }
 
-  return new Promise((resolve, reject) => {
-    const python = isShellWrapper 
-      ? spawn('/bin/bash', [serverPath])
-      : spawn('python3', [serverPath]);
-    
-    let output = '';
-    let errorOutput = '';
-    let timeoutHandle: ReturnType<typeof setTimeout>;
-    let responseReceived = false;
-    
-    // Set timeout for the entire operation
-    timeoutHandle = setTimeout(() => {
-      if (!responseReceived) {
-        python.kill();
-        reject(new Error(
-          `Python server timeout after ${timeoutMs}ms for method "${method}". ` +
-          `Error log: ${errorOutput}`
-        ));
-      }
-    }, timeoutMs);
-    
-    python.stdout.on('data', (data) => {
-      output += data.toString();
-      
-      // Try to parse as soon as we have a complete JSON response
-      try {
-        const lines = output.trim().split('\n');
-        for (const line of lines) {
-          if (line.trim()) {
-            const result = JSON.parse(line);
-            if (result.id === 1) {
-              responseReceived = true;
-              clearTimeout(timeoutHandle);
-              python.kill();
-              resolve(result);
-              return;
-            }
-          }
+  return new Promise<T>((resolve, reject) => {
+    const process = spawn(PYTHON_SERVER_PATH, [method, JSON.stringify(args)]);
+
+    let stdout = "";
+    let stderr = "";
+
+    process.stdout.on("data", (data) => {
+      stdout += data.toString();
+    });
+
+    process.stderr.on("data", (data) => {
+      stderr += data.toString();
+    });
+
+    process.on("close", (code) => {
+      if (code === 0) {
+        try {
+          const result = JSON.parse(stdout);
+          resolve(result as T);
+        } catch (error) {
+          console.error("Failed to parse Python script output:", error);
+          reject(new Error("Failed to parse Python script output."));
         }
-      } catch {
-        // Not a complete JSON yet, keep waiting
+      } else {
+        console.error(`Python script exited with code ${code}: ${stderr}`);
+        reject(new Error(`Python script failed: ${stderr}`));
       }
     });
-    
-    python.stderr.on('data', (data) => {
-      errorOutput += data.toString();
-      // Log stderr but don't fail on it (Python server logs to stderr)
-      console.log('[Python stderr]:', data.toString());
-    });
-    
-    python.on('error', (err) => {
-      clearTimeout(timeoutHandle);
-      reject(new Error(`Failed to start Python process: ${err.message}`));
-    });
-    
-    python.on('close', (code) => {
-      clearTimeout(timeoutHandle);
-      if (!responseReceived) {
-        if (code !== 0) {
-          reject(new Error(
-            `Python process exited with code ${code} for method "${method}". ` +
-            `Error: ${errorOutput}`
-          ));
-        } else {
-          reject(new Error(
-            `Python process closed without response for method "${method}". ` +
-            `Output: ${output}`
-          ));
-        }
-      }
-    });
-    
-    // Send the request
-    const request = JSON.stringify({
-      id: 1,
-      method: method,
-      arguments: args
-    }) + '\n';
-    
-    python.stdin.write(request);
-    python.stdin.end();
   });
 }
-
-
