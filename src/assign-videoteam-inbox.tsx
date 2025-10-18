@@ -442,6 +442,7 @@ export default function InboxCheck() {
               assigningToast.message = `${message.name} → ${ownerName}`;
 
               pop();
+              await new Promise(resolve => setTimeout(resolve, 2000));
               await loadInboxMessages();
             } catch (error) {
               assigningToast.style = Toast.Style.Failure;

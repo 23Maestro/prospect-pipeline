@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/Users/singleton23/.pyenv/shims/python3
 """Pure REST API client for NPID Dashboard - No Selenium"""
 
 import requests
@@ -571,6 +571,109 @@ class NPIDAPIClient:
             }
 
 
+    def get_video_progress_page(self, athlete_name: str) -> str:
+        """Gets the HTML content of the video progress page for a given athlete."""
+        self.ensure_authenticated()
+
+        logging.info(f"Searching for athlete: {athlete_name}")
+        players = self.search_player(athlete_name)
+        if not players:
+            raise Exception(f"No athlete found with name: {athlete_name}")
+
+        player = players[0]
+        player_id = player['player_id']
+        logging.info(f"Found player {player['name']} with ID: {player_id}")
+
+        # NOTE: This is an assumed URL structure for the video progress page.
+        # The actual URL may be different.
+        video_progress_url = f"{self.base_url}/videoteammsg/videomailprogress/{player_id}"
+
+        resp = self.session.get(video_progress_url)
+        resp.raise_for_status()
+
+        return resp.text
+
+    def get_page_content(self, url: str) -> str:
+        """Gets the HTML content of a given URL."""
+        self.ensure_authenticated()
+        resp = self.session.get(url)
+        resp.raise_for_status()
+        return resp.text
+
+    def send_email_to_athlete(self, athlete_name: str, template_name: str) -> Dict[str, Any]:
+        """Sends an email to an athlete using a specified template."""
+        self.ensure_authenticated()
+
+        logging.info(f"Searching for athlete: {athlete_name}")
+        players = self.search_player(athlete_name)
+        if not players:
+            raise Exception(f"No athlete found with name: {athlete_name}")
+
+        player = players[0]
+        player_id = player['player_id']
+        logging.info(f"Found player {player['name']} with ID: {player_id}")
+
+        # Get the email templates for the athlete
+        resp = self.session.get(f"{self.base_url}/rulestemplates/template/videotemplates?id={player_id}")
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        templates = {option.text.strip(): option.get('value') for option in soup.select('option')}
+
+        template_id = templates.get(template_name)
+        if not template_id:
+            raise Exception(f"Template '{template_name}' not found for athlete {athlete_name}")
+
+        # Get the template data (subject and body)
+        resp = self.session.post(
+            f"{self.base_url}/admin/templatedata",
+            data={"tmpl": template_id, "_token": self._get_csrf_token(), "athlete_id": player_id},
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+        resp.raise_for_status()
+        template_data = resp.json()
+
+        # Send the email
+        email_payload = {
+            "_token": self._get_csrf_token(),
+            "notification_type_id": "1",
+            "notification_to_type_id": "1",
+            "notification_to_id": player_id,
+            "notification_from": template_data.get('sender_name', 'James Holcomb'),
+            "notification_from_email": template_data.get('sender_email', 'jholcomb@nationalpid.com'),
+            "notification_subject": template_data.get('templatesubject', ''),
+            "notification_message": template_data.get('templatedescription', ''),
+            "includemysign": "includemysign",
+        }
+
+        resp = self.session.post(
+            f"{self.base_url}/admin/addnotification",
+            data=email_payload,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+
+        resp.raise_for_status()
+
+        if "Email Sent" in resp.text:
+            logging.info(f"Successfully sent email to {athlete_name} with template {template_name}")
+            return {'success': True}
+        else:
+            logging.warning(f"Failed to send email: {resp.text}")
+            return {'success': False, 'error': resp.text}
+
+    def get_athletes_from_video_progress_page(self, html_content: str) -> List[str]:
+        """Parses the HTML of the video progress page to extract athlete names."""
+        soup = BeautifulSoup(html_content, 'html.parser')
+        athlete_names = []
+        table = soup.find('table', {'class': 'table'})
+        if table:
+            for row in table.find_all('tr')[1:]:  # Skip header row
+                cells = row.find_all('td')
+                if len(cells) > 0:
+                    athlete_name = cells[0].text.strip()
+                    if athlete_name:
+                        athlete_names.append(athlete_name)
+        return athlete_names
+
 def main():
     """CLI interface for testing"""
     if len(sys.argv) < 2:
@@ -578,7 +681,8 @@ def main():
         print("\nAvailable methods:")
         print("  login, get_inbox_threads, get_message_detail, get_assignment_modal, "
               "assign_thread, search_contacts, search_player, get_athlete_details, "
-              "update_video_profile")
+              "update_video_profile, get_video_progress_page, get_page_content, "
+              "send_email_to_athlete, get_athletes_from_video_progress_page")
         sys.exit(1)
     method = sys.argv[1]
     args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
@@ -625,6 +729,19 @@ def main():
                 args['player_id'], args['youtube_link'], args['season'], args['video_type']
             )
             print(json.dumps(result))
+        elif method == 'get_video_progress_page':
+            html_content = client.get_video_progress_page(args['athlete_name'])
+            print(html_content)
+        elif method == 'get_page_content':
+            html_content = client.get_page_content(args['url'])
+            print(html_content)
+        elif method == 'send_email_to_athlete':
+            result = client.send_email_to_athlete(args['athlete_name'], args['template_name'])
+            print(json.dumps(result))
+        elif method == 'get_athletes_from_video_progress_page':
+            html_content = client.get_page_content("https://dashboard.nationalpid.com/videoteammsg/videomailprogress")
+            athlete_names = client.get_athletes_from_video_progress_page(html_content)
+            print(json.dumps(athlete_names))
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))
             sys.exit(1)
