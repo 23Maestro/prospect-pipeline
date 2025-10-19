@@ -1,5 +1,6 @@
 import { spawn } from "child_process";
 
+const PYTHON_PATH = "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3";
 const PYTHON_SERVER_PATH = "/Users/singleton23/Raycast/prospect-pipeline/src/python/npid_api_client.py";
 
 export async function callPythonServer<T>(
@@ -7,21 +8,27 @@ export async function callPythonServer<T>(
   args: Record<string, unknown> = {}
 ): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const command = `python3 ${PYTHON_SERVER_PATH} ${method} '${JSON.stringify(args)}'`;
-    const process = spawn(command, { shell: true, env: process.env });
+    const command = `${PYTHON_PATH} ${PYTHON_SERVER_PATH} ${method} '${JSON.stringify(args)}'`;
+    const childProcess = spawn(command, {
+      shell: true,
+      env: {
+        ...process.env,
+        PATH: process.env.PATH || '/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin',
+      }
+    });
 
     let stdout = "";
     let stderr = "";
 
-    process.stdout.on("data", (data) => {
+    childProcess.stdout.on("data", (data) => {
       stdout += data.toString();
     });
 
-    process.stderr.on("data", (data) => {
+    childProcess.stderr.on("data", (data) => {
       stderr += data.toString();
     });
 
-    process.on("close", (code) => {
+    childProcess.on("close", (code) => {
       if (code === 0) {
         try {
           const result = JSON.parse(stdout);
@@ -36,7 +43,7 @@ export async function callPythonServer<T>(
       }
     });
 
-    process.on('error', (err) => {
+    childProcess.on('error', (err) => {
       console.error('Spawn error:', err);
       reject(err);
     });

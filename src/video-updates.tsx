@@ -16,6 +16,8 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       thirdPosition: player.thirdposition,
       paidStatus: player.paid_status,
       athleteName: player.athletename,
+      name: player.athletename, // Add name field
+      player_id: player.athlete_id?.toString(), // Add player_id field
       id: player.id,
       videoProgress: player.video_progress,
       videoProgressStatus: player.video_progress_status,
@@ -23,15 +25,20 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       videoDueDate: player.video_due_date,
       videoDueDateSort: player.video_due_date_sort,
       sportName: player.sport_name,
+      sport: player.sport_name?.toLowerCase().replace(/'/g, '').replace(/ /g, '-'), // Add sport alias
       gradYear: player.grad_year,
+      grad_year: player.grad_year, // Add both formats
       highSchoolCity: player.high_school_city,
+      city: player.high_school_city, // Add city field
       highSchoolState: player.high_school_state,
+      state: player.high_school_state, // Add state field
       highSchool: player.high_school,
+      high_school: player.high_school, // Add both formats
       athleteId: player.athlete_id,
       assignedVideoEditor: player.assignedvideoeditor,
       assignedDate: player.assigned_date,
       assignedDateSort: player.assigned_date_sort,
-      athlete_main_id: player.athlete_main_id,
+      athlete_main_id: player.athlete_main_id?.toString() || player.athlete_id?.toString(),
     }));
   } catch (error) {
     console.error('NPID video progress search error:', error);
@@ -106,6 +113,8 @@ interface NPIDPlayer {
   thirdPosition: string;
   paidStatus: string;
   athleteName: string;
+  name: string; // Display name
+  player_id: string; // For API calls
   id: number;
   videoProgress: string;
   videoProgressStatus: string;
@@ -113,10 +122,15 @@ interface NPIDPlayer {
   videoDueDate: string;
   videoDueDateSort: number;
   sportName: string;
+  sport: string; // Sport alias for API
   gradYear: number;
+  grad_year: number; // Both formats
   highSchoolCity: string;
+  city: string; // Short name
   highSchoolState: string;
+  state: string; // Short name
   highSchool: string;
+  high_school: string; // Both formats
   athleteId: number;
   assignedVideoEditor: string;
   assignedDate: string;
@@ -267,17 +281,23 @@ export default function VideoUpdatesCommand(
         }
         return undefined;
       },
-      season: FormValidation.Required,
+      season: (value) => {
+        // Season is optional - gracefully handle if not available
+        return undefined;
+      },
       videoType: FormValidation.Required,
     },
-    initialValues: props.draftValues || {
-      athleteName: '',
-      youtubeLink: '',
-      season: '',
-      videoType: 'Highlights',
-      playerId: '',
-      searchMode: 'name',
-      notionTaskId: '',
+    initialValues: {
+      athleteName: props.draftValues?.athleteName || '',
+      youtubeLink: props.draftValues?.youtubeLink || '',
+      season: props.draftValues?.season || '',
+      videoType: props.draftValues?.videoType &&
+                 ['Full Season Highlight', 'Partial Season Highlight', 'Single Game Highlight', 'Skills/Training Video'].includes(props.draftValues.videoType)
+                 ? props.draftValues.videoType
+                 : 'Full Season Highlight',
+      playerId: props.draftValues?.playerId || '',
+      searchMode: props.draftValues?.searchMode || 'name',
+      notionTaskId: '', // Always start fresh - let user select from current active tasks
     },
   });
 
@@ -386,6 +406,7 @@ export default function VideoUpdatesCommand(
       }
     >
       <Form.Dropdown title="Student Athlete (Active)" {...itemProps.notionTaskId} placeholder="Select from Notion">
+        <Form.Dropdown.Item value="" title="(Skip - Enter name manually)" />
         {activeTasks.map((t) => (
           <Form.Dropdown.Item key={t.id} value={t.id} title={t.name || 'Untitled'} />
         ))}
@@ -450,18 +471,22 @@ export default function VideoUpdatesCommand(
       />
 
       <Form.Dropdown title="Video Type" {...itemProps.videoType}>
-        <Form.Dropdown.Item value="Highlights" title="Highlights" />
-        <Form.Dropdown.Item value="Skills" title="Skills" />
-        <Form.Dropdown.Item value="Highlights | Skills" title="Highlights | Skills" />
+        <Form.Dropdown.Item value="Full Season Highlight" title="Full Season Highlight" />
+        <Form.Dropdown.Item value="Partial Season Highlight" title="Partial Season Highlight" />
+        <Form.Dropdown.Item value="Single Game Highlight" title="Single Game Highlight" />
+        <Form.Dropdown.Item value="Skills/Training Video" title="Skills/Training Video" />
       </Form.Dropdown>
 
       <Form.Dropdown title="Season" {...itemProps.season}>
         {isFetchingSeasons ? (
           <Form.Dropdown.Item value="" title="Loading seasons..." />
         ) : (
-          seasons.map((s) => (
-            <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
-          ))
+          <>
+            <Form.Dropdown.Item value="" title="(Skip - No Season)" />
+            {seasons.map((s) => (
+              <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
+            ))}
+          </>
         )}
       </Form.Dropdown>
     </Form>
