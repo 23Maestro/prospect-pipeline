@@ -1,4 +1,4 @@
-#!/Users/singleton23/.pyenv/shims/python3
+#!/usr/bin/env python3
 """
 Email automation script for Raycast extension
 Bridges Raycast UI to NPIDAPIClient REST API
@@ -7,8 +7,8 @@ import sys
 import os
 import argparse
 
-# Add mcp-servers directory to path to import NPIDAPIClient
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'mcp-servers/npid-native'))
+# Add src/python directory to path to import NPIDAPIClient
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'src/python'))
 
 from npid_api_client import NPIDAPIClient
 

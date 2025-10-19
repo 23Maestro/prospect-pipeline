@@ -1,4 +1,4 @@
-#!/Users/singleton23/.pyenv/shims/python3
+#!/usr/bin/env python3
 """Pure REST API client for NPID Dashboard - No Selenium"""
 
 import requests
@@ -515,6 +515,75 @@ class NPIDAPIClient:
         logging.info(f"✅ Retrieved details for {details['name']} ({player_id})")
         return details
 
+    def get_add_video_form(
+        self, athlete_id: str, sport_alias: str, athlete_main_id: str
+    ) -> Dict[str, Any]:
+        """Fetch the add video form data for a specific athlete."""
+        self.ensure_authenticated()
+        params = {
+            'athleteid': athlete_id,
+            'sport_alias': sport_alias,
+            'athlete_main_id': athlete_main_id
+        }
+        resp = self.session.get(
+            f"{self.base_url}/template/template/addvideoform",
+            params=params,
+            headers={
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': '*/*'
+            }
+        )
+        resp.raise_for_status()
+
+        # Parse the HTML form
+        soup = BeautifulSoup(resp.text, 'html.parser')
+
+        # Extract CSRF token
+        csrf_token = ''
+        token_input = soup.find('input', {'name': '_token'})
+        if token_input:
+            csrf_token = token_input.get('value', '')
+
+        # Extract form action URL
+        form = soup.find('form')
+        form_action = form.get('action', '') if form else ''
+
+        # Extract available seasons
+        seasons = []
+        season_select = soup.find('select', {'id': 'newVideoSeason'})
+        if season_select:
+            for option in season_select.find_all('option'):
+                value = option.get('value', '')
+                text = option.text.strip()
+                if value and value != '':
+                    seasons.append({
+                        'value': value,
+                        'label': text,
+                        'season': option.get('season', ''),
+                        'school_added': option.get('school_added', '')
+                    })
+
+        # Extract video types
+        video_types = []
+        video_type_select = soup.find('select', {'id': 'videoType'})
+        if video_type_select:
+            for option in video_type_select.find_all('option'):
+                value = option.get('value', '')
+                text = option.text.strip()
+                if value and value != '':
+                    video_types.append({'value': value, 'label': text})
+
+        return {
+            'csrf_token': csrf_token,
+            'form_action': form_action,
+            'seasons': seasons,
+            'video_types': video_types,
+            'sport_alias': sport_alias,
+            'athlete_id': athlete_id,
+            'athlete_main_id': athlete_main_id,
+            'html': resp.text  # Include raw HTML for debugging
+        }
+
     def get_video_seasons(
         self, athlete_id: str, sport_alias: str, video_type: str, athlete_main_id: str
     ) -> List[Dict[str, Any]]:
@@ -674,6 +743,43 @@ class NPIDAPIClient:
                         athlete_names.append(athlete_name)
         return athlete_names
 
+    def search_video_progress(self, first_name: str, last_name: str) -> List[Dict[str, Any]]:
+        """Search for players in the video progress workflow."""
+        self.ensure_authenticated()
+        csrf_token = self._get_csrf_token()
+        data = {
+            '_token': csrf_token,
+            'first_name': first_name,
+            'last_name': last_name
+        }
+        resp = self.session.post(
+            f"{self.base_url}/videoteammsg/videoprogress",
+            data=data
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_video_progress_stage(self, athlete_id: str, stage: str) -> Dict[str, Any]:
+        """Update the stage for an athlete in video progress."""
+        self.ensure_authenticated()
+        csrf_token = self._get_csrf_token()
+        data = {
+            '_token': csrf_token,
+            'athlete_id': athlete_id,
+            'stage': stage
+        }
+        resp = self.session.post(
+            f"{self.base_url}/videoteammsg/updatestage",
+            data=data,
+            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+        )
+        if resp.status_code == 200:
+            logging.info(f"✅ Updated stage to '{stage}' for athlete {athlete_id}")
+            return {'success': True, 'athlete_id': athlete_id, 'stage': stage}
+        else:
+            logging.warning(f"⚠️  Stage update failed: {resp.status_code}")
+            return {'success': False, 'error': f"HTTP {resp.status_code}"}
+
 def main():
     """CLI interface for testing"""
     if len(sys.argv) < 2:
@@ -681,8 +787,9 @@ def main():
         print("\nAvailable methods:")
         print("  login, get_inbox_threads, get_message_detail, get_assignment_modal, "
               "assign_thread, search_contacts, search_player, get_athlete_details, "
-              "update_video_profile, get_video_progress_page, get_page_content, "
-              "send_email_to_athlete, get_athletes_from_video_progress_page")
+              "get_add_video_form, update_video_profile, get_video_progress_page, get_page_content, "
+              "send_email_to_athlete, get_athletes_from_video_progress_page, search_video_progress, "
+              "update_video_progress_stage")
         sys.exit(1)
     method = sys.argv[1]
     args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
@@ -724,6 +831,11 @@ def main():
             player_id = args['player_id']
             details = client.get_athlete_details(player_id)
             print(json.dumps(details))
+        elif method == 'get_add_video_form':
+            result = client.get_add_video_form(
+                args['athlete_id'], args['sport_alias'], args['athlete_main_id']
+            )
+            print(json.dumps(result))
         elif method == 'update_video_profile':
             result = client.update_video_profile(
                 args['player_id'], args['youtube_link'], args['season'], args['video_type']
@@ -742,6 +854,12 @@ def main():
             html_content = client.get_page_content("https://dashboard.nationalpid.com/videoteammsg/videomailprogress")
             athlete_names = client.get_athletes_from_video_progress_page(html_content)
             print(json.dumps(athlete_names))
+        elif method == 'search_video_progress':
+            result = client.search_video_progress(args['first_name'], args['last_name'])
+            print(json.dumps(result))
+        elif method == 'update_video_progress_stage':
+            result = client.update_video_progress_stage(args['athlete_id'], args['stage'])
+            print(json.dumps(result))
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))
             sys.exit(1)

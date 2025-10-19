@@ -49,7 +49,8 @@
     "@raycast/utils": "^2.2.1",
     "@supabase/supabase-js": "^2.58.0",
     "date-fns": "^4.1.0",
-    "playwright": "^1.55.1"
+    "playwright": "^1.55.1",
+    "python-shell": "^5.0.0"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.1.1",

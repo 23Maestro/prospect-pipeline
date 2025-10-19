@@ -4,39 +4,38 @@ import { useForm, FormValidation } from '@raycast/utils';
 import { Client } from '@notionhq/client';
 import { callPythonServer } from './lib/python-server-client';
 
-async function searchNPIDPlayer(query: string): Promise<NPIDPlayer[]> {
+async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
   try {
-    const result = await callPythonServer('search_player', { query }) as any;
-    if (result.status === 'ok') {
-      return result.results || [];
-    }
-    return [];
+    const nameParts = query.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const results = await callPythonServer<any[]>('search_video_progress', { first_name: firstName, last_name: lastName });
+    return results.map(player => ({
+      primaryPosition: player.primaryposition,
+      secondaryPosition: player.secondaryposition,
+      thirdPosition: player.thirdposition,
+      paidStatus: player.paid_status,
+      athleteName: player.athletename,
+      id: player.id,
+      videoProgress: player.video_progress,
+      videoProgressStatus: player.video_progress_status,
+      stage: player.stage,
+      videoDueDate: player.video_due_date,
+      videoDueDateSort: player.video_due_date_sort,
+      sportName: player.sport_name,
+      gradYear: player.grad_year,
+      highSchoolCity: player.high_school_city,
+      highSchoolState: player.high_school_state,
+      highSchool: player.high_school,
+      athleteId: player.athlete_id,
+      assignedVideoEditor: player.assignedvideoeditor,
+      assignedDate: player.assigned_date,
+      assignedDateSort: player.assigned_date_sort,
+      athlete_main_id: player.athlete_main_id,
+    }));
   } catch (error) {
-    console.error('NPID search error:', error);
+    console.error('NPID video progress search error:', error);
     return [];
-  }
-}
-
-async function getNPIDPlayerDetails(playerId: string): Promise<NPIDPlayer | null> {
-  try {
-    const result = await callPythonServer('get_athlete_details', { player_id: playerId }) as any;
-    if (result.status === 'ok' && result.data) {
-      const data = result.data;
-      return {
-        player_id: playerId,
-        name: data.name || 'Unknown Player',
-        grad_year: data.grad_year || '',
-        high_school: data.high_school || '',
-        city: data.location ? data.location.split(',')[0]?.trim() : '',
-        state: data.location ? data.location.split(',')[1]?.trim() : '',
-        positions: data.positions || '',
-        sport: data.sport || ''
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error('NPID player details error:', error);
-    return null;
   }
 }
 
@@ -102,14 +101,27 @@ interface VideoUpdateFormValues {
 }
 
 interface NPIDPlayer {
-  player_id: string;
-  name: string;
-  grad_year: string;
-  high_school: string;
-  city: string;
-  state: string;
-  positions: string;
-  sport: string;
+  primaryPosition: string;
+  secondaryPosition: string;
+  thirdPosition: string;
+  paidStatus: string;
+  athleteName: string;
+  id: number;
+  videoProgress: string;
+  videoProgressStatus: string;
+  stage: string;
+  videoDueDate: string;
+  videoDueDateSort: number;
+  sportName: string;
+  gradYear: number;
+  highSchoolCity: string;
+  highSchoolState: string;
+  highSchool: string;
+  athleteId: number;
+  assignedVideoEditor: string;
+  assignedDate: string;
+  assignedDateSort: number;
+  athlete_main_id?: string;
 }
 
 export default function VideoUpdatesCommand(
@@ -152,6 +164,7 @@ export default function VideoUpdatesCommand(
         toast.message = `Updating video for ${athleteName} (ID: ${playerId})`;
 
         try {
+          // Step 1: Upload video
           const result = await callPythonServer('update_video_profile', {
             player_id: playerId,
             youtube_link: formValues.youtubeLink,
@@ -161,8 +174,54 @@ export default function VideoUpdatesCommand(
 
           if (result.status === 'ok' && result.data?.success) {
             toast.style = Toast.Style.Success;
-            toast.title = 'Video Updated Successfully';
-            toast.message = `Video added to ${athleteName}\'s NPID profile`;
+            toast.title = 'Video Uploaded!';
+            toast.message = `Sending email and updating stage...`;
+
+            // Step 2: Send "Editing Done" email
+            try {
+              toast.message = `Sending "Editing Done" email...`;
+              const emailResult = await callPythonServer('send_email_to_athlete', {
+                athlete_name: athleteName,
+                template_name: 'Editing Done'
+              }) as any;
+
+              if (emailResult.status === 'ok' && emailResult.data?.success) {
+                toast.message = `Email sent! Updating stage to Done...`;
+
+                // Step 3: Update stage to "Done"
+                try {
+                  const stageResult = await callPythonServer('update_video_progress_stage', {
+                    athlete_id: playerId,
+                    stage: 'Done'
+                  }) as any;
+
+                  if (stageResult.status === 'ok' && stageResult.data?.success) {
+                    toast.style = Toast.Style.Success;
+                    toast.title = 'All Steps Complete!';
+                    toast.message = `✅ Video uploaded\n✅ Email sent\n✅ Stage updated to Done`;
+                  } else {
+                    toast.style = Toast.Style.Success;
+                    toast.title = 'Video & Email Complete';
+                    toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Stage update failed`;
+                  }
+                } catch (stageError) {
+                  console.error('Stage update error:', stageError);
+                  toast.style = Toast.Style.Success;
+                  toast.title = 'Video & Email Complete';
+                  toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Stage update failed`;
+                }
+              } else {
+                toast.style = Toast.Style.Success;
+                toast.title = 'Video Uploaded';
+                toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
+              }
+            } catch (emailError) {
+              console.error('Email send error:', emailError);
+              toast.style = Toast.Style.Success;
+              toast.title = 'Video Uploaded';
+              toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
+            }
+
             reset();
             setSelectedPlayer(null);
             setSearchResults([]);
@@ -256,7 +315,7 @@ export default function VideoUpdatesCommand(
       if (values.athleteName && values.athleteName.length > 2 && values.searchMode === 'name') {
         setIsSearching(true);
         try {
-          const results = await searchNPIDPlayer(values.athleteName);
+          const results = await searchVideoProgressPlayer(values.athleteName);
           setSearchResults(results);
           if (results.length > 0) {
             setSelectedPlayer(results[0]);
@@ -275,20 +334,6 @@ export default function VideoUpdatesCommand(
     const timeoutId = setTimeout(searchPlayers, 500); // Debounce search
     return () => clearTimeout(timeoutId);
   }, [values.athleteName, values.searchMode]);
-
-  // Get player details when player ID is provided
-  useEffect(() => {
-    const getPlayerDetails = async () => {
-      if (values.playerId && values.searchMode === 'id') {
-        const player = await getNPIDPlayerDetails(values.playerId);
-        setSelectedPlayer(player);
-      } else {
-        setSelectedPlayer(null);
-      }
-    };
-
-    getPlayerDetails();
-  }, [values.playerId, values.searchMode]);
 
   // Fetch seasons when video type or selected player changes
   useEffect(() => {
