@@ -34,33 +34,42 @@ A comprehensive Raycast extension that streamlines the video editing pipeline fo
 
 ## 🏗️ Architecture
 
-### **Core Components**
+### **Project Structure**
 
 ```
-src/
-├── active-tasks.tsx              # Notion task browser
-├── assign-videoteam-inbox.tsx    # NPID inbox assignment
-├── read-videoteam-inbox.tsx      # Assigned message reader
-├── email-student-athletes.tsx    # Email automation
-├── video-updates.tsx             # Video profile updates
-├── bridge/
-│   └── mcpClient.ts              # MCP Gateway integration
-├── lib/
-│   ├── npid-mcp-adapter.ts       # NPID API adapter
-│   └── npid-mcp.ts               # NPID MCP client
-├── tools/
-│   ├── generate-content.ts       # Content generation
-│   ├── npid-inbox.ts             # NPID inbox tools
-│   └── reconnect.ts              # Session management
-└── types/
-    ├── video-team.ts             # Video team types
-    └── workflow.ts               # Workflow types
+prospect-pipeline/
+├── src/                          # Raycast Extension
+│   ├── active-tasks.tsx          # Notion task browser
+│   ├── assign-videoteam-inbox.tsx # NPID inbox assignment
+│   ├── read-videoteam-inbox.tsx  # Assigned message reader
+│   ├── email-student-athletes.tsx # Email automation
+│   ├── video-updates.tsx         # Video profile updates
+│   ├── lib/
+│   │   └── python-server-client.ts # Python REST API client
+│   ├── python/
+│   │   ├── npid_api_client.py    # NPID REST API (400-day sessions)
+│   │   ├── npid_email_automator.py
+│   │   └── npid_video_progress_sync.py
+│   ├── tools/
+│   │   ├── generate-content.ts   # Content generation
+│   │   └── npid-inbox.ts         # NPID inbox tools
+│   └── types/
+│       ├── video-team.ts         # Video team types
+│       └── workflow.ts           # Workflow types
+├── web/                          # Next.js 15 Web Dashboard
+│   └── src/app/                  # App Router pages
+├── docs/                         # Documentation & specs
+├── assets/                       # Images and static files
+├── scripts/                      # Build & deployment scripts
+└── supabase/                     # Database schema
 ```
 
-### **MCP Servers**
-- **NPID Native**: Python-based NPID dashboard automation
-- **Notion Bridge**: Notion API integration
-- **Video Team Bridge**: Video team workflow automation
+### **Technology Stack**
+- **Raycast Extension**: TypeScript, React
+- **NPID Integration**: Python REST API (requests + BeautifulSoup)
+- **Web Dashboard**: Next.js 15, React 19, Tailwind CSS
+- **Database**: Supabase (PostgreSQL)
+- **Task Management**: Notion API
 
 
 
