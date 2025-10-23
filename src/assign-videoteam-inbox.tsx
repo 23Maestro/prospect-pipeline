@@ -21,8 +21,6 @@ import {
   fetchMessageDetail,
   resolveContactsForAssignment,
 } from './lib/npid-mcp-adapter';
-import { supabase } from './lib/supabase-client';
-import { callPythonServer } from './lib/python-server-client';
 import {
   NPIDInboxMessage,
   VideoTeamAssignmentModal,

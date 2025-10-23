@@ -281,7 +281,7 @@ export default function VideoUpdatesCommand(
         }
         return undefined;
       },
-      season: (value) => {
+      season: () => {
         // Season is optional - gracefully handle if not available
         return undefined;
       },

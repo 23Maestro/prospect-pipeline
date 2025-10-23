@@ -187,8 +187,10 @@ dist/
 downloads/
 eggs/
 .eggs/
+# Python virtual env lib directories (but not src/lib TypeScript)
 lib/
 lib64/
+!src/lib/
 parts/
 sdist/
 var/

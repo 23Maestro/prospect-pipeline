@@ -10,8 +10,7 @@ import {
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
-import { supabase } from './lib/supabase-client';
-import { fetchInboxThreads, fetchMessageDetail, sendEmailToAthlete } from './lib/npid-mcp-adapter';
+import { fetchInboxThreads, fetchMessageDetail } from './lib/npid-mcp-adapter';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
