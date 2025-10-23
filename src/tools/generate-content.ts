@@ -4,8 +4,9 @@
  * Generates consistent naming/formatting for:
  * - YouTube video titles
  * - Dropbox folder names
+ * - Google Drive folder names (same as Dropbox)
  * - Approved video titles
- * 
+ *
  * Uses Student Athlete properties consistently across Notion and NPID
  */
 
@@ -17,7 +18,7 @@ type Input = {
   highSchool?: string;
   city?: string;
   state?: string;
-  contentType: "youtube-title" | "dropbox-folder" | "approved-video-title";
+  contentType: "youtube-title" | "dropbox-folder" | "google-drive-folder" | "approved-video-title";
   additionalContext?: string;
 };
 
@@ -45,8 +46,10 @@ export default async function tool(input: Input): Promise<string> {
         .join(" | ");
       return parts;
     }
-    case "dropbox-folder": {
+    case "dropbox-folder":
+    case "google-drive-folder": {
       // Example: "AvaJohnson_2026_Soccer_FL"
+      // Same format for both Dropbox and Google Drive
       const pascal = toPascalCase(name);
       const pieces = [pascal, gradYear, sport, state].filter(Boolean).join("_");
       return pieces || pascal || name;
