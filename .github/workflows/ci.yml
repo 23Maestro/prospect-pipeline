@@ -86,12 +86,12 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          cd mcp-servers/npid-native
+          cd src/python
           pip install -r requirements.txt
           pip install flake8 black
-      
+
       - name: Run Python linting
         run: |
-          cd mcp-servers/npid-native
-          flake8 npid_api_client.py --max-line-length=100
-          black --check npid_api_client.py
+          cd src/python
+          flake8 *.py --max-line-length=100 --extend-ignore=E203,W503
+          black --check *.py
