@@ -468,18 +468,29 @@ export default function VideoUpdatesCommand(
         title="YouTube Link"
         placeholder="e.g., https://www.youtube.com/watch?v=..."
         {...itemProps.youtubeLink}
+        disabled={!selectedPlayer}
       />
 
-      <Form.Dropdown title="Video Type" {...itemProps.videoType}>
+      <Form.Dropdown
+        title="Video Type"
+        {...itemProps.videoType}
+        disabled={!values.youtubeLink}
+      >
         <Form.Dropdown.Item value="Full Season Highlight" title="Full Season Highlight" />
         <Form.Dropdown.Item value="Partial Season Highlight" title="Partial Season Highlight" />
         <Form.Dropdown.Item value="Single Game Highlight" title="Single Game Highlight" />
         <Form.Dropdown.Item value="Skills/Training Video" title="Skills/Training Video" />
       </Form.Dropdown>
 
-      <Form.Dropdown title="Season" {...itemProps.season}>
+      <Form.Dropdown
+        title="Season/Team"
+        {...itemProps.season}
+        disabled={!values.videoType}
+      >
         {isFetchingSeasons ? (
           <Form.Dropdown.Item value="" title="Loading seasons..." />
+        ) : seasons.length === 0 ? (
+          <Form.Dropdown.Item value="" title="(No seasons available - Update student profile)" />
         ) : (
           <>
             <Form.Dropdown.Item value="" title="(Skip - No Season)" />

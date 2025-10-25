@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Cache,
   Color,
   Detail,
   Form,
@@ -320,6 +321,7 @@ export default function InboxCheck() {
   const [messages, setMessages] = useState<NPIDInboxMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const { push, pop } = useNavigation();
+  const cache = new Cache();
 
   useEffect(() => {
     void loadInboxMessages();
@@ -329,9 +331,30 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Fetch ONLY unassigned threads (filter on API side)
-      // HARD LIMIT: Never show more than 15 unassigned threads
+      // Check cache first (5 minute TTL)
+      const cached = cache.get('inbox_threads');
+      const cacheTime = cache.get('inbox_threads_time');
+      const now = Date.now();
+      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+      if (cached && cacheTime && (now - parseInt(cacheTime)) < CACHE_TTL) {
+        const threads = JSON.parse(cached) as NPIDInboxMessage[];
+        setMessages(threads);
+        setIsLoading(false);
+        await showToast({
+          style: Toast.Style.Success,
+          title: `Loaded ${threads.length} cached messages`,
+          message: 'From cache (refresh in settings)',
+        });
+        return;
+      }
+
+      // Fetch ONLY unassigned threads
       const threads = await fetchInboxThreads(15, 'unassigned');
+
+      // Update cache
+      cache.set('inbox_threads', JSON.stringify(threads));
+      cache.set('inbox_threads_time', now.toString());
 
       await showToast({
         style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
@@ -357,6 +380,7 @@ export default function InboxCheck() {
     try {
       const { modal: modalData, contacts: preloadedContacts } = await fetchAssignmentModal(
         message.id,
+        message.itemCode,
       );
       const searchValue = modalData.contactSearchValue || message.email || message.name;
       const { contacts, searchForUsed } = await resolveContactsForAssignment(
