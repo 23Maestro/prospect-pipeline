@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 
-const PYTHON_PATH = "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3";
+const PYTHON_PATH = "/Users/singleton23/Raycast/prospect-pipeline/src/python/venv/bin/python3";
 const PYTHON_SERVER_PATH = "/Users/singleton23/Raycast/prospect-pipeline/src/python/npid_api_client.py";
 
 export async function callPythonServer<T>(
