@@ -53,6 +53,13 @@
       "description": "Generate YouTube titles, Dropbox/Google Drive folder names, and approved video titles",
       "mode": "view",
       "icon": "assets/generate-titles.png"
+    },
+    {
+      "name": "sync-notion-backfill",
+      "title": "Sync Video Progress to Notion",
+      "description": "Backfill Notion database with video progress data within a date range",
+      "mode": "view",
+      "icon": "assets/generate-titles.png"
     }
   ],
   "dependencies": {
