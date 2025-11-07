@@ -3,6 +3,8 @@ import { Action, ActionPanel, Form, Toast, showToast, getPreferenceValues } from
 import { useForm } from '@raycast/utils';
 import { Client } from '@notionhq/client';
 import { callVPSBroker } from './lib/vps-broker-adapter';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface SyncFormValues {
   fromDate: string;
@@ -33,6 +35,19 @@ function getNotion() {
   return new Client({ auth: notionToken });
 }
 
+const logFile = path.join(process.env.HOME || '/tmp', 'raycast_logs', 'console.log');
+
+function logToFile(message: string) {
+  try {
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] ${message}\n`;
+    fs.appendFileSync(logFile, logMessage);
+    console.log(message);
+  } catch (error) {
+    console.error('Failed to write to log file:', error);
+  }
+}
+
 async function fetchVideoProgressByDateRange(fromDate: string, toDate: string): Promise<VideoProgressRecord[]> {
   try {
     // Fetch all video progress (no filters initially, we'll filter by date in JS)
@@ -54,7 +69,7 @@ async function fetchVideoProgressByDateRange(fromDate: string, toDate: string): 
       return recordDate >= from && recordDate <= to;
     });
   } catch (error) {
-    console.error('Failed to fetch video progress:', error);
+    logToFile(`❌ Failed to fetch video progress: ${error instanceof Error ? error.message : String(error)}`);
     return [];
   }
 }
@@ -76,7 +91,7 @@ async function findNotionPageByAthleteName(athleteName: string, databaseId: stri
 
     return match || null;
   } catch (error) {
-    console.error(`Failed to query Notion for ${athleteName}:`, error);
+    logToFile(`❌ Failed to query Notion for ${athleteName}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
   }
 }
@@ -84,24 +99,20 @@ async function findNotionPageByAthleteName(athleteName: string, databaseId: stri
 async function updateNotionPage(pageId: string, videoData: VideoProgressRecord) {
   const notion = getNotion();
   try {
-    // Build properties object - preserve Due Date, update everything else
+    // Build properties object - match your actual Notion column names
+    // PRESERVE: Date Due (your manual tracking source of truth)
     const properties: Record<string, any> = {
-      Name: { title: [{ text: { content: videoData.athletename } }] },
-      'Athlete ID': { rich_text: [{ text: { content: String(videoData.athlete_id) } }] },
-      'Primary Position': { rich_text: [{ text: { content: videoData.primaryposition || 'NA' } }] },
-      'Secondary Position': { rich_text: [{ text: { content: videoData.secondaryposition || 'NA' } }] },
-      'Third Position': { rich_text: [{ text: { content: videoData.thirdposition || 'NA' } }] },
-      'Video Progress': { status: { name: videoData.video_progress || 'In Progress' } },
+      'Athlete Name': { title: [{ text: { content: videoData.athletename } }] },
+      'Grad Year': { rich_text: [{ text: { content: String(videoData.grad_year || 'N/A') } }] },
+      Sport: { rich_text: [{ text: { content: videoData.sport_name || 'N/A' } }] },
+      City: { rich_text: [{ text: { content: videoData.high_school_city || 'N/A' } }] },
+      State: { rich_text: [{ text: { content: videoData.high_school_state || 'N/A' } }] },
+      'High School': { rich_text: [{ text: { content: videoData.high_school || 'N/A' } }] },
+      Positions: { rich_text: [{ text: { content: [videoData.primaryposition, videoData.secondaryposition, videoData.thirdposition].filter(Boolean).join(' | ') || 'N/A' } }] },
       Stage: { status: { name: videoData.stage || 'In Queue' } },
       Status: { status: { name: videoData.video_progress_status || 'HUDL' } },
       'Assigned Date': { rich_text: [{ text: { content: videoData.assigned_date || 'N/A' } }] },
-      Sport: { rich_text: [{ text: { content: videoData.sport_name || 'N/A' } }] },
-      School: { rich_text: [{ text: { content: videoData.high_school || 'N/A' } }] },
-      City: { rich_text: [{ text: { content: videoData.high_school_city || 'N/A' } }] },
-      State: { rich_text: [{ text: { content: videoData.high_school_state || 'N/A' } }] },
-      'Grad Year': { rich_text: [{ text: { content: String(videoData.grad_year || 'N/A') } }] },
-      'Payment Status': { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
-      'Video Editor': { rich_text: [{ text: { content: videoData.assignedvideoeditor || 'N/A' } }] },
+      Paid: { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
     };
 
     await notion.pages.update({
@@ -111,7 +122,7 @@ async function updateNotionPage(pageId: string, videoData: VideoProgressRecord) 
 
     return true;
   } catch (error) {
-    console.error(`Failed to update Notion page ${pageId}:`, error);
+    logToFile(`❌ Failed to update Notion page ${pageId}: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -120,22 +131,17 @@ async function createNotionPage(videoData: VideoProgressRecord, databaseId: stri
   const notion = getNotion();
   try {
     const properties: Record<string, any> = {
-      Name: { title: [{ text: { content: videoData.athletename } }] },
-      'Athlete ID': { rich_text: [{ text: { content: String(videoData.athlete_id) } }] },
-      'Primary Position': { rich_text: [{ text: { content: videoData.primaryposition || 'NA' } }] },
-      'Secondary Position': { rich_text: [{ text: { content: videoData.secondaryposition || 'NA' } }] },
-      'Third Position': { rich_text: [{ text: { content: videoData.thirdposition || 'NA' } }] },
-      'Video Progress': { status: { name: videoData.video_progress || 'In Progress' } },
+      'Athlete Name': { title: [{ text: { content: videoData.athletename } }] },
+      'Grad Year': { rich_text: [{ text: { content: String(videoData.grad_year || 'N/A') } }] },
+      Sport: { rich_text: [{ text: { content: videoData.sport_name || 'N/A' } }] },
+      City: { rich_text: [{ text: { content: videoData.high_school_city || 'N/A' } }] },
+      State: { rich_text: [{ text: { content: videoData.high_school_state || 'N/A' } }] },
+      'High School': { rich_text: [{ text: { content: videoData.high_school || 'N/A' } }] },
+      Positions: { rich_text: [{ text: { content: [videoData.primaryposition, videoData.secondaryposition, videoData.thirdposition].filter(Boolean).join(' | ') || 'N/A' } }] },
       Stage: { status: { name: videoData.stage || 'In Queue' } },
       Status: { status: { name: videoData.video_progress_status || 'HUDL' } },
       'Assigned Date': { rich_text: [{ text: { content: videoData.assigned_date || 'N/A' } }] },
-      Sport: { rich_text: [{ text: { content: videoData.sport_name || 'N/A' } }] },
-      School: { rich_text: [{ text: { content: videoData.high_school || 'N/A' } }] },
-      City: { rich_text: [{ text: { content: videoData.high_school_city || 'N/A' } }] },
-      State: { rich_text: [{ text: { content: videoData.high_school_state || 'N/A' } }] },
-      'Grad Year': { rich_text: [{ text: { content: String(videoData.grad_year || 'N/A') } }] },
-      'Payment Status': { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
-      'Video Editor': { rich_text: [{ text: { content: videoData.assignedvideoeditor || 'N/A' } }] },
+      Paid: { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
     };
 
     await notion.pages.create({
@@ -145,7 +151,7 @@ async function createNotionPage(videoData: VideoProgressRecord, databaseId: stri
 
     return true;
   } catch (error) {
-    console.error(`Failed to create Notion page for ${videoData.athletename}:`, error);
+    logToFile(`❌ Failed to create Notion page for ${videoData.athletename}: ${error instanceof Error ? error.message : String(error)}`);
     return false;
   }
 }
@@ -160,15 +166,21 @@ export default function SyncNotionBackfillCommand() {
       });
 
       try {
+        logToFile(`\n========== SYNC STARTED ==========`);
+        logToFile(`From Date: ${formValues.fromDate}, To Date: ${formValues.toDate}`);
+
         // Fetch video progress records within date range
         const videoRecords = await fetchVideoProgressByDateRange(formValues.fromDate, formValues.toDate);
 
         if (videoRecords.length === 0) {
+          logToFile(`No records found`);
           toast.style = Toast.Style.Failure;
           toast.title = 'No records found';
           toast.message = `No video progress records between ${formValues.fromDate} and ${formValues.toDate}`;
           return;
         }
+
+        logToFile(`Found ${videoRecords.length} records to process`);
 
         const databaseId = '19f4c8bd6c26805b9929dfa8eb290a86';
         let synced = 0;
@@ -182,45 +194,48 @@ export default function SyncNotionBackfillCommand() {
           toast.message = `${i + 1}/${videoRecords.length}: ${record.athletename}`;
 
           try {
-            console.log(`[${i + 1}/${videoRecords.length}] Processing: ${record.athletename}`);
+            logToFile(`[${i + 1}/${videoRecords.length}] Processing: ${record.athletename}`);
 
             // Find existing Notion page
             const existingPage = await findNotionPageByAthleteName(record.athletename, databaseId);
 
             if (existingPage) {
-              console.log(`  ✓ Found existing page for ${record.athletename}`);
+              logToFile(`  ✓ Found existing page for ${record.athletename}`);
               // Update existing page
               const success = await updateNotionPage(existingPage.id, record);
               if (success) {
-                console.log(`  ✅ Updated ${record.athletename}`);
+                logToFile(`  ✅ Updated ${record.athletename}`);
                 synced++;
               } else {
-                console.log(`  ❌ Failed to update ${record.athletename}`);
+                logToFile(`  ❌ Failed to update ${record.athletename}`);
                 failed++;
               }
             } else {
-              console.log(`  ✓ No existing page, creating new for ${record.athletename}`);
+              logToFile(`  ✓ No existing page, creating new for ${record.athletename}`);
               // Create new page
               const success = await createNotionPage(record, databaseId);
               if (success) {
-                console.log(`  ✅ Created ${record.athletename}`);
+                logToFile(`  ✅ Created ${record.athletename}`);
                 synced++;
               } else {
-                console.log(`  ❌ Failed to create ${record.athletename}`);
+                logToFile(`  ❌ Failed to create ${record.athletename}`);
                 failed++;
               }
             }
           } catch (error) {
-            console.error(`❌ Error processing ${record.athletename}:`, error);
+            logToFile(`❌ Error processing ${record.athletename}: ${error instanceof Error ? error.message : String(error)}`);
             failed++;
           }
         }
+
+        logToFile(`========== SYNC COMPLETE ==========`);
+        logToFile(`Synced: ${synced} | Failed: ${failed}\n`);
 
         toast.style = Toast.Style.Success;
         toast.title = '✅ Sync Complete!';
         toast.message = `Synced: ${synced} | Failed: ${failed}`;
       } catch (error) {
-        console.error('Sync error:', error);
+        logToFile(`Sync error: ${error instanceof Error ? error.message : String(error)}`);
         toast.style = Toast.Style.Failure;
         toast.title = 'Sync Failed';
         toast.message = error instanceof Error ? error.message : 'Unknown error occurred';

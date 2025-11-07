@@ -101,6 +101,13 @@
       "description": "The anonymous key for your Supabase project",
       "type": "password",
       "required": true
+    },
+    {
+      "name": "dropboxToken",
+      "title": "Dropbox API Token",
+      "description": "Your Dropbox API token for file request creation",
+      "type": "password",
+      "required": false
     }
   ],
   "scripts": {

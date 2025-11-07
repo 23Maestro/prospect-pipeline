@@ -1,6 +1,7 @@
 import { Action, ActionPanel, Form, Icon, Toast, showToast, Clipboard, popToRoot } from "@raycast/api";
 import { useState } from "react";
 import generateContent from "./tools/generate-content";
+import { createFileRequest } from "./lib/dropbox-adapter";
 
 type FormValues = {
   athleteName: string;
@@ -58,6 +59,48 @@ export default function Command() {
     }
   }
 
+  async function handleCreateDropboxFileRequest(values: FormValues) {
+    if (!values.athleteName?.trim()) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Athlete name is required",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const toast = await showToast({
+        style: Toast.Style.Animated,
+        title: "Creating Dropbox file request...",
+        message: values.athleteName,
+      });
+
+      const result = await createFileRequest(values.athleteName);
+
+      if (result.success) {
+        await Clipboard.copy(result.url || "");
+        toast.style = Toast.Style.Success;
+        toast.title = "✅ Dropbox File Request Created!";
+        toast.message = `Folder: ${result.destination}`;
+        await popToRoot();
+      } else {
+        toast.style = Toast.Style.Failure;
+        toast.title = "Failed to create file request";
+        toast.message = result.error || "Unknown error";
+      }
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Failed to create Dropbox file request",
+        message: error instanceof Error ? error.message : "Unknown error",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
   return (
     <Form
       isLoading={isLoading}
@@ -67,6 +110,11 @@ export default function Command() {
             title="Generate & Copy"
             icon={Icon.Clipboard}
             onSubmit={handleSubmit}
+          />
+          <Action.SubmitForm
+            title="Create Dropbox File Request"
+            icon={Icon.Folder}
+            onSubmit={handleCreateDropboxFileRequest}
           />
         </ActionPanel>
       }
