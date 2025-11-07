@@ -62,17 +62,19 @@ async function fetchVideoProgressByDateRange(fromDate: string, toDate: string): 
 async function findNotionPageByAthleteName(athleteName: string, databaseId: string) {
   const notion = getNotion();
   try {
+    // Query all pages and filter in JS (more reliable than Notion filter)
     const response = await notion.databases.query({
       database_id: databaseId,
-      filter: {
-        property: 'Name',
-        title: {
-          equals: athleteName
-        }
-      }
+      page_size: 100
     });
 
-    return response.results.length > 0 ? response.results[0] : null;
+    // Find matching page by name
+    const match = response.results.find((page: any) => {
+      const name = page.properties?.Name?.title?.[0]?.plain_text || '';
+      return name.toLowerCase() === athleteName.toLowerCase();
+    });
+
+    return match || null;
   } catch (error) {
     console.error(`Failed to query Notion for ${athleteName}:`, error);
     return null;
@@ -180,28 +182,36 @@ export default function SyncNotionBackfillCommand() {
           toast.message = `${i + 1}/${videoRecords.length}: ${record.athletename}`;
 
           try {
+            console.log(`[${i + 1}/${videoRecords.length}] Processing: ${record.athletename}`);
+
             // Find existing Notion page
             const existingPage = await findNotionPageByAthleteName(record.athletename, databaseId);
 
             if (existingPage) {
+              console.log(`  ✓ Found existing page for ${record.athletename}`);
               // Update existing page
               const success = await updateNotionPage(existingPage.id, record);
               if (success) {
+                console.log(`  ✅ Updated ${record.athletename}`);
                 synced++;
               } else {
+                console.log(`  ❌ Failed to update ${record.athletename}`);
                 failed++;
               }
             } else {
+              console.log(`  ✓ No existing page, creating new for ${record.athletename}`);
               // Create new page
               const success = await createNotionPage(record, databaseId);
               if (success) {
+                console.log(`  ✅ Created ${record.athletename}`);
                 synced++;
               } else {
+                console.log(`  ❌ Failed to create ${record.athletename}`);
                 failed++;
               }
             }
           } catch (error) {
-            console.error(`Error processing ${record.athletename}:`, error);
+            console.error(`❌ Error processing ${record.athletename}:`, error);
             failed++;
           }
         }
