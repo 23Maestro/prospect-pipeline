@@ -382,6 +382,11 @@ export default function InboxCheck() {
         message.id,
         message.itemCode,
       );
+      
+      if (!modalData) {
+        throw new Error('Failed to load assignment modal data');
+      }
+      
       const searchValue = modalData.contactSearchValue || message.email || message.name;
       const { contacts, searchForUsed } = await resolveContactsForAssignment(
         searchValue,
@@ -413,10 +418,18 @@ export default function InboxCheck() {
         contactPool = [...contactPool, fallbackContact];
       }
 
+      // EDGE CASE: Parent email with NO database match
+      // Open browser for manual parent search
       if (contactPool.length === 0) {
+        const assignUrl = `https://dashboard.nationalpid.com/rulestemplates/template/assignemailtovideoteam?message_id=${message.id}`;
+        
         toast.style = Toast.Style.Failure;
         toast.title = 'No contacts found';
-        toast.message = 'Try searching manually on the website.';
+        toast.message = 'Opening browser - select Parent and click Search';
+        
+        // Open browser directly
+        const { exec } = require('child_process');
+        exec(`open "${assignUrl}"`);
         return;
       }
 
