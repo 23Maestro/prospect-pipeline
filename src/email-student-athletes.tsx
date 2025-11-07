@@ -1,18 +1,26 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
+import { callVPSBroker } from './lib/vps-broker-adapter';
 
 const execAsync = promisify(exec);
 
 interface EmailFormValues {
   athleteName: string;
+  contactId?: string;
   emailTemplate: string;
 }
 
-const emailTemplateOptions = [
+interface EmailTemplate {
+  value: string;
+  label: string;
+}
+
+// Default templates in case API call fails
+const DEFAULT_EMAIL_TEMPLATES = [
   { title: 'Editing Done', value: 'Editing Done' },
   { title: 'Video Instructions', value: 'Video Instructions' },
   { title: 'Hudl Login Request', value: 'Hudl Login Request' },
@@ -29,6 +37,35 @@ const emailTemplateOptions = [
 export default function EmailStudentAthletesCommand(
   props: LaunchProps<{ draftValues: EmailFormValues }>,
 ) {
+  const [emailTemplates, setEmailTemplates] = useState<Array<{ title: string; value: string }>>(DEFAULT_EMAIL_TEMPLATES);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+
+  // Fetch email templates from VPS broker on component mount
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        setIsLoadingTemplates(true);
+        // Fetch templates for a generic contact (templates are usually the same)
+        // If contactId is not available, use a default or fetch from all contacts
+        const templates = await callVPSBroker<EmailTemplate[]>('get_email_templates', { contact_id: '' });
+        if (templates && templates.length > 0) {
+          const formattedTemplates = templates.map((t: any) => ({
+            title: t.label || t.value || 'Unknown Template',
+            value: t.value || t.label || 'Unknown',
+          }));
+          setEmailTemplates(formattedTemplates);
+        }
+      } catch (error) {
+        console.log('Failed to load email templates from VPS broker, using defaults:', error);
+        // Keep default templates if API call fails
+      } finally {
+        setIsLoadingTemplates(false);
+      }
+    };
+
+    loadTemplates();
+  }, []);
+
   const { handleSubmit, itemProps, reset } = useForm<EmailFormValues>({
     async onSubmit(formValues) {
       const toast = await showToast({
@@ -123,8 +160,8 @@ export default function EmailStudentAthletesCommand(
         autoFocus
       />
 
-      <Form.Dropdown title="Email Template" {...itemProps.emailTemplate}>
-        {emailTemplateOptions.map((template) => (
+      <Form.Dropdown title="Email Template" {...itemProps.emailTemplate} isLoading={isLoadingTemplates}>
+        {emailTemplates.map((template) => (
           <Form.Dropdown.Item key={template.value} value={template.value} title={template.title} />
         ))}
       </Form.Dropdown>

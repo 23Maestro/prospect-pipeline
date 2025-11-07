@@ -7,11 +7,13 @@ import {
   showToast,
   useNavigation,
   Detail,
+  Form,
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
 import { supabase } from './lib/supabase-client';
 import { fetchInboxThreads, fetchMessageDetail, sendEmailToAthlete } from './lib/npid-mcp-adapter';
+import { sendReply } from './lib/vps-broker-adapter';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -107,6 +109,70 @@ function EmailContentDetail({
   );
 }
 
+// Reply Form Component
+function ReplyForm({
+  message,
+  onBack,
+}: {
+  message: NPIDInboxMessage;
+  onBack: () => void;
+}) {
+  const [replyText, setReplyText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!replyText.trim()) {
+      await showToast({ style: Toast.Style.Failure, title: 'Reply cannot be empty' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await sendReply(message.id, replyText.trim());
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Reply sent',
+        message: `Message sent to ${message.name}`,
+      });
+      onBack();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to send reply',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isLoading}
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section>
+            <Action.SubmitForm title="Send Reply" onSubmit={handleSubmit} icon={Icon.Check} />
+            <Action title="Cancel" onAction={onBack} icon={Icon.XmarkCircle} />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    >
+      <Form.Description
+        title="Reply To"
+        text={`${message.name} (${message.email})\n\nSubject: RE: ${message.subject}`}
+      />
+      <Form.TextArea
+        id="reply"
+        title="Message"
+        placeholder="Type your reply here..."
+        value={replyText}
+        onChange={setReplyText}
+      />
+    </Form>
+  );
+}
+
 export default function InboxCheck() {
   const [messages, setMessages] = useState<NPIDInboxMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -181,10 +247,7 @@ export default function InboxCheck() {
                   <Action
                     title="Reply to Email"
                     icon={Icon.Reply}
-                    onAction={() => {
-                      // TODO: Implement reply functionality
-                      showToast({ style: Toast.Style.Success, title: 'Reply feature coming soon' });
-                    }}
+                    onAction={() => push(<ReplyForm message={message} onBack={pop} />)}
                   />
                 </ActionPanel.Section>
 

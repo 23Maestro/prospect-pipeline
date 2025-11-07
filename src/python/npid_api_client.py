@@ -248,6 +248,16 @@ class NPIDAPIClient:
             response_text = resp.text.strip()
             data = json.loads(response_text)
             content = data.get('message_plain', '') or data.get('message', '')
+
+            # Strip HTML tags if content contains them
+            if content and ('<html' in content.lower() or '<body' in content.lower() or '<div' in content.lower()):
+                soup = BeautifulSoup(content, 'html.parser')
+                # Remove script and style tags
+                for tag in soup(['script', 'style']):
+                    tag.decompose()
+                # Extract clean text with newline separators
+                content = soup.get_text(separator='\n', strip=True)
+
             reply_patterns = [
                 r'\n\s*On\s+.+?\s+wrote:\s*\n',
                 r'\n\s*On\s+.+?\s+at\s+.+?wrote:\s*\n',

@@ -206,8 +206,19 @@ class VPSBrokerClient:
         )
         resp.raise_for_status()
         try:
-            return resp.json()
-        except:
+            data = resp.json()
+            # Parse HTML body content to clean text
+            if 'body_html' in data and data['body_html']:
+                soup = BeautifulSoup(data['body_html'], 'html.parser')
+                # Remove script and style tags
+                for tag in soup(['script', 'style']):
+                    tag.decompose()
+                # Extract clean text with newline separators
+                clean_text = soup.get_text(separator='\n', strip=True)
+                data['content'] = clean_text
+            return data
+        except Exception as e:
+            logging.error(f"Error parsing thread content: {e}")
             return {}
 
     def get_assign_email_to_team(self, thread_id: str) -> Dict[str, Any]:

@@ -10,9 +10,11 @@ import {
   Toast,
   showToast,
   useNavigation,
+  getPreferenceValues,
 } from '@raycast/api';
 import { format } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
+import { Client } from '@notionhq/client';
 import {
   AssignVideoTeamPayload,
   assignVideoTeamMessage,
@@ -23,6 +25,7 @@ import {
   resolveContactsForAssignment,
 } from './lib/npid-mcp-adapter';
 import { supabase } from './lib/supabase-client';
+import { callVPSBroker } from './lib/vps-broker-adapter';
 import { callPythonServer } from './lib/python-server-client';
 import {
   NPIDInboxMessage,
@@ -31,6 +34,114 @@ import {
   VideoTeamSearchCategory,
 } from './types/video-team';
 import { TaskStage, TaskStatus } from './types/workflow';
+
+/**
+ * Sync assignment to Notion database after successful assignment
+ * Uses video progress data to update or create Notion entry
+ */
+async function syncToNotionAfterAssignment(
+  athleteName: string,
+  athleteId: string,
+  ownerName: string
+): Promise<void> {
+  try {
+    const preferences = getPreferenceValues<{ notionToken: string; notionDatabaseId?: string }>();
+    if (!preferences.notionToken) {
+      console.log('No Notion token configured, skipping sync');
+      return;
+    }
+
+    // Fetch video progress data for this athlete
+    const videoProgress = await callVPSBroker<Array<any>>(
+      'get_video_progress',
+      { filters: { athlete_name: athleteName } }
+    );
+
+    if (!videoProgress || videoProgress.length === 0) {
+      console.log('No video progress data found for athlete');
+      return;
+    }
+
+    // Get the first matching record
+    const athleteData = videoProgress[0];
+
+    // Initialize Notion client
+    const notion = new Client({ auth: preferences.notionToken });
+
+    // Get the database ID - this should be configurable or from the Notion API
+    // For now, use the one from video-updates.tsx pattern
+    const databaseId = preferences.notionDatabaseId || '19f4c8bd6c26805b9929dfa8eb290a86';
+
+    // Query existing pages to check if athlete already exists
+    const existingPages = await notion.databases.query({
+      database_id: databaseId,
+    });
+
+    const existingPage = existingPages.results.find((page: any) => {
+      const props = page.properties;
+      return props.Name?.title?.[0]?.text?.content === athleteName;
+    });
+
+    // Build properties object with ALL fields from video progress
+    const properties: Record<string, any> = {
+      // Core Info
+      Name: { title: [{ text: { content: athleteData.athletename || athleteName } }] },
+      'Athlete ID': { rich_text: [{ text: { content: String(athleteData.athlete_id || athleteId) } }] },
+
+      // Positions
+      'Primary Position': { rich_text: [{ text: { content: athleteData.primaryposition || 'NA' } }] },
+      'Secondary Position': { rich_text: [{ text: { content: athleteData.secondaryposition || 'NA' } }] },
+      'Third Position': { rich_text: [{ text: { content: athleteData.thirdposition || 'NA' } }] },
+
+      // Progress Tracking
+      'Video Progress': { status: { name: athleteData.video_progress || 'In Progress' } },
+      Stage: { status: { name: athleteData.stage || 'In Queue' } },
+      Status: { status: { name: athleteData.video_progress_status || 'HUDL' } },
+
+      // Timeline
+      'Due Date': athleteData.video_due_date
+        ? { rich_text: [{ text: { content: athleteData.video_due_date } }] }
+        : { rich_text: [{ text: { content: 'N/A' } }] },
+      'Assigned Date': { rich_text: [{ text: { content: athleteData.assigned_date || 'N/A' } }] },
+
+      // School/Location
+      Sport: { rich_text: [{ text: { content: athleteData.sport_name || 'N/A' } }] },
+      School: { rich_text: [{ text: { content: athleteData.high_school || 'N/A' } }] },
+      City: { rich_text: [{ text: { content: athleteData.high_school_city || 'N/A' } }] },
+      State: { rich_text: [{ text: { content: athleteData.high_school_state || 'N/A' } }] },
+
+      // Class Info
+      'Grad Year': { rich_text: [{ text: { content: String(athleteData.grad_year || 'N/A') } }] },
+
+      // Payment/Status
+      'Payment Status': { rich_text: [{ text: { content: athleteData.paid_status || 'N/A' } }] },
+
+      // Assignment
+      'Video Editor': { rich_text: [{ text: { content: athleteData.assignedvideoeditor || ownerName } }] },
+    };
+
+    const pageData = { properties };
+
+    if (existingPage) {
+      // Update existing page
+      await notion.pages.update({
+        page_id: existingPage.id,
+        properties: pageData.properties,
+      });
+      console.log(`Updated Notion page for ${athleteName}`);
+    } else {
+      // Create new page
+      await notion.pages.create({
+        parent: { database_id: databaseId },
+        ...pageData,
+      });
+      console.log(`Created Notion page for ${athleteName}`);
+    }
+  } catch (error) {
+    // Log error but don't fail the assignment
+    console.error('Failed to sync to Notion:', error);
+  }
+}
 
 function formatTimestamp(message: NPIDInboxMessage): string {
   if (message.timeStampIso) {
@@ -477,6 +588,14 @@ export default function InboxCheck() {
               assigningToast.style = Toast.Style.Success;
               assigningToast.title = 'Assigned to Video Team';
               assigningToast.message = `${message.name} → ${ownerName}`;
+
+              // Sync to Notion after successful assignment
+              try {
+                await syncToNotionAfterAssignment(message.name, message.id, ownerName);
+              } catch (notionError) {
+                console.error('Notion sync failed:', notionError);
+                // Don't show error to user - this is optional
+              }
 
               pop();
               await new Promise(resolve => setTimeout(resolve, 2000));

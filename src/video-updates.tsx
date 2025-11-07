@@ -3,6 +3,7 @@ import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, getPreference
 import { useForm, FormValidation } from '@raycast/utils';
 import { Client } from '@notionhq/client';
 import { callPythonServer } from './lib/python-server-client';
+import { callVPSBroker, updateVideoStatus } from './lib/vps-broker-adapter';
 
 async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
   try {
@@ -202,27 +203,24 @@ export default function VideoUpdatesCommand(
               if (emailResult.status === 'ok' && emailResult.data?.success) {
                 toast.message = `Email sent! Updating stage to Done...`;
 
-                // Step 3: Update stage to "Done"
+                // Step 3: Update stage to "Done" via VPS broker
                 try {
-                  const stageResult = await callPythonServer('update_video_progress_stage', {
-                    athlete_id: playerId,
-                    stage: 'Done'
-                  }) as any;
+                  const stageResult = await updateVideoStatus(playerId, 'done');
 
-                  if (stageResult.status === 'ok' && stageResult.data?.success) {
+                  if (stageResult.success) {
                     toast.style = Toast.Style.Success;
                     toast.title = 'All Steps Complete!';
-                    toast.message = `✅ Video uploaded\n✅ Email sent\n✅ Stage updated to Done`;
+                    toast.message = `✅ Video uploaded\n✅ Email sent\n✅ Status updated to Done`;
                   } else {
                     toast.style = Toast.Style.Success;
                     toast.title = 'Video & Email Complete';
-                    toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Stage update failed`;
+                    toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
                   }
                 } catch (stageError) {
                   console.error('Stage update error:', stageError);
                   toast.style = Toast.Style.Success;
                   toast.title = 'Video & Email Complete';
-                  toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Stage update failed`;
+                  toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
                 }
               } else {
                 toast.style = Toast.Style.Success;
