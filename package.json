@@ -16,37 +16,43 @@
       "name": "active-tasks",
       "title": "Active Video Tasks",
       "description": "Browse and filter Notion video tasks by status",
-      "mode": "view"
+      "mode": "view",
+      "icon": "assets/active-video-tasks.png"
     },
     {
       "name": "assign-videoteam-inbox",
       "title": "Assign Video Team Inbox",
       "description": "Assign video team inbox threads to yourself",
-      "mode": "view"
+      "mode": "view",
+      "icon": "assets/assign-video-team-inbox.png"
     },
     {
       "name": "read-videoteam-inbox",
       "title": "Read Video Team Inbox",
       "description": "Read video team inbox messages",
-      "mode": "view"
+      "mode": "view",
+      "icon": "assets/read-video-team-inbox.png"
     },
     {
       "name": "email-student-athletes",
       "title": "Email Student Athletes",
       "description": "Send emails to student athletes",
-      "mode": "view"
+      "mode": "view",
+      "icon": "assets/student-athlete-video-edits 2-resized.png"
     },
     {
       "name": "video-updates",
       "title": "Video Updates",
       "description": "Update video information for athletes",
-      "mode": "view"
+      "mode": "view",
+      "icon": "assets/video-updates.png"
     },
     {
       "name": "generate-names",
       "title": "Generate Names",
       "description": "Generate YouTube titles, Dropbox/Google Drive folder names, and approved video titles",
-      "mode": "view"
+      "mode": "view",
+      "icon": "assets/generate-titles.png"
     }
   ],
   "dependencies": {
@@ -55,7 +61,6 @@
     "@raycast/utils": "^2.2.1",
     "@supabase/supabase-js": "^2.58.0",
     "date-fns": "^4.1.0",
-    "playwright": "^1.55.1",
     "python-shell": "^5.0.0"
   },
   "devDependencies": {
