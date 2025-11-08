@@ -65,7 +65,7 @@
   "dependencies": {
     "@notionhq/client": "^2.2.0",
     "@raycast/api": "^1.102.7",
-    "@raycast/utils": "^2.2.1",
+    "@raycast/utils": "^2.2.2",
     "@supabase/supabase-js": "^2.58.0",
     "date-fns": "^4.1.0",
     "python-shell": "^5.0.0"
