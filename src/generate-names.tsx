@@ -16,6 +16,7 @@ type FormValues = {
 
 export default function Command() {
   const [isLoading, setIsLoading] = useState(false);
+  const [contentType, setContentType] = useState<string>("youtube-title");
 
   async function handleSubmit(values: FormValues) {
     if (!values.athleteName?.trim()) {
@@ -106,16 +107,20 @@ export default function Command() {
       isLoading={isLoading}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title="Generate & Copy"
-            icon={Icon.Clipboard}
-            onSubmit={handleSubmit}
-          />
-          <Action.SubmitForm
-            title="Create Dropbox File Request"
-            icon={Icon.Folder}
-            onSubmit={handleCreateDropboxFileRequest}
-          />
+          <ActionPanel.Section>
+            <Action.SubmitForm
+              title="Generate & Copy"
+              icon={Icon.Clipboard}
+              onSubmit={handleSubmit}
+            />
+          </ActionPanel.Section>
+          <ActionPanel.Section title="Dropbox">
+            <Action.SubmitForm
+              title="Create File Request"
+              icon={Icon.Folder}
+              onSubmit={handleCreateDropboxFileRequest}
+            />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     >
@@ -133,7 +138,8 @@ export default function Command() {
       <Form.Dropdown
         id="contentType"
         title="Format"
-        defaultValue="youtube-title"
+        value={contentType}
+        onChange={setContentType}
         info="Select the naming format to generate"
       >
         <Form.Dropdown.Item value="youtube-title" title="YouTube Title" icon={Icon.Video} />
@@ -144,6 +150,7 @@ export default function Command() {
 
       <Form.Separator />
 
+      {/* Grad Year - Required for all formats */}
       <Form.TextField
         id="class"
         title="Grad Year"
@@ -151,37 +158,60 @@ export default function Command() {
         info="Graduation year"
       />
 
+      {/* Sport - Required for all formats */}
       <Form.TextField
         id="sport"
         title="Sport"
         placeholder="Soccer"
       />
 
-      <Form.TextField
-        id="positions"
-        title="Positions"
-        placeholder="Forward | Midfielder"
-        info="Pipe-separated for multi-position (only used in Approved Video Title)"
-      />
+      {/* State - Required for Dropbox/Google Drive folders */}
+      {(contentType === "dropbox-folder" || contentType === "google-drive-folder") && (
+        <Form.TextField
+          id="state"
+          title="State"
+          placeholder="FL"
+          info="2-letter state code"
+        />
+      )}
 
-      <Form.TextField
-        id="highSchool"
-        title="High School"
-        placeholder="Lincoln High School"
-      />
+      {/* Positions - Only for Approved Video Title */}
+      {contentType === "approved-video-title" && (
+        <Form.TextField
+          id="positions"
+          title="Positions"
+          placeholder="Forward | Midfielder"
+          info="Pipe-separated for multi-position"
+        />
+      )}
 
-      <Form.TextField
-        id="city"
-        title="City"
-        placeholder="Miami"
-      />
+      {/* High School - Only for Approved Video Title */}
+      {contentType === "approved-video-title" && (
+        <Form.TextField
+          id="highSchool"
+          title="High School"
+          placeholder="Lincoln High School"
+        />
+      )}
 
-      <Form.TextField
-        id="state"
-        title="State"
-        placeholder="FL"
-        info="2-letter state code"
-      />
+      {/* City - Only for Approved Video Title */}
+      {contentType === "approved-video-title" && (
+        <Form.TextField
+          id="city"
+          title="City"
+          placeholder="Miami"
+        />
+      )}
+
+      {/* State - Also shown for Approved Video Title */}
+      {contentType === "approved-video-title" && (
+        <Form.TextField
+          id="state"
+          title="State"
+          placeholder="FL"
+          info="2-letter state code"
+        />
+      )}
     </Form>
   );
 }
