@@ -25,6 +25,7 @@ interface VideoProgressRecord {
   paid_status: string;
   assignedvideoeditor: string;
   assigned_date: string;
+  video_due_date: string;
   stage: string;
   video_progress_status: string;
   [key: string]: any;
@@ -85,7 +86,7 @@ async function findNotionPageByAthleteName(athleteName: string, databaseId: stri
 
     // Find matching page by name
     const match = response.results.find((page: any) => {
-      const name = page.properties?.Name?.title?.[0]?.plain_text || '';
+      const name = page.properties?.['Athlete Name']?.title?.[0]?.plain_text || '';
       return name.toLowerCase() === athleteName.toLowerCase();
     });
 
@@ -100,7 +101,6 @@ async function updateNotionPage(pageId: string, videoData: VideoProgressRecord) 
   const notion = getNotion();
   try {
     // Build properties object - match your actual Notion column names
-    // PRESERVE: Date Due (your manual tracking source of truth)
     const properties: Record<string, any> = {
       'Athlete Name': { title: [{ text: { content: videoData.athletename } }] },
       'Grad Year': { rich_text: [{ text: { content: String(videoData.grad_year || 'N/A') } }] },
@@ -111,9 +111,13 @@ async function updateNotionPage(pageId: string, videoData: VideoProgressRecord) 
       Positions: { rich_text: [{ text: { content: [videoData.primaryposition, videoData.secondaryposition, videoData.thirdposition].filter(Boolean).join(' | ') || 'N/A' } }] },
       Stage: { status: { name: videoData.stage || 'In Queue' } },
       Status: { status: { name: videoData.video_progress_status || 'HUDL' } },
-      'Assigned Date': { rich_text: [{ text: { content: videoData.assigned_date || 'N/A' } }] },
       Paid: { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
     };
+
+    // Add Date Due if available from video progress
+    if (videoData.video_due_date) {
+      properties['Date Due'] = { date: { start: videoData.video_due_date } };
+    }
 
     await notion.pages.update({
       page_id: pageId,
@@ -140,9 +144,13 @@ async function createNotionPage(videoData: VideoProgressRecord, databaseId: stri
       Positions: { rich_text: [{ text: { content: [videoData.primaryposition, videoData.secondaryposition, videoData.thirdposition].filter(Boolean).join(' | ') || 'N/A' } }] },
       Stage: { status: { name: videoData.stage || 'In Queue' } },
       Status: { status: { name: videoData.video_progress_status || 'HUDL' } },
-      'Assigned Date': { rich_text: [{ text: { content: videoData.assigned_date || 'N/A' } }] },
       Paid: { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
     };
+
+    // Add Date Due if available from video progress
+    if (videoData.video_due_date) {
+      properties['Date Due'] = { date: { start: videoData.video_due_date } };
+    }
 
     await notion.pages.create({
       parent: { database_id: databaseId },
