@@ -77,17 +77,52 @@ async function syncToNotionAfterAssignment(
       database_id: databaseId,
     });
 
-    const existingPage = existingPages.results.find((page: any) => {
-      const props = page.properties;
-      return props.Name?.title?.[0]?.text?.content === athleteName;
-    });
+    // Two-tier matching to prevent duplicates:
+    // Priority 1: Match by PlayerID (if present)
+    // Priority 2: Fall back to Name match (case-insensitive)
+    let existingPage = null;
+
+    // PRIORITY 1: Try to match by PlayerID URL if athlete_id is available
+    if (athleteData.athlete_id) {
+      const playerIdUrl = `https://dashboard.nationalpid.com/profile/contacts/${athleteData.athlete_id}`;
+      existingPage = existingPages.results.find((page: any) => {
+        const pagePlayerId = page.properties?.['PlayerID']?.url || '';
+        return pagePlayerId === playerIdUrl;
+      });
+
+      if (existingPage) {
+        console.log(`Found existing athlete by PlayerID: ${athleteData.athlete_id}`);
+      }
+    }
+
+    // PRIORITY 2: Fall back to Name match (case-insensitive) if no PlayerID match
+    if (!existingPage) {
+      existingPage = existingPages.results.find((page: any) => {
+        const name = page.properties?.['Athlete Name']?.title?.[0]?.plain_text || '';
+        return name.toLowerCase() === athleteName.toLowerCase();
+      });
+
+      if (existingPage) {
+        console.log(`Found existing athlete by Name: ${athleteName}`);
+      }
+    }
 
     // Build properties object with ALL fields from video progress
     const properties: Record<string, any> = {
-      // Core Info
-      Name: { title: [{ text: { content: athleteData.athletename || athleteName } }] },
+      // Core Info - use "Athlete Name" for consistency with sync-notion-backfill.tsx
+      'Athlete Name': { title: [{ text: { content: athleteData.athletename || athleteName } }] },
       'Athlete ID': { rich_text: [{ text: { content: String(athleteData.athlete_id || athleteId) } }] },
+    };
 
+    // Add PlayerID URL if athlete_id is available
+    if (athleteData.athlete_id) {
+      properties['PlayerID'] = {
+        url: `https://dashboard.nationalpid.com/profile/contacts/${athleteData.athlete_id}`
+      };
+    }
+
+    // Add remaining properties
+    Object.assign(properties, {
       // Positions
       'Primary Position': { rich_text: [{ text: { content: athleteData.primaryposition || 'NA' } }] },
       'Secondary Position': { rich_text: [{ text: { content: athleteData.secondaryposition || 'NA' } }] },
@@ -118,7 +153,7 @@ async function syncToNotionAfterAssignment(
 
       // Assignment
       'Video Editor': { rich_text: [{ text: { content: athleteData.assignedvideoeditor || ownerName } }] },
-    };
+    });
 
     const pageData = { properties };
 
