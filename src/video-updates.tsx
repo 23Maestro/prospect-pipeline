@@ -3,7 +3,7 @@ import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, getPreference
 import { useForm, FormValidation } from '@raycast/utils';
 import { Client } from '@notionhq/client';
 import { callPythonServer } from './lib/python-server-client';
-import { callVPSBroker, updateVideoStatus } from './lib/vps-broker-adapter';
+import { callVPSBroker, updateVideoStage } from './lib/vps-broker-adapter';
 
 async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
   try {
@@ -26,7 +26,7 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       videoDueDate: player.video_due_date,
       videoDueDateSort: player.video_due_date_sort,
       sportName: player.sport_name,
-      sport: player.sport_name?.toLowerCase().replace(/'/g, '').replace(/ /g, '-'), // Add sport alias
+      sport: player.sport_alias || player.sport_name?.toLowerCase().replace(/'/g, '').replace(/ /g, '-'),
       gradYear: player.grad_year,
       grad_year: player.grad_year, // Add both formats
       highSchoolCity: player.high_school_city,
@@ -205,7 +205,7 @@ export default function VideoUpdatesCommand(
 
                 // Step 3: Update stage to "Done" via VPS broker
                 try {
-                  const stageResult = await updateVideoStatus(playerId, 'done');
+                  const stageResult = await updateVideoStage(playerId, 'done');
 
                   if (stageResult.success) {
                     toast.style = Toast.Style.Success;
@@ -357,16 +357,32 @@ export default function VideoUpdatesCommand(
   useEffect(() => {
     const fetchSeasons = async () => {
       if (values.videoType && selectedPlayer) {
+        const athleteId = selectedPlayer.player_id;
+        const sportAlias = selectedPlayer.sport;
+        const videoType = values.videoType;
+        let athleteMainId = selectedPlayer.athlete_main_id;
+
+        if (!athleteMainId && athleteId) {
+          const det = await callPythonServer('get_athlete_details', { player_id: athleteId }) as any;
+          athleteMainId = det?.athlete_main_id;
+        }
+
+        if (!athleteId || !sportAlias || !videoType || !athleteMainId) {
+          console.error('Missing params:', { athleteId, sportAlias, videoType, athleteMainId });
+          setSeasons([]);
+          return;
+        }
+
         setIsFetchingSeasons(true);
         try {
           const result = await callPythonServer('get_video_seasons', {
-            athlete_id: selectedPlayer.player_id,
-            sport_alias: selectedPlayer.sport,
-            video_type: values.videoType,
-            athlete_main_id: selectedPlayer.athlete_main_id,
+            athlete_id: athleteId,
+            sport_alias: sportAlias,
+            video_type: videoType,
+            athlete_main_id: athleteMainId,
           }) as any;
           if (result.status === 'ok' && result.data) {
-            setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.label })));
+            setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.title })));
             if (result.data.length > 0) {
               setValue('season', result.data[0].value);
             }

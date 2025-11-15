@@ -488,11 +488,9 @@ class NPIDAPIClient:
         resp = self.session.get(f"{self.base_url}/athlete/{player_id}")
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
-        athlete_main_id_input = soup.select_one('input[name="athlete_main_id"]')
-        athlete_main_id = athlete_main_id_input.get('value', '') if athlete_main_id_input else ''
         details = {
             'player_id': player_id,
-            'athlete_main_id': athlete_main_id,
+            'athlete_main_id': player_id,  # Use player_id as fallback (works for seasons endpoint)
             'name': '', 'grad_year': '', 'high_school': '', 'location': '',
             'positions': '', 'sport': '', 'videos': []
         }
@@ -609,31 +607,66 @@ class NPIDAPIClient:
             f"{self.base_url}/template/videotemplate/videoseasons", params=params
         )
         resp.raise_for_status()
-        return resp.json()
+        # Parse HTML response (endpoint returns <option> elements, not JSON)
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        seasons = []
+        for option in soup.find_all('option'):
+            value = option.get('value', '')
+            text = option.text.strip()
+            if value and value != '':
+                seasons.append({
+                    'value': value,
+                    'title': text,
+                    'season': option.get('season', ''),
+                    'school_added': option.get('school_added', '')
+                })
+        return seasons
 
     def update_video_profile(
-        self, player_id: str, youtube_link: str, season: str, video_type: str
+        self, player_id: str, youtube_link: str, season: str = '', video_type: str = 'Full Season Highlight'
     ) -> Dict[str, Any]:
-        """Update athlete profile with new video"""
+        """
+        Update athlete profile with new video
+
+        Supported video_type values (exact match from form):
+        - "Full Season Highlight"
+        - "Partial Season Highlight"
+        - "Single Game Highlight"
+        - "Skills/Training Video"
+
+        season is optional (edge case: students don't always update their profiles)
+        """
         self.ensure_authenticated()
-        edit_page = self.session.get(f"{self.base_url}/athlete/{player_id}/edit")
+        # Add cache-busting query param for Laravel quirk (sometimes requires manual refresh)
+        import time
+        cache_buster = int(time.time())
+        edit_page = self.session.get(f"{self.base_url}/athlete/{player_id}/edit?_={cache_buster}")
         edit_page.raise_for_status()
         soup = BeautifulSoup(edit_page.text, 'html.parser')
         csrf_elem = soup.select_one('input[name="csrf_token"], input[name="_token"]')
         csrf_token = csrf_elem.get('value', '') if csrf_elem else ''
+
         video_data = {
             'csrf_token': csrf_token,
             'player_id': player_id,
             'video_url': youtube_link,
-            'season': season,
             'video_type': video_type,
             'action': 'add_video'
         }
-        logging.info(f"🎬 Adding {video_type} video for player {player_id} ({season})")
+
+        # Only include season if provided (not required - boss removed requirement)
+        if season:
+            video_data['season'] = season
+
+        season_msg = f"({season})" if season else "(no season - profile not updated)"
+        logging.info(f"🎬 Adding {video_type} video for player {player_id} {season_msg}")
         resp = self.session.post(
             f"{self.base_url}/athlete/{player_id}/videos/add",
             data=video_data,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Cache-Control': 'no-cache'  # Laravel cache quirk
+            }
         )
         if resp.status_code in [200, 302]:
             logging.info(f"✅ Video added successfully to player {player_id}")
@@ -846,9 +879,32 @@ def main():
                 args['athlete_id'], args['sport_alias'], args['athlete_main_id']
             )
             print(json.dumps(result))
+        elif method == 'get_video_seasons':
+            # Detailed error logging - NO HIDDEN ERRORS
+            try:
+                logging.info(f"🔍 Fetching seasons for athlete_id={args.get('athlete_id')}, sport={args.get('sport_alias')}, video_type={args.get('video_type')}")
+                result = client.get_video_seasons(
+                    args['athlete_id'],
+                    args['sport_alias'],
+                    args['video_type'],
+                    args['athlete_main_id']
+                )
+                logging.info(f"✅ Got {len(result)} seasons")
+                print(json.dumps({'status': 'ok', 'data': result}))
+            except Exception as e:
+                # Make errors VISIBLE - not hidden
+                error_msg = f"get_video_seasons FAILED: {type(e).__name__}: {str(e)}"
+                logging.error(error_msg)
+                import traceback
+                logging.error(traceback.format_exc())
+                print(json.dumps({'status': 'error', 'message': error_msg}), file=sys.stderr)
+                sys.exit(1)
         elif method == 'update_video_profile':
             result = client.update_video_profile(
-                args['player_id'], args['youtube_link'], args['season'], args['video_type']
+                args['player_id'],
+                args['youtube_link'],
+                args.get('season', ''),  # Optional - students don't always update profiles
+                args.get('video_type', 'Full Season Highlight')
             )
             print(json.dumps(result))
         elif method == 'get_video_progress_page':
