@@ -1,4 +1,3 @@
-#!/Users/singleton23/.pyenv/versions/3.12.3/bin/python3
 #!/usr/bin/env python3
 """
 Simplified NPID automation interface - REST API version

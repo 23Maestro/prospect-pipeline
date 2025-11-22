@@ -1,7 +1,11 @@
 import { spawn } from "child_process";
+import * as path from "path";
+import * as os from "os";
 
-const PYTHON_PATH = "/Users/singleton23/Raycast/prospect-pipeline/src/python/venv/bin/python3";
-const PYTHON_SERVER_PATH = "/Users/singleton23/Raycast/prospect-pipeline/src/python/npid_api_client.py";
+// Use environment-aware paths instead of hardcoded ones
+const WORKSPACE_ROOT = process.cwd();
+const PYTHON_PATH = process.env.PYTHON_PATH || "python3";
+const PYTHON_SERVER_PATH = path.join(WORKSPACE_ROOT, "src", "python", "npid_api_client.py");
 
 export async function callPythonServer<T>(
   method: string,
