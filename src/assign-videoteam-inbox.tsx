@@ -10,11 +10,9 @@ import {
   Toast,
   showToast,
   useNavigation,
-  getPreferenceValues,
 } from '@raycast/api';
 import { format } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
-import { Client } from '@notionhq/client';
 import {
   AssignVideoTeamPayload,
   assignVideoTeamMessage,
@@ -24,8 +22,6 @@ import {
   fetchMessageDetail,
   resolveContactsForAssignment,
 } from './lib/npid-mcp-adapter';
-import { supabase } from './lib/supabase-client';
-import { callVPSBroker } from './lib/vps-broker-adapter';
 import { callPythonServer } from './lib/python-server-client';
 import {
   NPIDInboxMessage,
@@ -34,114 +30,6 @@ import {
   VideoTeamSearchCategory,
 } from './types/video-team';
 import { TaskStage, TaskStatus } from './types/workflow';
-
-/**
- * Sync assignment to Notion database after successful assignment
- * Uses video progress data to update or create Notion entry
- */
-async function syncToNotionAfterAssignment(
-  athleteName: string,
-  athleteId: string,
-  ownerName: string
-): Promise<void> {
-  try {
-    const preferences = getPreferenceValues<{ notionToken: string; notionDatabaseId?: string }>();
-    if (!preferences.notionToken) {
-      console.log('No Notion token configured, skipping sync');
-      return;
-    }
-
-    // Fetch video progress data for this athlete
-    const videoProgress = await callVPSBroker<Array<any>>(
-      'get_video_progress',
-      { filters: { athlete_name: athleteName } }
-    );
-
-    if (!videoProgress || videoProgress.length === 0) {
-      console.log('No video progress data found for athlete');
-      return;
-    }
-
-    // Get the first matching record
-    const athleteData = videoProgress[0];
-
-    // Initialize Notion client
-    const notion = new Client({ auth: preferences.notionToken });
-
-    // Get the database ID - this should be configurable or from the Notion API
-    // For now, use the one from video-updates.tsx pattern
-    const databaseId = preferences.notionDatabaseId || '19f4c8bd6c26805b9929dfa8eb290a86';
-
-    // Query existing pages to check if athlete already exists
-    const existingPages = await notion.databases.query({
-      database_id: databaseId,
-    });
-
-    const existingPage = existingPages.results.find((page: any) => {
-      const props = page.properties;
-      return props.Name?.title?.[0]?.text?.content === athleteName;
-    });
-
-    // Build properties object with ALL fields from video progress
-    const properties: Record<string, any> = {
-      // Core Info
-      Name: { title: [{ text: { content: athleteData.athletename || athleteName } }] },
-      'Athlete ID': { rich_text: [{ text: { content: String(athleteData.athlete_id || athleteId) } }] },
-
-      // Positions
-      'Primary Position': { rich_text: [{ text: { content: athleteData.primaryposition || 'NA' } }] },
-      'Secondary Position': { rich_text: [{ text: { content: athleteData.secondaryposition || 'NA' } }] },
-      'Third Position': { rich_text: [{ text: { content: athleteData.thirdposition || 'NA' } }] },
-
-      // Progress Tracking
-      'Video Progress': { status: { name: athleteData.video_progress || 'In Progress' } },
-      Stage: { status: { name: athleteData.stage || 'In Queue' } },
-      Status: { status: { name: athleteData.video_progress_status || 'HUDL' } },
-
-      // Timeline
-      'Due Date': athleteData.video_due_date
-        ? { rich_text: [{ text: { content: athleteData.video_due_date } }] }
-        : { rich_text: [{ text: { content: 'N/A' } }] },
-      'Assigned Date': { rich_text: [{ text: { content: athleteData.assigned_date || 'N/A' } }] },
-
-      // School/Location
-      Sport: { rich_text: [{ text: { content: athleteData.sport_name || 'N/A' } }] },
-      School: { rich_text: [{ text: { content: athleteData.high_school || 'N/A' } }] },
-      City: { rich_text: [{ text: { content: athleteData.high_school_city || 'N/A' } }] },
-      State: { rich_text: [{ text: { content: athleteData.high_school_state || 'N/A' } }] },
-
-      // Class Info
-      'Grad Year': { rich_text: [{ text: { content: String(athleteData.grad_year || 'N/A') } }] },
-
-      // Payment/Status
-      'Payment Status': { rich_text: [{ text: { content: athleteData.paid_status || 'N/A' } }] },
-
-      // Assignment
-      'Video Editor': { rich_text: [{ text: { content: athleteData.assignedvideoeditor || ownerName } }] },
-    };
-
-    const pageData = { properties };
-
-    if (existingPage) {
-      // Update existing page
-      await notion.pages.update({
-        page_id: existingPage.id,
-        properties: pageData.properties,
-      });
-      console.log(`Updated Notion page for ${athleteName}`);
-    } else {
-      // Create new page
-      await notion.pages.create({
-        parent: { database_id: databaseId },
-        ...pageData,
-      });
-      console.log(`Created Notion page for ${athleteName}`);
-    }
-  } catch (error) {
-    // Log error but don't fail the assignment
-    console.error('Failed to sync to Notion:', error);
-  }
-}
 
 function formatTimestamp(message: NPIDInboxMessage): string {
   if (message.timeStampIso) {
@@ -315,14 +203,86 @@ function AssignmentModal({
   );
 }
 
+// Reply Form Component
+function ReplyForm({
+  message,
+  onBack,
+}: {
+  message: NPIDInboxMessage;
+  onBack: () => void;
+}) {
+  const [replyText, setReplyText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!replyText.trim()) {
+      await showToast({ style: Toast.Style.Failure, title: 'Reply cannot be empty' });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await callPythonServer('send_reply', {
+        message_id: message.id,
+        itemcode: message.itemCode || message.id,
+        reply_text: replyText.trim()
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Reply sent',
+        message: `Message sent to ${message.name}`,
+      });
+      onBack();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to send reply',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isLoading}
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section>
+            <Action.SubmitForm title="Send Reply" onSubmit={handleSubmit} icon={Icon.Check} />
+            <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    >
+      <Form.Description
+        title="Reply To"
+        text={`${message.name} (${message.email})\n\nSubject: RE: ${message.subject}`}
+      />
+      <Form.TextArea
+        id="reply"
+        title="Message"
+        placeholder="Type your reply here..."
+        value={replyText}
+        onChange={setReplyText}
+      />
+    </Form>
+  );
+}
+
+
+
 function EmailContentDetail({
   message,
   onBack,
   onAssign,
+  onReply,
 }: {
   message: NPIDInboxMessage;
   onBack: () => void;
   onAssign: (message: NPIDInboxMessage) => void;
+  onReply: (message: NPIDInboxMessage) => void;
 }) {
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -387,9 +347,8 @@ function EmailContentDetail({
     ? 'Loading full message...'
     : fullContent || message.preview || 'No content available';
 
-  const markdown = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${
-    error ? `\n\n> ⚠️ ${error}` : ''
-  }`;
+  const markdown = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''
+    }`;
 
   return (
     <Detail
@@ -400,6 +359,11 @@ function EmailContentDetail({
       actions={
         <ActionPanel>
           <ActionPanel.Section>
+            <Action
+              title="Reply to Email"
+              icon={Icon.Reply}
+              onAction={() => onReply(message)}
+            />
             <Action
               title="Assign to Video Team"
               icon={Icon.PersonCircle}
@@ -493,11 +457,11 @@ export default function InboxCheck() {
         message.id,
         message.itemCode,
       );
-      
+
       if (!modalData) {
         throw new Error('Failed to load assignment modal data');
       }
-      
+
       const searchValue = modalData.contactSearchValue || message.email || message.name;
       const { contacts, searchForUsed } = await resolveContactsForAssignment(
         searchValue,
@@ -510,16 +474,16 @@ export default function InboxCheck() {
       const fallbackContact: VideoTeamContact | null =
         modalData.contactTask && (modalData.athleteMainId || message.athleteMainId)
           ? {
-              contactId: modalData.contactTask,
-              athleteMainId: modalData.athleteMainId ?? message.athleteMainId ?? null,
-              name: message.name || message.email || modalData.contactTask,
-              sport: null,
-              gradYear: null,
-              state: null,
-              top500: null,
-              videoEditor: null,
-              email: message.email,
-            }
+            contactId: modalData.contactTask,
+            athleteMainId: modalData.athleteMainId ?? message.athleteMainId ?? null,
+            name: message.name || message.email || modalData.contactTask,
+            sport: null,
+            gradYear: null,
+            state: null,
+            top500: null,
+            videoEditor: null,
+            email: message.email,
+          }
           : null;
 
       if (
@@ -533,11 +497,11 @@ export default function InboxCheck() {
       // Open browser for manual parent search
       if (contactPool.length === 0) {
         const assignUrl = `https://dashboard.nationalpid.com/rulestemplates/template/assignemailtovideoteam?message_id=${message.id}`;
-        
+
         toast.style = Toast.Style.Failure;
         toast.title = 'No contacts found';
         toast.message = 'Opening browser - select Parent and click Search';
-        
+
         // Open browser directly
         const { exec } = require('child_process');
         exec(`open "${assignUrl}"`);
@@ -589,14 +553,6 @@ export default function InboxCheck() {
               assigningToast.title = 'Assigned to Video Team';
               assigningToast.message = `${message.name} → ${ownerName}`;
 
-              // Sync to Notion after successful assignment
-              try {
-                await syncToNotionAfterAssignment(message.name, message.id, ownerName);
-              } catch (notionError) {
-                console.error('Notion sync failed:', notionError);
-                // Don't show error to user - this is optional
-              }
-
               pop();
               await new Promise(resolve => setTimeout(resolve, 2000));
               await loadInboxMessages();
@@ -617,7 +573,14 @@ export default function InboxCheck() {
   };
 
   const handleViewMessage = (message: NPIDInboxMessage) => {
-    push(<EmailContentDetail message={message} onBack={pop} onAssign={handleAssignTask} />);
+    push(
+      <EmailContentDetail
+        message={message}
+        onBack={pop}
+        onAssign={handleAssignTask}
+        onReply={(msg) => push(<ReplyForm message={msg} onBack={pop} />)}
+      />,
+    );
   };
 
   return (
@@ -635,11 +598,11 @@ export default function InboxCheck() {
           { text: formatTimestamp(message) },
           ...(hasAttachments
             ? [
-                {
-                  icon: Icon.Paperclip,
-                  tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
-                },
-              ]
+              {
+                icon: Icon.Paperclip,
+                tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
+              },
+            ]
             : []),
         ];
 

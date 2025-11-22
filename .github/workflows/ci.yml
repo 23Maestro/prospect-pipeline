@@ -22,7 +22,7 @@ jobs:
         run: npm ci
       
       - name: Run ESLint on TypeScript sources
-        run: npx eslint src/**/*.{ts,tsx} --max-warnings 0
+        run: npx eslint "src/**/*.{ts,tsx}" --ignore-pattern "src/python/venv/**" --max-warnings 0
 
   typecheck:
     runs-on: ubuntu-latest

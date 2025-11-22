@@ -14,11 +14,6 @@ interface EmailFormValues {
   emailTemplate: string;
 }
 
-interface EmailTemplate {
-  value: string;
-  label: string;
-}
-
 // Default templates in case API call fails
 const DEFAULT_EMAIL_TEMPLATES = [
   { title: 'Editing Done', value: 'Editing Done' },

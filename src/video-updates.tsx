@@ -1,24 +1,40 @@
 import React, { useState, useEffect } from 'react';
-import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, getPreferenceValues } from '@raycast/api';
+import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { Client } from '@notionhq/client';
 import { callPythonServer } from './lib/python-server-client';
-import { callVPSBroker, updateVideoStage } from './lib/vps-broker-adapter';
+import * as fs from 'fs';
+
+// Logging utility - writes to file only (console.log would cause recursion)
+const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
+function log(...args: any[]) {
+  const timestamp = new Date().toISOString();
+  const message = `[${timestamp}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}`;
+  // Write to file only - DO NOT call console.log here (causes infinite recursion)
+  try {
+    fs.appendFileSync(LOG_FILE, message + '\n');
+  } catch {
+    // Can't log errors here either - would cause recursion
+    fs.appendFileSync(LOG_FILE, `[ERROR] Failed to write log\n`);
+  }
+}
 
 async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
+  log('🔍 searchVideoProgressPlayer called with:', query);
   try {
     const nameParts = query.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
+    log('🔍 Searching for:', { firstName, lastName });
     const results = await callPythonServer<any[]>('search_video_progress', { first_name: firstName, last_name: lastName });
+    log('✅ Search returned', results.length, 'results');
     return results.map(player => ({
       primaryPosition: player.primaryposition,
       secondaryPosition: player.secondaryposition,
       thirdPosition: player.thirdposition,
       paidStatus: player.paid_status,
       athleteName: player.athletename,
-      name: player.athletename, // Add name field
-      player_id: player.athlete_id?.toString(), // Add player_id field
+      name: player.athletename,
+      player_id: player.athlete_id?.toString(),
       id: player.id,
       videoProgress: player.video_progress,
       videoProgressStatus: player.video_progress_status,
@@ -28,73 +44,22 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       sportName: player.sport_name,
       sport: player.sport_alias || player.sport_name?.toLowerCase().replace(/'/g, '').replace(/ /g, '-'),
       gradYear: player.grad_year,
-      grad_year: player.grad_year, // Add both formats
+      grad_year: player.grad_year,
       highSchoolCity: player.high_school_city,
-      city: player.high_school_city, // Add city field
+      city: player.high_school_city,
       highSchoolState: player.high_school_state,
-      state: player.high_school_state, // Add state field
+      state: player.high_school_state,
       highSchool: player.high_school,
-      high_school: player.high_school, // Add both formats
+      high_school: player.high_school,
       athleteId: player.athlete_id,
       assignedVideoEditor: player.assignedvideoeditor,
       assignedDate: player.assigned_date,
       assignedDateSort: player.assigned_date_sort,
-      athlete_main_id: player.athlete_main_id?.toString() || player.athlete_id?.toString(),
+      athlete_main_id: player.athlete_main_id?.toString(),
     }));
   } catch (error) {
     console.error('NPID video progress search error:', error);
     return [];
-  }
-}
-
-// Notion helpers (reuse Active Tasks filtering)
-type NotionTask = {
-  id: string;
-  name: string;
-  status: string;
-  playerId?: string;
-};
-
-function getNotion() {
-  const { notionToken } = getPreferenceValues();
-  return new Client({ auth: notionToken, notionVersion: '2022-06-28' });
-}
-
-async function fetchActiveNotionTasks(): Promise<NotionTask[]> {
-  const notion = getNotion();
-  const response = await notion.databases.query({
-    database_id: '19f4c8bd6c26805b9929dfa8eb290a86',
-    filter: {
-      or: [
-        { property: 'Status', status: { equals: 'Revise' } },
-        { property: 'Status', status: { equals: 'HUDL' } },
-        { property: 'Status', status: { equals: 'Dropbox' } },
-        { property: 'Status', status: { equals: 'Not Approved' } },
-        { property: 'Status', status: { equals: 'Uploads' } },
-      ],
-    },
-    sorts: [{ property: 'Due Date', direction: 'ascending' }],
-  });
-
-  return response.results.map((t: any) => ({
-    id: t.id,
-    name: t.properties?.['Name']?.title?.[0]?.plain_text || '',
-    status: t.properties?.['Status']?.status?.name || '',
-    playerId: t.properties?.['PlayerID']?.url || '',
-  }));
-}
-
-function parseNPIDfromUrl(url?: string): string | null {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    const parts = u.pathname.split('/').filter(Boolean);
-    const last = parts[parts.length - 1];
-    if (!last) return null;
-    const idMatch = last.match(/[A-Za-z0-9_-]+/);
-    return idMatch ? idMatch[0] : null;
-  } catch {
-    return null;
   }
 }
 
@@ -103,9 +68,6 @@ interface VideoUpdateFormValues {
   youtubeLink: string;
   season: string;
   videoType: string;
-  playerId?: string;
-  searchMode: 'name' | 'id';
-  notionTaskId?: string;
 }
 
 interface NPIDPlayer {
@@ -114,8 +76,8 @@ interface NPIDPlayer {
   thirdPosition: string;
   paidStatus: string;
   athleteName: string;
-  name: string; // Display name
-  player_id: string; // For API calls
+  name: string;
+  player_id: string;
   id: number;
   videoProgress: string;
   videoProgressStatus: string;
@@ -123,15 +85,15 @@ interface NPIDPlayer {
   videoDueDate: string;
   videoDueDateSort: number;
   sportName: string;
-  sport: string; // Sport alias for API
+  sport: string;
   gradYear: number;
-  grad_year: number; // Both formats
+  grad_year: number;
   highSchoolCity: string;
-  city: string; // Short name
+  city: string;
   highSchoolState: string;
-  state: string; // Short name
+  state: string;
   highSchool: string;
-  high_school: string; // Both formats
+  high_school: string;
   athleteId: number;
   assignedVideoEditor: string;
   assignedDate: string;
@@ -142,11 +104,11 @@ interface NPIDPlayer {
 export default function VideoUpdatesCommand(
   props: LaunchProps<{ draftValues: VideoUpdateFormValues }>,
 ) {
-  const [searchResults, setSearchResults] = useState<NPIDPlayer[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
-  const [activeTasks, setActiveTasks] = useState<NotionTask[]>([]);
-  const [seasons, setSeasons] = useState<{value: string, title: string}[]>([]);
+  const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
+  const [isFetchingMainId, setIsFetchingMainId] = useState(false);
+  const [seasons, setSeasons] = useState<{ value: string, title: string }[]>([]);
   const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
 
   const { handleSubmit, itemProps, reset, focus, values, setValue } = useForm<VideoUpdateFormValues>({
@@ -157,11 +119,10 @@ export default function VideoUpdatesCommand(
       });
 
       try {
-        // Determine the player ID to use
-        let playerId = formValues.playerId;
+        let playerId = '';
         let athleteName = formValues.athleteName;
 
-        if (formValues.searchMode === 'name' && selectedPlayer) {
+        if (selectedPlayer) {
           playerId = selectedPlayer.player_id;
           athleteName = selectedPlayer.name;
         }
@@ -169,31 +130,30 @@ export default function VideoUpdatesCommand(
         if (!playerId) {
           toast.style = Toast.Style.Failure;
           toast.title = 'Player ID Required';
-          toast.message = 'Please search for and select a player or enter a Player ID.';
+          toast.message = 'Please search for a player.';
           return;
         }
 
-        // Use NPID integration for video updates
         await toast.show();
         toast.title = 'Updating NPID Profile...';
         toast.message = `Updating video for ${athleteName} (ID: ${playerId})`;
 
         try {
-          // Step 1: Upload video
+          log('🎬 Submitting video:', { playerId, youtubeLink: formValues.youtubeLink, season: formValues.season, videoType: formValues.videoType });
           const result = await callPythonServer('update_video_profile', {
             player_id: playerId,
             youtube_link: formValues.youtubeLink,
             season: formValues.season,
             video_type: formValues.videoType
           }) as any;
-
+          log('📥 update_video_profile response:', result);
           if (result.status === 'ok' && result.data?.success) {
             toast.style = Toast.Style.Success;
             toast.title = 'Video Uploaded!';
             toast.message = `Sending email and updating stage...`;
 
-            // Step 2: Send "Editing Done" email
             try {
+              log('📧 Sending email to:', athleteName);
               toast.message = `Sending "Editing Done" email...`;
               const emailResult = await callPythonServer('send_email_to_athlete', {
                 athlete_name: athleteName,
@@ -203,9 +163,13 @@ export default function VideoUpdatesCommand(
               if (emailResult.status === 'ok' && emailResult.data?.success) {
                 toast.message = `Email sent! Updating stage to Done...`;
 
-                // Step 3: Update stage to "Done" via VPS broker
                 try {
-                  const stageResult = await updateVideoStage(playerId, 'done');
+                  log('🏁 Updating stage to done for:', playerId);
+                  const stageResult = await callPythonServer('update_video_stage', {
+                    athlete_id: playerId,
+                    stage: 'done'
+                  }) as any;
+                  log('📥 update_video_stage response:', stageResult);
 
                   if (stageResult.success) {
                     toast.style = Toast.Style.Success;
@@ -236,8 +200,8 @@ export default function VideoUpdatesCommand(
 
             reset();
             setSelectedPlayer(null);
-            setSearchResults([]);
             setSeasons([]);
+            setFetchedAthleteMainId(null);
           } else {
             toast.style = Toast.Style.Failure;
             toast.title = 'NPID Update Failed';
@@ -262,11 +226,7 @@ export default function VideoUpdatesCommand(
     },
     validation: {
       athleteName: (value) => {
-        if (values.searchMode === 'name' && !value) return 'Athlete name is required for name search';
-        return undefined;
-      },
-      playerId: (value) => {
-        if (values.searchMode === 'id' && !value) return 'Player ID is required for ID search';
+        if (!value) return 'Athlete name is required';
         return undefined;
       },
       youtubeLink: (value) => {
@@ -279,8 +239,7 @@ export default function VideoUpdatesCommand(
         }
         return undefined;
       },
-      season: (value) => {
-        // Season is optional - gracefully handle if not available
+      season: () => {
         return undefined;
       },
       videoType: FormValidation.Required,
@@ -290,68 +249,70 @@ export default function VideoUpdatesCommand(
       youtubeLink: props.draftValues?.youtubeLink || '',
       season: props.draftValues?.season || '',
       videoType: props.draftValues?.videoType &&
-                 ['Full Season Highlight', 'Partial Season Highlight', 'Single Game Highlight', 'Skills/Training Video'].includes(props.draftValues.videoType)
-                 ? props.draftValues.videoType
-                 : 'Full Season Highlight',
-      playerId: props.draftValues?.playerId || '',
-      searchMode: props.draftValues?.searchMode || 'name',
-      notionTaskId: '', // Always start fresh - let user select from current active tasks
+        ['Full Season Highlight', 'Partial Season Highlight', 'Single Game Highlight', 'Skills/Training Video'].includes(props.draftValues.videoType)
+        ? props.draftValues.videoType
+        : 'Full Season Highlight',
     },
   });
-
-  // Load active tasks from Notion on mount
-  useEffect(() => {
-    (async () => {
-      try {
-        const tasks = await fetchActiveNotionTasks();
-        setActiveTasks(tasks);
-      } catch (e) {
-        console.error('Failed to load Notion tasks', e);
-      }
-    })();
-  }, []);
-
-  // When a Notion task is selected, populate form fields
-  useEffect(() => {
-    if (!values.notionTaskId) return;
-    const task = activeTasks.find((t) => t.id === values.notionTaskId);
-    if (!task) return;
-    if (task.name) setValue('athleteName', task.name);
-    const npid = parseNPIDfromUrl(task.playerId);
-    if (npid) {
-      setValue('playerId', npid);
-      setValue('searchMode', 'id');
-    } else {
-      setValue('playerId', '');
-      setValue('searchMode', 'name');
-    }
-  }, [values.notionTaskId, activeTasks]);
 
   // Search for players when athlete name changes
   useEffect(() => {
     const searchPlayers = async () => {
-      if (values.athleteName && values.athleteName.length > 2 && values.searchMode === 'name') {
+      if (values.athleteName && values.athleteName.length > 2) {
+        log('🔎 Starting search for:', values.athleteName);
         setIsSearching(true);
         try {
           const results = await searchVideoProgressPlayer(values.athleteName);
-          setSearchResults(results);
           if (results.length > 0) {
+            log('✅ Auto-selecting first player:', results[0].name, 'ID:', results[0].player_id);
             setSelectedPlayer(results[0]);
+          } else {
+            log('⚠️ No search results found');
+            setSelectedPlayer(null);
           }
         } catch (error) {
           console.error('Search error:', error);
-          setSearchResults([]);
+          setSelectedPlayer(null);
         } finally {
           setIsSearching(false);
         }
       } else {
-        setSearchResults([]);
+        setSelectedPlayer(null);
       }
     };
 
-    const timeoutId = setTimeout(searchPlayers, 500); // Debounce search
+    const timeoutId = setTimeout(searchPlayers, 500);
     return () => clearTimeout(timeoutId);
-  }, [values.athleteName, values.searchMode]);
+  }, [values.athleteName]);
+
+  // Fetch athlete_main_id when player is selected
+  useEffect(() => {
+    const fetchMainId = async () => {
+      if (selectedPlayer && selectedPlayer.player_id) {
+        log('🆔 Fetching athlete_main_id for player_id:', selectedPlayer.player_id);
+        setIsFetchingMainId(true);
+        try {
+          const result = await callPythonServer('get_athlete_details', { player_id: selectedPlayer.player_id }) as any;
+          log('📥 get_athlete_details response:', result);
+          if (result?.athlete_main_id) {
+            log('✅ Fetched athlete_main_id:', result.athlete_main_id);
+            setFetchedAthleteMainId(result.athlete_main_id);
+          } else {
+            log('⚠️ No athlete_main_id in response');
+            setFetchedAthleteMainId(null);
+          }
+        } catch (error) {
+          console.error('Failed to fetch athlete_main_id:', error);
+          setFetchedAthleteMainId(null);
+        } finally {
+          setIsFetchingMainId(false);
+        }
+      } else {
+        setFetchedAthleteMainId(null);
+      }
+    };
+    fetchMainId();
+  }, [selectedPlayer]);
 
   // Fetch seasons when video type or selected player changes
   useEffect(() => {
@@ -360,11 +321,14 @@ export default function VideoUpdatesCommand(
         const athleteId = selectedPlayer.player_id;
         const sportAlias = selectedPlayer.sport;
         const videoType = values.videoType;
-        let athleteMainId = selectedPlayer.athlete_main_id;
+        let athleteMainId = fetchedAthleteMainId;
+        log('📅 Fetching seasons with:', { athleteId, sportAlias, videoType, athleteMainId });
 
         if (!athleteMainId && athleteId) {
+          log('⚠️ athlete_main_id not cached, fetching...');
           const det = await callPythonServer('get_athlete_details', { player_id: athleteId }) as any;
           athleteMainId = det?.athlete_main_id;
+          log('✅ Fetched athlete_main_id for seasons:', athleteMainId);
         }
 
         if (!athleteId || !sportAlias || !videoType || !athleteMainId) {
@@ -381,16 +345,21 @@ export default function VideoUpdatesCommand(
             video_type: videoType,
             athlete_main_id: athleteMainId,
           }) as any;
+          log('📥 get_video_seasons response:', result);
+
           if (result.status === 'ok' && result.data) {
-            setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.title })));
+            log('✅ Seasons loaded:', result.data.length, 'items');
+            // Use 'label' from API response for display, 'value' for submission
+            setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.label })));
             if (result.data.length > 0) {
               setValue('season', result.data[0].value);
             }
           } else {
+            log('⚠️ Failed to load seasons or no data:', result);
             setSeasons([]);
           }
         } catch (error) {
-          console.error('Failed to fetch seasons', error);
+          console.error('Failed to fetch seasons:', error);
           setSeasons([]);
         } finally {
           setIsFetchingSeasons(false);
@@ -398,7 +367,7 @@ export default function VideoUpdatesCommand(
       }
     };
     fetchSeasons();
-  }, [values.videoType, selectedPlayer]);
+  }, [values.videoType, selectedPlayer, fetchedAthleteMainId]);
 
   return (
     <Form
@@ -419,62 +388,20 @@ export default function VideoUpdatesCommand(
         </ActionPanel>
       }
     >
-      <Form.Dropdown title="Student Athlete (Active)" {...itemProps.notionTaskId} placeholder="Select from Notion">
-        <Form.Dropdown.Item value="" title="(Skip - Enter name manually)" />
-        {activeTasks.map((t) => (
-          <Form.Dropdown.Item key={t.id} value={t.id} title={t.name || 'Untitled'} />
-        ))}
-      </Form.Dropdown>
-      <Form.Separator />
+      <Form.TextField
+        title="Student Athlete's Name"
+        placeholder="Enter full name to search NPID"
+        {...itemProps.athleteName}
+        autoFocus
+      />
 
-      <Form.Description text="Enhanced NPID integration: Search for athletes by name or enter Player ID directly. Videos will be added to NPID profiles with automatic Notion sync." />
-      <Form.Separator />
-
-      <Form.Dropdown title="Search Mode" {...itemProps.searchMode}>
-        <Form.Dropdown.Item value="name" title="Search by Name" />
-        <Form.Dropdown.Item value="id" title="Enter Player ID" />
-      </Form.Dropdown>
-
-      {values.searchMode === 'name' ? (
-        <>
-          <Form.TextField
-            title="Student Athlete's Name"
-            placeholder="Enter full name to search NPID"
-            {...itemProps.athleteName}
-            autoFocus
-          />
-          
-          {isSearching && (
-            <Form.Description text="🔍 Searching NPID database..." />
-          )}
-          
-          {searchResults.length > 0 && (
-            <>
-              <Form.Description text={`Found ${searchResults.length} matching players:`} />
-              {searchResults.slice(0, 5).map((player, index) => (
-                <Form.Description
-                  key={player.player_id}
-                  text={`${index + 1}. ${player.name} (${player.grad_year}) - ${player.high_school}, ${player.city}, ${player.state} - ID: ${player.player_id}`}
-                />
-              ))}
-              {searchResults.length > 5 && (
-                <Form.Description text={`... and ${searchResults.length - 5} more results`} />
-              )}
-            </>
-          )}
-        </>
-      ) : (
-        <Form.TextField
-          title="Player ID"
-          placeholder="Enter NPID Player ID"
-          {...itemProps.playerId}
-          autoFocus
-        />
+      {isSearching && (
+        <Form.Description text="🔍 Searching NPID database..." />
       )}
 
       {selectedPlayer && (
-        <Form.Description 
-          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school}`} 
+        <Form.Description
+          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school} | ID: ${selectedPlayer.player_id} | Main ID: ${isFetchingMainId ? 'Loading...' : (fetchedAthleteMainId || 'N/A')}`}
         />
       )}
 

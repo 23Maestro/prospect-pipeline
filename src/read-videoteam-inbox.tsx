@@ -11,17 +11,18 @@ import {
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
-import { supabase } from './lib/supabase-client';
-import { fetchInboxThreads, fetchMessageDetail, sendEmailToAthlete } from './lib/npid-mcp-adapter';
-import { sendReply } from './lib/vps-broker-adapter';
+import { fetchInboxThreads, fetchMessageDetail } from './lib/npid-mcp-adapter';
+import { callPythonServer } from './lib/python-server-client';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
   message,
   onBack,
+  onReply,
 }: {
   message: NPIDInboxMessage;
   onBack: () => void;
+  onReply: (message: NPIDInboxMessage) => void;
 }) {
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -62,18 +63,16 @@ function EmailContentDetail({
     ? 'Loading full message...'
     : fullContent || message.preview || 'No content available';
 
-  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${
-    error ? `\n\n> ⚠️ ${error}` : ''
-  }${
-    hasAttachments
+  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''
+    }${hasAttachments
       ? `\n\n## 📎 Attachments (${message.attachments?.length})\n\n${message.attachments
-          ?.map(
-            (att) =>
-              `- **${att.fileName}** ${att.downloadable ? '✅ Downloadable' : '❌ Not downloadable'}${att.expiresAt ? ` (Expires: ${att.expiresAt})` : ''}`,
-          )
-          .join('\n')}`
+        ?.map(
+          (att) =>
+            `- **${att.fileName}** ${att.downloadable ? '✅ Downloadable' : '❌ Not downloadable'}${att.expiresAt ? ` (Expires: ${att.expiresAt})` : ''}`,
+        )
+        .join('\n')}`
       : ''
-  }`;
+    }`;
 
   return (
     <Detail
@@ -82,6 +81,11 @@ function EmailContentDetail({
       actions={
         <ActionPanel>
           <ActionPanel.Section>
+            <Action
+              title="Reply to Email"
+              icon={Icon.Reply}
+              onAction={() => onReply(message)}
+            />
             <Action title="Back to Inbox" onAction={onBack} icon={Icon.ArrowLeft} />
           </ActionPanel.Section>
 
@@ -128,7 +132,11 @@ function ReplyForm({
 
     setIsLoading(true);
     try {
-      await sendReply(message.id, replyText.trim());
+      await callPythonServer('send_reply', {
+        message_id: message.id,
+        itemcode: message.itemCode || message.id,
+        reply_text: replyText.trim()
+      });
       await showToast({
         style: Toast.Style.Success,
         title: 'Reply sent',
@@ -229,11 +237,11 @@ export default function InboxCheck() {
               { icon: Icon.CheckCircle, tooltip: 'Assigned' },
               ...(hasAttachments
                 ? [
-                    {
-                      icon: Icon.Paperclip,
-                      tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
-                    },
-                  ]
+                  {
+                    icon: Icon.Paperclip,
+                    tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
+                  },
+                ]
                 : []),
             ]}
             actions={
@@ -242,7 +250,7 @@ export default function InboxCheck() {
                   <Action
                     title="View Email Content"
                     icon={Icon.Eye}
-                    onAction={() => push(<EmailContentDetail message={message} onBack={pop} />)}
+                    onAction={() => push(<EmailContentDetail message={message} onBack={pop} onReply={(msg) => push(<ReplyForm message={msg} onBack={pop} />)} />)}
                   />
                   <Action
                     title="Reply to Email"
