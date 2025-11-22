@@ -2,7 +2,6 @@ import type { AthleteSummary, AthleteDetails } from './types.js';
 import { getAuthHeaders, loadSession } from './session.js';
 import { calculateSeasonName } from './season-calculator.js';
 import fetch from 'node-fetch';
-import * as cheerio from 'cheerio';
 
 export class NPIDClient {
   private baseUrl: string = "https://dashboard.nationalpid.com";
