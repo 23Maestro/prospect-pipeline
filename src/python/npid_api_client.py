@@ -483,44 +483,27 @@ class NPIDAPIClient:
         return results
 
     def get_athlete_details(self, player_id: str) -> Dict[str, Any]:
-        """Get detailed information about an athlete"""
+        """Get athlete_main_id from media link on profile page: /athlete/media/{athlete_id}/{athlete_main_id}"""
         self.ensure_authenticated()
-        resp = self.session.get(f"{self.base_url}/athlete/{player_id}")
+        details = {'player_id': player_id, 'athlete_main_id': None}
+
+        # Visit athlete profile page
+        resp = self.session.get(f"{self.base_url}/athlete/profile/{player_id}")
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
-        details = {
-            'player_id': player_id,
-            'athlete_main_id': player_id,  # Use player_id as fallback (works for seasons endpoint)
-            'name': '', 'grad_year': '', 'high_school': '', 'location': '',
-            'positions': '', 'sport': '', 'videos': []
-        }
-        name_elem = soup.select_one('.athlete-name, h1.profile-name, .profile-header h1')
-        if name_elem:
-            details['name'] = name_elem.text.strip()
-        grad_elem = soup.select_one('.grad-year, .graduation-year')
-        if grad_elem:
-            details['grad_year'] = grad_elem.text.strip()
-        school_elem = soup.select_one('.high-school, .school-name')
-        if school_elem:
-            details['high_school'] = school_elem.text.strip()
-        location_elem = soup.select_one('.location, .city-state')
-        if location_elem:
-            details['location'] = location_elem.text.strip()
-        position_elem = soup.select_one('.positions, .position')
-        if position_elem:
-            details['positions'] = position_elem.text.strip()
-        sport_elem = soup.select_one('.sport')
-        if sport_elem:
-            details['sport'] = sport_elem.text.strip()
-        video_elements = soup.select('.video-item, .highlight-video')
-        for video_elem in video_elements:
-            video_link = video_elem.select_one('a[href*="youtube.com"], a[href*="youtu.be"]')
-            if video_link:
-                details['videos'].append({
-                    'url': video_link.get('href', ''),
-                    'title': video_elem.text.strip()[:100]
-                })
-        logging.info(f"✅ Retrieved details for {details['name']} ({player_id})")
+
+        # Extract athlete_main_id from media tab link
+        import re
+        media_link = soup.select_one('a[href*="/athlete/media/"]')
+        if media_link:
+            href = media_link.get('href', '')
+            match = re.search(r'/athlete/media/\d+/(\d+)', href)
+            if match:
+                details['athlete_main_id'] = match.group(1)
+                logging.info(f"✅ Extracted athlete_main_id={details['athlete_main_id']} for athlete_id={player_id}")
+                return details
+
+        logging.warning(f"⚠️  Could not extract athlete_main_id for athlete {player_id}")
         return details
 
     def get_add_video_form(
@@ -595,19 +578,40 @@ class NPIDAPIClient:
     def get_video_seasons(
         self, athlete_id: str, sport_alias: str, video_type: str, athlete_main_id: str
     ) -> List[Dict[str, Any]]:
-        """Get available video seasons for a player."""
+        """Get available video seasons for a player (Skills/Training Video filters to Camps only)."""
         self.ensure_authenticated()
-        params = {
+        csrf_token = self._get_csrf_token()
+        api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+        data = {
+            '_token': csrf_token,
+            'api_key': api_key,
+            'return_type': 'json',
             'athlete_id': athlete_id,
             'sport_alias': sport_alias,
             'video_type': video_type,
             'athlete_main_id': athlete_main_id
         }
-        resp = self.session.get(
-            f"{self.base_url}/template/videotemplate/videoseasons", params=params
+        resp = self.session.post(
+            f"{self.base_url}/API/scout-api/video-seasons-by-video-type",
+            data=data,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         )
         resp.raise_for_status()
-        # Parse HTML response (endpoint returns <option> elements, not JSON)
+
+        # Try JSON first, fall back to HTML parsing
+        try:
+            result = resp.json()
+            if isinstance(result, list):
+                return result
+            if isinstance(result, dict) and 'data' in result:
+                return result['data']
+        except (ValueError, KeyError):
+            pass
+
+        # Fallback: Parse HTML response
         soup = BeautifulSoup(resp.text, 'html.parser')
         seasons = []
         for option in soup.find_all('option'):
@@ -716,14 +720,22 @@ class NPIDAPIClient:
         """Sends an email to an athlete using a specified template."""
         self.ensure_authenticated()
 
-        logging.info(f"Searching for athlete: {athlete_name}")
-        players = self.search_player(athlete_name)
+        logging.info(f"Searching for athlete in video progress: {athlete_name}")
+
+        # Split name into first and last for video progress search
+        name_parts = athlete_name.strip().split(' ', 1)
+        first_name = name_parts[0] if name_parts else ''
+        last_name = name_parts[1] if len(name_parts) > 1 else ''
+
+        # Use video progress search (searches video workflow queue)
+        players = self.search_video_progress(first_name, last_name)
         if not players:
-            raise Exception(f"No athlete found with name: {athlete_name}")
+            raise Exception(f"No athlete found in video progress with name: {athlete_name}")
 
         player = players[0]
-        player_id = player['player_id']
-        logging.info(f"Found player {player['name']} with ID: {player_id}")
+        player_id = player.get('athlete_id') or player.get('player_id')
+        player_name = player.get('athletename') or player.get('name') or athlete_name
+        logging.info(f"Found player {player_name} with ID: {player_id}")
 
         # Get the email templates for the athlete
         resp = self.session.get(f"{self.base_url}/rulestemplates/template/videotemplates?id={player_id}")
@@ -802,25 +814,56 @@ class NPIDAPIClient:
         resp.raise_for_status()
         return resp.json()
 
-    def update_video_progress_stage(self, athlete_id: str, stage: str) -> Dict[str, Any]:
-        """Update the stage for an athlete in video progress."""
+    def update_video_stage(self, athlete_id: str, stage: str) -> Dict[str, Any]:
+        """Update video stage via /API/scout-api/video-stage."""
         self.ensure_authenticated()
         csrf_token = self._get_csrf_token()
+        api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
         data = {
             '_token': csrf_token,
+            'api_key': api_key,
             'athlete_id': athlete_id,
             'stage': stage
         }
         resp = self.session.post(
-            f"{self.base_url}/videoteammsg/updatestage",
+            f"{self.base_url}/API/scout-api/video-stage",
             data=data,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
         )
         if resp.status_code == 200:
             logging.info(f"✅ Updated stage to '{stage}' for athlete {athlete_id}")
             return {'success': True, 'athlete_id': athlete_id, 'stage': stage}
         else:
             logging.warning(f"⚠️  Stage update failed: {resp.status_code}")
+            return {'success': False, 'error': f"HTTP {resp.status_code}"}
+
+    def update_video_status(self, athlete_id: str, status: str) -> Dict[str, Any]:
+        """Update the status for an athlete video using /API/scout-api/video-status."""
+        self.ensure_authenticated()
+        csrf_token = self._get_csrf_token()
+        api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+        data = {
+            '_token': csrf_token,
+            'api_key': api_key,
+            'athlete_id': athlete_id,
+            'status': status
+        }
+        resp = self.session.post(
+            f"{self.base_url}/API/scout-api/video-status",
+            data=data,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        )
+        if resp.status_code == 200:
+            logging.info(f"✅ Updated status to '{status}' for athlete {athlete_id}")
+            return {'success': True, 'athlete_id': athlete_id, 'status': status}
+        else:
+            logging.warning(f"⚠️  Status update failed: {resp.status_code}")
             return {'success': False, 'error': f"HTTP {resp.status_code}"}
 
 def main():
@@ -830,9 +873,9 @@ def main():
         print("\nAvailable methods:")
         print("  login, get_inbox_threads, get_message_detail, get_assignment_modal, "
               "assign_thread, search_contacts, search_player, get_athlete_details, "
-              "get_add_video_form, update_video_profile, get_video_progress_page, get_page_content, "
+              "get_add_video_form, get_video_seasons, update_video_profile, get_video_progress_page, get_page_content, "
               "send_email_to_athlete, get_athletes_from_video_progress_page, search_video_progress, "
-              "update_video_progress_stage")
+              "update_video_stage, update_video_status")
         sys.exit(1)
     method = sys.argv[1]
     args = json.loads(sys.argv[2]) if len(sys.argv) > 2 else {}
@@ -923,8 +966,11 @@ def main():
         elif method == 'search_video_progress':
             result = client.search_video_progress(args['first_name'], args['last_name'])
             print(json.dumps(result))
-        elif method == 'update_video_progress_stage':
-            result = client.update_video_progress_stage(args['athlete_id'], args['stage'])
+        elif method == 'update_video_stage':
+            result = client.update_video_stage(args['athlete_id'], args['stage'])
+            print(json.dumps(result))
+        elif method == 'update_video_status':
+            result = client.update_video_status(args['athlete_id'], args['status'])
             print(json.dumps(result))
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))

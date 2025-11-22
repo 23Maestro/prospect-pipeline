@@ -1,23 +1,26 @@
-# athlete_main_id API Contract - VERIFIED 2025-11-15
+# athlete_main_id API Contract - VERIFIED 2025-11-21
 
-**BREAKING CHANGE:** Previous assumptions were incorrect. This document reflects verified production behavior.
+**UPDATED:** Correct method for extracting athlete_main_id identified.
 
 ---
 
 ## Executive Summary
 
-### What Changed
+### How to Get athlete_main_id
 
-**OLD ASSUMPTION (WRONG):**
-- `athlete_main_id` available from `/videoteammsg/videomailprogress/{id}` HTML
-- Must extract from `<input name="athlete_main_id" value="...">`
-- Cannot use `athlete_id` as fallback
+**VERIFIED METHOD:**
+1. Search returns `athlete_id` and `sport_alias`
+2. Visit `/athlete/profile/{athlete_id}`
+3. Extract `athlete_main_id` from media tab link: `/athlete/media/{athlete_id}/{athlete_main_id}`
+4. The `athlete_main_id` is **DIFFERENT** from `athlete_id`
 
-**VERIFIED REALITY:**
-- `athlete_main_id` **NOT AVAILABLE** from any standard endpoint
-- `/template/videotemplate/videoseasons` **accepts `athlete_id` as `athlete_main_id` parameter**
-- Endpoint returns **HTML**, not JSON
-- Using `athlete_id` value for both parameters works perfectly
+**Example:**
+- Gavin Casey: `athlete_id=1460964`, `athlete_main_id=939986`
+
+**Key Facts:**
+- `athlete_main_id` exists on athlete profile page in media tab link
+- Required for `/template/template/addvideoform` and video seasons API
+- Assignment modal and addvideoform also contain `athlete_main_id`
 
 ---
 

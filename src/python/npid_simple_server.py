@@ -149,7 +149,7 @@ async def get_video_progress():
         return json.dumps({"status": "error", "message": str(e)})
 
 async def get_athlete_details(player_id):
-    """Get athlete details by player ID"""
+    """Get athlete details including athlete_main_id from profile URL"""
     cache_key = get_cache_key('get_athlete_details', player_id=player_id)
     cached_data = read_cache(cache_key)
     if cached_data:
