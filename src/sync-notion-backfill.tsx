@@ -75,22 +75,50 @@ async function fetchVideoProgressByDateRange(fromDate: string, toDate: string): 
   }
 }
 
-async function findNotionPageByAthleteName(athleteName: string, databaseId: string) {
+/**
+ * Find existing Notion page using two-tier matching:
+ * Priority 1: Match by PlayerID (if present in incoming data)
+ * Priority 2: Fall back to Name match (case-insensitive)
+ * This prevents duplicates while handling athletes with/without PlayerIDs
+ */
+async function findExistingNotionPage(
+  athleteName: string,
+  athleteId: number | null | undefined,
+  databaseId: string
+) {
   const notion = getNotion();
   try {
-    // Query all pages and filter in JS (more reliable than Notion filter)
+    // Query all pages from database
     const response = await notion.databases.query({
       database_id: databaseId,
       page_size: 100
     });
 
-    // Find matching page by name
-    const match = response.results.find((page: any) => {
+    // PRIORITY 1: Try to match by PlayerID URL if athlete_id is provided
+    if (athleteId) {
+      const playerIdUrl = `https://dashboard.nationalpid.com/profile/contacts/${athleteId}`;
+      const playerIdMatch = response.results.find((page: any) => {
+        const pagePlayerId = page.properties?.['PlayerID']?.url || '';
+        return pagePlayerId === playerIdUrl;
+      });
+
+      if (playerIdMatch) {
+        logToFile(`  ✓ Found by PlayerID: ${athleteId}`);
+        return playerIdMatch;
+      }
+    }
+
+    // PRIORITY 2: Fall back to Name match (case-insensitive)
+    const nameMatch = response.results.find((page: any) => {
       const name = page.properties?.['Athlete Name']?.title?.[0]?.plain_text || '';
       return name.toLowerCase() === athleteName.toLowerCase();
     });
 
-    return match || null;
+    if (nameMatch) {
+      logToFile(`  ✓ Found by Name: ${athleteName}`);
+    }
+
+    return nameMatch || null;
   } catch (error) {
     logToFile(`❌ Failed to query Notion for ${athleteName}: ${error instanceof Error ? error.message : String(error)}`);
     return null;
@@ -113,6 +141,13 @@ async function updateNotionPage(pageId: string, videoData: VideoProgressRecord) 
       Status: { status: { name: videoData.video_progress_status || 'HUDL' } },
       Paid: { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
     };
+
+    // Add PlayerID URL if athlete_id is present (this handles the edge case where the athlete was missing PlayerID)
+    if (videoData.athlete_id) {
+      properties['PlayerID'] = {
+        url: `https://dashboard.nationalpid.com/profile/contacts/${videoData.athlete_id}`
+      };
+    }
 
     // Add Date Due if available from video progress
     if (videoData.video_due_date) {
@@ -146,6 +181,13 @@ async function createNotionPage(videoData: VideoProgressRecord, databaseId: stri
       Status: { status: { name: videoData.video_progress_status || 'HUDL' } },
       Paid: { rich_text: [{ text: { content: videoData.paid_status || 'N/A' } }] },
     };
+
+    // Add PlayerID URL if athlete_id is present
+    if (videoData.athlete_id) {
+      properties['PlayerID'] = {
+        url: `https://dashboard.nationalpid.com/profile/contacts/${videoData.athlete_id}`
+      };
+    }
 
     // Add Date Due if available from video progress
     if (videoData.video_due_date) {
@@ -202,10 +244,10 @@ export default function SyncNotionBackfillCommand() {
           toast.message = `${i + 1}/${videoRecords.length}: ${record.athletename}`;
 
           try {
-            logToFile(`[${i + 1}/${videoRecords.length}] Processing: ${record.athletename}`);
+            logToFile(`[${i + 1}/${videoRecords.length}] Processing: ${record.athletename} (ID: ${record.athlete_id || 'N/A'})`);
 
-            // Find existing Notion page
-            const existingPage = await findNotionPageByAthleteName(record.athletename, databaseId);
+            // Find existing Notion page using two-tier matching (PlayerID first, then Name)
+            const existingPage = await findExistingNotionPage(record.athletename, record.athlete_id, databaseId);
 
             if (existingPage) {
               logToFile(`  ✓ Found existing page for ${record.athletename}`);
