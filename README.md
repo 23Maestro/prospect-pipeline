@@ -39,13 +39,16 @@ A comprehensive Raycast extension that streamlines the video editing pipeline fo
 ```
 prospect-pipeline/
 ├── src/                          # Raycast Extension
-│   ├── active-tasks.tsx          # Notion task browser
 │   ├── assign-videoteam-inbox.tsx # NPID inbox assignment
 │   ├── read-videoteam-inbox.tsx  # Assigned message reader
 │   ├── email-student-athletes.tsx # Email automation
 │   ├── video-updates.tsx         # Video profile updates
+│   ├── video-progress.tsx        # Video progress tracking
 │   ├── lib/
-│   │   └── python-server-client.ts # Python REST API client
+│   │   ├── python-config.ts        # Centralized Python path configuration
+│   │   ├── python-executor.ts      # Secure Python subprocess executor
+│   │   ├── python-server-client.ts # NPID API client wrapper
+│   │   └── vps-broker-adapter.ts   # VPS Broker API wrapper
 │   ├── python/
 │   │   ├── npid_api_client.py    # NPID REST API (400-day sessions)
 │   │   ├── npid_email_automator.py
