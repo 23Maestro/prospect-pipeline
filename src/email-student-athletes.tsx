@@ -4,7 +4,7 @@ import { useForm, FormValidation } from '@raycast/utils';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import { callVPSBroker } from './lib/vps-broker-adapter';
+import { callPythonServer } from './lib/python-server-client';
 
 const execAsync = promisify(exec);
 
@@ -47,7 +47,7 @@ export default function EmailStudentAthletesCommand(
         setIsLoadingTemplates(true);
         // Fetch templates for a generic contact (templates are usually the same)
         // If contactId is not available, use a default or fetch from all contacts
-        const templates = await callVPSBroker<EmailTemplate[]>('get_email_templates', { contact_id: '' });
+        const templates = await callPythonServer<EmailTemplate[]>('get_email_templates', { contact_id: '' });
         if (templates && templates.length > 0) {
           const formattedTemplates = templates.map((t: any) => ({
             title: t.label || t.value || 'Unknown Template',
@@ -137,7 +137,7 @@ export default function EmailStudentAthletesCommand(
     },
     initialValues: props.draftValues || {
       athleteName: '',
-      emailTemplate: emailTemplateOptions[0].value, // Default to the first option
+      emailTemplate: emailTemplates[0].value, // Default to the first option
     },
   });
 

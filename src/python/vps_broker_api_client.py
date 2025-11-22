@@ -574,6 +574,8 @@ def main():
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))
             sys.exit(1)
+        # Exit successfully after method completes
+        sys.exit(0)
     except Exception as e:
         logging.exception("CLI execution failed")
         print(json.dumps({'error': str(e)}))

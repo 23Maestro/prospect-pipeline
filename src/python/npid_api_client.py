@@ -483,27 +483,56 @@ class NPIDAPIClient:
         return results
 
     def get_athlete_details(self, player_id: str) -> Dict[str, Any]:
-        """Get athlete_main_id from media link on profile page: /athlete/media/{athlete_id}/{athlete_main_id}"""
+        """Get detailed information about an athlete including real athlete_main_id from profile page"""
         self.ensure_authenticated()
-        details = {'player_id': player_id, 'athlete_main_id': None}
 
-        # Visit athlete profile page
+        # Visit athlete profile page to extract athlete_main_id from media tab link
         resp = self.session.get(f"{self.base_url}/athlete/profile/{player_id}")
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
 
-        # Extract athlete_main_id from media tab link
-        import re
+        details = {
+            'player_id': player_id,
+            'athlete_main_id': player_id,  # Default fallback
+            'name': '', 'grad_year': '', 'high_school': '', 'location': '',
+            'positions': '', 'sport': '', 'videos': []
+        }
+
+        # Extract athlete_main_id from media tab link: /athlete/media/{athlete_id}/{athlete_main_id}
         media_link = soup.select_one('a[href*="/athlete/media/"]')
         if media_link:
             href = media_link.get('href', '')
             match = re.search(r'/athlete/media/\d+/(\d+)', href)
             if match:
                 details['athlete_main_id'] = match.group(1)
-                logging.info(f"✅ Extracted athlete_main_id={details['athlete_main_id']} for athlete_id={player_id}")
-                return details
-
-        logging.warning(f"⚠️  Could not extract athlete_main_id for athlete {player_id}")
+                logging.info(f"Extracted athlete_main_id={details['athlete_main_id']} for athlete_id={player_id}")
+        name_elem = soup.select_one('.athlete-name, h1.profile-name, .profile-header h1')
+        if name_elem:
+            details['name'] = name_elem.text.strip()
+        grad_elem = soup.select_one('.grad-year, .graduation-year')
+        if grad_elem:
+            details['grad_year'] = grad_elem.text.strip()
+        school_elem = soup.select_one('.high-school, .school-name')
+        if school_elem:
+            details['high_school'] = school_elem.text.strip()
+        location_elem = soup.select_one('.location, .city-state')
+        if location_elem:
+            details['location'] = location_elem.text.strip()
+        position_elem = soup.select_one('.positions, .position')
+        if position_elem:
+            details['positions'] = position_elem.text.strip()
+        sport_elem = soup.select_one('.sport')
+        if sport_elem:
+            details['sport'] = sport_elem.text.strip()
+        video_elements = soup.select('.video-item, .highlight-video')
+        for video_elem in video_elements:
+            video_link = video_elem.select_one('a[href*="youtube.com"], a[href*="youtu.be"]')
+            if video_link:
+                details['videos'].append({
+                    'url': video_link.get('href', ''),
+                    'title': video_elem.text.strip()[:100]
+                })
+        logging.info(f"✅ Retrieved details for {details['name']} ({player_id})")
         return details
 
     def get_add_video_form(
@@ -972,9 +1001,18 @@ def main():
         elif method == 'update_video_status':
             result = client.update_video_status(args['athlete_id'], args['status'])
             print(json.dumps(result))
+        elif method == 'get_video_progress':
+            # Use VPS broker for video progress (it has the correct data source)
+            from vps_broker_api_client import VPSBrokerClient
+            vps_client = VPSBrokerClient()
+            filters = args.get('filters', {})
+            result = vps_client.get_video_progress(filters)
+            print(json.dumps(result))
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))
             sys.exit(1)
+        # Exit successfully after method completes
+        sys.exit(0)
     except Exception:
         logging.exception("CLI execution failed")
         sys.exit(1)
