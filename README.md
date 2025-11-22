@@ -69,7 +69,7 @@ prospect-pipeline/
 - **NPID Integration**: Python REST API (requests + BeautifulSoup)
 - **Web Dashboard**: Next.js 15, React 19, Tailwind CSS
 - **Database**: Supabase (PostgreSQL)
-- **Task Management**: Notion API
+- **Task Management**: Video Progress Page
 
 
 
