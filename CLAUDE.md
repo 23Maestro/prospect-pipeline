@@ -1,5 +1,13 @@
 # Prospect Pipeline - Claude Instructions
 
+## 🚨 CRITICAL: NPID API Implementation
+
+**BEFORE implementing ANY NPID API call, use the `npid-api-calls` skill:**
+- Skill file: `.claude/skills/npid-api-calls.md`
+- Enforces checking Python reference code first
+- Prevents HTML/JSON response confusion
+- Ensures correct headers (`X-Requested-With: XMLHttpRequest`)
+
 ## 🚨 CRITICAL API INVARIANTS
 
 ### athlete_main_id Rule (VERIFIED 2025-11-15)

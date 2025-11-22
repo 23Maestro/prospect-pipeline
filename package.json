@@ -4,7 +4,7 @@
   "title": "Prospect Pipeline",
   "description": "Student-athlete video editing workflow automation",
   "type": "module",
-  "icon": "video.png",
+  "icon": "prospect-pipeline.png",
   "author": "jerami_singleton",
   "categories": [
     "Productivity",
@@ -17,57 +17,67 @@
       "title": "Active Video Tasks",
       "description": "Browse and filter Notion video tasks by status",
       "mode": "view",
-      "icon": "assets/active-video-tasks.png"
+      "icon": "active-video-tasks.png"
     },
     {
       "name": "assign-videoteam-inbox",
       "title": "Assign Video Team Inbox",
       "description": "Assign video team inbox threads to yourself",
       "mode": "view",
-      "icon": "assets/assign-video-team-inbox.png"
+      "icon": "assign-video-team-inbox.png"
     },
     {
       "name": "read-videoteam-inbox",
       "title": "Read Video Team Inbox",
       "description": "Read video team inbox messages",
       "mode": "view",
-      "icon": "assets/read-video-team-inbox.png"
+      "icon": "read-video-team-inbox.png"
     },
     {
       "name": "email-student-athletes",
       "title": "Email Student Athletes",
       "description": "Send emails to student athletes",
       "mode": "view",
-      "icon": "assets/student-athlete-video-edits 2-resized.png"
+      "icon": "student-athlete-video-edits-2-resized.png"
     },
     {
       "name": "video-updates",
       "title": "Video Updates",
       "description": "Update video information for athletes",
       "mode": "view",
-      "icon": "assets/video-updates.png"
+      "icon": "video-updates.png"
     },
     {
       "name": "generate-names",
       "title": "Generate Names",
       "description": "Generate YouTube titles, Dropbox/Google Drive folder names, and approved video titles",
       "mode": "view",
-      "icon": "assets/generate-titles.png"
+      "icon": "generate-titles.png"
     },
     {
       "name": "sync-notion-backfill",
       "title": "Sync Video Progress to Notion",
       "description": "Backfill Notion database with video progress data within a date range",
       "mode": "view",
-      "icon": "assets/generate-titles.png"
+      "icon": "sync-notion-backfill.png"
+    }
+  ],
+  "tools": [
+    {
+      "name": "generate-content",
+      "title": "Generate Content",
+      "description": "Generate athlete content naming (YouTube, Dropbox, approved titles)",
+      "mode": "no-view"
     }
   ],
   "dependencies": {
     "@notionhq/client": "^2.2.0",
     "@raycast/api": "^1.102.7",
     "@raycast/utils": "^2.2.1",
-    "@supabase/supabase-js": "^2.58.0",
+    "cheerio": "^1.0.0",
     "date-fns": "^4.1.0",
+    "node-fetch": "^3.3.0",
+    "pickleparser": "^0.2.1",
     "python-shell": "^5.0.0"
   },
   "devDependencies": {
@@ -85,20 +95,6 @@
       "name": "notionToken",
       "title": "Notion Integration Token",
       "description": "Your Notion API integration token",
-      "type": "password",
-      "required": true
-    },
-    {
-      "name": "supabaseUrl",
-      "title": "Supabase URL",
-      "description": "The URL of your Supabase project",
-      "type": "textfield",
-      "required": true
-    },
-    {
-      "name": "supabaseAnonKey",
-      "title": "Supabase Anon Key",
-      "description": "The anonymous key for your Supabase project",
       "type": "password",
       "required": true
     },
