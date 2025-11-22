@@ -71,7 +71,7 @@
     }
   ],
   "dependencies": {
-    "@notionhq/client": "^2.2.0",
+    "@notionhq/client": "^5.4.0",
     "@raycast/api": "^1.102.7",
     "@raycast/utils": "^2.2.1",
     "cheerio": "^1.0.0",
