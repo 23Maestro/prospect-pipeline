@@ -13,13 +13,6 @@
   "license": "MIT",
   "commands": [
     {
-      "name": "active-tasks",
-      "title": "Active Video Tasks",
-      "description": "Browse and filter Notion video tasks by status",
-      "mode": "view",
-      "icon": "active-video-tasks.png"
-    },
-    {
       "name": "assign-videoteam-inbox",
       "title": "Assign Video Team Inbox",
       "description": "Assign video team inbox threads to yourself",
@@ -48,18 +41,11 @@
       "icon": "video-updates.png"
     },
     {
-      "name": "generate-names",
-      "title": "Generate Names",
-      "description": "Generate YouTube titles, Dropbox/Google Drive folder names, and approved video titles",
+      "name": "video-progress",
+      "title": "Video Progress",
+      "description": "View and manage video editing progress for active tasks",
       "mode": "view",
-      "icon": "generate-titles.png"
-    },
-    {
-      "name": "sync-notion-backfill",
-      "title": "Sync Video Progress to Notion",
-      "description": "Backfill Notion database with video progress data within a date range",
-      "mode": "view",
-      "icon": "sync-notion-backfill.png"
+      "icon": "active-video-tasks.png"
     }
   ],
   "tools": [
@@ -71,14 +57,14 @@
     }
   ],
   "dependencies": {
-    "@notionhq/client": "^2.2.0",
     "@raycast/api": "^1.102.7",
     "@raycast/utils": "^2.2.1",
     "cheerio": "^1.0.0",
     "date-fns": "^4.1.0",
     "node-fetch": "^3.3.0",
     "pickleparser": "^0.2.1",
-    "python-shell": "^5.0.0"
+    "python-shell": "^5.0.0",
+    "sql.js": "^1.10.3"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.1.1",
@@ -92,16 +78,16 @@
   },
   "preferences": [
     {
-      "name": "notionToken",
-      "title": "Notion Integration Token",
-      "description": "Your Notion API integration token",
-      "type": "password",
-      "required": true
-    },
-    {
       "name": "dropboxToken",
       "title": "Dropbox API Token",
       "description": "Your Dropbox API token for file request creation",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "scoutApiKey",
+      "title": "Scout API Key",
+      "description": "Used for video stage/status updates (required)",
       "type": "password",
       "required": false
     }

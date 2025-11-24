@@ -1,4 +1,4 @@
-# VPS Broker - Implementation Guide (UPDATED)
+# NPID Dashboard - Implementation Guide (UPDATED)
 
 ## ✅ 100% COMPLETE API SPECIFICATION
 
@@ -28,7 +28,7 @@ New endpoint for video workflow: `/career/unapprovevideo`
 
 ### Project Layout
 ```bash
-~/prospect_pipeline/services/vps_broker/
+~/prospect_pipeline/services/npid_dashboard/
 ├── api/
 │   ├── __init__.py
 │   ├── client.py          # Session + CSRF management
@@ -53,7 +53,7 @@ New endpoint for video workflow: `/career/unapprovevideo`
 
 ### Option 1: Full Build (Recommended)
 ```bash
-claude-code "Build VPS broker from ~/outputs/vps_broker_api_spec_UPDATED.md
+claude-code "Build NPID dashboard from ~/outputs/npid_dashboard_api_spec_UPDATED.md
 
 Key requirements:
 1. Use STRING VALUES for stages/statuses (not numeric IDs)
@@ -63,7 +63,7 @@ Key requirements:
 5. CSRF token extraction from responses
 6. Error logging for all requests
 
-Create complete implementation in ~/prospect_pipeline/services/vps_broker/
+Create complete implementation in ~/prospect_pipeline/services/npid_dashboard/
 
 Include:
 - api/client.py: Session management
@@ -73,13 +73,13 @@ Include:
 - api/email.py: Template system
 - config/: All mappings
 - broker.py: Main orchestrator
-- test_vps.py: Integration test script"
+- test_npid.py: Integration test script"
 ```
 
 ### Option 2: Incremental Build
 ```bash
 # Step 1: Session client
-claude-code "Create api/client.py for VPS broker:
+claude-code "Create api/client.py for NPID dashboard:
 - Load session from ~/.npid_session/cookies.json
 - Extract CSRF token from meta tag or response
 - Add X-Requested-With header
@@ -179,7 +179,7 @@ def get_status_value(key: str) -> str:
 ```
 prospect_pipeline/
 ├── services/
-│   ├── vps_broker/        # NEW - Your VPS integration
+│   ├── npid_dashboard/        # NEW - Your NPID integration
 │   ├── notion/            # Existing - Database tracking
 │   └── raycast/           # Existing - UI interface
 ```
@@ -187,9 +187,9 @@ prospect_pipeline/
 ### Typical Flow
 ```python
 # From Raycast extension
-from services.vps_broker import VPSBroker
+from services.npid_dashboard import NPIDDashboard
 
-broker = VPSBroker()
+broker = NPIDDashboard()
 
 # Get new video requests
 threads = broker.inbox.list_threads()
@@ -240,12 +240,12 @@ for thread in threads:
 ### Quick Validation Script
 ```python
 #!/usr/bin/env python3
-"""test_vps.py - Validate VPS broker"""
+"""test_npid.py - Validate NPID dashboard"""
 
-from services.vps_broker import VPSBroker
+from services.npid_dashboard import NPIDDashboard
 
-def test_vps_broker():
-    broker = VPSBroker()
+def test_npid_dashboard():
+    broker = NPIDDashboard()
     
     # Test 1: Session loaded
     assert broker.client.session_active(), "❌ Session not loaded"
@@ -275,10 +275,10 @@ def test_vps_broker():
     except Exception as e:
         print(f"❌ Status update failed: {e}")
     
-    print("\n🎉 VPS Broker validated!")
+    print("\n🎉 NPID Dashboard validated!")
 
 if __name__ == "__main__":
-    test_vps_broker()
+    test_npid_dashboard()
 ```
 
 ---
@@ -296,7 +296,7 @@ claude-code "[full build command from above]"
 # 1. Core (Session + Progress)
 claude-code "Build client.py and progress.py..."
 # Test with real thread
-python test_vps.py
+python test_npid.py
 # 2. Add inbox
 claude-code "Build inbox.py..."
 # Test assignment flow
@@ -306,7 +306,7 @@ claude-code "Build inbox.py..."
 ### C. Review Updated Spec First
 ```bash
 # Review the corrected API spec
-cat ~/outputs/vps_broker_api_spec_UPDATED.md
+cat ~/outputs/npid_dashboard_api_spec_UPDATED.md
 # Then decide on A or B
 ```
 
@@ -342,7 +342,7 @@ All data confirmed, no estimates remaining. Claude Code can build the complete b
 
 **Command:**
 ```bash
-claude-code "Build complete VPS broker from ~/outputs/vps_broker_api_spec_UPDATED.md in ~/prospect_pipeline/services/vps_broker/"
+claude-code "Build complete NPID dashboard from ~/outputs/npid_dashboard_api_spec_UPDATED.md in ~/prospect_pipeline/services/npid_dashboard/"
 ```
 
 What do you want to do?

@@ -48,7 +48,7 @@ prospect-pipeline/
 │   │   ├── python-config.ts        # Centralized Python path configuration
 │   │   ├── python-executor.ts      # Secure Python subprocess executor
 │   │   ├── python-server-client.ts # NPID API client wrapper
-│   │   └── vps-broker-adapter.ts   # VPS Broker API wrapper
+│   │   └── npid-mcp-adapter.ts     # TypeScript helpers for NPID inbox/assignment flows
 │   ├── python/
 │   │   ├── npid_api_client.py    # NPID REST API (400-day sessions)
 │   │   ├── npid_email_automator.py

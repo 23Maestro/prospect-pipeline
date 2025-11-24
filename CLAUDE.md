@@ -27,9 +27,11 @@
 
 **Full docs:**
 - Python implementation: `src/python/npid_api_client.py:606`
-- API Contract: `VPS-API-specs/ATHLETE_MAIN_ID_INVARIANT.md`
+- API Contract: `NPID-API-specs/ATHLETE_MAIN_ID_INVARIANT.md`
 
 ---
 
 ## Recent Updates
 - MCP Server add updates the recent changes based on checklist
+- prospectID 502
+- codex consolidation ^

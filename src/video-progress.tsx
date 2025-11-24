@@ -2,23 +2,28 @@ import {
   Action,
   ActionPanel,
   Detail,
-  Cache,
   Icon,
   List,
   Toast,
   showToast,
   useNavigation,
   Clipboard,
-  getPreferenceValues,
 } from '@raycast/api';
 import { format } from 'date-fns';
 import { useEffect, useState } from 'react';
 import { callPythonServer } from './lib/python-server-client';
 import { logDebug, logError, logVideoUpdate } from './lib/logger';
+import {
+  getCachedTasks,
+  getLastCachedAt,
+  upsertTasks,
+  updateCachedTaskStatusStage,
+} from './lib/video-progress-cache';
 
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
   athlete_id: number;
+  athlete_main_id: string;
   athletename: string;
   video_progress_status: string;
   stage: string;
@@ -35,12 +40,11 @@ interface VideoProgressTask {
   [key: string]: any;
 }
 
-const preferences = getPreferenceValues<{ scoutApiKey?: string }>();
+const NPID_API_KEY = '594168a28d26571785afcb83997cb8185f482e56';
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 const getApiKey = () =>
-  preferences.scoutApiKey ||
-  process.env.SCOUT_API_KEY ||
-  '594168a28d26571785afcb83997cb8185f482e56';
+  NPID_API_KEY;
 
 function getPositions(task: VideoProgressTask): string {
   return [task.primaryposition, task.secondaryposition, task.thirdposition]
@@ -235,7 +239,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   useEffect(() => {
     setYoutubeTitle(generateYouTubeTitle(task));
     setDropboxFolder(generateDropboxFolder(task));
-    setApprovedDetail(ApprovedVideoDetail(task, onBack));
+    setApprovedDetail(ApprovedVideoDetail(task));
   }, [task]);
 
   const handleStatusChange = async (newStatus: string) => {
@@ -269,7 +273,8 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
       logDebug(`[VIDEO_PROGRESS] Calling update_video_status`, {
         video_msg_id: String(task.id),
         status: normalizedStatus,
-        hasApiKey: !!apiKey
+        hasApiKey: !!apiKey,
+        apiKey,
       });
 
       const result = await callPythonServer('update_video_status', {
@@ -282,6 +287,10 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         video_msg_id: String(task.id),
         status: normalizedStatus
       }, result);
+
+      if (task.id) {
+        await updateCachedTaskStatusStage(task.id, { status: normalizedStatus });
+      }
 
       toast.style = Toast.Style.Success;
       toast.title = 'Status Updated';
@@ -335,7 +344,8 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
       logDebug(`[VIDEO_PROGRESS] Calling update_video_stage`, {
         video_msg_id: String(task.id),
         stage: normalizedStage,
-        hasApiKey: !!apiKey
+        hasApiKey: !!apiKey,
+        apiKey,
       });
 
       const result = await callPythonServer('update_video_stage', {
@@ -348,6 +358,10 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         video_msg_id: String(task.id),
         stage: normalizedStage
       }, result);
+
+      if (task.id) {
+        await updateCachedTaskStatusStage(task.id, { stage: normalizedStage });
+      }
 
       toast.style = Toast.Style.Success;
       toast.title = 'Stage Updated';
@@ -530,64 +544,73 @@ ${approvedDetail}
 export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const { push, pop } = useNavigation();
-  const cache = new Cache();
 
   useEffect(() => {
-    void loadTasks();
+    void bootstrap();
   }, []);
+
+  const applyFilters = (items: VideoProgressTask[]) => {
+    const filtered = items.filter((task) =>
+      ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links', 'Done'].includes(
+        task.video_progress_status,
+      ),
+    );
+    const doneItems = filtered.filter((t) => t.video_progress_status === 'Done').slice(0, 50);
+    const activeItems = filtered.filter((t) => t.video_progress_status !== 'Done');
+    return [...activeItems, ...doneItems];
+  };
+
+  const bootstrap = async () => {
+    try {
+      const cached = await getCachedTasks();
+      if (cached.length) {
+        setTasks(applyFilters(cached));
+        setIsLoading(false);
+      }
+      await loadTasks({ force: !cached.length });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cache load failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  };
 
   const loadTasks = async (options?: { force?: boolean }) => {
     const force = options?.force ?? false;
     try {
-      const CACHE_KEY = 'video_progress_tasks';
-      const CACHE_TIME_KEY = 'video_progress_tasks_time';
-      const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+      const lastCached = await getLastCachedAt();
       const now = Date.now();
-
-      const cached = cache.get(CACHE_KEY);
-      const cacheTime = cache.get(CACHE_TIME_KEY);
-      if (cached) {
-        const cachedTasks = JSON.parse(cached) as VideoProgressTask[];
-        setTasks(cachedTasks);
-        if (!force) {
-          return;
-        }
+      if (!force && lastCached && now - lastCached < CACHE_TTL_MS) {
+        const cached = await getCachedTasks();
+        setTasks(applyFilters(cached));
+        setIsLoading(false);
+        return;
       }
 
-      // If forcing or no cache, fetch fresh
-      setIsLoading(true);
-
+      setIsSyncing(true);
       const data = await callPythonServer<VideoProgressTask[]>('get_video_progress', { filters: {} });
 
       if (!Array.isArray(data)) {
         throw new Error('Invalid data format');
       }
 
-      // Filter: include Done status and active statuses, but exclude Uploads
-      const filtered = data.filter(
-        (task) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links', 'Done'].includes(
-            task.video_progress_status
-          )
-      );
-
-      // Limit Done to 50 items, keep others as-is
-      const doneItems = filtered.filter(t => t.video_progress_status === 'Done').slice(0, 50);
-      const activeItems = filtered.filter(t => t.video_progress_status !== 'Done');
-      const finalFiltered = [...activeItems, ...doneItems];
-
-      // cache filtered tasks
-      cache.set(CACHE_KEY, JSON.stringify(finalFiltered));
-      cache.set(CACHE_TIME_KEY, now.toString());
-
+      const normalized = data.map((t) => ({
+        ...t,
+        athlete_main_id: t.athlete_main_id || '',
+      }));
+      const finalFiltered = applyFilters(normalized);
+      await upsertTasks(finalFiltered);
       setTasks(finalFiltered);
 
       await showToast({
-        style: filtered.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: `Found ${filtered.length} active tasks`,
-        message: filtered.length === 0 ? 'All tasks are done!' : 'Ready to work',
+        style: finalFiltered.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
+        title: `Found ${finalFiltered.length} active tasks`,
+        message: finalFiltered.length === 0 ? 'All tasks are done!' : 'Ready to work',
       });
     } catch (error) {
       await showToast({
@@ -597,6 +620,7 @@ export default function VideoProgress() {
       });
     } finally {
       setIsLoading(false);
+      setIsSyncing(false);
     }
   };
 
@@ -607,7 +631,7 @@ export default function VideoProgress() {
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || isSyncing}
       navigationTitle="Video Progress (ProspectID)"
       searchBarPlaceholder="Search athletes..."
       searchBarAccessory={
@@ -682,6 +706,7 @@ export default function VideoProgress() {
                     title="Reload Tasks"
                     icon={Icon.ArrowClockwise}
                     onAction={() => loadTasks({ force: true })}
+                    isLoading={isSyncing}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                   />
                 </ActionPanel>

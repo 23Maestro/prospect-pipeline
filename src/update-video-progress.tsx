@@ -1,16 +1,18 @@
-import { Action, ActionPanel, Form, Toast, showToast } from '@raycast/api';
+import { Action, ActionPanel, Form, Toast, showToast, getPreferenceValues } from '@raycast/api';
 import { useState } from 'react';
-import { updateVideoStage, updateVideoStatus } from './lib/vps-broker-adapter';
+import { callPythonServer } from './lib/python-server-client';
 
 type Stage = "on_hold" | "awaiting_client" | "in_queue" | "done";
 type Status = "revisions" | "hudl" | "dropbox" | "external_links" | "not_approved";
 
 export default function UpdateVideoProgress() {
+  const preferences = getPreferenceValues<{ scoutApiKey?: string }>();
   const [threadId, setThreadId] = useState('');
   const [stage, setStage] = useState<Stage>('in_queue');
   const [status, setStatus] = useState<Status>('hudl');
 
   async function handleSubmit() {
+    const apiKey = preferences.scoutApiKey || process.env.SCOUT_API_KEY || '594168a28d26571785afcb83997cb8185f482e56';
     if (!threadId) {
       await showToast({
         style: Toast.Style.Failure,
@@ -26,10 +28,10 @@ export default function UpdateVideoProgress() {
 
     try {
       // Update stage
-      await updateVideoStage(threadId, stage);
-      
-      // Update status  
-      await updateVideoStatus(threadId, status);
+      await callPythonServer('update_video_stage', { athlete_id: threadId, stage, api_key: apiKey });
+
+      // Update status
+      await callPythonServer('update_video_status', { athlete_id: threadId, status, api_key: apiKey });
 
       toast.style = Toast.Style.Success;
       toast.title = 'Progress updated';
@@ -84,4 +86,3 @@ export default function UpdateVideoProgress() {
     </Form>
   );
 }
-

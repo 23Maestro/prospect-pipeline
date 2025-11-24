@@ -298,7 +298,7 @@ export default function VideoUpdatesCommand(
     initialValues: {
       athleteName: props.draftValues?.athleteName || '',
       youtubeLink: props.draftValues?.youtubeLink || '',
-      season: props.draftValues?.season || '',
+      season: '',
       videoType: props.draftValues?.videoType &&
         ['Full Season Highlight', 'Partial Season Highlight', 'Single Game Highlight', 'Skills/Training Video'].includes(props.draftValues.videoType)
         ? props.draftValues.videoType
@@ -410,12 +410,32 @@ export default function VideoUpdatesCommand(
 
           if (result.status === 'ok' && result.data) {
             log('✅ Seasons loaded:', result.data.length, 'items');
-            // Use 'label' from API response for display, 'value' for submission
-            setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.label })));
-            if (result.data.length > 0) {
-              setValue('season', result.data[0].value);
+            // New normalization logic
+            const normalized = (result.data as any[])
+              .map((s: any) => {
+                const fallback = (s.school_added ?? "").toString().trim();
+                const rawValue = typeof s.value === "string" && s.value.trim() !== ""
+                  ? s.value
+                  : fallback;
+
+                // Drop API placeholder rows like "-- Season/Team --"
+                if ((s.label || "").toLowerCase().includes("season/team") && !rawValue) {
+                  return null;
+                }
+
+                if (!rawValue) return null;
+
+                return {
+                  value: rawValue,
+                  title: s.label || s.season || rawValue,
+                };
+              })
+              .filter((s) => s);
+            setSeasons(normalized);
+            if (normalized.length > 0) {
+              setValue("season", normalized[0].value);
             } else {
-              setValue('season', '');
+              setValue("season", "");
             }
           } else {
             log('⚠️ Failed to load seasons or no data:', result);
@@ -493,18 +513,10 @@ export default function VideoUpdatesCommand(
         {...itemProps.season}
         disabled={!values.videoType}
       >
-        {isFetchingSeasons ? (
-          <Form.Dropdown.Item value="" title="Loading seasons..." />
-        ) : seasons.length === 0 ? (
-          <Form.Dropdown.Item value="" title="(No seasons available - Update student profile)" />
-        ) : (
-          <>
-            <Form.Dropdown.Item value="" title="(Skip - No Season)" />
-            {seasons.map((s) => (
-              <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
-            ))}
-          </>
-        )}
+        <Form.Dropdown.Item value="" title="-- Season/Team --" />
+        {seasons.map((s) => (
+          <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
+        ))}
       </Form.Dropdown>
     </Form>
   );

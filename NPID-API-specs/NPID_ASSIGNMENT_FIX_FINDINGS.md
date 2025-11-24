@@ -1,4 +1,4 @@
-# VPS Assignment Fix - Session Findings
+# NPID Assignment Fix - Session Findings
 **Date**: November 7, 2025  
 **Status**: Fixed but needs live testing
 
@@ -7,9 +7,9 @@
 ## 🐛 Problems Identified
 
 ### 1. **Session Not Shared**
-- `vps_broker_api_client.py` used separate session file: `~/.vps_broker_session.pkl`
+- `npid_api_client.py` used separate session file: `~/.vps_broker_session.pkl`
 - `npid_api_client.py` used: `~/.npid_session.pkl`
-- Result: VPS broker had expired/invalid session
+- Result: NPID client had expired/invalid session
 
 ### 2. **CSRF Token Extraction Failed**
 - Tried to extract from `/rulestemplates/template/videoteammessagelist` (returns JSON, no `_token` field)
@@ -28,7 +28,7 @@
 
 ## ✅ Fixes Applied
 
-### File: `src/python/vps_broker_api_client.py`
+### File: `src/python/npid_api_client.py`
 
 #### Fix 1: Share Session with NPID Client
 ```python
@@ -113,22 +113,22 @@ logging.basicConfig(
 ```typescript
 // Lines 68-86 - Added console logging for debugging:
 childProcess.on("close", (code: number) => {
-  console.log(`[VPS] Exit code: ${code}`);
-  console.log(`[VPS] stdout: ${stdout}`);
-  console.log(`[VPS] stderr: ${stderr}`);
+  console.log(`[NPID] Exit code: ${code}`);
+  console.log(`[NPID] stdout: ${stdout}`);
+  console.log(`[NPID] stderr: ${stderr}`);
   
   if (code === 0) {
     try {
       const result = JSON.parse(stdout);
-      console.log(`[VPS] Parsed result:`, result);
+      console.log(`[NPID] Parsed result:`, result);
       resolve(result);
     } catch (error) {
-      console.error(`[VPS] Parse error:`, error);
-      reject(new Error(`Failed to parse VPS response: ${stdout}`));
+      console.error(`[NPID] Parse error:`, error);
+      reject(new Error(`Failed to parse NPID response: ${stdout}`));
     }
   } else {
-    console.error(`[VPS] Failed with code ${code}`);
-    reject(new Error(`VPS broker failed (code ${code}): ${stderr || stdout}`));
+    console.error(`[NPID] Failed with code ${code}`);
+    reject(new Error(`NPID client failed (code ${code}): ${stderr || stdout}`));
   }
 });
 ```
@@ -140,7 +140,7 @@ childProcess.on("close", (code: number) => {
 ### Manual Python Test (✅ Working)
 ```bash
 cd src/python
-./venv/bin/python3 vps_broker_api_client.py assign_thread '{"messageId":"message_id12871","contactId":"1464146","ownerId":"1408164","athleteMainId":"943069","stage":"In Queue","status":"HUDL","contactFor":"athlete","contact":"jaunita.garcialopez1@gmail.com"}'
+./venv/bin/python3 npid_api_client.py assign_thread '{"messageId":"message_id12871","contactId":"1464146","ownerId":"1408164","athleteMainId":"943069","stage":"In Queue","status":"HUDL","contactFor":"athlete","contact":"jaunita.garcialopez1@gmail.com"}'
 
 # Output:
 # ✅ Loaded session from cache
@@ -172,7 +172,7 @@ All fields present ✅
 - [ ] **Check video progress page** - does it show assigned to you?
 
 ### 2. Debug if Still Failing
-Check VPS logs:
+Check NPID logs:
 ```bash
 tail -50 ~/.vps_broker.log
 ```
@@ -190,12 +190,12 @@ If some assignments work and others don't:
 
 ### 4. Commit When Verified
 ```bash
-git add src/python/vps_broker_api_client.py src/lib/npid-mcp-adapter.ts
+git add src/python/npid_api_client.py src/lib/npid-mcp-adapter.ts
 git commit -m "fix(vps): correct CSRF extraction and message ID format
 
 - Extract CSRF from assignment modal page (not JSON endpoint)
 - Strip 'message_id' prefix from messageid field  
-- Share session file between VPS and NPID clients
+- Share session file between NPID and NPID clients
 - Remove duplicate form fields causing silent failures"
 ```
 
@@ -203,7 +203,7 @@ git commit -m "fix(vps): correct CSRF extraction and message ID format
 
 ## 🔍 Debugging Commands
 
-### Check if VPS broker is being called:
+### Check if NPID client is being called:
 ```bash
 tail -f ~/.vps_broker.log
 ```
@@ -211,7 +211,7 @@ tail -f ~/.vps_broker.log
 ### Test assignment directly:
 ```bash
 cd src/python
-./venv/bin/python3 vps_broker_api_client.py assign_thread '{"messageId":"message_id12870","contactId":"CONTACT_ID","ownerId":"1408164"}'
+./venv/bin/python3 npid_api_client.py assign_thread '{"messageId":"message_id12870","contactId":"CONTACT_ID","ownerId":"1408164"}'
 ```
 
 ### Check session status:
@@ -253,7 +253,7 @@ video_progress_status=HUDL
 
 ## 🔄 CSRF Retry Middleware (Nov 7, 2025) ✅ TESTED & WORKING
 
-**Added resilient CSRF handling to vps_broker_api_client.py** without new files:
+**Added resilient CSRF handling to npid_api_client.py** without new files:
 
 ### 1. **Detection**: `_is_csrf_failure(response)` ✓
 Detects CSRF failures:
@@ -281,7 +281,7 @@ Methods now use retry middleware:
 
 **Test Results (Nov 7, 2025):**
 ```bash
-$ ./venv/bin/python3 vps_broker_api_client.py get_video_progress '{}'
+$ ./venv/bin/python3 npid_api_client.py get_video_progress '{}'
 
 ✅ Session loaded from ~/.npid_session.pkl
 ⚠️  Got HTML response instead of JSON (CSRF failure detected)
@@ -311,7 +311,7 @@ resp = self._retry_with_csrf('POST', url, data, message_id)
 
 ## 🎯 Root Cause Summary
 
-The VPS broker was failing because:
+The NPID client was failing because:
 1. **Session isolation** → couldn't authenticate
 2. **Wrong CSRF source** → token was `None`
 3. **Wrong message ID format** → server rejected silently

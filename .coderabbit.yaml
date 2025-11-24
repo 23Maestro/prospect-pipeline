@@ -1,0 +1,127 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: "en-US"
+
+reviews:
+  # "chill" reduces noise. Use "assertive" if you want stricter reviews.
+  profile: "chill"
+
+  high_level_summary: true
+  poem: true   # Set to false to disable the whimsical poem
+
+  auto_review:
+    enabled: true
+    drafts: false # Automatically skip draft PRs until they are ready
+
+# Global instructions for the bot
+instructions: |
+  - Act as a senior software engineer.
+  - Focus on logic errors, security, and performance over styling nits.
+  - If suggesting code changes, ensure they are complete and copy-pasteable.
+  - Verify that no hardcoded paths are used; suggest environment variables instead.
+  - This is a Raycast extension + Python backend for student-athlete video editing workflow.
+  - Verify NPID API calls follow patterns in src/python/npid_api_client.py
+  - Check that session management uses ~/.npid_session.pkl pattern
+  - Ensure BeautifulSoup parsing is robust (HTML responses, not JSON from some endpoints)
+
+# Specific instructions based on your file structure
+path_instructions:
+  # Raycast Extension & React Code
+  - path: "src/**/*.tsx"
+    instructions: |
+      - Ensure React hooks are used correctly according to Raycast best practices.
+      - Check that async operations (API calls) handle loading states and errors in the UI.
+      - Prefer functional components and proper TypeScript typing.
+      - Verify Raycast List/Detail components have proper key props and item selection handling.
+      - Check that API error messages are user-friendly and actionable.
+      - Ensure no hardcoded API URLs; all endpoints should use environment variables or config.
+
+  # Python Scripts (NPID Integration)
+  - path: "src/python/**/*.py"
+    instructions: |
+      - Follow PEP 8 standards.
+      - Ensure all network requests (requests lib) have timeouts and proper error handling.
+      - Use type hints for all function arguments and return values.
+      - Verify that Beautiful Soup parsing logic is robust against missing elements.
+      - Check NPID API contract compliance: verify athlete_main_id handling per CLAUDE.md
+      - Ensure X-Requested-With: XMLHttpRequest header is included for NPID API calls
+      - Validate response types (HTML vs JSON) match actual endpoint behavior
+      - Check session pickle file handling for proper serialization/deserialization
+
+  # TypeScript Libraries and Tools
+  - path: "src/lib/**/*.ts"
+    instructions: |
+      - Use TypeScript strict mode throughout.
+      - Add proper error handling with typed Error classes.
+      - Ensure utilities are reusable and well-documented.
+      - Check that type definitions are exported for consumer modules.
+
+  # Tools and Utilities
+  - path: "src/tools/**/*.ts"
+    instructions: |
+      - Verify tools export the correct contract for Raycast integration.
+      - Check that tool output is properly formatted for consumption.
+      - Ensure no side effects outside of intended tool behavior.
+
+  # Type Definitions
+  - path: "src/types/**/*.ts"
+    instructions: |
+      - Keep types focused and minimal.
+      - Document complex type unions with comments.
+      - Ensure types don't drift from actual API contracts.
+
+  # Next.js Web Dashboard (if applicable)
+  - path: "web/**/*.tsx"
+    instructions: |
+      - Adhere to Next.js 15 App Router patterns (explicit 'use client' vs server components).
+      - Ensure Tailwind CSS classes are valid and efficient.
+      - Check that data fetching patterns are appropriate (server vs client).
+
+  # MCP Servers
+  - path: "mcp-servers/**/*.ts"
+    instructions: |
+      - Verify MCP protocol compliance.
+      - Check resource and tool definitions are properly typed.
+      - Ensure error handling is robust for tool failures.
+
+  # GitHub Actions and Scripts
+  - path: ".github/**/*.yml"
+    instructions: |
+      - Verify workflow triggers and conditions are appropriate.
+      - Check that environment variables are properly scoped.
+      - Ensure secrets are not logged or exposed.
+
+# Exclude build artifacts and auto-generated files from review
+path_filters:
+  - "!**/node_modules/**"
+  - "!**/.next/**"
+  - "!**/dist/**"
+  - "!**/out/**"
+  - "!**/package-lock.json"
+  - "!**/supabase/**"
+  - "!**/__pycache__/**"
+  - "!**/*.pyc"
+  - "!**/venv/**"
+  - "!**/.DS_Store"
+  - "!**/files.zip"
+
+# Review rules for specific file patterns
+rules:
+  - type: pattern
+    pattern: "src/python/**/*.py"
+    rules:
+      - type: error
+        message: "Missing type hints on function"
+        regex: "^def \\w+\\([^)]*\\)(?!.*->):"
+
+  - type: pattern
+    pattern: "src/**/*.tsx"
+    rules:
+      - type: warning
+        message: "Consider adding error boundary"
+        regex: "async\\s+\\w+.*=>|useEffect.*\\[\\]"
+
+# Notification preferences
+notifications:
+  auto_mention_author: true
+  comment_on_change: true

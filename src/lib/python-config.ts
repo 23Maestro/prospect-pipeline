@@ -36,11 +36,6 @@ export function getPythonScriptPath(scriptName: string): string {
 export const NPID_CLIENT_PATH = getPythonScriptPath("npid_api_client.py");
 
 /**
- * VPS Broker API Client path
- */
-export const VPS_BROKER_PATH = getPythonScriptPath("vps_broker_api_client.py");
-
-/**
  * Standard environment variables for Python subprocess
  * Includes PATH to ensure python executable is found
  */

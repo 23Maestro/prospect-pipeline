@@ -1,4 +1,4 @@
-# VPS Broker - COMPLETE API Specification (CONFIRMED)
+# NPID Dashboard - COMPLETE API Specification (CONFIRMED)
 
 ## ✅ ALL ENDPOINTS VERIFIED - Nov 6, 2025
 
@@ -220,7 +220,7 @@ POST /videoteammsg/sendmessage
 ```python
 from urllib.parse import quote_plus
 
-class VPSProgressAPI:
+class NPIDProgressAPI:
     """Video Progress System API for stage/status updates"""
     
     STAGES = {

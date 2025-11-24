@@ -383,7 +383,7 @@ if (seasons.status === 'ok') {
 | `src/video-updates.tsx` | 385 | Fix field mapping (label→title) |
 | `CLAUDE.md` | 3-22 | Update critical invariants |
 | `.claude/skills/npid-athlete-main-id.md` | All | Complete rewrite with verified facts |
-| `VPS-API-specs/ATHLETE_MAIN_ID_INVARIANT.md` | All | This document |
+| `NPID-API-specs/ATHLETE_MAIN_ID_INVARIANT.md` | All | This document |
 
 ---
 

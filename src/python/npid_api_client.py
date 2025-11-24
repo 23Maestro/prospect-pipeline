@@ -13,7 +13,18 @@ from bs4 import BeautifulSoup
 from typing import Optional, Dict, List, Any
 
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+LOG_DIR = Path("/Users/singleton23/raycast_logs")
+LOG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = LOG_DIR / "console.log"
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler()
+    ]
+)
 
 
 class NPIDAPIClient:
@@ -24,6 +35,8 @@ class NPIDAPIClient:
         self.email = os.getenv('NPID_EMAIL', 'jsingleton@prospectid.com')
         self.password = os.getenv('NPID_PASSWORD', 'YBh@Y8Us@1&qwd$')
         self.authenticated = False
+        self.csrf_token: Optional[str] = None
+        self.csrf_token_cache: Dict[str, str] = {}
         self._load_session()
 
     def _load_session(self):
@@ -101,6 +114,111 @@ class NPIDAPIClient:
         """Ensure we're authenticated before making requests"""
         if not self.authenticated:
             self.login()
+
+    @staticmethod
+    def _normalize_stage_for_api(stage: str) -> str:
+        """Map various stage inputs to the API-expected string value."""
+        lookup = {
+            'on hold': 'On Hold',
+            'awaiting client': 'Awaiting Client',
+            'in queue': 'In Queue',
+            'done': 'Done'
+        }
+        stage_key = (stage or '').lower().replace('-', ' ').replace('_', ' ').strip()
+        return lookup.get(stage_key, 'In Queue')
+
+    @staticmethod
+    def _normalize_status_for_api(status: str) -> str:
+        """Map various status inputs to the API-expected slug (lowercase)."""
+        lookup = {
+            'revisions': 'revisions',
+            'revise': 'revisions',
+            'hudl': 'hudl',
+            'dropbox': 'dropbox',
+            'external links': 'external_links',
+            'external_links': 'external_links',
+            'not approved': 'not_approved',
+            'not_approved': 'not_approved'
+        }
+        status_key = (status or '').lower().replace('-', ' ').replace('_', ' ').strip()
+        return lookup.get(status_key, 'hudl')
+
+    def _is_csrf_failure(self, response) -> bool:
+        """Detect if response failed due to CSRF or session issues"""
+        if response.status_code == 419:
+            return True
+
+        if response.status_code in (301, 302, 303, 307, 308):
+            if '/login' in response.headers.get('location', ''):
+                return True
+
+        if 'text/html' in response.headers.get('content-type', ''):
+            text_lower = response.text.lower()
+            if 'login' in text_lower or '<title>' in text_lower:
+                if any(x in text_lower for x in ['national prospect id | login', '<title>login</title>']):
+                    return True
+            if response.status_code == 200 and ('<!doctype html>' in text_lower or '<html' in text_lower):
+                logging.warning("⚠️  Got HTML response instead of JSON (invalid session/CSRF)")
+                return True
+
+        return False
+
+    def _get_token_for_modal(self, message_id: str = None) -> Optional[str]:
+        """Fetch and cache CSRF token from assignment modal page"""
+        self.ensure_authenticated()
+        modal_key = f"assignvideoteam_{message_id}" if message_id else "assignvideoteam"
+        if modal_key in self.csrf_token_cache:
+            cached_token = self.csrf_token_cache[modal_key]
+            logging.debug(f"♻️  Using cached token for {modal_key}")
+            return cached_token
+
+        modal_url = f"{self.base_url}/rulestemplates/template/assignemailtovideoteam"
+        if message_id:
+            modal_url += f"?message_id={message_id}"
+
+        try:
+            resp = self.session.get(modal_url, timeout=10)
+            resp.raise_for_status()
+            soup = BeautifulSoup(resp.text, 'html.parser')
+            token_input = soup.find('input', {'name': '_token'})
+
+            if token_input and token_input.get('value'):
+                token = token_input['value']
+                self.csrf_token = token
+                self.csrf_token_cache[modal_key] = token
+                logging.info(f"🔑 Fresh CSRF token cached: {token[:20]}...")
+                return token
+            else:
+                logging.error(f"❌ No _token found on modal page: {modal_url}")
+        except Exception as e:
+            logging.error(f"Failed to fetch token from modal: {e}")
+
+        return None
+
+    def _retry_with_csrf(self, method: str, url: str, data: Dict = None,
+                         headers: Dict = None, message_id: str = None) -> requests.Response:
+        """Retry a request with fresh CSRF token if it fails with CSRF error"""
+        self.ensure_authenticated()
+        resp = self.session.request(method, url, data=data, headers=headers, timeout=10)
+
+        if not self._is_csrf_failure(resp):
+            return resp
+
+        logging.warning("⚠️  CSRF failure detected, fetching fresh token...")
+        fresh_token = self._get_token_for_modal(message_id)
+
+        if not fresh_token:
+            logging.error("❌ Could not get fresh CSRF token, failing request")
+            return resp
+
+        if data is not None:
+            data['_token'] = fresh_token
+        elif headers is not None:
+            headers['X-CSRF-TOKEN'] = fresh_token
+
+        logging.info("🔄 Retrying request with fresh CSRF token...")
+        resp = self.session.request(method, url, data=data, headers=headers, timeout=10)
+        return resp
 
     def get_inbox_threads(
         self, limit: int = 100, filter_assigned: str = 'both', exclude_id: Optional[str] = None
@@ -282,6 +400,27 @@ class NPIDAPIClient:
             logging.exception(f"⚠️  Failed to parse message detail JSON. Response: {resp.text[:500]}")
             return {'message_id': clean_id, 'item_code': item_code, 'content': ''}
 
+    def get_thread(self, thread_id: str) -> Dict[str, Any]:
+        """Fetch full thread data for reply composition"""
+        self.ensure_authenticated()
+        resp = self.session.get(
+            f"{self.base_url}/rulestemplates/template/videoteammessage_subject",
+            params={"id": thread_id}
+        )
+        resp.raise_for_status()
+        try:
+            data = resp.json()
+            if 'body_html' in data and data['body_html']:
+                soup = BeautifulSoup(data['body_html'], 'html.parser')
+                for tag in soup(['script', 'style']):
+                    tag.decompose()
+                clean_text = soup.get_text(separator='\n', strip=True)
+                data['content'] = clean_text
+            return data
+        except Exception as e:
+            logging.error(f"Error parsing thread content: {e}")
+            return {}
+
     def get_assignment_modal(self, message_id: str, item_code: str) -> Dict[str, Any]:
         """Get assignment modal data (owners, stages, statuses)"""
         self.ensure_authenticated()
@@ -365,12 +504,14 @@ class NPIDAPIClient:
             'videoprogressstage': stage,
             'video_progress_status': status,
             'videoprogressstatus': status,
-            '_token': payload['formToken']
+            '_token': payload.get('formToken', self.csrf_token or '')
         }
-        resp = self.session.post(
-            f"{self.base_url}/videoteammsg/assignvideoteam",
+        resp = self._retry_with_csrf(
+            method='POST',
+            url=f"{self.base_url}/videoteammsg/assignvideoteam",
             data=form_data,
-            headers={'Content-Type': 'application/x-www-form-urlencoded'}
+            headers={'Content-Type': 'application/x-www-form-urlencoded'},
+            message_id=payload.get('messageId')
         )
         resp.raise_for_status()
         if resp.status_code == 200 and not resp.text.strip():
@@ -397,6 +538,71 @@ class NPIDAPIClient:
         resp.raise_for_status()
         data = resp.json() if resp.text else {}
         return {'stage': data.get('stage'), 'status': data.get('video_progress_status')}
+
+    def get_reply_form_data(self, message_id: str, itemcode: str) -> str:
+        """Get reply form HTML and cache CSRF token for sending replies"""
+        self.ensure_authenticated()
+        resp = self.session.get(
+            f"{self.base_url}/rulestemplates/template/videoteam_msg_sendingto",
+            params={"id": message_id, "itemcode": itemcode, "tab": "inbox"}
+        )
+        resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, 'html.parser')
+        token = soup.find('input', {'name': '_token'})
+        if token and token.get('value'):
+            self.csrf_token = token['value']
+
+        return resp.text
+
+    def _clean_html_message(self, html: str) -> str:
+        """Strip tracking and footer content from HTML messages"""
+        soup = BeautifulSoup(html, 'html.parser')
+
+        for img in soup.find_all('img', src=True):
+            if 'trackopens' in img['src'] or img.get('width') == '1':
+                img.decompose()
+
+        for div in soup.find_all('div', style=True):
+            if 'background-color: rgb(246, 249, 252)' in div.get('style', ''):
+                div.decompose()
+
+        for div in soup.find_all('div'):
+            if 'Connect With Us' in div.get_text():
+                div.decompose()
+
+        return str(soup)
+
+    def send_reply(self, message_id: str, itemcode: str, reply_text: str) -> bool:
+        """Send reply with quoted previous message"""
+        self.ensure_authenticated()
+
+        thread_data = self.get_thread(message_id)
+        original_subject = thread_data.get('message_subject', '') or ''
+        original_message = thread_data.get('message', '') or ''
+        timestamp = thread_data.get('time_stamp_wrote', '') or ''
+        reply_main_id = thread_data.get('message_id', message_id)
+
+        self.get_reply_form_data(message_id, itemcode)
+        original_message = self._clean_html_message(original_message)
+
+        signature = '<br><br><span>Kind Regards,</span><br><br>'
+        previous_msg = f'<div id="previous_message{message_id}">{signature} {timestamp} {original_message}</div>'
+        full_message = reply_text + previous_msg
+
+        files = {'mail_attachment': ('', '', 'application/octet-stream')}
+        data = {
+            '_token': self.csrf_token,
+            'message_type': 'send',
+            'reply_message_id': message_id,
+            'reply_main_id': reply_main_id,
+            'draftid': '',
+            'message_subject': f'Re: {original_subject}',
+            'message_message': full_message
+        }
+
+        resp = self.session.post(f"{self.base_url}/videoteammsg/sendmessage", data=data, files=files)
+        return resp.status_code == 200
 
     def search_contacts(
         self, query: str, search_type: str = 'athlete'
@@ -604,6 +810,104 @@ class NPIDAPIClient:
             'html': resp.text  # Include raw HTML for debugging
         }
 
+    def get_video_sortable(self, athlete_id: str, sport_alias: str, athlete_main_id: str) -> str:
+        """Fetch the sortable video list HTML (used to refresh UI after add)."""
+        self.ensure_authenticated()
+        params = {
+            'athleteid': athlete_id,
+            'sport_alias': sport_alias,
+            'athlete_main_id': athlete_main_id
+        }
+        resp = self.session.get(
+            f"{self.base_url}/template/template/videosortable",
+            params=params,
+            headers={'X-Requested-With': 'XMLHttpRequest', 'Accept': '*/*'}
+        )
+        resp.raise_for_status()
+        return resp.text
+
+    def add_career_video(
+        self,
+        athlete_id: str,
+        sport_alias: str,
+        athlete_main_id: str,
+        youtube_link: str,
+        video_type: str,
+        season: str = '',
+        api_key: str = None,
+        approve_video: Any = '1',
+        approve_video_checkbox: Any = 'on'
+    ) -> Dict[str, Any]:
+        """Add a highlight via /athlete/update/careervideos/{athlete_id} mirroring UI form."""
+        self.ensure_authenticated()
+        if api_key is None:
+            api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+
+        # Step 1: Fetch videosortable before upload (for parity with UI workflow)
+        pre_sortable_html = ''
+        try:
+            logging.info(f"📋 Fetching videosortable before upload for athlete_id={athlete_id}")
+            pre_sortable_html = self.get_video_sortable(athlete_id, sport_alias, athlete_main_id)
+        except Exception as sortable_error:
+            logging.warning(f"⚠️ Failed to fetch pre-upload video list: {sortable_error}")
+
+        # Fetch add video form to get CSRF token and action
+        form = self.get_add_video_form(athlete_id, sport_alias, athlete_main_id)
+        csrf_token = form.get('csrf_token', '') or self._get_csrf_token()
+        form_action = form.get('form_action') or f"{self.base_url}/athlete/update/careervideos/{athlete_id}"
+
+        payload = {
+            '_token': csrf_token,
+            'athleteviewtoken': '',
+            'schoolinfo[add_video_season]': season or '',
+            'sport_alias': sport_alias,
+            'url_source': 'youtube',
+            'newVideoLink': youtube_link,
+            'videoType': video_type,
+            'newVideoSeason': season or '',
+            # approve_video=1 emulates clicking the "Approve" button in the UI
+            'approve_video': str(approve_video) if approve_video is not None else '1',
+            'approve_video_checkbox': str(approve_video_checkbox) if approve_video_checkbox is not None else 'on',
+            'athlete_main_id': athlete_main_id,
+            'api_key': api_key
+        }
+
+        logging.info(f"🎬 Adding career video for athlete_id={athlete_id}, main_id={athlete_main_id}, type={video_type}, season={season or 'none'}")
+        resp = self.session.post(
+            form_action,
+            data=payload,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        )
+
+        success = resp.status_code in [200, 302]
+        if success:
+            logging.info(f"✅ Career video added for athlete_id={athlete_id}")
+            try:
+                sortable_html = self.get_video_sortable(athlete_id, sport_alias, athlete_main_id)
+            except Exception as sortable_error:
+                logging.warning(f"⚠️ Failed to refresh video list after add: {sortable_error}")
+                sortable_html = ''
+            return {
+                'status': 'ok',
+                'data': {
+                    'success': True,
+                    'response': resp.text[:500],
+                    'pre_sortable_html': pre_sortable_html,
+                    'sortable_html': sortable_html
+                }
+            }
+
+        logging.warning(f"⚠️  Career video add failed: HTTP {resp.status_code}")
+        logging.warning(resp.text[:500])
+        return {
+            'status': 'error',
+            'message': f"HTTP {resp.status_code}",
+            'data': {'success': False, 'response': resp.text[:500]}
+        }
+
     def get_video_seasons(
         self, athlete_id: str, sport_alias: str, video_type: str, athlete_main_id: str
     ) -> List[Dict[str, Any]]:
@@ -656,7 +960,13 @@ class NPIDAPIClient:
         return seasons
 
     def update_video_profile(
-        self, player_id: str, youtube_link: str, season: str = '', video_type: str = 'Full Season Highlight'
+        self,
+        player_id: str,
+        youtube_link: str,
+        season: str = '',
+        video_type: str = 'Full Season Highlight',
+        sport_alias: str = '',
+        athlete_main_id: str = ''
     ) -> Dict[str, Any]:
         """
         Update athlete profile with new video
@@ -670,17 +980,23 @@ class NPIDAPIClient:
         season is optional (edge case: students don't always update their profiles)
         """
         self.ensure_authenticated()
-        # Add cache-busting query param for Laravel quirk (sometimes requires manual refresh)
-        import time
-        cache_buster = int(time.time())
-        edit_page = self.session.get(f"{self.base_url}/athlete/{player_id}/edit?_={cache_buster}")
-        edit_page.raise_for_status()
-        soup = BeautifulSoup(edit_page.text, 'html.parser')
-        csrf_elem = soup.select_one('input[name="csrf_token"], input[name="_token"]')
-        csrf_token = csrf_elem.get('value', '') if csrf_elem else ''
+        form_action = f"{self.base_url}/athlete/{player_id}/videos/add"
+        csrf_token = ''
+
+        # Prefer the add-video form token/action so we mirror the UI request exactly
+        if sport_alias and athlete_main_id:
+            try:
+                add_form = self.get_add_video_form(player_id, sport_alias, athlete_main_id)
+                csrf_token = add_form.get('csrf_token', '') or csrf_token
+                form_action = add_form.get('form_action', form_action) or form_action
+            except Exception as e:
+                logging.warning(f"⚠️  Failed to fetch add video form for {player_id}: {e}")
+
+        if not csrf_token:
+            csrf_token = self._get_csrf_token()
 
         video_data = {
-            'csrf_token': csrf_token,
+            '_token': csrf_token,
             'player_id': player_id,
             'video_url': youtube_link,
             'video_type': video_type,
@@ -690,31 +1006,87 @@ class NPIDAPIClient:
         # Only include season if provided (not required - boss removed requirement)
         if season:
             video_data['season'] = season
+        if sport_alias:
+            video_data['sport_alias'] = sport_alias
+        if athlete_main_id:
+            video_data['athlete_main_id'] = athlete_main_id
 
         season_msg = f"({season})" if season else "(no season - profile not updated)"
         logging.info(f"🎬 Adding {video_type} video for player {player_id} {season_msg}")
         resp = self.session.post(
-            f"{self.base_url}/athlete/{player_id}/videos/add",
+            form_action,
             data=video_data,
             headers={
                 'Content-Type': 'application/x-www-form-urlencoded',
-                'Cache-Control': 'no-cache'  # Laravel cache quirk
+                'Cache-Control': 'no-cache',  # Laravel cache quirk
+                'X-Requested-With': 'XMLHttpRequest'
             }
         )
+        response_summary = resp.text[:200] if resp.text else ''
         if resp.status_code in [200, 302]:
             logging.info(f"✅ Video added successfully to player {player_id}")
-            return {
+            data = {
                 'success': True, 'player_id': player_id, 'video_url': youtube_link,
                 'season': season, 'video_type': video_type
             }
-        else:
-            logging.warning(f"⚠️  Video update failed: {resp.status_code}")
-            logging.warning(f"Response: {resp.text[:500]}")
-            return {
-                'success': False, 'error': f"HTTP {resp.status_code}",
-                'message': resp.text[:200]
-            }
+            return {'status': 'ok', 'data': data}
 
+        logging.warning(f"⚠️  Video update failed: {resp.status_code}")
+        logging.warning(f"Response: {resp.text[:500]}")
+        data = {
+            'success': False, 'error': f"HTTP {resp.status_code}",
+            'message': response_summary
+        }
+        return {'status': 'error', 'message': response_summary, 'data': data}
+
+
+    def get_video_progress(self, filters: Dict[str, str] = None) -> List[Dict[str, Any]]:
+        """Fetch video progress data with CSRF retry"""
+        self.ensure_authenticated()
+
+        form_data = {
+            "first_name": "",
+            "last_name": "",
+            "email": "",
+            "sport": "0",
+            "states": "0",
+            "athlete_school": "0",
+            "editorassigneddatefrom": "",
+            "editorassigneddateto": "",
+            "grad_year": "",
+            "select_club_sport": "",
+            "select_club_state": "",
+            "select_club_name": "",
+            "video_editor": "",
+            "video_progress": "",
+            "video_progress_stage": "",
+            "video_progress_status": ""
+        }
+
+        if filters:
+            form_data.update(filters)
+
+        headers = {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-Requested-With': 'XMLHttpRequest'
+        }
+
+        resp = self._retry_with_csrf(
+            method='POST',
+            url=f"{self.base_url}/videoteammsg/videoprogress",
+            data=form_data,
+            headers=headers
+        )
+
+        try:
+            if resp.status_code == 200:
+                return resp.json()
+            logging.error(f"Failed to fetch video progress: {resp.status_code}")
+            return []
+        except Exception as e:
+            logging.error(f"Error parsing video progress response: {e}")
+            return []
 
     def get_video_progress_page(self, athlete_name: str) -> str:
         """Gets the HTML content of the video progress page for a given athlete."""
@@ -745,6 +1117,30 @@ class NPIDAPIClient:
         resp.raise_for_status()
         return resp.text
 
+    def get_email_templates(self, contact_id: str) -> List[Dict[str, Any]]:
+        """Get available email templates for a contact"""
+        self.ensure_authenticated()
+        resp = self.session.get(
+            f"{self.base_url}/rulestemplates/template/videotemplates",
+            params={"id": contact_id}
+        )
+        resp.raise_for_status()
+        try:
+            return resp.json()
+        except Exception:
+            try:
+                soup = BeautifulSoup(resp.text, 'html.parser')
+                templates = []
+                for option in soup.select('option'):
+                    templates.append({
+                        'label': option.text.strip(),
+                        'value': option.get('value', '').strip()
+                    })
+                return templates
+            except Exception:
+                logging.exception("⚠️  Failed to parse email templates response")
+                return []
+
     def send_email_to_athlete(self, athlete_name: str, template_name: str) -> Dict[str, Any]:
         """Sends an email to an athlete using a specified template."""
         self.ensure_authenticated()
@@ -770,11 +1166,32 @@ class NPIDAPIClient:
         resp = self.session.get(f"{self.base_url}/rulestemplates/template/videotemplates?id={player_id}")
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, 'html.parser')
-        templates = {option.text.strip(): option.get('value') for option in soup.select('option')}
+        # Build template lookup with multiple matching strategies
+        templates = {}
+        for option in soup.select('option'):
+            label = option.text.strip()
+            value = (option.get('value') or '').strip()
+            if label:
+                templates[label] = value or label
+            if value:
+                templates[value] = value
 
+        # Try exact match, then case-insensitive match on keys
         template_id = templates.get(template_name)
         if not template_id:
-            raise Exception(f"Template '{template_name}' not found for athlete {athlete_name}")
+            lower_name = template_name.lower()
+            for k, v in templates.items():
+                if k.lower() == lower_name:
+                    template_id = v
+                    break
+
+        if not template_id and templates:
+            # Fallback to first available template to avoid hard failure
+            template_id = next(iter(templates.values()))
+            logging.warning(f"⚠️ Template '{template_name}' not found for athlete {athlete_name}; using fallback template_id={template_id}")
+        elif not template_id:
+            logging.error(f"⚠️ No templates available for athlete {athlete_name}")
+            return {'success': False, 'error': f"Template '{template_name}' not found for athlete {athlete_name}"}
 
         # Get the template data (subject and body)
         resp = self.session.post(
@@ -783,7 +1200,11 @@ class NPIDAPIClient:
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
         resp.raise_for_status()
-        template_data = resp.json()
+        try:
+            template_data = resp.json()
+        except Exception:
+            logging.error(f"⚠️ Failed to parse template data for template_id={template_id}")
+            return {'success': False, 'error': f"Failed to load template '{template_name}'"}
 
         # Send the email
         email_payload = {
@@ -803,15 +1224,46 @@ class NPIDAPIClient:
             data=email_payload,
             headers={'Content-Type': 'application/x-www-form-urlencoded'}
         )
-
-        resp.raise_for_status()
+        if resp.status_code != 200:
+            logging.warning(f"Failed to send email: HTTP {resp.status_code}")
+            return {'success': False, 'error': f"HTTP {resp.status_code}"}
 
         if "Email Sent" in resp.text:
             logging.info(f"Successfully sent email to {athlete_name} with template {template_name}")
             return {'success': True}
-        else:
-            logging.warning(f"Failed to send email: {resp.text}")
-            return {'success': False, 'error': resp.text}
+
+        logging.warning(f"Failed to send email: {resp.text}")
+        return {'success': False, 'error': resp.text}
+
+    def send_notification_details(self, notification_to_athlete: str, parent_ids: List[str], video_msg_id: str) -> Dict[str, Any]:
+        """Send notification email via /videoteammsg/sendingtodetails (Step 6)."""
+        self.ensure_authenticated()
+        csrf_token = self._get_csrf_token()
+        data = {
+            '_token': csrf_token,
+            'notification_to_athlete': notification_to_athlete,
+            'video_msg_id': video_msg_id
+        }
+
+        # Add each parent as notification_to_parent[]
+        for parent_id in parent_ids:
+            data.setdefault('notification_to_parent[]', [])
+            data['notification_to_parent[]'].append(parent_id)
+
+        resp = self.session.post(
+            f"{self.base_url}/videoteammsg/sendingtodetails",
+            data=data,
+            headers={
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        )
+
+        if resp.status_code == 200:
+            logging.info(f"✅ Notification sent to athlete {notification_to_athlete} for message {video_msg_id}")
+            return {'success': True}
+        logging.warning(f"⚠️ Notification send failed: HTTP {resp.status_code}")
+        return {'success': False, 'error': f"HTTP {resp.status_code}"}
 
     def get_athletes_from_video_progress_page(self, html_content: str) -> List[str]:
         """Parses the HTML of the video progress page to extract athlete names."""
@@ -843,17 +1295,18 @@ class NPIDAPIClient:
         resp.raise_for_status()
         return resp.json()
 
-    def update_video_stage(self, athlete_id: str, stage: str, api_key: str = None) -> Dict[str, Any]:
+    def update_video_stage(self, video_msg_id: str, stage: str, api_key: str = None) -> Dict[str, Any]:
         """Update video stage via /API/scout-api/video-stage."""
         self.ensure_authenticated()
-        csrf_token = self._get_csrf_token()
         if api_key is None:
             api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+        stage_value = self._normalize_stage_for_api(stage)
         data = {
-            '_token': csrf_token,
             'api_key': api_key,
-            'athlete_id': athlete_id,
-            'stage': stage
+            'video_msg_id': video_msg_id,
+            '_token': self._get_csrf_token(),
+            'video_progress_stage': stage_value,
+            'stage': stage_value  # keep legacy key for safety
         }
         resp = self.session.post(
             f"{self.base_url}/API/scout-api/video-stage",
@@ -864,23 +1317,23 @@ class NPIDAPIClient:
             }
         )
         if resp.status_code == 200:
-            logging.info(f"✅ Updated stage to '{stage}' for athlete {athlete_id}")
-            return {'success': True, 'athlete_id': athlete_id, 'stage': stage}
+            logging.info(f"✅ Updated stage to '{stage_value}' for message {video_msg_id}")
+            return {'success': True, 'video_msg_id': video_msg_id, 'stage': stage_value}
         else:
             logging.warning(f"⚠️  Stage update failed: {resp.status_code}")
             return {'success': False, 'error': f"HTTP {resp.status_code}"}
 
-    def update_video_status(self, athlete_id: str, status: str, api_key: str = None) -> Dict[str, Any]:
-        """Update the status for an athlete video using /API/scout-api/video-status."""
+    def update_video_status(self, video_msg_id: str, status: str, api_key: str = None) -> Dict[str, Any]:
+        """Update the status for a video using /API/scout-api/video-status."""
         self.ensure_authenticated()
-        csrf_token = self._get_csrf_token()
         if api_key is None:
             api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+        status_value = self._normalize_status_for_api(status)
         data = {
-            '_token': csrf_token,
             'api_key': api_key,
-            'athlete_id': athlete_id,
-            'status': status
+            'video_msg_id': video_msg_id,
+            'video_progress_status': status_value,
+            'status': status_value  # keep legacy key for safety
         }
         resp = self.session.post(
             f"{self.base_url}/API/scout-api/video-status",
@@ -891,8 +1344,8 @@ class NPIDAPIClient:
             }
         )
         if resp.status_code == 200:
-            logging.info(f"✅ Updated status to '{status}' for athlete {athlete_id}")
-            return {'success': True, 'athlete_id': athlete_id, 'status': status}
+            logging.info(f"✅ Updated status to '{status_value}' for message {video_msg_id}")
+            return {'success': True, 'video_msg_id': video_msg_id, 'status': status_value}
         else:
             logging.warning(f"⚠️  Status update failed: {resp.status_code}")
             return {'success': False, 'error': f"HTTP {resp.status_code}"}
@@ -902,10 +1355,11 @@ def main():
     if len(sys.argv) < 2:
         print("Usage: python3 npid_api_client.py <method> [json_args]")
         print("\nAvailable methods:")
-        print("  login, get_inbox_threads, get_message_detail, get_assignment_modal, "
-              "assign_thread, search_contacts, search_player, get_athlete_details, "
-              "get_add_video_form, get_video_seasons, update_video_profile, get_video_progress_page, get_page_content, "
-              "send_email_to_athlete, get_athletes_from_video_progress_page, search_video_progress, "
+        print("  login, get_inbox_threads, get_message_detail, get_assignment_modal, assign_thread, send_reply, "
+              "search_contacts, search_player, get_athlete_details, get_add_video_form, get_video_seasons, "
+              "update_video_profile, get_video_progress_page, get_page_content, get_video_progress, "
+              "send_email_to_athlete, send_notification_details, get_email_templates, "
+              "get_athletes_from_video_progress_page, search_video_progress, "
               "update_video_stage, update_video_status")
         sys.exit(1)
     method = sys.argv[1]
@@ -935,6 +1389,9 @@ def main():
         elif method == 'get_assignment_defaults':
             result = client.get_assignment_defaults(args['contact_id'])
             print(json.dumps(result))
+        elif method == 'send_reply':
+            result = client.send_reply(args['message_id'], args['itemcode'], args['reply_text'])
+            print(json.dumps({'success': result}))
         elif method == 'search_contacts':
             result = client.search_contacts(
                 args['query'], args.get('search_type', 'athlete')
@@ -953,6 +1410,11 @@ def main():
                 args['athlete_id'], args['sport_alias'], args['athlete_main_id']
             )
             print(json.dumps(result))
+        elif method == 'get_video_sortable':
+            result = client.get_video_sortable(
+                args['athlete_id'], args['sport_alias'], args['athlete_main_id']
+            )
+            print(result)
         elif method == 'get_video_seasons':
             # Detailed error logging - NO HIDDEN ERRORS
             try:
@@ -973,12 +1435,27 @@ def main():
                 logging.error(traceback.format_exc())
                 print(json.dumps({'status': 'error', 'message': error_msg}), file=sys.stderr)
                 sys.exit(1)
+        elif method == 'add_career_video':
+            result = client.add_career_video(
+                args['athlete_id'],
+                args['sport_alias'],
+                args['athlete_main_id'],
+                args['youtube_link'],
+                args['video_type'],
+                args.get('season', ''),
+                args.get('api_key'),
+                args.get('approve_video', '1'),
+                args.get('approve_video_checkbox', 'on')
+            )
+            print(json.dumps(result))
         elif method == 'update_video_profile':
             result = client.update_video_profile(
                 args['player_id'],
                 args['youtube_link'],
                 args.get('season', ''),  # Optional - students don't always update profiles
-                args.get('video_type', 'Full Season Highlight')
+                args.get('video_type', 'Full Season Highlight'),
+                args.get('sport_alias', ''),
+                args.get('athlete_main_id', '')
             )
             print(json.dumps(result))
         elif method == 'get_video_progress_page':
@@ -990,6 +1467,16 @@ def main():
         elif method == 'send_email_to_athlete':
             result = client.send_email_to_athlete(args['athlete_name'], args['template_name'])
             print(json.dumps(result))
+        elif method == 'send_notification_details':
+            result = client.send_notification_details(
+                args['notification_to_athlete'],
+                args.get('parent_ids', []),
+                args['video_msg_id']
+            )
+            print(json.dumps(result))
+        elif method == 'get_email_templates':
+            result = client.get_email_templates(args.get('contact_id', ''))
+            print(json.dumps(result))
         elif method == 'get_athletes_from_video_progress_page':
             html_content = client.get_page_content("https://dashboard.nationalpid.com/videoteammsg/videomailprogress")
             athlete_names = client.get_athletes_from_video_progress_page(html_content)
@@ -997,18 +1484,17 @@ def main():
         elif method == 'search_video_progress':
             result = client.search_video_progress(args['first_name'], args['last_name'])
             print(json.dumps(result))
+        elif method == 'get_video_progress':
+            filters = args.get('filters', {}) if isinstance(args, dict) else {}
+            result = client.get_video_progress(filters)
+            print(json.dumps(result))
         elif method == 'update_video_stage':
-            result = client.update_video_stage(args['athlete_id'], args['stage'])
+            api_key = args.get('api_key')
+            result = client.update_video_stage(args['video_msg_id'], args['stage'], api_key=api_key)
             print(json.dumps(result))
         elif method == 'update_video_status':
-            result = client.update_video_status(args['athlete_id'], args['status'])
-            print(json.dumps(result))
-        elif method == 'get_video_progress':
-            # Use VPS broker for video progress (it has the correct data source)
-            from vps_broker_api_client import VPSBrokerClient
-            vps_client = VPSBrokerClient()
-            filters = args.get('filters', {})
-            result = vps_client.get_video_progress(filters)
+            api_key = args.get('api_key')
+            result = client.update_video_status(args['video_msg_id'], args['status'], api_key=api_key)
             print(json.dumps(result))
         else:
             print(json.dumps({'error': f'Unknown method: {method}'}))

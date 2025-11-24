@@ -1,17 +1,39 @@
 import React, { useEffect, useState } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import path from 'path';
-import { getEmailTemplates } from './lib/vps-broker-adapter';
-
-const execAsync = promisify(exec);
+import { callPythonServer } from './lib/python-server-client';
 
 interface EmailFormValues {
   athleteName: string;
   contactId?: string;
   emailTemplate: string;
+}
+
+interface NPIDPlayer {
+  name: string;
+  player_id: string;
+  grad_year?: number;
+  high_school?: string;
+  athlete_main_id?: string;
+}
+
+async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
+  const nameParts = query.split(' ');
+  const firstName = nameParts[0] || '';
+  const lastName = nameParts.slice(1).join(' ') || '';
+  try {
+    const results = await callPythonServer<any[]>('search_video_progress', { first_name: firstName, last_name: lastName });
+    return results.map((player) => ({
+      name: player.athletename,
+      player_id: player.athlete_id?.toString(),
+      grad_year: player.grad_year,
+      high_school: player.high_school,
+      athlete_main_id: player.athlete_main_id,
+    }));
+  } catch (err) {
+    console.error('NPID video progress search error:', err);
+    return [];
+  }
 }
 
 // Default templates in case API call fails
@@ -34,14 +56,16 @@ export default function EmailStudentAthletesCommand(
 ) {
   const [emailTemplates, setEmailTemplates] = useState<Array<{ title: string; value: string }>>(DEFAULT_EMAIL_TEMPLATES);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [isSearching, setIsSearching] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
 
-  // Fetch email templates from VPS broker on component mount
+  // Fetch email templates from NPID dashboard on component mount
   useEffect(() => {
     const loadTemplates = async () => {
       try {
         setIsLoadingTemplates(true);
-        // Fetch templates from VPS broker (use empty contact_id to get all templates)
-        const templates = await getEmailTemplates('');
+        // Fetch templates from NPID client (use empty contact_id to get defaults)
+        const templates = await callPythonServer<any[]>('get_email_templates', { contact_id: '' });
         if (templates && templates.length > 0) {
           const formattedTemplates = templates.map((t: any) => ({
             title: t.label || t.value || 'Unknown Template',
@@ -50,7 +74,7 @@ export default function EmailStudentAthletesCommand(
           setEmailTemplates(formattedTemplates);
         }
       } catch (error) {
-        console.log('Failed to load email templates from VPS broker, using defaults:', error);
+        console.log('Failed to load email templates from NPID client, using defaults:', error);
         // Keep default templates if API call fails
       } finally {
         setIsLoadingTemplates(false);
@@ -64,52 +88,33 @@ export default function EmailStudentAthletesCommand(
     async onSubmit(formValues) {
       const toast = await showToast({
         style: Toast.Style.Animated,
-        title: 'Processing email automation...',
+        title: 'Sending email...',
       });
 
       try {
-        const pythonInterpreter = 'python3';
-        // Updated to use current workspace scripts directory
-        const workspaceDir = process.cwd();
-        const scriptPath = path.join(workspaceDir, 'scripts', 'email_automation.py');
-
-        const escapeShellArg = (str: string) => `"${str.replace(/"/g, '\\"')}"`;
-
-        const command = `${escapeShellArg(pythonInterpreter)} ${escapeShellArg(scriptPath)} --athlete_name ${escapeShellArg(formValues.athleteName)} --template_value ${escapeShellArg(formValues.emailTemplate)}`;
-
         await toast.show();
-        toast.title = 'Running Python email automation...';
-        toast.message = 'Opening browser to send email. This may take a moment...';
+        toast.title = 'Sending email via NPID...';
+        toast.message = `Template: ${formValues.emailTemplate}`;
 
-        console.log('Executing command:', command);
-        const { stdout, stderr } = await execAsync(command);
+        const result = await callPythonServer<{ success?: boolean; error?: string }>('send_email_to_athlete', {
+          athlete_name: formValues.athleteName,
+          template_name: formValues.emailTemplate,
+        });
 
-        console.log('Python script stdout:', stdout);
-
-        if (stderr && stderr.includes('ERROR')) {
-          console.error('Python script stderr:', stderr);
-          toast.style = Toast.Style.Failure;
-          toast.title = 'Email Automation Error';
-          toast.message = stderr.substring(0, 200) + (stderr.length > 200 ? '...' : '');
-          return;
-        }
-
-        // Check for a success message from the Python script
-        if (stdout.includes('--- Email Process Attempted')) {
+        if (result && (result as any).success) {
           toast.style = Toast.Style.Success;
-          toast.title = 'Email Automation Successful';
-          toast.message = `Email process attempted for ${formValues.athleteName} with template ${formValues.emailTemplate}.`;
+          toast.title = 'Email sent';
+          toast.message = `Sent "${formValues.emailTemplate}" to ${formValues.athleteName}`;
           reset();
         } else {
           toast.style = Toast.Style.Failure;
-          toast.title = 'Email Automation May Have Failed';
-          toast.message =
-            'Script finished, but success message not found. Check console logs for details.';
+          toast.title = 'Email send failed';
+          toast.message = (result as any).error || 'NPID client did not return success';
         }
       } catch (error: unknown) {
         console.error('Execution error:', error);
         toast.style = Toast.Style.Failure;
-        toast.title = 'Failed to Run Email Automation';
+        toast.title = 'Failed to send email';
         if (error instanceof Error) {
           toast.message = error.message || 'An unexpected error occurred.';
         } else {
@@ -135,16 +140,44 @@ export default function EmailStudentAthletesCommand(
     },
   });
 
+  // Mirror video-updates.tsx: search dynamically on athlete name change and auto-select first result
+  useEffect(() => {
+    const searchPlayers = async () => {
+      if (itemProps.athleteName.value && itemProps.athleteName.value.length > 2) {
+        setIsSearching(true);
+        try {
+          const results = await searchVideoProgressPlayer(itemProps.athleteName.value);
+          if (results.length > 0) {
+            setSelectedPlayer(results[0]);
+          } else {
+            setSelectedPlayer(null);
+          }
+        } catch (error) {
+          console.error('Search error:', error);
+          setSelectedPlayer(null);
+        } finally {
+          setIsSearching(false);
+        }
+      } else {
+        setSelectedPlayer(null);
+      }
+    };
+
+    const timeoutId = setTimeout(searchPlayers, 500);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemProps.athleteName.value]);
+
   return (
     <Form
       enableDrafts
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Run Email Automation" onSubmit={handleSubmit} />
+          <Action.SubmitForm title="Send Email" onSubmit={handleSubmit} />
         </ActionPanel>
       }
     >
-      <Form.Description text="Enter athlete details and select an email template. The browser will open to perform the automation." />
+      <Form.Description text="Enter athlete details and select an email template to send via NPID." />
       <Form.Separator />
 
       <Form.TextField
@@ -153,6 +186,16 @@ export default function EmailStudentAthletesCommand(
         {...itemProps.athleteName}
         autoFocus
       />
+
+      {isSearching && (
+        <Form.Description text="🔍 Searching NPID database..." />
+      )}
+
+      {selectedPlayer && (
+        <Form.Description
+          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year || 'N/A'}) - ${selectedPlayer.high_school || 'N/A'} | ID: ${selectedPlayer.player_id}`}
+        />
+      )}
 
       <Form.Dropdown title="Email Template" {...itemProps.emailTemplate} isLoading={isLoadingTemplates}>
         {emailTemplates.map((template) => (
