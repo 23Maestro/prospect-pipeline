@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import { callPythonServer } from './lib/python-server-client';
+import * as cheerio from 'cheerio';
 import * as fs from 'fs';
+
+const NPID_API_KEY = '594168a28d26571785afcb83997cb8185f482e56';
 
 // Logging utility - writes to file only (console.log would cause recursion)
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
@@ -55,7 +58,7 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       assignedVideoEditor: player.assignedvideoeditor,
       assignedDate: player.assigned_date,
       assignedDateSort: player.assigned_date_sort,
-      athlete_main_id: player.athlete_main_id?.toString(),
+      athlete_main_id: (player.athlete_main_id || '').toString(),
     }));
   } catch (error) {
     console.error('NPID video progress search error:', error);
@@ -68,6 +71,20 @@ interface VideoUpdateFormValues {
   youtubeLink: string;
   season: string;
   videoType: string;
+}
+
+function parseSortableHtml(html: string): string[] {
+  if (!html) return [];
+  try {
+    const $ = cheerio.load(html);
+    return $('.video-item, .highlight-video, li')
+      .map((_, el) => $(el).text().trim())
+      .get()
+      .filter(Boolean);
+  } catch (error) {
+    log('⚠️ Failed to parse sortable HTML', error);
+    return [];
+  }
 }
 
 interface NPIDPlayer {
@@ -98,12 +115,13 @@ interface NPIDPlayer {
   assignedVideoEditor: string;
   assignedDate: string;
   assignedDateSort: number;
-  athlete_main_id?: string;
+  athlete_main_id: string;
 }
 
 export default function VideoUpdatesCommand(
   props: LaunchProps<{ draftValues: VideoUpdateFormValues }>,
 ) {
+  const apiKey = NPID_API_KEY;
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
@@ -121,6 +139,9 @@ export default function VideoUpdatesCommand(
       try {
         let playerId = '';
         let athleteName = formValues.athleteName;
+        const sportAlias = selectedPlayer?.sport || '';
+        const athleteMainId = selectedPlayer?.athlete_main_id || fetchedAthleteMainId || '';
+        const videoMsgId = selectedPlayer?.id ? selectedPlayer.id.toString() : '';
 
         if (selectedPlayer) {
           playerId = selectedPlayer.player_id;
@@ -134,69 +155,99 @@ export default function VideoUpdatesCommand(
           return;
         }
 
+        if (!athleteMainId) {
+          toast.style = Toast.Style.Failure;
+          toast.title = 'Missing athlete_main_id';
+          toast.message = 'Cannot proceed without athlete_main_id.';
+          return;
+        }
+
         await toast.show();
         toast.title = 'Updating NPID Profile...';
         toast.message = `Updating video for ${athleteName} (ID: ${playerId})`;
 
         try {
-          log('🎬 Submitting video:', { playerId, youtubeLink: formValues.youtubeLink, season: formValues.season, videoType: formValues.videoType });
-          const result = await callPythonServer('update_video_profile', {
-            player_id: playerId,
-            youtube_link: formValues.youtubeLink,
+          log('🎬 Submitting video:', {
+            playerId,
+            youtubeLink: formValues.youtubeLink,
             season: formValues.season,
-            video_type: formValues.videoType
+            videoType: formValues.videoType,
+            sportAlias,
+            athleteMainId,
+            apiKey,
+          });
+          const result = await callPythonServer('add_career_video', {
+            athlete_id: playerId,
+            sport_alias: sportAlias,
+            athlete_main_id: athleteMainId,
+            youtube_link: formValues.youtubeLink,
+            video_type: formValues.videoType,
+            season: formValues.season,
+            api_key: apiKey,
           }) as any;
-          log('📥 update_video_profile response:', result);
-          if (result.status === 'ok' && result.data?.success) {
+          log('📥 add_career_video response:', result);
+          const success = result?.status === 'ok' ? result?.data?.success : result?.success;
+          if (success) {
             toast.style = Toast.Style.Success;
             toast.title = 'Video Uploaded!';
-            toast.message = `Sending email and updating stage...`;
+            const updatedVideos = parseSortableHtml(result?.data?.sortable_html || '');
+            toast.message = updatedVideos.length > 0
+              ? `Latest video: ${updatedVideos[0]}`
+              : 'Highlight added successfully';
 
-            try {
-              log('📧 Sending email to:', athleteName);
-              toast.message = `Sending "Editing Done" email...`;
-              const emailResult = await callPythonServer('send_email_to_athlete', {
-                athlete_name: athleteName,
-                template_name: 'Editing Done'
-              }) as any;
-
-              if (emailResult.status === 'ok' && emailResult.data?.success) {
-                toast.message = `Email sent! Updating stage to Done...`;
-
-                try {
-                  log('🏁 Updating stage to done for:', playerId);
-                  const stageResult = await callPythonServer('update_video_stage', {
-                    athlete_id: playerId,
-                    stage: 'done'
-                  }) as any;
-                  log('📥 update_video_stage response:', stageResult);
-
-                  if (stageResult.success) {
-                    toast.style = Toast.Style.Success;
-                    toast.title = 'All Steps Complete!';
-                    toast.message = `✅ Video uploaded\n✅ Email sent\n✅ Status updated to Done`;
-                  } else {
-                    toast.style = Toast.Style.Success;
-                    toast.title = 'Video & Email Complete';
-                    toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
-                  }
-                } catch (stageError) {
-                  console.error('Stage update error:', stageError);
-                  toast.style = Toast.Style.Success;
-                  toast.title = 'Video & Email Complete';
-                  toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
-                }
-              } else {
-                toast.style = Toast.Style.Success;
-                toast.title = 'Video Uploaded';
-                toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
-              }
-            } catch (emailError) {
-              console.error('Email send error:', emailError);
-              toast.style = Toast.Style.Success;
-              toast.title = 'Video Uploaded';
-              toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
-            }
+            // Temporarily disable downstream actions until update_video_profile is clean
+            // try {
+            //   log('📧 Sending email to:', athleteName);
+            //   toast.message = `Sending "Editing Done" email...`;
+            //   const emailResult = await callPythonServer('send_email_to_athlete', {
+            //     athlete_name: athleteName,
+            //     template_name: 'Editing Done'
+            //   }) as any;
+            //
+            //   if (emailResult.status === 'ok' && emailResult.data?.success) {
+            //     toast.message = `Email sent! Updating stage to Done...`;
+            //
+            //     try {
+            //       log('🏁 Updating stage to done for:', videoMsgId || playerId);
+            //       if (videoMsgId) {
+            //         const stageResult = await callPythonServer('update_video_stage', {
+            //           video_msg_id: videoMsgId,
+            //           stage: 'done',
+            //           api_key: apiKey
+            //         }) as any;
+            //         log('📥 update_video_stage response:', stageResult);
+            //
+            //         if (stageResult.success) {
+            //           toast.style = Toast.Style.Success;
+            //           toast.title = 'All Steps Complete!';
+            //           toast.message = `✅ Video uploaded\n✅ Email sent\n✅ Status updated to Done`;
+            //         } else {
+            //           toast.style = Toast.Style.Success;
+            //           toast.title = 'Video & Email Complete';
+            //           toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
+            //         }
+            //       } else {
+            //         toast.style = Toast.Style.Success;
+            //         toast.title = 'Video & Email Complete';
+            //         toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Missing video message ID for stage update`;
+            //       }
+            //     } catch (stageError) {
+            //       console.error('Stage update error:', stageError);
+            //       toast.style = Toast.Style.Success;
+            //       toast.title = 'Video & Email Complete';
+            //       toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
+            //     }
+            //   } else {
+            //     toast.style = Toast.Style.Success;
+            //     toast.title = 'Video Uploaded';
+            //     toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
+            //   }
+            // } catch (emailError) {
+            //   console.error('Email send error:', emailError);
+            //   toast.style = Toast.Style.Success;
+            //   toast.title = 'Video Uploaded';
+            //   toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
+            // }
 
             reset();
             setSelectedPlayer(null);
@@ -251,7 +302,7 @@ export default function VideoUpdatesCommand(
       videoType: props.draftValues?.videoType &&
         ['Full Season Highlight', 'Partial Season Highlight', 'Single Game Highlight', 'Skills/Training Video'].includes(props.draftValues.videoType)
         ? props.draftValues.videoType
-        : 'Full Season Highlight',
+        : '',
     },
   });
 
@@ -334,6 +385,16 @@ export default function VideoUpdatesCommand(
         if (!athleteId || !sportAlias || !videoType || !athleteMainId) {
           console.error('Missing params:', { athleteId, sportAlias, videoType, athleteMainId });
           setSeasons([]);
+          setValue('season', '');
+          try {
+            await showToast({
+              style: Toast.Style.Failure,
+              title: 'Missing athlete_main_id',
+              message: 'Cannot load seasons without athlete_main_id.',
+            });
+          } catch {
+            // ignore toast errors
+          }
           return;
         }
 
@@ -353,14 +414,18 @@ export default function VideoUpdatesCommand(
             setSeasons(result.data.map((s: any) => ({ value: s.value, title: s.label })));
             if (result.data.length > 0) {
               setValue('season', result.data[0].value);
+            } else {
+              setValue('season', '');
             }
           } else {
             log('⚠️ Failed to load seasons or no data:', result);
             setSeasons([]);
+            setValue('season', '');
           }
         } catch (error) {
           console.error('Failed to fetch seasons:', error);
           setSeasons([]);
+          setValue('season', '');
         } finally {
           setIsFetchingSeasons(false);
         }

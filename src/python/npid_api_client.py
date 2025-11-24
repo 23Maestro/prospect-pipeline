@@ -843,11 +843,12 @@ class NPIDAPIClient:
         resp.raise_for_status()
         return resp.json()
 
-    def update_video_stage(self, athlete_id: str, stage: str) -> Dict[str, Any]:
+    def update_video_stage(self, athlete_id: str, stage: str, api_key: str = None) -> Dict[str, Any]:
         """Update video stage via /API/scout-api/video-stage."""
         self.ensure_authenticated()
         csrf_token = self._get_csrf_token()
-        api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+        if api_key is None:
+            api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
         data = {
             '_token': csrf_token,
             'api_key': api_key,
@@ -869,11 +870,12 @@ class NPIDAPIClient:
             logging.warning(f"⚠️  Stage update failed: {resp.status_code}")
             return {'success': False, 'error': f"HTTP {resp.status_code}"}
 
-    def update_video_status(self, athlete_id: str, status: str) -> Dict[str, Any]:
+    def update_video_status(self, athlete_id: str, status: str, api_key: str = None) -> Dict[str, Any]:
         """Update the status for an athlete video using /API/scout-api/video-status."""
         self.ensure_authenticated()
         csrf_token = self._get_csrf_token()
-        api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
+        if api_key is None:
+            api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
         data = {
             '_token': csrf_token,
             'api_key': api_key,

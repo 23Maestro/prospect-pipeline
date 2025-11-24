@@ -4,12 +4,15 @@
  */
 
 import * as path from "path";
+import { homedir } from "os";
 
 /**
  * Workspace root directory - the Raycast extension root
- * Uses process.cwd() which returns the workspace root in Raycast extension context
+ * Uses absolute path to workspace since it's at a known location:
+ * /Users/{username}/Raycast/prospect-pipeline
+ * This works correctly in both dev and production Raycast environments
  */
-export const WORKSPACE_ROOT = process.cwd();
+export const WORKSPACE_ROOT = path.join(homedir(), "Raycast", "prospect-pipeline");
 
 /**
  * Python executable path
