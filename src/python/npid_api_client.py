@@ -826,86 +826,74 @@ class NPIDAPIClient:
         resp.raise_for_status()
         return resp.text
 
-    def add_career_video(
-        self,
-        athlete_id: str,
-        sport_alias: str,
-        athlete_main_id: str,
-        youtube_link: str,
-        video_type: str,
-        season: str = '',
-        api_key: str = None,
-        approve_video: Any = '1',
-        approve_video_checkbox: Any = 'on'
-    ) -> Dict[str, Any]:
-        """Add a highlight via /athlete/update/careervideos/{athlete_id} mirroring UI form."""
+    def add_career_video(self, args: dict) -> Dict[str, Any]:
+        """
+        Raycast → NPID: add career video with Approved checkbox ON.
+
+        Expected args from Raycast:
+          athlete_id       (string or int)
+          sport_alias      (string)
+          athlete_main_id  (string or int)
+          youtube_link     (string)
+          video_type       (string)
+          season           (string, e.g. 'highschool:16173')
+          api_key          (string, unused here but passed)
+        """
         self.ensure_authenticated()
-        if api_key is None:
-            api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
 
-        # Step 1: Fetch videosortable before upload (for parity with UI workflow)
-        pre_sortable_html = ''
-        try:
-            logging.info(f"📋 Fetching videosortable before upload for athlete_id={athlete_id}")
-            pre_sortable_html = self.get_video_sortable(athlete_id, sport_alias, athlete_main_id)
-        except Exception as sortable_error:
-            logging.warning(f"⚠️ Failed to fetch pre-upload video list: {sortable_error}")
+        athlete_id = str(args["athlete_id"])
+        sport_alias = args.get("sport_alias", "")
+        athlete_main_id = str(args["athlete_main_id"])
+        youtube_link = args["youtube_link"]
+        video_type = args["video_type"]
+        season = args["season"]
 
-        # Fetch add video form to get CSRF token and action
-        form = self.get_add_video_form(athlete_id, sport_alias, athlete_main_id)
-        csrf_token = form.get('csrf_token', '') or self._get_csrf_token()
-        form_action = form.get('form_action') or f"{self.base_url}/athlete/update/careervideos/{athlete_id}"
-
+        # Laravel careers video endpoint expects legacy form field names.
         payload = {
-            '_token': csrf_token,
-            'athleteviewtoken': '',
-            'schoolinfo[add_video_season]': season or '',
-            'sport_alias': sport_alias,
-            'url_source': 'youtube',
-            'newVideoLink': youtube_link,
-            'videoType': video_type,
-            'newVideoSeason': season or '',
-            # approve_video=1 emulates clicking the "Approve" button in the UI
-            'approve_video': str(approve_video) if approve_video is not None else '1',
-            'approve_video_checkbox': str(approve_video_checkbox) if approve_video_checkbox is not None else 'on',
-            'athlete_main_id': athlete_main_id,
-            'api_key': api_key
+            # required form fields (match browser HAR exactly)
+            "url_source": "youtube",
+            "newVideoLink": youtube_link,
+            "videoType": video_type,
+            "newVideoSeason": season,
+            "approve_video": "1",
+            "approve_video_checkbox": "on",
+            "athlete_main_id": athlete_main_id,
         }
 
-        logging.info(f"🎬 Adding career video for athlete_id={athlete_id}, main_id={athlete_main_id}, type={video_type}, season={season or 'none'}")
-        resp = self.session.post(
-            form_action,
-            data=payload,
-            headers={
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+        url = f"{self.base_url}/athlete/update/careervideos/{athlete_id}"
+        logging.info(f"🎬 Adding career video for athlete_id={athlete_id}, main_id={athlete_main_id}, type={video_type}, season={season}")
+
+        resp = self.session.post(url, data=payload)
+        resp.raise_for_status()
+
+        try:
+            data = resp.json()
+        except ValueError:
+            # fallback if Laravel ever returns raw text
+            data = {"success": False, "message": "Non-JSON response from careervideos endpoint"}
+
+        # Normalize to what Raycast expects:
+        #   result.status === 'ok' ? result.data.success : result.success
+        #   result.data.sortable_html (optional; leave None if not fetched here)
+        success = (
+            data.get("success") is True
+            or data.get("success") == "true"
+            or data.get("message", "").lower().startswith("videos updated")
         )
 
-        success = resp.status_code in [200, 302]
         if success:
             logging.info(f"✅ Career video added for athlete_id={athlete_id}")
-            try:
-                sortable_html = self.get_video_sortable(athlete_id, sport_alias, athlete_main_id)
-            except Exception as sortable_error:
-                logging.warning(f"⚠️ Failed to refresh video list after add: {sortable_error}")
-                sortable_html = ''
-            return {
-                'status': 'ok',
-                'data': {
-                    'success': True,
-                    'response': resp.text[:500],
-                    'pre_sortable_html': pre_sortable_html,
-                    'sortable_html': sortable_html
-                }
-            }
+        else:
+            logging.warning(f"⚠️ Career video add failed: {data.get('message', 'Unknown error')}")
 
-        logging.warning(f"⚠️  Career video add failed: HTTP {resp.status_code}")
-        logging.warning(resp.text[:500])
         return {
-            'status': 'error',
-            'message': f"HTTP {resp.status_code}",
-            'data': {'success': False, 'response': resp.text[:500]}
+            "status": "ok",
+            "data": {
+                "success": success,
+                "message": data.get("message"),
+                # sortable_html can be filled later by a separate videosortable fetch
+                "sortable_html": data.get("sortable_html"),
+            },
         }
 
     def get_video_seasons(
@@ -1436,17 +1424,7 @@ def main():
                 print(json.dumps({'status': 'error', 'message': error_msg}), file=sys.stderr)
                 sys.exit(1)
         elif method == 'add_career_video':
-            result = client.add_career_video(
-                args['athlete_id'],
-                args['sport_alias'],
-                args['athlete_main_id'],
-                args['youtube_link'],
-                args['video_type'],
-                args.get('season', ''),
-                args.get('api_key'),
-                args.get('approve_video', '1'),
-                args.get('approve_video_checkbox', 'on')
-            )
+            result = client.add_career_video(args)
             print(json.dumps(result))
         elif method == 'update_video_profile':
             result = client.update_video_profile(
