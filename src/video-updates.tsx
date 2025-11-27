@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { callPythonServer } from './lib/python-server-client';
+import { callPythonServer, API_BASE, getSeasons } from './lib/python-server-client';
 import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 
 const NPID_API_KEY = '594168a28d26571785afcb83997cb8185f482e56';
+const API_BASE_URL = API_BASE;
 
 // Logging utility - writes to file only (console.log would cause recursion)
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
@@ -125,6 +126,7 @@ export default function VideoUpdatesCommand(
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
+  const [resolvedAthleteId, setResolvedAthleteId] = useState<string | null>(null);
   const [isFetchingMainId, setIsFetchingMainId] = useState(false);
   const [seasons, setSeasons] = useState<{ value: string, title: string }[]>([]);
   const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
@@ -137,14 +139,14 @@ export default function VideoUpdatesCommand(
       });
 
       try {
-        let playerId = '';
+        let playerId = resolvedAthleteId || '';
         let athleteName = formValues.athleteName;
         const sportAlias = selectedPlayer?.sport || '';
         const athleteMainId = selectedPlayer?.athlete_main_id || fetchedAthleteMainId || '';
         const videoMsgId = selectedPlayer?.id ? selectedPlayer.id.toString() : '';
 
         if (selectedPlayer) {
-          playerId = selectedPlayer.player_id;
+          playerId = resolvedAthleteId || selectedPlayer.player_id;
           athleteName = selectedPlayer.name;
         }
 
@@ -176,21 +178,27 @@ export default function VideoUpdatesCommand(
             athleteMainId,
             apiKey,
           });
-          const result = await callPythonServer('add_career_video', {
-            athlete_id: playerId,
-            sport_alias: sportAlias,
-            athlete_main_id: athleteMainId,
-            youtube_link: formValues.youtubeLink,
-            video_type: formValues.videoType,
-            season: formValues.season,
-            api_key: apiKey,
-          }) as any;
+          const response = await fetch(`${API_BASE_URL}/video/submit`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              athlete_id: playerId,
+              athlete_main_id: athleteMainId,
+              video_url: formValues.youtubeLink,
+              video_type: formValues.videoType,
+              season: formValues.season,
+              source: 'youtube',
+              auto_approve: true,
+              sport: sportAlias,
+            }),
+          });
+          const result = await response.json().catch(() => ({}));
           log('📥 add_career_video response:', result);
-          const success = result?.status === 'ok' ? result?.data?.success : result?.success;
+          const success = response.ok && (result?.success === true);
           if (success) {
             toast.style = Toast.Style.Success;
             toast.title = 'Video Uploaded!';
-            const updatedVideos = parseSortableHtml(result?.data?.sortable_html || '');
+            const updatedVideos = parseSortableHtml(result?.sortable_html || result?.data?.sortable_html || '');
             toast.message = updatedVideos.length > 0
               ? `Latest video: ${updatedVideos[0]}`
               : 'Highlight added successfully';
@@ -256,7 +264,7 @@ export default function VideoUpdatesCommand(
           } else {
             toast.style = Toast.Style.Failure;
             toast.title = 'NPID Update Failed';
-            toast.message = result.message || 'Unknown error occurred';
+            toast.message = result?.message || result?.detail || `HTTP ${response.status}`;
           }
         } catch (updateError) {
           console.error('NPID update error:', updateError);
@@ -343,8 +351,22 @@ export default function VideoUpdatesCommand(
         log('🆔 Fetching athlete_main_id for player_id:', selectedPlayer.player_id);
         setIsFetchingMainId(true);
         try {
-          const result = await callPythonServer('get_athlete_details', { player_id: selectedPlayer.player_id }) as any;
-          log('📥 get_athlete_details response:', result);
+          const resp = await fetch(`${API_BASE_URL}/athlete/${encodeURIComponent(selectedPlayer.player_id)}/resolve`);
+          if (resp.status === 404) {
+            await showToast({ style: Toast.Style.Failure, title: 'Athlete not found' });
+            setFetchedAthleteMainId(null);
+            setResolvedAthleteId(null);
+            return;
+          }
+          if (resp.status >= 500) {
+            await showToast({ style: Toast.Style.Failure, title: 'Resolution failed' });
+            setFetchedAthleteMainId(null);
+            setResolvedAthleteId(null);
+            return;
+          }
+          const result = await resp.json().catch(() => ({}));
+          log('📥 resolve response:', result);
+          setResolvedAthleteId(result?.athlete_id || null);
           if (result?.athlete_main_id) {
             log('✅ Fetched athlete_main_id:', result.athlete_main_id);
             setFetchedAthleteMainId(result.athlete_main_id);
@@ -355,6 +377,7 @@ export default function VideoUpdatesCommand(
         } catch (error) {
           console.error('Failed to fetch athlete_main_id:', error);
           setFetchedAthleteMainId(null);
+          setResolvedAthleteId(null);
         } finally {
           setIsFetchingMainId(false);
         }
@@ -369,7 +392,7 @@ export default function VideoUpdatesCommand(
   useEffect(() => {
     const fetchSeasons = async () => {
       if (values.videoType && selectedPlayer) {
-        const athleteId = selectedPlayer.player_id;
+        const athleteId = resolvedAthleteId || selectedPlayer.player_id;
         const sportAlias = selectedPlayer.sport;
         const videoType = values.videoType;
         let athleteMainId = fetchedAthleteMainId;
@@ -377,7 +400,8 @@ export default function VideoUpdatesCommand(
 
         if (!athleteMainId && athleteId) {
           log('⚠️ athlete_main_id not cached, fetching...');
-          const det = await callPythonServer('get_athlete_details', { player_id: athleteId }) as any;
+          const detResp = await fetch(`${API_BASE_URL}/athlete/${encodeURIComponent(athleteId)}/resolve`);
+          const det = await detResp.json().catch(() => ({}));
           athleteMainId = det?.athlete_main_id;
           log('✅ Fetched athlete_main_id for seasons:', athleteMainId);
         }
@@ -400,37 +424,34 @@ export default function VideoUpdatesCommand(
 
         setIsFetchingSeasons(true);
         try {
-          const result = await callPythonServer('get_video_seasons', {
-            athlete_id: athleteId,
-            sport_alias: sportAlias,
-            video_type: videoType,
-            athlete_main_id: athleteMainId,
-          }) as any;
+          const result = await getSeasons({
+            athleteId,
+            athleteMainId,
+            videoType,
+            sportAlias,
+          });
           log('📥 get_video_seasons response:', result);
 
-          if (result.status === 'ok' && result.data) {
-            log('✅ Seasons loaded:', result.data.length, 'items');
-            // New normalization logic
-            const normalized = (result.data as any[])
+          const rawSeasons = Array.isArray(result)
+            ? result
+            : Array.isArray((result as any)?.data)
+              ? (result as any).data
+              : Array.isArray((result as any)?.seasons)
+                ? (result as any).seasons
+                : [];
+          if (Array.isArray(rawSeasons)) {
+            log('✅ Seasons loaded:', rawSeasons.length, 'items');
+            const normalized = rawSeasons
               .map((s: any) => {
-                const fallback = (s.school_added ?? "").toString().trim();
-                const rawValue = typeof s.value === "string" && s.value.trim() !== ""
-                  ? s.value
-                  : fallback;
-
-                // Drop API placeholder rows like "-- Season/Team --"
-                if ((s.label || "").toLowerCase().includes("season/team") && !rawValue) {
-                  return null;
-                }
-
-                if (!rawValue) return null;
-
+                const value = s?.season_id ?? s?.seasonId ?? s?.value;
+                const title = s?.season_name ?? s?.seasonName ?? s?.label ?? s?.title;
+                if (!value || !title) return null;
                 return {
-                  value: rawValue,
-                  title: s.label || s.season || rawValue,
+                  value: String(value),
+                  title: String(title),
                 };
               })
-              .filter((s) => s);
+              .filter((s) => s) as { value: string, title: string }[];
             setSeasons(normalized);
             if (normalized.length > 0) {
               setValue("season", normalized[0].value);
@@ -513,10 +534,11 @@ export default function VideoUpdatesCommand(
         {...itemProps.season}
         disabled={!values.videoType}
       >
-        <Form.Dropdown.Item value="" title="-- Season/Team --" />
-        {seasons.map((s) => (
-          <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
-        ))}
+        {seasons.length === 0
+          ? <Form.Dropdown.Item value="" title="-- Season/Team --" />
+          : seasons.map((s) => (
+            <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
+          ))}
       </Form.Dropdown>
     </Form>
   );

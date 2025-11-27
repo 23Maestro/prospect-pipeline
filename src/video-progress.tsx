@@ -20,6 +20,8 @@ import {
   updateCachedTaskStatusStage,
 } from './lib/video-progress-cache';
 
+const API_BASE = 'http://localhost:8000/api/v1';
+
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
   athlete_id: number;
@@ -348,11 +350,18 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         apiKey,
       });
 
-      const result = await callPythonServer('update_video_stage', {
-        video_msg_id: String(task.id),
-        stage: normalizedStage,
-        api_key: apiKey
+      const response = await fetch(`${API_BASE}/video/${task.id}/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_msg_id: String(task.id),
+          stage: normalizedStage,
+        }),
       });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(result?.message || result?.detail || `HTTP ${response.status}`);
+      }
 
       logVideoUpdate('update_video_stage', {
         video_msg_id: String(task.id),

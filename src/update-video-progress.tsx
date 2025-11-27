@@ -1,9 +1,11 @@
 import { Action, ActionPanel, Form, Toast, showToast, getPreferenceValues } from '@raycast/api';
 import { useState } from 'react';
-import { callPythonServer } from './lib/python-server-client';
+import { callPythonServer, API_BASE } from './lib/python-server-client';
 
 type Stage = "on_hold" | "awaiting_client" | "in_queue" | "done";
 type Status = "revisions" | "hudl" | "dropbox" | "external_links" | "not_approved";
+
+const API_BASE_URL = API_BASE;
 
 export default function UpdateVideoProgress() {
   const preferences = getPreferenceValues<{ scoutApiKey?: string }>();
@@ -27,11 +29,34 @@ export default function UpdateVideoProgress() {
     });
 
     try {
+      const resolveResp = await fetch(`${API_BASE_URL}/athlete/${encodeURIComponent(threadId)}/resolve`);
+      if (resolveResp.status === 404) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Athlete not found';
+        return;
+      }
+      if (resolveResp.status >= 500) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Resolution failed';
+        return;
+      }
+      const resolved = await resolveResp.json().catch(() => ({}));
+      const videoMsgId = resolved.video_msg_id || resolved.athlete_id || threadId;
+      const athleteId = resolved.athlete_id || threadId;
+
       // Update stage
-      await callPythonServer('update_video_stage', { athlete_id: threadId, stage, api_key: apiKey });
+      const stageResponse = await fetch(`${API_BASE_URL}/video/${encodeURIComponent(videoMsgId)}/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_msg_id: videoMsgId, stage }),
+      });
+      const stageResult = await stageResponse.json().catch(() => ({}));
+      if (!stageResponse.ok) {
+        throw new Error(stageResult?.message || stageResult?.detail || `HTTP ${stageResponse.status}`);
+      }
 
       // Update status
-      await callPythonServer('update_video_status', { athlete_id: threadId, status, api_key: apiKey });
+      await callPythonServer('update_video_status', { athlete_id: athleteId, status, api_key: apiKey });
 
       toast.style = Toast.Style.Success;
       toast.title = 'Progress updated';
