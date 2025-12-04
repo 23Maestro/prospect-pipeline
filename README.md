@@ -78,4 +78,4 @@ prospect-pipeline/
 
 ---
 
-**Built  by Jerami Singleton for Propsect Id Student Athlete*
+**Built by Jerami Singleton for Prospect ID Student Athlete*
