@@ -811,7 +811,17 @@ class NPIDAPIClient:
         }
 
     def get_video_sortable(self, athlete_id: str, sport_alias: str, athlete_main_id: str) -> str:
-        """Fetch the sortable video list HTML (used to refresh UI after add)."""
+        """
+        Retrieve the sortable video list HTML for an athlete.
+        
+        Parameters:
+            athlete_id (str): Athlete identifier used in the request.
+            sport_alias (str): Sport alias to scope the videos.
+            athlete_main_id (str): Athlete main identifier associated with the athlete.
+        
+        Returns:
+            html (str): HTML markup of the sortable video list.
+        """
         self.ensure_authenticated()
         params = {
             'athleteid': athlete_id,
@@ -828,16 +838,27 @@ class NPIDAPIClient:
 
     def add_career_video(self, args: dict) -> Dict[str, Any]:
         """
-        Raycast → NPID: add career video with Approved checkbox ON.
-
-        Expected args from Raycast:
-          athlete_id       (string or int)
-          sport_alias      (string)
-          athlete_main_id  (string or int)
-          youtube_link     (string)
-          video_type       (string)
-          season           (string, e.g. 'highschool:16173')
-          api_key          (string, unused here but passed)
+        Add a career video for an athlete with the "Approved" option enabled.
+        
+        Parameters:
+            args (dict): Required keys:
+                - athlete_id (str|int): Athlete's ID used in the endpoint path.
+                - athlete_main_id (str|int): Internal athlete_main_id expected by the backend.
+                - youtube_link (str): URL to the YouTube video.
+                - video_type (str): Label/type of the video (e.g., "Full Season Highlight").
+                - season (str): Season identifier (e.g., "highschool:16173").
+                - sport_alias (str, optional): Sport alias (unused by the endpoint but accepted).
+                - api_key (str, optional): Present in caller payloads but not used by this method.
+        
+        Returns:
+            dict: {
+                "status": "ok",
+                "data": {
+                    "success": bool,           # True if the backend reported the update succeeded
+                    "message": str|None,       # Optional message returned by the endpoint
+                    "sortable_html": str|None, # Optional HTML snippet for updated video ordering (may be None)
+                }
+            }
         """
         self.ensure_authenticated()
 
@@ -899,7 +920,27 @@ class NPIDAPIClient:
     def get_video_seasons(
         self, athlete_id: str, sport_alias: str, video_type: str, athlete_main_id: str
     ) -> List[Dict[str, Any]]:
-        """Get available video seasons for a player (Skills/Training Video filters to Camps only)."""
+        """
+        Retrieve available video seasons for an athlete and video type.
+        
+        Attempts to fetch season data from the API endpoint and returns parsed JSON when available; if the response is not JSON, falls back to parsing HTML <option> elements.
+        
+        Parameters:
+            athlete_id (str): The athlete's numeric or string identifier used by the site.
+            sport_alias (str): Sport alias (e.g., "football") used to scope the query.
+            video_type (str): Video type filter (e.g., "Full Season Highlight", "Skills/Training Video").
+            athlete_main_id (str): Secondary athlete identifier used by some endpoints.
+        
+        Returns:
+            List[Dict[str, Any]]: A list of season records. Each record may be either:
+                - a dict returned by the API (structure preserved), or
+                - a dict with keys `value` (option value), `title` (option text),
+                  `season` (option `season` attribute or empty string), and
+                  `school_added` (option `school_added` attribute or empty string).
+        
+        Raises:
+            requests.HTTPError: If the HTTP request returns a non-success status code.
+        """
         self.ensure_authenticated()
         csrf_token = self._get_csrf_token()
         api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
