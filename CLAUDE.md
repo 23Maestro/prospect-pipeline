@@ -88,3 +88,14 @@ Form Elements:
 - codex consolidation ^
 - Video submission endpoints verified and documented (2025-11-27)
 - Pending: JSON API endpoint for video uploads (currently form-based legacy)
+- newVideoLink
+#videoType
+#videoType > option:nth-child(1)
+#videoType > option:nth-child(2)
+#videoType > option:nth-child(3)
+#videoType > option:nth-child(5)
+#newVideoSeason
+#addnewvideo > div:nth-child(13) > label > input[type=checkbox]
+#addnewvideo > div:nth-child(15) > div > button.btn.btn-primary
+
+# save buttons for continue 2026 id uploads (find actual name if i have named it wrong based on early mem prompt)

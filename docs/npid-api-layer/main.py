@@ -26,7 +26,10 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup_event():
-    await session_manager.initialize()
+    # Cookies already loaded in NPIDSession.__init__
+    # Just refresh CSRF token
+    await session_manager.refresh_csrf()
+    logger.info("✅ FastAPI startup complete")
 
 
 @app.on_event("shutdown")
@@ -38,7 +41,7 @@ async def shutdown_event():
 def health():
     return {
         "status": "ok",
-        "session_authenticated": session_manager.session_authenticated
+        "session_authenticated": session_manager.is_authenticated
     }
 
 

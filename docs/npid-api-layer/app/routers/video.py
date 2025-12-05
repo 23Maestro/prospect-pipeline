@@ -13,6 +13,12 @@ from app.models.schemas import (
     VideoSubmitResponse,
     StageUpdateRequest,
     StageUpdateResponse,
+    StatusUpdateRequest,
+    StatusUpdateResponse,
+    DueDateUpdateRequest,
+    DueDateUpdateResponse,
+    VideoProgressFilters,
+    VideoProgressResponse,
     SeasonsResponse,
     Season,
     APIError
@@ -38,87 +44,40 @@ class SeasonsProxyRequest(BaseModel):
     sport_alias: str
 
 
-@router.api_route("/seasons", methods=["GET", "POST"])
+@router.post("/seasons")
 async def proxy_seasons(request: Request, payload: SeasonsProxyRequest):
     """
-    Proxy seasons request directly to Laravel's scout-api endpoint.
-    Returns parsed HTML <option> elements as JSON.
+    Fetch seasons for an athlete and video type.
+    Uses translator pattern - NO inline form construction or HTML parsing.
 
     Mirrors: src/python/npid_api_client.py:911-960
     """
     session = get_session(request)
-    client = session.client
-    if client is None:
-        await session.initialize()
-        client = session.client
+    translator = LegacyTranslator()
+
+    endpoint, form_data = translator.seasons_request_to_legacy(
+        payload.athlete_id,
+        payload.sport_alias,
+        payload.video_type,
+        payload.athlete_main_id,
+        api_key=session.api_key  # ONLY seasons endpoint needs api_key
+    )
+
+    logger.info(f"📤 Fetching seasons for athlete {payload.athlete_id}")
 
     try:
-        # Ensure we have CSRF/api key loaded from session
-        if not session.csrf_token:
-            await session.refresh_csrf()
+        response = await session.post(endpoint, data=form_data)
+        result = translator.parse_seasons_response(response.text)
 
-        # CRITICAL: Use snake_case parameter names matching live endpoints
-        # CRITICAL: Use form-encoded data (NOT JSON)
-        form_data = {
-            "_token": session.csrf_token,
-            "return_type": "html",  # Endpoint returns HTML, not JSON
-            "athlete_id": payload.athlete_id,  # NOT athleteId
-            "sport_alias": payload.sport_alias,  # NOT sportAlias
-            "video_type": payload.video_type,  # NOT videoType
-            "athlete_main_id": payload.athlete_main_id  # NOT athleteMainId
-        }
-        if session.api_key:
-            form_data["api_key"] = session.api_key
+        if result["success"]:
+            logger.info(f"✅ Found {len(result['seasons'])} seasons")
+            return {"success": True, "seasons": result["seasons"]}
+        else:
+            logger.warning(f"⚠️ No seasons found")
+            return {"success": True, "seasons": []}
 
-        response = await client.post(
-            "/API/scout-api/video-seasons-by-video-type",
-            data=form_data,  # Form-encoded, NOT json=
-            headers={
-                "Accept": "*/*",  # NOT application/json
-                "Content-Type": "application/x-www-form-urlencoded",  # NOT application/json
-                "X-Requested-With": "XMLHttpRequest",
-            },
-        )
-        response.raise_for_status()
-
-        # Response is ALWAYS HTML with <option> elements
-        # Parse using BeautifulSoup like Python client does
-        from bs4 import BeautifulSoup
-        soup = BeautifulSoup(response.text, 'html.parser')
-        seasons = []
-
-        # Find newVideoSeason select element
-        select = soup.find('select', {'id': 'newVideoSeason'})
-        if not select:
-            # Fallback: try by name attribute
-            select = soup.find('select', {'name': 'newVideoSeason'})
-
-        if select:
-            for option in select.find_all('option'):
-                value = option.get('value', '')
-                text = option.text.strip()
-                if value and value != '':
-                    seasons.append({
-                        'value': value,
-                        'label': text,
-                        'season': option.get('season', ''),
-                        'school_added': option.get('school_added', '')
-                    })
-
-        if seasons:
-            logger.info(f"✅ Parsed {len(seasons)} seasons from HTML response")
-            return {"success": True, "seasons": seasons}
-
-        # No seasons found - log for debugging
-        snippet = response.text[:200]
-        logger.warning(f"⚠️ No seasons found in HTML response: {snippet}")
-        return {"success": True, "seasons": []}  # Return empty list, not error
-
-    except httpx.HTTPStatusError as exc:
-        logger.error(f"❌ Seasons proxy failed: {exc.response.text}")
-        raise HTTPException(status_code=exc.response.status_code, detail=exc.response.text)
     except Exception as exc:
-        logger.error(f"❌ Seasons proxy error: {exc}")
+        logger.error(f"❌ Seasons fetch error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 
@@ -261,7 +220,8 @@ async def get_seasons(
         )
 
     endpoint, form_data = translator.seasons_request_to_legacy(
-        athlete_id, sport, video_type, athlete_main_id
+        athlete_id, sport, video_type, athlete_main_id,
+        api_key=session.api_key  # ONLY seasons endpoint needs api_key
     )
     
     logger.info(f"📤 Fetching seasons for athlete {athlete_id}")
@@ -298,4 +258,150 @@ async def get_seasons(
         raise
     except Exception as e:
         logger.error(f"❌ Seasons fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{video_msg_id}/status", response_model=StatusUpdateResponse)
+async def update_status(
+    request: Request,
+    video_msg_id: str,
+    payload: StatusUpdateRequest
+):
+    """
+    Update video status (Revisions, HUDL, Dropbox, Not Approved, External Links).
+    Curl verified 2025-12-05. NO api_key.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    # Ensure video_msg_id matches
+    if payload.video_msg_id != video_msg_id:
+        payload.video_msg_id = video_msg_id
+
+    endpoint, form_data = translator.status_update_to_legacy(
+        video_msg_id, payload.status
+    )
+
+    logger.info(f"📤 Updating status for video_msg_id {video_msg_id} to {payload.status}")
+
+    try:
+        response = await session.post(endpoint, data=form_data)
+        result = translator.parse_status_update_response(response.text)
+
+        if result["success"]:
+            logger.info(f"✅ Status updated to {payload.status}")
+            return StatusUpdateResponse(
+                success=True,
+                video_msg_id=video_msg_id,
+                status=payload.status,
+                message="Status updated successfully"
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "success": False,
+                    "error": result.get("error", "Status update failed"),
+                    "legacy_response": result.get("raw")
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Status update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/{video_msg_id}/duedate", response_model=DueDateUpdateResponse)
+async def update_due_date(
+    request: Request,
+    video_msg_id: str,
+    payload: DueDateUpdateRequest
+):
+    """
+    Update video due date.
+    Curl verified 2025-12-05. Date format: MM/DD/YYYY. NO api_key.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    # Ensure video_msg_id matches
+    if payload.video_msg_id != video_msg_id:
+        payload.video_msg_id = video_msg_id
+
+    endpoint, form_data = translator.due_date_update_to_legacy(
+        video_msg_id, payload.due_date
+    )
+
+    logger.info(f"📤 Updating due date for video_msg_id {video_msg_id} to {payload.due_date}")
+
+    try:
+        response = await session.post(endpoint, data=form_data)
+        result = translator.parse_due_date_update_response(response.text)
+
+        if result["success"]:
+            logger.info(f"✅ Due date updated to {payload.due_date}")
+            return DueDateUpdateResponse(
+                success=True,
+                video_msg_id=video_msg_id,
+                due_date=payload.due_date,
+                message="Due date updated successfully"
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "success": False,
+                    "error": result.get("error", "Due date update failed"),
+                    "legacy_response": result.get("raw")
+                }
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Due date update error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/progress")
+async def get_video_progress(
+    request: Request,
+    filters: VideoProgressFilters
+):
+    """
+    Fetch video progress data with optional filters.
+    Returns list of video tasks with athlete info, status, stage, due dates.
+    Curl verified 2025-12-05. NO club fields.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    # Convert filters to dict, removing None values
+    filter_dict = {k: v for k, v in filters.dict().items() if v is not None}
+
+    endpoint, form_data = translator.video_progress_to_legacy(filter_dict)
+
+    logger.info(f"📤 Fetching video progress (filters: {filter_dict})")
+
+    try:
+        response = await session.post(endpoint, data=form_data)
+        result = translator.parse_video_progress_response(response.text)
+
+        if result["success"]:
+            tasks = result["tasks"]
+            logger.info(f"✅ Found {len(tasks)} video progress tasks")
+            return VideoProgressResponse(
+                success=True,
+                count=len(tasks),
+                tasks=tasks
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Failed to fetch video progress")
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Video progress fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

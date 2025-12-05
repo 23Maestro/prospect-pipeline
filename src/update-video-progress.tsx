@@ -1,20 +1,17 @@
-import { Action, ActionPanel, Form, Toast, showToast, getPreferenceValues } from '@raycast/api';
+import { Action, ActionPanel, Form, Toast, showToast } from '@raycast/api';
 import { useState } from 'react';
-import { callPythonServer, API_BASE } from './lib/python-server-client';
 
 type Stage = "on_hold" | "awaiting_client" | "in_queue" | "done";
 type Status = "revisions" | "hudl" | "dropbox" | "external_links" | "not_approved";
 
-const API_BASE_URL = API_BASE;
+const API_BASE_URL = 'http://localhost:8000/api/v1';
 
 export default function UpdateVideoProgress() {
-  const preferences = getPreferenceValues<{ scoutApiKey?: string }>();
   const [threadId, setThreadId] = useState('');
   const [stage, setStage] = useState<Stage>('in_queue');
   const [status, setStatus] = useState<Status>('hudl');
 
   async function handleSubmit() {
-    const apiKey = preferences.scoutApiKey || process.env.SCOUT_API_KEY || '594168a28d26571785afcb83997cb8185f482e56';
     if (!threadId) {
       await showToast({
         style: Toast.Style.Failure,
@@ -56,7 +53,18 @@ export default function UpdateVideoProgress() {
       }
 
       // Update status
-      await callPythonServer('update_video_status', { athlete_id: athleteId, status, api_key: apiKey });
+      const statusResponse = await fetch(`${API_BASE_URL}/video/${encodeURIComponent(videoMsgId)}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_msg_id: videoMsgId,
+          status
+        }),
+      });
+      if (!statusResponse.ok) {
+        const statusResult = await statusResponse.json().catch(() => ({}));
+        throw new Error(statusResult?.message || `HTTP ${statusResponse.status}`);
+      }
 
       toast.style = Toast.Style.Success;
       toast.title = 'Progress updated';

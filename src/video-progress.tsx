@@ -11,7 +11,6 @@ import {
 } from '@raycast/api';
 import { format } from 'date-fns';
 import { useEffect, useState } from 'react';
-import { callPythonServer } from './lib/python-server-client';
 import { logDebug, logError, logVideoUpdate } from './lib/logger';
 import {
   getCachedTasks,
@@ -115,6 +114,10 @@ function normalizeStatus(displayStatus: string): 'Revisions' | 'HUDL' | 'Dropbox
     case 'external links':
       return 'External Links';
     case 'not approved':
+      return 'Not Approved';
+    case 'approved':
+      // CRITICAL FIX: API returns "Approved" but it actually means "Not Approved"
+      // This is a known Laravel bug in the inbox modal
       return 'Not Approved';
     case 'hudl':
     default:
@@ -245,12 +248,10 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   }, [task]);
 
   const handleStatusChange = async (newStatus: string) => {
-    const apiKey = getApiKey();
     logDebug(`[VIDEO_PROGRESS] handleStatusChange called`, {
       athleteName: task.athletename,
       taskId: task.id,
-      newStatus,
-      scoutApiKey: apiKey ? 'SET' : 'NOT SET'
+      newStatus
     });
 
     if (!task.id) {
@@ -275,15 +276,20 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
       logDebug(`[VIDEO_PROGRESS] Calling update_video_status`, {
         video_msg_id: String(task.id),
         status: normalizedStatus,
-        hasApiKey: !!apiKey,
-        apiKey,
       });
 
-      const result = await callPythonServer('update_video_status', {
-        video_msg_id: String(task.id),
-        status: normalizedStatus,
-        api_key: apiKey
+      const response = await fetch(`${API_BASE}/video/${task.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_msg_id: String(task.id),
+          status: normalizedStatus
+        }),
       });
+      const result = await response.json().catch(() => ({ success: false }));
+      if (!response.ok) {
+        throw new Error(result?.message || `HTTP ${response.status}`);
+      }
 
       logVideoUpdate('update_video_status', {
         video_msg_id: String(task.id),
@@ -316,12 +322,10 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   };
 
   const handleStageChange = async (newStage: string) => {
-    const apiKey = getApiKey();
     logDebug(`[VIDEO_PROGRESS] handleStageChange called`, {
       athleteName: task.athletename,
       taskId: task.id,
-      newStage,
-      scoutApiKey: apiKey ? 'SET' : 'NOT SET'
+      newStage
     });
 
     if (!task.id) {
@@ -383,6 +387,54 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         stage: newStage
       }, undefined, error);
 
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Update Failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const handleDueDateChange = async (newDueDate: string) => {
+    if (!task.id) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cannot Update',
+        message: 'Missing video message ID',
+      });
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      const toast = await showToast({
+        style: Toast.Style.Animated,
+        title: 'Updating Due Date…',
+        message: `Setting to ${newDueDate}`,
+      });
+
+      const response = await fetch(`${API_BASE}/video/${task.id}/duedate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_msg_id: String(task.id),
+          due_date: newDueDate, // MM/DD/YYYY format
+        }),
+      });
+      const result = await response.json().catch(() => ({ success: false }));
+
+      if (!response.ok) {
+        throw new Error(result?.message || `HTTP ${response.status}`);
+      }
+
+      toast.style = Toast.Style.Success;
+      toast.title = 'Due Date Updated';
+      toast.message = `Updated to ${newDueDate}`;
+      onStatusUpdate();
+      onBack();
+    } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'Update Failed',
@@ -536,6 +588,38 @@ ${approvedDetail}
             />
           </ActionPanel.Section>
 
+          <ActionPanel.Section title="Update Due Date">
+            <Action
+              title="Set Due Date: Today"
+              icon={Icon.Calendar}
+              onAction={() => {
+                const today = format(new Date(), 'MM/dd/yyyy');
+                void handleDueDateChange(today);
+              }}
+              isLoading={isUpdating}
+            />
+            <Action
+              title="Set Due Date: Tomorrow"
+              icon={Icon.Calendar}
+              onAction={() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                void handleDueDateChange(format(tomorrow, 'MM/dd/yyyy'));
+              }}
+              isLoading={isUpdating}
+            />
+            <Action
+              title="Set Due Date: Next Week"
+              icon={Icon.Calendar}
+              onAction={() => {
+                const nextWeek = new Date();
+                nextWeek.setDate(nextWeek.getDate() + 7);
+                void handleDueDateChange(format(nextWeek, 'MM/dd/yyyy'));
+              }}
+              isLoading={isUpdating}
+            />
+          </ActionPanel.Section>
+
           <ActionPanel.Section>
             <Action.OpenInBrowser
               title="Open in ProspectID"
@@ -602,7 +686,16 @@ export default function VideoProgress() {
       }
 
       setIsSyncing(true);
-      const data = await callPythonServer<VideoProgressTask[]>('get_video_progress', { filters: {} });
+      const response = await fetch(`${API_BASE}/video/progress`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const result = await response.json().catch(() => ({ success: false, tasks: [] }));
+      if (!response.ok) {
+        throw new Error(result?.message || `HTTP ${response.status}`);
+      }
+      const data = result.tasks || [];
 
       if (!Array.isArray(data)) {
         throw new Error('Invalid data format');
@@ -636,6 +729,8 @@ export default function VideoProgress() {
   const filteredTasks =
     statusFilter === 'all'
       ? tasks
+      : statusFilter === 'Done'
+      ? tasks.filter((task) => task.stage === 'Done')
       : tasks.filter((task) => task.video_progress_status === statusFilter);
 
   return (

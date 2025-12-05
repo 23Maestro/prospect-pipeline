@@ -64,12 +64,78 @@ class LegacyTranslator:
     def stage_update_to_legacy(request: StageUpdateRequest) -> Tuple[str, Dict[str, Any]]:
         """Convert StageUpdateRequest to legacy form data."""
         endpoint = "/API/scout-api/video-stage"
-        
+
         form_data = {
             "video_msg_id": request.video_msg_id,
             "video_progress_stage": request.stage.value,  # Exact param name matters
         }
-        
+
+        return endpoint, form_data
+
+    @staticmethod
+    def status_update_to_legacy(video_msg_id: str, status: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert status update to legacy form data.
+        Mirrors: src/python/npid_api_client.py:1326-1351
+
+        NO api_key - session.post() auto-injects _token only.
+        """
+        endpoint = "/API/scout-api/video-status"
+
+        form_data = {
+            "video_msg_id": video_msg_id,
+            "video_progress_status": status,
+        }
+
+        return endpoint, form_data
+
+    @staticmethod
+    def due_date_update_to_legacy(video_msg_id: str, due_date: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert due date update to legacy form data.
+
+        Args:
+            video_msg_id: Video message ID
+            due_date: Due date in MM/DD/YYYY format
+        """
+        endpoint = "/tasks/videoduedate"
+
+        form_data = {
+            "video_msg_id": video_msg_id,
+            "video_due_date": due_date,
+        }
+
+        return endpoint, form_data
+
+    @staticmethod
+    def video_progress_to_legacy(filters: Dict[str, str] = None) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert video progress filters to legacy form data.
+        Mirrors: src/python/npid_api_client.py:1043-1089
+
+        NO club fields - user requested removal.
+        """
+        endpoint = "/videoteammsg/videoprogress"
+
+        form_data = {
+            "first_name": "",
+            "last_name": "",
+            "email": "",
+            "sport": "0",
+            "states": "0",
+            "athlete_school": "0",
+            "editorassigneddatefrom": "",
+            "editorassigneddateto": "",
+            "grad_year": "",
+            "video_editor": "",
+            "video_progress": "",
+            "video_progress_stage": "",
+            "video_progress_status": ""
+        }
+
+        if filters:
+            form_data.update(filters)
+
         return endpoint, form_data
     
     @staticmethod
@@ -77,18 +143,28 @@ class LegacyTranslator:
         athlete_id: str,
         sport: str,
         video_type: str,
-        athlete_main_id: str
+        athlete_main_id: str,
+        api_key: str = None
     ) -> Tuple[str, Dict[str, Any]]:
-        """Build seasons fetch request."""
+        """
+        Build seasons fetch request.
+
+        CRITICAL: This is the ONLY endpoint that requires api_key.
+        All other video endpoints (status, stage, duedate, progress) use ONLY _token.
+        """
         endpoint = "/API/scout-api/video-seasons-by-video-type"
-        
+
         form_data = {
             "athlete_id": athlete_id,
             "sport_alias": sport,
             "video_type": video_type,
             "athlete_main_id": athlete_main_id,
         }
-        
+
+        # ONLY this endpoint needs api_key
+        if api_key:
+            form_data["api_key"] = api_key
+
         return endpoint, form_data
     
     # ============== Response Translation ==============
@@ -200,7 +276,57 @@ class LegacyTranslator:
                 "error": "Invalid JSON response",
                 "raw": raw_response[:500]
             }
-    
+
+    @staticmethod
+    def parse_status_update_response(raw_response: str) -> Dict[str, Any]:
+        """Parse status update response."""
+        try:
+            data = json.loads(raw_response)
+            return {
+                "success": True,
+                "video_msg_id": data.get("video_msg_id"),
+                "status": data.get("status"),
+                "raw": data
+            }
+        except json.JSONDecodeError:
+            return {
+                "success": False,
+                "error": "Invalid JSON response",
+                "raw": raw_response[:500]
+            }
+
+    @staticmethod
+    def parse_due_date_update_response(raw_response: str) -> Dict[str, Any]:
+        """Parse due date update response."""
+        try:
+            data = json.loads(raw_response)
+            return {
+                "success": True,
+                "video_msg_id": data.get("video_msg_id"),
+                "due_date": data.get("video_due_date"),
+                "raw": data
+            }
+        except json.JSONDecodeError:
+            return {
+                "success": False,
+                "error": "Invalid JSON response",
+                "raw": raw_response[:500]
+            }
+
+    @staticmethod
+    def parse_video_progress_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse video progress response.
+        Response includes: positions (primaryposition, secondaryposition, thirdposition), video_due_date
+        """
+        try:
+            data = json.loads(raw_response)
+            if isinstance(data, list):
+                return {"success": True, "tasks": data}
+            return {"success": False, "tasks": [], "error": "Unexpected format"}
+        except json.JSONDecodeError:
+            return {"success": False, "tasks": [], "error": "Invalid JSON"}
+
     @staticmethod
     def extract_athlete_main_id(html: str) -> Optional[str]:
         """

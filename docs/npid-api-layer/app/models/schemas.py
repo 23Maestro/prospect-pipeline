@@ -117,6 +117,54 @@ class StageUpdateResponse(BaseModel):
     message: Optional[str] = None
 
 
+class StatusUpdateRequest(BaseModel):
+    """Request to update video status."""
+    video_msg_id: str = Field(..., description="Video message ID from progress page")
+    status: str = Field(..., description="New status (Revisions, HUDL, Dropbox, etc.)")
+    # NO api_key - session.post() auto-injects _token
+
+
+class StatusUpdateResponse(BaseModel):
+    """Response from status update."""
+    success: bool
+    video_msg_id: str
+    status: str
+    message: Optional[str] = None
+
+
+class DueDateUpdateRequest(BaseModel):
+    """Request to update video due date."""
+    video_msg_id: str = Field(..., description="Video message ID from progress page")
+    due_date: str = Field(..., description="Due date in MM/DD/YYYY format")
+
+
+class DueDateUpdateResponse(BaseModel):
+    """Response from due date update."""
+    success: bool
+    video_msg_id: str
+    due_date: str
+    message: Optional[str] = None
+
+
+class VideoProgressFilters(BaseModel):
+    """Filters for video progress search."""
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    sport: Optional[str] = None
+    grad_year: Optional[str] = None
+    video_editor: Optional[str] = None
+    video_progress_stage: Optional[str] = None
+    video_progress_status: Optional[str] = None
+    # NO club fields: select_club_sport, select_club_state, select_club_name
+
+
+class VideoProgressResponse(BaseModel):
+    """Response from video progress query."""
+    success: bool
+    count: int
+    tasks: List[dict]  # Includes: positions, video_due_date
+
+
 class Assignment(BaseModel):
     """Video assignment from progress page."""
     video_msg_id: str

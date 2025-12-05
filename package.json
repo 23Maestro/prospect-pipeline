@@ -72,6 +72,7 @@
     "@types/react": "18.0.9",
     "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
+    "concurrently": "^9.2.1",
     "eslint": "^9.37.0",
     "globals": "^16.4.0",
     "typescript": "^4.9.5"
@@ -95,6 +96,8 @@
   "scripts": {
     "build": "ray build",
     "dev": "ray develop",
-    "lint": "eslint . --ext .ts,.tsx"
+    "lint": "eslint . --ext .ts,.tsx",
+    "api": "cd docs/npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
+    "dev:all": "concurrently --kill-others -n \"RAY,API\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm:dev\" \"npm:api\""
   }
 }
