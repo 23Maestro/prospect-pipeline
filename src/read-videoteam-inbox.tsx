@@ -11,7 +11,7 @@ import {
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
-import { fetchInboxThreads, fetchMessageDetail } from './lib/npid-mcp-adapter';
+import { fetchInboxThreads, fetchMessageDetail, sendEmailToAthlete } from './lib/npid-mcp-adapter';
 import { callPythonServer } from './lib/python-server-client';
 
 // Email Content Detail Component - Enhanced with Attachments

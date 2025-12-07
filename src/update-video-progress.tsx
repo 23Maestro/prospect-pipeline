@@ -1,10 +1,6 @@
 import { Action, ActionPanel, Form, Toast, showToast } from '@raycast/api';
 import { useState } from 'react';
-
-type Stage = "on_hold" | "awaiting_client" | "in_queue" | "done";
-type Status = "revisions" | "hudl" | "dropbox" | "external_links" | "not_approved";
-
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+import { apiFetch } from './lib/python-server-client';
 
 export default function UpdateVideoProgress() {
   const [threadId, setThreadId] = useState('');
@@ -26,7 +22,7 @@ export default function UpdateVideoProgress() {
     });
 
     try {
-      const resolveResp = await fetch(`${API_BASE_URL}/athlete/${encodeURIComponent(threadId)}/resolve`);
+      const resolveResp = await apiFetch(`/athlete/${encodeURIComponent(threadId)}/resolve`);
       if (resolveResp.status === 404) {
         toast.style = Toast.Style.Failure;
         toast.title = 'Athlete not found';
@@ -42,18 +38,18 @@ export default function UpdateVideoProgress() {
       const athleteId = resolved.athlete_id || threadId;
 
       // Update stage
-      const stageResponse = await fetch(`${API_BASE_URL}/video/${encodeURIComponent(videoMsgId)}/stage`, {
+      const stageResponse = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_msg_id: videoMsgId, stage }),
       });
-      const stageResult = await stageResponse.json().catch(() => ({}));
+      const stageResult = await stageResponse.json().catch(() => ({} as any));
       if (!stageResponse.ok) {
         throw new Error(stageResult?.message || stageResult?.detail || `HTTP ${stageResponse.status}`);
       }
 
       // Update status
-      const statusResponse = await fetch(`${API_BASE_URL}/video/${encodeURIComponent(videoMsgId)}/status`, {
+      const statusResponse = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,9 +57,9 @@ export default function UpdateVideoProgress() {
           status
         }),
       });
+      const statusResult = await statusResponse.json().catch(() => ({} as any));
       if (!statusResponse.ok) {
-        const statusResult = await statusResponse.json().catch(() => ({}));
-        throw new Error(statusResult?.message || `HTTP ${statusResponse.status}`);
+        throw new Error(statusResult?.message || statusResult?.detail || `HTTP ${statusResponse.status}`);
       }
 
       toast.style = Toast.Style.Success;
@@ -72,7 +68,7 @@ export default function UpdateVideoProgress() {
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Update failed';
-      toast.message = error instanceof Error ? error.message : 'Unknown error';
+      toast.message = error instanceof Error ? error.message : JSON.stringify(error);
     }
   }
 
@@ -91,7 +87,7 @@ export default function UpdateVideoProgress() {
         value={threadId}
         onChange={setThreadId}
       />
-      
+
       <Form.Dropdown
         id="stage"
         title="Video Stage"

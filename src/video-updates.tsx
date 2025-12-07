@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { callPythonServer, API_BASE, getSeasons } from './lib/python-server-client';
+import { callPythonServer, getSeasons, apiFetch } from './lib/python-server-client';
 import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 
 const NPID_API_KEY = '594168a28d26571785afcb83997cb8185f482e56';
-const API_BASE_URL = API_BASE;
 
 // Logging utility - writes to file only (console.log would cause recursion)
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
@@ -178,7 +177,7 @@ export default function VideoUpdatesCommand(
             athleteMainId,
             apiKey,
           });
-          const response = await fetch(`${API_BASE_URL}/video/submit`, {
+          const response = await apiFetch('/video/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -192,7 +191,7 @@ export default function VideoUpdatesCommand(
               sport: sportAlias,
             }),
           });
-          const result = await response.json().catch(() => ({}));
+          const result = await response.json().catch(() => ({} as any));
           log('📥 add_career_video response:', result);
           const success = response.ok && (result?.success === true);
           if (success) {
@@ -351,7 +350,7 @@ export default function VideoUpdatesCommand(
         log('🆔 Fetching athlete_main_id for player_id:', selectedPlayer.player_id);
         setIsFetchingMainId(true);
         try {
-          const resp = await fetch(`${API_BASE_URL}/athlete/${encodeURIComponent(selectedPlayer.player_id)}/resolve`);
+          const resp = await apiFetch(`/athlete/${encodeURIComponent(selectedPlayer.player_id)}/resolve`);
           if (resp.status === 404) {
             await showToast({ style: Toast.Style.Failure, title: 'Athlete not found' });
             setFetchedAthleteMainId(null);
@@ -400,7 +399,7 @@ export default function VideoUpdatesCommand(
 
         if (!athleteMainId && athleteId) {
           log('⚠️ athlete_main_id not cached, fetching...');
-          const detResp = await fetch(`${API_BASE_URL}/athlete/${encodeURIComponent(athleteId)}/resolve`);
+          const detResp = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`);
           const det = await detResp.json().catch(() => ({}));
           athleteMainId = det?.athlete_main_id;
           log('✅ Fetched athlete_main_id for seasons:', athleteMainId);

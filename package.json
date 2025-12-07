@@ -97,7 +97,7 @@
     "build": "ray build",
     "dev": "ray develop",
     "lint": "eslint . --ext .ts,.tsx",
-    "api": "cd docs/npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
+    "api": "cd npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
     "dev:all": "concurrently --kill-others -n \"RAY,API\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm:dev\" \"npm:api\""
   }
 }

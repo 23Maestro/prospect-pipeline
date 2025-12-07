@@ -2,29 +2,27 @@ import {
   Action,
   ActionPanel,
   Detail,
+  Form,
   Icon,
   List,
   Toast,
   showToast,
   useNavigation,
+  getPreferenceValues,
   Clipboard,
 } from '@raycast/api';
 import { format } from 'date-fns';
 import { useEffect, useState } from 'react';
-import { logDebug, logError, logVideoUpdate } from './lib/logger';
+import { apiFetch } from './lib/python-server-client';
 import {
   getCachedTasks,
-  getLastCachedAt,
   upsertTasks,
   updateCachedTaskStatusStage,
 } from './lib/video-progress-cache';
 
-const API_BASE = 'http://localhost:8000/api/v1';
-
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
   athlete_id: number;
-  athlete_main_id: string;
   athletename: string;
   video_progress_status: string;
   stage: string;
@@ -40,12 +38,6 @@ interface VideoProgressTask {
   high_school_state: string;
   [key: string]: any;
 }
-
-const NPID_API_KEY = '594168a28d26571785afcb83997cb8185f482e56';
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-const getApiKey = () =>
-  NPID_API_KEY;
 
 function getPositions(task: VideoProgressTask): string {
   return [task.primaryposition, task.secondaryposition, task.thirdposition]
@@ -102,73 +94,41 @@ function formatDate(dateString: string): string {
   }
 }
 
-function normalizeStatus(displayStatus: string): 'Revisions' | 'HUDL' | 'Dropbox' | 'External Links' | 'Not Approved' {
-  const normalized = displayStatus.toLowerCase().replace(/[_-]+/g, ' ').trim();
-
-  switch (normalized) {
+function normalizeStatus(displayStatus: string): 'revisions' | 'hudl' | 'dropbox' | 'external_links' | 'not_approved' {
+  switch (displayStatus.toLowerCase()) {
     case 'revise':
     case 'revisions':
-      return 'Revisions';
-    case 'dropbox':
-      return 'Dropbox';
-    case 'external links':
-      return 'External Links';
-    case 'not approved':
-      return 'Not Approved';
-    case 'approved':
-      // CRITICAL FIX: API returns "Approved" but it actually means "Not Approved"
-      // This is a known Laravel bug in the inbox modal
-      return 'Not Approved';
+      return 'revisions';
     case 'hudl':
+      return 'hudl';
+    case 'dropbox':
+      return 'dropbox';
+    case 'external links':
+    case 'external_links':
+      return 'external_links';
+    case 'not approved':
+    case 'not_approved':
+      return 'not_approved';
     default:
-      return 'HUDL';
+      return 'hudl';
   }
 }
 
-function normalizeStage(displayStage: string): 'On Hold' | 'Awaiting Client' | 'In Queue' | 'Done' {
-  if (!displayStage) return 'In Queue';
-  const normalized = displayStage.toLowerCase().replace(/[_-]+/g, ' ').trim();
-
-  switch (normalized) {
+function normalizeStage(displayStage: string): 'on_hold' | 'awaiting_client' | 'in_queue' | 'done' {
+  switch (displayStage.toLowerCase()) {
     case 'on hold':
-      return 'On Hold';
+    case 'on_hold':
+      return 'on_hold';
     case 'awaiting client':
-      return 'Awaiting Client';
-    case 'done':
-      return 'Done';
+    case 'awaiting_client':
+      return 'awaiting_client';
     case 'in queue':
+    case 'in_queue':
+      return 'in_queue';
+    case 'done':
+      return 'done';
     default:
-      return 'In Queue';
-  }
-}
-
-function getStageIcon(stage: string) {
-  const normalized = normalizeStage(stage);
-  switch (normalized) {
-    case 'Done':
-      return Icon.Checkmark;
-    case 'On Hold':
-      return Icon.Pause;
-    case 'Awaiting Client':
-      return Icon.Person;
-    case 'In Queue':
-    default:
-      return Icon.Clock;
-  }
-}
-
-function getStageColor(stage: string) {
-  const normalized = normalizeStage(stage);
-  switch (normalized) {
-    case 'Done':
-      return '#34C759';
-    case 'On Hold':
-      return '#FF9500';
-    case 'Awaiting Client':
-      return '#007AFF';
-    case 'In Queue':
-    default:
-      return '#8E8E93';
+      return 'in_queue';
   }
 }
 
@@ -218,10 +178,10 @@ function generateDropboxFolder(task: VideoProgressTask): string {
     .join('_');
 }
 
-function ApprovedVideoDetail(task: VideoProgressTask): string {
+function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): string {
   const positions = getPositions(task);
   const lines = [
-    task.athletename,
+    task.athletename.toUpperCase(),
     positions ? `Class of ${task.grad_year} - ${positions}` : `Class of ${task.grad_year}`,
     task.high_school,
     `${task.high_school_city}, ${task.high_school_state}`,
@@ -244,18 +204,11 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   useEffect(() => {
     setYoutubeTitle(generateYouTubeTitle(task));
     setDropboxFolder(generateDropboxFolder(task));
-    setApprovedDetail(ApprovedVideoDetail(task));
+    setApprovedDetail(ApprovedVideoDetail(task, onBack));
   }, [task]);
 
   const handleStatusChange = async (newStatus: string) => {
-    logDebug(`[VIDEO_PROGRESS] handleStatusChange called`, {
-      athleteName: task.athletename,
-      taskId: task.id,
-      newStatus
-    });
-
     if (!task.id) {
-      logError('handleStatusChange', 'Missing video message ID', { task });
       await showToast({
         style: Toast.Style.Failure,
         title: 'Cannot Update',
@@ -267,50 +220,26 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
     setIsUpdating(true);
     try {
       const normalizedStatus = normalizeStatus(newStatus);
-      const toast = await showToast({
-        style: Toast.Style.Animated,
-        title: 'Updating Status…',
-        message: `Setting to ${normalizedStatus}`,
-      });
-
-      logDebug(`[VIDEO_PROGRESS] Calling update_video_status`, {
-        video_msg_id: String(task.id),
-        status: normalizedStatus,
-      });
-
-      const response = await fetch(`${API_BASE}/video/${task.id}/status`, {
+      const response = await apiFetch(`/video/${task.id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_msg_id: String(task.id),
-          status: normalizedStatus
-        }),
+        body: JSON.stringify({ video_msg_id: String(task.id), status: normalizedStatus }),
       });
-      const result = await response.json().catch(() => ({ success: false }));
       if (!response.ok) {
-        throw new Error(result?.message || `HTTP ${response.status}`);
+        const err = await response.json().catch(() => ({})) as any;
+        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
       }
+      // Update cache for instant UI feedback
+      await updateCachedTaskStatusStage(task.id, { status: newStatus });
 
-      logVideoUpdate('update_video_status', {
-        video_msg_id: String(task.id),
-        status: normalizedStatus
-      }, result);
-
-      if (task.id) {
-        await updateCachedTaskStatusStage(task.id, { status: normalizedStatus });
-      }
-
-      toast.style = Toast.Style.Success;
-      toast.title = 'Status Updated';
-      toast.message = `Updated to ${normalizedStatus}`;
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Status Updated',
+        message: `Updated to ${newStatus}`,
+      });
       onStatusUpdate();
       onBack();
     } catch (error) {
-      logVideoUpdate('update_video_status', {
-        video_msg_id: String(task.id),
-        status: newStatus
-      }, undefined, error);
-
       await showToast({
         style: Toast.Style.Failure,
         title: 'Update Failed',
@@ -322,14 +251,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   };
 
   const handleStageChange = async (newStage: string) => {
-    logDebug(`[VIDEO_PROGRESS] handleStageChange called`, {
-      athleteName: task.athletename,
-      taskId: task.id,
-      newStage
-    });
-
     if (!task.id) {
-      logError('handleStageChange', 'Missing video message ID', { task });
       await showToast({
         style: Toast.Style.Failure,
         title: 'Cannot Update',
@@ -341,97 +263,23 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
     setIsUpdating(true);
     try {
       const normalizedStage = normalizeStage(newStage);
-      const toast = await showToast({
-        style: Toast.Style.Animated,
-        title: 'Updating Stage…',
-        message: `Setting to ${normalizedStage}`,
-      });
-
-      logDebug(`[VIDEO_PROGRESS] Calling update_video_stage`, {
-        video_msg_id: String(task.id),
-        stage: normalizedStage,
-        hasApiKey: !!apiKey,
-        apiKey,
-      });
-
-      const response = await fetch(`${API_BASE}/video/${task.id}/stage`, {
+      const response = await apiFetch(`/video/${task.id}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_msg_id: String(task.id),
-          stage: normalizedStage,
-        }),
+        body: JSON.stringify({ video_msg_id: String(task.id), stage: normalizedStage }),
       });
-      const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(result?.message || result?.detail || `HTTP ${response.status}`);
+        const err = await response.json().catch(() => ({})) as any;
+        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
       }
-
-      logVideoUpdate('update_video_stage', {
-        video_msg_id: String(task.id),
-        stage: normalizedStage
-      }, result);
-
-      if (task.id) {
-        await updateCachedTaskStatusStage(task.id, { stage: normalizedStage });
-      }
-
-      toast.style = Toast.Style.Success;
-      toast.title = 'Stage Updated';
-      toast.message = `Updated to ${normalizedStage}`;
-      onStatusUpdate();
-      onBack();
-    } catch (error) {
-      logVideoUpdate('update_video_stage', {
-        video_msg_id: String(task.id),
-        stage: newStage
-      }, undefined, error);
+      // Update cache for instant UI feedback
+      await updateCachedTaskStatusStage(task.id, { stage: newStage });
 
       await showToast({
-        style: Toast.Style.Failure,
-        title: 'Update Failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        style: Toast.Style.Success,
+        title: 'Stage Updated',
+        message: `Updated to ${newStage}`,
       });
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleDueDateChange = async (newDueDate: string) => {
-    if (!task.id) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Cannot Update',
-        message: 'Missing video message ID',
-      });
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      const toast = await showToast({
-        style: Toast.Style.Animated,
-        title: 'Updating Due Date…',
-        message: `Setting to ${newDueDate}`,
-      });
-
-      const response = await fetch(`${API_BASE}/video/${task.id}/duedate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          video_msg_id: String(task.id),
-          due_date: newDueDate, // MM/DD/YYYY format
-        }),
-      });
-      const result = await response.json().catch(() => ({ success: false }));
-
-      if (!response.ok) {
-        throw new Error(result?.message || `HTTP ${response.status}`);
-      }
-
-      toast.style = Toast.Style.Success;
-      toast.title = 'Due Date Updated';
-      toast.message = `Updated to ${newDueDate}`;
       onStatusUpdate();
       onBack();
     } catch (error) {
@@ -565,58 +413,34 @@ ${approvedDetail}
             <Action
               title="Mark as In Queue"
               icon={Icon.Clock}
-              onAction={() => handleStageChange('In Queue')}
+              onAction={() => handleStageChange('in_queue')}
               isLoading={isUpdating}
             />
             <Action
               title="Mark as Awaiting Client"
               icon={Icon.Person}
-              onAction={() => handleStageChange('Awaiting Client')}
+              onAction={() => handleStageChange('awaiting_client')}
               isLoading={isUpdating}
             />
             <Action
               title="Mark as On Hold"
               icon={Icon.Pause}
-              onAction={() => handleStageChange('On Hold')}
+              onAction={() => handleStageChange('on_hold')}
               isLoading={isUpdating}
             />
             <Action
               title="Mark as Done"
               icon={Icon.Checkmark}
-              onAction={() => handleStageChange('Done')}
+              onAction={() => handleStageChange('done')}
               isLoading={isUpdating}
             />
           </ActionPanel.Section>
 
           <ActionPanel.Section title="Update Due Date">
-            <Action
-              title="Set Due Date: Today"
+            <Action.Push
+              title="Edit Due Date"
               icon={Icon.Calendar}
-              onAction={() => {
-                const today = format(new Date(), 'MM/dd/yyyy');
-                void handleDueDateChange(today);
-              }}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Set Due Date: Tomorrow"
-              icon={Icon.Calendar}
-              onAction={() => {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                void handleDueDateChange(format(tomorrow, 'MM/dd/yyyy'));
-              }}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Set Due Date: Next Week"
-              icon={Icon.Calendar}
-              onAction={() => {
-                const nextWeek = new Date();
-                nextWeek.setDate(nextWeek.getDate() + 7);
-                void handleDueDateChange(format(nextWeek, 'MM/dd/yyyy'));
-              }}
-              isLoading={isUpdating}
+              target={<EditDueDateForm task={task} onUpdate={onStatusUpdate} />}
             />
           </ActionPanel.Section>
 
@@ -634,85 +458,176 @@ ${approvedDetail}
   );
 }
 
+interface EditDueDateFormProps {
+  task: VideoProgressTask;
+  onUpdate: () => void;
+}
+
+function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
+  const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (values: { dueDate: Date }) => {
+    if (!task.id) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cannot Update',
+        message: 'Missing video message ID',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      // Format date as MM/DD/YYYY (Laravel format)
+      const formattedDate = format(values.dueDate, 'MM/dd/yyyy');
+
+      const response = await apiFetch(`/video/${task.id}/duedate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          video_msg_id: String(task.id),
+          due_date: formattedDate
+        }),
+      });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as any;
+        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+      }
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Due Date Updated',
+        message: `Updated to ${formattedDate}`,
+      });
+
+      onUpdate();
+      pop();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Update Failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Parse current due date or default to today
+  const currentDate = task.video_due_date
+    ? new Date(task.video_due_date)
+    : new Date();
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Update Due Date"
+            onSubmit={handleSubmit}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.DatePicker
+        id="dueDate"
+        title="Due Date"
+        defaultValue={currentDate}
+      />
+      <Form.Description text={`Editing due date for: ${task.athletename}`} />
+    </Form>
+  );
+}
+
 export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const { push, pop } = useNavigation();
 
   useEffect(() => {
-    void bootstrap();
+    loadTasks();
   }, []);
 
-  const applyFilters = (items: VideoProgressTask[]) => {
-    const filtered = items.filter((task) =>
-      ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links', 'Done'].includes(
-        task.video_progress_status,
-      ),
+  const reloadFromCache = async () => {
+    // Reload from cache only (instant, no API call)
+    const cached = await getCachedTasks();
+    const filtered = cached.filter(
+      (task) =>
+        ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+          task.video_progress_status
+        ) && task.stage !== 'Done'
     );
-    const doneItems = filtered.filter((t) => t.video_progress_status === 'Done').slice(0, 50);
-    const activeItems = filtered.filter((t) => t.video_progress_status !== 'Done');
-    return [...activeItems, ...doneItems];
+    setTasks(filtered);
   };
 
-  const bootstrap = async () => {
+  const loadTasks = async () => {
     try {
+      setIsLoading(true);
+
+      // Try cache first
       const cached = await getCachedTasks();
-      if (cached.length) {
-        setTasks(applyFilters(cached));
+      if (cached.length > 0) {
+        const filtered = cached.filter(
+          (task) =>
+            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+              task.video_progress_status
+            ) && task.stage !== 'Done'
+        );
+        setTasks(filtered);
         setIsLoading(false);
       }
-      await loadTasks({ force: !cached.length });
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Cache load failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    }
-  };
 
-  const loadTasks = async (options?: { force?: boolean }) => {
-    const force = options?.force ?? false;
-    try {
-      const lastCached = await getLastCachedAt();
-      const now = Date.now();
-      if (!force && lastCached && now - lastCached < CACHE_TTL_MS) {
-        const cached = await getCachedTasks();
-        setTasks(applyFilters(cached));
-        setIsLoading(false);
-        return;
-      }
-
-      setIsSyncing(true);
-      const response = await fetch(`${API_BASE}/video/progress`, {
+      // Fetch from API in background
+      const response = await apiFetch('/video/progress', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
+        body: JSON.stringify({
+          first_name: "",
+          last_name: "",
+          email: "",
+          sport: "0",
+          states: "0",
+          athlete_school: "0",
+          editorassigneddatefrom: "",
+          editorassigneddateto: "",
+          grad_year: "",
+          video_editor: "",
+          video_progress: "",
+          video_progress_stage: "",
+          video_progress_status: ""
+        }),
       });
-      const result = await response.json().catch(() => ({ success: false, tasks: [] }));
       if (!response.ok) {
-        throw new Error(result?.message || `HTTP ${response.status}`);
+        throw new Error(`Failed to load tasks (HTTP ${response.status})`);
       }
+      const result = await response.json() as any;
       const data = result.tasks || [];
 
       if (!Array.isArray(data)) {
         throw new Error('Invalid data format');
       }
 
-      const normalized = data.map((t) => ({
-        ...t,
-        athlete_main_id: t.athlete_main_id || '',
-      }));
-      const finalFiltered = applyFilters(normalized);
-      await upsertTasks(finalFiltered);
-      setTasks(finalFiltered);
+      // Update cache
+      await upsertTasks(data);
+
+      // Filter: active statuses, exclude Done stage
+      const filtered = data.filter(
+        (task) =>
+          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+            task.video_progress_status
+          ) && task.stage !== 'Done'
+      );
+
+      setTasks(filtered);
 
       await showToast({
-        style: finalFiltered.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: `Found ${finalFiltered.length} active tasks`,
-        message: finalFiltered.length === 0 ? 'All tasks are done!' : 'Ready to work',
+        style: filtered.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
+        title: `Found ${filtered.length} active tasks`,
+        message: filtered.length === 0 ? 'All tasks are done!' : 'Ready to work',
       });
     } catch (error) {
       await showToast({
@@ -722,20 +637,17 @@ export default function VideoProgress() {
       });
     } finally {
       setIsLoading(false);
-      setIsSyncing(false);
     }
   };
 
   const filteredTasks =
     statusFilter === 'all'
       ? tasks
-      : statusFilter === 'Done'
-      ? tasks.filter((task) => task.stage === 'Done')
       : tasks.filter((task) => task.video_progress_status === statusFilter);
 
   return (
     <List
-      isLoading={isLoading || isSyncing}
+      isLoading={isLoading}
       navigationTitle="Video Progress (ProspectID)"
       searchBarPlaceholder="Search athletes..."
       searchBarAccessory={
@@ -749,8 +661,8 @@ export default function VideoProgress() {
           <List.Dropdown.Item title="HUDL" value="HUDL" />
           <List.Dropdown.Item title="Dropbox" value="Dropbox" />
           <List.Dropdown.Item title="Not Approved" value="Not Approved" />
+          <List.Dropdown.Item title="Uploads" value="Uploads" />
           <List.Dropdown.Item title="External Links" value="External Links" />
-          <List.Dropdown.Item title="Done" value="Done" />
         </List.Dropdown>
       }
     >
@@ -773,10 +685,6 @@ export default function VideoProgress() {
                   },
                   text: task.video_progress_status,
                 },
-                {
-                  icon: { source: getStageIcon(task.stage), tintColor: getStageColor(task.stage) },
-                  text: normalizeStage(task.stage),
-                },
               ]}
               actions={
                 <ActionPanel>
@@ -788,7 +696,7 @@ export default function VideoProgress() {
                         <VideoProgressDetail
                           task={task}
                           onBack={pop}
-                          onStatusUpdate={() => loadTasks({ force: true })}
+                          onStatusUpdate={reloadFromCache}
                         />
                       )
                     }
@@ -809,8 +717,7 @@ export default function VideoProgress() {
                   <Action
                     title="Reload Tasks"
                     icon={Icon.ArrowClockwise}
-                    onAction={() => loadTasks({ force: true })}
-                    isLoading={isSyncing}
+                    onAction={loadTasks}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                   />
                 </ActionPanel>
