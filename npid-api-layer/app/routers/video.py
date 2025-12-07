@@ -215,7 +215,7 @@ async def get_seasons(
             detail={
                 "error": "athlete_main_id is required",
                 "message": "athlete_main_id must be extracted from athlete profile page URL (/athlete/media/{athlete_id}/{athlete_main_id})",
-                "reference": "See docs/npid-api-layer/README.md for athlete_main_id extraction"
+                "reference": "See npid-api-layer/README.md for athlete_main_id extraction"
             }
         )
 

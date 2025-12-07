@@ -1,0 +1,18 @@
+{
+  "name": "npid-fastapi-dev",
+  "description": "Development marketplace for NPID FastAPI plugin",
+  "owner": {
+    "name": "Jerami Singleton"
+  },
+  "plugins": [
+    {
+      "name": "npid-fastapi",
+      "description": "FastAPI router pattern enforcement for NPID legacy integration",
+      "version": "1.0.0",
+      "source": "./",
+      "author": {
+        "name": "Jerami Singleton"
+      }
+    }
+  ]
+}

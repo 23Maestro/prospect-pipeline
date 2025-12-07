@@ -7,8 +7,9 @@ This is the core abstraction that isolates you from Laravel's quirks.
 import re
 import json
 import logging
-from typing import Dict, Any, Optional, Tuple
-from app.models.schemas import VideoSubmitRequest, StageUpdateRequest, VideoSource
+from typing import Dict, Any, Optional, Tuple, List
+from bs4 import BeautifulSoup
+from app.models.schemas import VideoSubmitRequest, StageUpdateRequest, VideoSource, SendEmailRequest
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +63,26 @@ class LegacyTranslator:
     
     @staticmethod
     def stage_update_to_legacy(request: StageUpdateRequest) -> Tuple[str, Dict[str, Any]]:
-        """Convert StageUpdateRequest to legacy form data."""
+        """
+        Convert StageUpdateRequest to legacy form data.
+        Curl verified 2025-12-07. NO api_key, NO extra fields.
+
+        Converts snake_case to Title Case for Laravel.
+        """
         endpoint = "/API/scout-api/video-stage"
+
+        # Convert snake_case to Title Case (e.g., "on_hold" -> "On Hold")
+        stage_map = {
+            "on_hold": "On Hold",
+            "awaiting_client": "Awaiting Client",
+            "in_queue": "In Queue",
+            "done": "Done"
+        }
+        stage_value = stage_map.get(request.stage.value, "In Queue")
 
         form_data = {
             "video_msg_id": request.video_msg_id,
-            "video_progress_stage": request.stage.value,  # Exact param name matters
+            "video_progress_stage": stage_value
         }
 
         return endpoint, form_data
@@ -76,15 +91,13 @@ class LegacyTranslator:
     def status_update_to_legacy(video_msg_id: str, status: str) -> Tuple[str, Dict[str, Any]]:
         """
         Convert status update to legacy form data.
-        Mirrors: src/python/npid_api_client.py:1326-1351
-
-        NO api_key - session.post() auto-injects _token only.
+        Curl verified 2025-12-07. NO api_key, NO extra fields.
         """
         endpoint = "/API/scout-api/video-status"
 
         form_data = {
             "video_msg_id": video_msg_id,
-            "video_progress_status": status,
+            "video_progress_status": status
         }
 
         return endpoint, form_data
@@ -261,43 +274,44 @@ class LegacyTranslator:
     
     @staticmethod
     def parse_stage_update_response(raw_response: str) -> Dict[str, Any]:
-        """Parse stage update response."""
-        try:
-            data = json.loads(raw_response)
-            return {
-                "success": data.get("success") is True,
-                "video_msg_id": data.get("video_msg_id"),
-                "stage": data.get("stage"),
-                "raw": data
-            }
-        except json.JSONDecodeError:
-            return {
-                "success": False,
-                "error": "Invalid JSON response",
-                "raw": raw_response[:500]
-            }
+        """
+        Parse stage update response.
+        Laravel returns HTTP 200 with no meaningful body on success.
+        Mirrors: src/python/npid_api_client.py:1319-1324
+        """
+        # Laravel just returns HTTP 200, no JSON to parse
+        # Empty response or any content = success (HTTP status determines success)
+        return {
+            "success": True,
+            "raw": raw_response[:500] if raw_response else ""
+        }
 
     @staticmethod
     def parse_status_update_response(raw_response: str) -> Dict[str, Any]:
-        """Parse status update response."""
-        try:
-            data = json.loads(raw_response)
-            return {
-                "success": True,
-                "video_msg_id": data.get("video_msg_id"),
-                "status": data.get("status"),
-                "raw": data
-            }
-        except json.JSONDecodeError:
-            return {
-                "success": False,
-                "error": "Invalid JSON response",
-                "raw": raw_response[:500]
-            }
+        """
+        Parse status update response.
+        Laravel returns HTTP 200 with no meaningful body on success.
+        Mirrors: src/python/npid_api_client.py:1346-1351
+        """
+        # Laravel just returns HTTP 200, no JSON to parse
+        # Empty response or any content = success (HTTP status determines success)
+        return {
+            "success": True,
+            "raw": raw_response[:500] if raw_response else ""
+        }
 
     @staticmethod
     def parse_due_date_update_response(raw_response: str) -> Dict[str, Any]:
-        """Parse due date update response."""
+        """Parse due date update response.
+        Laravel returns empty response (HTTP 200) on success."""
+        # Laravel endpoint returns empty body on success
+        if not raw_response or raw_response.strip() == "":
+            return {
+                "success": True,
+                "message": "Due date updated (Laravel returned empty success response)"
+            }
+
+        # Try JSON parsing if response has content
         try:
             data = json.loads(raw_response)
             return {
@@ -307,9 +321,10 @@ class LegacyTranslator:
                 "raw": data
             }
         except json.JSONDecodeError:
+            # Non-empty but not JSON - treat as error
             return {
                 "success": False,
-                "error": "Invalid JSON response",
+                "error": "Invalid response format",
                 "raw": raw_response[:500]
             }
 
@@ -348,5 +363,59 @@ class LegacyTranslator:
             match = re.search(pattern, html)
             if match:
                 return match.group(1)
-                
+
         return None
+
+    # ============== Email Translators ==============
+
+    @staticmethod
+    def parse_email_templates(html_response: str) -> List[Dict[str, str]]:
+        """
+        Parse email template dropdown from HTML.
+        GET /rulestemplates/template/sendingtodetails?id={athlete_id}
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        templates = []
+        for option in soup.find_all('option'):
+            if option.get('value'):
+                templates.append({
+                    "label": option.text.strip(),
+                    "value": option.get('value')
+                })
+        return templates
+
+    @staticmethod
+    def template_data_to_legacy(template_id: str, athlete_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert template data request to legacy format.
+        POST /admin/templatedata
+        """
+        endpoint = "/admin/templatedata"
+        form_data = {
+            "tmpl": template_id,
+            "athlete_id": athlete_id
+        }
+        return endpoint, form_data
+
+    @staticmethod
+    def send_email_to_legacy(request: SendEmailRequest) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert send email request to legacy multipart form data.
+        POST /admin/addnotification
+        """
+        endpoint = "/admin/addnotification"
+
+        # Build form data matching Laravel expectations from user's verified curl
+        form_data = {
+            "notification_type_id": "1",
+            "notification_to_type_id": "1",
+            "notification_to_id": request.athlete_id,
+            "notification_from": request.notification_from,
+            "notification_from_email": request.notification_from_email,
+            "notification_subject": request.notification_subject,
+            "notification_message": request.notification_message,
+            "indvtemplate": request.template_id,
+            "_wysihtml5_mode": "1",
+        }
+
+        return endpoint, form_data

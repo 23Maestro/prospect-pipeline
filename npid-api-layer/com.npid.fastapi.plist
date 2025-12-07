@@ -7,11 +7,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/singleton23/Raycast/prospect-pipeline/docs/npid-api-layer/start-server.sh</string>
+        <string>/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/start-server.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/singleton23/Raycast/prospect-pipeline/docs/npid-api-layer</string>
+    <string>/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer</string>
 
     <key>RunAtLoad</key>
     <true/>
@@ -28,7 +28,7 @@
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/Users/singleton23/Raycast/prospect-pipeline/docs/npid-api-layer/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <string>/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/venv/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     </dict>
 </dict>
 </plist>

@@ -1295,18 +1295,17 @@ class NPIDAPIClient:
         resp.raise_for_status()
         return resp.json()
 
-    def update_video_stage(self, video_msg_id: str, stage: str, api_key: str = None) -> Dict[str, Any]:
-        """Update video stage via /API/scout-api/video-stage."""
+    def update_video_stage(self, video_msg_id: str, stage: str) -> Dict[str, Any]:
+        """
+        Update video stage via /API/scout-api/video-stage.
+        Curl verified 2025-12-07. NO api_key required.
+        """
         self.ensure_authenticated()
-        if api_key is None:
-            api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
         stage_value = self._normalize_stage_for_api(stage)
         data = {
-            'api_key': api_key,
-            'video_msg_id': video_msg_id,
             '_token': self._get_csrf_token(),
-            'video_progress_stage': stage_value,
-            'stage': stage_value  # keep legacy key for safety
+            'video_msg_id': video_msg_id,
+            'video_progress_stage': stage_value
         }
         resp = self.session.post(
             f"{self.base_url}/API/scout-api/video-stage",
@@ -1323,17 +1322,17 @@ class NPIDAPIClient:
             logging.warning(f"⚠️  Stage update failed: {resp.status_code}")
             return {'success': False, 'error': f"HTTP {resp.status_code}"}
 
-    def update_video_status(self, video_msg_id: str, status: str, api_key: str = None) -> Dict[str, Any]:
-        """Update the status for a video using /API/scout-api/video-status."""
+    def update_video_status(self, video_msg_id: str, status: str) -> Dict[str, Any]:
+        """
+        Update the status for a video using /API/scout-api/video-status.
+        Curl verified 2025-12-07. NO api_key required.
+        """
         self.ensure_authenticated()
-        if api_key is None:
-            api_key = os.getenv('SCOUT_API_KEY', '594168a28d26571785afcb83997cb8185f482e56')
         status_value = self._normalize_status_for_api(status)
         data = {
-            'api_key': api_key,
+            '_token': self._get_csrf_token(),
             'video_msg_id': video_msg_id,
-            'video_progress_status': status_value,
-            'status': status_value  # keep legacy key for safety
+            'video_progress_status': status_value
         }
         resp = self.session.post(
             f"{self.base_url}/API/scout-api/video-status",

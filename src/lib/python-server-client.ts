@@ -1,10 +1,7 @@
-/**
- * NPID API Client wrapper
- * Calls Python NPID API client for athlete data operations
- */
-
 import { executePythonScript } from "./python-executor";
 import { NPID_CLIENT_PATH } from "./python-config";
+import { ensureServerRunning } from "./api-bootstrap";
+import fetch, { RequestInit } from "node-fetch";
 
 export const API_BASE = "http://127.0.0.1:8000/api/v1";
 
@@ -32,11 +29,20 @@ export async function callPythonServer<T>(
 }
 
 /**
+ * Wrapper for fetch that ensures the API server is running before request
+ */
+export async function apiFetch(endpoint: string, options?: RequestInit) {
+  await ensureServerRunning();
+  const url = `${API_BASE}${endpoint.startsWith("/") ? endpoint : "/" + endpoint}`;
+  return fetch(url, options);
+}
+
+/**
  * Fetch seasons from FastAPI (which proxies to Laravel).
  * Returns Laravel's JSON response directly.
  */
 export async function getSeasons(params: SeasonsRequest) {
-  const response = await fetch(`${API_BASE}/video/seasons`, {
+  const response = await apiFetch("/video/seasons", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({

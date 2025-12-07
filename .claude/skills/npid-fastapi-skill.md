@@ -7,9 +7,9 @@ description: Enforce strict legacy-Laravel rules when editing npid-api-layer Fas
 
 ## MANDATORY PRE-IMPLEMENTATION CHECKLIST
 
-Before writing ANY code in `docs/npid-api-layer/`, you MUST:
+Before writing ANY code in `npid-api-layer/`, you MUST:
 
-- [ ] Verify working directory is `docs/npid-api-layer/`
+- [ ] Verify working directory is `npid-api-layer/`
 - [ ] Check Python reference implementation first (`src/python/npid_api_client.py`)
 - [ ] Review existing translator methods in `app/translators/legacy.py`
 - [ ] Confirm you understand the translator pattern
@@ -52,6 +52,100 @@ Before writing ANY code in `docs/npid-api-layer/`, you MUST:
 - `newVideoLink` (CamelCase)
 - `newVideoSeason` (CamelCase, always empty)
 - `schoolinfo[add_video_season]` (Array notation for actual season)
+
+### TypeScript ↔ FastAPI ↔ Laravel Value Conversion
+
+**CRITICAL: Pydantic does NOT auto-convert enum values**
+
+**Pattern (VERIFIED 2025-12-07):**
+```
+TypeScript (snake_case) → FastAPI Enum (snake_case) → Translator (converts) → Laravel (Title Case)
+```
+
+**Example - Video Stage:**
+1. **TypeScript sends:** `{ stage: "on_hold" }`
+2. **Pydantic Enum accepts:** `VideoStage.ON_HOLD = "on_hold"`
+3. **Translator converts:** `"on_hold" → "On Hold"`
+4. **Laravel receives:** `video_progress_stage: "On Hold"`
+
+**If enum values don't match TypeScript:**
+- Result: `422 Unprocessable Entity`
+- Cause: Pydantic validates `"on_hold"` against enum values, finds no match
+- Fix: Enum must use snake_case values, translator converts to Title Case
+
+**Before implementing ANY enum field:**
+- [ ] Check TypeScript code: What format does it send?
+- [ ] Check Python client: What format does Laravel expect?
+- [ ] Enum values match TypeScript format (NOT Laravel)
+- [ ] Translator converts enum.value to Laravel format
+
+**Verification:**
+```bash
+# Check TypeScript normalization
+grep -A 10 "normalizeStage\|normalizeStatus" src/video-progress.tsx
+
+# Check Python normalization
+grep -A 10 "_normalize.*for_api" src/python/npid_api_client.py
+
+# Check translator conversion
+grep -A 10 "stage_map\|status_map" npid-api-layer/app/translators/legacy.py
+```
+
+### Video Progress Caching Strategy
+
+**Problem:** Laravel `/videoteammsg/videoprogress` returns 1699+ tasks (slow query)
+
+**Solution:** Local SQLite cache with optimistic updates
+
+**Cache Location:** `~/.prospect-pipeline/video-progress-cache.sqlite`
+
+**Pattern (src/lib/video-progress-cache.ts):**
+```typescript
+// On initial load: Fetch from API → Update cache
+await upsertTasks(tasks);
+
+// On status/stage/due date change:
+// 1. Update cache immediately (optimistic)
+await updateCachedTaskStatusStage(task.id, { stage: newStage });
+
+// 2. Update UI from cache (instant feedback)
+const updated = await getCachedTasks();
+setTasks(updated);
+
+// 3. Send update to API (background)
+await apiFetch(`/video/${task.id}/stage`, {...});
+
+// 4. NO need to reload all 1699 tasks
+```
+
+**Current Issue (2025-12-07):**
+- `video-progress.tsx` calls `loadTasks()` after every change
+- Reloads ALL 1699 tasks from Laravel (slow)
+- Cache exists but isn't used for updates
+
+**Fix:**
+```typescript
+// Instead of:
+onStatusUpdate();  // → loadTasks() → fetch all 1699 tasks
+
+// Do:
+// 1. Update cache
+await updateCachedTaskStatusStage(task.id, { stage: newStage });
+
+// 2. Update local state
+setTasks(tasks.map(t =>
+  t.id === task.id ? { ...t, stage: newStage } : t
+));
+
+// 3. Optional: Background sync
+// (only if you need to validate Laravel accepted it)
+```
+
+**Benefits:**
+- Instant UI updates (no 5-second Laravel query)
+- Works offline
+- Reduces Laravel load
+- Cache invalidation: 30-minute TTL or manual refresh
 
 ---
 
@@ -174,7 +268,7 @@ result = response.json()  # Will fail if HTML returned
 ### fix-seasons-endpoint
 
 **Problem:**
-- File: `docs/npid-api-layer/app/routers/video.py:41-122`
+- File: `npid-api-layer/app/routers/video.py:41-122`
 - The `/seasons` proxy endpoint bypasses `LegacyTranslator`
 - Duplicates HTML parsing logic inline
 
@@ -186,10 +280,10 @@ result = response.json()  # Will fail if HTML returned
 **Verification:**
 ```bash
 # Should find NO inline form construction in /seasons endpoint
-grep -A 20 "@router.api_route\(\"/seasons\"" docs/npid-api-layer/app/routers/video.py | grep "form_data = {"
+grep -A 20 "@router.api_route\(\"/seasons\"" npid-api-layer/app/routers/video.py | grep "form_data = {"
 
 # Should find translator usage
-grep -A 20 "@router.api_route\(\"/seasons\"" docs/npid-api-layer/app/routers/video.py | grep "LegacyTranslator"
+grep -A 20 "@router.api_route\(\"/seasons\"" npid-api-layer/app/routers/video.py | grep "LegacyTranslator"
 ```
 
 ### fix-duplicate-logic
@@ -206,8 +300,8 @@ grep -A 20 "@router.api_route\(\"/seasons\"" docs/npid-api-layer/app/routers/vid
 **Verification:**
 ```bash
 # Should find NO BeautifulSoup imports in routers
-grep -n "from bs4 import BeautifulSoup" docs/npid-api-layer/app/routers/*.py
-grep -n "import BeautifulSoup" docs/npid-api-layer/app/routers/*.py
+grep -n "from bs4 import BeautifulSoup" npid-api-layer/app/routers/*.py
+grep -n "import BeautifulSoup" npid-api-layer/app/routers/*.py
 ```
 
 ### verify-session-stack
@@ -215,21 +309,21 @@ grep -n "import BeautifulSoup" docs/npid-api-layer/app/routers/*.py
 **Checks to perform:**
 
 1. **Session loading:**
-   - File: `docs/npid-api-layer/app/session.py:59-78`
+   - File: `npid-api-layer/app/session.py:59-78`
    - Loads from `~/.npid_session.pkl`
    - Fallback to credential login if session missing
 
 2. **CSRF token refresh:**
-   - File: `docs/npid-api-layer/app/session.py:191-202`
+   - File: `npid-api-layer/app/session.py:191-202`
    - Fetches from `/auth/login` page
    - Regex: `r'name="_token"\\s+value="([^"]+)"'`
 
 3. **AJAX header:**
-   - File: `docs/npid-api-layer/app/session.py:46-49`
+   - File: `npid-api-layer/app/session.py:46-49`
    - Global headers include `X-Requested-With: XMLHttpRequest`
 
 4. **Auto-injection:**
-   - File: `docs/npid-api-layer/app/session.py:168-189`
+   - File: `npid-api-layer/app/session.py:168-189`
    - `post()` method auto-injects `_token` (line 178)
    - `post()` method auto-injects `api_key` if available (line 182)
 
@@ -239,16 +333,16 @@ grep -n "import BeautifulSoup" docs/npid-api-layer/app/routers/*.py
 
 ```bash
 # Block: JSON bodies
-grep -n "json=" docs/npid-api-layer/app/routers/*.py
+grep -n "json=" npid-api-layer/app/routers/*.py
 
 # Block: Direct client.post (should use session.post)
-grep -n "client\.post" docs/npid-api-layer/app/routers/*.py | grep -v "session"
+grep -n "client\.post" npid-api-layer/app/routers/*.py | grep -v "session"
 
 # Block: Inline form construction
-grep -n "form_data = {" docs/npid-api-layer/app/routers/*.py
+grep -n "form_data = {" npid-api-layer/app/routers/*.py
 
 # Require: Translator usage
-grep -n "LegacyTranslator()" docs/npid-api-layer/app/routers/*.py
+grep -n "LegacyTranslator()" npid-api-layer/app/routers/*.py
 ```
 
 ### verify-endpoint-correctness
@@ -264,7 +358,7 @@ grep -n "LegacyTranslator()" docs/npid-api-layer/app/routers/*.py
 **Verification command:**
 ```bash
 # Check all endpoint URLs in translator
-grep -n '"/' docs/npid-api-layer/app/translators/legacy.py | grep endpoint
+grep -n '"/' npid-api-layer/app/translators/legacy.py | grep endpoint
 ```
 
 ---
@@ -291,17 +385,17 @@ grep -n '"/' docs/npid-api-layer/app/translators/legacy.py | grep endpoint
 ### MUST FOLLOW Patterns From:
 
 **Core Implementation:**
-- `docs/npid-api-layer/app/translators/legacy.py` - All translation logic
-- `docs/npid-api-layer/app/session.py` - Session/CSRF/headers
-- `docs/npid-api-layer/app/models/schemas.py` - Clean API contracts
+- `npid-api-layer/app/translators/legacy.py` - All translation logic
+- `npid-api-layer/app/session.py` - Session/CSRF/headers
+- `npid-api-layer/app/models/schemas.py` - Clean API contracts
 
 **Current Routers:**
-- `docs/npid-api-layer/app/routers/video.py` - Video operations
-- `docs/npid-api-layer/app/routers/athlete.py` - Athlete resolution
-- `docs/npid-api-layer/app/routers/assignments.py` - Assignment fetching
+- `npid-api-layer/app/routers/video.py` - Video operations
+- `npid-api-layer/app/routers/athlete.py` - Athlete resolution
+- `npid-api-layer/app/routers/assignments.py` - Assignment fetching
 
 **Documentation:**
-- `docs/npid-api-layer/README.md` - Project architecture
+- `npid-api-layer/README.md` - Project architecture
 
 ---
 
@@ -320,7 +414,7 @@ When user asks to add/modify NPID API functionality:
 3. **Check existing translator:**
    ```bash
    # See if method already exists
-   grep -n "def.*to_legacy" docs/npid-api-layer/app/translators/legacy.py
+   grep -n "def.*to_legacy" npid-api-layer/app/translators/legacy.py
    ```
 
 ### Step 2: Implementation Phase
@@ -535,58 +629,58 @@ After ANY changes to npid-api-layer code, run these commands:
 
 ```bash
 # Should return NO results (all POST calls should be session.post)
-grep -n "\.post(" docs/npid-api-layer/app/routers/*.py | grep -v "session.post"
+grep -n "\.post(" npid-api-layer/app/routers/*.py | grep -v "session.post"
 ```
 
 ### Check for Inline Form Construction
 
 ```bash
 # Should return NO results (form construction should be in translator)
-grep -n "form_data = {" docs/npid-api-layer/app/routers/*.py
+grep -n "form_data = {" npid-api-layer/app/routers/*.py
 ```
 
 ### Check for JSON Bodies (Forbidden)
 
 ```bash
 # Should return NO results (Laravel requires form-encoding)
-grep -n "json=" docs/npid-api-layer/app/routers/*.py
+grep -n "json=" npid-api-layer/app/routers/*.py
 ```
 
 ### Check for Inline HTML Parsing
 
 ```bash
 # Should return NO results (parsing should be in translator)
-grep -n "BeautifulSoup" docs/npid-api-layer/app/routers/*.py
+grep -n "BeautifulSoup" npid-api-layer/app/routers/*.py
 ```
 
 ### Verify Translator Methods Exist
 
 ```bash
 # Should list all translation methods
-grep -n "def.*to_legacy" docs/npid-api-layer/app/translators/legacy.py
+grep -n "def.*to_legacy" npid-api-layer/app/translators/legacy.py
 
 # Should list all parsing methods
-grep -n "def parse_" docs/npid-api-layer/app/translators/legacy.py
+grep -n "def parse_" npid-api-layer/app/translators/legacy.py
 ```
 
 ### Verify Session Configuration
 
 ```bash
 # Check AJAX header in global config
-grep -n "X-Requested-With" docs/npid-api-layer/app/session.py
+grep -n "X-Requested-With" npid-api-layer/app/session.py
 
 # Check CSRF auto-injection
-grep -n "_token" docs/npid-api-layer/app/session.py
+grep -n "_token" npid-api-layer/app/session.py
 
 # Check api_key auto-injection
-grep -n "api_key" docs/npid-api-layer/app/session.py
+grep -n "api_key" npid-api-layer/app/session.py
 ```
 
 ### Verify Endpoint URLs Match Python Client
 
 ```bash
 # Extract endpoint URLs from translator
-grep -n 'endpoint = "' docs/npid-api-layer/app/translators/legacy.py
+grep -n 'endpoint = "' npid-api-layer/app/translators/legacy.py
 
 # Compare with Python client
 grep -n 'endpoint.*=' src/python/npid_api_client.py | grep -E "(video|athlete|season)"
@@ -754,16 +848,16 @@ result = translator.parse_response(response.text)
 
 ```bash
 # Check violations
-grep "\.post(" docs/npid-api-layer/app/routers/*.py | grep -v "session.post"
-grep "form_data = {" docs/npid-api-layer/app/routers/*.py
-grep "json=" docs/npid-api-layer/app/routers/*.py
-grep "BeautifulSoup" docs/npid-api-layer/app/routers/*.py
+grep "\.post(" npid-api-layer/app/routers/*.py | grep -v "session.post"
+grep "form_data = {" npid-api-layer/app/routers/*.py
+grep "json=" npid-api-layer/app/routers/*.py
+grep "BeautifulSoup" npid-api-layer/app/routers/*.py
 ```
 
 ### Reference Files:
 
 - `src/python/npid_api_client.py` - Python reference
-- `docs/npid-api-layer/app/translators/legacy.py` - Pattern reference
+- `npid-api-layer/app/translators/legacy.py` - Pattern reference
 - `.claude/skills/npid-api-calls.md` - Header requirements
 - `.claude/skills/npid-video-submission.md` - Video workflow
 

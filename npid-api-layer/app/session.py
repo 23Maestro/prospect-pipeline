@@ -68,19 +68,20 @@ class NPIDSession:
                 # Load the requests.CookieJar from the pickle
                 cookie_jar = pickle.load(f)
 
-                # Compatibility Fix: Convert RequestsCookieJar to Dict for httpx
-                # requests and httpx use slightly different jar implementations.
-                # .get_dict() ensures we get a clean key-value pair.
-                if hasattr(cookie_jar, 'get_dict'):
-                    cookies = cookie_jar.get_dict()
-                else:
-                    cookies = dict(cookie_jar)
-
-                self.client.cookies.update(cookies)
+                # Preserve all cookie attributes (domain, path, secure, httponly, expires)
+                # requests.CookieJar and httpx.Cookies use different internals, but
+                # we can iterate and set each cookie with full metadata
+                for cookie in cookie_jar:
+                    self.client.cookies.set(
+                        name=cookie.name,
+                        value=cookie.value,
+                        domain=cookie.domain,
+                        path=cookie.path
+                    )
 
                 # Update internal state
                 self.is_authenticated = bool(self.client.cookies)
-                logger.info(f"✅ Loaded {len(cookies)} cookies from session file")
+                logger.info(f"✅ Loaded {len(cookie_jar)} cookies from session file")
 
         except Exception as e:
             logger.error(f"❌ Failed to load session: {e}")

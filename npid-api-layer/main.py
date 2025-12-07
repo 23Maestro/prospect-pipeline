@@ -6,6 +6,7 @@ from app.session import session_manager
 from app.routers.video import router as video_router
 from app.routers.athlete import router as athlete_router
 from app.routers.assignments import router as assignments_router
+from app.routers.email import router as email_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -49,3 +50,4 @@ def health():
 app.include_router(video_router, prefix="/api/v1/video", tags=["video"])
 app.include_router(athlete_router, prefix="/api/v1/athlete", tags=["athlete"])
 app.include_router(assignments_router, prefix="/api/v1/assignments", tags=["assignments"])
+app.include_router(email_router, prefix="/api/v1", tags=["email"])

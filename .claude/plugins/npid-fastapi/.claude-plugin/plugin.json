@@ -1,0 +1,8 @@
+{
+  "name": "npid-fastapi",
+  "version": "1.0.0",
+  "description": "FastAPI router pattern enforcement for NPID legacy integration",
+  "author": {
+    "name": "Jerami Singleton"
+  }
+}

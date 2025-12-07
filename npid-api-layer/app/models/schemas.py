@@ -21,10 +21,14 @@ class VideoSource(str, Enum):
 
 
 class VideoStage(str, Enum):
-    PENDING = "Pending"
-    IN_PROGRESS = "In Progress"
-    DONE = "Done"
-    ON_HOLD = "On Hold"
+    """
+    Video stage values - accepts snake_case from TypeScript.
+    Translator converts to Title Case for Laravel.
+    """
+    ON_HOLD = "on_hold"
+    AWAITING_CLIENT = "awaiting_client"
+    IN_QUEUE = "in_queue"
+    DONE = "done"
 
 
 # ============== Request Models ==============
@@ -197,3 +201,41 @@ class APIError(BaseModel):
     error: str
     detail: Optional[str] = None
     legacy_response: Optional[str] = None
+
+
+# ============== Email Models ==============
+
+class EmailTemplate(BaseModel):
+    """Email template dropdown option."""
+    label: str
+    value: str
+
+
+class EmailTemplateDataRequest(BaseModel):
+    """Request template data (subject, message)."""
+    template_id: str
+    athlete_id: str
+
+
+class EmailTemplateDataResponse(BaseModel):
+    """Template data from Laravel."""
+    sender_name: str
+    sender_email: str
+    subject: str
+    message: str
+
+
+class SendEmailRequest(BaseModel):
+    """Send email to athlete."""
+    athlete_id: str
+    template_id: str
+    notification_from: str
+    notification_from_email: str
+    notification_subject: str
+    notification_message: str
+
+
+class SendEmailResponse(BaseModel):
+    """Email send result."""
+    success: bool
+    message: str

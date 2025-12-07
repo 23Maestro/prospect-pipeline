@@ -68,9 +68,9 @@ Key endpoints (FastAPI side):
 	•	Returns updated stage JSON
 
 Use this skill when editing:
-	•	docs/npid-api-layer/app/routers/*.py
-	•	docs/npid-api-layer/app/session.py
-	•	docs/npid-api-layer/app/translators/legacy.py (or equivalent)
+	•	npid-api-layer/app/routers/*.py
+	•	npid-api-layer/app/session.py
+	•	npid-api-layer/app/translators/legacy.py (or equivalent)
 	•	Any code that changes how FastAPI talks to Laravel
 
 Absolutely do NOT:
@@ -134,7 +134,7 @@ prospect-pipeline/
 │   └── skills/               # This directory
 ├── src/                      # Raycast extensions (TypeScript)
 ├── scripts/                  # Python automation scripts
-├── docs/npid-api-layer/      # FastAPI → legacy Laravel translation layer
+├── npid-api-layer/      # FastAPI → legacy Laravel translation layer
 ├── mcp-servers/npid-native/  # REST API client
 └── .kiro/                    # Shared context with Gemini CLI
 
