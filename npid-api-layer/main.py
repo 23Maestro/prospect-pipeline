@@ -7,6 +7,8 @@ from app.routers.video import router as video_router
 from app.routers.athlete import router as athlete_router
 from app.routers.assignments import router as assignments_router
 from app.routers.email import router as email_router
+from app.routers.inbox import router as inbox_router
+from app.routers.notes import router as notes_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -51,3 +53,5 @@ app.include_router(video_router, prefix="/api/v1/video", tags=["video"])
 app.include_router(athlete_router, prefix="/api/v1/athlete", tags=["athlete"])
 app.include_router(assignments_router, prefix="/api/v1/assignments", tags=["assignments"])
 app.include_router(email_router, prefix="/api/v1", tags=["email"])
+app.include_router(inbox_router, prefix="/api/v1/inbox", tags=["inbox"])
+app.include_router(notes_router, prefix="/api/v1/notes", tags=["notes"])

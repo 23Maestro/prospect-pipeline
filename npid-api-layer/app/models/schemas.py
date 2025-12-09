@@ -239,3 +239,38 @@ class SendEmailResponse(BaseModel):
     """Email send result."""
     success: bool
     message: str
+
+
+class AthleteNote(BaseModel):
+    """Normalized athlete note entry."""
+    title: str
+    description: str
+    metadata: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: Optional[str] = None
+
+
+class NotesListRequest(BaseModel):
+    """Request to fetch athlete notes."""
+    athlete_id: str
+    athlete_main_id: str
+
+
+class NotesListResponse(BaseModel):
+    """List of notes for an athlete."""
+    success: bool
+    notes: List[AthleteNote]
+
+
+class AddNoteRequest(BaseModel):
+    """Request to add a note to an athlete."""
+    athlete_id: str
+    athlete_main_id: str
+    title: str
+    description: str
+
+
+class AddNoteResponse(BaseModel):
+    """Response after adding note."""
+    success: bool
+    message: str

@@ -11,19 +11,19 @@ import {
   showToast,
   useNavigation,
 } from '@raycast/api';
-import { format } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AssignVideoTeamPayload,
   assignVideoTeamMessage,
   fetchAssignmentDefaults,
   fetchAssignmentModal,
   fetchInboxThreads,
   fetchMessageDetail,
   resolveContactsForAssignment,
+  sendInboxReply,
 } from './lib/npid-mcp-adapter';
-import { callPythonServer } from './lib/python-server-client';
+import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
 import {
+  AssignVideoTeamPayload,
   NPIDInboxMessage,
   VideoTeamAssignmentModal,
   VideoTeamContact,
@@ -32,14 +32,28 @@ import {
 import { TaskStage, TaskStatus } from './types/workflow';
 
 function formatTimestamp(message: NPIDInboxMessage): string {
+  if (message.timeStampDisplay) {
+    return message.timeStampDisplay.replace('|', '•').trim();
+  }
+
   if (message.timeStampIso) {
-    try {
-      return format(new Date(message.timeStampIso), 'MMM d • h:mm a');
-    } catch {
-      /* no-op */
+    const parsed = new Date(message.timeStampIso);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
     }
   }
-  return message.timestamp || 'Unknown time';
+
+  if (message.timestamp) {
+    return message.timestamp.replace('|', '•').trim();
+  }
+
+  return 'Unknown time';
 }
 
 interface AssignmentModalProps {
@@ -148,15 +162,15 @@ function AssignmentModal({
         <ActionPanel>
           <Action.SubmitForm
             title="Assign to Video Team"
-            icon={Icon.Checkmark}
+            icon="✅"
             onSubmit={handleAssignment}
           />
-          <Action title="Cancel" icon={Icon.XMarkCircle} onAction={onCancel} />
+          <Action title="Cancel" icon="❌" onAction={onCancel} />
         </ActionPanel>
       }
     >
       <Form.Description
-        title="Auto-detected contact type"
+        title="Contact type"
         text={
           searchFor === modalData.defaultSearchFor
             ? searchFor.toUpperCase()
@@ -222,11 +236,7 @@ function ReplyForm({
 
     setIsLoading(true);
     try {
-      await callPythonServer('send_reply', {
-        message_id: message.id,
-        itemcode: message.itemCode || message.id,
-        reply_text: replyText.trim()
-      });
+      await sendInboxReply(message.id, message.itemCode || message.id, replyText.trim());
       await showToast({
         style: Toast.Style.Success,
         title: 'Reply sent',
@@ -287,6 +297,7 @@ function EmailContentDetail({
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailedTimestamp, setDetailedTimestamp] = useState<string>('');
 
   useEffect(() => {
     const loadFullMessage = async () => {
@@ -298,6 +309,9 @@ function EmailContentDetail({
 
         if (details && details.content) {
           setFullContent(details.content);
+          if (details.timestamp) {
+            setDetailedTimestamp(details.timestamp);
+          }
         } else {
           // Fallback to preview if no content returned
           setFullContent(message.content || message.preview || 'No content available');
@@ -316,23 +330,19 @@ function EmailContentDetail({
   }, [message.id, message.itemCode, message.content, message.preview]);
 
   const received = formatTimestamp(message);
+  const displayTimestamp = detailedTimestamp || received;
 
   const metadata = (
     <Detail.Metadata>
-      <Detail.Metadata.Label
-        title="From"
-        text={`${message.name} (${message.email || 'No email'})`}
-      />
-      <Detail.Metadata.Label title="Received" text={received} />
+      <Detail.Metadata.Label title="Name" text={message.name || 'Unknown'} />
+      <Detail.Metadata.Label title="Email" text={message.email || 'No email'} />
+      <Detail.Metadata.Separator />
+      <Detail.Metadata.Label title="Received" text={displayTimestamp} />
       {message.stage && (
-        <Detail.Metadata.TagList title="Stage">
-          <Detail.Metadata.Tag text={message.stage} color={Color.Orange} />
-        </Detail.Metadata.TagList>
+        <Detail.Metadata.Label title="Stage" text={message.stage} />
       )}
       {message.videoStatus && (
-        <Detail.Metadata.TagList title="Status">
-          <Detail.Metadata.Tag text={message.videoStatus} color={Color.Blue} />
-        </Detail.Metadata.TagList>
+        <Detail.Metadata.Label title="Status" text={message.videoStatus} />
       )}
       {message.attachments && message.attachments.length > 0 && (
         <Detail.Metadata.Label
@@ -347,8 +357,8 @@ function EmailContentDetail({
     ? 'Loading full message...'
     : fullContent || message.preview || 'No content available';
 
-  const markdown = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''
-    }`;
+  // Clean markdown - email details are in the metadata sidebar
+  const markdown = `# ${message.subject}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''}`;
 
   return (
     <Detail
@@ -360,16 +370,17 @@ function EmailContentDetail({
         <ActionPanel>
           <ActionPanel.Section>
             <Action
-              title="Reply to Email"
-              icon={Icon.Reply}
-              onAction={() => onReply(message)}
-            />
-            <Action
               title="Assign to Video Team"
-              icon={Icon.PersonCircle}
+              icon="✅"
               onAction={() => onAssign(message)}
             />
-            <Action title="Back to Inbox" icon={Icon.ArrowLeft} onAction={onBack} />
+            <Action
+              title="Reply to Email"
+              icon="📧"
+              onAction={() => onReply(message)}
+              shortcut={{ modifiers: ['cmd'], key: 'return' }}
+            />
+            <Action title="Back to Inbox" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
 
           {message.attachments && message.attachments.length > 0 && (
@@ -406,44 +417,55 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      // Check cache first (5 minute TTL)
       const cached = cache.get('inbox_threads');
-      const cacheTime = cache.get('inbox_threads_time');
-      const now = Date.now();
-      const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-
-      if (cached && cacheTime && (now - parseInt(cacheTime)) < CACHE_TTL) {
-        const threads = JSON.parse(cached) as NPIDInboxMessage[];
-        setMessages(threads);
-        setIsLoading(false);
-        await showToast({
-          style: Toast.Style.Success,
-          title: `Loaded ${threads.length} cached messages`,
-          message: 'From cache (refresh in settings)',
-        });
-        return;
+      if (cached) {
+        setMessages(JSON.parse(cached) as NPIDInboxMessage[]);
       }
 
-      // Fetch ONLY unassigned threads
-      const threads = await fetchInboxThreads(15, 'unassigned');
-
-      // Update cache
-      cache.set('inbox_threads', JSON.stringify(threads));
-      cache.set('inbox_threads_time', now.toString());
-
-      await showToast({
-        style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
-        title: `Found ${threads.length} assignable messages`,
-        message: threads.length === 0 ? 'All threads are assigned' : 'Ready to assign',
-      });
-
-      setMessages(threads);
+      await reloadFromServer(Boolean(cached));
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'Failed to load inbox',
         message: error instanceof Error ? error.message : 'Unknown error',
       });
+      setIsLoading(false);
+    }
+  };
+
+  const reloadFromServer = async (silent = false) => {
+    const toast = silent
+      ? null
+      : await showToast({ style: Toast.Style.Animated, title: 'Fetching inbox…' });
+    try {
+      setIsLoading(true);
+
+      const threads = await fetchInboxThreads(15, 'unassigned');
+      const hydrated = await hydrateThreadTimestamps(threads);
+
+      const now = Date.now();
+      cache.set('inbox_threads', JSON.stringify(hydrated));
+      cache.set('inbox_threads_time', now.toString());
+
+      if (toast) {
+        toast.style = hydrated.length > 0 ? Toast.Style.Success : Toast.Style.Failure;
+        toast.title = hydrated.length > 0 ? `Found ${hydrated.length} assignable messages` : 'Inbox empty';
+        toast.message = hydrated.length === 0 ? 'Inbox Zero! 🎉' : 'Fresh from server';
+      }
+
+      setMessages(hydrated);
+    } catch (error) {
+      if (toast) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Failed to reload inbox';
+        toast.message = error instanceof Error ? error.message : 'Unknown error';
+      } else {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to reload inbox',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -544,7 +566,14 @@ export default function InboxCheck() {
                 contact: contact.email ?? message.email,
               };
 
-              await assignVideoTeamMessage(payload);
+              const result = await assignVideoTeamMessage(payload);
+
+              // Store athlete_main_id in SQLite cache if available
+              if (result.contact_id && result.athlete_main_id) {
+                const { cacheAthleteMainId } = await import('./lib/video-progress-cache');
+                await cacheAthleteMainId(parseInt(result.contact_id), result.athlete_main_id);
+              }
+
               const ownerName =
                 modalData.owners.find((owner) => owner.value === resolvedOwnerId)?.label ??
                 'Jerami Singleton';
@@ -554,8 +583,7 @@ export default function InboxCheck() {
               assigningToast.message = `${message.name} → ${ownerName}`;
 
               pop();
-              await new Promise(resolve => setTimeout(resolve, 2000));
-              await loadInboxMessages();
+              await reloadFromServer();
             } catch (error) {
               assigningToast.style = Toast.Style.Failure;
               assigningToast.title = 'Assignment failed';
@@ -599,7 +627,7 @@ export default function InboxCheck() {
           ...(hasAttachments
             ? [
               {
-                icon: Icon.Paperclip,
+                icon: '📎',
                 tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
               },
             ]
@@ -610,8 +638,7 @@ export default function InboxCheck() {
           <List.Item
             key={message.id}
             icon={{ source: Icon.Plus, tintColor: Color.Green }}
-            title={`${message.name || 'Unknown Sender'} • ${message.subject}`}
-            subtitle={message.preview || 'No preview available'}
+            title={message.name || 'Unknown Sender'}
             accessories={accessories}
             keywords={[message.subject, message.preview, message.email, message.name]}
             actions={
@@ -624,7 +651,7 @@ export default function InboxCheck() {
                   />
                   <Action
                     title="Assign to Video Team"
-                    icon={Icon.PersonCircle}
+                    icon='/Users/singleton23/Raycast/prospect-pipeline/assets/add-video-task.png'
                     onAction={() => handleAssignTask(message)}
                   />
                 </ActionPanel.Section>
@@ -638,7 +665,7 @@ export default function InboxCheck() {
                           key={attachment.url}
                           title={`Download ${attachment.fileName}`}
                           url={attachment.url!}
-                          icon={Icon.Download}
+                          icon='📥'
                         />
                       ))}
                   </ActionPanel.Section>
@@ -646,9 +673,16 @@ export default function InboxCheck() {
 
                 <ActionPanel.Section>
                   <Action
-                    title="Reload Inbox"
-                    icon={Icon.ArrowClockwise}
+                    title="🔄 Refresh (Quick)"
+                    icon={Icon.RotateClockwise}
+                    shortcut={{ modifiers: ['cmd'], key: 'r' }}
                     onAction={() => void loadInboxMessages()}
+                  />
+                  <Action
+                    title="🌐 Reload from Server"
+                    icon={Icon.ArrowClockwise}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                    onAction={() => void reloadFromServer()}
                   />
                 </ActionPanel.Section>
               </ActionPanel>

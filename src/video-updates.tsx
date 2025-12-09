@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { callPythonServer, getSeasons, apiFetch } from './lib/python-server-client';
+import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/python-server-client';
 import * as cheerio from 'cheerio';
 import * as fs from 'fs';
 
-const NPID_API_KEY = '594168a28d26571785afcb83997cb8185f482e56';
+
 
 // Logging utility - writes to file only (console.log would cause recursion)
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
@@ -28,9 +28,27 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
     log('🔍 Searching for:', { firstName, lastName });
-    const results = await callPythonServer<any[]>('search_video_progress', { first_name: firstName, last_name: lastName });
+
+    // Use apiFetch instead of callPythonServer
+    const response = await apiFetch('/video/progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        first_name: firstName,
+        last_name: lastName
+      })
+    });
+
+    if (!response.ok) {
+      log('⚠️ Search failed with status:', response.status);
+      return [];
+    }
+
+    const data = await response.json() as any;
+    const results = data.tasks || [];
+
     log('✅ Search returned', results.length, 'results');
-    return results.map(player => ({
+    return results.map((player: any) => ({
       primaryPosition: player.primaryposition,
       secondaryPosition: player.secondaryposition,
       thirdPosition: player.thirdposition,
@@ -121,7 +139,7 @@ interface NPIDPlayer {
 export default function VideoUpdatesCommand(
   props: LaunchProps<{ draftValues: VideoUpdateFormValues }>,
 ) {
-  const apiKey = NPID_API_KEY;
+
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
@@ -175,8 +193,15 @@ export default function VideoUpdatesCommand(
             videoType: formValues.videoType,
             sportAlias,
             athleteMainId,
-            apiKey,
           });
+
+          const videoTypeMap: Record<string, string> = {
+            'Full Season Highlight': 'FULL_SEASON_HIGHLIGHT',
+            'Partial Season Highlight': 'PARTIAL_SEASON_HIGHLIGHT',
+            'Single Game Highlight': 'SINGLE_GAME_HIGHLIGHT',
+            'Skills/Training Video': 'SKILLS_TRAINING_VIDEO'
+          };
+
           const response = await apiFetch('/video/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -184,14 +209,19 @@ export default function VideoUpdatesCommand(
               athlete_id: playerId,
               athlete_main_id: athleteMainId,
               video_url: formValues.youtubeLink,
-              video_type: formValues.videoType,
+              video_type: videoTypeMap[formValues.videoType] || 'FULL_SEASON_HIGHLIGHT',
               season: formValues.season,
               source: 'youtube',
               auto_approve: true,
               sport: sportAlias,
             }),
           });
-          const result = await response.json().catch(() => ({} as any));
+
+          if (!response.ok) {
+            const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` })) as any;
+            throw new Error(error.detail || error.message || 'Unknown error');
+          }
+          const result = await response.json() as any;
           log('📥 add_career_video response:', result);
           const success = response.ok && (result?.success === true);
           if (success) {
@@ -400,7 +430,7 @@ export default function VideoUpdatesCommand(
         if (!athleteMainId && athleteId) {
           log('⚠️ athlete_main_id not cached, fetching...');
           const detResp = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`);
-          const det = await detResp.json().catch(() => ({}));
+          const det = await detResp.json().catch(() => ({})) as any;
           athleteMainId = det?.athlete_main_id;
           log('✅ Fetched athlete_main_id for seasons:', athleteMainId);
         }
@@ -423,49 +453,27 @@ export default function VideoUpdatesCommand(
 
         setIsFetchingSeasons(true);
         try {
-          const result = await getSeasons({
-            athleteId,
-            athleteMainId,
-            videoType,
-            sportAlias,
-          });
-          log('📥 get_video_seasons response:', result);
-
-          const rawSeasons = Array.isArray(result)
-            ? result
-            : Array.isArray((result as any)?.data)
-              ? (result as any).data
-              : Array.isArray((result as any)?.seasons)
-                ? (result as any).seasons
-                : [];
-          if (Array.isArray(rawSeasons)) {
-            log('✅ Seasons loaded:', rawSeasons.length, 'items');
-            const normalized = rawSeasons
-              .map((s: any) => {
-                const value = s?.season_id ?? s?.seasonId ?? s?.value;
-                const title = s?.season_name ?? s?.seasonName ?? s?.label ?? s?.title;
-                if (!value || !title) return null;
-                return {
-                  value: String(value),
-                  title: String(title),
-                };
-              })
-              .filter((s) => s) as { value: string, title: string }[];
-            setSeasons(normalized);
-            if (normalized.length > 0) {
-              setValue("season", normalized[0].value);
-            } else {
-              setValue("season", "");
-            }
-          } else {
-            log('⚠️ Failed to load seasons or no data:', result);
+          await loadSeasonsViaFastAPI({ athleteId, athleteMainId, sportAlias, videoType });
+        } catch (error) {
+          console.error('Failed to fetch seasons via FastAPI, falling back to Python client:', error);
+          try {
+            await loadSeasonsViaPython({ athleteId, athleteMainId, sportAlias, videoType });
+          } catch (fallbackError) {
+            console.error('Fallback seasons fetch also failed:', fallbackError);
             setSeasons([]);
             setValue('season', '');
+            const fallbackMessage =
+              fallbackError instanceof Error
+                ? fallbackError.message
+                : typeof fallbackError === 'object'
+                  ? JSON.stringify(fallbackError)
+                  : String(fallbackError);
+            await showToast({
+              style: Toast.Style.Failure,
+              title: 'Failed to load seasons',
+              message: fallbackMessage,
+            });
           }
-        } catch (error) {
-          console.error('Failed to fetch seasons:', error);
-          setSeasons([]);
-          setValue('season', '');
         } finally {
           setIsFetchingSeasons(false);
         }
@@ -473,6 +481,58 @@ export default function VideoUpdatesCommand(
     };
     fetchSeasons();
   }, [values.videoType, selectedPlayer, fetchedAthleteMainId]);
+
+  const loadSeasonsViaFastAPI = async (params: SeasonsRequest) => {
+    const result = await getSeasons(params);
+    normalizeAndApplySeasons(result);
+  };
+
+  const loadSeasonsViaPython = async ({ athleteId, athleteMainId, sportAlias, videoType }: SeasonsRequest) => {
+    const result = await callPythonServer<any>('get_video_seasons', {
+      athlete_id: athleteId,
+      athlete_main_id: athleteMainId,
+      sport_alias: sportAlias,
+      video_type: videoType,
+    });
+    normalizeAndApplySeasons(result);
+  };
+
+  const normalizeAndApplySeasons = (raw: any) => {
+    const rawSeasons = Array.isArray(raw)
+      ? raw
+      : Array.isArray(raw?.data)
+        ? raw.data
+        : Array.isArray(raw?.seasons)
+          ? raw.seasons
+          : [];
+
+    if (!Array.isArray(rawSeasons)) {
+      log('⚠️ Seasons response in unexpected format:', raw);
+      setSeasons([]);
+      setValue('season', '');
+      return;
+    }
+
+    log('✅ Seasons loaded:', rawSeasons.length, 'items');
+    const normalized = rawSeasons
+      .map((s: any) => {
+        const value = s?.season_id ?? s?.seasonId ?? s?.value;
+        const title = s?.label ?? s?.title ?? '';
+        if (!value || !title) return null;
+        return {
+          value: String(value),
+          title: String(title),
+        };
+      })
+      .filter((s) => s) as { value: string; title: string }[];
+
+    setSeasons(normalized);
+    if (normalized.length > 0) {
+      setValue('season', normalized[0].value);
+    } else {
+      setValue('season', '');
+    }
+  };
 
   return (
     <Form

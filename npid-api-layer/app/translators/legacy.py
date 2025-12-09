@@ -9,7 +9,16 @@ import json
 import logging
 from typing import Dict, Any, Optional, Tuple, List
 from bs4 import BeautifulSoup
-from app.models.schemas import VideoSubmitRequest, StageUpdateRequest, VideoSource, SendEmailRequest
+import html2text
+from email_reply_parser import EmailReplyParser
+from html import escape
+from app.models.schemas import (
+    VideoSubmitRequest,
+    StageUpdateRequest,
+    VideoSource,
+    SendEmailRequest,
+    AddNoteRequest
+)
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +28,44 @@ class LegacyTranslator:
     Translates between clean API models and legacy Laravel endpoints.
     When Laravel changes parameter names, you fix it here — nowhere else.
     """
+
+    SIGNATURE_HTML = (
+        "<br><br><span>Kind Regards,</span><div><br></div><table style=\"width: 100%;font-size: 14px;\" "
+        "width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\"><tbody><tr><td style=\"padding: "
+        "0cm; border: none !important;\" valign=\"top\"><span><b>Jerami Singleton</b></span><br>"
+        "<span style=\"color: #232a36;\"><em>Content Creator at Prospect ID</em></span><br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Phone</span>&nbsp;(407) 473-3637<br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Email</span>&nbsp;videoteam@prospectid.com<br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.nationalpid.com<br>"
+        "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
+        "href=https://www.facebook.com/NationalPID target='_blank'><img "
+        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/facebook_sign.png' "
+        "alt='facebook' width='24' height='24' border='0'></a> "
+        "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
+        "href=https://twitter.com/@NationalPID target='_blank'><img "
+        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/twitter_sign.png' "
+        "alt='twitter' width='24' height='24' border='0'></a> "
+        "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
+        "href=https://www.instagram.com/nationalprospect_id target='_blank'><img "
+        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
+        "alt='instagram' width='24' height='24' border='0'></a>  </td></tr></tbody></table><br>"
+    )
+
+    SIGNATURE_HTML = (
+        "<br><br><span>Kind Regards,</span><div><br></div><table style=\"width: 100%;font-size: 14px;\" "
+        "width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\"><tbody><tr><td style=\"padding: "
+        "0cm; border: none !important;\" valign=\"top\"><span><b>Jerami Singleton</b></span><br><span style=\"color: "
+        "#232a36;\"><em>Content Creator at Prospect ID</em></span><br><span style=\"color: #232a36;font-weight: bold;\">Phone" 
+        "</span>&nbsp;(407) 473-3637<br><span style=\"color: #232a36;font-weight: bold;\">Email</span>&nbsp;videoteam@prospectid.com"
+        "<br><span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.nationalpid.com<br><a style='font-size: 0px;"
+        " line-height: 0px; padding-right: 3px;' href=https://www.facebook.com/NationalPID target='_blank'><img src='"
+        "https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/facebook_sign.png' alt='facebook' width='24' "
+        "height='24' border='0'></a> <a style='font-size: 0px; line-height: 0px; padding-right: 3px;' href=https://twitter.com/@NationalPID "
+        "target='_blank'><img src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/twitter_sign.png' alt='twitter' "
+        "width='24' height='24' border='0'></a> <a style='font-size: 0px; line-height: 0px; padding-right: 3px;' href=https://www.instagram.com/"
+        "nationalprospect_id target='_blank'><img src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
+        "alt='instagram' width='24' height='24' border='0'></a>  </td></tr></tbody></table><br>"
+    )
     
     # ============== Request Translation ==============
     
@@ -57,6 +104,7 @@ class LegacyTranslator:
         # The checkbox requires BOTH fields (legacy AngularJS nonsense)
         if request.auto_approve:
             form_data["approve_video"] = "1"
+            form_data["approve_video_checkbox"] = "1"
             # Note: approve_video_checkbox NOT included per live capture
 
         return endpoint, form_data
@@ -95,9 +143,19 @@ class LegacyTranslator:
         """
         endpoint = "/API/scout-api/video-status"
 
+        # Map snake_case/lowercase to Title Case for Laravel
+        status_map = {
+            "revisions": "Revisions",
+            "hudl": "HUDL",
+            "dropbox": "Dropbox",
+            "external_links": "External Links",
+            "not_approved": "Not Approved",
+        }
+        status_value = status_map.get(status.lower(), "HUDL")
+
         form_data = {
             "video_msg_id": video_msg_id,
-            "video_progress_status": status
+            "video_progress_status": status_value
         }
 
         return endpoint, form_data
@@ -157,7 +215,6 @@ class LegacyTranslator:
         sport: str,
         video_type: str,
         athlete_main_id: str,
-        api_key: str = None
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Build seasons fetch request.
@@ -172,11 +229,8 @@ class LegacyTranslator:
             "sport_alias": sport,
             "video_type": video_type,
             "athlete_main_id": athlete_main_id,
+            "return_type": "html"
         }
-
-        # ONLY this endpoint needs api_key
-        if api_key:
-            form_data["api_key"] = api_key
 
         return endpoint, form_data
     
@@ -239,17 +293,19 @@ class LegacyTranslator:
         """
         try:
             data = json.loads(raw_response)
-            
-            if data.get("status") == "ok" and "data" in data:
+            if isinstance(data, list):
+                return {"success": True, "seasons": data}
+            if isinstance(data, dict):
+                if data.get("status") == "ok" and "data" in data:
+                    return {"success": True, "seasons": data["data"]}
+                if "seasons" in data and isinstance(data["seasons"], list):
+                    return {"success": True, "seasons": data["seasons"]}
                 return {
-                    "success": True,
-                    "seasons": data["data"]
+                    "success": False,
+                    "seasons": [],
+                    "error": data.get("message", "Unexpected response format")
                 }
-            return {
-                "success": False,
-                "seasons": [],
-                "error": "Unexpected response format"
-            }
+            return {"success": False, "seasons": [], "error": "Invalid JSON response"}
             
         except json.JSONDecodeError:
             # It's probably HTML - parse option tags
@@ -419,3 +475,630 @@ class LegacyTranslator:
         }
 
         return endpoint, form_data
+
+    # ============== Inbox Translators ==============
+    # Ported from: src/python/npid_api_client.py
+
+    @staticmethod
+    def inbox_threads_to_legacy(limit: int, filter_assigned: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert inbox threads request to legacy params.
+        GET /rulestemplates/template/videoteammessagelist
+        Mirrors: npid_api_client.py:232-244
+        """
+        endpoint = "/rulestemplates/template/videoteammessagelist"
+        params = {
+            "athleteid": "",
+            "user_timezone": "America/New_York",
+            "type": "inbox",
+            "is_mobile": "",
+            "filter_self": "Me/Un",
+            "refresh": "false",
+            "page_start_number": "1",
+            "search_text": ""
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_inbox_threads_response(html_response: str, filter_assigned: str) -> Dict[str, Any]:
+        """
+        Parse inbox threads from HTML.
+        Mirrors: npid_api_client.py:247-337
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        threads = []
+
+        message_elements = soup.select('div.ImageProfile')
+        for elem in message_elements:
+            try:
+                item_id = elem.get('itemid')
+                item_code = elem.get('itemcode')
+                message_id = elem.get('id')
+
+                if not item_id:
+                    continue
+
+                # Check assignment status via plus icon
+                plus_icon = elem.select_one('i.fa-plus-circle')
+                has_plus = plus_icon is not None
+
+                if filter_assigned == 'unassigned' and not has_plus:
+                    continue
+                if filter_assigned == 'assigned' and has_plus:
+                    continue
+
+                # Extract fields
+                email_elem = elem.select_one('.hidden')
+                email = email_elem.text.strip() if email_elem else ""
+                contact_id = elem.get('contacttask', '')
+                athlete_main_id = elem.get('athletemainid', '')
+
+                name_elem = elem.select_one('.msg-sendr-name')
+                raw_name = name_elem.text.strip() if name_elem else "Unknown"
+                # Title case the name
+                name = raw_name.title() if raw_name else "Unknown"
+
+                subject_elem = elem.select_one('.tit_line1')
+                raw_subject = subject_elem.text.strip() if subject_elem else ""
+                # Clean subject: remove RE:/Re:/Fwd: prefixes
+                subject = re.sub(r'^(Re:\s*|RE:\s*|Fwd:\s*|FWD:\s*)+', '', raw_subject).strip()
+
+                preview_elem = elem.select_one('.tit_univ')
+                preview = preview_elem.text.strip()[:300] if preview_elem else ""
+
+                date_elem = elem.select_one('.date_css')
+                timestamp = date_elem.text.strip() if date_elem else ""
+
+                # Attachments
+                attachments = []
+                for att_elem in elem.select('.attachment-item'):
+                    attachments.append({
+                        "fileName": att_elem.get('data-filename', 'Unknown'),
+                        "url": att_elem.get('data-url', ''),
+                        "downloadable": bool(att_elem.get('data-url'))
+                    })
+
+                threads.append({
+                    "id": message_id or item_id,
+                    "itemCode": item_code or item_id,
+                    "message_id": message_id or item_id,
+                    "contact_id": contact_id,
+                    "athleteMainId": athlete_main_id,
+                    "name": name,
+                    "email": email,
+                    "subject": subject,
+                    "preview": preview,
+                    "content": preview,
+                    "timestamp": timestamp,
+                    "can_assign": has_plus,
+                    "canAssign": has_plus,
+                    "isUnread": 'unread' in elem.get('class', []),
+                    "attachments": attachments
+                })
+            except Exception as e:
+                logger.warning(f"Failed to parse thread: {e}")
+                continue
+
+        return {"threads": threads}
+
+    @staticmethod
+    def message_detail_to_legacy(message_id: str, item_code: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert message detail request to legacy params.
+        GET /rulestemplates/template/videoteammessage_subject
+        """
+        endpoint = "/rulestemplates/template/videoteammessage_subject"
+        clean_id = message_id.replace('message_id', '', 1) if message_id.startswith('message_id') else message_id
+        params = {
+            "message_id": clean_id,
+            "itemcode": item_code,
+            "type": "inbox",
+            "user_timezone": "America/New_York",
+            "filter_self": "Me/Un"
+        }
+        return endpoint, params
+
+    @staticmethod
+    def _parse_email_content(raw_content: str, strip_template: bool = True) -> str:
+        """
+        Clean email content using html2text and email_reply_parser.
+        
+        - Converts HTML to clean markdown/text
+        - Uses email_reply_parser to extract visible reply (strips quoted replies)
+        - Optionally strips NPID video instructions template
+        """
+        if not raw_content:
+            return ""
+        
+        content = raw_content
+        
+        # Convert HTML to text using html2text
+        if '<html' in content.lower() or '<body' in content.lower() or '<div' in content.lower():
+            h = html2text.HTML2Text()
+            h.ignore_links = True
+            h.ignore_images = True
+            h.ignore_emphasis = False
+            h.body_width = 0  # No line wrapping
+            content = h.handle(content)
+        
+        # Strip NPID video instructions template
+        if strip_template:
+            template_markers = [
+                "This is a friendly reminder that we need video footage",
+                "Please let me know where you are in the process",
+                "…don't have video footage yet",
+                "…have Hudl, Crossover",
+                "NPID Dropbox folder",
+                "Video Team at National Prospect ID",
+                "18291 N. Pima Road",
+                "helping thousands of athletes connect to college coaches",
+                "Connect With Us",
+            ]
+            
+            # Check if this is mostly template content
+            template_count = sum(1 for m in template_markers if m.lower() in content.lower())
+            if template_count >= 2:
+                # Find and remove template - it usually starts after "On ... wrote:"
+                wrote_match = re.search(
+                    r'On\s+[A-Za-z]{3,4},?\s*[A-Za-z]{3}\s+\d{1,2},?\s*\d{4}.+?wrote:',
+                    content, re.IGNORECASE | re.DOTALL
+                )
+                if wrote_match:
+                    # Keep only content before "On ... wrote:"
+                    content = content[:wrote_match.start()].strip()
+        
+        # Use email_reply_parser to extract just the visible reply (most recent)
+        parsed = EmailReplyParser.parse_reply(content)
+        
+        # Clean up excessive whitespace
+        lines = parsed.split('\n')
+        cleaned = []
+        prev_empty = False
+        for line in lines:
+            is_empty = not line.strip()
+            if is_empty and prev_empty:
+                continue
+            cleaned.append(line)
+            prev_empty = is_empty
+        
+        return '\n'.join(cleaned).strip()
+
+    @staticmethod
+    def parse_message_detail_response(response_text: str, message_id: str, item_code: str) -> Dict[str, Any]:
+        """
+        Parse message detail from JSON response.
+        Uses html2text and email_reply_parser for clean extraction.
+        """
+        try:
+            data = json.loads(response_text.strip())
+            raw_content = data.get('message_plain', '') or data.get('message', '')
+            raw_message_html = data.get('message', '') or data.get('body_html', '')
+            
+            # Parse and clean the email content
+            content = LegacyTranslator._parse_email_content(raw_content, strip_template=True)
+            
+            # Clean subject
+            raw_subject = data.get('subject', '') or data.get('message_subject', '')
+            subject = re.sub(r'^(Re:\s*|RE:\s*|Fwd:\s*|FWD:\s*)+', '', raw_subject).strip()
+            
+            # Title case the name  
+            raw_name = data.get('from_name', '')
+            from_name = raw_name.title() if raw_name else ''
+
+            return {
+                "message_id": message_id,
+                "item_code": item_code,
+                "content": content,
+                "subject": subject,
+                "from_email": data.get('from_email', ''),
+                "from_name": from_name,
+                "timestamp": data.get('time_stamp', '') or data.get('timestamp', ''),
+                "timestamp_wrote": data.get('time_stamp_wrote', ''),
+                "raw_message_html": raw_message_html,
+                "raw_subject": raw_subject,
+            }
+        except Exception as e:
+            logger.warning(f"Failed to parse message detail: {e}")
+            return {"message_id": message_id, "item_code": item_code, "content": ""}
+
+    @staticmethod
+    def assignment_modal_to_legacy(message_id: str, item_code: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert assignment modal request to legacy params.
+        GET /rulestemplates/template/assignemailtovideoteam
+        """
+        endpoint = "/rulestemplates/template/assignemailtovideoteam"
+        params = {"message_id": message_id, "itemcode": item_code}
+        return endpoint, params
+
+    @staticmethod
+    def parse_assignment_modal_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse assignment modal from HTML.
+        Mirrors: npid_api_client.py:424-485
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+
+        # Extract CSRF token
+        token_input = soup.select_one('input[name="_token"]')
+        form_token = token_input['value'] if token_input else ""
+
+        # Extract owners
+        owners = []
+        owner_select = soup.select_one('select[name="videoscoutassignedto"]')
+        if owner_select:
+            for option in owner_select.select('option'):
+                owners.append({
+                    "value": option.get('value', '').strip(),
+                    "label": option.text.strip()
+                })
+
+        # Extract stages
+        stages = []
+        stage_select = soup.select_one('select[name="video_progress_stage"]')
+        if stage_select:
+            for option in stage_select.select('option'):
+                stages.append({
+                    "value": option.get('value', '').strip(),
+                    "label": option.text.strip()
+                })
+
+        # Extract statuses
+        statuses = []
+        status_select = soup.select_one('select[name="video_progress_status"]')
+        if status_select:
+            for option in status_select.select('option'):
+                statuses.append({
+                    "value": option.get('value', '').strip(),
+                    "label": option.text.strip()
+                })
+
+        # Extract other fields
+        contact_input = soup.select_one('input[name="contact"]')
+        contact_search = contact_input.get('value', '') if contact_input else ""
+
+        contact_for_select = soup.select_one('select[name="contactfor"]')
+        default_search_for = 'athlete'
+        if contact_for_select:
+            selected = contact_for_select.select_one('option[selected]')
+            if selected:
+                default_search_for = selected.get('value', '').strip() or 'athlete'
+
+        contact_task_input = soup.select_one('input[name="contact_task"]')
+        contact_task = contact_task_input.get('value', '').strip() if contact_task_input else ""
+
+        athlete_input = soup.select_one('input[name="athlete_main_id"]')
+        athlete_main_id = athlete_input.get('value', '').strip() if athlete_input else ""
+
+        message_id_input = soup.select_one('input[name="messageid"]')
+        message_id_value = message_id_input.get('value', '').strip() if message_id_input else ""
+
+        # Default owner (Jerami)
+        jerami_id = '1408164'
+        default_owner = None
+        if owners:
+            default_owner = next((o for o in owners if o['value'] == jerami_id), None) or owners[0]
+
+        return {
+            "formToken": form_token,
+            "owners": owners,
+            "stages": stages,
+            "videoStatuses": statuses,
+            "contactSearchValue": contact_search,
+            "athleteMainId": athlete_main_id,
+            "contactTask": contact_task,
+            "messageId": message_id_value,
+            "defaultSearchFor": default_search_for,
+            "defaultOwner": default_owner,
+            "contactFor": default_search_for
+        }
+
+    @staticmethod
+    def assign_thread_to_legacy(payload: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert assign thread request to legacy form data.
+        POST /videoteammsg/assignvideoteam
+        
+        Curl verified 2025-12-08:
+        _token, contact_task, athlete_main_id, messageid, videoscoutassignedto,
+        contactfor, contact, video_progress_stage, video_progress_status
+        """
+        endpoint = "/videoteammsg/assignvideoteam"
+
+        # Extract values from payload - handle both naming conventions from frontend
+        contact_id = payload.get('contact_id') or payload.get('contactId', '')
+        athlete_main_id = payload.get('athleteMainId', '') or ''
+        stage = payload.get('stage', '') or ''
+        status = payload.get('status', '') or ''
+        
+        # Clean the message ID - remove 'message_id' prefix if present
+        message_id = str(payload.get('messageId', ''))
+        if message_id.startswith('message_id'):
+            message_id = message_id.replace('message_id', '')
+
+        # EXACT form data matching curl - NO duplicate fields
+        form_data = {
+            "_token": payload.get('formToken', ''),
+            "contact_task": contact_id,
+            "athlete_main_id": athlete_main_id,
+            "messageid": message_id,
+            "videoscoutassignedto": payload.get('ownerId', '1408164'),
+            "contactfor": payload.get('contactFor', 'athlete'),
+            "contact": payload.get('contact', ''),
+            "video_progress_stage": stage,
+            "video_progress_status": status,
+        }
+
+
+        return endpoint, form_data
+
+    @staticmethod
+    def parse_assign_thread_response(response_text: str) -> Dict[str, Any]:
+        """
+        Parse assign thread response.
+        Response format: contact_task=X&athlete_main_id=Y&messageid=Z&...
+        """
+        result = {"success": True}
+
+        if not response_text.strip():
+            return result
+
+        # Try JSON first
+        try:
+            data = json.loads(response_text)
+            return {"success": data.get('success', True)}
+        except:
+            pass
+
+        # Parse form-encoded response body
+        # Format: contact_task=1441304&athlete_main_id=931626&messageid=13427&...
+        from urllib.parse import parse_qs
+        try:
+            params = parse_qs(response_text)
+            result["contact_id"] = params.get('contact_task', [''])[0]
+            result["athlete_main_id"] = params.get('athlete_main_id', [''])[0]
+            result["message_id"] = params.get('messageid', [''])[0]
+        except:
+            pass
+
+        return result
+
+    @staticmethod
+    def contact_search_to_legacy(query: str, search_type: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert contact search request to legacy params.
+        GET /template/calendaraccess/contactslist
+        """
+        endpoint = "/template/calendaraccess/contactslist"
+        params = {"search": query, "searchfor": search_type}
+        return endpoint, params
+
+    @staticmethod
+    def parse_contact_search_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse contact search from HTML table.
+        Mirrors: npid_api_client.py:607-649
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        contacts = []
+
+        rows = soup.select('tr')[1:]  # Skip header
+        for row in rows:
+            try:
+                input_elem = row.select_one('input.contactselected')
+                if not input_elem:
+                    continue
+
+                contact_id = input_elem.get('contactid', '')
+                athlete_main_id = input_elem.get('athlete_main_id', '')
+                contact_name = input_elem.get('contactname', '')
+
+                cells = row.select('td')
+                if len(cells) >= 5:
+                    contacts.append({
+                        "contactId": contact_id,
+                        "athleteMainId": athlete_main_id,
+                        "name": contact_name,
+                        "ranking": cells[1].text.strip(),
+                        "gradYear": cells[2].text.strip(),
+                        "state": cells[3].text.strip(),
+                        "sport": cells[4].text.strip()
+                    })
+            except Exception:
+                continue
+
+        return {"contacts": contacts}
+
+    @staticmethod
+    def assignment_defaults_to_legacy(contact_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert assignment defaults request to legacy params.
+        GET /rulestemplates/messageassigninfo
+        """
+        endpoint = "/rulestemplates/messageassigninfo"
+        params = {"contacttask": contact_id}
+        return endpoint, params
+
+    @staticmethod
+    def parse_assignment_defaults_response(response_text: str) -> Dict[str, Any]:
+        """
+        Parse assignment defaults from JSON.
+        """
+        try:
+            data = json.loads(response_text) if response_text else {}
+            return {
+                "stage": data.get('stage'),
+                "status": data.get('video_progress_status')
+            }
+        except:
+            return {"stage": None, "status": None}
+
+    @staticmethod
+    def notes_list_to_legacy(athlete_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for athlete notes list.
+        GET /template/template/athlete_noteslist
+        """
+        endpoint = "/template/template/athlete_noteslist"
+        params = {"id": athlete_id, "athlete_main_id": athlete_main_id}
+        return endpoint, params
+
+    @staticmethod
+    def parse_notes_list_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse athlete notes HTML table/list into normalized entries.
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        notes = []
+
+        # Primary fallback: table rows
+        rows = soup.select('tr')
+        for row in rows:
+            if row.find('th'):
+                continue
+            cells = row.find_all('td')
+            if not cells:
+                continue
+            text_cells = [cell.get_text(" ", strip=True) for cell in cells]
+            title = text_cells[0] if text_cells else "Note"
+            description = text_cells[-1] if len(text_cells) > 1 else ""
+            metadata = " | ".join(text_cells[1:-1]) if len(text_cells) > 2 else None
+            notes.append({
+                "title": title or "Note",
+                "description": description,
+                "metadata": metadata,
+                "created_by": row.get('data-createdby'),
+                "created_at": row.get('data-created')
+            })
+
+        # Secondary fallback: list items
+        if not notes:
+            items = soup.select('.noteslist li, .note_item, .notes_list_item')
+            for item in items:
+                title = item.find(class_='title') or item.find('strong')
+                meta = item.find(class_='meta')
+                body = item.find(class_='description') or item
+                notes.append({
+                    "title": title.get_text(" ", strip=True) if title else "Note",
+                    "description": body.get_text(" ", strip=True) if body else "",
+                    "metadata": meta.get_text(" ", strip=True) if meta else None,
+                    "created_by": item.get('data-createdby'),
+                    "created_at": item.get('data-created')
+                })
+
+        if not notes:
+            # As a last resort, return the raw text so UI can display something useful
+            text_content = soup.get_text("\n", strip=True)
+            if text_content:
+                notes.append({
+                    "title": "Notes",
+                    "description": text_content,
+                    "metadata": None,
+                    "created_by": None,
+                    "created_at": None
+                })
+
+        return {"success": True, "notes": notes}
+
+    @staticmethod
+    def add_note_to_legacy(request: AddNoteRequest) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert AddNoteRequest to legacy form data.
+        POST /tasks/addnote
+        """
+        endpoint = "/tasks/addnote"
+        form_data = {
+            "athlete_id": request.athlete_id,
+            "athlete_main_id": request.athlete_main_id,
+            "notestitle": request.title,
+            "notesdescription": request.description,
+            "existingnote": ""
+        }
+        return endpoint, form_data
+
+    @staticmethod
+    def parse_add_note_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse add note response (Laravel returns HTML or JSON).
+        """
+        if not raw_response.strip():
+            return {"success": True, "message": "Note added"}
+        try:
+            data = json.loads(raw_response)
+            if isinstance(data, dict):
+                return {
+                    "success": data.get("success", True),
+                    "message": data.get("message", "Note added")
+                }
+        except json.JSONDecodeError:
+            pass
+        return {"success": True, "message": "Note added"}
+
+    @staticmethod
+    def reply_form_to_legacy(message_id: str, item_code: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Get reply form data to fetch CSRF token.
+        GET /rulestemplates/template/videoteam_msg_sendingto
+        """
+        endpoint = "/rulestemplates/template/videoteam_msg_sendingto"
+        params = {"id": message_id, "itemcode": item_code, "tab": "inbox"}
+        return endpoint, params
+
+    @staticmethod
+    def parse_reply_form_response(html_response: str, message_id: str) -> Dict[str, Any]:
+        """
+        Parse reply form to extract CSRF token and thread data.
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        token = soup.find('input', {'name': '_token'})
+        return {
+            "csrf_token": token.get('value') if token else '',
+            "message_id": message_id
+        }
+
+    @staticmethod
+    def _format_reply_text(reply_text: str) -> str:
+        if not reply_text:
+            return ""
+        return escape(reply_text).replace('\n', '<br>')
+
+    @classmethod
+    def _build_previous_message_block(cls, message_id: str, detail_data: Dict[str, Any]) -> str:
+        original_html = detail_data.get('raw_message_html') or detail_data.get('content') or ''
+        if not original_html:
+            return ""
+        timestamp = detail_data.get('timestamp_wrote') or detail_data.get('timestamp') or ''
+        pieces = [cls.SIGNATURE_HTML]
+        if timestamp:
+            pieces.append(f" {timestamp} ")
+        pieces.append(original_html)
+        inner = ''.join(pieces)
+        return f"<div id=\"previous_message{message_id}\">{inner}</div>"
+
+    @staticmethod
+    def send_reply_to_legacy(message_id: str, item_code: str, reply_text: str, thread_data: Dict, detail_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
+        """
+        Convert send reply to legacy form data.
+        POST /videoteammsg/sendmessage
+        """
+        endpoint = "/videoteammsg/sendmessage"
+        subject_source = detail_data.get('raw_subject') or detail_data.get('subject') or ''
+        formatted_subject = f"Re: {subject_source}" if subject_source else "Re: Video Team"
+        reply_main_id = detail_data.get('message_id') or message_id
+        reply_body = LegacyTranslator._format_reply_text(reply_text)
+        previous_block = LegacyTranslator._build_previous_message_block(message_id, detail_data)
+        full_message = f"{reply_body}{previous_block}"
+
+        form_data = {
+            "_token": thread_data.get('csrf_token', ''),
+            "message_type": "send",
+            "reply_message_id": message_id,
+            "reply_main_id": reply_main_id,
+            "draftid": "",
+            "message_subject": formatted_subject,
+            "message_message": full_message
+        }
+        files = {
+            "mail_attachment": ("", b"", "application/octet-stream")
+        }
+        return endpoint, form_data, files

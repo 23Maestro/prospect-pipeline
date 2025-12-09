@@ -132,12 +132,9 @@ class NPIDAPIClient:
         """Map various status inputs to the API-expected slug (lowercase)."""
         lookup = {
             'revisions': 'revisions',
-            'revise': 'revisions',
             'hudl': 'hudl',
             'dropbox': 'dropbox',
             'external links': 'external_links',
-            'external_links': 'external_links',
-            'not approved': 'not_approved',
             'not_approved': 'not_approved'
         }
         status_key = (status or '').lower().replace('-', ' ').replace('_', ' ').strip()

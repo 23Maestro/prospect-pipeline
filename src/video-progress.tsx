@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Color,
   Detail,
   Form,
   Icon,
@@ -45,21 +46,34 @@ function getPositions(task: VideoProgressTask): string {
     .join(' | ');
 }
 
-function getStatusIcon(status: string) {
+function getStatusIcon(status: string): { source: string } | Icon {
   switch (status) {
     case 'Revise':
     case 'Revisions':
-      return Icon.ArrowClockwise;
+      return { source: 'revisions-icon.png' };
     case 'HUDL':
-      return Icon.CircleFilled;
+      return { source: 'hudl-logo.png' };
     case 'Dropbox':
-      return Icon.Folder;
+      return { source: 'dropbox-ios.png' };
     case 'Not Approved':
       return Icon.XMarkCircle;
-    case 'Uploads':
-      return Icon.ArrowUp;
     case 'External Links':
-      return Icon.Link;
+      return { source: 'external-links.png' };
+    default:
+      return Icon.Circle;
+  }
+}
+
+function getStageIcon(stage: string): { source: string } | Icon {
+  switch (stage) {
+    case 'In Queue':
+      return { source: 'in-queue-stage.png' };
+    case 'Awaiting Client':
+      return { source: 'awaiting-stage.png' };
+    case 'On Hold':
+      return { source: 'on-hold-stage.png' };
+    case 'Done':
+      return { source: 'done-stage.png' };
     default:
       return Icon.Circle;
   }
@@ -192,7 +206,7 @@ function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): strin
 interface DetailProps {
   task: VideoProgressTask;
   onBack: () => void;
-  onStatusUpdate: () => void;
+  onStatusUpdate: (updatedTasks?: VideoProgressTask[]) => void;
 }
 
 function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
@@ -237,7 +251,17 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         title: 'Status Updated',
         message: `Updated to ${newStatus}`,
       });
-      onStatusUpdate();
+
+      // Get fresh data from cache and pass to parent
+      const allTasks = await getCachedTasks();
+      const filtered = allTasks.filter(
+        (t) =>
+          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+            t.video_progress_status
+          ) && t.stage !== 'Done'
+      );
+
+      onStatusUpdate(filtered);
       onBack();
     } catch (error) {
       await showToast({
@@ -280,7 +304,17 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         title: 'Stage Updated',
         message: `Updated to ${newStage}`,
       });
-      onStatusUpdate();
+
+      // Get fresh data from cache and pass to parent
+      const allTasks = await getCachedTasks();
+      const filtered = allTasks.filter(
+        (t) =>
+          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+            t.video_progress_status
+          ) && t.stage !== 'Done'
+      );
+
+      onStatusUpdate(filtered);
       onBack();
     } catch (error) {
       await showToast({
@@ -330,8 +364,8 @@ ${approvedDetail}
         <ActionPanel>
           <ActionPanel.Section title="Quick Actions">
             <Action
-              title="YouTube Title to Clipboard"
-              icon={Icon.CopyClipboard}
+              title="Copy YouTube Title"
+              icon="📺"
               onAction={() => {
                 Clipboard.copy(youtubeTitle);
                 showToast({
@@ -343,21 +377,21 @@ ${approvedDetail}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'y' }}
             />
             <Action
-              title="Approved Detail to Clipboard"
-              icon={Icon.CopyClipboard}
+              title="Copy Approved Video Title"
+              icon="✅" // Approved video title icon
               onAction={() => {
-                Clipboard.copy(approvedDetail);
+                Clipboard.copy(approvedDetail); // Approved video title
                 showToast({
                   style: Toast.Style.Success,
                   title: 'Copied to clipboard',
                   message: 'Approved video title',
                 });
               }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
             />
             <Action
-              title="Dropbox Folder to Clipboard"
-              icon={Icon.CopyClipboard}
+              title="Copy Dropbox Folder"
+              icon="📂"
               onAction={() => {
                 Clipboard.copy(dropboxFolder);
                 showToast({
@@ -370,77 +404,27 @@ ${approvedDetail}
             />
           </ActionPanel.Section>
 
-          <ActionPanel.Section title="Update Status">
-            <Action
-              title="Mark as Revise"
-              icon={Icon.ArrowClockwise}
-              onAction={() => handleStatusChange('Revisions')}
-              isLoading={isUpdating}
+          <ActionPanel.Section title="Update Task">
+            <Action.Push
+              title="Update Status"
+              icon="📊"
+              target={<UpdateStatusForm task={task} onUpdate={onStatusUpdate} />}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'x' }}
             />
-            <Action
-              title="Mark as HUDL"
-              icon={Icon.CircleFilled}
-              onAction={() => handleStatusChange('HUDL')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as Dropbox"
-              icon={Icon.Folder}
-              onAction={() => handleStatusChange('Dropbox')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as Not Approved"
-              icon={Icon.XMarkCircle}
-              onAction={() => handleStatusChange('Not Approved')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as Uploads"
-              icon={Icon.ArrowUp}
-              onAction={() => handleStatusChange('Uploads')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as External Links"
-              icon={Icon.Link}
-              onAction={() => handleStatusChange('External Links')}
-              isLoading={isUpdating}
-            />
-          </ActionPanel.Section>
-
-          <ActionPanel.Section title="Update Stage">
-            <Action
-              title="Mark as In Queue"
-              icon={Icon.Clock}
-              onAction={() => handleStageChange('in_queue')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as Awaiting Client"
-              icon={Icon.Person}
-              onAction={() => handleStageChange('awaiting_client')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as On Hold"
-              icon={Icon.Pause}
-              onAction={() => handleStageChange('on_hold')}
-              isLoading={isUpdating}
-            />
-            <Action
-              title="Mark as Done"
-              icon={Icon.Checkmark}
-              onAction={() => handleStageChange('done')}
-              isLoading={isUpdating}
+            <Action.Push
+              title="Update Stage"
+              icon="🔄"
+              target={<UpdateStageForm task={task} onUpdate={onStatusUpdate} />}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
             />
           </ActionPanel.Section>
 
           <ActionPanel.Section title="Update Due Date">
             <Action.Push
               title="Edit Due Date"
-              icon={Icon.Calendar}
+              icon="🗓️"
               target={<EditDueDateForm task={task} onUpdate={onStatusUpdate} />}
+              shortcut={{ modifiers: ['cmd'], key: 'd' }}
             />
           </ActionPanel.Section>
 
@@ -448,9 +432,10 @@ ${approvedDetail}
             <Action.OpenInBrowser
               title="Open in ProspectID"
               url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
-              icon={Icon.Globe}
+              icon="🌍"
+              shortcut={{ modifiers: ['cmd'], key: 'o' }}
             />
-            <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
+            <Action title="Back" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -460,7 +445,7 @@ ${approvedDetail}
 
 interface EditDueDateFormProps {
   task: VideoProgressTask;
-  onUpdate: () => void;
+  onUpdate: (updatedTasks?: VideoProgressTask[]) => void;
 }
 
 function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
@@ -542,9 +527,155 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
   );
 }
 
+const STATUS_OPTIONS = [
+  { value: 'Revisions', label: 'Revisions' },
+  { value: 'HUDL', label: 'HUDL' },
+  { value: 'Dropbox', label: 'Dropbox' },
+  { value: 'Not Approved', label: 'Not Approved' },
+  { value: 'External Links', label: 'External Links' },
+];
+
+const STAGE_OPTIONS = [
+  { value: 'In Queue', label: 'In Queue' },
+  { value: 'Awaiting Client', label: 'Awaiting Client' },
+  { value: 'On Hold', label: 'On Hold' },
+  { value: 'Done', label: 'Done' },
+];
+
+interface UpdateStatusFormProps {
+  task: VideoProgressTask;
+  onUpdate: (updatedTasks?: VideoProgressTask[]) => void;
+}
+
+function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
+  const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedStatus, setSelectedStatus] = useState(task.video_progress_status || 'Revisions');
+
+  const handleSubmit = async () => {
+    if (!task.id) {
+      await showToast({ style: Toast.Style.Failure, title: 'Cannot Update', message: 'Missing video message ID' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const normalizedStatus = normalizeStatus(selectedStatus);
+      const response = await apiFetch(`/video/${task.id}/status`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_msg_id: String(task.id), status: normalizedStatus }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as any;
+        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+      }
+
+      await updateCachedTaskStatusStage(task.id, { status: selectedStatus });
+      await showToast({ style: Toast.Style.Success, title: 'Status Updated', message: `Updated to ${selectedStatus}` });
+
+      const allTasks = await getCachedTasks();
+      const filtered = allTasks.filter(
+        (t) => ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(t.video_progress_status)
+      );
+      onUpdate(filtered);
+      pop();
+    } catch (error) {
+      await showToast({ style: Toast.Style.Failure, title: 'Update Failed', message: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      navigationTitle={`Update Status • ${task.athletename}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Save Status" icon={Icon.Checkmark} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description text={`Updating status for: ${task.athletename}`} />
+      <Form.Dropdown id="status" title="Video Status" value={selectedStatus} onChange={setSelectedStatus}>
+        {STATUS_OPTIONS.map((opt) => (
+          <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.label} />
+        ))}
+      </Form.Dropdown>
+    </Form>
+  );
+}
+
+interface UpdateStageFormProps {
+  task: VideoProgressTask;
+  onUpdate: (updatedTasks?: VideoProgressTask[]) => void;
+}
+
+function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
+  const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedStage, setSelectedStage] = useState(task.stage || 'In Queue');
+
+  const handleSubmit = async () => {
+    if (!task.id) {
+      await showToast({ style: Toast.Style.Failure, title: 'Cannot Update', message: 'Missing video message ID' });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const normalizedStage = normalizeStage(selectedStage);
+      const response = await apiFetch(`/video/${task.id}/stage`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ video_msg_id: String(task.id), stage: normalizedStage }),
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({})) as any;
+        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+      }
+
+      await updateCachedTaskStatusStage(task.id, { stage: selectedStage });
+      await showToast({ style: Toast.Style.Success, title: 'Stage Updated', message: `Updated to ${selectedStage}` });
+
+      const allTasks = await getCachedTasks();
+      const filtered = allTasks.filter(
+        (t) => ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(t.video_progress_status)
+      );
+      onUpdate(filtered);
+      pop();
+    } catch (error) {
+      await showToast({ style: Toast.Style.Failure, title: 'Update Failed', message: error instanceof Error ? error.message : 'Unknown error' });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      navigationTitle={`Update Stage • ${task.athletename}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Save Stage" icon={Icon.Checkmark} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description text={`Updating stage for: ${task.athletename}`} />
+      <Form.Dropdown id="stage" title="Video Stage" value={selectedStage} onChange={setSelectedStage}>
+        {STAGE_OPTIONS.map((opt) => (
+          <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.label} />
+        ))}
+      </Form.Dropdown>
+    </Form>
+  );
+}
+
 export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [stageFilter, setStageFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const { push, pop } = useNavigation();
 
@@ -552,14 +683,18 @@ export default function VideoProgress() {
     loadTasks();
   }, []);
 
-  const reloadFromCache = async () => {
+  const reloadFromCache = async (updatedTasks?: VideoProgressTask[]) => {
+    if (updatedTasks) {
+      setTasks(updatedTasks);
+      return;
+    }
     // Reload from cache only (instant, no API call)
     const cached = await getCachedTasks();
     const filtered = cached.filter(
       (task) =>
-        ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+        ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
           task.video_progress_status
-        ) && task.stage !== 'Done'
+        )
     );
     setTasks(filtered);
   };
@@ -573,9 +708,9 @@ export default function VideoProgress() {
       if (cached.length > 0) {
         const filtered = cached.filter(
           (task) =>
-            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
               task.video_progress_status
-            ) && task.stage !== 'Done'
+            )
         );
         setTasks(filtered);
         setIsLoading(false);
@@ -614,12 +749,12 @@ export default function VideoProgress() {
       // Update cache
       await upsertTasks(data);
 
-      // Filter: active statuses, exclude Done stage
+      // Filter: active statuses (no stage filter here - we want ALL stages loaded)
       const filtered = data.filter(
         (task) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
+          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
             task.video_progress_status
-          ) && task.stage !== 'Done'
+          )
       );
 
       setTasks(filtered);
@@ -640,10 +775,24 @@ export default function VideoProgress() {
     }
   };
 
-  const filteredTasks =
-    statusFilter === 'all'
-      ? tasks
-      : tasks.filter((task) => task.video_progress_status === statusFilter);
+  // Apply both stage and status filters
+  const filteredTasks = tasks.filter((task) => {
+    const stageMatch = stageFilter === 'all' || task.stage === stageFilter;
+    const statusMatch = statusFilter === 'all' || task.video_progress_status === statusFilter;
+    return stageMatch && statusMatch;
+  });
+
+  // Handle combined filter change
+  const handleFilterChange = (value: string) => {
+    if (value.startsWith('stage:')) {
+      setStageFilter(value.replace('stage:', ''));
+    } else if (value.startsWith('status:')) {
+      setStatusFilter(value.replace('status:', ''));
+    }
+  };
+
+  // Build current filter value for display
+  const currentFilterValue = stageFilter !== 'all' ? `stage:${stageFilter}` : `status:${statusFilter}`;
 
   return (
     <List
@@ -652,17 +801,25 @@ export default function VideoProgress() {
       searchBarPlaceholder="Search athletes..."
       searchBarAccessory={
         <List.Dropdown
-          tooltip="Filter by Status"
-          value={statusFilter}
-          onChange={setStatusFilter}
+          tooltip="Filter by Stage or Status (⌘P)"
+          value={currentFilterValue}
+          onChange={handleFilterChange}
         >
-          <List.Dropdown.Item title="All Statuses" value="all" />
-          <List.Dropdown.Item title="Revise" value="Revisions" />
-          <List.Dropdown.Item title="HUDL" value="HUDL" />
-          <List.Dropdown.Item title="Dropbox" value="Dropbox" />
-          <List.Dropdown.Item title="Not Approved" value="Not Approved" />
-          <List.Dropdown.Item title="Uploads" value="Uploads" />
-          <List.Dropdown.Item title="External Links" value="External Links" />
+          <List.Dropdown.Section title="🎬 Stage">
+            <List.Dropdown.Item title="All Stages" value="stage:all" />
+            <List.Dropdown.Item title="In Queue" value="stage:In Queue" />
+            <List.Dropdown.Item title="Awaiting Client" value="stage:Awaiting Client" />
+            <List.Dropdown.Item title="On Hold" value="stage:On Hold" />
+            <List.Dropdown.Item title="Done" value="stage:Done" />
+          </List.Dropdown.Section>
+          <List.Dropdown.Section title="📊 Status">
+            <List.Dropdown.Item title="All Statuses" value="status:all" />
+            <List.Dropdown.Item title="Revisions" value="status:Revisions" />
+            <List.Dropdown.Item title="HUDL" value="status:HUDL" />
+            <List.Dropdown.Item title="Dropbox" value="status:Dropbox" />
+            <List.Dropdown.Item title="Not Approved" value="status:Not Approved" />
+            <List.Dropdown.Item title="External Links" value="status:External Links" />
+          </List.Dropdown.Section>
         </List.Dropdown>
       }
     >
@@ -673,16 +830,13 @@ export default function VideoProgress() {
           {filteredTasks.map((task) => (
             <List.Item
               key={task.athlete_id}
-              icon={{ source: Icon.Plus, tintColor: '#007AFF' }}
+              icon={getStageIcon(task.stage)}
               title={task.athletename}
               subtitle={`${task.grad_year} • ${task.sport_name} • ${getPositions(task)}`}
               accessories={[
                 { text: formatDate(task.video_due_date) },
                 {
-                  icon: {
-                    source: getStatusIcon(task.video_progress_status),
-                    tintColor: getStatusColor(task.video_progress_status),
-                  },
+                  icon: getStatusIcon(task.video_progress_status),
                   text: task.video_progress_status,
                 },
               ]}

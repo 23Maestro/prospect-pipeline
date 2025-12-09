@@ -196,3 +196,43 @@ export async function updateCachedTaskStatusStage(id: number, updates: { status?
   );
   persist(database);
 }
+
+/**
+ * Store the mapping: athlete_id → athlete_main_id
+ * athlete_id and athlete_main_id are DISTINCT values.
+ * This stores which athlete_main_id corresponds to a given athlete_id.
+ */
+export async function cacheAthleteMainId(athleteId: number, athleteMainId: string) {
+  const database = await getDb();
+  const updatedAt = new Date().toISOString();
+  database.run(
+    `
+    UPDATE video_tasks
+    SET
+      athlete_main_id = $athlete_main_id,
+      updated_at = $updated_at,
+      cached_at = $updated_at
+    WHERE athlete_id = $athlete_id
+  `,
+    {
+      $athlete_id: athleteId,
+      $athlete_main_id: athleteMainId,
+      $updated_at: updatedAt,
+    },
+  );
+  persist(database);
+}
+
+/**
+ * Retrieve athlete_main_id for a given athlete_id.
+ * Returns the distinct athlete_main_id value associated with this athlete_id.
+ */
+export async function getCachedAthleteMainId(athleteId: number): Promise<string | null> {
+  const database = await getDb();
+  const res = database.exec(
+    'SELECT athlete_main_id FROM video_tasks WHERE athlete_id = $athlete_id AND athlete_main_id IS NOT NULL AND athlete_main_id != "" LIMIT 1',
+    { $athlete_id: athleteId }
+  );
+  if (!res.length || !res[0].values.length) return null;
+  return res[0].values[0][0] as string;
+}

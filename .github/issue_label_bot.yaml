@@ -17,7 +17,6 @@ label-alias:
   raycast: "Component: TypeScript"
   inbox: "Component: Inbox"
   video: "Component: Video Updates"
-  notion: "Component: Notion Sync"
   
   # Priority aliases
   urgent: "Priority: High +"

@@ -18,7 +18,8 @@ logger = logging.getLogger(__name__)
 # Constants
 NPID_BASE_URL = os.getenv("NPID_BASE_URL", "https://dashboard.nationalpid.com")
 SESSION_FILE = str(Path.home() / '.npid_session.pkl')
-NPID_API_KEY = os.getenv("NPID_API_KEY", "")
+DEFAULT_SCOUT_API_KEY = "594168a28d26571785afcb83997cb8185f482e56"
+NPID_API_KEY = os.getenv("NPID_API_KEY", DEFAULT_SCOUT_API_KEY)
 
 
 class NPIDSession:
@@ -152,9 +153,9 @@ class NPIDSession:
         if not self.csrf_token:
             await self.refresh_csrf()
 
-        # Inject Token
-        # NOTE: Legacy Laravel often looks for '_token' in the POST body
-        data["_token"] = self.csrf_token
+        # Inject Token if caller didn't provide one (some forms require server-provided token)
+        if "_token" not in data:
+            data["_token"] = self.csrf_token
 
         # First Attempt
         logger.debug(f"POST {path} (Attempt 1)")
@@ -171,7 +172,8 @@ class NPIDSession:
         await self.refresh_csrf()
 
         # 2. Update data with new token
-        data["_token"] = self.csrf_token
+        if "_token" not in data or data["_token"] == self.csrf_token:
+            data["_token"] = self.csrf_token
 
         # 3. Retry Request
         logger.info(f"POST {path} (Attempt 2 - Retry)")

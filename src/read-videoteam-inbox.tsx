@@ -11,8 +11,15 @@ import {
 } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
-import { fetchInboxThreads, fetchMessageDetail, sendEmailToAthlete } from './lib/npid-mcp-adapter';
-import { callPythonServer } from './lib/python-server-client';
+import {
+  fetchInboxThreads,
+  fetchMessageDetail,
+  sendEmailToAthlete,
+  sendInboxReply,
+} from './lib/npid-mcp-adapter';
+import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
+import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
+import { ensureAthleteIds } from './lib/athlete-id-resolver';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -24,9 +31,14 @@ function EmailContentDetail({
   onBack: () => void;
   onReply: (message: NPIDInboxMessage) => void;
 }) {
+  const { push, pop } = useNavigation();
   const [fullContent, setFullContent] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailedTimestamp, setDetailedTimestamp] = useState<string>('');
+  const { athleteId, contactId } = resolveAthleteIdentifiers(message);
+  const [canShowNotes, setCanShowNotes] = useState(false);
+  const [resolvedMainId, setResolvedMainId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadFullMessage = async () => {
@@ -38,6 +50,9 @@ function EmailContentDetail({
 
         if (details && details.content) {
           setFullContent(details.content);
+          if (details.timestamp) {
+            setDetailedTimestamp(details.timestamp);
+          }
         } else {
           // Fallback to preview if no content returned
           setFullContent(message.content || message.preview || 'No content available');
@@ -55,6 +70,32 @@ function EmailContentDetail({
     loadFullMessage();
   }, [message.id, message.itemCode, message.content, message.preview]);
 
+  // Lazy-resolve athlete_main_id for notes
+  useEffect(() => {
+    const resolveIds = async () => {
+      console.log('🔍 NOTES: Resolving IDs for message:', {
+        messageId: message.id,
+        athleteId,
+        contactId,
+        athleteMainId: message.athleteMainId,
+        rawContactId: (message as any).contact_id,
+        rawContactid: (message as any).contactid
+      });
+
+      if (athleteId) {
+        const ids = await ensureAthleteIds(athleteId, message.athleteMainId);
+        console.log('🔍 NOTES: ensureAthleteIds result:', ids);
+        if (ids) {
+          setResolvedMainId(ids.athleteMainId);
+          setCanShowNotes(true);
+        }
+      } else {
+        console.log('❌ NOTES: No athleteId found, cannot show notes');
+      }
+    };
+    resolveIds();
+  }, [athleteId, message.athleteMainId]);
+
   const hasAttachments = message.attachments && message.attachments.length > 0;
   const downloadableAttachments =
     message.attachments?.filter((att) => att.downloadable && att.url) || [];
@@ -63,20 +104,30 @@ function EmailContentDetail({
     ? 'Loading full message...'
     : fullContent || message.preview || 'No content available';
 
-  const markdownContent = `# ${message.subject}\n\n**From:** ${message.name} (${message.email})\n\n**Date:** ${message.timestamp}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''
-    }${hasAttachments
-      ? `\n\n## 📎 Attachments (${message.attachments?.length})\n\n${message.attachments
-        ?.map(
-          (att) =>
-            `- **${att.fileName}** ${att.downloadable ? '✅ Downloadable' : '❌ Not downloadable'}${att.expiresAt ? ` (Expires: ${att.expiresAt})` : ''}`,
-        )
-        .join('\n')}`
-      : ''
-    }`;
+  // Use detailed timestamp if available, otherwise raw or unknown
+  const displayTimestamp = detailedTimestamp || message.timestamp || 'Unknown';
+
+  const metadata = (
+    <Detail.Metadata>
+      <Detail.Metadata.Label title="Name" text={message.name || 'Unknown'} />
+      <Detail.Metadata.Label title="Email" text={message.email || 'No email'} />
+      <Detail.Metadata.Separator />
+      <Detail.Metadata.Label title="Received" text={displayTimestamp} />
+      {hasAttachments && (
+        <Detail.Metadata.Label
+          title="Attachments"
+          text={message.attachments?.map((attachment) => attachment.fileName).join(', ')}
+        />
+      )}
+    </Detail.Metadata>
+  );
+
+  const markdownContent = `# ${message.subject}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''}`;
 
   return (
     <Detail
       markdown={markdownContent}
+      metadata={metadata}
       isLoading={isLoading}
       actions={
         <ActionPanel>
@@ -85,6 +136,7 @@ function EmailContentDetail({
               title="Reply to Email"
               icon={Icon.Reply}
               onAction={() => onReply(message)}
+              shortcut={{ modifiers: ['cmd'], key: 'return' }}
             />
             <Action title="Back to Inbox" onAction={onBack} icon={Icon.ArrowLeft} />
           </ActionPanel.Section>
@@ -100,6 +152,42 @@ function EmailContentDetail({
                 />
               ))}
             </ActionPanel.Section>
+          )}
+
+          {canShowNotes && athleteId && resolvedMainId && (
+            <ActionPanel.Section title="Athlete Notes">
+              <Action.Push
+                title="View Notes"
+                icon={Icon.Clipboard}
+                target={
+                  <AthleteNotesList
+                    athleteId={athleteId}
+                    athleteMainId={resolvedMainId}
+                    athleteName={message.name}
+                  />
+                }
+              />
+              <Action.Push
+                title="Add Note"
+                icon={Icon.Plus}
+                target={
+                  <AddAthleteNoteForm
+                    athleteId={athleteId}
+                    athleteMainId={resolvedMainId}
+                    athleteName={message.name}
+                    onComplete={pop}
+                  />
+                }
+              />
+            </ActionPanel.Section>
+          )}
+
+          {contactId && (
+            <Action.OpenInBrowser
+              title="Athlete Notes Tab"
+              icon={Icon.Globe}
+              url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${contactId}&notestab=1`}
+            />
           )}
 
           <ActionPanel.Section>
@@ -132,11 +220,7 @@ function ReplyForm({
 
     setIsLoading(true);
     try {
-      await callPythonServer('send_reply', {
-        message_id: message.id,
-        itemcode: message.itemCode || message.id,
-        reply_text: replyText.trim()
-      });
+      await sendInboxReply(message.id, message.itemCode || message.id, replyText.trim());
       await showToast({
         style: Toast.Style.Success,
         title: 'Reply sent',
@@ -161,7 +245,7 @@ function ReplyForm({
         <ActionPanel>
           <ActionPanel.Section>
             <Action.SubmitForm title="Send Reply" onSubmit={handleSubmit} icon={Icon.Check} />
-            <Action title="Cancel" onAction={onBack} icon={Icon.XmarkCircle} />
+            <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -181,6 +265,53 @@ function ReplyForm({
   );
 }
 
+function formatTimestamp(message: NPIDInboxMessage): string {
+  if (message.timeStampDisplay) {
+    return message.timeStampDisplay.replace('|', '•').trim();
+  }
+
+  if (message.timeStampIso) {
+    const parsed = new Date(message.timeStampIso);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toLocaleString('en-US', {
+        month: 'short',
+        day: '2-digit',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      });
+    }
+  }
+
+  if (message.timestamp) {
+    return message.timestamp.replace('|', '•').trim();
+  }
+
+  return 'No date';
+}
+
+/**
+ * Extract athlete_id (contact_id) from message.
+ * athlete_id == contact_id (same value, different field names across endpoints)
+ */
+function resolveAthleteIdentifiers(message: NPIDInboxMessage): {
+  athleteId: string | null;
+  contactId: string | null;
+} {
+  // contact_id and athlete_id are the SAME value (aliases)
+  const athleteId =
+    message.contact_id ||
+    message.player_id ||
+    message.thread_id ||
+    null;
+
+  return {
+    athleteId: athleteId ? String(athleteId) : null,
+    contactId: athleteId ? String(athleteId) : null, // Same value as athleteId
+  };
+}
+
+
 export default function InboxCheck() {
   const [messages, setMessages] = useState<NPIDInboxMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -197,11 +328,12 @@ export default function InboxCheck() {
       // Fetch ONLY assigned threads (filter on API side)
       // This will fetch across multiple pages (up to 100 threads total)
       const threads = await fetchInboxThreads(100, 'assigned');
+      const hydrated = await hydrateThreadTimestamps(threads);
 
-      console.log('🔍 READ INBOX: Total assigned threads from REST API:', threads.length);
-      console.log('🔍 READ INBOX: First thread:', threads[0]);
+      console.log('🔍 READ INBOX: Total assigned threads from REST API:', hydrated.length);
+      console.log('🔍 READ INBOX: First thread:', hydrated[0]);
 
-      setMessages(threads);
+      setMessages(hydrated);
 
       await showToast({
         style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
@@ -230,10 +362,9 @@ export default function InboxCheck() {
         return (
           <List.Item
             key={message.id}
-            title={`${message.name} • ${message.subject}`}
-            subtitle={message.preview || 'No preview available'}
+            title={message.name || 'Unknown Sender'}
             accessories={[
-              { text: message.timestamp || 'No date' },
+              { text: formatTimestamp(message) },
               { icon: Icon.CheckCircle, tooltip: 'Assigned' },
               ...(hasAttachments
                 ? [
@@ -244,6 +375,7 @@ export default function InboxCheck() {
                 ]
                 : []),
             ]}
+            keywords={[message.subject, message.preview, message.email, message.name]}
             actions={
               <ActionPanel>
                 <ActionPanel.Section>

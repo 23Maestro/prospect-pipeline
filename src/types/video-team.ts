@@ -26,7 +26,7 @@ export interface NPIDInboxMessage {
   itemCode: string;
   thread_id: string;
   player_id: string;
-  contactid: string;
+  contact_id?: string; // athlete_id alias
   name: string;
   email: string;
   subject: string;
@@ -48,6 +48,14 @@ export interface NPIDInboxMessage {
     search: string;
     notes: string;
   };
+}
+
+export interface AthleteNote {
+  title: string;
+  description: string;
+  metadata?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
 }
 
 export interface VideoTeamAttachment {
@@ -136,20 +144,6 @@ export interface VideoTeamAssignmentModal {
 }
 
 /**
- * Represents the structure for the video progress page/Asana project.
- */
-export interface NPIDVideoProgress {
-  id: string; // Asana Task GID
-  player_id: string;
-  player_name: string;
-  task_name: string;
-  stage: TaskStage;
-  status: TaskStatus;
-  due_date?: string;
-  assigned_to?: string;
-}
-
-/**
  * Represents the data required for an assignment action.
  * This is used by the assignment modal.
  */
@@ -162,4 +156,21 @@ export interface VideoTeamAssignment {
   status: TaskStatus;
   dueDate?: string;
   searchFor: VideoTeamSearchCategory;
+}
+
+/**
+ * Payload for assigning video team message via API.
+ */
+export interface AssignVideoTeamPayload {
+  messageId: string;
+  ownerId: string;
+  contact_id?: string;
+  contactId?: string;
+  athleteMainId?: string;
+  stage?: string;
+  status?: string;
+  contactFor?: string;
+  searchFor?: string;
+  contact?: string;
+  formToken?: string;
 }
