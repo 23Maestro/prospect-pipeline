@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional, Tuple, List
 from bs4 import BeautifulSoup
 import html2text
 from email_reply_parser import EmailReplyParser
+import html
 from html import escape
 from app.models.schemas import (
     VideoSubmitRequest,
@@ -74,38 +75,32 @@ class LegacyTranslator:
         """
         Convert VideoSubmitRequest to legacy form data.
 
-        Mirrors: src/python/npid_api_client.py:859-873
-
-        Returns:
-            Tuple of (endpoint_path, form_data)
+        Mirrors verified curl command (Step 4):
+        POST /athlete/update/careervideos/PLAYER_ID
+        Body: _token=...&url_source=youtube&newVideoLink=...&videoType=...&newVideoSeason=...&approve_video=1&approve_video_checkbox=on&athlete_main_id=...
         """
         endpoint = f"/athlete/update/careervideos/{request.athlete_id}"
 
-        # Extract season value from full season string (e.g., "18249" from "highschool:18249")
-        # The season comes from the /API/scout-api/video-seasons-by-video-type response
-        season_value = ""
-        if request.season and ":" in request.season:
-            # Parse season ID from value like "highschool:18249"
-            # Format: {level}:{id} where level = highschool/middleschool/camp
+        # Extract season value (e.g., "18249" from "highschool:18249")
+        season_value = request.season
+        if ":" in request.season:
             season_value = request.season.split(":")[-1]
 
         form_data = {
-            # CRITICAL: Match exact field names from live capture
-            "athleteviewtoken": "",  # Always empty per verified behavior
-            "schoolinfo[add_video_season]": season_value,  # The ACTUAL season field (receives dropdown value)
-            "sport_alias": request.sport,  # Required - which sport this video is for
-            "url_source": request.source.value,  # 'youtube' or 'hudl'
-            "newVideoLink": request.video_url,  # NOT 'youtubeLink'
-            "videoType": request.video_type.value,  # Full Season Highlight, etc.
-            "newVideoSeason": "",  # Always EMPTY (Laravel quirk: dropdown value goes to schoolinfo instead)
-            "athlete_main_id": request.athlete_main_id,  # REQUIRED - from profile page
+            "athlete_id": request.athlete_id,  # REQUIRED per verified user workflow
+            "url_source": request.source.value,
+            "newVideoLink": request.video_url,
+            "videoType": request.video_type.value,
+            "newVideoSeason": season_value,
+            "athlete_main_id": request.athlete_main_id,
+            "sport_alias": request.sport,  # REQUIRED per verified user workflow
         }
 
-        # The checkbox requires BOTH fields (legacy AngularJS nonsense)
-        if request.auto_approve:
-            form_data["approve_video"] = "1"
-            form_data["approve_video_checkbox"] = "1"
-            # Note: approve_video_checkbox NOT included per live capture
+        # Dual approval fields required ALWAYS:
+        # 1. approve_video = "1"
+        # 2. approve_video_checkbox = "on"
+        form_data["approve_video"] = "1"
+        form_data["approve_video_checkbox"] = "on"
 
         return endpoint, form_data
     
@@ -208,7 +203,26 @@ class LegacyTranslator:
             form_data.update(filters)
 
         return endpoint, form_data
-    
+
+    @staticmethod
+    def video_attachments_to_legacy() -> Tuple[str, Dict[str, Any]]:
+        """
+        Fetch all video mail attachments.
+        Mirrors: src/python/npid_api_client.py:1088-1129
+
+        Returns:
+            Tuple of (endpoint_path, form_data)
+
+        Note: This endpoint only requires _token (no other parameters).
+        Content-Type is application/json but body is form-encoded (_token only).
+        """
+        endpoint = "/videoteammsg/videomailattachments"
+
+        # Only _token required (auto-injected by session.post)
+        form_data = {}
+
+        return endpoint, form_data
+
     @staticmethod
     def seasons_request_to_legacy(
         athlete_id: str,
@@ -218,9 +232,6 @@ class LegacyTranslator:
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Build seasons fetch request.
-
-        CRITICAL: This is the ONLY endpoint that requires api_key.
-        All other video endpoints (status, stage, duedate, progress) use ONLY _token.
         """
         endpoint = "/API/scout-api/video-seasons-by-video-type"
 
@@ -317,7 +328,7 @@ class LegacyTranslator:
                 if value:  # Skip empty placeholder option
                     seasons.append({
                         "value": value,
-                        "label": label.strip(),
+                        "label": html.unescape(label.strip()),
                         "season": "",  # Not available in HTML response
                         "school_added": ""
                     })
@@ -397,6 +408,30 @@ class LegacyTranslator:
             return {"success": False, "tasks": [], "error": "Unexpected format"}
         except json.JSONDecodeError:
             return {"success": False, "tasks": [], "error": "Invalid JSON"}
+
+    @staticmethod
+    def parse_video_attachments_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse video mail attachments response.
+        Mirrors: src/python/npid_api_client.py:1120-1129
+
+        Returns list of attachments with:
+        - athlete_id (contact_id alias)
+        - athletename
+        - attachment (filename)
+        - created_date
+        - expiry_date
+        - fileType
+        - message_id (video_msg_id alias)
+        """
+        try:
+            data = json.loads(raw_response)
+            if isinstance(data, list):
+                return {"success": True, "attachments": data, "count": len(data)}
+            return {"success": False, "attachments": [], "count": 0, "error": "Unexpected format"}
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse video attachments response: {e}")
+            return {"success": False, "attachments": [], "count": 0, "error": "Invalid JSON"}
 
     @staticmethod
     def extract_athlete_main_id(html: str) -> Optional[str]:
@@ -668,20 +703,42 @@ class LegacyTranslator:
         """
         Parse message detail from JSON response.
         Uses html2text and email_reply_parser for clean extraction.
+
+        CRITICAL: Extract attachments BEFORE html2text (ignore_links=True strips URLs).
         """
         try:
             data = json.loads(response_text.strip())
             raw_content = data.get('message_plain', '') or data.get('message', '')
             raw_message_html = data.get('message', '') or data.get('body_html', '')
-            
-            # Parse and clean the email content
+
+            # EXTRACT ATTACHMENTS BEFORE CLEANING (preserve download URLs)
+            attachments = []
+            if raw_message_html:
+                soup = BeautifulSoup(raw_message_html, 'html.parser')
+
+                # Look for attachment links (common patterns in NPID emails)
+                attachment_links = soup.select('a[href*="download"], a[href*="attachment"], a[href*=".mp4"], a[href*=".mov"]')
+                for link in attachment_links:
+                    href = link.get('href', '')
+                    text = link.get_text(strip=True)
+                    if href and ('download' in href.lower() or any(ext in href.lower() for ext in ['.mp4', '.mov', '.avi', '.pdf', '.zip'])):
+                        # Extract filename from link text or URL
+                        filename = text if text and not text.lower().startswith(('click', 'download', 'here')) else href.split('/')[-1]
+                        attachments.append({
+                            "fileName": filename,
+                            "url": href if href.startswith('http') else f"https://dashboard.nationalpid.com{href}",
+                            "downloadable": True,
+                            "expiresAt": None
+                        })
+
+            # Parse and clean the email content (strips links via ignore_links=True)
             content = LegacyTranslator._parse_email_content(raw_content, strip_template=True)
-            
+
             # Clean subject
             raw_subject = data.get('subject', '') or data.get('message_subject', '')
             subject = re.sub(r'^(Re:\s*|RE:\s*|Fwd:\s*|FWD:\s*)+', '', raw_subject).strip()
-            
-            # Title case the name  
+
+            # Title case the name
             raw_name = data.get('from_name', '')
             from_name = raw_name.title() if raw_name else ''
 
@@ -696,10 +753,11 @@ class LegacyTranslator:
                 "timestamp_wrote": data.get('time_stamp_wrote', ''),
                 "raw_message_html": raw_message_html,
                 "raw_subject": raw_subject,
+                "attachments": attachments,  # ✅ Attachments preserved with URLs
             }
         except Exception as e:
             logger.warning(f"Failed to parse message detail: {e}")
-            return {"message_id": message_id, "item_code": item_code, "content": ""}
+            return {"message_id": message_id, "item_code": item_code, "content": "", "attachments": []}
 
     @staticmethod
     def assignment_modal_to_legacy(message_id: str, item_code: str) -> Tuple[str, Dict[str, Any]]:
