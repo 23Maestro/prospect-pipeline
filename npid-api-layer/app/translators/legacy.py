@@ -81,13 +81,13 @@ class LegacyTranslator:
         """
         endpoint = f"/athlete/update/careervideos/{request.athlete_id}"
 
-        # Extract season value (e.g., "18249" from "highschool:18249")
+        # Preserve whatever caller sends (e.g., "highschool:18249" or plain numeric)
         season_value = request.season
-        if ":" in request.season:
-            season_value = request.season.split(":")[-1]
 
         form_data = {
             "athlete_id": request.athlete_id,  # REQUIRED per verified user workflow
+            "athleteviewtoken": "",
+            "schoolinfo[add_video_season]": request.season_type or "",
             "url_source": request.source.value,
             "newVideoLink": request.video_url,
             "videoType": request.video_type.value,
@@ -128,6 +128,19 @@ class LegacyTranslator:
             "video_progress_stage": stage_value
         }
 
+        return endpoint, form_data
+
+    @staticmethod
+    def remove_video_to_legacy(athlete_id: str, athlete_main_id: str, video_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert remove video request to legacy form data.
+        POST /athlete/update/remove_video/{athlete_id}
+        """
+        endpoint = f"/athlete/update/remove_video/{athlete_id}"
+        form_data = {
+            "id": video_id,
+            "athlete_main_id": athlete_main_id
+        }
         return endpoint, form_data
 
     @staticmethod
@@ -259,7 +272,7 @@ class LegacyTranslator:
         """
         try:
             outer = json.loads(raw_response)
-            
+
             # Check for nested response string
             if "data" in outer and "response" in outer["data"]:
                 inner_str = outer["data"]["response"].strip()
@@ -278,16 +291,31 @@ class LegacyTranslator:
                         "message": inner_str,
                         "raw": outer
                     }
-            
+
             # Direct response
             return {
                 "success": outer.get("success") == "true" or outer.get("success") is True,
                 "message": outer.get("message", ""),
                 "raw": outer
             }
-            
+
         except json.JSONDecodeError:
-            # Not JSON at all - probably HTML error page
+            # Not JSON at all - Laravel often appends HTML/errors.
+            # Try to salvage embedded JSON substring like {"success":"true",...}
+            try:
+                start = raw_response.find('{')
+                end = raw_response.rfind('}') + 1
+                if start != -1 and end > start:
+                    snippet = raw_response[start:end]
+                    inner = json.loads(snippet)
+                    return {
+                        "success": inner.get("success") == "true" or inner.get("success") is True,
+                        "message": inner.get("message", ""),
+                        "raw": raw_response[:500]
+                    }
+            except Exception:
+                pass
+
             return {
                 "success": False,
                 "message": "Invalid response from server",
@@ -463,7 +491,7 @@ class LegacyTranslator:
     def parse_email_templates(html_response: str) -> List[Dict[str, str]]:
         """
         Parse email template dropdown from HTML.
-        GET /rulestemplates/template/sendingtodetails?id={athlete_id}
+        GET /rulestemplates/template/videotemplates?id={athlete_id}
         """
         soup = BeautifulSoup(html_response, 'html.parser')
         templates = []
@@ -489,6 +517,51 @@ class LegacyTranslator:
         return endpoint, form_data
 
     @staticmethod
+    def parse_email_recipients(html_response: str) -> Dict[str, Any]:
+        """
+        Parse recipients (athlete/parents/other) from sendingtodetails HTML.
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        athlete = {"id": None, "email": None, "checked": False}
+        parents = []
+        other_email = None
+
+        # Athlete checkbox
+        athlete_input = soup.find('input', {'name': 'notification_to_athlete'})
+        if athlete_input:
+            athlete["checked"] = athlete_input.has_attr('checked')
+            # Extract email from label text
+            label_text = athlete_input.next_sibling
+            if label_text and isinstance(label_text, str):
+                text = label_text.strip()
+                if '(' in text and ')' in text:
+                    athlete["email"] = text.split('(')[-1].split(')')[0]
+
+        # Parents
+        for inp in soup.find_all('input', {'name': 'notification_to_parent[]'}):
+            pid = inp.get('value')
+            checked = inp.has_attr('checked')
+            label_text = inp.next_sibling
+            email = None
+            if label_text and isinstance(label_text, str):
+                txt = label_text.strip()
+                if '(' in txt and ')' in txt:
+                    email = txt.split('(')[-1].split(')')[0]
+            if pid:
+                parents.append({"id": pid, "email": email, "checked": checked})
+
+        # Other
+        other_inp = soup.find('input', {'name': 'notification_to_other'})
+        if other_inp and other_inp.get('value'):
+            other_email = other_inp.get('value').strip()
+
+        return {
+            "athlete": athlete,
+            "parents": parents,
+            "other_email": other_email
+        }
+
+    @staticmethod
     def send_email_to_legacy(request: SendEmailRequest) -> Tuple[str, Dict[str, Any]]:
         """
         Convert send email request to legacy multipart form data.
@@ -508,6 +581,18 @@ class LegacyTranslator:
             "indvtemplate": request.template_id,
             "_wysihtml5_mode": "1",
         }
+
+        if request.include_athlete:
+            form_data["notification_to_athlete"] = "Athlete"
+
+        if request.parent_ids:
+            for pid in request.parent_ids:
+                form_data.setdefault("notification_to_parent[]", [])
+                form_data["notification_to_parent[]"].append(pid)
+
+        if request.other_email:
+            form_data["mail_to_other"] = "Other"
+            form_data["notification_to_other"] = request.other_email
 
         return endpoint, form_data
 

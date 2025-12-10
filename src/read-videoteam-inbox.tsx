@@ -16,10 +16,12 @@ import {
   fetchMessageDetail,
   sendEmailToAthlete,
   sendInboxReply,
+  bulkResolveAthleteMainIds,
 } from './lib/npid-mcp-adapter';
 import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { ensureAthleteIds } from './lib/athlete-id-resolver';
+import { cacheAthleteMainId } from './lib/video-progress-cache';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -36,6 +38,7 @@ function EmailContentDetail({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailedTimestamp, setDetailedTimestamp] = useState<string>('');
+  const [detailAttachments, setDetailAttachments] = useState<Array<{ fileName: string; url: string; downloadable: boolean }>>([]);
   const { athleteId, contactId } = resolveAthleteIdentifiers(message);
   const [canShowNotes, setCanShowNotes] = useState(false);
   const [resolvedMainId, setResolvedMainId] = useState<string | null>(null);
@@ -52,6 +55,9 @@ function EmailContentDetail({
           setFullContent(details.content);
           if (details.timestamp) {
             setDetailedTimestamp(details.timestamp);
+          }
+          if (details.attachments && details.attachments.length > 0) {
+            setDetailAttachments(details.attachments);
           }
         } else {
           // Fallback to preview if no content returned
@@ -96,10 +102,6 @@ function EmailContentDetail({
     resolveIds();
   }, [athleteId, message.athleteMainId]);
 
-  const hasAttachments = message.attachments && message.attachments.length > 0;
-  const downloadableAttachments =
-    message.attachments?.filter((att) => att.downloadable && att.url) || [];
-
   const contentToDisplay = isLoading
     ? 'Loading full message...'
     : fullContent || message.preview || 'No content available';
@@ -113,11 +115,19 @@ function EmailContentDetail({
       <Detail.Metadata.Label title="Email" text={message.email || 'No email'} />
       <Detail.Metadata.Separator />
       <Detail.Metadata.Label title="Received" text={displayTimestamp} />
-      {hasAttachments && (
-        <Detail.Metadata.Label
-          title="Attachments"
-          text={message.attachments?.map((attachment) => attachment.fileName).join(', ')}
-        />
+      {detailAttachments.length > 0 && (
+        <>
+          <Detail.Metadata.Separator />
+          <Detail.Metadata.Label title="Attachments" text={`${detailAttachments.length} file(s)`} />
+          {detailAttachments.map((att, idx) => (
+            <Detail.Metadata.Link
+              key={idx}
+              title={` `}
+              text={att.fileName}
+              target={att.url}
+            />
+          ))}
+        </>
       )}
     </Detail.Metadata>
   );
@@ -140,19 +150,6 @@ function EmailContentDetail({
             />
             <Action title="Back to Inbox" onAction={onBack} icon={Icon.ArrowLeft} />
           </ActionPanel.Section>
-
-          {downloadableAttachments.length > 0 && (
-            <ActionPanel.Section title="📎 Downloadable Attachments">
-              {downloadableAttachments.map((attachment) => (
-                <Action.OpenInBrowser
-                  key={attachment.url}
-                  title={`Download ${attachment.fileName}`}
-                  url={attachment.url!}
-                  icon={Icon.Download}
-                />
-              ))}
-            </ActionPanel.Section>
-          )}
 
           {canShowNotes && athleteId && resolvedMainId && (
             <ActionPanel.Section title="Athlete Notes">
@@ -303,6 +300,7 @@ function resolveAthleteIdentifiers(message: NPIDInboxMessage): {
     message.contact_id ||
     message.player_id ||
     message.thread_id ||
+    (message as any).contactId ||
     null;
 
   return {
@@ -331,9 +329,20 @@ export default function InboxCheck() {
       const hydrated = await hydrateThreadTimestamps(threads);
 
       console.log('🔍 READ INBOX: Total assigned threads from REST API:', hydrated.length);
-      console.log('🔍 READ INBOX: First thread:', hydrated[0]);
 
-      setMessages(hydrated);
+      // Proactively resolve athlete_main_ids for all threads
+      // This ensures "Athlete Notes" and other features work immediately
+      const resolvedMap = await bulkResolveAthleteMainIds(hydrated);
+
+      // Merge resolved IDs into messages
+      const mergedMessages = hydrated.map(msg => ({
+        ...msg,
+        athleteMainId: msg.athleteMainId || resolvedMap.get(
+          msg.contact_id || msg.player_id || msg.thread_id || (msg as any).contactId || ''
+        ) || null
+      }));
+
+      setMessages(mergedMessages);
 
       await showToast({
         style: threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure,

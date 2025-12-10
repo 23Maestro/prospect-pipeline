@@ -1085,6 +1085,49 @@ class NPIDAPIClient:
             logging.error(f"Error parsing video progress response: {e}")
             return []
 
+    def get_video_attachments(self) -> List[Dict[str, Any]]:
+        """
+        Fetch all video mail attachments.
+        Endpoint: POST /videoteammsg/videomailattachments
+
+        Returns list of attachments with:
+        - athlete_id (contact_id alias)
+        - athletename
+        - attachment (filename)
+        - created_date
+        - expiry_date
+        - fileType
+        - message_id (video_msg_id alias)
+        """
+        self.ensure_authenticated()
+
+        form_data = {
+            "_token": self.csrf_token or self._get_csrf_token()
+        }
+
+        headers = {
+            "Accept": "application/json, text/plain, */*",
+            "Content-Type": "application/json;charset=UTF-8"
+        }
+
+        resp = self._retry_with_csrf(
+            method='POST',
+            url=f"{self.base_url}/videoteammsg/videomailattachments",
+            data=form_data,
+            headers=headers
+        )
+
+        try:
+            if resp.status_code == 200:
+                data = resp.json()
+                logging.info(f"✅ Fetched {len(data) if isinstance(data, list) else 0} video attachments")
+                return data if isinstance(data, list) else []
+            logging.error(f"Failed to fetch video attachments: {resp.status_code}")
+            return []
+        except Exception as e:
+            logging.error(f"Error parsing video attachments response: {e}")
+            return []
+
     def get_video_progress_page(self, athlete_name: str) -> str:
         """Gets the HTML content of the video progress page for a given athlete."""
         self.ensure_authenticated()

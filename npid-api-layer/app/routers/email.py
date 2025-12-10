@@ -28,8 +28,8 @@ def get_session(request: Request) -> NPIDSession:
 async def get_email_templates(request: Request, athlete_id: str):
     """
     Get email templates for athlete.
-    GET /rulestemplates/template/sendingtodetails?id={athlete_id}
-    Returns HTML with <option> elements - parsed to JSON.
+    GET /rulestemplates/template/videotemplates?id={athlete_id}
+    Returns HTML <option> list of templates.
     """
     session = get_session(request)
     translator = LegacyTranslator()
@@ -37,10 +37,14 @@ async def get_email_templates(request: Request, athlete_id: str):
     logger.info(f"📧 Fetching email templates for athlete {athlete_id}")
 
     try:
-        response = await session.get(f"/rulestemplates/template/sendingtodetails?id={athlete_id}")
+        response = await session.get(f"/rulestemplates/template/videotemplates?id={athlete_id}")
         templates = translator.parse_email_templates(response.text)
 
-        logger.info(f"✅ Found {len(templates)} email templates")
+        if len(templates) == 0:
+            snippet = response.text[:500].replace("\n", " ")
+            logger.warning(f"⚠️ No email templates found for athlete {athlete_id} (status {response.status_code}). Snippet: {snippet}")
+        else:
+            logger.info(f"✅ Found {len(templates)} email templates")
         return {"success": True, "templates": templates}
     except Exception as e:
         logger.error(f"❌ Failed to fetch templates: {e}")
@@ -83,7 +87,7 @@ async def get_template_data(request: Request, payload: EmailTemplateDataRequest)
 @router.post("/send", response_model=SendEmailResponse)
 async def send_email(request: Request, payload: SendEmailRequest):
     """
-    Send email to athlete.
+    Send email to athlete (and optionally parents/other).
     POST /admin/addnotification
     Uses multipart/form-data matching user's verified curl command.
     """
@@ -107,4 +111,28 @@ async def send_email(request: Request, payload: SendEmailRequest):
             return SendEmailResponse(success=False, message="Failed to send email")
     except Exception as e:
         logger.error(f"❌ Failed to send email: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/recipients/{athlete_id}")
+async def get_email_recipients(request: Request, athlete_id: str):
+    """
+    Get available recipients (athlete, parents, other) from sendingtodetails.
+    GET /rulestemplates/template/sendingtodetails?id={athlete_id}
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(f"📧 Fetching email recipients for athlete {athlete_id}")
+
+    try:
+        response = await session.get(f"/rulestemplates/template/sendingtodetails?id={athlete_id}")
+        if response.status_code != 200:
+            raise HTTPException(status_code=response.status_code, detail="Failed to load recipients")
+        parsed = translator.parse_email_recipients(response.text)
+        return {"success": True, "recipients": parsed}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch recipients: {e}")
         raise HTTPException(status_code=500, detail=str(e))

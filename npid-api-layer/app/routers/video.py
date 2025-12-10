@@ -19,6 +19,7 @@ from app.models.schemas import (
     DueDateUpdateResponse,
     VideoProgressFilters,
     VideoProgressResponse,
+    VideoAttachmentsResponse,
     SeasonsResponse,
     Season,
     APIError
@@ -26,6 +27,7 @@ from app.models.schemas import (
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 from pydantic import BaseModel
+from fastapi import Query
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["video"])
@@ -44,6 +46,12 @@ class SeasonsProxyRequest(BaseModel):
     sport_alias: str
 
 
+class RemoveVideoRequest(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+    video_id: str
+
+
 @router.post("/seasons")
 async def proxy_seasons(request: Request, payload: SeasonsProxyRequest):
     """
@@ -59,8 +67,7 @@ async def proxy_seasons(request: Request, payload: SeasonsProxyRequest):
         payload.athlete_id,
         payload.sport_alias,
         payload.video_type,
-        payload.athlete_main_id,
-        api_key=session.api_key  # ONLY seasons endpoint needs api_key
+        payload.athlete_main_id
     )
 
     logger.info(f"📤 Fetching seasons for athlete {payload.athlete_id}")
@@ -220,8 +227,7 @@ async def get_seasons(
         )
 
     endpoint, form_data = translator.seasons_request_to_legacy(
-        athlete_id, sport, video_type, athlete_main_id,
-        api_key=session.api_key  # ONLY seasons endpoint needs api_key
+        athlete_id, sport, video_type, athlete_main_id
     )
     
     logger.info(f"📤 Fetching seasons for athlete {athlete_id}")
@@ -404,4 +410,99 @@ async def get_video_progress(
         raise
     except Exception as e:
         logger.error(f"❌ Video progress fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/attachments", response_model=VideoAttachmentsResponse)
+async def get_video_attachments(request: Request):
+    """
+    Fetch all video mail attachments from athletes.
+    Returns list of downloadable video files with metadata.
+    Mirrors: src/python/npid_api_client.py:1088-1129
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    endpoint, form_data = translator.video_attachments_to_legacy()
+
+    logger.info("📤 Fetching video mail attachments")
+
+    try:
+        response = await session.post(endpoint, data=form_data)
+        result = translator.parse_video_attachments_response(response.text)
+
+        if result["success"]:
+            attachments = result["attachments"]
+            logger.info(f"✅ Found {len(attachments)} video attachments")
+            return VideoAttachmentsResponse(
+                status="ok",
+                count=len(attachments),
+                attachments=attachments
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=result.get("error", "Failed to fetch video attachments")
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Video attachments fetch error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sortable")
+async def get_video_sortable(
+    request: Request,
+    athlete_id: str = Query(..., alias="athlete_id"),
+    athlete_main_id: str = Query(..., alias="athlete_main_id"),
+    sport_alias: str = Query(..., alias="sport_alias")
+):
+    """
+    Fetch sortable videos HTML for an athlete.
+    Mirrors: GET /template/template/videosortable?athleteid=...&sport_alias=...&athlete_main_id=...
+    """
+    session = get_session(request)
+    try:
+        response = await session.get(
+            "/template/template/videosortable",
+            params={
+                "athleteid": athlete_id,
+                "sport_alias": sport_alias,
+                "athlete_main_id": athlete_main_id
+            }
+        )
+        logger.info(f"📤 Fetched videosortable for athlete {athlete_id} (len={len(response.text)})")
+        return {"success": True, "html": response.text}
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch videosortable: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/remove")
+async def remove_video(request: Request, payload: RemoveVideoRequest):
+    """
+    Remove a video by video_id for an athlete.
+    POST /athlete/update/remove_video/{athlete_id}
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    endpoint, form_data = translator.remove_video_to_legacy(
+        payload.athlete_id,
+        payload.athlete_main_id,
+        payload.video_id
+    )
+
+    logger.info(f"🗑️ Removing video {payload.video_id} for athlete {payload.athlete_id}")
+
+    try:
+        response = await session.post(endpoint, data=form_data)
+        if response.status_code == 200:
+            return {"success": True}
+        raise HTTPException(status_code=response.status_code, detail="Failed to remove video")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Remove video error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

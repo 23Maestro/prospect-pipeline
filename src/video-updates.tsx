@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
+import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, useNavigation } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/python-server-client';
 import * as cheerio from 'cheerio';
@@ -105,6 +105,41 @@ function parseSortableHtml(html: string): string[] {
   }
 }
 
+function parseSortableHtmlDetailed(html: string): { id: string; title: string }[] {
+  if (!html) return [];
+  try {
+    const $ = cheerio.load(html);
+    const items: { id: string; title: string }[] = [];
+    $('.video-item, li, .highlight-video').each((_, el) => {
+      const id = $(el).attr('data-id') || $(el).attr('id') || '';
+      const title = $(el).text().trim();
+      if (id && title) {
+        items.push({ id, title });
+      }
+    });
+    // Fallback: try regex if no data-id found
+    if (items.length === 0) {
+      const regex = /data-id\s*=\s*"(\d+)"[^>]*>([^<]+)/gi;
+      let match;
+      while ((match = regex.exec(html)) !== null) {
+        const id = match[1];
+        const title = match[2].trim();
+        if (id && title) {
+          items.push({ id, title });
+        }
+      }
+    }
+    return items;
+  } catch (error) {
+    log('⚠️ Failed to parse sortable HTML (detailed)', error);
+    return [];
+  }
+}
+
+// Background automation toggles (keep false unless you want auto email + stage update after upload)
+const AUTO_POST_UPLOAD_ACTIONS = true;
+const DEFAULT_TEMPLATE_ID = '172'; // Editing Done: Video Editing Complete
+
 interface NPIDPlayer {
   primaryPosition: string;
   secondaryPosition: string;
@@ -145,8 +180,9 @@ export default function VideoUpdatesCommand(
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
   const [resolvedAthleteId, setResolvedAthleteId] = useState<string | null>(null);
   const [isFetchingMainId, setIsFetchingMainId] = useState(false);
-  const [seasons, setSeasons] = useState<{ value: string, title: string }[]>([]);
+  const [seasons, setSeasons] = useState<{ value: string, title: string, season: string }[]>([]);
   const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
+  const { push, pop } = useNavigation();
 
   const { handleSubmit, itemProps, reset, focus, values, setValue } = useForm<VideoUpdateFormValues>({
     async onSubmit(formValues) {
@@ -156,20 +192,20 @@ export default function VideoUpdatesCommand(
       });
 
       try {
-        let playerId = resolvedAthleteId || '';
+        let athleteId = resolvedAthleteId || '';
         let athleteName = formValues.athleteName;
         const sportAlias = selectedPlayer?.sport || '';
         const athleteMainId = selectedPlayer?.athlete_main_id || fetchedAthleteMainId || '';
         const videoMsgId = selectedPlayer?.id ? selectedPlayer.id.toString() : '';
 
         if (selectedPlayer) {
-          playerId = resolvedAthleteId || selectedPlayer.player_id;
+          athleteId = resolvedAthleteId || selectedPlayer.player_id;
           athleteName = selectedPlayer.name;
         }
 
-        if (!playerId) {
+        if (!athleteId) {
           toast.style = Toast.Style.Failure;
-          toast.title = 'Player ID Required';
+          toast.title = 'Athlete ID Required';
           toast.message = 'Please search for a player.';
           return;
         }
@@ -181,36 +217,40 @@ export default function VideoUpdatesCommand(
           return;
         }
 
+        if (!sportAlias) {
+          toast.style = Toast.Style.Failure;
+          toast.title = 'Missing sport alias';
+          toast.message = 'Please re-select the athlete to capture their sport.';
+          return;
+        }
+
         await toast.show();
         toast.title = 'Updating NPID Profile...';
-        toast.message = `Updating video for ${athleteName} (ID: ${playerId})`;
+        toast.message = `Updating video for ${athleteName} (ID: ${athleteId})`;
 
         try {
+          const selectedSeason = seasons.find((s) => s.value === formValues.season);
+
           log('🎬 Submitting video:', {
-            playerId,
+            athleteId,
             youtubeLink: formValues.youtubeLink,
             season: formValues.season,
+            seasonType: selectedSeason?.season,
             videoType: formValues.videoType,
             sportAlias,
             athleteMainId,
           });
 
-          const videoTypeMap: Record<string, string> = {
-            'Full Season Highlight': 'FULL_SEASON_HIGHLIGHT',
-            'Partial Season Highlight': 'PARTIAL_SEASON_HIGHLIGHT',
-            'Single Game Highlight': 'SINGLE_GAME_HIGHLIGHT',
-            'Skills/Training Video': 'SKILLS_TRAINING_VIDEO'
-          };
-
           const response = await apiFetch('/video/submit', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              athlete_id: playerId,
+              athlete_id: athleteId,
               athlete_main_id: athleteMainId,
               video_url: formValues.youtubeLink,
-              video_type: videoTypeMap[formValues.videoType] || 'FULL_SEASON_HIGHLIGHT',
+              video_type: formValues.videoType,
               season: formValues.season,
+              season_type: selectedSeason?.season || '',
               source: 'youtube',
               auto_approve: true,
               sport: sportAlias,
@@ -219,6 +259,7 @@ export default function VideoUpdatesCommand(
 
           if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: `HTTP ${response.status}` })) as any;
+            log('⚠️ video submit failed', { status: response.status, error });
             throw new Error(error.detail || error.message || 'Unknown error');
           }
           const result = await response.json() as any;
@@ -232,59 +273,14 @@ export default function VideoUpdatesCommand(
               ? `Latest video: ${updatedVideos[0]}`
               : 'Highlight added successfully';
 
-            // Temporarily disable downstream actions until update_video_profile is clean
-            // try {
-            //   log('📧 Sending email to:', athleteName);
-            //   toast.message = `Sending "Editing Done" email...`;
-            //   const emailResult = await callPythonServer('send_email_to_athlete', {
-            //     athlete_name: athleteName,
-            //     template_name: 'Editing Done'
-            //   }) as any;
-            //
-            //   if (emailResult.status === 'ok' && emailResult.data?.success) {
-            //     toast.message = `Email sent! Updating stage to Done...`;
-            //
-            //     try {
-            //       log('🏁 Updating stage to done for:', videoMsgId || playerId);
-            //       if (videoMsgId) {
-            //         const stageResult = await callPythonServer('update_video_stage', {
-            //           video_msg_id: videoMsgId,
-            //           stage: 'done',
-            //           api_key: apiKey
-            //         }) as any;
-            //         log('📥 update_video_stage response:', stageResult);
-            //
-            //         if (stageResult.success) {
-            //           toast.style = Toast.Style.Success;
-            //           toast.title = 'All Steps Complete!';
-            //           toast.message = `✅ Video uploaded\n✅ Email sent\n✅ Status updated to Done`;
-            //         } else {
-            //           toast.style = Toast.Style.Success;
-            //           toast.title = 'Video & Email Complete';
-            //           toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
-            //         }
-            //       } else {
-            //         toast.style = Toast.Style.Success;
-            //         toast.title = 'Video & Email Complete';
-            //         toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Missing video message ID for stage update`;
-            //       }
-            //     } catch (stageError) {
-            //       console.error('Stage update error:', stageError);
-            //       toast.style = Toast.Style.Success;
-            //       toast.title = 'Video & Email Complete';
-            //       toast.message = `✅ Video uploaded\n✅ Email sent\n⚠️ Status update failed`;
-            //     }
-            //   } else {
-            //     toast.style = Toast.Style.Success;
-            //     toast.title = 'Video Uploaded';
-            //     toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
-            //   }
-            // } catch (emailError) {
-            //   console.error('Email send error:', emailError);
-            //   toast.style = Toast.Style.Success;
-            //   toast.title = 'Video Uploaded';
-            //   toast.message = `✅ Video uploaded\n⚠️ Email send failed`;
-            // }
+            if (AUTO_POST_UPLOAD_ACTIONS) {
+              void runPostUploadActions({
+                athleteId,
+                athleteMainId,
+                athleteName,
+                videoMsgId,
+              });
+            }
 
             reset();
             setSelectedPlayer(null);
@@ -518,19 +514,75 @@ export default function VideoUpdatesCommand(
       .map((s: any) => {
         const value = s?.season_id ?? s?.seasonId ?? s?.value;
         const title = s?.label ?? s?.title ?? '';
+        const season = s?.season ?? '';
         if (!value || !title) return null;
         return {
           value: String(value),
           title: String(title),
+          season: String(season),
         };
       })
-      .filter((s) => s) as { value: string; title: string }[];
+      .filter((s) => s) as { value: string; title: string; season: string }[];
 
     setSeasons(normalized);
     if (normalized.length > 0) {
       setValue('season', normalized[0].value);
     } else {
       setValue('season', '');
+    }
+  };
+
+  const fetchSortableVideos = async () => {
+    if (!selectedPlayer) throw new Error('No athlete selected');
+    const athleteId = resolvedAthleteId || selectedPlayer.player_id;
+    const athleteMainId = selectedPlayer.athlete_main_id || fetchedAthleteMainId;
+    const sportAlias = selectedPlayer.sport;
+    if (!athleteId || !athleteMainId || !sportAlias) {
+      throw new Error('Missing athlete info for sortable fetch');
+    }
+    const resp = await apiFetch(`/video/sortable?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&sport_alias=${encodeURIComponent(sportAlias)}`);
+    if (!resp.ok) {
+      const txt = await resp.text();
+      throw new Error(`Failed to load videosortable: HTTP ${resp.status} ${txt}`);
+    }
+    const data = await resp.json().catch(() => ({})) as any;
+    const html = data?.html || '';
+    return parseSortableHtmlDetailed(html);
+  };
+
+  const handleDeleteLatest = async () => {
+    const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting latest video...' });
+    try {
+      const list = await fetchSortableVideos();
+      if (list.length === 0) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'No videos found';
+        toast.message = 'Sortable list is empty';
+        return;
+      }
+      const latest = list[0];
+      const athleteId = resolvedAthleteId || selectedPlayer?.player_id || '';
+      const athleteMainId = selectedPlayer?.athlete_main_id || fetchedAthleteMainId || '';
+      const resp = await apiFetch('/video/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          athlete_id: athleteId,
+          athlete_main_id: athleteMainId,
+          video_id: latest.id,
+        })
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({})) as any;
+        throw new Error(err.detail || `HTTP ${resp.status}`);
+      }
+      toast.style = Toast.Style.Success;
+      toast.title = 'Deleted latest video';
+      toast.message = latest.title;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Delete failed';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
     }
   };
 
@@ -549,6 +601,15 @@ export default function VideoUpdatesCommand(
             title="Focus Youtube Link"
             onAction={() => focus('youtubeLink')}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'y' }}
+          />
+          <Action
+            title="Delete Latest Video"
+            onAction={() => handleDeleteLatest()}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
+          />
+          <Action
+            title="Delete Multiple Videos"
+            onAction={() => push(<DeleteVideosForm onBack={pop} selectedPlayer={selectedPlayer} resolvedAthleteId={resolvedAthleteId} fetchedAthleteMainId={fetchedAthleteMainId} />)}
           />
         </ActionPanel>
       }
@@ -599,6 +660,87 @@ export default function VideoUpdatesCommand(
             <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
           ))}
       </Form.Dropdown>
+    </Form>
+  );
+}
+
+function DeleteVideosForm({
+  onBack,
+  selectedPlayer,
+  resolvedAthleteId,
+  fetchedAthleteMainId,
+}: {
+  onBack: () => void;
+  selectedPlayer: NPIDPlayer | null;
+  resolvedAthleteId: string | null;
+  fetchedAthleteMainId: string | null;
+}) {
+  const [options, setOptions] = useState<{ value: string; title: string }[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (!selectedPlayer) throw new Error('No athlete selected');
+        const athleteId = resolvedAthleteId || selectedPlayer.player_id;
+        const athleteMainId = selectedPlayer.athlete_main_id || fetchedAthleteMainId;
+        const sportAlias = selectedPlayer.sport;
+        if (!athleteId || !athleteMainId || !sportAlias) throw new Error('Missing athlete info');
+
+        const resp = await apiFetch(`/video/sortable?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&sport_alias=${encodeURIComponent(sportAlias)}`);
+        const data = await resp.json().catch(() => ({})) as any;
+        const parsed = parseSortableHtmlDetailed(data?.html || '');
+        setOptions(parsed.map((v) => ({ value: v.id, title: v.title })));
+      } catch (error) {
+        await showToast({ style: Toast.Style.Failure, title: 'Failed to load videos', message: error instanceof Error ? error.message : 'Unknown error' });
+        onBack();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    void load();
+  }, [selectedPlayer, resolvedAthleteId, fetchedAthleteMainId, onBack]);
+
+  const handleDelete = async () => {
+    if (!selectedPlayer) return;
+    const athleteId = resolvedAthleteId || selectedPlayer.player_id;
+    const athleteMainId = selectedPlayer.athlete_main_id || fetchedAthleteMainId || '';
+    const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting videos...' });
+    try {
+      for (const id of selected) {
+        const resp = await apiFetch('/video/remove', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ athlete_id: athleteId, athlete_main_id: athleteMainId, video_id: id }),
+        });
+        if (!resp.ok) {
+          const err = await resp.json().catch(() => ({})) as any;
+          throw new Error(err.detail || `HTTP ${resp.status}`);
+        }
+      }
+      toast.style = Toast.Style.Success;
+      toast.title = `Deleted ${selected.length} video(s)`;
+      onBack();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Delete failed';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isLoading}
+      actions={<ActionPanel><Action.SubmitForm title="Delete Selected" onSubmit={handleDelete} /><Action title="Back" onAction={onBack} /></ActionPanel>}
+    >
+      <Form.TagPicker id="videos" title="Videos to Delete" value={selected} onChange={setSelected}>
+        {options.length === 0 ? (
+          <Form.TagPicker.Item value="" title="No videos found" />
+        ) : (
+          options.map((opt) => <Form.TagPicker.Item key={opt.value} value={opt.value} title={opt.title} />)
+        )}
+      </Form.TagPicker>
     </Form>
   );
 }

@@ -2,6 +2,18 @@ import React, { useEffect, useState } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import { apiFetch } from './lib/python-server-client';
+import * as fs from 'fs';
+
+const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
+function log(...args: any[]) {
+  const timestamp = new Date().toISOString();
+  const message = `[${timestamp}] ${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(' ')}`;
+  try {
+    fs.appendFileSync(LOG_FILE, message + '\n');
+  } catch {
+    // swallow logging errors to avoid recursion
+  }
+}
 
 interface EmailFormValues {
   athleteName: string;
@@ -22,10 +34,22 @@ interface EmailTemplateOption {
   value: string;
 }
 
+interface EmailRecipients {
+  athlete: { email?: string | null; checked?: boolean };
+  parents: { id: string; email?: string | null; checked?: boolean }[];
+  other_email?: string | null;
+}
+interface EmailRecipients {
+  athlete: { email?: string | null; checked?: boolean };
+  parents: { id: string; email?: string | null; checked?: boolean }[];
+  other_email?: string | null;
+}
+
 async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
   const nameParts = query.split(' ');
   const firstName = nameParts[0] || '';
   const lastName = nameParts.slice(1).join(' ') || '';
+  log('🔍 email searchVideoProgressPlayer called with:', query);
   try {
     const response = await apiFetch('/video/progress', {
       method: 'POST',
@@ -38,11 +62,13 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
 
     if (!response.ok) {
       console.error('Video progress search failed with status', response.status);
+      log('⚠️ email video progress search failed', response.status);
       return [];
     }
 
     const data = (await response.json()) as any;
     const results = data.tasks || [];
+    log('✅ email search returned', results.length, 'results');
 
     return results.map((player: any) => ({
       name: player.athletename || player.name,
@@ -53,18 +79,22 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
     }));
   } catch (err) {
     console.error('FastAPI video search error:', err);
+    log('⚠️ email search error', err);
     return [];
   }
 }
 
 async function fetchEmailTemplates(athleteId: string): Promise<EmailTemplateOption[]> {
+  log('📧 fetching email templates for athlete', athleteId);
   const response = await apiFetch(`/email/templates/${athleteId}`);
   if (!response.ok) {
+    log('⚠️ email templates fetch failed', { status: response.status });
     throw new Error(`Failed to load templates (HTTP ${response.status})`);
   }
 
   const payload = await response.json();
   const templates = (payload.templates || []) as { label?: string; value?: string }[];
+  log('✅ fetched email templates', templates.length);
 
   return templates
     .filter((template) => template.value)
@@ -74,7 +104,25 @@ async function fetchEmailTemplates(athleteId: string): Promise<EmailTemplateOpti
     }));
 }
 
+async function fetchRecipients(athleteId: string): Promise<EmailRecipients | null> {
+  try {
+    log('📧 fetching recipients for athlete', athleteId);
+    const resp = await apiFetch(`/email/recipients/${encodeURIComponent(athleteId)}`);
+    const json = await resp.json().catch(() => ({})) as any;
+    if (!resp.ok) {
+      log('⚠️ recipients fetch failed', { status: resp.status, json });
+      return null;
+    }
+    log('✅ recipients fetched', json.recipients);
+    return json.recipients as EmailRecipients;
+  } catch (err) {
+    log('⚠️ recipients fetch error', err);
+    return null;
+  }
+}
+
 async function fetchTemplateData(templateId: string, athleteId: string) {
+  log('📄 fetching template data', { templateId, athleteId });
   const response = await apiFetch('/email/template-data', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -85,15 +133,18 @@ async function fetchTemplateData(templateId: string, athleteId: string) {
   });
 
   if (!response.ok) {
+    log('⚠️ template data fetch failed', response.status);
     throw new Error(`Failed to fetch template data (HTTP ${response.status})`);
   }
 
-  return response.json() as Promise<{
+  const result = (await response.json()) as {
     sender_name: string;
     sender_email: string;
     subject: string;
     message: string;
-  }>;
+  };
+  log('✅ template data fetched', { hasSubject: Boolean(result.subject), hasMessage: Boolean(result.message) });
+  return result;
 }
 
 async function sendEmailViaAPI(params: {
@@ -103,6 +154,8 @@ async function sendEmailViaAPI(params: {
   senderEmail: string;
   subject: string;
   message: string;
+  parentIds?: string[];
+  otherEmail?: string;
 }) {
   const response = await apiFetch('/email/send', {
     method: 'POST',
@@ -114,17 +167,23 @@ async function sendEmailViaAPI(params: {
       notification_from_email: params.senderEmail,
       notification_subject: params.subject,
       notification_message: params.message,
+      include_athlete: true,
+      parent_ids: params.parentIds,
+      other_email: params.otherEmail,
     }),
   });
 
   if (!response.ok) {
+    log('⚠️ email send failed', response.status);
     throw new Error(`Failed to send email (HTTP ${response.status})`);
   }
 
   const result = await response.json();
   if (!result?.success) {
+    log('⚠️ email send returned non-success', result);
     throw new Error(result?.message || 'Send email request failed');
   }
+  log('✅ email send success', { athleteId: params.athleteId, templateId: params.templateId });
 }
 
 export default function EmailStudentAthletesCommand(
@@ -134,6 +193,7 @@ export default function EmailStudentAthletesCommand(
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
+  const [recipients, setRecipients] = useState<EmailRecipients | null>(null);
 
   const { handleSubmit, itemProps, reset, setValue } = useForm<EmailFormValues>({
     async onSubmit(formValues) {
@@ -174,6 +234,8 @@ export default function EmailStudentAthletesCommand(
           senderEmail: templateData.sender_email || 'videoteam@prospectid.com',
           subject: templateData.subject || '',
           message: templateData.message || '',
+          parentIds: (recipients?.parents || []).filter((p) => p.checked !== false).map((p) => p.id),
+          otherEmail: recipients?.other_email || 'jholcomb@prospectid.com',
         });
 
         toast.style = Toast.Style.Success;
@@ -183,6 +245,7 @@ export default function EmailStudentAthletesCommand(
         setSelectedPlayer(null);
         setEmailTemplates([]);
         setValue('emailTemplate', '');
+        setRecipients(null);
       } catch (error: unknown) {
         console.error('Execution error:', error);
         toast.style = Toast.Style.Failure;
@@ -218,14 +281,18 @@ export default function EmailStudentAthletesCommand(
       if (itemProps.athleteName.value && itemProps.athleteName.value.length > 2) {
         setIsSearching(true);
         try {
+          log('🔎 email command starting search for', itemProps.athleteName.value);
           const results = await searchVideoProgressPlayer(itemProps.athleteName.value);
           if (results.length > 0) {
             setSelectedPlayer(results[0]);
+            log('✅ email command auto-selected', results[0].name, results[0].player_id);
           } else {
             setSelectedPlayer(null);
+            log('⚠️ email command no search results');
           }
         } catch (error) {
           console.error('Search error:', error);
+          log('⚠️ email command search error', error);
           setSelectedPlayer(null);
         } finally {
           setIsSearching(false);
@@ -247,17 +314,21 @@ export default function EmailStudentAthletesCommand(
       if (!selectedPlayer?.player_id) {
         setEmailTemplates([]);
         setValue('emailTemplate', '');
+        setRecipients(null);
         return;
       }
 
       setIsLoadingTemplates(true);
       try {
+        log('📧 email command loading templates for', selectedPlayer.player_id);
         const templates = await fetchEmailTemplates(selectedPlayer.player_id);
+        const rec = await fetchRecipients(selectedPlayer.player_id);
         if (isCancelled) {
           return;
         }
 
         setEmailTemplates(templates);
+        setRecipients(rec);
         if (templates.length > 0) {
           setValue('emailTemplate', templates[0].value);
         } else {
@@ -265,6 +336,7 @@ export default function EmailStudentAthletesCommand(
         }
       } catch (error) {
         console.error('Failed to fetch templates:', error);
+        log('⚠️ email command failed to fetch templates', error);
         if (!isCancelled) {
           setEmailTemplates([]);
           setValue('emailTemplate', '');

@@ -40,6 +40,7 @@ class VideoSubmitRequest(BaseModel):
     video_url: str = Field(..., description="YouTube or Hudl URL")
     video_type: VideoType = Field(..., description="Type of highlight video")
     season: str = Field(..., description="Season identifier (e.g., 'highschool:16137')")
+    season_type: str = Field(default="", description="Season type from HTML attribute (e.g., 'junior', 'sophomore')")
     source: VideoSource = Field(default=VideoSource.YOUTUBE)
     auto_approve: bool = Field(default=True, description="Auto-check approval box")
     sport: str = Field(default="football")
@@ -203,6 +204,24 @@ class APIError(BaseModel):
     legacy_response: Optional[str] = None
 
 
+class VideoAttachment(BaseModel):
+    """Single video attachment from athlete."""
+    athlete_id: str
+    athletename: str
+    attachment: str  # Filename
+    created_date: str
+    expiry_date: str
+    fileType: str  # MP4, etc.
+    message_id: str  # video_msg_id alias
+
+
+class VideoAttachmentsResponse(BaseModel):
+    """Response from video attachments query."""
+    status: Literal["ok", "error"]
+    count: int
+    attachments: List[VideoAttachment]
+
+
 # ============== Email Models ==============
 
 class EmailTemplate(BaseModel):
@@ -233,6 +252,9 @@ class SendEmailRequest(BaseModel):
     notification_from_email: str
     notification_subject: str
     notification_message: str
+    include_athlete: bool = True
+    parent_ids: Optional[List[str]] = None
+    other_email: Optional[str] = None
 
 
 class SendEmailResponse(BaseModel):

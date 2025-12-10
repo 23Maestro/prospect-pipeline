@@ -45,6 +45,12 @@ export async function fetchMessageDetail(
   from_email?: string;
   message_id?: string;
   item_code?: string;
+  attachments?: Array<{
+    fileName: string;
+    url: string;
+    downloadable: boolean;
+    expiresAt?: string | null;
+  }>;
 }> {
   const response = await apiFetch("/inbox/message", {
     method: "POST",
@@ -275,4 +281,122 @@ export async function sendEmailToAthlete(
     athlete_name: athleteName,
     template_name: templateName,
   });
+}
+
+/**
+ * Video attachment from athlete.
+ */
+export interface VideoAttachment {
+  athlete_id: string;
+  athletename: string;
+  attachment: string; // Filename
+  created_date: string;
+  expiry_date: string;
+  fileType: string; // MP4, etc.
+  message_id: string; // video_msg_id alias
+}
+
+/**
+ * Fetch all video mail attachments via FastAPI.
+ * Endpoint: GET /api/v1/video/attachments
+ */
+export async function fetchVideoAttachments(): Promise<VideoAttachment[]> {
+  const response = await apiFetch("/video/attachments", {
+    method: "GET",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch video attachments: ${response.status}`);
+  }
+
+  const data = (await response.json()) as { attachments: VideoAttachment[]; count: number };
+  return data.attachments || [];
+}
+
+/**
+ * Resolved athlete IDs.
+ */
+export interface ResolvedAthleteIds {
+  athlete_id: string;
+  athlete_main_id: string;
+  name?: string;
+  grad_year?: string;
+  high_school?: string;
+  city?: string;
+  state?: string;
+  positions?: string;
+  sport?: string;
+}
+
+/**
+ * Bulk resolve missing athlete_main_id values for inbox threads.
+ * Uses /athlete/{athlete_id}/resolve endpoint with caching.
+ *
+ * EDGE CASE: 98% of 375 inbox athletes are missing cached athlete_main_id.
+ * This function proactively resolves all missing IDs on inbox load.
+ */
+export async function bulkResolveAthleteMainIds(
+  threads: NPIDInboxMessage[]
+): Promise<Map<string, string>> {
+  const resolved = new Map<string, string>();
+  const missingIds: string[] = [];
+
+  // Identify threads missing athlete_main_id
+  for (const thread of threads) {
+    const athleteId = thread.contact_id || thread.player_id || thread.thread_id;
+
+    if (!athleteId) {
+      console.warn('⚠️ Thread missing all ID fields:', thread.id);
+      continue;
+    }
+
+    if (!thread.athleteMainId) {
+      missingIds.push(athleteId);
+    } else {
+      resolved.set(athleteId, thread.athleteMainId);
+    }
+  }
+
+  console.log(`🔍 BULK RESOLVE: ${missingIds.length} of ${threads.length} threads missing athlete_main_id`);
+
+  if (missingIds.length === 0) {
+    return resolved;
+  }
+
+  // Batch resolve with concurrency limit (10 at a time)
+  const BATCH_SIZE = 10;
+  for (let i = 0; i < missingIds.length; i += BATCH_SIZE) {
+    const batch = missingIds.slice(i, i + BATCH_SIZE);
+    const promises = batch.map(async (athleteId) => {
+      try {
+        const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`, {
+          method: "GET",
+          headers: { "Content-Type": "application/json" },
+        });
+
+        if (!response.ok) {
+          console.warn(`⚠️ Failed to resolve ${athleteId}: ${response.status}`);
+          return;
+        }
+
+        const data = (await response.json()) as ResolvedAthleteIds;
+        if (data.athlete_main_id) {
+          resolved.set(athleteId, data.athlete_main_id);
+          console.log(`✅ Resolved ${athleteId} → ${data.athlete_main_id}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error resolving ${athleteId}:`, error);
+      }
+    });
+
+    await Promise.all(promises);
+
+    // Progress logging
+    const progress = Math.min(i + BATCH_SIZE, missingIds.length);
+    console.log(`📊 Progress: ${progress}/${missingIds.length} resolved`);
+  }
+
+  console.log(`✅ BULK RESOLVE: Resolved ${resolved.size - (threads.length - missingIds.length)} new IDs`);
+  return resolved;
 }
