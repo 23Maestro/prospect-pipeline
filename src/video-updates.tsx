@@ -1,9 +1,20 @@
-import React, { useState, useEffect } from 'react';
-import { Form, ActionPanel, Action, showToast, Toast, LaunchProps, useNavigation } from '@raycast/api';
-import { useForm, FormValidation } from '@raycast/utils';
-import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/python-server-client';
-import * as cheerio from 'cheerio';
-import * as fs from 'fs';
+import React, { useState, useEffect } from "react";
+import {
+  Form,
+  ActionPanel,
+  Action,
+  showToast,
+  Toast,
+  LaunchProps,
+  useNavigation,
+  List,
+  Icon,
+  Color,
+} from "@raycast/api";
+import { useForm, FormValidation } from "@raycast/utils";
+import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from "./lib/python-server-client";
+import * as cheerio from "cheerio";
+import * as fs from "fs";
 
 
 
@@ -105,16 +116,29 @@ function parseSortableHtml(html: string): string[] {
   }
 }
 
-function parseSortableHtmlDetailed(html: string): { id: string; title: string }[] {
+function parseSortableHtmlDetailed(html: string): { id: string; title: string; approved: boolean; subtitle?: string }[] {
   if (!html) return [];
   try {
     const $ = cheerio.load(html);
-    const items: { id: string; title: string }[] = [];
+    const items: { id: string; title: string; approved: boolean; subtitle?: string }[] = [];
     $('.video-item, li, .highlight-video').each((_, el) => {
       const id = $(el).attr('data-id') || $(el).attr('id') || '';
-      const title = $(el).text().trim();
+      const fullText = $(el).text().trim();
+
+      // Check for approval status
+      const approved = $(el).hasClass('approved') ||
+        $(el).find('.approved, .badge-success').length > 0 ||
+        fullText.toLowerCase().includes('npid approved');
+
+      // Extract title (remove approval text if present)
+      const title = fullText.replace(/\(NPID Approved\)/gi, '').trim();
+
+      // Try to extract season info as subtitle
+      const seasonMatch = title.match(/(High School|Club|College|AAU)\s*-\s*(Freshman|Sophomore|Junior|Senior|[0-9]{4})\s*-\s*(\w+)/i);
+      const subtitle = seasonMatch ? seasonMatch[0] : undefined;
+
       if (id && title) {
-        items.push({ id, title });
+        items.push({ id, title, approved, subtitle });
       }
     });
     // Fallback: try regex if no data-id found
@@ -124,8 +148,9 @@ function parseSortableHtmlDetailed(html: string): { id: string; title: string }[
       while ((match = regex.exec(html)) !== null) {
         const id = match[1];
         const title = match[2].trim();
+        const approved = title.toLowerCase().includes('npid approved');
         if (id && title) {
-          items.push({ id, title });
+          items.push({ id, title: title.replace(/\(NPID Approved\)/gi, '').trim(), approved });
         }
       }
     }
@@ -178,11 +203,20 @@ export default function VideoUpdatesCommand(
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
-  const [resolvedAthleteId, setResolvedAthleteId] = useState<string | null>(null);
   const [isFetchingMainId, setIsFetchingMainId] = useState(false);
+  const [mainIdResolvedForAthleteId, setMainIdResolvedForAthleteId] = useState<string | null>(null);
   const [seasons, setSeasons] = useState<{ value: string, title: string, season: string }[]>([]);
   const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
   const { push, pop } = useNavigation();
+
+  const selectPlayer = (player: NPIDPlayer | null) => {
+    setSelectedPlayer(player);
+    setFetchedAthleteMainId(null);
+    setIsFetchingMainId(false);
+    setMainIdResolvedForAthleteId(null);
+    setSeasons([]);
+    setValue('season', '');
+  };
 
   const { handleSubmit, itemProps, reset, focus, values, setValue } = useForm<VideoUpdateFormValues>({
     async onSubmit(formValues) {
@@ -192,14 +226,14 @@ export default function VideoUpdatesCommand(
       });
 
       try {
-        let athleteId = resolvedAthleteId || '';
+        let athleteId = selectedPlayer?.player_id || '';
         let athleteName = formValues.athleteName;
         const sportAlias = selectedPlayer?.sport || '';
-        const athleteMainId = selectedPlayer?.athlete_main_id || fetchedAthleteMainId || '';
+        const athleteMainId = mainIdResolvedForAthleteId === athleteId ? (fetchedAthleteMainId || '') : '';
         const videoMsgId = selectedPlayer?.id ? selectedPlayer.id.toString() : '';
 
         if (selectedPlayer) {
-          athleteId = resolvedAthleteId || selectedPlayer.player_id;
+          athleteId = selectedPlayer.player_id;
           athleteName = selectedPlayer.name;
         }
 
@@ -207,6 +241,13 @@ export default function VideoUpdatesCommand(
           toast.style = Toast.Style.Failure;
           toast.title = 'Athlete ID Required';
           toast.message = 'Please search for a player.';
+          return;
+        }
+
+        if (isFetchingMainId || mainIdResolvedForAthleteId !== athleteId) {
+          toast.style = Toast.Style.Failure;
+          toast.title = 'Resolving athlete_main_id...';
+          toast.message = 'Please wait a moment and try again.';
           return;
         }
 
@@ -283,9 +324,9 @@ export default function VideoUpdatesCommand(
             }
 
             reset();
-            setSelectedPlayer(null);
-            setSeasons([]);
+            selectPlayer(null);
             setFetchedAthleteMainId(null);
+            setMainIdResolvedForAthleteId(null);
           } else {
             toast.style = Toast.Style.Failure;
             toast.title = 'NPID Update Failed';
@@ -349,19 +390,19 @@ export default function VideoUpdatesCommand(
           const results = await searchVideoProgressPlayer(values.athleteName);
           if (results.length > 0) {
             log('✅ Auto-selecting first player:', results[0].name, 'ID:', results[0].player_id);
-            setSelectedPlayer(results[0]);
+            selectPlayer(results[0]);
           } else {
             log('⚠️ No search results found');
-            setSelectedPlayer(null);
+            selectPlayer(null);
           }
         } catch (error) {
           console.error('Search error:', error);
-          setSelectedPlayer(null);
+          selectPlayer(null);
         } finally {
           setIsSearching(false);
         }
       } else {
-        setSelectedPlayer(null);
+        selectPlayer(null);
       }
     };
 
@@ -369,66 +410,83 @@ export default function VideoUpdatesCommand(
     return () => clearTimeout(timeoutId);
   }, [values.athleteName]);
 
-  // Fetch athlete_main_id when player is selected
+  // Extract athlete_main_id from profile page when player is selected
   useEffect(() => {
+    let cancelled = false;
     const fetchMainId = async () => {
-      if (selectedPlayer && selectedPlayer.player_id) {
-        log('🆔 Fetching athlete_main_id for player_id:', selectedPlayer.player_id);
-        setIsFetchingMainId(true);
-        try {
-          const resp = await apiFetch(`/athlete/${encodeURIComponent(selectedPlayer.player_id)}/resolve`);
-          if (resp.status === 404) {
-            await showToast({ style: Toast.Style.Failure, title: 'Athlete not found' });
-            setFetchedAthleteMainId(null);
-            setResolvedAthleteId(null);
-            return;
-          }
-          if (resp.status >= 500) {
-            await showToast({ style: Toast.Style.Failure, title: 'Resolution failed' });
-            setFetchedAthleteMainId(null);
-            setResolvedAthleteId(null);
-            return;
-          }
-          const result = await resp.json().catch(() => ({}));
-          log('📥 resolve response:', result);
-          setResolvedAthleteId(result?.athlete_id || null);
-          if (result?.athlete_main_id) {
-            log('✅ Fetched athlete_main_id:', result.athlete_main_id);
-            setFetchedAthleteMainId(result.athlete_main_id);
-          } else {
-            log('⚠️ No athlete_main_id in response');
-            setFetchedAthleteMainId(null);
-          }
-        } catch (error) {
-          console.error('Failed to fetch athlete_main_id:', error);
-          setFetchedAthleteMainId(null);
-          setResolvedAthleteId(null);
-        } finally {
-          setIsFetchingMainId(false);
-        }
-      } else {
+      const playerId = selectedPlayer?.player_id;
+      if (!playerId) {
         setFetchedAthleteMainId(null);
+        setIsFetchingMainId(false);
+        setMainIdResolvedForAthleteId(null);
+        return;
+      }
+
+      log('🆔 Fetching athlete_main_id for player_id:', playerId);
+      setIsFetchingMainId(true);
+      setFetchedAthleteMainId(null);
+      setMainIdResolvedForAthleteId(null);
+
+      try {
+        const resp = await apiFetch(`/athlete/${encodeURIComponent(playerId)}/resolve`);
+
+        if (cancelled) return;
+
+        if (resp.status === 404) {
+          await showToast({ style: Toast.Style.Failure, title: 'Athlete not found' });
+          setFetchedAthleteMainId(null);
+          return;
+        }
+
+        if (resp.status >= 500) {
+          await showToast({ style: Toast.Style.Failure, title: 'Resolution failed' });
+          setFetchedAthleteMainId(null);
+          return;
+        }
+
+        const result = await resp.json().catch(() => ({})) as any;
+        log('📥 resolve response:', result);
+
+        if (result?.athlete_main_id) {
+          log('✅ Fetched athlete_main_id:', result.athlete_main_id);
+          setFetchedAthleteMainId(String(result.athlete_main_id));
+        } else {
+          log('⚠️ No athlete_main_id in response');
+          setFetchedAthleteMainId(null);
+        }
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Failed to fetch athlete_main_id:', error);
+        setFetchedAthleteMainId(null);
+      } finally {
+        if (!cancelled) {
+          setIsFetchingMainId(false);
+          setMainIdResolvedForAthleteId(playerId);
+        }
       }
     };
-    fetchMainId();
+
+    void fetchMainId();
+    return () => {
+      cancelled = true;
+    };
   }, [selectedPlayer]);
+
 
   // Fetch seasons when video type or selected player changes
   useEffect(() => {
     const fetchSeasons = async () => {
       if (values.videoType && selectedPlayer) {
-        const athleteId = resolvedAthleteId || selectedPlayer.player_id;
+        const athleteId = selectedPlayer.player_id;
         const sportAlias = selectedPlayer.sport;
         const videoType = values.videoType;
-        let athleteMainId = fetchedAthleteMainId;
+        const athleteMainId = mainIdResolvedForAthleteId === athleteId ? (fetchedAthleteMainId || '') : '';
         log('📅 Fetching seasons with:', { athleteId, sportAlias, videoType, athleteMainId });
 
-        if (!athleteMainId && athleteId) {
-          log('⚠️ athlete_main_id not cached, fetching...');
-          const detResp = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`);
-          const det = await detResp.json().catch(() => ({})) as any;
-          athleteMainId = det?.athlete_main_id;
-          log('✅ Fetched athlete_main_id for seasons:', athleteMainId);
+        if (isFetchingMainId || mainIdResolvedForAthleteId !== athleteId) {
+          setSeasons([]);
+          setValue('season', '');
+          return;
         }
 
         if (!athleteId || !sportAlias || !videoType || !athleteMainId) {
@@ -476,7 +534,7 @@ export default function VideoUpdatesCommand(
       }
     };
     fetchSeasons();
-  }, [values.videoType, selectedPlayer, fetchedAthleteMainId]);
+  }, [values.videoType, selectedPlayer, fetchedAthleteMainId, isFetchingMainId, mainIdResolvedForAthleteId]);
 
   const loadSeasonsViaFastAPI = async (params: SeasonsRequest) => {
     const result = await getSeasons(params);
@@ -532,10 +590,10 @@ export default function VideoUpdatesCommand(
     }
   };
 
-  const fetchSortableVideos = async () => {
+  const fetchSortableVideos = async (): Promise<{ id: string; title: string; approved: boolean; subtitle?: string }[]> => {
     if (!selectedPlayer) throw new Error('No athlete selected');
-    const athleteId = resolvedAthleteId || selectedPlayer.player_id;
-    const athleteMainId = selectedPlayer.athlete_main_id || fetchedAthleteMainId;
+    const athleteId = selectedPlayer.player_id;
+    const athleteMainId = fetchedAthleteMainId || '';
     const sportAlias = selectedPlayer.sport;
     if (!athleteId || !athleteMainId || !sportAlias) {
       throw new Error('Missing athlete info for sortable fetch');
@@ -550,6 +608,141 @@ export default function VideoUpdatesCommand(
     return parseSortableHtmlDetailed(html);
   };
 
+  const fetchTemplates = async (athleteId: string) => {
+    const resp = await apiFetch(`/email/templates/${encodeURIComponent(athleteId)}`);
+    if (!resp.ok) throw new Error(`Templates HTTP ${resp.status}`);
+    const payload = await resp.json().catch(() => ({})) as any;
+    const templates = Array.isArray(payload.templates) ? payload.templates : [];
+    return templates.map((t: any) => ({ value: t.value, title: t.label || t.value || 'Template' }));
+  };
+
+  const fetchTemplateData = async (templateId: string, athleteId: string) => {
+    const resp = await apiFetch('/email/template-data', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_id: templateId, athlete_id: athleteId }),
+    });
+    if (!resp.ok) throw new Error(`Template data HTTP ${resp.status}`);
+    return resp.json() as Promise<{ sender_name: string; sender_email: string; subject: string; message: string }>;
+  };
+
+  const fetchRecipients = async (athleteId: string) => {
+    const resp = await apiFetch(`/email/recipients/${encodeURIComponent(athleteId)}`);
+    if (!resp.ok) throw new Error(`Recipients HTTP ${resp.status}`);
+    const payload = await resp.json().catch(() => ({})) as any;
+    const recipients = payload.recipients || {};
+    return {
+      athlete: recipients.athlete || null,
+      parents: Array.isArray(recipients.parents) ? recipients.parents : [],
+    };
+  };
+
+  const sendEmail = async (params: {
+    athleteId: string;
+    templateId: string;
+    senderName: string;
+    senderEmail: string;
+    subject: string;
+    message: string;
+    includeAthlete?: boolean;
+    parentIds?: string[];
+    otherEmail?: string;
+  }) => {
+    const resp = await apiFetch('/email/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        athlete_id: params.athleteId,
+        template_id: params.templateId,
+        notification_from: params.senderName,
+        notification_from_email: params.senderEmail,
+        notification_subject: params.subject,
+        notification_message: params.message,
+        include_athlete: params.includeAthlete ?? true,
+        parent_ids: params.parentIds ?? [],
+        other_email: params.otherEmail ?? '',
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({})) as any;
+      throw new Error(err.detail || `Email HTTP ${resp.status}`);
+    }
+    const result = await resp.json().catch(() => ({})) as any;
+    if (!result?.success) throw new Error(result?.message || 'Email send failed');
+  };
+
+  const updateStageDone = async (videoMsgId: string) => {
+    const resp = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/stage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ video_msg_id: videoMsgId, stage: 'done' }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({})) as any;
+      throw new Error(err.detail || `Stage HTTP ${resp.status}`);
+    }
+  };
+
+  const runPostUploadActions = async ({
+    athleteId,
+    athleteMainId,
+    athleteName,
+    videoMsgId,
+  }: {
+    athleteId: string;
+    athleteMainId: string;
+    athleteName: string;
+    videoMsgId: string;
+  }) => {
+    try {
+      log('🤖 Post-upload automation start', { athleteId, athleteMainId, videoMsgId });
+      const templates = await fetchTemplates(athleteId);
+      const picked =
+        templates.find((t) => t.value === DEFAULT_TEMPLATE_ID) ||
+        templates[0];
+      if (!picked) {
+        log('⚠️ No templates available, skipping email');
+        return;
+      }
+      const data = await fetchTemplateData(picked.value, athleteId);
+
+      // Fetch recipients to include athlete + parents + Other
+      const recipients = await fetchRecipients(athleteId);
+      const parentIds = recipients.parents
+        .filter((p: any) => p?.id)
+        .map((p: any) => String(p.id));
+
+      log('📧 Sending email to all recipients', {
+        athleteId,
+        parentIds,
+        includeAthlete: true,
+        otherEmail: 'jholcomb@prospectid.com'
+      });
+
+      await sendEmail({
+        athleteId,
+        templateId: picked.value,
+        senderName: data.sender_name || 'Prospect ID Video',
+        senderEmail: data.sender_email || 'videoteam@prospectid.com',
+        subject: data.subject || '',
+        message: data.message || '',
+        includeAthlete: true,
+        parentIds,
+        otherEmail: 'jholcomb@prospectid.com',
+      });
+      log('✅ Email sent automatically', { template: picked.value, recipientCount: 1 + parentIds.length + 1 });
+
+      if (videoMsgId) {
+        await updateStageDone(videoMsgId);
+        log('✅ Stage updated to done', { videoMsgId });
+      } else {
+        log('⚠️ No video_msg_id; skipped stage update');
+      }
+    } catch (error) {
+      log('⚠️ Post-upload automation failed', error);
+    }
+  };
+
   const handleDeleteLatest = async () => {
     const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting latest video...' });
     try {
@@ -561,8 +754,8 @@ export default function VideoUpdatesCommand(
         return;
       }
       const latest = list[0];
-      const athleteId = resolvedAthleteId || selectedPlayer?.player_id || '';
-      const athleteMainId = selectedPlayer?.athlete_main_id || fetchedAthleteMainId || '';
+      const athleteId = selectedPlayer?.player_id || '';
+      const athleteMainId = fetchedAthleteMainId || '';
       const resp = await apiFetch('/video/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -609,7 +802,7 @@ export default function VideoUpdatesCommand(
           />
           <Action
             title="Delete Multiple Videos"
-            onAction={() => push(<DeleteVideosForm onBack={pop} selectedPlayer={selectedPlayer} resolvedAthleteId={resolvedAthleteId} fetchedAthleteMainId={fetchedAthleteMainId} />)}
+            onAction={() => push(<DeleteVideosForm onBack={pop} selectedPlayer={selectedPlayer} fetchedAthleteMainId={fetchedAthleteMainId} />)}
           />
         </ActionPanel>
       }
@@ -627,7 +820,7 @@ export default function VideoUpdatesCommand(
 
       {selectedPlayer && (
         <Form.Description
-          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school} | ID: ${selectedPlayer.player_id} | Main ID: ${isFetchingMainId ? 'Loading...' : (fetchedAthleteMainId || 'N/A')}`}
+          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school} | ID: ${selectedPlayer.player_id} | Main ID: ${isFetchingMainId || mainIdResolvedForAthleteId !== selectedPlayer.player_id ? 'Loading...' : (fetchedAthleteMainId || 'N/A')}`}
         />
       )}
 
@@ -667,31 +860,29 @@ export default function VideoUpdatesCommand(
 function DeleteVideosForm({
   onBack,
   selectedPlayer,
-  resolvedAthleteId,
   fetchedAthleteMainId,
 }: {
   onBack: () => void;
   selectedPlayer: NPIDPlayer | null;
-  resolvedAthleteId: string | null;
   fetchedAthleteMainId: string | null;
 }) {
-  const [options, setOptions] = useState<{ value: string; title: string }[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [videos, setVideos] = useState<{ id: string; title: string; approved: boolean; subtitle?: string }[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const load = async () => {
       try {
         if (!selectedPlayer) throw new Error('No athlete selected');
-        const athleteId = resolvedAthleteId || selectedPlayer.player_id;
-        const athleteMainId = selectedPlayer.athlete_main_id || fetchedAthleteMainId;
+        const athleteId = selectedPlayer.player_id;
+        const athleteMainId = fetchedAthleteMainId || '';
         const sportAlias = selectedPlayer.sport;
         if (!athleteId || !athleteMainId || !sportAlias) throw new Error('Missing athlete info');
 
         const resp = await apiFetch(`/video/sortable?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&sport_alias=${encodeURIComponent(sportAlias)}`);
         const data = await resp.json().catch(() => ({})) as any;
         const parsed = parseSortableHtmlDetailed(data?.html || '');
-        setOptions(parsed.map((v) => ({ value: v.id, title: v.title })));
+        setVideos(parsed);
       } catch (error) {
         await showToast({ style: Toast.Style.Failure, title: 'Failed to load videos', message: error instanceof Error ? error.message : 'Unknown error' });
         onBack();
@@ -700,15 +891,29 @@ function DeleteVideosForm({
       }
     };
     void load();
-  }, [selectedPlayer, resolvedAthleteId, fetchedAthleteMainId, onBack]);
+  }, [selectedPlayer, fetchedAthleteMainId, onBack]);
+
+  const toggleSelection = (id: string) => {
+    const newSelected = new Set(selected);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelected(newSelected);
+  };
 
   const handleDelete = async () => {
+    if (selected.size === 0) {
+      await showToast({ style: Toast.Style.Failure, title: 'No videos selected', message: 'Select at least one video to delete' });
+      return;
+    }
     if (!selectedPlayer) return;
-    const athleteId = resolvedAthleteId || selectedPlayer.player_id;
-    const athleteMainId = selectedPlayer.athlete_main_id || fetchedAthleteMainId || '';
+    const athleteId = selectedPlayer.player_id;
+    const athleteMainId = fetchedAthleteMainId || '';
     const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting videos...' });
     try {
-      for (const id of selected) {
+      for (const id of Array.from(selected)) {
         const resp = await apiFetch('/video/remove', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -720,7 +925,7 @@ function DeleteVideosForm({
         }
       }
       toast.style = Toast.Style.Success;
-      toast.title = `Deleted ${selected.length} video(s)`;
+      toast.title = `Deleted ${selected.size} video(s)`;
       onBack();
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -730,17 +935,48 @@ function DeleteVideosForm({
   };
 
   return (
-    <Form
+    <List
       isLoading={isLoading}
-      actions={<ActionPanel><Action.SubmitForm title="Delete Selected" onSubmit={handleDelete} /><Action title="Back" onAction={onBack} /></ActionPanel>}
+      navigationTitle="Delete Videos"
+      searchBarPlaceholder="Search videos..."
     >
-      <Form.TagPicker id="videos" title="Videos to Delete" value={selected} onChange={setSelected}>
-        {options.length === 0 ? (
-          <Form.TagPicker.Item value="" title="No videos found" />
-        ) : (
-          options.map((opt) => <Form.TagPicker.Item key={opt.value} value={opt.value} title={opt.title} />)
-        )}
-      </Form.TagPicker>
-    </Form>
+      {videos.length === 0 && !isLoading ? (
+        <List.EmptyView title="No videos found" description="This athlete has no videos to delete" />
+      ) : (
+        videos.map((video, index) => (
+          <List.Item
+            key={video.id}
+            title={video.title}
+            subtitle={video.subtitle}
+            accessories={[
+              { text: `#${index + 1}` },
+              ...(video.approved ? [{ tag: { value: 'NPID Approved', color: Color.Green } }] : []),
+              { icon: selected.has(video.id) ? Icon.CheckCircle : Icon.Circle },
+            ]}
+            actions={
+              <ActionPanel>
+                <ActionPanel.Section>
+                  <Action
+                    title={selected.has(video.id) ? 'Deselect Video' : 'Select Video'}
+                    icon={selected.has(video.id) ? Icon.CircleProgress : Icon.CheckCircle}
+                    onAction={() => toggleSelection(video.id)}
+                  />
+                  <Action
+                    title={`Delete Selected (${selected.size})`}
+                    icon={Icon.Trash}
+                    style={Action.Style.Destructive}
+                    onAction={handleDelete}
+                    shortcut={{ modifiers: ['cmd'], key: 'd' }}
+                  />
+                </ActionPanel.Section>
+                <ActionPanel.Section>
+                  <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
+                </ActionPanel.Section>
+              </ActionPanel>
+            }
+          />
+        ))
+      )}
+    </List>
   );
 }

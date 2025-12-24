@@ -349,16 +349,40 @@ class LegacyTranslator:
         except json.JSONDecodeError:
             # It's probably HTML - parse option tags
             seasons = []
-            option_pattern = r'<option[^>]*value="([^"]*)"[^>]*>([^<]+)</option>'
-            
+            # Parse full option tag with all attributes
+            option_pattern = r'<option\s+([^>]*)>([^<]+)</option>'
+
             for match in re.finditer(option_pattern, raw_response):
-                value, label = match.groups()
-                if value:  # Skip empty placeholder option
+                attrs_str, label = match.groups()
+
+                # Extract attributes
+                value = re.search(r'value="([^"]*)"', attrs_str)
+                season = re.search(r'season="([^"]*)"', attrs_str)
+                school_added = re.search(r'school_added="([^"]*)"', attrs_str)
+
+                value_str = value.group(1) if value else ""
+                if value_str:  # Skip empty placeholder option
+                    # Extract season - try attribute first, then parse from label
+                    season_type = ""
+                    if season:
+                        season_type = season.group(1)
+                    else:
+                        # Fallback: parse from label text
+                        label_text = html.unescape(label.strip())
+                        if "Senior" in label_text:
+                            season_type = "senior"
+                        elif "Junior" in label_text:
+                            season_type = "junior"
+                        elif "Sophomore" in label_text:
+                            season_type = "sophomore"
+                        elif "Freshman" in label_text:
+                            season_type = "freshman"
+
                     seasons.append({
-                        "value": value,
+                        "value": value_str,
                         "label": html.unescape(label.strip()),
-                        "season": "",  # Not available in HTML response
-                        "school_added": ""
+                        "season": season_type,
+                        "school_added": school_added.group(1) if school_added else ""
                     })
             
             return {
@@ -484,6 +508,149 @@ class LegacyTranslator:
                 return match.group(1)
 
         return None
+
+    @staticmethod
+    def parse_athlete_profile_data(html: str) -> Dict[str, Any]:
+        """Extract athlete profile data from HTML page."""
+        data = {}
+
+        try:
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Extract jersey number - label-based matching (NO nth-child)
+            # Find label with exact text "Jersey #"
+            labels = soup.find_all(['label', 'th', 'td', 'div', 'span'])
+            logger.debug(f"🔍 Total labels found: {len(labels)}")
+            jersey_labels = [l for l in labels if "jersey" in l.get_text(strip=True).lower()]
+            logger.debug(f"🔍 Labels containing 'jersey': {len(jersey_labels)}")
+            for label in labels:
+                label_text = label.get_text(strip=True)
+                if label_text == "Jersey #":
+                    logger.info(f"✅ Found 'Jersey #' label")
+                    # Try to find adjacent value cell/element
+                    # Pattern 1: Next sibling
+                    next_elem = label.find_next_sibling()
+                    if next_elem:
+                        jersey = next_elem.get_text(strip=True)
+                        if jersey:
+                            data['jersey_number'] = f"#{jersey}"
+                            break
+
+                    # Pattern 2: Parent's next sibling (for tr > td structure)
+                    if not data.get('jersey_number'):
+                        parent = label.find_parent(['tr', 'div'])
+                        if parent:
+                            next_row_elem = parent.find_next_sibling()
+                            if next_row_elem:
+                                jersey = next_row_elem.get_text(strip=True)
+                                if jersey:
+                                    data['jersey_number'] = f"#{jersey}"
+                                    break
+
+                    # Pattern 3: Same row, next td
+                    if not data.get('jersey_number'):
+                        row = label.find_parent('tr')
+                        if row:
+                            tds = row.find_all('td')
+                            for i, td in enumerate(tds):
+                                if td.get_text(strip=True) == "Jersey #" and i + 1 < len(tds):
+                                    jersey = tds[i + 1].get_text(strip=True)
+                                    if jersey:
+                                        data['jersey_number'] = f"#{jersey}"
+                                        break
+
+                    break  # Stop after finding "Jersey #" label
+
+        except Exception as e:
+            logger.debug(f"Profile data extraction error: {e}")
+
+        return data
+
+    @staticmethod
+    def parse_video_progress_ids(html: str) -> Dict[str, Any]:
+        """
+        Best-effort extraction of identifiers from video progress search page.
+
+        The HTML is inconsistent, so we rely on broad regex patterns that
+        match both explicit form fields and embedded links/script assignments.
+        """
+        if not html:
+            return {}
+
+        athlete_id = None
+        athlete_main_id = None
+
+        # Athlete/contact ID hints
+        # Athlete/contact ID hints
+        id_patterns = [
+            # Specific strong signals first
+            r'data-athlete-id=["\']?(\d+)',
+            r'data-contact-id=["\']?(\d+)',
+            r'contact[_-]?task["\s:=]+["\']?(\d+)',
+            r'athlete[_-]?id["\s:=]+["\']?(\d+)',
+            r'/athlete/(?:media|profile)/(\d+)',
+            # Broader fallbacks
+            r'data-contact["\s:=]+["\']?(\d+)',
+            r'data-athlete["\s:=]+["\']?(\d+)',
+            # JSON-like pattern for when we parse raw API responses that might be embedded
+            r'"athlete_id"\s*:\s*"?(\d+)"?',
+        ]
+        for pattern in id_patterns:
+            match = re.search(pattern, html, re.IGNORECASE)
+            if match:
+                athlete_id = match.group(1)
+                break
+
+        # Athlete main ID hints (reuse existing extractor patterns)
+        athlete_main_id = LegacyTranslator.extract_athlete_main_id(html)
+        if not athlete_main_id:
+            main_patterns = [
+                r'athlete[_-]?main[_-]?id["\s:=]+["\']?(\d+)',
+                r'data-athlete-main-id["\s:=]+["\']?(\d+)',
+            ]
+            for pattern in main_patterns:
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match:
+                    athlete_main_id = match.group(1)
+                    break
+
+        # Optional profile metadata (best-effort only)
+        name = None
+        name_match = re.search(r'athlete\s*name["\s:=]+["\']?([^"\'>]+)', html, re.IGNORECASE)
+        if name_match:
+            name = name_match.group(1).strip()
+
+        grad_year = None
+        grad_match = re.search(r'\b(20\d{2})\b', html)
+        if grad_match:
+            grad_year = grad_match.group(1)
+
+        high_school = None
+        hs_match = re.search(r'(?:high\s*school|hs)["\s:=]+["\']?([^"\'<>]+)', html, re.IGNORECASE)
+        if hs_match:
+            high_school = hs_match.group(1).strip()
+
+        sport = None
+        sport_match = re.search(r'sport[_\s:=]+["\']?([a-z ]+)', html, re.IGNORECASE)
+        if sport_match:
+            sport = sport_match.group(1).strip()
+
+        positions = None
+        positions_match = re.search(r'positions?["\s:=]+["\']?([^"\'<>]+)', html, re.IGNORECASE)
+        if positions_match:
+            positions = positions_match.group(1).strip()
+
+        return {
+            "athlete_id": athlete_id,
+            "athlete_main_id": athlete_main_id,
+            "profile": {
+                "name": name or "",
+                "grad_year": grad_year,
+                "high_school": high_school,
+                "positions": positions,
+                "sport": sport,
+            }
+        }
 
     # ============== Email Translators ==============
 
@@ -625,6 +792,58 @@ class LegacyTranslator:
         Parse inbox threads from HTML.
         Mirrors: npid_api_client.py:247-337
         """
+        def _extract_video_management_params(href: str) -> Dict[str, str]:
+            """
+            Extract athlete identifiers from new video mailbox endpoints.
+
+            Example URLs:
+            - /template/template/videosortable?is_from_video_mail_box=Yes&athleteid=1460597&sport_alias=&athlete_main_id=939628
+            - /template/template/addvideoform?is_from_video_mail_box=Yes&athleteid=1460597&sport_alias=&athlete_main_id=939628
+            """
+            if not href:
+                return {}
+
+            href = href.replace("&amp;", "&")
+
+            if ("template/template/videosortable" not in href) and ("template/template/addvideoform" not in href):
+                return {}
+
+            athlete_id_match = re.search(r'(?:\?|&)(?:athleteid|athlete_id|athleteId)=(\d+)', href, re.IGNORECASE)
+            athlete_main_id_match = re.search(
+                r'(?:\?|&)(?:athlete_main_id|athletemainid|athleteMainId)=(\d+)', href, re.IGNORECASE
+            )
+            sport_alias_match = re.search(r'(?:\?|&)(?:sport_alias|sportAlias)=([^&]*)', href, re.IGNORECASE)
+
+            return {
+                "athlete_id": athlete_id_match.group(1) if athlete_id_match else "",
+                "athlete_main_id": athlete_main_id_match.group(1) if athlete_main_id_match else "",
+                "sport_alias": sport_alias_match.group(1) if sport_alias_match else "",
+            }
+
+        def _extract_video_management_params_from_text(text: str) -> Dict[str, str]:
+            """
+            Same as _extract_video_management_params, but scans any text/HTML (href, onclick, data-url, etc).
+            This catches the new per-thread "Manage Videos" endpoints even when they aren't plain hrefs.
+            """
+            if not text:
+                return {}
+            text = text.replace("&amp;", "&")
+            if ("template/template/videosortable" not in text) and ("template/template/addvideoform" not in text):
+                return {}
+
+            athlete_id_match = re.search(r'(?:\?|&|\b)(?:athleteid|athlete_id|athleteId)=(\d+)', text, re.IGNORECASE)
+            athlete_main_id_match = re.search(
+                r'(?:\?|&|\b)(?:athlete_main_id|athletemainid|athleteMainId)=(\d+)', text, re.IGNORECASE
+            )
+            sport_alias_match = re.search(
+                r'(?:\?|&|\b)(?:sport_alias|sportAlias)=([^&\s"\']*)', text, re.IGNORECASE
+            )
+            return {
+                "athlete_id": athlete_id_match.group(1) if athlete_id_match else "",
+                "athlete_main_id": athlete_main_id_match.group(1) if athlete_main_id_match else "",
+                "sport_alias": sport_alias_match.group(1) if sport_alias_match else "",
+            }
+
         soup = BeautifulSoup(html_response, 'html.parser')
         threads = []
 
@@ -633,7 +852,16 @@ class LegacyTranslator:
             try:
                 item_id = elem.get('itemid')
                 item_code = elem.get('itemcode')
-                message_id = elem.get('id')
+                raw_message_id = elem.get('id') or ""
+                if not raw_message_id:
+                    logger.warning(
+                        f"⚠️ Missing message_id for thread {item_id}; skipping to avoid incorrect IDs"
+                    )
+                    continue
+
+                message_id = raw_message_id
+                # video_msg_id should be the numeric thread ID, not the message_id string
+                video_msg_id = item_id if item_id else raw_message_id
 
                 if not item_id:
                     continue
@@ -650,8 +878,52 @@ class LegacyTranslator:
                 # Extract fields
                 email_elem = elem.select_one('.hidden')
                 email = email_elem.text.strip() if email_elem else ""
-                contact_id = elem.get('contacttask', '')
-                athlete_main_id = elem.get('athletemainid', '')
+
+                # Extract athlete_id/contact_id and athlete_main_id.
+                #
+                # IMPORTANT:
+                # - video_msg_id is ONLY for stage/status updates.
+                # - athlete_id (aka contact_id/contacttask) and athlete_main_id are for notes/video management.
+                athlete_id = ""
+                athlete_main_id = ""
+                sport_alias = ""
+
+                # Preferred (and ONLY trusted source): extract from the new per-thread video mailbox URLs.
+                for link in elem.select('a[href]'):
+                    params = _extract_video_management_params(link.get('href', ''))
+                    if params.get("athlete_id") or params.get("athlete_main_id"):
+                        athlete_id = athlete_id or params.get("athlete_id", "")
+                        athlete_main_id = athlete_main_id or params.get("athlete_main_id", "")
+                        sport_alias = sport_alias or params.get("sport_alias", "")
+                        if athlete_id and athlete_main_id:
+                            break
+
+                # Also scan the full element HTML for params (covers onclick/data-* cases).
+                if (not athlete_id) or (not athlete_main_id):
+                    params = _extract_video_management_params_from_text(str(elem))
+                    athlete_id = athlete_id or params.get("athlete_id", "")
+                    athlete_main_id = athlete_main_id or params.get("athlete_main_id", "")
+                    sport_alias = sport_alias or params.get("sport_alias", "")
+
+                # Log if still not found (for debugging)
+                if not athlete_id:
+                    logger.warning(
+                        f"⚠️ Missing athleteid/athlete_main_id params for thread {item_id} (video_msg_id={video_msg_id}); video management + notes will be unavailable for this thread"
+                    )
+                    # Save HTML sample for first failed thread
+                    if item_id == '13620':
+                        with open('/tmp/inbox_thread_sample.html', 'w') as f:
+                            f.write(str(elem.prettify()) if hasattr(elem, 'prettify') else str(elem))
+
+                # Log extraction result
+                if athlete_id or athlete_main_id:
+                    logger.info(
+                        f"🆔 Thread {item_id} (video_msg_id={video_msg_id}) ids: athlete_id={athlete_id or '∅'} athlete_main_id={athlete_main_id or '∅'}"
+                    )
+
+                # Extract sport_alias (needed for video management endpoints) - prefer management URL; fallback to attrs.
+                if not sport_alias:
+                    sport_alias = elem.get('sport_alias', '') or elem.get('data-sport', '') or elem.get('data-sport-alias', '')
 
                 name_elem = elem.select_one('.msg-sendr-name')
                 raw_name = name_elem.text.strip() if name_elem else "Unknown"
@@ -679,11 +951,15 @@ class LegacyTranslator:
                     })
 
                 threads.append({
-                    "id": message_id or item_id,
+                    "id": message_id,
                     "itemCode": item_code or item_id,
-                    "message_id": message_id or item_id,
-                    "contact_id": contact_id,
+                    "message_id": message_id,
+                    "video_msg_id": video_msg_id,
+                    "thread_id": item_id,
+                    "contact_id": athlete_id,  # Aliases: athlete_id, contacttask (same value)
+                    "athlete_id": athlete_id,  # explicit alias for clarity
                     "athleteMainId": athlete_main_id,
+                    "sport_alias": sport_alias,  # NEW - needed for video management endpoints
                     "name": name,
                     "email": email,
                     "subject": subject,
@@ -706,15 +982,12 @@ class LegacyTranslator:
         """
         Convert message detail request to legacy params.
         GET /rulestemplates/template/videoteammessage_subject
+        Mirrors: src/python/npid_api_client.py:400-419
         """
         endpoint = "/rulestemplates/template/videoteammessage_subject"
         clean_id = message_id.replace('message_id', '', 1) if message_id.startswith('message_id') else message_id
         params = {
-            "message_id": clean_id,
-            "itemcode": item_code,
-            "type": "inbox",
-            "user_timezone": "America/New_York",
-            "filter_self": "Me/Un"
+            "id": clean_id  # Python uses "id", not "message_id"
         }
         return endpoint, params
 
@@ -733,14 +1006,38 @@ class LegacyTranslator:
         content = raw_content
         
         # Convert HTML to text using html2text
-        if '<html' in content.lower() or '<body' in content.lower() or '<div' in content.lower():
+        html_hints = ['<html', '<body', '<div', '<p', '<br', '<table', '<span', '<tr', '<td']
+        if any(hint in content.lower() for hint in html_hints):
+            # Pre-processing to ensure <br> and <p> have enough space for Markdown
+            # Replace <br> with double newline to ensure it's not collapsed by Markdown renderers
+            content = re.sub(r'<br\s*/?>', '\n\n', content, flags=re.IGNORECASE)
+            
             h = html2text.HTML2Text()
             h.ignore_links = True
             h.ignore_images = True
             h.ignore_emphasis = False
             h.body_width = 0  # No line wrapping
+            h.protect_links = True
+            h.unicode_snob = True # Use Unicode instead of ASCII equivalents
             content = h.handle(content)
         
+        # Strip quoted replies - common email patterns
+        # Gmail/Outlook: "On [Day], [Month] [Date], [Year] at [Time] [Name] <email> wrote:"
+        # Also handles: "On [Day] [Month] [Date] [Year] [Name] wrote:"
+        wrote_patterns = [
+            r'On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[APap][Mm]\s+.+?wrote:.*',
+            r'On\s+[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[APap][Mm]\s+.+?wrote:.*',
+            r'On\s+\d{1,2}/\d{1,2}/\d{2,4}.*?wrote:.*',
+            r'From:\s*.+?Sent:\s*.+?To:\s*.+?Subject:.*',  # Outlook style
+        ]
+
+        for pattern in wrote_patterns:
+            match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
+            if match:
+                # Keep only content before the quoted reply marker
+                content = content[:match.start()].strip()
+                break
+
         # Strip NPID video instructions template
         if strip_template:
             template_markers = [
@@ -754,34 +1051,29 @@ class LegacyTranslator:
                 "helping thousands of athletes connect to college coaches",
                 "Connect With Us",
             ]
-            
+
             # Check if this is mostly template content
             template_count = sum(1 for m in template_markers if m.lower() in content.lower())
             if template_count >= 2:
-                # Find and remove template - it usually starts after "On ... wrote:"
-                wrote_match = re.search(
-                    r'On\s+[A-Za-z]{3,4},?\s*[A-Za-z]{3}\s+\d{1,2},?\s*\d{4}.+?wrote:',
-                    content, re.IGNORECASE | re.DOTALL
-                )
-                if wrote_match:
-                    # Keep only content before "On ... wrote:"
-                    content = content[:wrote_match.start()].strip()
+                # Template detected - already stripped above via wrote_patterns
+                pass
         
         # Use email_reply_parser to extract just the visible reply (most recent)
         parsed = EmailReplyParser.parse_reply(content)
         
-        # Clean up excessive whitespace
+        # Clean up and ensure Markdown line breaks
         lines = parsed.split('\n')
         cleaned = []
-        prev_empty = False
         for line in lines:
-            is_empty = not line.strip()
-            if is_empty and prev_empty:
-                continue
-            cleaned.append(line)
-            prev_empty = is_empty
+            line = line.strip()
+            if line:
+                # Add two spaces at the end of each non-empty line for a hard break in Markdown
+                cleaned.append(line + "  ")
+            else:
+                cleaned.append("")
         
-        return '\n'.join(cleaned).strip()
+        # Join with double newlines to ensure paragraph separation
+        return '\n\n'.join(cleaned).strip()
 
     @staticmethod
     def parse_message_detail_response(response_text: str, message_id: str, item_code: str) -> Dict[str, Any]:
@@ -795,6 +1087,29 @@ class LegacyTranslator:
             data = json.loads(response_text.strip())
             raw_content = data.get('message_plain', '') or data.get('message', '')
             raw_message_html = data.get('message', '') or data.get('body_html', '')
+
+            # Extract contact_id from JSON (direct or from athlete_profile_link HTML fragment)
+            contact_id = data.get('contact_id', '')
+
+            # Fallback: Parse athlete_profile_link HTML fragment if contact_id not directly available
+            if not contact_id and data.get('athlete_profile_link'):
+                try:
+                    from selectolax.parser import HTMLParser
+
+                    link_html = data['athlete_profile_link']
+                    tree = HTMLParser(link_html)
+
+                    # Find anchor with fa_icon class
+                    fa_anchor = tree.css_first('a.fa_icon')
+                    if fa_anchor:
+                        href = fa_anchor.attributes.get('href', '')
+                        # Extract from /profile/ID or ?contactid=ID patterns
+                        match = re.search(r'(?:profile/|contactid=)(\d+)', href)
+                        if match:
+                            contact_id = match.group(1)
+                            logger.info(f"✅ Extracted contact_id {contact_id} from athlete_profile_link")
+                except Exception as e:
+                    logger.debug(f"Failed to extract contact_id from athlete_profile_link: {e}")
 
             # EXTRACT ATTACHMENTS BEFORE CLEANING (preserve download URLs)
             attachments = []
@@ -838,6 +1153,7 @@ class LegacyTranslator:
                 "timestamp_wrote": data.get('time_stamp_wrote', ''),
                 "raw_message_html": raw_message_html,
                 "raw_subject": raw_subject,
+                "contact_id": contact_id or None,
                 "attachments": attachments,  # ✅ Attachments preserved with URLs
             }
         except Exception as e:
@@ -1191,51 +1507,71 @@ class LegacyTranslator:
     def parse_reply_form_response(html_response: str, message_id: str) -> Dict[str, Any]:
         """
         Parse reply form to extract CSRF token and thread data.
+        Mirrors: src/python/npid_api_client.py:548-551
         """
+        from app.routers.inbox import logger
         soup = BeautifulSoup(html_response, 'html.parser')
         token = soup.find('input', {'name': '_token'})
+        token_value = token.get('value') if token else ''
+
+        if not token_value:
+            logger.warning(f"⚠️ No _token found in reply form HTML (length: {len(html_response)})")
+            # Log a sample to debug
+            logger.debug(f"HTML sample: {html_response[:500]}")
+        else:
+            logger.info(f"✅ Scraped reply form token: {token_value[:20]}...")
+
         return {
-            "csrf_token": token.get('value') if token else '',
+            "csrf_token": token_value,
             "message_id": message_id
         }
 
     @staticmethod
     def _format_reply_text(reply_text: str) -> str:
+        """
+        Format reply text for sending.
+        Mirrors: src/python/npid_api_client.py:588 (sends as-is)
+        """
         if not reply_text:
             return ""
-        return escape(reply_text).replace('\n', '<br>')
+        # Send reply text as-is (Python doesn't escape HTML)
+        return reply_text
 
-    @classmethod
-    def _build_previous_message_block(cls, message_id: str, detail_data: Dict[str, Any]) -> str:
-        original_html = detail_data.get('raw_message_html') or detail_data.get('content') or ''
+    @staticmethod
+    def _build_previous_message_block(message_id: str, detail_data: Dict[str, Any]) -> str:
+        """
+        Build previous message block for reply.
+        Mirrors: src/python/npid_api_client.py:586-587
+        """
+        original_html = detail_data.get('raw_message_html') or detail_data.get('message') or ''
         if not original_html:
             return ""
         timestamp = detail_data.get('timestamp_wrote') or detail_data.get('timestamp') or ''
-        pieces = [cls.SIGNATURE_HTML]
-        if timestamp:
-            pieces.append(f" {timestamp} ")
-        pieces.append(original_html)
-        inner = ''.join(pieces)
-        return f"<div id=\"previous_message{message_id}\">{inner}</div>"
+        # Use simple signature matching Python implementation
+        signature = '<br><br><span>Kind Regards,</span><br><br>'
+        previous_msg = f'{signature} {timestamp} {original_html}'
+        return f"<div id=\"previous_message{message_id}\">{previous_msg}</div>"
 
     @staticmethod
     def send_reply_to_legacy(message_id: str, item_code: str, reply_text: str, thread_data: Dict, detail_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
         """
         Convert send reply to legacy form data.
         POST /videoteammsg/sendmessage
+        Mirrors: src/python/npid_api_client.py:573-602
         """
         endpoint = "/videoteammsg/sendmessage"
         subject_source = detail_data.get('raw_subject') or detail_data.get('subject') or ''
         formatted_subject = f"Re: {subject_source}" if subject_source else "Re: Video Team"
+        # Python sends message_id AS-IS (with "message_id" prefix intact)
         reply_main_id = detail_data.get('message_id') or message_id
         reply_body = LegacyTranslator._format_reply_text(reply_text)
         previous_block = LegacyTranslator._build_previous_message_block(message_id, detail_data)
         full_message = f"{reply_body}{previous_block}"
 
         form_data = {
-            "_token": thread_data.get('csrf_token', ''),
+            "_token": thread_data.get('csrf_token', ''),  # Use scraped token from reply form
             "message_type": "send",
-            "reply_message_id": message_id,
+            "reply_message_id": message_id,  # Send AS-IS (Python does NOT clean this)
             "reply_main_id": reply_main_id,
             "draftid": "",
             "message_subject": formatted_subject,
