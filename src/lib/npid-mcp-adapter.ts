@@ -7,6 +7,7 @@ import {
   VideoTeamContact,
   VideoTeamSearchCategory,
 } from "../types/video-team";
+import { logger } from "./logger";
 
 /**
  * Fetch inbox threads via FastAPI.
@@ -14,12 +15,21 @@ import {
  */
 export async function fetchInboxThreads(
   limit: number,
-  filter_assigned: "unassigned" | "assigned" | "both"
+  filter_assigned: "unassigned" | "assigned" | "both",
+  pageStartNumber = 1,
+  onlyPagination = false,
+  searchText = ""
 ): Promise<NPIDInboxMessage[]> {
   const response = await apiFetch("/inbox/threads", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ limit, filter_assigned }),
+    body: JSON.stringify({
+      limit,
+      filter_assigned,
+      page_start_number: pageStartNumber,
+      only_pagination: false,  // Always false - matches Python reference
+      search_text: searchText,
+    }),
   });
 
   if (!response.ok) {
@@ -45,6 +55,14 @@ export async function fetchMessageDetail(
   from_email?: string;
   message_id?: string;
   item_code?: string;
+  contact_id?: string;
+  athlete_main_id?: string;
+  athlete_links?: {
+    profile?: string;
+    notes?: string;
+    search?: string;
+    addVideoForm?: string;
+  };
   attachments?: Array<{
     fileName: string;
     url: string;
@@ -66,6 +84,25 @@ export async function fetchMessageDetail(
 }
 
 /**
+ * Fetch athlete name via FastAPI.
+ * Endpoint: GET /api/v1/athlete/{athlete_id}/name
+ */
+export async function fetchAthleteName(
+  athleteId: string
+): Promise<string | null> {
+  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/name`, {
+    method: "GET",
+  });
+
+  if (!response.ok) {
+    return null;
+  }
+
+  const data = await response.json().catch(() => ({})) as any;
+  return data?.name ? String(data.name) : null;
+}
+
+/**
  * Send reply to inbox message via FastAPI.
  * Endpoint: POST /api/v1/inbox/reply
  */
@@ -74,18 +111,31 @@ export async function sendInboxReply(
   item_code: string,
   reply_text: string
 ): Promise<{ success: boolean }> {
+  console.log('📧 sendInboxReply called:', { message_id, item_code, reply_text_length: reply_text.length });
   const response = await apiFetch("/inbox/reply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_id, item_code, reply_text }),
   });
 
+  console.log('📧 inbox/reply response status:', response.status);
+
   if (!response.ok) {
-    const error = (await response.json().catch(() => ({}))) as any;
-    throw new Error(error.detail || `Reply failed: ${response.status}`);
+    const errorText = await response.text();
+    console.error('📧 inbox/reply error response:', errorText);
+    let error: any;
+    try {
+      error = JSON.parse(errorText);
+    } catch {
+      error = { detail: errorText };
+    }
+    const errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
+    throw new Error(errorMsg || `Reply failed: ${response.status}`);
   }
 
-  return response.json() as any;
+  const result = await response.json() as any;
+  console.log('📧 inbox/reply success:', result);
+  return result;
 }
 
 /**
@@ -196,21 +246,33 @@ export async function fetchAthleteNotes(
   athleteId: string,
   athleteMainId: string
 ): Promise<AthleteNote[]> {
+  console.log('📝 fetchAthleteNotes API call:', { athleteId, athleteMainId });
   const response = await apiFetch("/notes/list", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      athlete_id: athleteId,
-      athlete_main_id: athleteMainId,
+      athlete_id: String(athleteId),
+      athlete_main_id: String(athleteMainId),
     }),
   });
 
+  console.log('📝 notes/list response status:', response.status);
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({})) as any;
-    throw new Error(error.detail || `Failed to load notes: ${response.status}`);
+    const errorText = await response.text();
+    console.error('📝 notes/list error response:', errorText);
+    let error: any;
+    try {
+      error = JSON.parse(errorText);
+    } catch {
+      error = { detail: errorText };
+    }
+    const errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
+    throw new Error(errorMsg || `Failed to load notes: ${response.status}`);
   }
 
   const data = await response.json() as { notes?: AthleteNote[] };
+  console.log('📝 notes/list success, notes count:', data?.notes?.length ?? 0);
   return data?.notes ?? [];
 }
 
@@ -223,23 +285,35 @@ export async function addAthleteNote(params: {
   title: string;
   description: string;
 }): Promise<void> {
+  console.log('📝 addAthleteNote API call:', params);
   const response = await apiFetch("/notes/add", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      athlete_id: params.athleteId,
-      athlete_main_id: params.athleteMainId,
+      athlete_id: String(params.athleteId),
+      athlete_main_id: String(params.athleteMainId),
       title: params.title,
       description: params.description,
     }),
   });
 
+  console.log('📝 notes/add response status:', response.status);
+
   if (!response.ok) {
-    const error = await response.json().catch(() => ({})) as any;
-    throw new Error(error.detail || `Failed to add note: ${response.status}`);
+    const errorText = await response.text();
+    console.error('📝 notes/add error response:', errorText);
+    let error: any;
+    try {
+      error = JSON.parse(errorText);
+    } catch {
+      error = { detail: errorText };
+    }
+    const errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
+    throw new Error(errorMsg || `Failed to add note: ${response.status}`);
   }
 
   const result = await response.json().catch(() => ({})) as any;
+  console.log('📝 notes/add response:', result);
   if (result?.success === false) {
     throw new Error(result?.message || "Failed to add note");
   }
@@ -338,30 +412,32 @@ export interface ResolvedAthleteIds {
  */
 export async function bulkResolveAthleteMainIds(
   threads: NPIDInboxMessage[]
-): Promise<Map<string, string>> {
-  const resolved = new Map<string, string>();
+): Promise<{ athleteMainIds: Map<string, string> }> {
+  const athleteMainIds = new Map<string, string>();
   const missingIds: string[] = [];
 
   // Identify threads missing athlete_main_id
   for (const thread of threads) {
-    const athleteId = thread.contact_id || thread.player_id || thread.thread_id;
+    // Only resolve using a real athlete/contact id.
+    // DO NOT fallback to thread/message ids (video_msg_id), those will corrupt mappings.
+    const athleteId = thread.contact_id || (thread as any).athlete_id;
 
     if (!athleteId) {
-      console.warn('⚠️ Thread missing all ID fields:', thread.id);
+      console.warn('⚠️ Thread missing contact_id; skipping resolve:', thread);
       continue;
     }
 
     if (!thread.athleteMainId) {
       missingIds.push(athleteId);
     } else {
-      resolved.set(athleteId, thread.athleteMainId);
+      athleteMainIds.set(athleteId, thread.athleteMainId);
     }
   }
 
   console.log(`🔍 BULK RESOLVE: ${missingIds.length} of ${threads.length} threads missing athlete_main_id`);
 
   if (missingIds.length === 0) {
-    return resolved;
+    return { athleteMainIds };
   }
 
   // Batch resolve with concurrency limit (10 at a time)
@@ -382,8 +458,8 @@ export async function bulkResolveAthleteMainIds(
 
         const data = (await response.json()) as ResolvedAthleteIds;
         if (data.athlete_main_id) {
-          resolved.set(athleteId, data.athlete_main_id);
-          console.log(`✅ Resolved ${athleteId} → ${data.athlete_main_id}`);
+          athleteMainIds.set(athleteId, data.athlete_main_id);
+          console.log(`✅ Resolved ${athleteId} → main_id: ${data.athlete_main_id}`);
         }
       } catch (error) {
         console.error(`❌ Error resolving ${athleteId}:`, error);
@@ -397,6 +473,111 @@ export async function bulkResolveAthleteMainIds(
     console.log(`📊 Progress: ${progress}/${missingIds.length} resolved`);
   }
 
-  console.log(`✅ BULK RESOLVE: Resolved ${resolved.size - (threads.length - missingIds.length)} new IDs`);
-  return resolved;
+  console.log(`✅ BULK RESOLVE: Resolved ${athleteMainIds.size} athlete_main_ids`);
+  return { athleteMainIds };
+}
+
+// ============== Contact Enrichment ==============
+
+export interface ContactInfo {
+  contactId: string;
+  studentAthlete: {
+    name: string;
+    email: string | null;
+    phone: string | null;
+  };
+  parent1: {
+    name: string;
+    relationship: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
+  parent2: {
+    name: string;
+    relationship: string;
+    email: string | null;
+    phone: string | null;
+  } | null;
+}
+
+/**
+ * Fetch enriched contact info (student + parents).
+ * Endpoint: GET /api/v1/contacts/{contact_id}/enriched
+ */
+export async function fetchContactInfo(
+  contactId: string,
+  athleteMainId: string
+): Promise<ContactInfo> {
+  logger.info(`🌐 API: Fetching contact info for ${contactId}`, { athleteMainId });
+
+  const response = await apiFetch(
+    `/contacts/${contactId}/enriched?athlete_main_id=${athleteMainId}`
+  );
+
+  if (!response.ok) {
+    logger.error(`❌ API: Failed to fetch contact info for ${contactId}`, {
+      status: response.status,
+      statusText: response.statusText,
+    });
+    throw new Error(`Failed to fetch contact info: ${response.status}`);
+  }
+
+  const data = await response.json();
+  logger.info(`✅ API: Successfully fetched contact info for ${contactId}`, {
+    hasStudent: !!data.student_athlete,
+    hasParent1: !!data.parent1,
+    hasParent2: !!data.parent2,
+  });
+
+  return data;
+}
+
+/**
+ * Transform API ContactInfo to cache format.
+ */
+export function transformContactInfoToCache(info: ContactInfo): any {
+  return {
+    contactId: Number(info.contactId),
+    studentName: info.studentAthlete.name,
+    studentEmail: info.studentAthlete.email,
+    studentPhone: info.studentAthlete.phone,
+    parent1Name: info.parent1?.name || null,
+    parent1Relationship: info.parent1?.relationship || null,
+    parent1Email: info.parent1?.email || null,
+    parent1Phone: info.parent1?.phone || null,
+    parent2Name: info.parent2?.name || null,
+    parent2Relationship: info.parent2?.relationship || null,
+    parent2Email: info.parent2?.email || null,
+    parent2Phone: info.parent2?.phone || null,
+  };
+}
+
+/**
+ * Transform cached data to ContactInfo format.
+ */
+export function transformCacheToContactInfo(cached: any): ContactInfo {
+  return {
+    contactId: String(cached.contactId),
+    studentAthlete: {
+      name: cached.studentName,
+      email: cached.studentEmail,
+      phone: cached.studentPhone,
+    },
+    parent1: cached.parent1Name
+      ? {
+          name: cached.parent1Name,
+          relationship: cached.parent1Relationship || 'Parent',
+          email: cached.parent1Email,
+          phone: cached.parent1Phone,
+        }
+      : null,
+    parent2: cached.parent2Name
+      ? {
+          name: cached.parent2Name,
+          relationship: cached.parent2Relationship || 'Parent',
+          email: cached.parent2Email,
+          phone: cached.parent2Phone,
+        }
+      : null,
+  };
 }

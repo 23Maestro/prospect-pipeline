@@ -102,6 +102,7 @@ class AthleteIdentifiers(BaseModel):
     state: Optional[str] = None
     positions: Optional[str] = None
     sport: Optional[str] = None
+    jersey_number: Optional[str] = None
 
 
 class VideoSubmitResponse(BaseModel):
@@ -296,3 +297,25 @@ class AddNoteResponse(BaseModel):
     """Response after adding note."""
     success: bool
     message: str
+
+
+# ============== Contact Models ==============
+
+class ContactPerson(BaseModel):
+    """Single contact (student or parent)."""
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    relationship: Optional[str] = None  # Only for parents
+
+
+class ContactInfoResponse(BaseModel):
+    """Enriched contact information."""
+    contact_id: str = Field(..., alias='contactId')
+    student_athlete: ContactPerson = Field(..., alias='studentAthlete')
+    parent1: Optional[ContactPerson] = None
+    parent2: Optional[ContactPerson] = None
+
+    class Config:
+        populate_by_name = True
+        by_alias = True

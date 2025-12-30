@@ -729,6 +729,288 @@ class LegacyTranslator:
         }
 
     @staticmethod
+    def contact_info_to_legacy(contact_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build athleteinfo POST request.
+        Endpoint: POST /admin/athleteinfo
+
+        Note: _token is auto-injected by session.post() - do NOT include it here
+        """
+        endpoint = "/admin/athleteinfo"
+        form_data = {
+            "athlete_selected": contact_id,
+            "athlete_table_length": "5",
+            "athleteselected": contact_id,
+            "athlete_main_id": athlete_main_id,
+            "show_section": ""
+        }
+        return endpoint, form_data
+
+    @staticmethod
+    def parse_athleteinfo_response(html: str) -> Dict[str, Any]:
+        """
+        Parse athleteinfo HTML form using selectolax.
+
+        Actual HTML structure uses:
+        - Student: first_name, last_name, phone, email
+        - Guardians: GUARDIAN[ID][first_name], GUARDIAN[ID][last_name],
+                     GUARDIAN[ID][relationship], GUARDIAN[ID][phone], GUARDIAN[ID][email]
+
+        Returns: {
+            "student": {"firstName": ..., "lastName": ..., "phone": ..., "email": ...},
+            "parent1": {"firstName": ..., "lastName": ..., "relationship": ..., "phone": ..., "email": ...},
+            "parent2": {...} or None
+        }
+        """
+        import logging
+        import re
+        from selectolax.parser import HTMLParser
+        logger = logging.getLogger(__name__)
+
+        tree = HTMLParser(html)
+
+        # DEBUG: Save HTML to file for inspection
+        import os
+        debug_file = '/Users/singleton23/raycast_logs/athleteinfo_response.html'
+        try:
+            with open(debug_file, 'w') as f:
+                f.write(html)
+            logger.info(f"💾 Saved athleteinfo HTML to {debug_file}")
+        except:
+            pass
+
+        def get_input_value(name: str) -> str:
+            """Extract value from input field by name."""
+            inp = tree.css_first(f'input[name="{name}"]')
+            if inp and inp.attributes:
+                value = inp.attributes.get('value', '')
+                if value:
+                    return value.strip() if value.strip() else None
+            return None
+
+        # Extract student data
+        student = {
+            "firstName": get_input_value('first_name'),
+            "lastName": get_input_value('last_name'),
+            "phone": get_input_value('phone'),
+            "email": get_input_value('email')
+        }
+
+        # Extract guardian data using GUARDIAN[ID][field] pattern
+        guardian_inputs = tree.css('input[name^="GUARDIAN["]')
+        guardians = {}
+
+        for inp in guardian_inputs:
+            if not inp.attributes:
+                continue
+            name = inp.attributes.get('name', '')
+            value = inp.attributes.get('value', '')
+            if value is None:
+                continue
+            value = value.strip()
+
+            # Parse: GUARDIAN[ID][field]
+            match = re.match(r'GUARDIAN\[(\d+)\]\[(\w+)\]', name)
+            if match:
+                guardian_id, field = match.groups()
+                if guardian_id not in guardians:
+                    guardians[guardian_id] = {}
+                guardians[guardian_id][field] = value if value else None
+
+        logger.info(f"🔍 DEBUG: Found {len(guardians)} guardians: {list(guardians.keys())}")
+
+        # Filter out guardians without a relationship (incomplete entries)
+        # Only check 'relationship' field, not 'parentsno' (which is just parent1/parent2 identifier)
+        valid_guardians = []
+        for guardian_id, guardian_data in guardians.items():
+            relationship = guardian_data.get('relationship', '')
+            if relationship and relationship.strip():
+                valid_guardians.append((guardian_id, guardian_data))
+
+        logger.info(f"🔍 DEBUG: Valid guardians (with relationship): {len(valid_guardians)}")
+
+        # Convert valid guardians to parent1/parent2
+        parent1 = None
+        parent2 = None
+
+        if len(valid_guardians) > 0:
+            g1_id, g1_data = valid_guardians[0]
+            parent1 = {
+                "firstName": g1_data.get('first_name'),
+                "lastName": g1_data.get('last_name'),
+                "relationship": g1_data.get('relationship') or 'Parent',
+                "phone": g1_data.get('phone'),
+                "email": g1_data.get('email')
+            }
+
+        if len(valid_guardians) > 1:
+            g2_id, g2_data = valid_guardians[1]
+            parent2 = {
+                "firstName": g2_data.get('first_name'),
+                "lastName": g2_data.get('last_name'),
+                "relationship": g2_data.get('relationship') or 'Parent',
+                "phone": g2_data.get('phone'),
+                "email": g2_data.get('email')
+            }
+
+        # Extract emails from checkbox labels
+        # Pattern: > Athlete (email@example.com), > Parent 1 (email@example.com), > Parent 2 (email@example.com)
+        import re
+
+        athlete_email = None
+        parent1_email = None
+        parent2_email = None
+
+        # Extract athlete email
+        athlete_match = re.search(r'>\s*Athlete\s*\(([^)]+@[^)]+)\)', html)
+        if athlete_match:
+            athlete_email = athlete_match.group(1).strip()
+            logger.info(f"📧 Extracted athlete email: {athlete_email}")
+
+        # Extract parent 1 email
+        parent1_match = re.search(r'>\s*Parent 1\s*\(([^)]+@[^)]+)\)', html)
+        if parent1_match:
+            parent1_email = parent1_match.group(1).strip()
+            logger.info(f"📧 Extracted parent1 email: {parent1_email}")
+
+        # Extract parent 2 email
+        parent2_match = re.search(r'>\s*Parent 2\s*\(([^)]+@[^)]+)\)', html)
+        if parent2_match:
+            parent2_email = parent2_match.group(1).strip()
+            logger.info(f"📧 Extracted parent2 email: {parent2_email}")
+
+        # Add emails to contact data
+        student['email'] = athlete_email
+
+        # Create parent1 if we have an email even if no relationship field
+        if parent1_email and not parent1:
+            # Get data from guardians dict even if no relationship
+            guardian_list = list(guardians.items())
+            if len(guardian_list) > 0:
+                g1_id, g1_data = guardian_list[0]
+                parent1 = {
+                    "firstName": g1_data.get('first_name'),
+                    "lastName": g1_data.get('last_name'),
+                    "relationship": g1_data.get('relationship') or 'Parent',
+                    "phone": g1_data.get('phone'),
+                    "email": None
+                }
+
+        if parent1:
+            parent1['email'] = parent1_email
+
+        # Create parent2 if we have an email even if no relationship field
+        if parent2_email and not parent2:
+            guardian_list = list(guardians.items())
+            if len(guardian_list) > 1:
+                g2_id, g2_data = guardian_list[1]
+                parent2 = {
+                    "firstName": g2_data.get('first_name'),
+                    "lastName": g2_data.get('last_name'),
+                    "relationship": g2_data.get('relationship') or 'Parent',
+                    "phone": g2_data.get('phone'),
+                    "email": None
+                }
+
+        if parent2:
+            parent2['email'] = parent2_email
+
+        logger.info(f"📋 Parsed contact data - Student: {student.get('firstName')} {student.get('lastName')}, Parent1: {parent1.get('firstName') if parent1 else None}")
+        return {"student": student, "parent1": parent1, "parent2": parent2}
+
+    @staticmethod
+    def parse_contact_emails_response(html_text: str) -> List[str]:
+        """
+        Parse athlete_emailslist HTML table response.
+
+        Extracts emails from "Email To" column, filters out @prospectid.com,
+        and returns unique emails only.
+
+        Returns: List of unique email strings (filtered, no @prospectid.com)
+        """
+        import logging
+        from selectolax.parser import HTMLParser
+        logger = logging.getLogger(__name__)
+
+        try:
+            tree = HTMLParser(html_text)
+
+            # Find all table rows in tbody
+            rows = tree.css('tbody tr')
+            logger.info(f"📧 DEBUG: Found {len(rows)} email history rows")
+
+            # Extract all "Email To" values (3rd column) - preserve order, deduplicate
+            seen_emails = set()
+            emails = []
+            filtered_count = 0
+
+            for row in rows:
+                cells = row.css('td')
+                if len(cells) >= 3:
+                    email_cell = cells[2]  # "Email To" is 3rd column
+                    email = email_cell.text(strip=True)
+
+                    # Only filter @prospectid.com (explicit requirement)
+                    if '@prospectid.com' in email.lower():
+                        filtered_count += 1
+                        continue
+
+                    if email and '@' in email and email not in seen_emails:
+                        seen_emails.add(email)
+                        emails.append(email)
+                        logger.info(f"📧 DEBUG: Found email: {email}")
+            logger.info(f"📧 DEBUG: Parsed {len(emails)} unique emails, filtered {filtered_count} @prospectid.com emails")
+            return emails
+
+        except Exception as e:
+            logger.error(f"📧 DEBUG: Failed to parse emails: {e}", exc_info=True)
+            return []
+
+    @staticmethod
+    def merge_contact_data(
+        contact_id: str,
+        contact_data: Dict[str, Any],
+        emails: List[str]  # Kept for signature compatibility but unused
+    ) -> Dict[str, Any]:
+        """
+        Build ContactInfoResponse from athleteinfo data.
+
+        Emails are already extracted in parse_athleteinfo_response from checkbox labels.
+        """
+        student = contact_data.get("student", {})
+        parent1_data = contact_data.get("parent1", {})
+        parent2_data = contact_data.get("parent2")
+
+        result = {
+            "contact_id": contact_id,
+            "student_athlete": {
+                "name": f"{student.get('firstName', '')} {student.get('lastName', '')}".strip(),
+                "email": student.get("email"),
+                "phone": student.get("phone")
+            },
+            "parent1": None,
+            "parent2": None
+        }
+
+        if parent1_data and parent1_data.get("firstName"):
+            result["parent1"] = {
+                "name": f"{parent1_data.get('firstName', '')} {parent1_data.get('lastName', '')}".strip(),
+                "relationship": parent1_data.get("relationship", "Parent"),
+                "email": parent1_data.get("email"),
+                "phone": parent1_data.get("phone")
+            }
+
+        if parent2_data and parent2_data.get("firstName"):
+            result["parent2"] = {
+                "name": f"{parent2_data.get('firstName', '')} {parent2_data.get('lastName', '')}".strip(),
+                "relationship": parent2_data.get("relationship", "Parent"),
+                "email": parent2_data.get("email"),
+                "phone": parent2_data.get("phone")
+            }
+
+        return result
+
+    @staticmethod
     def send_email_to_legacy(request: SendEmailRequest) -> Tuple[str, Dict[str, Any]]:
         """
         Convert send email request to legacy multipart form data.
@@ -767,13 +1049,20 @@ class LegacyTranslator:
     # Ported from: src/python/npid_api_client.py
 
     @staticmethod
-    def inbox_threads_to_legacy(limit: int, filter_assigned: str) -> Tuple[str, Dict[str, Any]]:
+    def inbox_threads_to_legacy(
+        limit: int,
+        filter_assigned: str,
+        page_start_number: int = 1,
+        only_pagination: bool = False,
+        search_text: str = ""
+    ) -> Tuple[str, Dict[str, Any]]:
         """
         Convert inbox threads request to legacy params.
         GET /rulestemplates/template/videoteammessagelist
         Mirrors: npid_api_client.py:232-244
         """
         endpoint = "/rulestemplates/template/videoteammessagelist"
+        safe_page = page_start_number if page_start_number > 0 else 1
         params = {
             "athleteid": "",
             "user_timezone": "America/New_York",
@@ -781,9 +1070,10 @@ class LegacyTranslator:
             "is_mobile": "",
             "filter_self": "Me/Un",
             "refresh": "false",
-            "page_start_number": "1",
-            "search_text": ""
+            "page_start_number": str(safe_page),
+            "search_text": search_text
         }
+        # Removed only_pagination logic - matches Python reference implementation
         return endpoint, params
 
     @staticmethod
@@ -905,6 +1195,10 @@ class LegacyTranslator:
                     athlete_main_id = athlete_main_id or params.get("athlete_main_id", "")
                     sport_alias = sport_alias or params.get("sport_alias", "")
 
+                # Final fallback: Try contact_id attribute directly
+                if not athlete_id:
+                    athlete_id = elem.get('contact_id', '')
+
                 # Log if still not found (for debugging)
                 if not athlete_id:
                     logger.warning(
@@ -987,7 +1281,11 @@ class LegacyTranslator:
         endpoint = "/rulestemplates/template/videoteammessage_subject"
         clean_id = message_id.replace('message_id', '', 1) if message_id.startswith('message_id') else message_id
         params = {
-            "id": clean_id  # Python uses "id", not "message_id"
+            "message_id": clean_id,
+            "itemcode": item_code,
+            "type": "inbox",
+            "user_timezone": "America/New_York",
+            "filter_self": "Me/Un",
         }
         return endpoint, params
 
@@ -995,23 +1293,23 @@ class LegacyTranslator:
     def _parse_email_content(raw_content: str, strip_template: bool = True) -> str:
         """
         Clean email content using html2text and email_reply_parser.
-        
+
         - Converts HTML to clean markdown/text
         - Uses email_reply_parser to extract visible reply (strips quoted replies)
         - Optionally strips NPID video instructions template
         """
         if not raw_content:
             return ""
-        
+
         content = raw_content
-        
+
         # Convert HTML to text using html2text
         html_hints = ['<html', '<body', '<div', '<p', '<br', '<table', '<span', '<tr', '<td']
         if any(hint in content.lower() for hint in html_hints):
             # Pre-processing to ensure <br> and <p> have enough space for Markdown
             # Replace <br> with double newline to ensure it's not collapsed by Markdown renderers
             content = re.sub(r'<br\s*/?>', '\n\n', content, flags=re.IGNORECASE)
-            
+
             h = html2text.HTML2Text()
             h.ignore_links = True
             h.ignore_images = True
@@ -1020,23 +1318,17 @@ class LegacyTranslator:
             h.protect_links = True
             h.unicode_snob = True # Use Unicode instead of ASCII equivalents
             content = h.handle(content)
-        
-        # Strip quoted replies - common email patterns
-        # Gmail/Outlook: "On [Day], [Month] [Date], [Year] at [Time] [Name] <email> wrote:"
-        # Also handles: "On [Day] [Month] [Date] [Year] [Name] wrote:"
-        wrote_patterns = [
-            r'On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[APap][Mm]\s+.+?wrote:.*',
-            r'On\s+[A-Za-z]{3,9}\s+\d{1,2},?\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[APap][Mm]\s+.+?wrote:.*',
-            r'On\s+\d{1,2}/\d{1,2}/\d{2,4}.*?wrote:.*',
-            r'From:\s*.+?Sent:\s*.+?To:\s*.+?Subject:.*',  # Outlook style
-        ]
 
-        for pattern in wrote_patterns:
-            match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
-            if match:
-                # Keep only content before the quoted reply marker
-                content = content[:match.start()].strip()
-                break
+        # Add line breaks before reply chain initiators for readability
+        # Pattern: "defense. On Thu, Dec 4, 2025 at 6:11 AM" → "defense.\n\nOn Thu, Dec 4, 2025 at 6:11 AM"
+        content = re.sub(
+            r'\s+(On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s+[APap][Mm])',
+            r'\n\n\1',
+            content,
+            flags=re.IGNORECASE
+        )
+
+        # DON'T strip quoted replies - keep full thread with line breaks for readability
 
         # Strip NPID video instructions template
         if strip_template:
@@ -1083,6 +1375,35 @@ class LegacyTranslator:
 
         CRITICAL: Extract attachments BEFORE html2text (ignore_links=True strips URLs).
         """
+        def _extract_href_from_fragment(html_fragment: str) -> str:
+            if not html_fragment:
+                return ""
+            try:
+                from selectolax.parser import HTMLParser
+                tree = HTMLParser(html_fragment)
+                anchor = tree.css_first('a')
+                return anchor.attributes.get('href', '') if anchor else ""
+            except Exception as e:
+                logger.debug(f"Failed to parse link fragment with selectolax: {e}")
+                return ""
+
+        def _extract_manage_video_ids(html_fragment: str) -> Dict[str, str]:
+            if not html_fragment:
+                return {"athlete_id": "", "athlete_main_id": ""}
+            try:
+                from selectolax.parser import HTMLParser
+                tree = HTMLParser(html_fragment)
+                node = tree.css_first('[athleteid]') or tree.css_first('[athlete_main_id]')
+                if not node:
+                    return {"athlete_id": "", "athlete_main_id": ""}
+                return {
+                    "athlete_id": node.attributes.get('athleteid', ''),
+                    "athlete_main_id": node.attributes.get('athlete_main_id', ''),
+                }
+            except Exception as e:
+                logger.debug(f"Failed to parse add_manage_videos with selectolax: {e}")
+                return {"athlete_id": "", "athlete_main_id": ""}
+
         try:
             data = json.loads(response_text.strip())
             raw_content = data.get('message_plain', '') or data.get('message', '')
@@ -1090,26 +1411,43 @@ class LegacyTranslator:
 
             # Extract contact_id from JSON (direct or from athlete_profile_link HTML fragment)
             contact_id = data.get('contact_id', '')
+            athlete_main_id = ""
+            athlete_links = {
+                "profile": "",
+                "notes": "",
+                "search": "",
+                "addVideoForm": "",
+            }
 
             # Fallback: Parse athlete_profile_link HTML fragment if contact_id not directly available
-            if not contact_id and data.get('athlete_profile_link'):
-                try:
-                    from selectolax.parser import HTMLParser
+            if data.get('athlete_profile_link'):
+                profile_href = _extract_href_from_fragment(data.get('athlete_profile_link', ''))
+                athlete_links["profile"] = profile_href
 
-                    link_html = data['athlete_profile_link']
-                    tree = HTMLParser(link_html)
+                if not contact_id and profile_href:
+                    match = re.search(r'(?:profile/|contactid=)(\d+)', profile_href)
+                    if match:
+                        contact_id = match.group(1)
+                        logger.info(f"✅ Extracted contact_id {contact_id} from athlete_profile_link")
 
-                    # Find anchor with fa_icon class
-                    fa_anchor = tree.css_first('a.fa_icon')
-                    if fa_anchor:
-                        href = fa_anchor.attributes.get('href', '')
-                        # Extract from /profile/ID or ?contactid=ID patterns
-                        match = re.search(r'(?:profile/|contactid=)(\d+)', href)
-                        if match:
-                            contact_id = match.group(1)
-                            logger.info(f"✅ Extracted contact_id {contact_id} from athlete_profile_link")
-                except Exception as e:
-                    logger.debug(f"Failed to extract contact_id from athlete_profile_link: {e}")
+            if data.get('athlete_notes_link'):
+                athlete_links["notes"] = _extract_href_from_fragment(data.get('athlete_notes_link', ''))
+
+            if data.get('athlete_search_link'):
+                athlete_links["search"] = _extract_href_from_fragment(data.get('athlete_search_link', ''))
+
+            if data.get('add_manage_videos'):
+                manage_ids = _extract_manage_video_ids(data.get('add_manage_videos', ''))
+                if manage_ids.get("athlete_id") and not contact_id:
+                    contact_id = manage_ids["athlete_id"]
+                if manage_ids.get("athlete_main_id"):
+                    athlete_main_id = manage_ids["athlete_main_id"]
+                if manage_ids.get("athlete_id") and manage_ids.get("athlete_main_id"):
+                    athlete_links["addVideoForm"] = (
+                        "/template/template/addvideoform"
+                        f"?is_from_video_mail_box=Yes&athleteid={manage_ids['athlete_id']}"
+                        f"&sport_alias=&athlete_main_id={manage_ids['athlete_main_id']}"
+                    )
 
             # EXTRACT ATTACHMENTS BEFORE CLEANING (preserve download URLs)
             attachments = []
@@ -1154,6 +1492,8 @@ class LegacyTranslator:
                 "raw_message_html": raw_message_html,
                 "raw_subject": raw_subject,
                 "contact_id": contact_id or None,
+                "athlete_main_id": athlete_main_id or None,
+                "athlete_links": athlete_links,
                 "attachments": attachments,  # ✅ Attachments preserved with URLs
             }
         except Exception as e:

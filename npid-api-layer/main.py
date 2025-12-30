@@ -9,6 +9,7 @@ from app.routers.assignments import router as assignments_router
 from app.routers.email import router as email_router
 from app.routers.inbox import router as inbox_router
 from app.routers.notes import router as notes_router
+from app.routers.contacts import router as contacts_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,3 +56,4 @@ app.include_router(assignments_router, prefix="/api/v1/assignments", tags=["assi
 app.include_router(email_router, prefix="/api/v1", tags=["email"])
 app.include_router(inbox_router, prefix="/api/v1/inbox", tags=["inbox"])
 app.include_router(notes_router, prefix="/api/v1/notes", tags=["notes"])
+app.include_router(contacts_router, prefix="/api/v1/contacts", tags=["contacts"])

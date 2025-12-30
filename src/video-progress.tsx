@@ -19,7 +19,19 @@ import {
   getCachedTasks,
   upsertTasks,
   updateCachedTaskStatusStage,
+  getCachedAthleteMainId,
+  cacheAthleteMainId,
+  getCachedContactInfo,
+  upsertContactInfo,
 } from './lib/video-progress-cache';
+import {
+  fetchContactInfo,
+  transformContactInfoToCache,
+  transformCacheToContactInfo,
+  type ContactInfo,
+} from './lib/npid-mcp-adapter';
+import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
+import { logger } from './lib/logger';
 
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
@@ -37,6 +49,7 @@ interface VideoProgressTask {
   high_school: string;
   high_school_city: string;
   high_school_state: string;
+  date_completed?: string;
   [key: string]: any;
 }
 
@@ -181,13 +194,18 @@ function generateYouTubeTitle(task: VideoProgressTask): string {
   return parts;
 }
 
+function normalizeSportName(sport: string): string {
+  // Strip "Men's " or "Women's " prefix from sport names
+  return sport.replace(/^(Men's|Women's)\s+/i, '');
+}
+
 function generateDropboxFolder(task: VideoProgressTask): string {
   // Format: PascalCaseName_YEAR_Sport_STATE
   const pascalName = task.athletename
     .split(' ')
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
     .join('');
-  return [pascalName, task.grad_year, task.sport_name, task.high_school_state]
+  return [pascalName, task.grad_year, normalizeSportName(task.sport_name), task.high_school_state]
     .filter(Boolean)
     .join('_');
 }
@@ -210,10 +228,31 @@ interface DetailProps {
 }
 
 function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
+  const { push, pop } = useNavigation();
   const [isUpdating, setIsUpdating] = useState(false);
   const [youtubeTitle, setYoutubeTitle] = useState('');
   const [dropboxFolder, setDropboxFolder] = useState('');
   const [approvedDetail, setApprovedDetail] = useState('');
+
+  const resolveMainId = async () => {
+    let mainId = await getCachedAthleteMainId(task.athlete_id);
+    if (!mainId) {
+      try {
+        const response = await apiFetch(`/athlete/${task.athlete_id}/resolve`);
+        if (response.ok) {
+          const data = await response.json() as any;
+          if (data.athlete_main_id) {
+            mainId = String(data.athlete_main_id);
+            cacheAthleteMainId(task.athlete_id, mainId);
+          }
+        }
+      } catch (e) {
+        console.error("Failed to resolve main ID", e);
+      }
+    }
+    return mainId;
+  };
+
 
   useEffect(() => {
     setYoutubeTitle(generateYouTubeTitle(task));
@@ -328,15 +367,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   };
 
   const metadata = `
-**Sport:** ${task.sport_name}
-**Grad Year:** ${task.grad_year}
-**Positions:** ${getPositions(task)}
-**School:** ${task.high_school}
-**City:** ${task.high_school_city}, ${task.high_school_state}
-**Editor:** ${task.assignedvideoeditor}
-**Due Date:** ${formatDate(task.video_due_date)}
-**Status:** ${task.video_progress_status}
-**Stage:** ${task.stage}
+${normalizeSportName(task.sport_name)} | ${task.grad_year} | ${getPositions(task)} | ${task.high_school} | ${task.high_school_city}, ${task.high_school_state} | ${formatDate(task.video_due_date)} | ${task.stage} | ${task.video_progress_status}
 
 ---
 
@@ -362,6 +393,81 @@ ${approvedDetail}
       markdown={`# ${task.athletename}\n\n${metadata}`}
       actions={
         <ActionPanel>
+          <ActionPanel.Section title="Athlete Notes">
+            <Action
+              title="View Notes"
+              icon={Icon.Clipboard}
+              onAction={async () => {
+                const mainId = await resolveMainId();
+                if (!mainId) {
+                  showToast({
+                    style: Toast.Style.Failure,
+                    title: 'Missing ID',
+                    message: 'Could not resolve athlete_main_id',
+                  });
+                  return;
+                }
+                push(
+                  <AthleteNotesList
+                    athleteId={String(task.athlete_id)}
+                    athleteMainId={mainId}
+                    athleteName={task.athletename}
+                  />
+                );
+              }}
+            />
+            <Action
+              title="Add Note"
+              icon={Icon.Plus}
+              onAction={async () => {
+                const mainId = await resolveMainId();
+                if (!mainId) {
+                  showToast({
+                    style: Toast.Style.Failure,
+                    title: 'Missing ID',
+                    message: 'Could not resolve athlete_main_id',
+                  });
+                  return;
+                }
+                push(
+                  <AddAthleteNoteForm
+                    athleteId={String(task.athlete_id)}
+                    athleteMainId={mainId}
+                    athleteName={task.athletename}
+                    onComplete={() => pop()}
+                  />
+                );
+              }}
+            />
+          </ActionPanel.Section>
+
+          <ActionPanel.Section title="Contact Info">
+            <Action
+              title="View Contact Info"
+              icon={Icon.Person}
+              onAction={async () => {
+                const mainId = await resolveMainId();
+                if (!mainId) {
+                  showToast({
+                    style: Toast.Style.Failure,
+                    title: 'Missing ID',
+                    message: 'Could not resolve athlete_main_id',
+                  });
+                  return;
+                }
+                push(
+                  <ContactInfoDetail
+                    contactId={String(task.athlete_id)}
+                    athleteMainId={mainId}
+                    athleteName={task.athletename}
+                    onBack={pop}
+                  />
+                );
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'i' }}
+            />
+          </ActionPanel.Section>
+
           <ActionPanel.Section title="Quick Actions">
             <Action
               title="Copy YouTube Title"
@@ -434,6 +540,12 @@ ${approvedDetail}
               url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
               icon="🌍"
               shortcut={{ modifiers: ['cmd'], key: 'o' }}
+            />
+            <Action.OpenInBrowser
+              title="Open Contact Page"
+              url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${task.athlete_id}`}
+              icon={Icon.Person}
+              shortcut={{ modifiers: ['shift', 'cmd'], key: 'o' }}
             />
             <Action title="Back" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
@@ -523,6 +635,80 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
         defaultValue={currentDate}
       />
       <Form.Description text={`Editing due date for: ${task.athletename}`} />
+    </Form>
+  );
+}
+
+interface UpdateCompletionDateFormProps {
+  task: VideoProgressTask;
+  onBack: () => void;
+  onUpdate: (updatedTasks?: VideoProgressTask[]) => void;
+}
+
+function UpdateCompletionDateForm({ task, onBack, onUpdate }: UpdateCompletionDateFormProps) {
+  const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (values: { completionDate: Date }) => {
+    if (!task.id) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cannot Update',
+        message: 'Missing task ID',
+      });
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const formattedDate = values.completionDate.toISOString();
+
+      // LOCAL ONLY: Update SQLite cache, no API call
+      const { updateCachedCompletionDate } = await import('./lib/video-progress-cache');
+      await updateCachedCompletionDate(task.id, formattedDate);
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Completion Date Updated',
+        message: `Updated to ${format(values.completionDate, 'MM/dd/yyyy')}`,
+      });
+
+      onUpdate();
+      pop();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Update Failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const currentDate = task.date_completed
+    ? new Date(task.date_completed)
+    : new Date();
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Update Completion Date"
+            onSubmit={handleSubmit}
+          />
+          <Action title="Cancel" icon={Icon.XMarkCircle} onAction={onBack} />
+        </ActionPanel>
+      }
+    >
+      <Form.DatePicker
+        id="completionDate"
+        title="Completion Date"
+        defaultValue={currentDate}
+      />
+      <Form.Description text={`Editing completion date for: ${task.athletename}`} />
     </Form>
   );
 }
@@ -672,6 +858,189 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
   );
 }
 
+interface ContactInfoDetailProps {
+  contactId: string;
+  athleteMainId: string;
+  athleteName: string;
+  onBack: () => void;
+}
+
+function ContactInfoDetail({ contactId, athleteMainId, athleteName, onBack }: ContactInfoDetailProps) {
+  const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadContactInfo();
+  }, [contactId]);
+
+  const loadContactInfo = async () => {
+    try {
+      setIsLoading(true);
+      logger.info(`📞 CONTACT_INFO: Starting load for athlete ${contactId}`, { athleteName, athleteMainId });
+
+      // Cache-first: check SQLite cache
+      const cached = await getCachedContactInfo(Number(contactId));
+      if (cached) {
+        const transformed = transformCacheToContactInfo(cached);
+        setContactInfo(transformed);
+        setIsLoading(false);
+        logger.info(`✅ CONTACT_INFO: Loaded from cache for ${contactId}`, {
+          studentName: cached.studentName,
+          hasParent1: !!cached.parent1Name,
+          hasParent2: !!cached.parent2Name,
+        });
+      }
+
+      // Background fetch: get fresh data from API
+      logger.info(`🌐 CONTACT_INFO: Fetching from API for ${contactId}`);
+      const fresh = await fetchContactInfo(contactId, athleteMainId);
+      logger.info(`✅ CONTACT_INFO: Fetched from API for ${contactId}`, {
+        studentName: fresh.studentAthlete.name,
+        hasParent1: !!fresh.parent1,
+        hasParent2: !!fresh.parent2,
+      });
+
+      // Cache the fresh data
+      const cacheData = transformContactInfoToCache(fresh);
+      await upsertContactInfo(cacheData);
+      logger.info(`💾 CONTACT_INFO: Cached data for ${contactId}`, { cacheData });
+
+      // Update UI with fresh data
+      setContactInfo(fresh);
+      logger.info(`✅ CONTACT_INFO: UI updated with fresh data for ${contactId}`);
+    } catch (error) {
+      logger.error(`❌ CONTACT_INFO: Failed to load for ${contactId}`, {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to Load Contact Info',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const markdown = generateContactMarkdown(contactInfo);
+
+  return (
+    <Detail
+      navigationTitle={`Contact Info • ${athleteName}`}
+      markdown={markdown}
+      isLoading={isLoading}
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section title="Student Athlete">
+            {contactInfo?.studentAthlete.email && (
+              <Action.CopyToClipboard
+                title="Copy Student Email"
+                content={contactInfo.studentAthlete.email}
+                icon={Icon.Envelope}
+                shortcut={{ modifiers: ['cmd'], key: 'e' }}
+              />
+            )}
+            {contactInfo?.studentAthlete.phone && (
+              <Action.CopyToClipboard
+                title="Copy Student Phone"
+                content={contactInfo.studentAthlete.phone}
+                icon={Icon.Phone}
+                shortcut={{ modifiers: ['cmd'], key: 't' }}
+              />
+            )}
+          </ActionPanel.Section>
+
+          {contactInfo?.parent1 && (
+            <ActionPanel.Section title={`Parent 1 (${contactInfo.parent1.relationship})`}>
+              {contactInfo.parent1.email && (
+                <Action.CopyToClipboard
+                  title="Copy Parent 1 Email"
+                  content={contactInfo.parent1.email}
+                  icon={Icon.Envelope}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+                />
+              )}
+              {contactInfo.parent1.phone && (
+                <Action.CopyToClipboard
+                  title="Copy Parent 1 Phone"
+                  content={contactInfo.parent1.phone}
+                  icon={Icon.Phone}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                />
+              )}
+            </ActionPanel.Section>
+          )}
+
+          {contactInfo?.parent2 && (
+            <ActionPanel.Section title={`Parent 2 (${contactInfo.parent2.relationship})`}>
+              {contactInfo.parent2.email && (
+                <Action.CopyToClipboard
+                  title="Copy Parent 2 Email"
+                  content={contactInfo.parent2.email}
+                  icon={Icon.Envelope}
+                  shortcut={{ modifiers: ['cmd', 'opt'], key: 'e' }}
+                />
+              )}
+              {contactInfo.parent2.phone && (
+                <Action.CopyToClipboard
+                  title="Copy Parent 2 Phone"
+                  content={contactInfo.parent2.phone}
+                  icon={Icon.Phone}
+                  shortcut={{ modifiers: ['cmd', 'opt'], key: 't' }}
+                />
+              )}
+            </ActionPanel.Section>
+          )}
+
+          <ActionPanel.Section>
+            <Action
+              title="Refresh Contact Info"
+              icon={Icon.ArrowClockwise}
+              onAction={loadContactInfo}
+              shortcut={{ modifiers: ['cmd'], key: 'r' }}
+            />
+            <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function generateContactMarkdown(info: ContactInfo | null): string {
+  if (!info) return '# Loading...';
+
+  const lines = [
+    `# Contact Information`,
+    '',
+    `## ${info.studentAthlete.name}`,
+    `☎️ ${info.studentAthlete.phone || 'N/A'}`,
+    `📧 ${info.studentAthlete.email || 'N/A'}`,
+    '',
+  ];
+
+  if (info.parent1) {
+    lines.push(
+      `## ${info.parent1.name} (${info.parent1.relationship})`,
+      `☎️ ${info.parent1.phone || 'N/A'}`,
+      `📧 ${info.parent1.email || 'N/A'}`,
+      '',
+    );
+  }
+
+  if (info.parent2) {
+    lines.push(
+      `## ${info.parent2.name} (${info.parent2.relationship})`,
+      `☎️ ${info.parent2.phone || 'N/A'}`,
+      `📧 ${info.parent2.email || 'N/A'}`,
+      '',
+    );
+  }
+
+  return lines.join('\n');
+}
+
 export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -694,9 +1063,27 @@ export default function VideoProgress() {
       (task) =>
         ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
           task.video_progress_status
-        )
+        ) && task.assignedvideoeditor === 'Jerami Singleton'
     );
-    setTasks(filtered);
+
+    // Sort: tasks with date_completed first (most recent at top)
+    const sorted = filtered.sort((a, b) => {
+      const aHasDate = !!a.date_completed;
+      const bHasDate = !!b.date_completed;
+
+      // Tasks with date_completed come first
+      if (aHasDate && !bHasDate) return -1;
+      if (!aHasDate && bHasDate) return 1;
+
+      // Both have dates: sort by date descending (most recent first)
+      if (aHasDate && bHasDate) {
+        return new Date(b.date_completed!).getTime() - new Date(a.date_completed!).getTime();
+      }
+
+      return 0;
+    });
+
+    setTasks(sorted);
   };
 
   const loadTasks = async () => {
@@ -710,7 +1097,7 @@ export default function VideoProgress() {
           (task) =>
             ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
               task.video_progress_status
-            )
+            ) && task.assignedvideoeditor === 'Jerami Singleton'
         );
         setTasks(filtered);
         setIsLoading(false);
@@ -730,7 +1117,6 @@ export default function VideoProgress() {
           editorassigneddatefrom: "",
           editorassigneddateto: "",
           grad_year: "",
-          video_editor: "",
           video_progress: "",
           video_progress_stage: "",
           video_progress_status: ""
@@ -749,12 +1135,13 @@ export default function VideoProgress() {
       // Update cache
       await upsertTasks(data);
 
-      // Filter: active statuses (no stage filter here - we want ALL stages loaded)
-      const filtered = data.filter(
+      // Reload from cache to get date_completed preservation
+      const updatedCache = await getCachedTasks();
+      const filtered = updatedCache.filter(
         (task) =>
           ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
             task.video_progress_status
-          )
+          ) && task.assignedvideoeditor === 'Jerami Singleton'
       );
 
       setTasks(filtered);
@@ -777,15 +1164,26 @@ export default function VideoProgress() {
 
   // Apply both stage and status filters
   const filteredTasks = tasks.filter((task) => {
-    const stageMatch = stageFilter === 'all' || task.stage === stageFilter;
+    // When stageFilter is 'all', show only 'In Queue' stage (truly active work)
+    // When stageFilter is explicitly set, show ONLY that stage
+    const stageMatch =
+      stageFilter === 'all'
+        ? task.stage === 'In Queue'  // Default view: only In Queue
+        : task.stage === stageFilter;  // Explicit filter shows selected stage
     const statusMatch = statusFilter === 'all' || task.video_progress_status === statusFilter;
     return stageMatch && statusMatch;
   });
 
   // Handle combined filter change
-  const handleFilterChange = (value: string) => {
+  const handleFilterChange = async (value: string) => {
     if (value.startsWith('stage:')) {
-      setStageFilter(value.replace('stage:', ''));
+      const stage = value.replace('stage:', '');
+      setStageFilter(stage);
+
+      // Reload from cache when switching to Done
+      if (stage === 'Done') {
+        await reloadFromCache();
+      }
     } else if (value.startsWith('status:')) {
       setStatusFilter(value.replace('status:', ''));
     }
@@ -829,12 +1227,14 @@ export default function VideoProgress() {
         <List.Section title={`In Progress (${filteredTasks.length})`}>
           {filteredTasks.map((task) => (
             <List.Item
-              key={task.athlete_id}
+              key={task.id ?? task.athlete_id}
               icon={getStageIcon(task.stage)}
               title={task.athletename}
-              subtitle={`${task.grad_year} • ${task.sport_name} • ${getPositions(task)}`}
+              subtitle={`${task.grad_year} • ${normalizeSportName(task.sport_name)} • ${getPositions(task)}`}
               accessories={[
-                { text: formatDate(task.video_due_date) },
+                task.stage === 'Done' && task.date_completed
+                  ? { tag: { value: formatDate(task.date_completed), color: Color.Green } }
+                  : { text: formatDate(task.video_due_date) },
                 {
                   icon: getStatusIcon(task.video_progress_status),
                   text: task.video_progress_status,
@@ -856,6 +1256,22 @@ export default function VideoProgress() {
                     }
                     shortcut={{ modifiers: ['cmd'], key: 'return' }}
                   />
+                  {stageFilter === 'Done' && (
+                    <Action
+                      title="Set Completion Date"
+                      icon={Icon.Calendar}
+                      onAction={() =>
+                        push(
+                          <UpdateCompletionDateForm
+                            task={task}
+                            onBack={pop}
+                            onUpdate={reloadFromCache}
+                          />
+                        )
+                      }
+                      shortcut={{ modifiers: ['cmd'], key: 'd' }}
+                    />
+                  )}
                   <Action.OpenInBrowser
                     title="Open in ProspectID"
                     url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}

@@ -3,6 +3,7 @@ import os from 'os';
 import path from 'path';
 import { environment } from '@raycast/api';
 import initSqlJs, { Database as SQLDatabase } from 'sql.js';
+import { logger } from './logger';
 
 export interface CachedVideoTask {
   id: number;
@@ -23,6 +24,25 @@ export interface CachedVideoTask {
   high_school_state: string;
   updated_at: string;
   cached_at: string;
+  jersey_number?: string;
+  date_completed?: string;
+}
+
+export interface CachedContactInfo {
+  contactId: number;
+  studentName: string;
+  studentEmail: string | null;
+  studentPhone: string | null;
+  parent1Name: string | null;
+  parent1Relationship: string | null;
+  parent1Email: string | null;
+  parent1Phone: string | null;
+  parent2Name: string | null;
+  parent2Relationship: string | null;
+  parent2Email: string | null;
+  parent2Phone: string | null;
+  cachedAt: string;
+  updatedAt: string;
 }
 
 const DB_DIR = path.join(os.homedir(), '.prospect-pipeline');
@@ -72,7 +92,8 @@ function initSchema(database: SQLDatabase) {
       high_school_city TEXT,
       high_school_state TEXT,
       updated_at TEXT,
-      cached_at TEXT
+      cached_at TEXT,
+      jersey_number TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_video_tasks_status ON video_tasks (video_progress_status);
     CREATE INDEX IF NOT EXISTS idx_video_tasks_cached_at ON video_tasks (cached_at);
@@ -83,6 +104,40 @@ function initSchema(database: SQLDatabase) {
   } catch {
     // ignore if exists
   }
+  try {
+    database.run(`ALTER TABLE video_tasks ADD COLUMN jersey_number TEXT;`);
+  } catch {
+    // ignore if exists
+  }
+  try {
+    database.run(`ALTER TABLE video_tasks ADD COLUMN date_completed TEXT;`);
+  } catch {
+    // ignore if exists
+  }
+
+  // Contact info table for enriched contact data
+  database.run(
+    `
+    CREATE TABLE IF NOT EXISTS contact_info (
+      contact_id INTEGER PRIMARY KEY,
+      student_name TEXT,
+      student_email TEXT,
+      student_phone TEXT,
+      parent1_name TEXT,
+      parent1_relationship TEXT,
+      parent1_email TEXT,
+      parent1_phone TEXT,
+      parent2_name TEXT,
+      parent2_relationship TEXT,
+      parent2_email TEXT,
+      parent2_phone TEXT,
+      cached_at TEXT,
+      updated_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_contact_cached_at ON contact_info (cached_at);
+  `,
+  );
+
   persist(database);
 }
 
@@ -94,30 +149,43 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
     INSERT INTO video_tasks (
       id, athlete_id, athlete_main_id, athletename, video_progress_status, stage, sport_name, grad_year,
       video_due_date, assignedvideoeditor, primaryposition, secondaryposition, thirdposition,
-      high_school, high_school_city, high_school_state, updated_at, cached_at
+      high_school, high_school_city, high_school_state, updated_at, cached_at, jersey_number, date_completed
     ) VALUES (
       $id, $athlete_id, $athlete_main_id, $athletename, $video_progress_status, $stage, $sport_name, $grad_year,
       $video_due_date, $assignedvideoeditor, $primaryposition, $secondaryposition, $thirdposition,
-      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at
+      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $jersey_number, $date_completed
     )
     ON CONFLICT(id) DO UPDATE SET
-      athlete_id=excluded.athlete_id,
-      athlete_main_id=excluded.athlete_main_id,
-      athletename=excluded.athletename,
+      -- STATIC FIELDS (preserve if API returns null)
+      athlete_id=COALESCE(excluded.athlete_id, athlete_id),
+      athlete_main_id=COALESCE(excluded.athlete_main_id, athlete_main_id),
+      athletename=COALESCE(excluded.athletename, athletename),
+      sport_name=COALESCE(excluded.sport_name, sport_name),
+      grad_year=COALESCE(excluded.grad_year, grad_year),
+      high_school=COALESCE(excluded.high_school, high_school),
+      high_school_city=COALESCE(excluded.high_school_city, high_school_city),
+      high_school_state=COALESCE(excluded.high_school_state, high_school_state),
+      primaryposition=COALESCE(excluded.primaryposition, primaryposition),
+      secondaryposition=COALESCE(excluded.secondaryposition, secondaryposition),
+      thirdposition=COALESCE(excluded.thirdposition, thirdposition),
+      jersey_number=COALESCE(excluded.jersey_number, jersey_number),
+
+      -- DYNAMIC FIELDS (always update from server)
       video_progress_status=excluded.video_progress_status,
-      stage=excluded.stage,
-      sport_name=excluded.sport_name,
-      grad_year=excluded.grad_year,
+      stage=CASE
+        WHEN video_tasks.date_completed IS NOT NULL THEN 'Done'
+        ELSE excluded.stage
+      END,
       video_due_date=excluded.video_due_date,
       assignedvideoeditor=excluded.assignedvideoeditor,
-      primaryposition=excluded.primaryposition,
-      secondaryposition=excluded.secondaryposition,
-      thirdposition=excluded.thirdposition,
-      high_school=excluded.high_school,
-      high_school_city=excluded.high_school_city,
-      high_school_state=excluded.high_school_state,
       updated_at=excluded.updated_at,
-      cached_at=excluded.cached_at
+      cached_at=excluded.cached_at,
+
+      -- SPECIAL: date_completed (preserve if Done)
+      date_completed=CASE
+        WHEN LOWER(excluded.stage) = 'done' THEN COALESCE(excluded.date_completed, date_completed)
+        ELSE NULL
+      END
   `,
   );
 
@@ -143,6 +211,8 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
       $high_school_state: task.high_school_state || null,
       $updated_at: task.updated_at || now,
       $cached_at: now,
+      $jersey_number: task.jersey_number || null,
+      $date_completed: task.date_completed || null,
     });
   }
   database.run('COMMIT;');
@@ -177,22 +247,60 @@ export async function getLastCachedAt(): Promise<number | null> {
 export async function updateCachedTaskStatusStage(id: number, updates: { status?: string; stage?: string }) {
   const database = await getDb();
   const updatedAt = new Date().toISOString();
+
+  // Build SET clause dynamically based on what's being updated
+  const setClauses = [];
+  const params: Record<string, any> = {
+    $id: id,
+    $updated_at: updatedAt,
+  };
+
+  if (updates.status !== undefined) {
+    setClauses.push('video_progress_status = $status');
+    params.$status = updates.status;
+  }
+
+  if (updates.stage !== undefined) {
+    setClauses.push('stage = $stage');
+    params.$stage = updates.stage;
+
+    // Capture completion date when stage is set to "Done", clear it otherwise
+    if (updates.stage.toLowerCase() === 'done') {
+      setClauses.push('date_completed = $date_completed');
+      params.$date_completed = updatedAt;
+    } else {
+      setClauses.push('date_completed = NULL');
+    }
+  }
+
+  setClauses.push('updated_at = $updated_at', 'cached_at = $updated_at');
+
   database.run(
-    `
-    UPDATE video_tasks
-    SET
-      video_progress_status = COALESCE($status, video_progress_status),
-      stage = COALESCE($stage, stage),
-      updated_at = $updated_at,
-      cached_at = $updated_at
-    WHERE id = $id
-  `,
+    `UPDATE video_tasks SET ${setClauses.join(', ')} WHERE id = $id`,
+    params,
+  );
+  persist(database);
+}
+
+/**
+ * Update the completion date for a task.
+ * Used when manually editing the completion date for Done tasks.
+ */
+export async function updateCachedCompletionDate(id: number, dateCompleted: string) {
+  const database = await getDb();
+  const updatedAt = new Date().toISOString();
+
+  database.run(
+    `UPDATE video_tasks
+     SET date_completed = $date_completed,
+         updated_at = $updated_at,
+         cached_at = $updated_at
+     WHERE id = $id`,
     {
       $id: id,
-      $status: updates.status === undefined ? null : updates.status,
-      $stage: updates.stage === undefined ? null : updates.stage,
+      $date_completed: dateCompleted,
       $updated_at: updatedAt,
-    },
+    }
   );
   persist(database);
 }
@@ -235,4 +343,182 @@ export async function getCachedAthleteMainId(athleteId: number): Promise<string 
   );
   if (!res.length || !res[0].values.length) return null;
   return res[0].values[0][0] as string;
+}
+
+/**
+ * Update cached jersey_number for a given athlete_id.
+ * Stores jersey number after successful API fetch.
+ */
+export async function updateCachedJerseyNumber(athleteId: number, jerseyNumber: string) {
+  const database = await getDb();
+  const updatedAt = new Date().toISOString();
+  database.run(
+    `
+    UPDATE video_tasks
+    SET
+      jersey_number = $jersey_number,
+      updated_at = $updated_at,
+      cached_at = $updated_at
+    WHERE athlete_id = $athlete_id
+  `,
+    {
+      $athlete_id: athleteId,
+      $jersey_number: jerseyNumber,
+      $updated_at: updatedAt,
+    },
+  );
+  persist(database);
+}
+
+/**
+ * Retrieve cached jersey_number for a given athlete_id.
+ * Returns null if not cached or not available.
+ */
+export async function getCachedJerseyNumber(athleteId: number): Promise<string | null> {
+  const database = await getDb();
+  const res = database.exec(
+    'SELECT jersey_number FROM video_tasks WHERE athlete_id = $athlete_id AND jersey_number IS NOT NULL AND jersey_number != "" LIMIT 1',
+    { $athlete_id: athleteId }
+  );
+  if (!res.length || !res[0].values.length) return null;
+  return res[0].values[0][0] as string;
+}
+
+/**
+ * Resolve athlete_id and athlete_main_id from video_msg_id.
+ * This is the CRITICAL fallback for inbox threads that don't have athlete IDs in the HTML.
+ * 
+ * How it works:
+ * - video_msg_id (e.g., 13681) is the same as the "id" field in video_tasks
+ * - This maps: video_msg_id → athlete_id + athlete_main_id
+ * - Used by inbox when Laravel doesn't provide athlete IDs upfront
+ * 
+ * @param videoMsgId - The numeric video message/thread ID
+ * @returns Object with athlete_id and athlete_main_id, or null if not found
+ */
+export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string): Promise<{ athlete_id: number; athlete_main_id: string } | null> {
+  const database = await getDb();
+  const id = typeof videoMsgId === 'string' ? parseInt(videoMsgId, 10) : videoMsgId;
+
+  if (isNaN(id)) {
+    console.warn(`⚠️ Invalid video_msg_id: ${videoMsgId}`);
+    return null;
+  }
+
+  const res = database.exec(
+    `SELECT athlete_id, athlete_main_id 
+     FROM video_tasks 
+     WHERE id = $id 
+       AND athlete_id IS NOT NULL 
+       AND athlete_main_id IS NOT NULL 
+       AND athlete_main_id != ""
+     LIMIT 1`,
+    { $id: id }
+  );
+
+  if (!res.length || !res[0].values.length) {
+    console.warn(`⚠️ No athlete IDs found in cache for video_msg_id: ${videoMsgId}`);
+    return null;
+  }
+
+  const [athleteId, athleteMainId] = res[0].values[0];
+  return {
+    athlete_id: athleteId as number,
+    athlete_main_id: athleteMainId as string,
+  };
+}
+
+/**
+ * Cache contact information (student + parents).
+ * Upsert pattern - updates existing or inserts new.
+ */
+export async function upsertContactInfo(contact: Partial<CachedContactInfo>): Promise<void> {
+  const database = await getDb();
+  const now = new Date().toISOString();
+
+  logger.info(`💾 CACHE: Upserting contact info for ${contact.contactId}`, {
+    studentName: contact.studentName,
+    hasParent1: !!contact.parent1Name,
+    hasParent2: !!contact.parent2Name,
+  });
+
+  database.run(
+    `INSERT INTO contact_info (
+      contact_id, student_name, student_email, student_phone,
+      parent1_name, parent1_relationship, parent1_email, parent1_phone,
+      parent2_name, parent2_relationship, parent2_email, parent2_phone,
+      cached_at, updated_at
+    ) VALUES (
+      $contact_id, $student_name, $student_email, $student_phone,
+      $parent1_name, $parent1_relationship, $parent1_email, $parent1_phone,
+      $parent2_name, $parent2_relationship, $parent2_email, $parent2_phone,
+      $cached_at, $updated_at
+    )
+    ON CONFLICT(contact_id) DO UPDATE SET
+      student_name=COALESCE(excluded.student_name, student_name),
+      student_email=COALESCE(excluded.student_email, student_email),
+      student_phone=COALESCE(excluded.student_phone, student_phone),
+      parent1_name=COALESCE(excluded.parent1_name, parent1_name),
+      parent1_relationship=COALESCE(excluded.parent1_relationship, parent1_relationship),
+      parent1_email=COALESCE(excluded.parent1_email, parent1_email),
+      parent1_phone=COALESCE(excluded.parent1_phone, parent1_phone),
+      parent2_name=COALESCE(excluded.parent2_name, parent2_name),
+      parent2_relationship=COALESCE(excluded.parent2_relationship, parent2_relationship),
+      parent2_email=COALESCE(excluded.parent2_email, parent2_email),
+      parent2_phone=COALESCE(excluded.parent2_phone, parent2_phone),
+      cached_at=$cached_at,
+      updated_at=$updated_at`,
+    {
+      $contact_id: contact.contactId,
+      $student_name: contact.studentName || null,
+      $student_email: contact.studentEmail || null,
+      $student_phone: contact.studentPhone || null,
+      $parent1_name: contact.parent1Name || null,
+      $parent1_relationship: contact.parent1Relationship || null,
+      $parent1_email: contact.parent1Email || null,
+      $parent1_phone: contact.parent1Phone || null,
+      $parent2_name: contact.parent2Name || null,
+      $parent2_relationship: contact.parent2Relationship || null,
+      $parent2_email: contact.parent2Email || null,
+      $parent2_phone: contact.parent2Phone || null,
+      $cached_at: now,
+      $updated_at: now,
+    }
+  );
+  persist(database);
+  logger.info(`✅ CACHE: Successfully upserted contact info for ${contact.contactId}`);
+}
+
+/**
+ * Retrieve cached contact info by contact_id.
+ * Returns null if not found.
+ */
+export async function getCachedContactInfo(contactId: number): Promise<CachedContactInfo | null> {
+  const database = await getDb();
+  logger.debug(`🔍 CACHE: Checking cache for contact ${contactId}`);
+
+  const res = database.exec(
+    'SELECT * FROM contact_info WHERE contact_id = $contact_id LIMIT 1',
+    { $contact_id: contactId }
+  );
+
+  if (!res.length || !res[0].values.length) {
+    logger.debug(`❌ CACHE: Cache miss for contact ${contactId}`);
+    return null;
+  }
+
+  const row = res[0].values[0];
+  const cols = res[0].columns;
+  const obj: Record<string, any> = {};
+  cols.forEach((col, idx) => {
+    obj[col] = row[idx];
+  });
+
+  const cached = obj as CachedContactInfo;
+  logger.info(`✅ CACHE: Cache hit for contact ${contactId}`, {
+    studentName: cached.studentName,
+    cachedAt: cached.cachedAt,
+  });
+
+  return cached;
 }
