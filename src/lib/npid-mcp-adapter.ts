@@ -111,18 +111,30 @@ export async function sendInboxReply(
   item_code: string,
   reply_text: string
 ): Promise<{ success: boolean }> {
-  console.log('📧 sendInboxReply called:', { message_id, item_code, reply_text_length: reply_text.length });
+  logger.info('inbox/reply request', {
+    message_id,
+    item_code,
+    reply_text_length: reply_text.length,
+  });
   const response = await apiFetch("/inbox/reply", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message_id, item_code, reply_text }),
   });
 
-  console.log('📧 inbox/reply response status:', response.status);
+  logger.info('inbox/reply response', {
+    status: response.status,
+    status_text: response.statusText,
+    content_type: response.headers.get("content-type"),
+    location: response.headers.get("location"),
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('📧 inbox/reply error response:', errorText);
+    logger.error('inbox/reply error response', {
+      status: response.status,
+      body: errorText.slice(0, 2000),
+    });
     let error: any;
     try {
       error = JSON.parse(errorText);
@@ -134,7 +146,7 @@ export async function sendInboxReply(
   }
 
   const result = await response.json() as any;
-  console.log('📧 inbox/reply success:', result);
+  logger.info('inbox/reply success', result);
   return result;
 }
 

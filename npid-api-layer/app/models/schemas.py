@@ -4,7 +4,7 @@ Clean, typed interfaces your Raycast extension talks to.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict
 from enum import Enum
 
 
@@ -57,6 +57,7 @@ class StageUpdateRequest(BaseModel):
     """Request to update video stage/status."""
     video_msg_id: str = Field(..., description="Video message ID from progress page")
     stage: VideoStage = Field(..., description="New stage value")
+    is_from_video_mail_box: Optional[bool] = Field(default=None, description="Mailbox context flag")
 
 
 class AthleteResolveRequest(BaseModel):
@@ -127,6 +128,7 @@ class StatusUpdateRequest(BaseModel):
     """Request to update video status."""
     video_msg_id: str = Field(..., description="Video message ID from progress page")
     status: str = Field(..., description="New status (Revisions, HUDL, Dropbox, etc.)")
+    is_from_video_mail_box: Optional[bool] = Field(default=None, description="Mailbox context flag")
     # NO api_key - session.post() auto-injects _token
 
 
@@ -162,6 +164,12 @@ class VideoProgressFilters(BaseModel):
     video_progress_stage: Optional[str] = None
     video_progress_status: Optional[str] = None
     # NO club fields: select_club_sport, select_club_state, select_club_name
+
+
+class VideoUpdateRequest(BaseModel):
+    """Request to update an existing video via updatecareervideos."""
+    athlete_id: str = Field(..., description="Player ID from URL")
+    form_data: Dict[str, str] = Field(..., description="Legacy form fields to forward to Laravel")
 
 
 class VideoProgressResponse(BaseModel):

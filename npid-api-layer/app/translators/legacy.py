@@ -37,35 +37,19 @@ class LegacyTranslator:
         "<span style=\"color: #232a36;\"><em>Content Creator at Prospect ID</em></span><br>"
         "<span style=\"color: #232a36;font-weight: bold;\">Phone</span>&nbsp;(407) 473-3637<br>"
         "<span style=\"color: #232a36;font-weight: bold;\">Email</span>&nbsp;videoteam@prospectid.com<br>"
-        "<span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.nationalpid.com<br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.prospectid.com<br>"
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
-        "href=https://www.facebook.com/NationalPID target='_blank'><img "
+        "href='https://www.facebook.com/NationalPID' target='_blank'><img "
         "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/facebook_sign.png' "
         "alt='facebook' width='24' height='24' border='0'></a> "
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
-        "href=https://twitter.com/@NationalPID target='_blank'><img "
+        "href='https://twitter.com/@NationalPID' target='_blank'><img "
         "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/twitter_sign.png' "
         "alt='twitter' width='24' height='24' border='0'></a> "
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
-        "href=https://www.instagram.com/nationalprospect_id target='_blank'><img "
+        "href='https://www.instagram.com/nationalprospect_id' target='_blank'><img "
         "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
-        "alt='instagram' width='24' height='24' border='0'></a>  </td></tr></tbody></table><br>"
-    )
-
-    SIGNATURE_HTML = (
-        "<br><br><span>Kind Regards,</span><div><br></div><table style=\"width: 100%;font-size: 14px;\" "
-        "width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\"><tbody><tr><td style=\"padding: "
-        "0cm; border: none !important;\" valign=\"top\"><span><b>Jerami Singleton</b></span><br><span style=\"color: "
-        "#232a36;\"><em>Content Creator at Prospect ID</em></span><br><span style=\"color: #232a36;font-weight: bold;\">Phone" 
-        "</span>&nbsp;(407) 473-3637<br><span style=\"color: #232a36;font-weight: bold;\">Email</span>&nbsp;videoteam@prospectid.com"
-        "<br><span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.nationalpid.com<br><a style='font-size: 0px;"
-        " line-height: 0px; padding-right: 3px;' href=https://www.facebook.com/NationalPID target='_blank'><img src='"
-        "https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/facebook_sign.png' alt='facebook' width='24' "
-        "height='24' border='0'></a> <a style='font-size: 0px; line-height: 0px; padding-right: 3px;' href=https://twitter.com/@NationalPID "
-        "target='_blank'><img src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/twitter_sign.png' alt='twitter' "
-        "width='24' height='24' border='0'></a> <a style='font-size: 0px; line-height: 0px; padding-right: 3px;' href=https://www.instagram.com/"
-        "nationalprospect_id target='_blank'><img src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
-        "alt='instagram' width='24' height='24' border='0'></a>  </td></tr></tbody></table><br>"
+        "alt='instagram' width='24' height='24' border='0'></a></td></tr></tbody></table><br>"
     )
     
     # ============== Request Translation ==============
@@ -128,6 +112,10 @@ class LegacyTranslator:
             "video_progress_stage": stage_value
         }
 
+        # Add mailbox parameter if provided (Dec 2025 feature)
+        if request.is_from_video_mail_box:
+            form_data["is_from_video_mail_box"] = "Yes"
+
         return endpoint, form_data
 
     @staticmethod
@@ -144,7 +132,7 @@ class LegacyTranslator:
         return endpoint, form_data
 
     @staticmethod
-    def status_update_to_legacy(video_msg_id: str, status: str) -> Tuple[str, Dict[str, Any]]:
+    def status_update_to_legacy(video_msg_id: str, status: str, is_from_mailbox: bool = False) -> Tuple[str, Dict[str, Any]]:
         """
         Convert status update to legacy form data.
         Curl verified 2025-12-07. NO api_key, NO extra fields.
@@ -165,6 +153,10 @@ class LegacyTranslator:
             "video_msg_id": video_msg_id,
             "video_progress_status": status_value
         }
+
+        # Add mailbox parameter if provided (Dec 2025 feature)
+        if is_from_mailbox:
+            form_data["is_from_video_mail_box"] = "Yes"
 
         return endpoint, form_data
 
@@ -510,59 +502,79 @@ class LegacyTranslator:
         return None
 
     @staticmethod
-    def parse_athlete_profile_data(html: str) -> Dict[str, Any]:
-        """Extract athlete profile data from HTML page."""
+    def parse_athlete_profile_data(html: str, grade_level: int = None) -> Dict[str, Any]:
+        """
+        Extract athlete profile data from HTML page using selectolax.
+        ASSUMES HTML is always returned - robust HTML parsing.
+
+        Args:
+            html: Full profile page HTML
+            grade_level: Grade level (9-12) to help locate correct tab section
+        """
+        from selectolax.parser import HTMLParser
         data = {}
 
         try:
-            soup = BeautifulSoup(html, 'html.parser')
+            tree = HTMLParser(html)
 
-            # Extract jersey number - label-based matching (NO nth-child)
-            # Find label with exact text "Jersey #"
-            labels = soup.find_all(['label', 'th', 'td', 'div', 'span'])
-            logger.debug(f"🔍 Total labels found: {len(labels)}")
-            jersey_labels = [l for l in labels if "jersey" in l.get_text(strip=True).lower()]
-            logger.debug(f"🔍 Labels containing 'jersey': {len(jersey_labels)}")
-            for label in labels:
-                label_text = label.get_text(strip=True)
-                if label_text == "Jersey #":
+            # Map grade level to tab ID patterns for context
+            grade_patterns = {
+                12: ["senior", "12"],
+                11: ["junior", "11"],
+                10: ["sophomore", "10"],
+                9: ["freshman", "9", "freshmen"]
+            }
+
+            # Search for jersey number in the entire page
+            # The HTML contains all tabs, we look for "Jersey #" anywhere
+            jersey_labels = []
+            for node in tree.css('label, th, td, div, span'):
+                if not node.text():
+                    continue
+                text = node.text(strip=True)
+                if 'jersey' in text.lower():
+                    jersey_labels.append(text)
+                if text == "Jersey #":
                     logger.info(f"✅ Found 'Jersey #' label")
-                    # Try to find adjacent value cell/element
-                    # Pattern 1: Next sibling
-                    next_elem = label.find_next_sibling()
-                    if next_elem:
-                        jersey = next_elem.get_text(strip=True)
-                        if jersey:
-                            data['jersey_number'] = f"#{jersey}"
+
+                    # Try next sibling (Pattern 1)
+                    if node.next:
+                        jersey_text = node.next.text(strip=True) if hasattr(node.next, 'text') else ''
+                        if jersey_text:
+                            data['jersey_number'] = f"#{jersey_text}"
+                            logger.info(f"✅ Jersey number from next sibling: {jersey_text}")
                             break
 
-                    # Pattern 2: Parent's next sibling (for tr > td structure)
-                    if not data.get('jersey_number'):
-                        parent = label.find_parent(['tr', 'div'])
-                        if parent:
-                            next_row_elem = parent.find_next_sibling()
-                            if next_row_elem:
-                                jersey = next_row_elem.get_text(strip=True)
-                                if jersey:
-                                    data['jersey_number'] = f"#{jersey}"
+                    # Try parent's next sibling (Pattern 2 - tr > td structure)
+                    parent = node.parent
+                    if parent and parent.next:
+                        jersey_text = parent.next.text(strip=True) if hasattr(parent.next, 'text') else ''
+                        if jersey_text:
+                            data['jersey_number'] = f"#{jersey_text}"
+                            logger.info(f"✅ Jersey number from parent next sibling: {jersey_text}")
+                            break
+
+                    # Try finding in same row (Pattern 3 - table row with multiple tds)
+                    if parent and parent.tag == 'tr':
+                        tds = parent.css('td')
+                        for i, td in enumerate(tds):
+                            if td.text(strip=True) == "Jersey #" and i + 1 < len(tds):
+                                jersey_text = tds[i + 1].text(strip=True)
+                                if jersey_text:
+                                    data['jersey_number'] = f"#{jersey_text}"
+                                    logger.info(f"✅ Jersey number from table cell: {jersey_text}")
                                     break
+                    break
 
-                    # Pattern 3: Same row, next td
-                    if not data.get('jersey_number'):
-                        row = label.find_parent('tr')
-                        if row:
-                            tds = row.find_all('td')
-                            for i, td in enumerate(tds):
-                                if td.get_text(strip=True) == "Jersey #" and i + 1 < len(tds):
-                                    jersey = tds[i + 1].get_text(strip=True)
-                                    if jersey:
-                                        data['jersey_number'] = f"#{jersey}"
-                                        break
-
-                    break  # Stop after finding "Jersey #" label
+            if not data.get('jersey_number'):
+                logger.debug(f"⚠️ No jersey number found in profile HTML")
+                if jersey_labels:
+                    logger.debug(f"🔍 Found {len(jersey_labels)} labels containing 'jersey': {jersey_labels[:10]}")
+                else:
+                    logger.debug(f"🔍 No labels containing 'jersey' found at all")
 
         except Exception as e:
-            logger.debug(f"Profile data extraction error: {e}")
+            logger.error(f"Profile data extraction error: {e}", exc_info=True)
 
         return data
 
@@ -1297,6 +1309,7 @@ class LegacyTranslator:
         - Converts HTML to clean markdown/text
         - Uses email_reply_parser to extract visible reply (strips quoted replies)
         - Optionally strips NPID video instructions template
+        - Strips Jerami's signature block (only shown in outgoing replies, not when reading)
         """
         if not raw_content:
             return ""
@@ -1330,6 +1343,19 @@ class LegacyTranslator:
 
         # DON'T strip quoted replies - keep full thread with line breaks for readability
 
+        # Strip Jerami's signature block when DISPLAYING messages (signature is only for outgoing)
+        # Pattern: "Kind Regards," followed by signature details
+        signature_patterns = [
+            # Full signature block with pipe separator
+            r'Kind\s*Regards,?\s*\|?\s*Jerami\s+Singleton.*?(?:Web\s+www\.(?:prospectid|nationalpid)\.com|$)',
+            # Signature starting with "Kind Regards" through web line
+            r'Kind\s*Regards,?\s*\n+.*?Jerami\s+Singleton.*?(?:Web\s+www\.(?:prospectid|nationalpid)\.com|$)',
+            # Just the signature details without "Kind Regards"
+            r'\|\s*Jerami\s+Singleton\s*\n+Content\s+Creator.*?Web\s+www\.(?:prospectid|nationalpid)\.com',
+        ]
+        for pattern in signature_patterns:
+            content = re.sub(pattern, '', content, flags=re.IGNORECASE | re.DOTALL)
+
         # Strip NPID video instructions template
         if strip_template:
             template_markers = [
@@ -1349,10 +1375,10 @@ class LegacyTranslator:
             if template_count >= 2:
                 # Template detected - already stripped above via wrote_patterns
                 pass
-        
+
         # Use email_reply_parser to extract just the visible reply (most recent)
         parsed = EmailReplyParser.parse_reply(content)
-        
+
         # Clean up and ensure Markdown line breaks
         lines = parsed.split('\n')
         cleaned = []
@@ -1363,7 +1389,7 @@ class LegacyTranslator:
                 cleaned.append(line + "  ")
             else:
                 cleaned.append("")
-        
+
         # Join with double newlines to ensure paragraph separation
         return '\n\n'.join(cleaned).strip()
 
@@ -1840,7 +1866,8 @@ class LegacyTranslator:
         GET /rulestemplates/template/videoteam_msg_sendingto
         """
         endpoint = "/rulestemplates/template/videoteam_msg_sendingto"
-        params = {"id": message_id, "itemcode": item_code, "tab": "inbox"}
+        clean_id = message_id.replace('message_id', '', 1) if message_id.startswith('message_id') else message_id
+        params = {"id": clean_id, "itemcode": item_code, "tab": "inbox"}
         return endpoint, params
 
     @staticmethod
@@ -1880,16 +1907,17 @@ class LegacyTranslator:
     @staticmethod
     def _build_previous_message_block(message_id: str, detail_data: Dict[str, Any]) -> str:
         """
-        Build previous message block for reply.
+        Build previous message block for reply (quoted original message).
         Mirrors: src/python/npid_api_client.py:586-587
+
+        Note: Signature is now added in send_reply_to_legacy, not here.
         """
         original_html = detail_data.get('raw_message_html') or detail_data.get('message') or ''
         if not original_html:
             return ""
         timestamp = detail_data.get('timestamp_wrote') or detail_data.get('timestamp') or ''
-        # Use simple signature matching Python implementation
-        signature = '<br><br><span>Kind Regards,</span><br><br>'
-        previous_msg = f'{signature} {timestamp} {original_html}'
+        # Build the quoted previous message (signature is prepended in send_reply_to_legacy)
+        previous_msg = f'<br><br>{timestamp}<br>{original_html}'
         return f"<div id=\"previous_message{message_id}\">{previous_msg}</div>"
 
     @staticmethod
@@ -1899,19 +1927,22 @@ class LegacyTranslator:
         POST /videoteammsg/sendmessage
         Mirrors: src/python/npid_api_client.py:573-602
         """
+        clean_id = message_id.replace('message_id', '', 1) if message_id.startswith('message_id') else message_id
         endpoint = "/videoteammsg/sendmessage"
         subject_source = detail_data.get('raw_subject') or detail_data.get('subject') or ''
         formatted_subject = f"Re: {subject_source}" if subject_source else "Re: Video Team"
-        # Python sends message_id AS-IS (with "message_id" prefix intact)
-        reply_main_id = detail_data.get('message_id') or message_id
+        # Use cleaned message_id when present to align with detail endpoint parsing.
+        reply_main_id = detail_data.get('message_id') or clean_id
         reply_body = LegacyTranslator._format_reply_text(reply_text)
-        previous_block = LegacyTranslator._build_previous_message_block(message_id, detail_data)
-        full_message = f"{reply_body}{previous_block}"
+        previous_block = LegacyTranslator._build_previous_message_block(clean_id, detail_data)
+
+        # Build full message: reply body + HTML signature + quoted previous message
+        full_message = f"{reply_body}{LegacyTranslator.SIGNATURE_HTML}{previous_block}"
 
         form_data = {
             "_token": thread_data.get('csrf_token', ''),  # Use scraped token from reply form
             "message_type": "send",
-            "reply_message_id": message_id,  # Send AS-IS (Python does NOT clean this)
+            "reply_message_id": clean_id,
             "reply_main_id": reply_main_id,
             "draftid": "",
             "message_subject": formatted_subject,

@@ -22,7 +22,8 @@ from app.models.schemas import (
     VideoAttachmentsResponse,
     SeasonsResponse,
     Season,
-    APIError
+    APIError,
+    VideoUpdateRequest
 )
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
@@ -157,11 +158,13 @@ async def update_stage(request: Request, video_msg_id: str, payload: StageUpdate
         payload.video_msg_id = video_msg_id
     
     endpoint, form_data = translator.stage_update_to_legacy(payload)
-    
-    logger.info(f"📤 Updating stage for video_msg_id {video_msg_id} to {payload.stage.value}")
-    
+
+    logger.info(f"📤 Updating stage for video_msg_id {video_msg_id} to {payload.stage.value} (mailbox={payload.is_from_video_mail_box})")
+    logger.debug(f"📦 Form data: {form_data}")
+
     try:
         response = await session.post(endpoint, data=form_data)
+        logger.debug(f"📥 Response status: {response.status_code}, content-type: {response.headers.get('content-type')}")
         result = translator.parse_stage_update_response(response.text)
         
         if result["success"]:
@@ -285,10 +288,11 @@ async def update_status(
         payload.video_msg_id = video_msg_id
 
     endpoint, form_data = translator.status_update_to_legacy(
-        video_msg_id, payload.status
+        video_msg_id, payload.status, is_from_mailbox=payload.is_from_video_mail_box or False
     )
 
-    logger.info(f"📤 Updating status for video_msg_id {video_msg_id} to {payload.status}")
+    logger.info(f"📤 Updating status for video_msg_id {video_msg_id} to {payload.status} (mailbox={payload.is_from_video_mail_box})")
+    logger.debug(f"📦 Form data: {form_data}")
 
     try:
         response = await session.post(endpoint, data=form_data)
@@ -494,15 +498,118 @@ async def remove_video(request: Request, payload: RemoveVideoRequest):
         payload.video_id
     )
 
-    logger.info(f"🗑️ Removing video {payload.video_id} for athlete {payload.athlete_id}")
+    logger.info(
+        "🗑️ Removing video %s for athlete %s (accept=%s)",
+        payload.video_id,
+        payload.athlete_id,
+        session.client.headers.get("Accept")
+    )
 
     try:
         response = await session.post(endpoint, data=form_data)
+        logger.info(
+            "📥 Remove video response (status=%s content_type=%s location=%s length=%s)",
+            response.status_code,
+            response.headers.get("content-type"),
+            response.headers.get("location"),
+            len(response.text or "")
+        )
         if response.status_code == 200:
             return {"success": True}
+        logger.warning("⚠️ Remove video body preview: %s", (response.text or "")[:500])
         raise HTTPException(status_code=response.status_code, detail="Failed to remove video")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ Remove video error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/edit")
+async def get_video_edit(
+    request: Request,
+    athlete_id: str = Query(..., alias="athlete_id"),
+    athlete_main_id: str = Query(..., alias="athlete_main_id"),
+    video_id: str = Query(..., alias="video_id"),
+    is_from_video_mail_box: str = Query("", alias="is_from_video_mail_box"),
+):
+    """
+    Fetch edit video HTML for a specific video.
+    Mirrors: GET /template/template/videoedit?is_from_video_mail_box=&id=...&r=0&e=...&athlete_main_id=...
+    """
+    session = get_session(request)
+    params = {
+        "is_from_video_mail_box": is_from_video_mail_box,
+        "id": athlete_id,
+        "r": "0",
+        "e": video_id,
+        "athlete_main_id": athlete_main_id,
+    }
+
+    logger.info(
+        "📝 Fetching videoedit (athlete_id=%s video_id=%s main_id=%s accept=%s)",
+        athlete_id,
+        video_id,
+        athlete_main_id,
+        session.client.headers.get("Accept")
+    )
+    try:
+        response = await session.get("/template/template/videoedit", params=params)
+        if response.status_code != 200:
+            logger.warning(
+                "⚠️ videoedit response (status=%s content_type=%s location=%s length=%s)",
+                response.status_code,
+                response.headers.get("content-type"),
+                response.headers.get("location"),
+                len(response.text or "")
+            )
+            logger.warning("⚠️ videoedit body preview: %s", (response.text or "")[:500])
+            raise HTTPException(status_code=response.status_code, detail="Failed to fetch video edit form")
+        logger.info(f"📤 Fetched videoedit for athlete {athlete_id}, video {video_id} (len={len(response.text)})")
+        return {"success": True, "html": response.text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch videoedit: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/update")
+async def update_video(request: Request, payload: VideoUpdateRequest):
+    """
+    Update an existing video via updatecareervideos.
+    POST /athlete/update/updatecareervideos/{athlete_id}
+    """
+    session = get_session(request)
+    endpoint = f"/athlete/update/updatecareervideos/{payload.athlete_id}"
+    logger.info(
+        "📝 Updating video for athlete %s (accept=%s form_keys=%s)",
+        payload.athlete_id,
+        session.client.headers.get("Accept"),
+        sorted(payload.form_data.keys())
+    )
+
+    try:
+        response = await session.post(
+            endpoint,
+            data=payload.form_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"}
+        )
+        logger.info(
+            "📥 Update video response (status=%s content_type=%s location=%s length=%s)",
+            response.status_code,
+            response.headers.get("content-type"),
+            response.headers.get("location"),
+            len(response.text or "")
+        )
+        if response.headers.get("content-type", "").lower().startswith("text/html"):
+            logger.info("🧾 Update video HTML preview: %s", (response.text or "")[:500])
+        if response.status_code in [200, 302]:
+            return {"success": True}
+        logger.warning("⚠️ Update video body preview: %s", (response.text or "")[:500])
+        raise HTTPException(status_code=response.status_code, detail="Failed to update video")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Update video error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

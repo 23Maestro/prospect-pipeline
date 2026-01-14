@@ -32,6 +32,7 @@ import {
 } from './lib/npid-mcp-adapter';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { logger } from './lib/logger';
+import { createCraftTask, taskExists, getDueDateString } from './lib/craft-tasks';
 
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
@@ -160,8 +161,17 @@ function normalizeStage(displayStage: string): 'on_hold' | 'awaiting_client' | '
 }
 
 function getSeasonName(gradYear: number): string {
-  const currentYear = new Date().getFullYear();
-  const yearsUntilGrad = gradYear - currentYear;
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth(); // 0 = January, 7 = August
+
+  // Determine the school year (year it started in fall)
+  // If we're before August, we're in the school year that started last fall
+  // If we're in August or later, we're in the school year that started this fall
+  const schoolYearStart = currentMonth >= 7 ? currentYear : currentYear - 1;
+
+  // Calculate grade level based on years until graduation
+  const yearsUntilGrad = gradYear - schoolYearStart;
 
   switch (yearsUntilGrad) {
     case 1:
@@ -534,18 +544,65 @@ ${approvedDetail}
             />
           </ActionPanel.Section>
 
+          <ActionPanel.Section title="Craft Tasks">
+            <Action
+              title="Create In Queue Task"
+              icon={Icon.Plus}
+              onAction={async () => {
+                const exists = await taskExists(task.athletename, 'in_queue');
+                if (exists) {
+                  await showToast({
+                    style: Toast.Style.Failure,
+                    title: 'Task Already Exists',
+                    message: `${task.athletename} already has an In Queue task`,
+                  });
+                  return;
+                }
+                const result = await createCraftTask({
+                  athleteName: task.athletename,
+                  taskType: 'in_queue',
+                  dueDate: getDueDateString(7),
+                  notes: `${task.sport_name} | ${task.grad_year}`,
+                });
+                await showToast({
+                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
+                  title: result.success ? 'Task Created' : 'Creation Failed',
+                  message: result.message,
+                });
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'q' }}
+            />
+            <Action.Push
+              title="Create Follow-Up Task"
+              icon={Icon.Envelope}
+              target={<CreateCraftTaskForm athleteName={task.athletename} taskType="email_follow_up" />}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+            />
+            <Action.Push
+              title="Create Dropbox Reminder"
+              icon={Icon.Folder}
+              target={<CreateCraftTaskForm athleteName={task.athletename} taskType="dropbox_folders" />}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'b' }}
+            />
+          </ActionPanel.Section>
+
           <ActionPanel.Section>
             <Action.OpenInBrowser
-              title="Open in ProspectID"
+              title="View PlayerID"
               url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
               icon="🌍"
               shortcut={{ modifiers: ['cmd'], key: 'o' }}
             />
             <Action.OpenInBrowser
-              title="Open Contact Page"
+              title="General Info"
               url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${task.athlete_id}`}
               icon={Icon.Person}
               shortcut={{ modifiers: ['shift', 'cmd'], key: 'o' }}
+            />
+            <Action.OpenInBrowser
+              title="Task: Video Progress ID"
+              url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
+              icon={Icon.Globe}
             />
             <Action title="Back" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
@@ -825,6 +882,27 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
       await updateCachedTaskStatusStage(task.id, { stage: selectedStage });
       await showToast({ style: Toast.Style.Success, title: 'Stage Updated', message: `Updated to ${selectedStage}` });
 
+      // Auto-create Craft task when stage changes to "In Queue"
+      if (selectedStage === 'In Queue') {
+        try {
+          const exists = await taskExists(task.athletename, 'in_queue');
+          if (!exists) {
+            const craftResult = await createCraftTask({
+              athleteName: task.athletename,
+              taskType: 'in_queue',
+              dueDate: getDueDateString(7),
+              notes: `${task.sport_name} | ${task.grad_year}`,
+            });
+            if (craftResult.success) {
+              logger.info(`Craft task created for ${task.athletename}`);
+            }
+          }
+        } catch (craftError) {
+          // Never block workflow on Craft errors
+          logger.warn('Craft task creation skipped:', craftError);
+        }
+      }
+
       const allTasks = await getCachedTasks();
       const filtered = allTasks.filter(
         (t) => ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(t.video_progress_status)
@@ -854,6 +932,71 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
           <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.label} />
         ))}
       </Form.Dropdown>
+    </Form>
+  );
+}
+
+interface CreateCraftTaskFormProps {
+  athleteName: string;
+  taskType: 'email_follow_up' | 'dropbox_folders';
+}
+
+function CreateCraftTaskForm({ athleteName, taskType }: CreateCraftTaskFormProps) {
+  const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [dueDate, setDueDate] = useState<Date>(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+
+  const taskTypeLabels = {
+    email_follow_up: 'Follow-Up Email',
+    dropbox_folders: 'Dropbox Folder',
+  };
+
+  const handleSubmit = async () => {
+    setIsSubmitting(true);
+    try {
+      const dueDateStr = dueDate.toISOString().split('T')[0];
+      const result = await createCraftTask({
+        athleteName,
+        taskType,
+        dueDate: dueDateStr,
+      });
+      await showToast({
+        style: result.success ? Toast.Style.Success : Toast.Style.Failure,
+        title: result.success ? 'Task Created' : 'Creation Failed',
+        message: result.message,
+      });
+      if (result.success) {
+        pop();
+      }
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to create task',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      navigationTitle={`Create ${taskTypeLabels[taskType]}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Create Task" icon={Icon.Plus} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description title="Athlete" text={athleteName} />
+      <Form.DatePicker
+        id="dueDate"
+        title="Due Date"
+        value={dueDate}
+        onChange={(newDate) => newDate && setDueDate(newDate)}
+      />
+      <Form.Description title="Task Type" text={taskTypeLabels[taskType]} />
     </Form>
   );
 }
@@ -1273,10 +1416,15 @@ export default function VideoProgress() {
                     />
                   )}
                   <Action.OpenInBrowser
-                    title="Open in ProspectID"
+                    title="View PlayerID"
                     url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
                     icon={Icon.Globe}
                     shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                  />
+                  <Action.OpenInBrowser
+                    title="Task: Video Progress ID"
+                    url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
+                    icon={Icon.Globe}
                   />
                   <Action.CopyToClipboard
                     title="Copy Athlete Name"

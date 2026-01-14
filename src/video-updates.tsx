@@ -15,6 +15,7 @@ import { useForm, FormValidation } from "@raycast/utils";
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from "./lib/python-server-client";
 import * as cheerio from "cheerio";
 import * as fs from "fs";
+import { deleteCraftTask } from "./lib/craft-tasks";
 
 
 
@@ -116,13 +117,36 @@ function parseSortableHtml(html: string): string[] {
   }
 }
 
+function extractVideoIdFromText(text: string): string | null {
+  if (!text) return null;
+  const cleaned = text.replace(/&amp;/g, '&');
+  const match = cleaned.match(/(?:\?|&|\\u0026)e=(\d+)/i);
+  return match ? match[1] : null;
+}
+
+function normalizeVideoId(value?: string | null): string {
+  if (!value) return '';
+  const match = value.match(/\d+/);
+  return match ? match[0] : value;
+}
+
 function parseSortableHtmlDetailed(html: string): { id: string; title: string; approved: boolean; subtitle?: string }[] {
   if (!html) return [];
   try {
     const $ = cheerio.load(html);
     const items: { id: string; title: string; approved: boolean; subtitle?: string }[] = [];
     $('.video-item, li, .highlight-video').each((_, el) => {
-      const id = $(el).attr('data-id') || $(el).attr('id') || '';
+      const linkHref = $(el).find('a[href*="videoedit"]').attr('href') || '';
+      const dataUrl = $(el).find('[data-url*="videoedit"]').attr('data-url') || '';
+      const onClick = $(el).find('[onclick*="videoedit"]').attr('onclick') || '';
+      const htmlChunk = $(el).html() || '';
+      const linkId = extractVideoIdFromText(linkHref)
+        || extractVideoIdFromText(dataUrl)
+        || extractVideoIdFromText(onClick)
+        || extractVideoIdFromText(htmlChunk);
+      const id = normalizeVideoId(linkId)
+        || normalizeVideoId($(el).attr('data-id'))
+        || normalizeVideoId($(el).attr('id'));
       const fullText = $(el).text().trim();
 
       // Check for approval status
@@ -143,7 +167,7 @@ function parseSortableHtmlDetailed(html: string): { id: string; title: string; a
     });
     // Fallback: try regex if no data-id found
     if (items.length === 0) {
-      const regex = /data-id\s*=\s*"(\d+)"[^>]*>([^<]+)/gi;
+      const regex = /videoedit[^"']*?e=(\d+)[^>]*>([^<]+)/gi;
       let match;
       while ((match = regex.exec(html)) !== null) {
         const id = match[1];
@@ -158,6 +182,188 @@ function parseSortableHtmlDetailed(html: string): { id: string; title: string; a
   } catch (error) {
     log('⚠️ Failed to parse sortable HTML (detailed)', error);
     return [];
+  }
+}
+
+type VideoEditFormDetails = {
+  documentId: string;
+  formData: Record<string, string>;
+  approvalFields: string[];
+  currentUrl: string;
+};
+
+function parseVideoEditForm(html: string): VideoEditFormDetails {
+  const formData: Record<string, string> = {};
+  const approvalFields: string[] = [];
+  let documentId = '';
+  let currentUrl = '';
+
+  if (!html) {
+    return { documentId, formData, approvalFields, currentUrl };
+  }
+
+  const $ = cheerio.load(html);
+  const forms = $('form');
+  let form = forms.first();
+  forms.each((_, el) => {
+    const candidate = $(el);
+    if (candidate.find('input[name="documentid"]').length > 0) {
+      form = candidate;
+      return false;
+    }
+    if (candidate.find('input[name^="videourl["]').length > 0) {
+      form = candidate;
+      return false;
+    }
+    return undefined;
+  });
+
+  const addApprovalField = (name: string) => {
+    const lowered = name.toLowerCase();
+    if (lowered.includes('approve') || lowered.includes('approved')) {
+      if (!approvalFields.includes(name)) approvalFields.push(name);
+    }
+  };
+
+  form.find('input, select, textarea').each((_, el) => {
+    const element = $(el);
+    const name = element.attr('name')?.trim();
+    if (!name) return;
+    const tag = element.get(0).tagName.toLowerCase();
+
+    if (tag === 'input') {
+      const inputType = (element.attr('type') || 'text').toLowerCase();
+      if (inputType === 'checkbox') {
+        addApprovalField(name);
+        if (element.is(':checked')) {
+          formData[name] = String(element.val() ?? 'on');
+        }
+        return;
+      }
+      addApprovalField(name);
+      formData[name] = String(element.val() ?? '');
+      return;
+    }
+
+    if (tag === 'select') {
+      const selected = element.find('option:selected');
+      const value = selected.attr('value') ?? selected.text();
+      addApprovalField(name);
+      formData[name] = String(value ?? '');
+      return;
+    }
+
+    if (tag === 'textarea') {
+      addApprovalField(name);
+      formData[name] = String(element.val() ?? element.text() ?? '');
+    }
+  });
+
+  documentId = formData.documentid || '';
+  if (!documentId) {
+    const docKey = Object.keys(formData).find((key) => key.startsWith('videourl['));
+    if (docKey) {
+      const match = docKey.match(/\[(\d+)\]/);
+      if (match) documentId = match[1];
+    }
+  }
+
+  if (documentId) {
+    const urlKey = `videourl[${documentId}]`;
+    if (formData[urlKey]) currentUrl = formData[urlKey];
+  }
+
+  return { documentId, formData, approvalFields, currentUrl };
+}
+
+function summarizeVideoFormData(formData: Record<string, string>) {
+  const summary: Record<string, string> = {};
+  const keys = [
+    'documentid',
+    'videoType',
+    'updateVideoSeason',
+    'approve_video',
+    'approve_video_checkbox',
+    'schoolinfo[add_video_season]',
+    'athlete_main_id',
+  ];
+
+  keys.forEach((key) => {
+    if (key in formData) summary[key] = formData[key];
+  });
+
+  Object.keys(formData).forEach((key) => {
+    if (key.startsWith('videourl[') || key.startsWith('url_source[')) {
+      summary[key] = formData[key];
+    }
+  });
+
+  if ('_token' in formData) {
+    summary._token = `len:${(formData._token || '').length}`;
+  }
+
+  return summary;
+}
+
+async function fetchVideoEditHtml(params: {
+  athleteId: string;
+  athleteMainId: string;
+  videoId: string;
+}): Promise<string> {
+  const query = new URLSearchParams({
+    athlete_id: params.athleteId,
+    athlete_main_id: params.athleteMainId,
+    video_id: params.videoId,
+    is_from_video_mail_box: '',
+  });
+  log('🧹 Fetch video edit form', params);
+  const resp = await apiFetch(`/video/edit?${query.toString()}`);
+  if (!resp.ok) {
+    const errText = await resp.text();
+    log('⚠️ Video edit fetch failed', {
+      status: resp.status,
+      contentType: resp.headers.get('content-type'),
+      body: errText,
+    });
+    throw new Error(`Video edit HTTP ${resp.status}`);
+  }
+  const data = await resp.json().catch(() => ({})) as any;
+  const html = data?.html || '';
+  if (!html) {
+    log('⚠️ Video edit response missing HTML', data);
+  }
+  return html;
+}
+
+async function submitVideoUpdate(params: {
+  athleteId: string;
+  formData: Record<string, string>;
+}): Promise<void> {
+  log('📝 Submit video update', { athleteId: params.athleteId });
+  const resp = await apiFetch('/video/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      athlete_id: params.athleteId,
+      form_data: params.formData,
+    }),
+  });
+  log('📥 Video update response', {
+    status: resp.status,
+    ok: resp.ok,
+    contentType: resp.headers.get('content-type'),
+  });
+  if (!resp.ok) {
+    const errText = await resp.text();
+    log('⚠️ Video update error body', { body: errText });
+    let detail = '';
+    try {
+      const parsed = JSON.parse(errText) as any;
+      detail = parsed?.detail || '';
+    } catch {
+      detail = '';
+    }
+    throw new Error(detail || `HTTP ${resp.status}`);
   }
 }
 
@@ -204,19 +410,10 @@ export default function VideoUpdatesCommand(
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDPlayer | null>(null);
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
   const [isFetchingMainId, setIsFetchingMainId] = useState(false);
-  const [mainIdResolvedForAthleteId, setMainIdResolvedForAthleteId] = useState<string | null>(null);
+  const [hasTriedMainId, setHasTriedMainId] = useState(false);
   const [seasons, setSeasons] = useState<{ value: string, title: string, season: string }[]>([]);
   const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
   const { push, pop } = useNavigation();
-
-  const selectPlayer = (player: NPIDPlayer | null) => {
-    setSelectedPlayer(player);
-    setFetchedAthleteMainId(null);
-    setIsFetchingMainId(false);
-    setMainIdResolvedForAthleteId(null);
-    setSeasons([]);
-    setValue('season', '');
-  };
 
   const { handleSubmit, itemProps, reset, focus, values, setValue } = useForm<VideoUpdateFormValues>({
     async onSubmit(formValues) {
@@ -229,7 +426,7 @@ export default function VideoUpdatesCommand(
         let athleteId = selectedPlayer?.player_id || '';
         let athleteName = formValues.athleteName;
         const sportAlias = selectedPlayer?.sport || '';
-        const athleteMainId = mainIdResolvedForAthleteId === athleteId ? (fetchedAthleteMainId || '') : '';
+        const athleteMainId = fetchedAthleteMainId || '';
         const videoMsgId = selectedPlayer?.id ? selectedPlayer.id.toString() : '';
 
         if (selectedPlayer) {
@@ -244,17 +441,17 @@ export default function VideoUpdatesCommand(
           return;
         }
 
-        if (isFetchingMainId || mainIdResolvedForAthleteId !== athleteId) {
+        if (isFetchingMainId) {
           toast.style = Toast.Style.Failure;
           toast.title = 'Resolving athlete_main_id...';
-          toast.message = 'Please wait a moment and try again.';
+          toast.message = 'Failed;try again.';
           return;
         }
 
         if (!athleteMainId) {
           toast.style = Toast.Style.Failure;
           toast.title = 'Missing athlete_main_id';
-          toast.message = 'Cannot proceed without athlete_main_id.';
+          toast.message = 'N/A athlete_main_id.';
           return;
         }
 
@@ -324,9 +521,9 @@ export default function VideoUpdatesCommand(
             }
 
             reset();
-            selectPlayer(null);
+            setSelectedPlayer(null);
+            setSeasons([]);
             setFetchedAthleteMainId(null);
-            setMainIdResolvedForAthleteId(null);
           } else {
             toast.style = Toast.Style.Failure;
             toast.title = 'NPID Update Failed';
@@ -390,19 +587,19 @@ export default function VideoUpdatesCommand(
           const results = await searchVideoProgressPlayer(values.athleteName);
           if (results.length > 0) {
             log('✅ Auto-selecting first player:', results[0].name, 'ID:', results[0].player_id);
-            selectPlayer(results[0]);
+            setSelectedPlayer(results[0]);
           } else {
             log('⚠️ No search results found');
-            selectPlayer(null);
+            setSelectedPlayer(null);
           }
         } catch (error) {
           console.error('Search error:', error);
-          selectPlayer(null);
+          setSelectedPlayer(null);
         } finally {
           setIsSearching(false);
         }
       } else {
-        selectPlayer(null);
+        setSelectedPlayer(null);
       }
     };
 
@@ -418,14 +615,14 @@ export default function VideoUpdatesCommand(
       if (!playerId) {
         setFetchedAthleteMainId(null);
         setIsFetchingMainId(false);
-        setMainIdResolvedForAthleteId(null);
+        setHasTriedMainId(false);
         return;
       }
 
       log('🆔 Fetching athlete_main_id for player_id:', playerId);
       setIsFetchingMainId(true);
       setFetchedAthleteMainId(null);
-      setMainIdResolvedForAthleteId(null);
+      setHasTriedMainId(false);
 
       try {
         const resp = await apiFetch(`/athlete/${encodeURIComponent(playerId)}/resolve`);
@@ -461,7 +658,7 @@ export default function VideoUpdatesCommand(
       } finally {
         if (!cancelled) {
           setIsFetchingMainId(false);
-          setMainIdResolvedForAthleteId(playerId);
+          setHasTriedMainId(true);
         }
       }
     };
@@ -480,10 +677,10 @@ export default function VideoUpdatesCommand(
         const athleteId = selectedPlayer.player_id;
         const sportAlias = selectedPlayer.sport;
         const videoType = values.videoType;
-        const athleteMainId = mainIdResolvedForAthleteId === athleteId ? (fetchedAthleteMainId || '') : '';
+        const athleteMainId = fetchedAthleteMainId || '';
         log('📅 Fetching seasons with:', { athleteId, sportAlias, videoType, athleteMainId });
 
-        if (isFetchingMainId || mainIdResolvedForAthleteId !== athleteId) {
+        if (isFetchingMainId || !hasTriedMainId) {
           setSeasons([]);
           setValue('season', '');
           return;
@@ -534,7 +731,7 @@ export default function VideoUpdatesCommand(
       }
     };
     fetchSeasons();
-  }, [values.videoType, selectedPlayer, fetchedAthleteMainId, isFetchingMainId, mainIdResolvedForAthleteId]);
+  }, [values.videoType, selectedPlayer, fetchedAthleteMainId, isFetchingMainId, hasTriedMainId]);
 
   const loadSeasonsViaFastAPI = async (params: SeasonsRequest) => {
     const result = await getSeasons(params);
@@ -588,24 +785,6 @@ export default function VideoUpdatesCommand(
     } else {
       setValue('season', '');
     }
-  };
-
-  const fetchSortableVideos = async (): Promise<{ id: string; title: string; approved: boolean; subtitle?: string }[]> => {
-    if (!selectedPlayer) throw new Error('No athlete selected');
-    const athleteId = selectedPlayer.player_id;
-    const athleteMainId = fetchedAthleteMainId || '';
-    const sportAlias = selectedPlayer.sport;
-    if (!athleteId || !athleteMainId || !sportAlias) {
-      throw new Error('Missing athlete info for sortable fetch');
-    }
-    const resp = await apiFetch(`/video/sortable?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&sport_alias=${encodeURIComponent(sportAlias)}`);
-    if (!resp.ok) {
-      const txt = await resp.text();
-      throw new Error(`Failed to load videosortable: HTTP ${resp.status} ${txt}`);
-    }
-    const data = await resp.json().catch(() => ({})) as any;
-    const html = data?.html || '';
-    return parseSortableHtmlDetailed(html);
   };
 
   const fetchTemplates = async (athleteId: string) => {
@@ -732,6 +911,20 @@ export default function VideoUpdatesCommand(
       });
       log('✅ Email sent automatically', { template: picked.value, recipientCount: 1 + parentIds.length + 1 });
 
+      // Auto-delete Craft "In Queue" task after video completion
+      try {
+        const deleteResult = await deleteCraftTask({
+          athleteName,
+          taskType: 'in_queue',
+        });
+        if (deleteResult.deleted_count > 0) {
+          log('✅ Craft task deleted', { athleteName, count: deleteResult.deleted_count });
+        }
+      } catch (craftError) {
+        // Never block workflow on Craft errors
+        log('⚠️ Craft task deletion skipped', craftError);
+      }
+
       if (videoMsgId) {
         await updateStageDone(videoMsgId);
         log('✅ Stage updated to done', { videoMsgId });
@@ -740,42 +933,6 @@ export default function VideoUpdatesCommand(
       }
     } catch (error) {
       log('⚠️ Post-upload automation failed', error);
-    }
-  };
-
-  const handleDeleteLatest = async () => {
-    const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting latest video...' });
-    try {
-      const list = await fetchSortableVideos();
-      if (list.length === 0) {
-        toast.style = Toast.Style.Failure;
-        toast.title = 'No videos found';
-        toast.message = 'Sortable list is empty';
-        return;
-      }
-      const latest = list[0];
-      const athleteId = selectedPlayer?.player_id || '';
-      const athleteMainId = fetchedAthleteMainId || '';
-      const resp = await apiFetch('/video/remove', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          athlete_id: athleteId,
-          athlete_main_id: athleteMainId,
-          video_id: latest.id,
-        })
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({})) as any;
-        throw new Error(err.detail || `HTTP ${resp.status}`);
-      }
-      toast.style = Toast.Style.Success;
-      toast.title = 'Deleted latest video';
-      toast.message = latest.title;
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Delete failed';
-      toast.message = error instanceof Error ? error.message : 'Unknown error';
     }
   };
 
@@ -795,15 +952,34 @@ export default function VideoUpdatesCommand(
             onAction={() => focus('youtubeLink')}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'y' }}
           />
-          <Action
-            title="Delete Latest Video"
-            onAction={() => handleDeleteLatest()}
+          <Action.Push
+            title="Edit SA Videos"
+            icon={Icon.Pencil}
+            target={<EditSAVideosForm onBack={pop} selectedPlayer={selectedPlayer} fetchedAthleteMainId={fetchedAthleteMainId} />}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
           />
-          <Action
-            title="Delete Multiple Videos"
-            onAction={() => push(<DeleteVideosForm onBack={pop} selectedPlayer={selectedPlayer} fetchedAthleteMainId={fetchedAthleteMainId} />)}
-          />
+          {selectedPlayer?.player_id && (
+            <ActionPanel.Section title="Quick Links">
+              <Action.OpenInBrowser
+                title="View PlayerID"
+                icon={Icon.Star}
+                url={`https://dashboard.nationalpid.com/athlete/profile/${selectedPlayer.player_id}`}
+                shortcut={{ modifiers: ['cmd'], key: 'o' }}
+              />
+              <Action.OpenInBrowser
+                title="General Info"
+                icon={Icon.Person}
+                url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${selectedPlayer.player_id}`}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'o' }}
+              />
+              <Action.OpenInBrowser
+                title="Task: Video Progress ID"
+                icon={Icon.Globe}
+                url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${selectedPlayer.player_id}`}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+              />
+            </ActionPanel.Section>
+          )}
         </ActionPanel>
       }
     >
@@ -820,7 +996,7 @@ export default function VideoUpdatesCommand(
 
       {selectedPlayer && (
         <Form.Description
-          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school} | ID: ${selectedPlayer.player_id} | Main ID: ${isFetchingMainId || mainIdResolvedForAthleteId !== selectedPlayer.player_id ? 'Loading...' : (fetchedAthleteMainId || 'N/A')}`}
+          text={`Selected: ${selectedPlayer.name} (${selectedPlayer.grad_year}) - ${selectedPlayer.high_school} | ID: ${selectedPlayer.player_id} | Main ID: ${isFetchingMainId ? 'Loading...' : (fetchedAthleteMainId || 'N/A')}`}
         />
       )}
 
@@ -857,7 +1033,132 @@ export default function VideoUpdatesCommand(
   );
 }
 
-function DeleteVideosForm({
+function RevisionUpdateForm({
+  onBack,
+  onUpdated,
+  athleteId,
+  athleteMainId,
+  videoId,
+  videoTitle,
+}: {
+  onBack: () => void;
+  onUpdated?: () => void;
+  athleteId: string;
+  athleteMainId: string;
+  videoId: string;
+  videoTitle: string;
+}) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [documentId, setDocumentId] = useState('');
+  const [formData, setFormData] = useState<Record<string, string>>({});
+  const [currentUrl, setCurrentUrl] = useState('');
+
+  const { handleSubmit, itemProps, setValue } = useForm<{ youtubeLink: string }>({
+    async onSubmit(values) {
+      const toast = await showToast({ style: Toast.Style.Animated, title: 'Updating video link...' });
+      try {
+        if (!documentId) throw new Error('Missing document ID');
+        const updated = { ...formData };
+        const urlKey = `videourl[${documentId}]`;
+        const sourceKey = `url_source[${documentId}]`;
+        updated[urlKey] = values.youtubeLink;
+        if (!updated[sourceKey]) updated[sourceKey] = 'youtube';
+        if (!updated.documentid) updated.documentid = documentId;
+        const summary = summarizeVideoFormData(updated);
+        const missing: string[] = [];
+        ['documentid', urlKey, 'videoType', 'updateVideoSeason', 'athlete_main_id'].forEach((key) => {
+          if (!(key in updated) || !updated[key]) missing.push(key);
+        });
+        log('📝 Revision update submit', {
+          athleteId,
+          videoId,
+          documentId,
+          currentUrl,
+          newUrl: values.youtubeLink,
+          summary,
+          missingFields: missing,
+        });
+        await submitVideoUpdate({ athleteId, formData: updated });
+        toast.style = Toast.Style.Success;
+        toast.title = 'Revision updated';
+        toast.message = videoTitle;
+        onUpdated?.();
+        onBack();
+      } catch (error) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Revision update failed';
+        toast.message = error instanceof Error ? error.message : 'Unknown error';
+        log('❌ Revision update failed', error);
+      }
+    },
+    validation: {
+      youtubeLink: (value) => {
+        if (!value) return 'The item is required';
+        if (!value.startsWith('https://www.youtube.com/') && !value.startsWith('https://youtu.be/')) {
+          return 'Please enter a valid YouTube link';
+        }
+        return undefined;
+      },
+    },
+    initialValues: {
+      youtubeLink: '',
+    },
+  });
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setIsLoading(true);
+        log('🧹 Load video edit form for revision update', { athleteId, athleteMainId, videoId });
+        const html = await fetchVideoEditHtml({ athleteId, athleteMainId, videoId });
+        const parsed = parseVideoEditForm(html);
+        if (!parsed.documentId) throw new Error('Missing document ID');
+        setDocumentId(parsed.documentId);
+        setFormData(parsed.formData);
+        setCurrentUrl(parsed.currentUrl);
+        if (parsed.currentUrl) setValue('youtubeLink', parsed.currentUrl);
+        log('✅ Revision update form ready', {
+          documentId: parsed.documentId,
+          currentUrl: parsed.currentUrl,
+          summary: summarizeVideoFormData(parsed.formData),
+        });
+      } catch (error) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to load video edit form',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+        log('❌ Revision update form load failed', error);
+        onBack();
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    void load();
+  }, [athleteId, athleteMainId, videoId, onBack, setValue]);
+
+  return (
+    <Form
+      isLoading={isLoading}
+      navigationTitle="Revision Update"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Update YouTube Link" onSubmit={handleSubmit} />
+          <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description title="Video" text={videoTitle} />
+      <Form.TextField
+        title="YouTube Link"
+        placeholder={currentUrl || 'https://www.youtube.com/watch?v=...'}
+        {...itemProps.youtubeLink}
+      />
+    </Form>
+  );
+}
+
+function EditSAVideosForm({
   onBack,
   selectedPlayer,
   fetchedAthleteMainId,
@@ -869,25 +1170,63 @@ function DeleteVideosForm({
   const [videos, setVideos] = useState<{ id: string; title: string; approved: boolean; subtitle?: string }[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
+  const { pop } = useNavigation();
+
+  const fetchVideos = async () => {
+    if (!selectedPlayer) throw new Error('No athlete selected');
+    const athleteId = selectedPlayer.player_id;
+    const athleteMainId = fetchedAthleteMainId || '';
+    const sportAlias = selectedPlayer.sport;
+    if (!athleteId || !athleteMainId || !sportAlias) throw new Error('Missing athlete info');
+    const resp = await apiFetch(`/video/sortable?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&sport_alias=${encodeURIComponent(sportAlias)}`);
+    log('📥 Edit videos sortable response', { status: resp.status, ok: resp.ok });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      log('⚠️ Edit videos sortable failed', { status: resp.status, body: errText });
+      throw new Error(`Sortable HTTP ${resp.status}`);
+    }
+    const data = await resp.json().catch(() => ({})) as any;
+    return parseSortableHtmlDetailed(data?.html || '');
+  };
+
+  const refreshVideos = async () => {
+    setIsLoading(true);
+    try {
+      const parsed = await fetchVideos();
+      setVideos(parsed);
+      setSelected(new Set());
+      log('✅ Edit videos list parsed', { count: parsed.length });
+    } catch (error) {
+      log('❌ Edit videos refresh failed', error);
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to refresh videos',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
       try {
-        if (!selectedPlayer) throw new Error('No athlete selected');
-        const athleteId = selectedPlayer.player_id;
-        const athleteMainId = fetchedAthleteMainId || '';
-        const sportAlias = selectedPlayer.sport;
-        if (!athleteId || !athleteMainId || !sportAlias) throw new Error('Missing athlete info');
-
-        const resp = await apiFetch(`/video/sortable?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&sport_alias=${encodeURIComponent(sportAlias)}`);
-        const data = await resp.json().catch(() => ({})) as any;
-        const parsed = parseSortableHtmlDetailed(data?.html || '');
-        setVideos(parsed);
+        log('🧹 Load edit videos list start', {
+          athleteId: selectedPlayer?.player_id,
+          athleteMainId: fetchedAthleteMainId || '',
+          sportAlias: selectedPlayer?.sport,
+        });
+        await refreshVideos();
       } catch (error) {
-        await showToast({ style: Toast.Style.Failure, title: 'Failed to load videos', message: error instanceof Error ? error.message : 'Unknown error' });
+        log('❌ Edit videos list load failed', error);
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to load videos',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
         onBack();
       } finally {
-        setIsLoading(false);
+        log('🧹 Load edit videos list done');
       }
     };
     void load();
@@ -901,47 +1240,137 @@ function DeleteVideosForm({
       newSelected.add(id);
     }
     setSelected(newSelected);
+    log('🧹 Toggle edit selection', { videoId: id, selected: newSelected.has(id), selectedCount: newSelected.size });
   };
 
-  const handleDelete = async () => {
-    if (selected.size === 0) {
-      await showToast({ style: Toast.Style.Failure, title: 'No videos selected', message: 'Select at least one video to delete' });
-      return;
-    }
-    if (!selectedPlayer) return;
+  const removeVideo = async (videoId: string) => {
+    if (!selectedPlayer) throw new Error('No athlete selected');
     const athleteId = selectedPlayer.player_id;
     const athleteMainId = fetchedAthleteMainId || '';
+    log('🗑️ Removing video', { videoId, athleteId, athleteMainId });
+    const resp = await apiFetch('/video/remove', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ athlete_id: athleteId, athlete_main_id: athleteMainId, video_id: videoId }),
+    });
+    log('📥 Remove video response', {
+      videoId,
+      status: resp.status,
+      ok: resp.ok,
+      contentType: resp.headers.get('content-type'),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      log('⚠️ Remove video failed response', { videoId, body: errText });
+      let detail = '';
+      try {
+        const parsed = JSON.parse(errText) as any;
+        detail = parsed?.detail || '';
+      } catch {
+        detail = '';
+      }
+      throw new Error(detail || `HTTP ${resp.status}`);
+    }
+  };
+
+  const handleDeleteSelected = async () => {
+    log('🗑️ Delete selected requested', { selectedCount: selected.size });
+    if (selected.size === 0) {
+      await showToast({ style: Toast.Style.Failure, title: 'No videos selected', message: 'Select at least one video to delete' });
+      log('⚠️ Delete selected aborted: no videos selected');
+      return;
+    }
     const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting videos...' });
     try {
       for (const id of Array.from(selected)) {
-        const resp = await apiFetch('/video/remove', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ athlete_id: athleteId, athlete_main_id: athleteMainId, video_id: id }),
-        });
-        if (!resp.ok) {
-          const err = await resp.json().catch(() => ({})) as any;
-          throw new Error(err.detail || `HTTP ${resp.status}`);
-        }
+        await removeVideo(id);
       }
       toast.style = Toast.Style.Success;
       toast.title = `Deleted ${selected.size} video(s)`;
-      onBack();
+      log('✅ Delete selected success', { deletedCount: selected.size });
+      await refreshVideos();
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Delete failed';
       toast.message = error instanceof Error ? error.message : 'Unknown error';
+      log('❌ Delete selected failed', error);
+    }
+  };
+
+  const handleDeleteSingle = async (video: { id: string; title: string }) => {
+    const toast = await showToast({ style: Toast.Style.Animated, title: 'Deleting video...' });
+    try {
+      await removeVideo(video.id);
+      toast.style = Toast.Style.Success;
+      toast.title = 'Video deleted';
+      toast.message = video.title;
+      await refreshVideos();
+      log('✅ Delete single success', { videoId: video.id });
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Delete failed';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+      log('❌ Delete single failed', error);
+    }
+  };
+
+  const handleUnapprove = async (video: { id: string; title: string }) => {
+    const toast = await showToast({ style: Toast.Style.Animated, title: 'Unapproving video...' });
+    try {
+      if (!selectedPlayer) throw new Error('No athlete selected');
+      const athleteId = selectedPlayer.player_id;
+      const athleteMainId = fetchedAthleteMainId || '';
+      const html = await fetchVideoEditHtml({ athleteId, athleteMainId, videoId: video.id });
+      const parsed = parseVideoEditForm(html);
+      if (!parsed.documentId) throw new Error('Missing document ID');
+      const updated = { ...parsed.formData };
+      if (!updated.documentid) updated.documentid = parsed.documentId;
+      const approvalKeys = new Set<string>(parsed.approvalFields);
+      Object.keys(updated).forEach((key) => {
+        if (key.toLowerCase().includes('approve')) approvalKeys.add(key);
+      });
+      if (approvalKeys.size === 0) {
+        approvalKeys.add('approve_video');
+        approvalKeys.add('approve_video_checkbox');
+      }
+      approvalKeys.forEach((name) => {
+        const lowered = name.toLowerCase();
+        if (lowered.includes('checkbox')) {
+          updated[name] = 'off';
+        } else {
+          updated[name] = '0';
+        }
+      });
+      const summary = summarizeVideoFormData(updated);
+      log('📝 Unapprove submit', {
+        athleteId,
+        videoId: video.id,
+        documentId: parsed.documentId,
+        approvalFields: Array.from(approvalKeys),
+        summary,
+      });
+      await submitVideoUpdate({ athleteId, formData: updated });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Video unapproved';
+      toast.message = video.title;
+      await refreshVideos();
+      log('✅ Unapprove success', { videoId: video.id });
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Unapprove failed';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+      log('❌ Unapprove failed', error);
     }
   };
 
   return (
     <List
       isLoading={isLoading}
-      navigationTitle="Delete Videos"
+      navigationTitle="Edit SA Videos"
       searchBarPlaceholder="Search videos..."
     >
       {videos.length === 0 && !isLoading ? (
-        <List.EmptyView title="No videos found" description="This athlete has no videos to delete" />
+        <List.EmptyView title="No videos found" description="This athlete has no videos to manage" />
       ) : (
         videos.map((video, index) => (
           <List.Item
@@ -962,14 +1391,46 @@ function DeleteVideosForm({
                     onAction={() => toggleSelection(video.id)}
                   />
                   <Action
+                    title="Delete This Video"
+                    icon={Icon.Trash}
+                    style={Action.Style.Destructive}
+                    onAction={() => handleDeleteSingle(video)}
+                  />
+                  <Action
                     title={`Delete Selected (${selected.size})`}
                     icon={Icon.Trash}
                     style={Action.Style.Destructive}
-                    onAction={handleDelete}
+                    onAction={handleDeleteSelected}
                     shortcut={{ modifiers: ['cmd'], key: 'd' }}
+                  />
+                  <Action
+                    title="Unapprove Video"
+                    icon={Icon.XMarkCircle}
+                    style={Action.Style.Destructive}
+                    onAction={() => handleUnapprove(video)}
+                  />
+                  <Action.Push
+                    title="Revision Update"
+                    icon={Icon.Pencil}
+                    target={
+                      <RevisionUpdateForm
+                        onBack={pop}
+                        onUpdated={refreshVideos}
+                        athleteId={selectedPlayer?.player_id || ''}
+                        athleteMainId={fetchedAthleteMainId || ''}
+                        videoId={video.id}
+                        videoTitle={video.title}
+                      />
+                    }
                   />
                 </ActionPanel.Section>
                 <ActionPanel.Section>
+                  <Action
+                    title="Refresh Videos"
+                    icon={Icon.ArrowClockwise}
+                    onAction={refreshVideos}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                  />
                   <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
                 </ActionPanel.Section>
               </ActionPanel>

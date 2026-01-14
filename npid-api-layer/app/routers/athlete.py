@@ -52,29 +52,19 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
         """Fetch profile page to extract main_id and metadata."""
         nonlocal athlete_id, athlete_main_id, profile_data
         try:
-            # Calculate grade level suffix if grad_year provided
+            # Fetch full profile page (hash fragments don't work server-side)
+            # The HTML contains all grade levels, we'll parse the correct one
             profile_url = f"/athlete/profile/{aid}"
+            grade_level = None
             if grad_year:
-                # Use season calculator logic to determine grade level
+                # Calculate grade level for parsing context
                 from datetime import datetime
                 current_year = datetime.now().year
                 current_month = datetime.now().month
                 school_year_end = current_year + 1 if current_month >= 8 else current_year
                 years_until_grad = grad_year - school_year_end
                 grade_level = 12 - years_until_grad
-
-                # Map grade to level details hash
-                grade_map = {
-                    12: "senioro",
-                    11: "junioro",
-                    10: "sophomoreo",
-                    9: "freshmano",
-                    8: "8thgradeo",
-                    7: "7thgradeo"
-                }
-                if grade_level in grade_map:
-                    profile_url += f"#leveldetails{grade_map[grade_level]}"
-                    logger.info(f"📍 Using profile URL with grade level: {profile_url}")
+                logger.info(f"📍 Calculated grade level: {grade_level} for grad_year {grad_year}")
 
             profile_response = await session.get(profile_url)
             logger.info(f"📥 Profile response: status={profile_response.status_code}, length={len(profile_response.text)}, has_athlete={('athlete' in profile_response.text.lower())}")
@@ -84,7 +74,7 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
                 logger.info(f"📝 Extracted athlete_main_id: {athlete_main_id}")
                 # Only hydrate profile data if we don't already have it
                 if not profile_data:
-                    profile_data = translator.parse_athlete_profile_data(profile_response.text)
+                    profile_data = translator.parse_athlete_profile_data(profile_response.text, grade_level=grade_level)
                     logger.info(f"📊 Profile data parsed: {profile_data}")
                 else:
                     logger.info("⏭️  Skipping profile parse (already have data)")
@@ -162,43 +152,37 @@ async def resolve_from_task_id(request: Request, task_id: str):
     
     logger.info(f"🔍 Resolving athlete from task ID: {task_id} via POST search")
     
-    # 1. Construct standard video progress filter request
-    # We filter by 'search_all_fields' which is the text search box on the page
-    # This matches ID, name, email, etc.
+    # Construct standard video progress filter request
+    # Jeremiah confirmed: filtering by task ID in the dashboard POST search works.
     filters = {"search_all_fields": task_id}
     endpoint, form_data = translator.video_progress_to_legacy(filters)
     
     try:
-        # 2. Execute POST request (just like the main list)
+        # Execute POST request (just like the main list)
         response = await session.post(endpoint, data=form_data)
         
-        # 3. Parse using standard parser
+        # Parse using standard parser
         result = translator.parse_video_progress_response(response.text)
         
         if result["success"]:
             tasks = result.get("tasks", [])
             logger.info(f"   Search returned {len(tasks)} tasks")
             
-            # 4. Find the specific task (string comparison just in case)
+            # Find the specific task
             for task in tasks:
                 if str(task.get("id")) == str(task_id):
                     athlete_id = str(task.get("athlete_id"))
-                    # Try to get athlete_main_id if available (custom parser might not extract it here yet)
-                    # But verifying athlete_id is the big win.
                     logger.info(f"✅ FOUND MATCH: Task {task_id} belongs to athlete {athlete_id}")
                     return {
                          "task_id": task_id,
                          "athlete_id": athlete_id,
-                         "athlete_main_id": None, # Parser might not give this, but Step 3 will resolve it
+                         "athlete_main_id": str(task.get("athlete_main_id")) if task.get("athlete_main_id") else None,
                          "name": task.get("athletename"),
                          "sport": task.get("sport_name"),
                          "found": True
                     }
                     
-            # If we got tasks but none matched exact ID (unlikely with search, but possible partial match)
             if tasks:
-                # If exact ID match failed, but we only have 1 result and it's super confident... 
-                # actually, let's Stick to strict ID matching for safety.
                 logger.warning(f"⚠️ Search returned tasks but none matched ID {task_id}")
                 
     except Exception as e:

@@ -15,15 +15,18 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
 
   useEffect(() => {
     const load = async () => {
+      console.log('📝 AthleteNotesList loading notes:', { athleteId, athleteMainId, athleteName });
       setIsLoading(true);
       try {
         const data = await fetchAthleteNotes(athleteId, athleteMainId);
+        console.log('📝 Notes loaded:', data.length);
         setNotes(data);
       } catch (error) {
+        console.error('📝 Failed to load notes:', error);
         await showToast({
           style: Toast.Style.Failure,
           title: 'Failed to load notes',
-          message: error instanceof Error ? error.message : 'Unknown error',
+          message: error instanceof Error ? error.message : JSON.stringify(error),
         });
       } finally {
         setIsLoading(false);
@@ -35,6 +38,7 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
   return (
     <List
       isLoading={isLoading}
+      isShowingDetail
       navigationTitle={`Athlete Notes • ${athleteName ?? athleteId}`}
       searchBarPlaceholder="Search notes..."
     >
@@ -53,6 +57,19 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
             detail={
               <List.Item.Detail
                 markdown={note.description || '_No description provided_'}
+                metadata={
+                  <List.Item.Detail.Metadata>
+                    {note.created_by && (
+                      <List.Item.Detail.Metadata.Label title="Created By" text={note.created_by} />
+                    )}
+                    {note.created_at && (
+                      <List.Item.Detail.Metadata.Label title="Created At" text={formatDate(note.created_at)} />
+                    )}
+                    {note.metadata && (
+                      <List.Item.Detail.Metadata.Label title="Info" text={note.metadata} />
+                    )}
+                  </List.Item.Detail.Metadata>
+                }
               />
             }
           />
@@ -89,6 +106,7 @@ export function AddAthleteNoteForm({
       return;
     }
 
+    console.log('📝 AddAthleteNoteForm submitting:', { athleteId, athleteMainId, title, description });
     setIsSubmitting(true);
     try {
       await addAthleteNote({
@@ -97,6 +115,7 @@ export function AddAthleteNoteForm({
         title: title.trim(),
         description: description.trim(),
       });
+      console.log('📝 Note added successfully');
       await showToast({
         style: Toast.Style.Success,
         title: 'Note added',
@@ -104,10 +123,11 @@ export function AddAthleteNoteForm({
       });
       onComplete?.();
     } catch (error) {
+      console.error('📝 Failed to add note:', error);
       await showToast({
         style: Toast.Style.Failure,
         title: 'Failed to add note',
-        message: error instanceof Error ? error.message : 'Unknown error',
+        message: error instanceof Error ? error.message : JSON.stringify(error),
       });
     } finally {
       setIsSubmitting(false);

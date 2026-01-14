@@ -25,8 +25,8 @@ export interface NPIDInboxMessage {
   id: string;
   itemCode: string;
   thread_id: string;
-  player_id: string;
-  contact_id?: string; // athlete_id alias
+  contact_id: string; // Aliases: athlete_id, contacttask (same value)
+  player_id?: string; // DEPRECATED: Use contact_id instead
   name: string;
   email: string;
   subject: string;
@@ -42,11 +42,14 @@ export interface NPIDInboxMessage {
   videoStatus?: string;
   canAssign?: boolean;
   athleteMainId?: string | null;
+  sport_alias?: string; // NEW - needed for video management endpoints
+  video_msg_id?: string; // NEW - clarify this is the video message ID
   attachments?: VideoTeamAttachment[];
   athleteLinks?: {
     profile: string;
     search: string;
     notes: string;
+    addVideoForm?: string;
   };
 }
 
@@ -89,6 +92,7 @@ export interface VideoTeamMessageDetail {
     profile: string;
     search: string;
     notes: string;
+    addVideoForm?: string;
   };
   statusMeta: {
     active: string;

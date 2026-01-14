@@ -280,7 +280,7 @@ class NPIDAPIClient:
             return None
         email_elem = elem.select_one('.hidden')
         email = email_elem.text.strip() if email_elem else ""
-        contact_id = elem.get('contacttask', '')
+        contact_id = elem.get('contact_id', '')
         athlete_main_id = elem.get('athletemainid', '')
         name_elem = elem.select_one('.msg-sendr-name')
         name = name_elem.text.strip() if name_elem else "Unknown"

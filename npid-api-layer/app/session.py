@@ -43,7 +43,7 @@ class NPIDSession:
                 "User-Agent": "NPID-API-Layer/0.1",
                 "X-Requested-With": "XMLHttpRequest",  # CRITICAL: Tells Laravel not to redirect to login page
                 "Accept": "application/json, text/javascript, */*; q=0.01",  # Legacy jQuery Accept header
-                "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+                # Content-Type auto-detected by httpx: data= → urlencoded, files= → multipart, json= → application/json
             }
         )
 
@@ -141,13 +141,24 @@ class NPIDSession:
 
         return False
 
-    async def post(self, path: str, data: Dict[str, Any] = None, **kwargs) -> httpx.Response:
+    async def post(self, path: str, data: Dict[str, Any] = None, skip_csrf_retry: bool = False, **kwargs) -> httpx.Response:
         """
         Authenticated POST with automatic CSRF retry.
         Mimics Python Client _retry_with_csrf (lines 198-221).
+
+        Args:
+            path: API endpoint path
+            data: Form data dict
+            skip_csrf_retry: If True, bypass auto token injection/retry (for endpoints with custom tokens)
+            **kwargs: Additional httpx params (files, headers, etc.)
         """
         if data is None:
             data = {}
+
+        # If skip_csrf_retry=True, send as-is without token injection (like Python client send_reply)
+        if skip_csrf_retry:
+            logger.debug(f"POST {path} (CSRF retry disabled)")
+            return await self.client.post(path, data=data, **kwargs)
 
         # Ensure we have a token (fetch if missing)
         if not self.csrf_token:

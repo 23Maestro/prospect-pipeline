@@ -5,12 +5,13 @@ import {
   Icon,
   List,
   Toast,
+  open,
   showToast,
   useNavigation,
   Detail,
   Form,
 } from '@raycast/api';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NPIDInboxMessage } from './types/video-team';
 import {
   fetchAthleteName,
@@ -20,8 +21,9 @@ import {
 } from './lib/npid-mcp-adapter';
 import { apiFetch } from './lib/python-server-client';
 import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
-import { resolveAthleteIdsByVideoMsgId, cacheAthleteMainId, upsertTasks } from './lib/video-progress-cache';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
+import { ensureAthleteIds } from './lib/athlete-id-resolver';
+import { createCraftTask, getDueDateString, type CraftTaskType } from './lib/craft-tasks';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -43,6 +45,13 @@ function EmailContentDetail({
   // Initialize from message (contact_id/athlete_id), then update from API if available
   const resolved = resolveAthleteIdentifiers(message);
   const [contactId, setContactId] = useState<string | null>(resolved.contactId);
+  const [athleteMainId, setAthleteMainId] = useState<string | null>(resolved.athleteMainId);
+  const [athleteLinks, setAthleteLinks] = useState<{
+    profile?: string;
+    notes?: string;
+    search?: string;
+    addVideoForm?: string;
+  }>(message.athleteLinks || {});
 
   useEffect(() => {
     const loadFullMessage = async () => {
@@ -59,6 +68,18 @@ function EmailContentDetail({
           }
           if (details.attachments && details.attachments.length > 0) {
             setDetailAttachments(details.attachments);
+          }
+          // ✅ Extract contact_id from message detail (parsed from athlete_profile_link)
+          if (details.contact_id) {
+            setContactId(details.contact_id);
+            console.log(`✅ Extracted contact_id from message detail: ${details.contact_id}`);
+          }
+          if (details.athlete_main_id) {
+            setAthleteMainId(details.athlete_main_id);
+            console.log(`✅ Extracted athlete_main_id from message detail: ${details.athlete_main_id}`);
+          }
+          if (details.athlete_links) {
+            setAthleteLinks((prev) => ({ ...prev, ...details.athlete_links }));
           }
         } else {
           // Fallback to preview if no content returned
@@ -86,9 +107,11 @@ function EmailContentDetail({
   // Use detailed timestamp if available, otherwise raw or unknown
   const displayTimestamp = detailedTimestamp || message.timestamp || 'Unknown';
 
+  const displayName = sanitizeAthleteName(resolvedAthleteName || message.name) || 'Unknown';
+
   const metadata = (
     <Detail.Metadata>
-      <Detail.Metadata.Label title="Name" text={resolvedAthleteName || message.name || 'Unknown'} />
+      <Detail.Metadata.Label title="Name" text={displayName} />
       <Detail.Metadata.Label title="Email" text={message.email || 'No email'} />
       <Detail.Metadata.Separator />
       <Detail.Metadata.Label title="Received" text={displayTimestamp} />
@@ -109,17 +132,94 @@ function EmailContentDetail({
     </Detail.Metadata>
   );
 
-  const markdownContent = `# ${message.subject}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''}`;
+  const normalizedContent = normalizeMessageContent(contentToDisplay) || contentToDisplay;
+  const markdownContent = `# ${message.subject}\n\n---\n\n${normalizedContent}${error ? `\n\n> ⚠️ ${error}` : ''}`;
 
-  const resolveAthleteName = async (): Promise<string | null> => {
-    if (!contactId) return null;
+  const resolveContactId = async (): Promise<string | null> => {
+    if (contactId) return contactId;
+
+    try {
+      const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
+      if (details?.contact_id) {
+        setContactId(details.contact_id);
+        console.log(`✅ Extracted contact_id on demand: ${details.contact_id}`);
+      }
+      if (details?.athlete_main_id) {
+        setAthleteMainId(details.athlete_main_id);
+      }
+      if (details?.athlete_links) {
+        setAthleteLinks((prev) => ({ ...prev, ...details.athlete_links }));
+      }
+      if (details?.contact_id) {
+        return details.contact_id;
+      }
+    } catch (err) {
+      console.error('Failed to resolve contact_id for action:', err);
+    }
+
+    return null;
+  };
+
+  const resolveAthleteName = async (athleteIdOverride?: string): Promise<string | null> => {
+    const resolvedContactId = athleteIdOverride || (await resolveContactId());
+    if (!resolvedContactId) return null;
     if (resolvedAthleteName) return resolvedAthleteName;
-    const name = await fetchAthleteName(contactId);
-    if (name) {
-      setResolvedAthleteName(name);
-      return name;
+    const rawName = await fetchAthleteName(resolvedContactId);
+    const cleanedName = sanitizeAthleteName(rawName);
+    if (cleanedName) {
+      setResolvedAthleteName(cleanedName);
+      return cleanedName;
     }
     return null;
+  };
+
+  const resolveAthleteIdsForMainIdAction = async (): Promise<{ athleteId: string; athleteMainId: string } | null> => {
+    const resolvedContactId = await resolveContactId();
+    if (!resolvedContactId) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing contact_id',
+        message: 'Contact ID not found in inbox thread or message link.',
+      });
+      return null;
+    }
+
+    const ids = await ensureAthleteIds(resolvedContactId, athleteMainId || undefined);
+    if (!ids) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing athlete_main_id',
+        message: 'Could not resolve athlete_main_id for this contact.',
+      });
+      return null;
+    }
+
+    return ids;
+  };
+
+  const openAthleteLink = async (
+    kind: 'profile' | 'notes' | 'search',
+    fallbackUrl: (id: string) => string,
+    extraParams?: Record<string, string>
+  ) => {
+    const resolvedContactId = await resolveContactId();
+    if (!resolvedContactId) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing contact_id',
+        message: 'Contact ID not found in inbox thread or message link.',
+      });
+      return;
+    }
+
+    const raw = athleteLinks?.[kind] || '';
+    const url = raw
+      ? raw.startsWith('http')
+        ? raw
+        : `https://dashboard.nationalpid.com${raw}`
+      : fallbackUrl(resolvedContactId);
+    const finalUrl = extraParams ? appendQueryParams(url, extraParams) : url;
+    await open(finalUrl);
   };
 
   return (
@@ -144,94 +244,44 @@ function EmailContentDetail({
               title="View Notes"
               icon={Icon.Clipboard}
               onAction={async () => {
-                // Try lazy resolution with cache fallback
-                const ids = await lazyResolveAthleteIds(message);
+                const ids = await resolveAthleteIdsForMainIdAction();
+                if (!ids) return;
 
-                if (!ids.athleteId || !ids.athleteMainId) {
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Missing athlete IDs',
-                    message: 'Could not resolve athlete IDs. Try running Video Progress command first to populate cache.',
-                  });
-                  return;
-                }
+                const athleteName = (await resolveAthleteName(ids.athleteId)) || message.name || 'Unknown Athlete';
 
-                try {
-                  const athleteName = await resolveAthleteName();
-                  if (!athleteName) {
-                    await showToast({
-                      style: Toast.Style.Failure,
-                      title: 'Missing athlete name',
-                      message: 'Could not fetch athlete name from athletename endpoint',
-                    });
-                    return;
-                  }
-                  push(
-                    <AthleteNotesList
-                      athleteId={ids.athleteId}
-                      athleteMainId={ids.athleteMainId}
-                      athleteName={athleteName}
-                    />
-                  );
-                } catch (error) {
-                  console.error('🔍 View Notes error:', error);
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Failed to fetch athlete profile',
-                    message: error instanceof Error ? error.message : JSON.stringify(error),
-                  });
-                }
+                push(
+                  <AthleteNotesList
+                    athleteId={ids.athleteId}
+                    athleteMainId={ids.athleteMainId}
+                    athleteName={athleteName}
+                  />
+                );
               }}
             />
             <Action
               title="Add Note"
               icon={Icon.Plus}
               onAction={async () => {
-                // Try lazy resolution with cache fallback
-                const ids = await lazyResolveAthleteIds(message);
+                const ids = await resolveAthleteIdsForMainIdAction();
+                if (!ids) return;
 
-                if (!ids.athleteId || !ids.athleteMainId) {
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Missing athlete IDs',
-                    message: 'Could not resolve athlete IDs. Try running Video Progress command first to populate cache.',
-                  });
-                  return;
-                }
+                const athleteName = (await resolveAthleteName(ids.athleteId)) || message.name || 'Unknown Athlete';
 
-                try {
-                  const athleteName = await resolveAthleteName();
-                  if (!athleteName) {
-                    await showToast({
-                      style: Toast.Style.Failure,
-                      title: 'Missing athlete name',
-                      message: 'Could not fetch athlete name',
-                    });
-                    return;
-                  }
-                  push(
-                    <AddAthleteNoteForm
-                      athleteId={ids.athleteId}
-                      athleteMainId={ids.athleteMainId}
-                      athleteName={athleteName}
-                      onComplete={() => {
-                        pop();
-                        showToast({
-                          style: Toast.Style.Success,
-                          title: 'Note added',
-                          message: `Note added for ${athleteName}`,
-                        });
-                      }}
-                    />
-                  );
-                } catch (error) {
-                  console.error('🔍 Add Note error:', error);
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Failed to add note',
-                    message: error instanceof Error ? error.message : JSON.stringify(error),
-                  });
-                }
+                push(
+                  <AddAthleteNoteForm
+                    athleteId={ids.athleteId}
+                    athleteMainId={ids.athleteMainId}
+                    athleteName={athleteName}
+                    onComplete={() => {
+                      pop();
+                      showToast({
+                        style: Toast.Style.Success,
+                        title: 'Note added',
+                        message: `Note added for ${athleteName}`,
+                      });
+                    }}
+                  />
+                );
               }}
             />
           </ActionPanel.Section>
@@ -241,7 +291,8 @@ function EmailContentDetail({
               title="Update Video Stage"
               icon={Icon.ArrowRightCircle}
               onAction={async () => {
-                if (!contactId) {
+                const resolvedContactId = await resolveContactId();
+                if (!resolvedContactId) {
                   await showToast({
                     style: Toast.Style.Failure,
                     title: 'Missing athlete_id',
@@ -259,7 +310,7 @@ function EmailContentDetail({
                   return;
                 }
 
-                const athleteName = await resolveAthleteName();
+                const athleteName = await resolveAthleteName(resolvedContactId);
                 if (!athleteName) {
                   await showToast({
                     style: Toast.Style.Failure,
@@ -271,7 +322,7 @@ function EmailContentDetail({
 
                 push(
                   <UpdateStageForm
-                    athleteId={contactId}
+                    athleteId={resolvedContactId}
                     videoMsgId={String(message.video_msg_id)}
                     athleteName={athleteName}
                     onBack={pop}
@@ -284,16 +335,10 @@ function EmailContentDetail({
               title="Upload Video"
               icon={Icon.Upload}
               onAction={async () => {
-                if (!contactId || !message.athleteMainId) {
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Missing athlete IDs',
-                    message: 'athleteid/athlete_main_id not found in inbox thread (no fallbacks)',
-                  });
-                  return;
-                }
+                const ids = await resolveAthleteIdsForMainIdAction();
+                if (!ids) return;
 
-                const athleteName = await resolveAthleteName();
+                const athleteName = await resolveAthleteName(ids.athleteId);
                 if (!athleteName) {
                   await showToast({
                     style: Toast.Style.Failure,
@@ -305,8 +350,8 @@ function EmailContentDetail({
 
                 push(
                   <UploadVideoForm
-                    athleteId={contactId}
-                    athleteMainId={String(message.athleteMainId)}
+                    athleteId={ids.athleteId}
+                    athleteMainId={ids.athleteMainId}
                     athleteName={athleteName}
                     videoMsgId={String(message.video_msg_id)}
                     sportAlias={message.sport_alias || ''}
@@ -318,28 +363,104 @@ function EmailContentDetail({
             />
           </ActionPanel.Section>
 
-          {contactId && (
-            <ActionPanel.Section title="Quick Links">
-              <Action.OpenInBrowser
-                title="Open Contact Page"
-                icon={Icon.Person}
-                url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${contactId}`}
-                shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
-              />
-              <Action.OpenInBrowser
-                title="Open PlayerID"
-                icon={Icon.Star}
-                url={`https://dashboard.nationalpid.com/athlete/profile/${contactId}`}
-                shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
-              />
-              <Action.OpenInBrowser
-                title="Athlete Notes Tab"
-                icon={Icon.Clipboard}
-                url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${contactId}&notestab=1`}
-                shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
-              />
-            </ActionPanel.Section>
-          )}
+          <ActionPanel.Section title="Craft Tasks">
+            <Action
+              title="Create Follow-Up Task"
+              icon={Icon.Envelope}
+              onAction={async () => {
+                const athleteName = resolvedAthleteName || sanitizeAthleteName(message.name) || 'Unknown';
+                const result = await createCraftTask({
+                  athleteName,
+                  taskType: 'email_follow_up',
+                  dueDate: getDueDateString(7),
+                  notes: `RE: ${message.subject}`,
+                });
+                await showToast({
+                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
+                  title: result.success ? 'Follow-Up Created' : 'Creation Failed',
+                  message: result.message,
+                });
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+            />
+            <Action
+              title="Create Dropbox Reminder"
+              icon={Icon.Folder}
+              onAction={async () => {
+                const athleteName = resolvedAthleteName || sanitizeAthleteName(message.name) || 'Unknown';
+                const result = await createCraftTask({
+                  athleteName,
+                  taskType: 'dropbox_folders',
+                  dueDate: getDueDateString(7),
+                  notes: `Dropbox folder for ${athleteName}`,
+                });
+                await showToast({
+                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
+                  title: result.success ? 'Reminder Created' : 'Creation Failed',
+                  message: result.message,
+                });
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'b' }}
+            />
+            <Action
+              title="Create In Queue Task"
+              icon={Icon.Plus}
+              onAction={async () => {
+                const athleteName = resolvedAthleteName || sanitizeAthleteName(message.name) || 'Unknown';
+                const result = await createCraftTask({
+                  athleteName,
+                  taskType: 'in_queue',
+                  dueDate: getDueDateString(7),
+                  notes: `From inbox: ${message.subject}`,
+                });
+                await showToast({
+                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
+                  title: result.success ? 'Task Created' : 'Creation Failed',
+                  message: result.message,
+                });
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'q' }}
+            />
+          </ActionPanel.Section>
+
+          <ActionPanel.Section title="Quick Links">
+            <Action
+              title="General Info"
+              icon={Icon.Person}
+              onAction={async () => {
+                const name = await resolveAthleteName();
+                const firstName = extractFirstName(name || message.name);
+                await openAthleteLink(
+                  'search',
+                  (id) => `https://dashboard.nationalpid.com/admin/athletes?contactid=${id}`,
+                  firstName ? { firstname: firstName } : undefined
+                );
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'g' }}
+            />
+            <Action
+              title="View PlayerID"
+              icon={Icon.Star}
+              onAction={() =>
+                openAthleteLink(
+                  'profile',
+                  (id) => `https://dashboard.nationalpid.com/athlete/profile/${id}`
+                )
+              }
+              shortcut={{ modifiers: ['cmd'], key: 'o' }}
+            />
+            <Action
+              title="Athlete Notes Tab"
+              icon={Icon.Clipboard}
+              onAction={() =>
+                openAthleteLink(
+                  'notes',
+                  (id) => `https://dashboard.nationalpid.com/admin/athletes?contactid=${id}&notestab=1`
+                )
+              }
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
+            />
+          </ActionPanel.Section>
 
           <ActionPanel.Section>
             <Action.CopyToClipboard title="Copy Player Name" content={message.name} />
@@ -360,6 +481,7 @@ function ReplyForm({
   message: NPIDInboxMessage;
   onBack: () => void;
 }) {
+  // Signature is automatically appended by FastAPI (HTML formatted)
   const [replyText, setReplyText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -416,6 +538,47 @@ function ReplyForm({
   );
 }
 
+// Search Form Component
+function SearchInboxForm({
+  onSearch,
+  onCancel,
+}: {
+  onSearch: (query: string) => void;
+  onCancel: () => void;
+}) {
+  const [searchText, setSearchText] = useState('');
+
+  const handleSubmit = () => {
+    if (!searchText.trim()) {
+      showToast({ style: Toast.Style.Failure, title: 'Search query cannot be empty' });
+      return;
+    }
+    onSearch(searchText.trim());
+  };
+
+  return (
+    <Form
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section>
+            <Action.SubmitForm title="Search Inbox" onSubmit={handleSubmit} icon={Icon.MagnifyingGlass} />
+            <Action title="Cancel" onAction={onCancel} icon={Icon.XMarkCircle} />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    >
+      <Form.Description text="Search inbox by athlete name, email, or subject" />
+      <Form.TextField
+        id="search"
+        title="Search Query"
+        placeholder="Search"
+        value={searchText}
+        onChange={setSearchText}
+      />
+    </Form>
+  );
+}
+
 function formatTimestamp(message: NPIDInboxMessage): string {
   if (message.timeStampDisplay) {
     return message.timeStampDisplay.replace('|', '•').trim();
@@ -441,6 +604,52 @@ function formatTimestamp(message: NPIDInboxMessage): string {
   return 'No date';
 }
 
+function stripHtml(value: string): string {
+  return value.replace(/<\/?[a-z][^>]*>/gi, ' ');
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>');
+}
+
+function sanitizeAthleteName(raw?: string | null): string | null {
+  if (!raw) return null;
+  const stripped = decodeHtmlEntities(stripHtml(raw));
+  const normalized = stripped.replace(/\s+/g, ' ').trim();
+  if (!normalized) return null;
+  const splitOnDash = normalized.split(' - ')[0]?.trim();
+  return splitOnDash || normalized;
+}
+
+function extractFirstName(raw?: string | null): string {
+  const cleaned = sanitizeAthleteName(raw);
+  if (!cleaned) return '';
+  return cleaned.split(/\s+/)[0] || '';
+}
+
+function normalizeMessageContent(raw: string): string {
+  if (!raw) return raw;
+  const stripped = decodeHtmlEntities(stripHtml(raw))
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n');
+  const withLinkBreaks = stripped.replace(/(https?:\/\/\S+)/g, '\n\n$1\n\n');
+  return withLinkBreaks.replace(/\n{3,}/g, '\n\n').trim();
+}
+
+function appendQueryParams(url: string, params: Record<string, string>): string {
+  const keys = Object.keys(params).filter((key) => params[key]);
+  if (keys.length === 0) return url;
+  const separator = url.includes('?') ? '&' : '?';
+  const query = keys.map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`).join('&');
+  return `${url}${separator}${query}`;
+}
+
 /**
  * Extract athlete_id (contact_id) from message.
  * athlete_id == contact_id (same value, different field names across endpoints)
@@ -450,155 +659,13 @@ function resolveAthleteIdentifiers(message: NPIDInboxMessage): {
   contactId: string | null;
   athleteMainId: string | null;
 } {
-  // No fallbacks: only trust contact_id parsed from inbox HTML (athleteid).
+  // contact_id is extracted from message detail response (athlete_profile_link HTML)
   const athleteId = message.contact_id ? String(message.contact_id) : null;
 
   return {
     athleteId,
     contactId: athleteId, // Same value as athleteId
     athleteMainId: message.athleteMainId ? String(message.athleteMainId) : null,
-  };
-}
-
-/**
- * LAZY resolution: tries to resolve missing athlete IDs using video-progress cache.
- * 
- * Flow:
- * 1. Check if message already has athlete IDs (from inbox HTML)
- * 2. If missing, use video_msg_id to get athlete_id from cache
- * 3. If athlete_main_id is in cache, use it
- * 4. If athlete_main_id is missing, fetch from /athlete/{athlete_id}/resolve
- * 
- * This is called ON-DEMAND when user clicks actions (View Notes, Add Note, etc.)
- * NOT on inbox load (to avoid slowness).
- */
-async function lazyResolveAthleteIds(message: NPIDInboxMessage): Promise<{
-  athleteId: string | null;
-  athleteMainId: string | null;
-}> {
-  // First, try the standard resolution
-  const resolved = resolveAthleteIdentifiers(message);
-
-  // If we have both IDs from the message, return them
-  if (resolved.athleteId && resolved.athleteMainId) {
-    console.log(`✅ IDs from message: athlete_id=${resolved.athleteId}, athlete_main_id=${resolved.athleteMainId}`);
-    return {
-      athleteId: resolved.athleteId,
-      athleteMainId: resolved.athleteMainId,
-    };
-  }
-
-  // Step 1: Use video_msg_id to get athlete_id from cache
-  const videoMsgId = message.video_msg_id || message.id;
-  if (!videoMsgId) {
-    console.warn('⚠️ No video_msg_id available for cache lookup');
-    return { athleteId: resolved.athleteId, athleteMainId: resolved.athleteMainId };
-  }
-
-  let athleteId = resolved.athleteId;
-  let athleteMainId = resolved.athleteMainId;
-
-  try {
-    console.log(`🔍 Looking up athlete IDs in cache for video_msg_id: ${videoMsgId}`);
-    const cached = await resolveAthleteIdsByVideoMsgId(videoMsgId);
-
-    if (cached) {
-      athleteId = athleteId || String(cached.athlete_id);
-      athleteMainId = athleteMainId || cached.athlete_main_id;
-      console.log(`📦 Cache lookup: athlete_id=${athleteId}, athlete_main_id=${athleteMainId}`);
-    } else {
-      console.warn(`⚠️ No cached data for video_msg_id: ${videoMsgId}`);
-    }
-  } catch (error) {
-    console.error('❌ Cache lookup failed:', error);
-  }
-
-  // Step 2: If we STILL don't have athlete_id, try using the task search endpoint
-  // This endpoint is STRICT: it searches for a TASK ID and returns an ATHLETE ID
-  if (!athleteId) {
-    try {
-      console.log(`🔍 Try resolving task by video_msg_id: /athlete/athletetaskid/${videoMsgId}/resolve`);
-      const response = await apiFetch(`/athlete/athletetaskid/${videoMsgId}/resolve`);
-
-      if (response.ok) {
-        const data = await response.json() as any;
-        if (data.found && data.athlete_id) {
-          // SUCCESS: We found the athlete ID from the task
-          athleteId = String(data.athlete_id);
-          athleteMainId = data.athlete_main_id ? String(data.athlete_main_id) : athleteMainId;
-          console.log(`✅ Resolved task ${videoMsgId} -> athlete_id=${athleteId}`);
-
-          // Cache what we found
-          // Note: The task resolver might not return full details like name/sport, so we cache minimal if needed
-          // or we let Step 3 fill in the details when it resolves the profile.
-          if (athleteId && athleteMainId) {
-            const task = {
-              id: parseInt(videoMsgId, 10),
-              athlete_id: parseInt(athleteId, 10),
-              athlete_main_id: athleteMainId,
-              athletename: data.name || 'Unknown', // Endpoint might not return name if it just parsed IDs
-              video_progress_status: 'Unknown',
-              stage: 'Unknown',
-              sport_name: 'Unknown',
-              grad_year: 0,
-              video_due_date: new Date().toISOString(),
-              assignedvideoeditor: '',
-              primaryposition: '',
-              secondaryposition: '',
-              thirdposition: '',
-              high_school: '',
-              high_school_city: '',
-              high_school_state: '',
-            };
-            try {
-              upsertTasks([task]);
-            } catch (e) { console.error('Cache upsert failed', e); }
-          }
-        }
-      } else {
-        console.warn(`⚠️ Task resolution failed for ${videoMsgId}: HTTP ${response.status}`);
-      }
-    } catch (error) {
-      console.error('❌ Resolve by video_msg_id failed:', error);
-    }
-  }
-
-  // Step 3: If we have athlete_id but missing athlete_main_id, fetch it from profile
-  if (athleteId && !athleteMainId) {
-    try {
-      console.log(`🔍 Fetching athlete_main_id from /athlete/${athleteId}/resolve`);
-      const response = await apiFetch(`/athlete/${athleteId}/resolve`);
-
-      if (response.ok) {
-        const data = await response.json() as any;
-        if (data.athlete_main_id) {
-          athleteMainId = String(data.athlete_main_id);
-          console.log(`✅ Resolved athlete_main_id from profile: ${athleteMainId}`);
-
-          // Cache it back to SQLite for future lookups
-          try {
-            await cacheAthleteMainId(parseInt(athleteId, 10), athleteMainId);
-            console.log(`💾 Cached athlete_main_id for athlete_id=${athleteId}`);
-          } catch (cacheError) {
-            console.warn('⚠️ Failed to cache athlete_main_id:', cacheError);
-          }
-        }
-      }
-    } catch (error) {
-      console.error('❌ Failed to resolve athlete_main_id from profile:', error);
-    }
-  }
-
-  // Return what we have
-  if (athleteId && athleteMainId) {
-    console.log(`✅ Final resolution: athlete_id=${athleteId}, athlete_main_id=${athleteMainId}`);
-  } else {
-    console.warn(`⚠️ Incomplete resolution: athlete_id=${athleteId || 'MISSING'}, athlete_main_id=${athleteMainId || 'MISSING'}`);
-  }
-
-  return {
-    athleteId,
-    athleteMainId,
   };
 }
 
@@ -624,22 +691,22 @@ function UpdateStageForm({
     });
 
     try {
-      // Update stage
+      // Update stage (include mailbox context)
       const stageResp = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_msg_id: videoMsgId, stage }),
+        body: JSON.stringify({ video_msg_id: videoMsgId, stage, is_from_video_mail_box: true }),
       });
       if (!stageResp.ok) {
         const err = await stageResp.json().catch(() => ({})) as any;
         throw new Error(err.detail || `Stage update failed: ${stageResp.status}`);
       }
 
-      // Update status
+      // Update status (include mailbox context)
       const statusResp = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_msg_id: videoMsgId, status }),
+        body: JSON.stringify({ video_msg_id: videoMsgId, status, is_from_video_mail_box: true }),
       });
       if (!statusResp.ok) {
         const err = await statusResp.json().catch(() => ({})) as any;
@@ -955,34 +1022,79 @@ async function runPostUploadActions({
   }
 }
 
+const INBOX_PAGE_SIZE = 50;
+
+function formatInboxPageRange(pageStartNumber: number): string {
+  const start = pageStartNumber === 1 ? 1 : (pageStartNumber - 1) * INBOX_PAGE_SIZE;
+  const end = pageStartNumber * INBOX_PAGE_SIZE;
+  return `${start}-${end}`;
+}
 
 export default function InboxCheck() {
   const [messages, setMessages] = useState<NPIDInboxMessage[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [pageStartNumber, setPageStartNumber] = useState(1);
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  const [isSearching, setIsSearching] = useState(false);
   const { push, pop } = useNavigation();
-  const cache = new Cache();
-  // Bump this when thread schema/ID parsing changes to avoid stale cached threads.
-  const CACHE_KEY_THREADS = 'assigned_inbox_threads_v3';
-  const CACHE_KEY_THREADS_TIME = 'assigned_inbox_threads_time_v3';
+  const cache = useMemo(() => new Cache(), []);
+  const requestId = useRef(0);
 
-  useEffect(() => {
-    loadInboxMessages();
-  }, []);
+  const handleSearch = (query: string) => {
+    setMessages([]);  // Clear messages immediately when search starts
+    setSearchQuery(query);
+    setIsSearching(true);
+    setPageStartNumber(1);
+    pop();
+  };
 
-  const loadInboxMessages = async () => {
+  const handleClearSearch = () => {
+    setMessages([]);  // Clear messages when exiting search mode
+    setSearchQuery('');
+    setIsSearching(false);
+    setPageStartNumber(1);
+  };
+
+  const loadInboxMessages = useCallback(async () => {
     try {
       setIsLoading(true);
+      // Increment request ID to invalidate any in-flight requests
+      requestId.current += 1;
+      const currentRequestId = requestId.current;
 
-      // Load from cache immediately if available
+      // Bump version when thread schema/ID parsing changes to avoid stale cached threads.
+      const CACHE_KEY_THREADS = `assigned_inbox_threads_v3_page_${pageStartNumber}_search_${searchQuery}`;
+      const CACHE_KEY_THREADS_TIME = `assigned_inbox_threads_time_v3_page_${pageStartNumber}_search_${searchQuery}`;
+
+      // When searching, skip cache and fetch fresh to avoid stale results
+      if (isSearching) {
+        console.log('🔍 SEARCH MODE: Skipping cache, fetching fresh results');
+        setMessages([]);
+        await reloadFromServer(false, currentRequestId);
+        return;
+      }
+
+      // Load from cache immediately if available (non-search mode only)
       const cached = cache.get(CACHE_KEY_THREADS);
       if (cached) {
         const cachedMessages = JSON.parse(cached) as NPIDInboxMessage[];
+        console.log('📦 CACHE HIT:', {
+          cacheKey: CACHE_KEY_THREADS,
+          page: pageStartNumber,
+          search: searchQuery,
+          count: cachedMessages.length,
+          firstId: cachedMessages[0]?.id,
+          firstSubject: cachedMessages[0]?.subject
+        });
         setMessages(cachedMessages);
-        console.log('🔍 READ INBOX: Loaded from cache:', cachedMessages.length);
+        console.log('🔍 READ INBOX: Loaded from cache:', cachedMessages.length, 'page', pageStartNumber);
+      } else {
+        console.log('📦 CACHE MISS:', { cacheKey: CACHE_KEY_THREADS, page: pageStartNumber });
+        setMessages([]);
       }
 
       // Then fetch fresh data in background
-      await reloadFromServer(Boolean(cached));
+      await reloadFromServer(Boolean(cached), currentRequestId);
     } catch (error) {
       console.error('🔍 READ INBOX: Error loading inbox:', error);
       await showToast({
@@ -992,37 +1104,88 @@ export default function InboxCheck() {
       });
       setIsLoading(false);
     }
-  };
+  }, [pageStartNumber, searchQuery, isSearching]);
 
-  const reloadFromServer = async (silent = false) => {
+  const reloadFromServer = useCallback(async (silent = false, expectedRequestId?: number) => {
+    const CACHE_KEY_THREADS = `assigned_inbox_threads_v3_page_${pageStartNumber}_search_${searchQuery}`;
+    const CACHE_KEY_THREADS_TIME = `assigned_inbox_threads_time_v3_page_${pageStartNumber}_search_${searchQuery}`;
+
+    const pageRangeLabel = isSearching
+      ? `Search: "${searchQuery}"`
+      : formatInboxPageRange(pageStartNumber);
     const toast = silent
       ? null
-      : await showToast({ style: Toast.Style.Animated, title: 'Fetching assigned messages…' });
+      : await showToast({
+        style: Toast.Style.Animated,
+        title: `Fetching ${isSearching ? 'search results' : 'assigned messages'} (${pageRangeLabel})…`,
+      });
 
     try {
       if (!silent) setIsLoading(true);
 
-      const threads = await fetchInboxThreads(100, 'assigned');
-      const missing = threads.filter((t) => !t.contact_id || !t.athleteMainId);
-      if (missing.length > 0) {
-        console.warn(
-          `⚠️ ${missing.length}/${threads.length} threads missing athleteid/athlete_main_id from inbox HTML; actions that require IDs will be blocked (no fallbacks)`,
-        );
+      // When searching, always use page 1 and pass search query
+      const page = isSearching ? 1 : pageStartNumber;
+      console.log('🌐 FETCH START:', {
+        page,
+        pageStartNumber,
+        isSearching,
+        searchQuery,
+        cacheKey: CACHE_KEY_THREADS,
+        requestId: expectedRequestId
+      });
+      const threads = await fetchInboxThreads(100, 'assigned', page, false, searchQuery);
+
+      // Check if this request is stale (user started a new search/navigation while this was in-flight)
+      if (expectedRequestId !== undefined && expectedRequestId !== requestId.current) {
+        console.log('⚠️ STALE REQUEST IGNORED:', {
+          expectedRequestId,
+          currentRequestId: requestId.current,
+          count: threads.length
+        });
+        return;
       }
+
+      console.log('🌐 FETCH RESPONSE:', {
+        page,
+        count: threads.length,
+        firstId: threads[0]?.id,
+        firstSubject: threads[0]?.subject,
+        lastId: threads[threads.length - 1]?.id,
+        lastSubject: threads[threads.length - 1]?.subject,
+        requestId: expectedRequestId
+      });
+      // Resolve contact_id from inbox href parsing; athlete_main_id is resolved on-demand per action.
 
       const hydrated = await hydrateThreadTimestamps(threads);
 
       // Save to cache
       cache.set(CACHE_KEY_THREADS, JSON.stringify(hydrated));
       cache.set(CACHE_KEY_THREADS_TIME, Date.now().toString());
+      console.log('💾 CACHE SAVED:', {
+        cacheKey: CACHE_KEY_THREADS,
+        count: hydrated.length,
+        firstId: hydrated[0]?.id
+      });
 
-      console.log('🔍 READ INBOX: Total assigned threads from REST API:', hydrated.length);
-      setMessages(hydrated);
+      console.log('🔍 READ INBOX:', isSearching ? 'Search results' : 'Assigned threads', hydrated.length);
+      console.log('🎯 SET MESSAGES (FRESH):', {
+        page: pageStartNumber,
+        count: hydrated.length,
+        firstId: hydrated[0]?.id,
+        firstSubject: hydrated[0]?.subject,
+        lastId: hydrated[hydrated.length - 1]?.id,
+        lastSubject: hydrated[hydrated.length - 1]?.subject
+      });
+
+      // Force complete state replacement
+      setMessages(() => hydrated);
 
       if (toast) {
         toast.style = threads.length > 0 ? Toast.Style.Success : Toast.Style.Failure;
-        toast.title = threads.length > 0 ? `Found ${threads.length} assigned messages` : 'No assigned threads';
-        toast.message = threads.length === 0 ? 'Inbox Zero! 🎉' : 'Fresh from server';
+        toast.title = threads.length > 0
+          ? `Found ${threads.length} ${isSearching ? 'results' : 'assigned messages'}`
+          : isSearching ? 'No results found' : 'No assigned threads';
+        toast.message = threads.length === 0 && !isSearching ? 'Inbox Zero! 🎉' : 'Fresh from server';
       }
     } catch (error) {
       console.error('🔍 READ INBOX: Error reloading inbox:', error);
@@ -1040,10 +1203,30 @@ export default function InboxCheck() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [pageStartNumber, searchQuery, isSearching]);
+
+  useEffect(() => {
+    loadInboxMessages();
+  }, [loadInboxMessages]);
+
+  console.log('🖼️ RENDER:', {
+    page: pageStartNumber,
+    messagesCount: messages.length,
+    firstId: messages[0]?.id,
+    firstSubject: messages[0]?.subject,
+    lastId: messages[messages.length - 1]?.id,
+    lastSubject: messages[messages.length - 1]?.subject
+  });
 
   return (
-    <List isLoading={isLoading} navigationTitle="Read Videoteam Inbox">
+    <List
+      isLoading={isLoading}
+      navigationTitle={
+        isSearching
+          ? `Inbox Search: "${searchQuery}"`
+          : `Read Videoteam Inbox (${formatInboxPageRange(pageStartNumber)})`
+      }
+    >
       {messages.map((message) => {
         const hasAttachments = message.attachments && message.attachments.length > 0;
         const downloadableCount =
@@ -1102,12 +1285,49 @@ export default function InboxCheck() {
                   <Action.CopyToClipboard title="Copy Message ID" content={message.id} />
                 </ActionPanel.Section>
                 <ActionPanel.Section>
+                  {!isSearching && (
+                    <Action
+                      title="Search Inbox"
+                      icon={Icon.MagnifyingGlass}
+                      onAction={() => push(<SearchInboxForm onSearch={handleSearch} onCancel={pop} />)}
+                      shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                    />
+                  )}
+                  {isSearching && (
+                    <Action
+                      title="Clear Search"
+                      icon={Icon.XMarkCircle}
+                      onAction={handleClearSearch}
+                      shortcut={{ modifiers: ['cmd'], key: 'x' }}
+                    />
+                  )}
                   <Action
                     title="Reload from Server"
                     icon={Icon.ArrowClockwise}
                     shortcut={{ modifiers: ['cmd'], key: 'r' }}
                     onAction={() => reloadFromServer()}
                   />
+                  {/* Hide pagination during search */}
+                  {!isSearching && pageStartNumber === 1 ? (
+                    <Action
+                      title={`Next Page (${formatInboxPageRange(pageStartNumber + 1)})`}
+                      icon={Icon.ChevronRight}
+                      onAction={() => setPageStartNumber(pageStartNumber + 1)}
+                    />
+                  ) : !isSearching ? (
+                    <>
+                      <Action
+                        title={`Next Page (${formatInboxPageRange(pageStartNumber + 1)})`}
+                        icon={Icon.ChevronRight}
+                        onAction={() => setPageStartNumber(pageStartNumber + 1)}
+                      />
+                      <Action
+                        title={`Back to Page 1 (${formatInboxPageRange(1)})`}
+                        icon={Icon.ChevronLeft}
+                        onAction={() => setPageStartNumber(1)}
+                      />
+                    </>
+                  ) : null}
                 </ActionPanel.Section>
               </ActionPanel>
             }
