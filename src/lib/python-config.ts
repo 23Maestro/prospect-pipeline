@@ -51,5 +51,5 @@ export function getPythonEnv(): Record<string, string | undefined> {
  */
 export const API_LAYER_ROOT = path.join(WORKSPACE_ROOT, "npid-api-layer");
 // Use venv python if available, otherwise system python
-export const API_PYTHON_PATH = path.join(API_LAYER_ROOT, "venv", "bin", "python");
+export const API_PYTHON_PATH = path.join(WORKSPACE_ROOT, ".venv", "bin", "python");
 export const API_SCRIPT_PATH = "main:app"; // Uvicorn target

@@ -33,6 +33,7 @@ import {
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { logger } from './lib/logger';
 import { createCraftTask, taskExists, getDueDateString } from './lib/craft-tasks';
+import EmailStudentAthletesCommand from './email-student-athletes';
 
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
@@ -52,6 +53,20 @@ interface VideoProgressTask {
   high_school_state: string;
   date_completed?: string;
   [key: string]: any;
+}
+
+async function readResponseBody(response: any) {
+  const contentType = response?.headers?.get?.('content-type') || '';
+  const text = await response.text();
+  let json: any = null;
+  if (contentType.includes('application/json')) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+  }
+  return { text, json, contentType };
 }
 
 function getPositions(task: VideoProgressTask): string {
@@ -336,14 +351,27 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
     setIsUpdating(true);
     try {
       const normalizedStage = normalizeStage(newStage);
+      logger.info('Stage update request', {
+        videoMsgId: task.id,
+        athleteId: task.athlete_id,
+        stage: newStage,
+        normalizedStage,
+      });
       const response = await apiFetch(`/video/${task.id}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_msg_id: String(task.id), stage: normalizedStage }),
       });
+      const { text, json, contentType } = await readResponseBody(response);
+      logger.info('Stage update response', {
+        videoMsgId: task.id,
+        status: response.status,
+        contentType,
+        bodyPreview: text.slice(0, 500),
+      });
       if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as any;
-        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+        const errMessage = json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
+        throw new Error(errMessage);
       }
       // Update cache for instant UI feedback
       await updateCachedTaskStatusStage(task.id, { stage: newStage });
@@ -819,7 +847,10 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
 
       const allTasks = await getCachedTasks();
       const filtered = allTasks.filter(
-        (t) => ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(t.video_progress_status)
+        (t) =>
+          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
+            t.video_progress_status
+          ) && t.assignedvideoeditor === 'Jerami Singleton'
       );
       onUpdate(filtered);
       pop();
@@ -869,14 +900,27 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
     setIsSubmitting(true);
     try {
       const normalizedStage = normalizeStage(selectedStage);
+      logger.info('Stage update request', {
+        videoMsgId: task.id,
+        athleteId: task.athlete_id,
+        stage: selectedStage,
+        normalizedStage,
+      });
       const response = await apiFetch(`/video/${task.id}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_msg_id: String(task.id), stage: normalizedStage }),
       });
+      const { text, json, contentType } = await readResponseBody(response);
+      logger.info('Stage update response', {
+        videoMsgId: task.id,
+        status: response.status,
+        contentType,
+        bodyPreview: text.slice(0, 500),
+      });
       if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as any;
-        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+        const errMessage = json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
+        throw new Error(errMessage);
       }
 
       await updateCachedTaskStatusStage(task.id, { stage: selectedStage });
@@ -905,7 +949,10 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
 
       const allTasks = await getCachedTasks();
       const filtered = allTasks.filter(
-        (t) => ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(t.video_progress_status)
+        (t) =>
+          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
+            t.video_progress_status
+          ) && t.assignedvideoeditor === 'Jerami Singleton'
       );
       onUpdate(filtered);
       pop();
@@ -1189,6 +1236,8 @@ export default function VideoProgress() {
   const [isLoading, setIsLoading] = useState(true);
   const [stageFilter, setStageFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [rawSearchEnabled, setRawSearchEnabled] = useState(false);
+  const [searchText, setSearchText] = useState('');
   const { push, pop } = useNavigation();
 
   useEffect(() => {
@@ -1305,8 +1354,35 @@ export default function VideoProgress() {
     }
   };
 
-  // Apply both stage and status filters
+  const normalizedSearch = searchText.trim().toLowerCase();
+  const shouldBypassFilters = rawSearchEnabled && normalizedSearch.length > 0;
+
+  const matchesSearch = (task: VideoProgressTask) => {
+    if (!normalizedSearch) return true;
+    const haystack = [
+      task.athletename,
+      task.high_school,
+      task.high_school_city,
+      task.high_school_state,
+      String(task.athlete_id || ''),
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+    return haystack.includes(normalizedSearch);
+  };
+
+  // Apply both stage and status filters (unless raw search is active)
   const filteredTasks = tasks.filter((task) => {
+    if ((task.assignedvideoeditor || '').trim() !== 'Jerami Singleton') {
+      return false;
+    }
+    if (!matchesSearch(task)) {
+      return false;
+    }
+    if (shouldBypassFilters) {
+      return true;
+    }
     // When stageFilter is 'all', show only 'In Queue' stage (truly active work)
     // When stageFilter is explicitly set, show ONLY that stage
     const stageMatch =
@@ -1340,6 +1416,8 @@ export default function VideoProgress() {
       isLoading={isLoading}
       navigationTitle="Video Progress (ProspectID)"
       searchBarPlaceholder="Search athletes..."
+      searchText={searchText}
+      onSearchTextChange={setSearchText}
       searchBarAccessory={
         <List.Dropdown
           tooltip="Filter by Stage or Status (⌘P)"
@@ -1367,7 +1445,10 @@ export default function VideoProgress() {
       {filteredTasks.length === 0 ? (
         <List.EmptyView icon={Icon.CheckCircle} title="No Active Tasks" description="All done!" />
       ) : (
-        <List.Section title={`In Progress (${filteredTasks.length})`}>
+        <List.Section
+          title={`In Progress (${filteredTasks.length})`}
+          subtitle={rawSearchEnabled ? 'Raw Search' : undefined}
+        >
           {filteredTasks.map((task) => (
             <List.Item
               key={task.id ?? task.athlete_id}
@@ -1398,6 +1479,22 @@ export default function VideoProgress() {
                       )
                     }
                     shortcut={{ modifiers: ['cmd'], key: 'return' }}
+                  />
+                  <Action.Push
+                    title="Email Student Athlete"
+                    icon={Icon.Envelope}
+                    target={
+                      <EmailStudentAthletesCommand
+                        draftValues={{ athleteName: task.athletename, emailTemplate: '' }}
+                      />
+                    }
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+                  />
+                  <Action
+                    title={`Raw Search Mode: ${rawSearchEnabled ? 'On' : 'Off'}`}
+                    icon={rawSearchEnabled ? Icon.CheckCircle : Icon.Circle}
+                    onAction={() => setRawSearchEnabled((prev) => !prev)}
+                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
                   />
                   {stageFilter === 'Done' && (
                     <Action

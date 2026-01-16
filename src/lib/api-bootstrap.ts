@@ -1,6 +1,6 @@
 import { spawn } from "child_process";
 import fetch from "node-fetch";
-import { API_LAYER_ROOT, API_SCRIPT_PATH } from "./python-config";
+import { API_LAYER_ROOT, WORKSPACE_ROOT } from "./python-config";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -18,7 +18,7 @@ export async function ensureServerRunning(): Promise<void> {
     console.log("Starting NPID API Server...");
 
     // Explicitly use venv Python
-    const venvPython = path.join(API_LAYER_ROOT, "venv", "bin", "python");
+    const venvPython = path.join(WORKSPACE_ROOT, ".venv", "bin", "python");
 
     if (!fs.existsSync(venvPython)) {
         throw new Error(

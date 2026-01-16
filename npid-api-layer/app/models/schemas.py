@@ -205,6 +205,55 @@ class AssignmentsResponse(BaseModel):
     assignments: List[Assignment]
 
 
+class AthleteTask(BaseModel):
+    task_id: str
+    title: Optional[str] = None
+    assigned_owner: Optional[str] = None
+    due_date: Optional[str] = None
+    completion_date: Optional[str] = None
+    description: Optional[str] = None
+    row_text: Optional[str] = None
+
+
+class TaskListResponse(BaseModel):
+    success: bool
+    count: int
+    tasks: List[AthleteTask]
+
+
+class TaskListRequest(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+
+
+class TaskPopupRequest(BaseModel):
+    task_id: str
+
+
+class TaskPopupResponse(BaseModel):
+    success: bool
+    form_data: Dict[str, str]
+    checkbox_fields: List[str]
+
+
+class TaskCompleteRequest(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+    task_title: str = Field(default="Video Editing")
+    assigned_owner: str = Field(default="Jerami Singleton")
+    description: str
+    completed_date: str
+    completed_time: str
+    is_completed: bool = Field(default=True)
+
+
+class TaskCompleteResponse(BaseModel):
+    success: bool
+    task_id: Optional[str] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None
+
+
 class APIError(BaseModel):
     """Standardized error response."""
     success: bool = False

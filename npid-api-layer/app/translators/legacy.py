@@ -18,7 +18,8 @@ from app.models.schemas import (
     StageUpdateRequest,
     VideoSource,
     SendEmailRequest,
-    AddNoteRequest
+    AddNoteRequest,
+    TaskCompleteRequest
 )
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,15 @@ class LegacyTranslator:
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
         "href='https://www.instagram.com/nationalprospect_id' target='_blank'><img "
         "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
-        "alt='instagram' width='24' height='24' border='0'></a></td></tr></tbody></table><br>"
+        "alt='instagram' width='24' height='24' border='0'></a> "
+        "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
+        "href='https://www.linkedin.com/company/prospect-id-28' target='_blank'><img "
+        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/linkedin_sign.png' "
+        "alt='linkedin' width='24' height='24' border='0'></a> "
+        "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
+        "href='https://www.youtube.com/@Prospect_ID/videos' target='_blank'><img "
+        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/youtube_sign.png' "
+        "alt='youtube' width='24' height='24' border='0'></a></td></tr></tbody></table><br>"
     )
     
     # ============== Request Translation ==============
@@ -1757,6 +1766,201 @@ class LegacyTranslator:
             }
         except:
             return {"stage": None, "status": None}
+
+    @staticmethod
+    def tasks_list_to_legacy(athlete_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for athlete tasks list.
+        GET /template/template/athlete_taskslist
+        """
+        endpoint = "/template/template/athlete_taskslist"
+        params = {"id": athlete_id, "athlete_main_id": athlete_main_id}
+        return endpoint, params
+
+    @staticmethod
+    def parse_tasks_list_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse athlete tasks HTML table into normalized entries.
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        tasks: List[Dict[str, Any]] = []
+
+        rows = soup.select('tr')
+        for row in rows:
+            if row.find('th'):
+                continue
+            cells = row.find_all('td')
+            if not cells:
+                continue
+
+            row_html = str(row)
+            task_id = None
+
+            for attr_name in ("data-taskid", "data-task-id", "data-id"):
+                if row.has_attr(attr_name):
+                    task_id = row.get(attr_name)
+                    break
+
+            if not task_id:
+                match = re.search(r"edittaskid=(\d+)", row_html)
+                if match:
+                    task_id = match.group(1)
+
+            if not task_id:
+                link = row.find('a', href=re.compile(r"edittaskid=\d+"))
+                if link and link.get('href'):
+                    match = re.search(r"edittaskid=(\d+)", link.get('href', ''))
+                    if match:
+                        task_id = match.group(1)
+
+            text_cells = [cell.get_text(" ", strip=True) for cell in cells]
+            row_text = " | ".join([cell for cell in text_cells if cell])
+
+            due_date = text_cells[0] if len(text_cells) > 0 else None
+            completion_date = text_cells[1] if len(text_cells) > 1 else None
+            assigned_owner = text_cells[2] if len(text_cells) > 2 else None
+            title = text_cells[3] if len(text_cells) > 3 else None
+            description = text_cells[4] if len(text_cells) > 4 else None
+
+            tasks.append({
+                "task_id": task_id or "",
+                "title": title,
+                "assigned_owner": assigned_owner,
+                "due_date": due_date,
+                "completion_date": completion_date,
+                "description": description,
+                "row_text": row_text or None
+            })
+
+        return {"success": True, "tasks": tasks}
+
+    @staticmethod
+    def task_popup_to_legacy(task_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for task popup form.
+        GET /template/template/taskpopup
+        """
+        endpoint = "/template/template/taskpopup"
+        params = {"edittaskid": task_id}
+        return endpoint, params
+
+    @staticmethod
+    def parse_task_popup_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse task popup form into form data payload.
+        """
+        soup = BeautifulSoup(html_response, 'html.parser')
+        form = soup.find('form') or soup
+        form_data: Dict[str, str] = {}
+        checkbox_fields: List[str] = []
+
+        for input_elem in form.find_all('input'):
+            name = input_elem.get('name')
+            if not name:
+                continue
+            input_type = (input_elem.get('type') or 'text').lower()
+            if input_type in ("submit", "button", "reset", "file"):
+                continue
+            if input_type in ("checkbox", "radio"):
+                checkbox_fields.append(name)
+                if input_elem.has_attr('checked'):
+                    form_data[name] = input_elem.get('value') or "1"
+                continue
+            form_data[name] = input_elem.get('value') or ""
+
+        for select in form.find_all('select'):
+            name = select.get('name')
+            if not name:
+                continue
+            selected = select.find('option', selected=True)
+            if not selected:
+                selected = select.find('option')
+            if selected:
+                form_data[name] = selected.get('value') or selected.get_text(strip=True)
+
+        for textarea in form.find_all('textarea'):
+            name = textarea.get('name')
+            if not name:
+                continue
+            form_data[name] = textarea.get_text() or ""
+
+        return {
+            "success": True,
+            "form_data": form_data,
+            "checkbox_fields": sorted(set(checkbox_fields))
+        }
+
+    @staticmethod
+    def apply_task_completion(
+        request: TaskCompleteRequest,
+        form_data: Dict[str, Any],
+        checkbox_fields: List[str]
+    ) -> Dict[str, Any]:
+        """
+        Apply completion updates to task form data.
+        """
+        updated = dict(form_data)
+
+        if request.task_title:
+            updated["tasktitle"] = request.task_title
+
+        updated["taskdescription"] = request.description
+        updated["completedate"] = request.completed_date if request.is_completed else ""
+        updated["completed_time"] = request.completed_time if request.is_completed else ""
+
+        if request.athlete_main_id:
+            updated["athlete_main_id"] = request.athlete_main_id
+        if request.athlete_id and "contact_task" not in updated:
+            updated["contact_task"] = request.athlete_id
+
+        if request.is_completed:
+            for field_name in checkbox_fields:
+                updated[field_name] = updated.get(field_name) or "1"
+        else:
+            for field_name in checkbox_fields:
+                if field_name in updated:
+                    del updated[field_name]
+
+        return updated
+
+    @staticmethod
+    def task_update_to_legacy(form_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert updated task form data to legacy request.
+        POST /tasks/addtask
+        """
+        endpoint = "/tasks/addtask"
+        return endpoint, form_data
+
+    @staticmethod
+    def parse_task_update_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse task update response (Laravel returns HTML or JSON).
+        """
+        if not raw_response.strip():
+            return {"success": True, "message": "Task updated"}
+
+        try:
+            data = json.loads(raw_response)
+            if isinstance(data, dict):
+                success_value = data.get("success", True)
+                success = (
+                    success_value if isinstance(success_value, bool)
+                    else str(success_value).lower() == "true"
+                )
+                return {
+                    "success": success,
+                    "message": data.get("message", "Task updated"),
+                    "raw": raw_response
+                }
+        except json.JSONDecodeError:
+            pass
+
+        lowered = raw_response.lower()
+        if "error" in lowered and "task" in lowered:
+            return {"success": False, "message": "Task update failed", "raw": raw_response}
+
+        return {"success": True, "message": "Task updated", "raw": raw_response}
 
     @staticmethod
     def notes_list_to_legacy(athlete_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:

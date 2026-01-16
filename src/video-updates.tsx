@@ -19,16 +19,17 @@ import { deleteCraftTask } from "./lib/craft-tasks";
 
 
 
-// Logging utility - writes to file only (console.log would cause recursion)
+// Logging utility - writes to file and console (console helps during dev)
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
+const rawConsoleLog = console.log.bind(console);
 function log(...args: any[]) {
   const timestamp = new Date().toISOString();
   const message = `[${timestamp}] ${args.map(a => typeof a === 'object' ? JSON.stringify(a) : a).join(' ')}`;
-  // Write to file only - DO NOT call console.log here (causes infinite recursion)
+  rawConsoleLog(message);
   try {
     fs.appendFileSync(LOG_FILE, message + '\n');
   } catch {
-    // Can't log errors here either - would cause recursion
+    rawConsoleLog('[ERROR] Failed to write log');
     fs.appendFileSync(LOG_FILE, `[ERROR] Failed to write log\n`);
   }
 }
@@ -41,6 +42,9 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
     const lastName = nameParts.slice(1).join(' ') || '';
     log('🔍 Searching for:', { firstName, lastName });
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
     // Use apiFetch instead of callPythonServer
     const response = await apiFetch('/video/progress', {
       method: 'POST',
@@ -48,8 +52,10 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       body: JSON.stringify({
         first_name: firstName,
         last_name: lastName
-      })
+      }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
 
     if (!response.ok) {
       log('⚠️ Search failed with status:', response.status);
@@ -91,6 +97,9 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
       athlete_main_id: (player.athlete_main_id || '').toString(),
     }));
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      log('⏱️ Search timed out');
+    }
     console.error('NPID video progress search error:', error);
     return [];
   }
@@ -191,6 +200,26 @@ type VideoEditFormDetails = {
   approvalFields: string[];
   currentUrl: string;
 };
+
+function isApprovedFromForm(formData: Record<string, string>, approvalFields: string[]): boolean {
+  const keys = new Set<string>(approvalFields);
+  Object.keys(formData).forEach((key) => {
+    if (key.toLowerCase().includes('approve')) {
+      keys.add(key);
+    }
+  });
+
+  for (const key of keys) {
+    const value = formData[key];
+    if (!value) continue;
+    const normalized = String(value).toLowerCase();
+    if (['1', 'on', 'true', 'yes', 'checked'].includes(normalized)) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 function parseVideoEditForm(html: string): VideoEditFormDetails {
   const formData: Record<string, string> = {};
@@ -780,10 +809,10 @@ export default function VideoUpdatesCommand(
       .filter((s) => s) as { value: string; title: string; season: string }[];
 
     setSeasons(normalized);
-    if (normalized.length > 0) {
-      setValue('season', normalized[0].value);
-    } else {
+    if (normalized.length === 0) {
       setValue('season', '');
+    } else if (!normalized.some((s) => s.value === values.season)) {
+      setValue('season', normalized[0].value);
     }
   };
 
@@ -862,6 +891,77 @@ export default function VideoUpdatesCommand(
     }
   };
 
+  const formatDate = (date: Date) => {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = String(date.getFullYear());
+    return `${month}/${day}/${year}`;
+  };
+
+  const formatTime = (date: Date) => {
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${hours}:${minutes}`;
+  };
+
+  const completeVideoEditingTask = async ({
+    athleteId,
+    athleteMainId,
+  }: {
+    athleteId: string;
+    athleteMainId: string;
+  }) => {
+    const now = new Date();
+    const completedDate = formatDate(now);
+    const completedTime = formatTime(now);
+    const description = `${completedDate} - Video Editing Complete`;
+
+    log('🧾 Task completion start', {
+      athleteId,
+      athleteMainId,
+      completedDate,
+      completedTime,
+      description,
+    });
+
+    const resp = await apiFetch('/tasks/complete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        athlete_id: athleteId,
+        athlete_main_id: athleteMainId,
+        task_title: 'Video Editing',
+        assigned_owner: 'Jerami Singleton',
+        description,
+        completed_date: completedDate,
+        completed_time: completedTime,
+        is_completed: true,
+      }),
+    });
+
+    log('📥 Task completion response', {
+      status: resp.status,
+      ok: resp.ok,
+      contentType: resp.headers.get('content-type'),
+    });
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      log('⚠️ Task completion error body', { body: errText });
+      let detail = '';
+      try {
+        const parsed = JSON.parse(errText) as any;
+        detail = parsed?.detail || '';
+      } catch {
+        detail = '';
+      }
+      throw new Error(detail || `HTTP ${resp.status}`);
+    }
+
+    const result = await resp.json().catch(() => ({})) as any;
+    log('✅ Task completion success', result);
+  };
+
   const runPostUploadActions = async ({
     athleteId,
     athleteMainId,
@@ -931,10 +1031,27 @@ export default function VideoUpdatesCommand(
       } else {
         log('⚠️ No video_msg_id; skipped stage update');
       }
+
+      try {
+        await completeVideoEditingTask({ athleteId, athleteMainId });
+        log('✅ Task marked complete', { athleteId });
+      } catch (taskError) {
+        log('⚠️ Task completion skipped', taskError);
+      }
     } catch (error) {
       log('⚠️ Post-upload automation failed', error);
     }
   };
+
+  useEffect(() => {
+    if (values.season && !seasons.some((s) => s.value === values.season)) {
+      setValue('season', '');
+    }
+  }, [values.season, seasons, setValue]);
+
+  const safeSeasonValue = seasons.some((s) => s.value === values.season)
+    ? values.season
+    : '';
 
   return (
     <Form
@@ -1021,13 +1138,13 @@ export default function VideoUpdatesCommand(
       <Form.Dropdown
         title="Season/Team"
         {...itemProps.season}
+        value={safeSeasonValue}
         disabled={!values.videoType}
       >
-        {seasons.length === 0
-          ? <Form.Dropdown.Item value="" title="-- Season/Team --" />
-          : seasons.map((s) => (
-            <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
-          ))}
+        <Form.Dropdown.Item value="" title="-- Season/Team --" />
+        {seasons.map((s) => (
+          <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />
+        ))}
       </Form.Dropdown>
     </Form>
   );
@@ -1036,6 +1153,7 @@ export default function VideoUpdatesCommand(
 function RevisionUpdateForm({
   onBack,
   onUpdated,
+  onApprovalChange,
   athleteId,
   athleteMainId,
   videoId,
@@ -1043,6 +1161,7 @@ function RevisionUpdateForm({
 }: {
   onBack: () => void;
   onUpdated?: () => void;
+  onApprovalChange?: (videoId: string, approved: boolean) => void;
   athleteId: string;
   athleteMainId: string;
   videoId: string;
@@ -1062,8 +1181,9 @@ function RevisionUpdateForm({
         const urlKey = `videourl[${documentId}]`;
         const sourceKey = `url_source[${documentId}]`;
         updated[urlKey] = values.youtubeLink;
-        if (!updated[sourceKey]) updated[sourceKey] = 'youtube';
+        updated[sourceKey] = 'youtube';
         if (!updated.documentid) updated.documentid = documentId;
+        if (!updated.athlete_main_id) updated.athlete_main_id = athleteMainId;
         const summary = summarizeVideoFormData(updated);
         const missing: string[] = [];
         ['documentid', urlKey, 'videoType', 'updateVideoSeason', 'athlete_main_id'].forEach((key) => {
@@ -1079,6 +1199,15 @@ function RevisionUpdateForm({
           missingFields: missing,
         });
         await submitVideoUpdate({ athleteId, formData: updated });
+        try {
+          const verifyHtml = await fetchVideoEditHtml({ athleteId, athleteMainId, videoId });
+          const verifyParsed = parseVideoEditForm(verifyHtml);
+          const approvedAfter = isApprovedFromForm(verifyParsed.formData, verifyParsed.approvalFields);
+          log('✅ Revision update verify approval', { videoId, approved: approvedAfter });
+          onApprovalChange?.(videoId, approvedAfter);
+        } catch (verifyError) {
+          log('⚠️ Revision update verify failed', verifyError);
+        }
         toast.style = Toast.Style.Success;
         toast.title = 'Revision updated';
         toast.message = videoTitle;
@@ -1171,6 +1300,11 @@ function EditSAVideosForm({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const { pop } = useNavigation();
+  const applyApprovalChange = (videoId: string, approved: boolean) => {
+    setVideos((prev) =>
+      prev.map((video) => (video.id === videoId ? { ...video, approved } : video))
+    );
+  };
 
   const fetchVideos = async () => {
     if (!selectedPlayer) throw new Error('No athlete selected');
@@ -1325,13 +1459,20 @@ function EditSAVideosForm({
       if (!parsed.documentId) throw new Error('Missing document ID');
       const updated = { ...parsed.formData };
       if (!updated.documentid) updated.documentid = parsed.documentId;
+      if (!updated.athlete_main_id) updated.athlete_main_id = athleteMainId;
       const approvalKeys = new Set<string>(parsed.approvalFields);
       Object.keys(updated).forEach((key) => {
         if (key.toLowerCase().includes('approve')) approvalKeys.add(key);
       });
       if (approvalKeys.size === 0) {
         approvalKeys.add('approve_video');
+      }
+      if (![...approvalKeys].some((key) => key.toLowerCase().includes('approve_video_checkbox'))) {
         approvalKeys.add('approve_video_checkbox');
+        approvalKeys.add(`approve_video_checkbox[${parsed.documentId}]`);
+      }
+      if (![...approvalKeys].some((key) => key.toLowerCase().includes('approve_video'))) {
+        approvalKeys.add('approve_video');
       }
       approvalKeys.forEach((name) => {
         const lowered = name.toLowerCase();
@@ -1350,6 +1491,15 @@ function EditSAVideosForm({
         summary,
       });
       await submitVideoUpdate({ athleteId, formData: updated });
+      try {
+        const verifyHtml = await fetchVideoEditHtml({ athleteId, athleteMainId, videoId: video.id });
+        const verifyParsed = parseVideoEditForm(verifyHtml);
+        const approvedAfter = isApprovedFromForm(verifyParsed.formData, verifyParsed.approvalFields);
+        log('✅ Unapprove verify approval', { videoId: video.id, approved: approvedAfter });
+        applyApprovalChange(video.id, approvedAfter);
+      } catch (verifyError) {
+        log('⚠️ Unapprove verify failed', verifyError);
+      }
       toast.style = Toast.Style.Success;
       toast.title = 'Video unapproved';
       toast.message = video.title;
@@ -1360,6 +1510,71 @@ function EditSAVideosForm({
       toast.title = 'Unapprove failed';
       toast.message = error instanceof Error ? error.message : 'Unknown error';
       log('❌ Unapprove failed', error);
+    }
+  };
+
+  const handleApprove = async (video: { id: string; title: string }) => {
+    const toast = await showToast({ style: Toast.Style.Animated, title: 'Approving video...' });
+    try {
+      if (!selectedPlayer) throw new Error('No athlete selected');
+      const athleteId = selectedPlayer.player_id;
+      const athleteMainId = fetchedAthleteMainId || '';
+      const html = await fetchVideoEditHtml({ athleteId, athleteMainId, videoId: video.id });
+      const parsed = parseVideoEditForm(html);
+      if (!parsed.documentId) throw new Error('Missing document ID');
+      const updated = { ...parsed.formData };
+      if (!updated.documentid) updated.documentid = parsed.documentId;
+      if (!updated.athlete_main_id) updated.athlete_main_id = athleteMainId;
+      const approvalKeys = new Set<string>(parsed.approvalFields);
+      Object.keys(updated).forEach((key) => {
+        if (key.toLowerCase().includes('approve')) approvalKeys.add(key);
+      });
+      if (approvalKeys.size === 0) {
+        approvalKeys.add('approve_video');
+      }
+      if (![...approvalKeys].some((key) => key.toLowerCase().includes('approve_video_checkbox'))) {
+        approvalKeys.add('approve_video_checkbox');
+        approvalKeys.add(`approve_video_checkbox[${parsed.documentId}]`);
+      }
+      if (![...approvalKeys].some((key) => key.toLowerCase().includes('approve_video'))) {
+        approvalKeys.add('approve_video');
+      }
+      approvalKeys.forEach((name) => {
+        const lowered = name.toLowerCase();
+        if (lowered.includes('checkbox')) {
+          updated[name] = 'on';
+        } else {
+          updated[name] = '1';
+        }
+      });
+      const summary = summarizeVideoFormData(updated);
+      log('📝 Approve submit', {
+        athleteId,
+        videoId: video.id,
+        documentId: parsed.documentId,
+        approvalFields: Array.from(approvalKeys),
+        summary,
+      });
+      await submitVideoUpdate({ athleteId, formData: updated });
+      try {
+        const verifyHtml = await fetchVideoEditHtml({ athleteId, athleteMainId, videoId: video.id });
+        const verifyParsed = parseVideoEditForm(verifyHtml);
+        const approvedAfter = isApprovedFromForm(verifyParsed.formData, verifyParsed.approvalFields);
+        log('✅ Approve verify approval', { videoId: video.id, approved: approvedAfter });
+        applyApprovalChange(video.id, approvedAfter);
+      } catch (verifyError) {
+        log('⚠️ Approve verify failed', verifyError);
+      }
+      toast.style = Toast.Style.Success;
+      toast.title = 'Video approved';
+      toast.message = video.title;
+      await refreshVideos();
+      log('✅ Approve success', { videoId: video.id });
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Approve failed';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+      log('❌ Approve failed', error);
     }
   };
 
@@ -1409,6 +1624,11 @@ function EditSAVideosForm({
                     style={Action.Style.Destructive}
                     onAction={() => handleUnapprove(video)}
                   />
+                  <Action
+                    title="Approve Video"
+                    icon={Icon.CheckCircle}
+                    onAction={() => handleApprove(video)}
+                  />
                   <Action.Push
                     title="Revision Update"
                     icon={Icon.Pencil}
@@ -1416,6 +1636,7 @@ function EditSAVideosForm({
                       <RevisionUpdateForm
                         onBack={pop}
                         onUpdated={refreshVideos}
+                        onApprovalChange={applyApprovalChange}
                         athleteId={selectedPlayer?.player_id || ''}
                         athleteMainId={fetchedAthleteMainId || ''}
                         videoId={video.id}

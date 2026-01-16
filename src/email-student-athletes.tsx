@@ -186,8 +186,12 @@ async function sendEmailViaAPI(params: {
   log('✅ email send success', { athleteId: params.athleteId, templateId: params.templateId });
 }
 
+type EmailStudentAthletesProps = {
+  draftValues?: EmailFormValues;
+};
+
 export default function EmailStudentAthletesCommand(
-  props: LaunchProps<{ draftValues: EmailFormValues }>,
+  props: LaunchProps<{ draftValues: EmailFormValues }> | EmailStudentAthletesProps,
 ) {
   const [emailTemplates, setEmailTemplates] = useState<EmailTemplateOption[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
@@ -362,7 +366,6 @@ export default function EmailStudentAthletesCommand(
 
   return (
     <Form
-      enableDrafts
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Send Email" onSubmit={handleSubmit} />
