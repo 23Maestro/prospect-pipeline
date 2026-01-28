@@ -541,7 +541,7 @@ export default function VideoUpdatesCommand(
               : 'Highlight added successfully';
 
             if (AUTO_POST_UPLOAD_ACTIONS) {
-              void runPostUploadActions({
+              await runPostUploadActions({
                 athleteId,
                 athleteMainId,
                 athleteName,
@@ -856,6 +856,15 @@ export default function VideoUpdatesCommand(
     parentIds?: string[];
     otherEmail?: string;
   }) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    log('📨 Email send request', {
+      athleteId: params.athleteId,
+      templateId: params.templateId,
+      includeAthlete: params.includeAthlete ?? true,
+      parentCount: (params.parentIds ?? []).length,
+      otherEmail: params.otherEmail ?? '',
+    });
     const resp = await apiFetch('/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -870,6 +879,13 @@ export default function VideoUpdatesCommand(
         parent_ids: params.parentIds ?? [],
         other_email: params.otherEmail ?? '',
       }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    log('📨 Email send response', {
+      status: resp.status,
+      ok: resp.ok,
+      contentType: resp.headers.get('content-type'),
     });
     if (!resp.ok) {
       const err = await resp.json().catch(() => ({})) as any;
@@ -998,18 +1014,22 @@ export default function VideoUpdatesCommand(
         otherEmail: 'jholcomb@prospectid.com'
       });
 
-      await sendEmail({
-        athleteId,
-        templateId: picked.value,
-        senderName: data.sender_name || 'Prospect ID Video',
-        senderEmail: data.sender_email || 'videoteam@prospectid.com',
-        subject: data.subject || '',
-        message: data.message || '',
-        includeAthlete: true,
-        parentIds,
-        otherEmail: 'jholcomb@prospectid.com',
-      });
-      log('✅ Email sent automatically', { template: picked.value, recipientCount: 1 + parentIds.length + 1 });
+      try {
+        await sendEmail({
+          athleteId,
+          templateId: picked.value,
+          senderName: data.sender_name || 'Prospect ID Video',
+          senderEmail: data.sender_email || 'videoteam@prospectid.com',
+          subject: data.subject || '',
+          message: data.message || '',
+          includeAthlete: true,
+          parentIds,
+          otherEmail: 'jholcomb@prospectid.com',
+        });
+        log('✅ Email sent automatically', { template: picked.value, recipientCount: 1 + parentIds.length + 1 });
+      } catch (emailError) {
+        log('⚠️ Email send failed, continuing', emailError);
+      }
 
       // Auto-delete Craft "In Queue" task after video completion
       try {

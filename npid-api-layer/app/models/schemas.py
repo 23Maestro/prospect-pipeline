@@ -160,10 +160,12 @@ class VideoProgressFilters(BaseModel):
     last_name: Optional[str] = None
     sport: Optional[str] = None
     grad_year: Optional[str] = None
+    select_club_sport: Optional[str] = None
+    select_club_state: Optional[str] = None
+    select_club_name: Optional[str] = None
     video_editor: Optional[str] = None
     video_progress_stage: Optional[str] = None
     video_progress_status: Optional[str] = None
-    # NO club fields: select_club_sport, select_club_state, select_club_name
 
 
 class VideoUpdateRequest(BaseModel):

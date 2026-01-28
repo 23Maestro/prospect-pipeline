@@ -128,6 +128,11 @@ function getStatusColor(status: string) {
   }
 }
 
+const getTaskStage = (task: VideoProgressTask) =>
+  (task.video_progress_stage || task.stage || '').trim();
+
+const normalizeStageValue = (stage?: string) => (stage || '').trim().toLowerCase();
+
 function formatDate(dateString: string): string {
   if (!dateString) return 'No due date';
   try {
@@ -319,10 +324,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
       // Get fresh data from cache and pass to parent
       const allTasks = await getCachedTasks();
       const filtered = allTasks.filter(
-        (t) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
-            t.video_progress_status
-          ) && t.stage !== 'Done'
+        (t) => (t.assignedvideoeditor || '').trim() === 'Jerami Singleton'
       );
 
       onStatusUpdate(filtered);
@@ -385,10 +387,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
       // Get fresh data from cache and pass to parent
       const allTasks = await getCachedTasks();
       const filtered = allTasks.filter(
-        (t) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'Uploads', 'External Links'].includes(
-            t.video_progress_status
-          ) && t.stage !== 'Done'
+        (t) => (t.assignedvideoeditor || '').trim() === 'Jerami Singleton'
       );
 
       onStatusUpdate(filtered);
@@ -405,7 +404,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   };
 
   const metadata = `
-${normalizeSportName(task.sport_name)} | ${task.grad_year} | ${getPositions(task)} | ${task.high_school} | ${task.high_school_city}, ${task.high_school_state} | ${formatDate(task.video_due_date)} | ${task.stage} | ${task.video_progress_status}
+${normalizeSportName(task.sport_name)} | ${task.grad_year} | ${getPositions(task)} | ${task.high_school} | ${task.high_school_city}, ${task.high_school_state} | ${formatDate(task.video_due_date)} | ${getTaskStage(task)} | ${task.video_progress_status}
 
 ---
 
@@ -889,7 +888,7 @@ interface UpdateStageFormProps {
 function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
   const { pop } = useNavigation();
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [selectedStage, setSelectedStage] = useState(task.stage || 'In Queue');
+  const [selectedStage, setSelectedStage] = useState(getTaskStage(task) || 'In Queue');
 
   const handleSubmit = async () => {
     if (!task.id) {
@@ -1234,7 +1233,7 @@ function generateContactMarkdown(info: ContactInfo | null): string {
 export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [stageFilter, setStageFilter] = useState<string>('all');
+  const [stageFilter, setStageFilter] = useState<string>('In Queue');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [rawSearchEnabled, setRawSearchEnabled] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -1252,10 +1251,7 @@ export default function VideoProgress() {
     // Reload from cache only (instant, no API call)
     const cached = await getCachedTasks();
     const filtered = cached.filter(
-      (task) =>
-        ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-          task.video_progress_status
-        ) && task.assignedvideoeditor === 'Jerami Singleton'
+      (task) => (task.assignedvideoeditor || '').trim() === 'Jerami Singleton'
     );
 
     // Sort: tasks with date_completed first (most recent at top)
@@ -1286,10 +1282,7 @@ export default function VideoProgress() {
       const cached = await getCachedTasks();
       if (cached.length > 0) {
         const filtered = cached.filter(
-          (task) =>
-            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-              task.video_progress_status
-            ) && task.assignedvideoeditor === 'Jerami Singleton'
+          (task) => (task.assignedvideoeditor || '').trim() === 'Jerami Singleton'
         );
         setTasks(filtered);
         setIsLoading(false);
@@ -1330,10 +1323,7 @@ export default function VideoProgress() {
       // Reload from cache to get date_completed preservation
       const updatedCache = await getCachedTasks();
       const filtered = updatedCache.filter(
-        (task) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-            task.video_progress_status
-          ) && task.assignedvideoeditor === 'Jerami Singleton'
+        (task) => (task.assignedvideoeditor || '').trim() === 'Jerami Singleton'
       );
 
       setTasks(filtered);
@@ -1385,10 +1375,11 @@ export default function VideoProgress() {
     }
     // When stageFilter is 'all', show only 'In Queue' stage (truly active work)
     // When stageFilter is explicitly set, show ONLY that stage
+    const stageValue = getTaskStage(task);
     const stageMatch =
       stageFilter === 'all'
-        ? task.stage === 'In Queue'  // Default view: only In Queue
-        : task.stage === stageFilter;  // Explicit filter shows selected stage
+        ? true
+        : normalizeStageValue(stageValue) === normalizeStageValue(stageFilter);
     const statusMatch = statusFilter === 'all' || task.video_progress_status === statusFilter;
     return stageMatch && statusMatch;
   });
@@ -1409,7 +1400,8 @@ export default function VideoProgress() {
   };
 
   // Build current filter value for display
-  const currentFilterValue = stageFilter !== 'all' ? `stage:${stageFilter}` : `status:${statusFilter}`;
+  const currentFilterValue =
+    stageFilter !== 'all' ? `stage:${stageFilter}` : `status:${statusFilter}`;
 
   return (
     <List
@@ -1452,11 +1444,11 @@ export default function VideoProgress() {
           {filteredTasks.map((task) => (
             <List.Item
               key={task.id ?? task.athlete_id}
-              icon={getStageIcon(task.stage)}
+              icon={getStageIcon(getTaskStage(task))}
               title={task.athletename}
               subtitle={`${task.grad_year} • ${normalizeSportName(task.sport_name)} • ${getPositions(task)}`}
               accessories={[
-                task.stage === 'Done' && task.date_completed
+                getTaskStage(task) === 'Done' && task.date_completed
                   ? { tag: { value: formatDate(task.date_completed), color: Color.Green } }
                   : { text: formatDate(task.video_due_date) },
                 {

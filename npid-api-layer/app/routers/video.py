@@ -395,7 +395,15 @@ async def get_video_progress(
 
     try:
         response = await session.post(endpoint, data=form_data)
-        result = translator.parse_video_progress_response(response.text)
+        raw_text = response.text or ""
+        logger.info(
+            "📥 Video progress response status=%s content_type=%s length=%s preview=%s",
+            response.status_code,
+            response.headers.get("content-type"),
+            len(raw_text),
+            raw_text[:200]
+        )
+        result = translator.parse_video_progress_response(raw_text)
 
         if result["success"]:
             tasks = result["tasks"]

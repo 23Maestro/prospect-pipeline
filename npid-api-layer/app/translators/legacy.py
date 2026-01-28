@@ -207,6 +207,9 @@ class LegacyTranslator:
             "editorassigneddatefrom": "",
             "editorassigneddateto": "",
             "grad_year": "",
+            "select_club_sport": "",
+            "select_club_state": "",
+            "select_club_name": "",
             "video_editor": "",
             "video_progress": "",
             "video_progress_stage": "",
@@ -457,6 +460,15 @@ class LegacyTranslator:
         try:
             data = json.loads(raw_response)
             if isinstance(data, list):
+                # Normalize stage fields so Raycast sees consistent values
+                for task in data:
+                    if not isinstance(task, dict):
+                        continue
+                    stage = task.get("video_progress_stage") or task.get("stage") or ""
+                    stage = stage.strip() if isinstance(stage, str) else stage
+                    if stage:
+                        task["video_progress_stage"] = stage
+                        task["stage"] = stage
                 return {"success": True, "tasks": data}
             return {"success": False, "tasks": [], "error": "Unexpected format"}
         except json.JSONDecodeError:
