@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 import logging
 import httpx
 import re
+import json
 
 from app.models.schemas import (
     VideoSubmitRequest,
@@ -26,7 +27,7 @@ from app.models.schemas import (
     VideoUpdateRequest
 )
 from app.translators.legacy import LegacyTranslator
-from app.session import NPIDSession
+from app.session import NPIDSession, VideoProgressSession
 from pydantic import BaseModel
 from fastapi import Query
 
@@ -38,6 +39,12 @@ def get_session(request: Request) -> NPIDSession:
     """Get session from app state."""
     from main import session_manager
     return session_manager
+
+
+def get_video_progress_session(request: Request) -> VideoProgressSession:
+    """Get dedicated video progress session."""
+    from main import video_progress_session_manager
+    return video_progress_session_manager
 
 
 class SeasonsProxyRequest(BaseModel):
@@ -383,7 +390,7 @@ async def get_video_progress(
     Returns list of video tasks with athlete info, status, stage, due dates.
     Curl verified 2025-12-05. NO club fields.
     """
-    session = get_session(request)
+    session = get_video_progress_session(request)
     translator = LegacyTranslator()
 
     # Convert filters to dict, removing None values
@@ -394,7 +401,8 @@ async def get_video_progress(
     logger.info(f"📤 Fetching video progress (filters: {filter_dict})")
 
     try:
-        response = await session.post(endpoint, data=form_data)
+        response = await session.post_video_progress(endpoint, data=form_data)
+        content_type = (response.headers.get("content-type") or "").lower()
         raw_text = response.text or ""
         logger.info(
             "📥 Video progress response status=%s content_type=%s length=%s preview=%s",
@@ -403,6 +411,27 @@ async def get_video_progress(
             len(raw_text),
             raw_text[:200]
         )
+
+        is_json_payload = False
+        try:
+            json.loads(raw_text)
+            is_json_payload = True
+        except json.JSONDecodeError:
+            is_json_payload = False
+
+        if "application/json" not in content_type:
+            if is_json_payload:
+                logger.warning(
+                    "⚠️ Video progress returned JSON payload with non-JSON content-type=%s",
+                    content_type
+                )
+            else:
+                logger.error("❌ Video progress returned non-JSON content-type=%s", content_type)
+                raise HTTPException(
+                    status_code=502,
+                    detail="Video progress returned non-JSON response"
+                )
+
         result = translator.parse_video_progress_response(raw_text)
 
         if result["success"]:

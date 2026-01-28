@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import logging
 from pathlib import Path
 
-from app.session import session_manager
+from app.session import session_manager, video_progress_session_manager
 from app.routers.video import router as video_router
 from app.routers.athlete import router as athlete_router
 from app.routers.assignments import router as assignments_router
@@ -57,6 +57,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     await session_manager.close()
+    await video_progress_session_manager.close()
 
 
 @app.get("/health")

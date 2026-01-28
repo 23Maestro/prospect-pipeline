@@ -19,11 +19,10 @@ import {
   getCachedTasks,
   upsertTasks,
   updateCachedTaskStatusStage,
-  getCachedAthleteMainId,
-  cacheAthleteMainId,
   getCachedContactInfo,
   upsertContactInfo,
 } from './lib/video-progress-cache';
+import { batchResolveAndCache, getAthleteMainId } from './lib/athlete-id-service';
 import {
   fetchContactInfo,
   transformContactInfoToCache,
@@ -366,30 +365,8 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   const [approvedDetail, setApprovedDetail] = useState('');
 
   const resolveMainId = async () => {
-    let mainId = await getCachedAthleteMainId(task.athlete_id);
-    if (!mainId && task.athlete_main_id) {
-      mainId = String(task.athlete_main_id);
-      cacheAthleteMainId(task.athlete_id, mainId);
-      logger.info('Using athlete_main_id from task payload', {
-        athleteId: task.athlete_id,
-        athleteMainId: mainId,
-      });
-    }
-    if (!mainId) {
-      try {
-        const response = await apiFetch(`/athlete/${task.athlete_id}/resolve`);
-        if (response.ok) {
-          const data = await response.json() as any;
-          if (data.athlete_main_id) {
-            mainId = String(data.athlete_main_id);
-            cacheAthleteMainId(task.athlete_id, mainId);
-          }
-        }
-      } catch (e) {
-        console.error("Failed to resolve main ID", e);
-      }
-    }
-    return mainId;
+    // Use central service - handles cache check, API fetch, and write-back
+    return await getAthleteMainId(task.athlete_id);
   };
 
 
@@ -1282,6 +1259,9 @@ export default function VideoProgress() {
 
       // Update cache
       await upsertTasks(data);
+
+      // Batch resolve athlete_main_ids for newly fetched tasks
+      await batchResolveAndCache(data);
 
       // Reload from cache to get date_completed preservation
       const updatedCache = await getCachedTasks();

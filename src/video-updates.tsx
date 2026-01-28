@@ -13,6 +13,7 @@ import {
 } from "@raycast/api";
 import { useForm, FormValidation } from "@raycast/utils";
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from "./lib/python-server-client";
+import { resolveAndCacheAthleteMainId } from "./lib/athlete-id-service";
 import * as cheerio from "cheerio";
 import * as fs from "fs";
 
@@ -634,6 +635,7 @@ export default function VideoUpdatesCommand(
   }, [values.athleteName]);
 
   // Extract athlete_main_id from profile page when player is selected
+  // Uses central service which handles cache check, API fetch, and write-back
   useEffect(() => {
     let cancelled = false;
     const fetchMainId = async () => {
@@ -645,41 +647,28 @@ export default function VideoUpdatesCommand(
         return;
       }
 
-      log('🆔 Fetching athlete_main_id for player_id:', playerId);
+      log('🆔 Resolving athlete_main_id for player_id:', playerId);
       setIsFetchingMainId(true);
       setFetchedAthleteMainId(null);
       setHasTriedMainId(false);
 
       try {
-        const resp = await apiFetch(`/athlete/${encodeURIComponent(playerId)}/resolve`);
+        // Use central service - handles cache, API, and write-back
+        const result = await resolveAndCacheAthleteMainId(playerId);
 
         if (cancelled) return;
 
-        if (resp.status === 404) {
-          await showToast({ style: Toast.Style.Failure, title: 'Athlete not found' });
-          setFetchedAthleteMainId(null);
-          return;
-        }
-
-        if (resp.status >= 500) {
-          await showToast({ style: Toast.Style.Failure, title: 'Resolution failed' });
-          setFetchedAthleteMainId(null);
-          return;
-        }
-
-        const result = await resp.json().catch(() => ({})) as any;
-        log('📥 resolve response:', result);
-
-        if (result?.athlete_main_id) {
-          log('✅ Fetched athlete_main_id:', result.athlete_main_id);
-          setFetchedAthleteMainId(String(result.athlete_main_id));
+        if (result?.athleteMainId) {
+          log('✅ Resolved athlete_main_id:', result.athleteMainId, 'source:', result.source);
+          setFetchedAthleteMainId(result.athleteMainId);
         } else {
-          log('⚠️ No athlete_main_id in response');
+          log('⚠️ Could not resolve athlete_main_id');
+          await showToast({ style: Toast.Style.Failure, title: 'Could not resolve athlete ID' });
           setFetchedAthleteMainId(null);
         }
       } catch (error) {
         if (cancelled) return;
-        console.error('Failed to fetch athlete_main_id:', error);
+        console.error('Failed to resolve athlete_main_id:', error);
         setFetchedAthleteMainId(null);
       } finally {
         if (!cancelled) {

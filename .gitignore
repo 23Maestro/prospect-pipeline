@@ -360,3 +360,6 @@ $RECYCLE.BIN/
 
 # Raycast specific
 raycast-env.d.ts
+
+# Local SQLite cache (generated, not committed)
+progress.db

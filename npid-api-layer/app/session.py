@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import httpx
 import re
+from urllib.parse import unquote
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -202,3 +203,146 @@ class NPIDSession:
 
 # Global session manager to be shared by the app
 session_manager = NPIDSession()
+
+
+class VideoProgressSession:
+    """
+    Dedicated session for /videoteammsg/videoprogress only.
+
+    Hard requirements:
+    - No shared client reuse
+    - Form-encoded POST only (no json=)
+    - Explicit headers per request
+    - No retries or fallback parsing
+    """
+
+    def __init__(self):
+        self.client = httpx.AsyncClient(
+            base_url=NPID_BASE_URL,
+            timeout=30.0,
+            follow_redirects=False,
+            headers={
+                "User-Agent": "NPID-VideoProgress/0.1",
+            }
+        )
+
+        self.csrf_token: Optional[str] = None
+        self.form_token: Optional[str] = None
+        self.is_authenticated: bool = False
+
+        self._load_session_sync(SESSION_FILE)
+        self._hydrate_csrf_from_cookie()
+
+    def _load_session_sync(self, session_path: str):
+        path = Path(session_path)
+        if not path.exists():
+            logger.warning(f"⚠️ Session file not found: {session_path}")
+            return
+
+        try:
+            with open(path, "rb") as f:
+                cookie_jar = pickle.load(f)
+                for cookie in cookie_jar:
+                    self.client.cookies.set(
+                        name=cookie.name,
+                        value=cookie.value,
+                        domain=cookie.domain,
+                        path=cookie.path
+                    )
+
+                self.is_authenticated = bool(self.client.cookies)
+                logger.info(f"✅ [video-progress] Loaded {len(cookie_jar)} cookies from session file")
+        except Exception as e:
+            logger.error(f"❌ [video-progress] Failed to load session: {e}")
+
+    def _hydrate_csrf_from_cookie(self):
+        raw_token = self.client.cookies.get("XSRF-TOKEN")
+        if raw_token:
+            self.csrf_token = unquote(raw_token)
+            logger.info("✅ [video-progress] CSRF token loaded from cookie")
+
+    def _reload_cookies_from_disk(self):
+        self.client.cookies.clear()
+        self._load_session_sync(SESSION_FILE)
+        cookie_names = sorted({c.name for c in self.client.cookies.jar})
+        logger.info("✅ [video-progress] Cookies loaded: %s", ", ".join(cookie_names) or "none")
+
+    async def refresh_csrf(self):
+        """
+        Refresh CSRF by visiting a known page to hydrate cookies and token.
+        Mirrors the legacy flow: get cookies first, then send form data.
+        """
+        logger.info("🔄 [video-progress] Refreshing CSRF token...")
+        try:
+            self._reload_cookies_from_disk()
+            response = await self.client.get("/videoteammsg/videomailprogress")
+            logger.info(
+                "✅ [video-progress] GET /videomailprogress status=%s content_type=%s",
+                response.status_code,
+                response.headers.get("content-type")
+            )
+
+            # Prefer cookie-based token if present
+            raw_token = self.client.cookies.get("XSRF-TOKEN")
+            if raw_token:
+                self.csrf_token = unquote(raw_token)
+                logger.info(
+                    "✅ [video-progress] CSRF cookie token loaded (len=%s)",
+                    len(self.csrf_token)
+                )
+
+            # Always attempt to scrape hidden _token from HTML
+            match = re.search(r'name="_token" value="([a-zA-Z0-9]+)"', response.text)
+            if match:
+                self.form_token = match.group(1)
+                logger.info(
+                    "✅ [video-progress] CSRF form token extracted (len=%s)",
+                    len(self.form_token)
+                )
+            else:
+                logger.warning("⚠️ [video-progress] Failed to extract CSRF form token")
+
+            if not self.csrf_token and not self.form_token:
+                logger.warning("⚠️ [video-progress] No CSRF token available after refresh")
+        except Exception as e:
+            logger.error(f"❌ [video-progress] Failed to refresh CSRF: {e}")
+
+    async def post_video_progress(self, path: str, data: Dict[str, Any] = None) -> httpx.Response:
+        if data is None:
+            data = {}
+
+        # Always refresh CSRF before posting to ensure cookies are hydrated
+        await self.refresh_csrf()
+
+        # Prefer hidden form token for Laravel _token if available
+        if self.form_token and "_token" not in data:
+            data["_token"] = self.form_token
+        elif self.csrf_token and "_token" not in data:
+            data["_token"] = self.csrf_token
+
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+            "Origin": NPID_BASE_URL,
+            "Referer": f"{NPID_BASE_URL}/videoteammsg/videomailprogress",
+        }
+
+        if self.csrf_token:
+            headers["X-XSRF-TOKEN"] = self.csrf_token
+
+        logger.info(
+            "✅ [video-progress] POST form keys=%s _token_len=%s X-XSRF-TOKEN=%s",
+            ",".join(sorted(data.keys())),
+            len(data.get("_token", "")) if data.get("_token") else 0,
+            "set" if headers.get("X-XSRF-TOKEN") else "missing"
+        )
+
+        return await self.client.post(path, data=data, headers=headers)
+
+    async def close(self):
+        await self.client.aclose()
+
+
+# Dedicated session manager for video progress only
+video_progress_session_manager = VideoProgressSession()
