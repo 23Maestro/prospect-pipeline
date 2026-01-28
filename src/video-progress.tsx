@@ -13,7 +13,7 @@ import {
   Clipboard,
 } from '@raycast/api';
 import { format } from 'date-fns';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { apiFetch } from './lib/python-server-client';
 import {
   getCachedTasks,
@@ -32,12 +32,12 @@ import {
 } from './lib/npid-mcp-adapter';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { logger } from './lib/logger';
-import { createCraftTask, taskExists, getDueDateString } from './lib/craft-tasks';
 import EmailStudentAthletesCommand from './email-student-athletes';
 
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
   athlete_id: number;
+  athlete_main_id?: string;
   athletename: string;
   video_progress_status: string;
   stage: string;
@@ -52,8 +52,38 @@ interface VideoProgressTask {
   high_school_city: string;
   high_school_state: string;
   date_completed?: string;
+  raw_search?: boolean;
   [key: string]: any;
 }
+
+interface RawSearchResult {
+  athlete_id: string;
+  athlete_main_id?: string;
+  name?: string;
+  grad_year?: string;
+  sport?: string;
+  state?: string;
+  city?: string;
+  high_school?: string;
+  email?: string;
+  positions?: string;
+  source?: string;
+}
+
+interface RawSearchResponse {
+  success: boolean;
+  count: number;
+  results: RawSearchResult[];
+  sources?: Array<Record<string, any>>;
+}
+
+const MIN_ACTIVE_GRAD_YEAR = 2026;
+const STAGE_PRIORITY: Record<string, number> = {
+  'in queue': 1,
+  'awaiting client': 2,
+  'on hold': 3,
+  'done': 4,
+};
 
 async function readResponseBody(response: any) {
   const contentType = response?.headers?.get?.('content-type') || '';
@@ -73,6 +103,48 @@ function getPositions(task: VideoProgressTask): string {
   return [task.primaryposition, task.secondaryposition, task.thirdposition]
     .filter(pos => pos && pos !== 'NA')
     .join(' | ');
+}
+
+function splitRawPositions(positions?: string): { primary: string; secondary: string; third: string } {
+  if (!positions) {
+    return { primary: '', secondary: '', third: '' };
+  }
+  const parts = positions
+    .split(/[|,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return {
+    primary: parts[0] || '',
+    secondary: parts[1] || '',
+    third: parts[2] || '',
+  };
+}
+
+function mapRawSearchResultToTask(result: RawSearchResult, index: number): VideoProgressTask {
+  const rawId = Number(result.athlete_id);
+  const athleteId = Number.isFinite(rawId) && rawId > 0 ? rawId : -(index + 1);
+  const gradYear = Number(result.grad_year) || 0;
+  const positions = splitRawPositions(result.positions);
+  const sourceLabel = result.source ? `Raw Search (${result.source})` : 'Raw Search';
+
+  return {
+    athlete_id: athleteId,
+    athlete_main_id: result.athlete_main_id,
+    athletename: result.name || result.athlete_id || 'Unknown',
+    video_progress_status: sourceLabel,
+    stage: sourceLabel,
+    sport_name: result.sport || '',
+    grad_year: gradYear,
+    video_due_date: '',
+    assignedvideoeditor: '',
+    primaryposition: positions.primary,
+    secondaryposition: positions.secondary,
+    thirdposition: positions.third,
+    high_school: result.high_school || '',
+    high_school_city: result.city || '',
+    high_school_state: result.state || '',
+    raw_search: true,
+  };
 }
 
 function getStatusIcon(status: string): { source: string } | Icon {
@@ -240,6 +312,35 @@ function generateDropboxFolder(task: VideoProgressTask): string {
     .join('_');
 }
 
+function shouldIncludeTask(task: VideoProgressTask): boolean {
+  if (!task.assignedvideoeditor || task.assignedvideoeditor.trim() !== 'Jerami Singleton') {
+    return false;
+  }
+  const gradYear = Number(task.grad_year);
+  if (Number.isFinite(gradYear) && gradYear > 0 && gradYear < MIN_ACTIVE_GRAD_YEAR) {
+    return false;
+  }
+  return true;
+}
+
+function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
+  return [...tasks].sort((a, b) => {
+    const aYear = Number(a.grad_year) || 9999;
+    const bYear = Number(b.grad_year) || 9999;
+    if (aYear !== bYear) return aYear - bYear;
+
+    const aStage = getTaskStage(a).toLowerCase();
+    const bStage = getTaskStage(b).toLowerCase();
+    const aStageRank = STAGE_PRIORITY[aStage] ?? 99;
+    const bStageRank = STAGE_PRIORITY[bStage] ?? 99;
+    if (aStageRank !== bStageRank) return aStageRank - bStageRank;
+
+    const aDue = a.video_due_date ? new Date(a.video_due_date).getTime() : Number.POSITIVE_INFINITY;
+    const bDue = b.video_due_date ? new Date(b.video_due_date).getTime() : Number.POSITIVE_INFINITY;
+    return aDue - bDue;
+  });
+}
+
 function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): string {
   const positions = getPositions(task);
   const lines = [
@@ -266,6 +367,14 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
 
   const resolveMainId = async () => {
     let mainId = await getCachedAthleteMainId(task.athlete_id);
+    if (!mainId && task.athlete_main_id) {
+      mainId = String(task.athlete_main_id);
+      cacheAthleteMainId(task.athlete_id, mainId);
+      logger.info('Using athlete_main_id from task payload', {
+        athleteId: task.athlete_id,
+        athleteMainId: mainId,
+      });
+    }
     if (!mainId) {
       try {
         const response = await apiFetch(`/athlete/${task.athlete_id}/resolve`);
@@ -323,10 +432,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
 
       // Get fresh data from cache and pass to parent
       const allTasks = await getCachedTasks();
-      const filtered = allTasks.filter(
-        (t) => (t.assignedvideoeditor || '').trim() === 'Jerami Singleton'
-      );
-
+      const filtered = sortTasks(allTasks.filter(shouldIncludeTask));
       onStatusUpdate(filtered);
       onBack();
     } catch (error) {
@@ -386,10 +492,7 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
 
       // Get fresh data from cache and pass to parent
       const allTasks = await getCachedTasks();
-      const filtered = allTasks.filter(
-        (t) => (t.assignedvideoeditor || '').trim() === 'Jerami Singleton'
-      );
-
+      const filtered = sortTasks(allTasks.filter(shouldIncludeTask));
       onStatusUpdate(filtered);
       onBack();
     } catch (error) {
@@ -568,48 +671,6 @@ ${approvedDetail}
               icon="🗓️"
               target={<EditDueDateForm task={task} onUpdate={onStatusUpdate} />}
               shortcut={{ modifiers: ['cmd'], key: 'd' }}
-            />
-          </ActionPanel.Section>
-
-          <ActionPanel.Section title="Craft Tasks">
-            <Action
-              title="Create In Queue Task"
-              icon={Icon.Plus}
-              onAction={async () => {
-                const exists = await taskExists(task.athletename, 'in_queue');
-                if (exists) {
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Task Already Exists',
-                    message: `${task.athletename} already has an In Queue task`,
-                  });
-                  return;
-                }
-                const result = await createCraftTask({
-                  athleteName: task.athletename,
-                  taskType: 'in_queue',
-                  dueDate: getDueDateString(7),
-                  notes: `${task.sport_name} | ${task.grad_year}`,
-                });
-                await showToast({
-                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
-                  title: result.success ? 'Task Created' : 'Creation Failed',
-                  message: result.message,
-                });
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'q' }}
-            />
-            <Action.Push
-              title="Create Follow-Up Task"
-              icon={Icon.Envelope}
-              target={<CreateCraftTaskForm athleteName={task.athletename} taskType="email_follow_up" />}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
-            />
-            <Action.Push
-              title="Create Dropbox Reminder"
-              icon={Icon.Folder}
-              target={<CreateCraftTaskForm athleteName={task.athletename} taskType="dropbox_folders" />}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'b' }}
             />
           </ActionPanel.Section>
 
@@ -845,11 +906,14 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
       await showToast({ style: Toast.Style.Success, title: 'Status Updated', message: `Updated to ${selectedStatus}` });
 
       const allTasks = await getCachedTasks();
-      const filtered = allTasks.filter(
-        (t) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-            t.video_progress_status
-          ) && t.assignedvideoeditor === 'Jerami Singleton'
+      const filtered = sortTasks(
+        allTasks.filter(
+          (t) =>
+            shouldIncludeTask(t) &&
+            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
+              t.video_progress_status
+            )
+        )
       );
       onUpdate(filtered);
       pop();
@@ -925,33 +989,15 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
       await updateCachedTaskStatusStage(task.id, { stage: selectedStage });
       await showToast({ style: Toast.Style.Success, title: 'Stage Updated', message: `Updated to ${selectedStage}` });
 
-      // Auto-create Craft task when stage changes to "In Queue"
-      if (selectedStage === 'In Queue') {
-        try {
-          const exists = await taskExists(task.athletename, 'in_queue');
-          if (!exists) {
-            const craftResult = await createCraftTask({
-              athleteName: task.athletename,
-              taskType: 'in_queue',
-              dueDate: getDueDateString(7),
-              notes: `${task.sport_name} | ${task.grad_year}`,
-            });
-            if (craftResult.success) {
-              logger.info(`Craft task created for ${task.athletename}`);
-            }
-          }
-        } catch (craftError) {
-          // Never block workflow on Craft errors
-          logger.warn('Craft task creation skipped:', craftError);
-        }
-      }
-
       const allTasks = await getCachedTasks();
-      const filtered = allTasks.filter(
-        (t) =>
-          ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-            t.video_progress_status
-          ) && t.assignedvideoeditor === 'Jerami Singleton'
+      const filtered = sortTasks(
+        allTasks.filter(
+          (t) =>
+            shouldIncludeTask(t) &&
+            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
+              t.video_progress_status
+            )
+        )
       );
       onUpdate(filtered);
       pop();
@@ -978,71 +1024,6 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
           <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.label} />
         ))}
       </Form.Dropdown>
-    </Form>
-  );
-}
-
-interface CreateCraftTaskFormProps {
-  athleteName: string;
-  taskType: 'email_follow_up' | 'dropbox_folders';
-}
-
-function CreateCraftTaskForm({ athleteName, taskType }: CreateCraftTaskFormProps) {
-  const { pop } = useNavigation();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [dueDate, setDueDate] = useState<Date>(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
-
-  const taskTypeLabels = {
-    email_follow_up: 'Follow-Up Email',
-    dropbox_folders: 'Dropbox Folder',
-  };
-
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
-    try {
-      const dueDateStr = dueDate.toISOString().split('T')[0];
-      const result = await createCraftTask({
-        athleteName,
-        taskType,
-        dueDate: dueDateStr,
-      });
-      await showToast({
-        style: result.success ? Toast.Style.Success : Toast.Style.Failure,
-        title: result.success ? 'Task Created' : 'Creation Failed',
-        message: result.message,
-      });
-      if (result.success) {
-        pop();
-      }
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to create task',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Form
-      isLoading={isSubmitting}
-      navigationTitle={`Create ${taskTypeLabels[taskType]}`}
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm title="Create Task" icon={Icon.Plus} onSubmit={handleSubmit} />
-        </ActionPanel>
-      }
-    >
-      <Form.Description title="Athlete" text={athleteName} />
-      <Form.DatePicker
-        id="dueDate"
-        title="Due Date"
-        value={dueDate}
-        onChange={(newDate) => newDate && setDueDate(newDate)}
-      />
-      <Form.Description title="Task Type" text={taskTypeLabels[taskType]} />
     </Form>
   );
 }
@@ -1237,6 +1218,9 @@ export default function VideoProgress() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [rawSearchEnabled, setRawSearchEnabled] = useState(false);
   const [searchText, setSearchText] = useState('');
+  const [rawSearchResults, setRawSearchResults] = useState<VideoProgressTask[]>([]);
+  const [isRawSearchLoading, setIsRawSearchLoading] = useState(false);
+  const rawSearchRequestId = useRef(0);
   const { push, pop } = useNavigation();
 
   useEffect(() => {
@@ -1250,27 +1234,8 @@ export default function VideoProgress() {
     }
     // Reload from cache only (instant, no API call)
     const cached = await getCachedTasks();
-    const filtered = cached.filter(
-      (task) => (task.assignedvideoeditor || '').trim() === 'Jerami Singleton'
-    );
-
-    // Sort: tasks with date_completed first (most recent at top)
-    const sorted = filtered.sort((a, b) => {
-      const aHasDate = !!a.date_completed;
-      const bHasDate = !!b.date_completed;
-
-      // Tasks with date_completed come first
-      if (aHasDate && !bHasDate) return -1;
-      if (!aHasDate && bHasDate) return 1;
-
-      // Both have dates: sort by date descending (most recent first)
-      if (aHasDate && bHasDate) {
-        return new Date(b.date_completed!).getTime() - new Date(a.date_completed!).getTime();
-      }
-
-      return 0;
-    });
-
+    const filtered = cached.filter(shouldIncludeTask);
+    const sorted = sortTasks(filtered);
     setTasks(sorted);
   };
 
@@ -1281,10 +1246,8 @@ export default function VideoProgress() {
       // Try cache first
       const cached = await getCachedTasks();
       if (cached.length > 0) {
-        const filtered = cached.filter(
-          (task) => (task.assignedvideoeditor || '').trim() === 'Jerami Singleton'
-        );
-        setTasks(filtered);
+        const filtered = cached.filter(shouldIncludeTask);
+        setTasks(sortTasks(filtered));
         setIsLoading(false);
       }
 
@@ -1322,11 +1285,8 @@ export default function VideoProgress() {
 
       // Reload from cache to get date_completed preservation
       const updatedCache = await getCachedTasks();
-      const filtered = updatedCache.filter(
-        (task) => (task.assignedvideoeditor || '').trim() === 'Jerami Singleton'
-      );
-
-      setTasks(filtered);
+      const filtered = updatedCache.filter(shouldIncludeTask);
+      setTasks(sortTasks(filtered));
 
       await showToast({
         style: filtered.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
@@ -1344,8 +1304,126 @@ export default function VideoProgress() {
     }
   };
 
+  const runRawSearch = async (term: string) => {
+    const requestId = ++rawSearchRequestId.current;
+    const isEmail = term.includes('@');
+    logger.info('Raw search start', { term, requestId, isEmail });
+    setIsRawSearchLoading(true);
+    try {
+      const response = await apiFetch('/athlete/raw-search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          term,
+          email: isEmail ? term : undefined,
+          include_admin_search: true,
+          include_recent_search: true,
+        }),
+      });
+      const { text, json, contentType } = await readResponseBody(response);
+      logger.info('Raw search response', {
+        term,
+        requestId,
+        status: response.status,
+        contentType,
+        length: text.length,
+        preview: text.slice(0, 400),
+      });
+      if (!response.ok) {
+        const errMessage = json?.detail || json?.message || text.slice(0, 200) || `HTTP ${response.status}`;
+        throw new Error(errMessage);
+      }
+
+      const payload = json as RawSearchResponse | null;
+      if (!payload || !Array.isArray(payload.results)) {
+        throw new Error('Invalid raw search response');
+      }
+      if (payload.sources) {
+        logger.info('Raw search sources', { term, requestId, sources: payload.sources });
+      }
+
+      const results = payload.results;
+      const mapped = results.map((result, index) => mapRawSearchResultToTask(result, index));
+
+      logger.info('Raw search mapped results', {
+        term,
+        requestId,
+        apiCount: payload.count,
+        count: mapped.length,
+        sample: mapped[0] ? { athlete_id: mapped[0].athlete_id, name: mapped[0].athletename } : null,
+      });
+
+      if (requestId === rawSearchRequestId.current) {
+        setRawSearchResults(mapped);
+      } else {
+        logger.warn('Raw search result discarded (stale request)', { term, requestId });
+      }
+
+      if (mapped.length === 0) {
+        logger.warn('Raw search returned zero results', { term, requestId });
+      }
+    } catch (error) {
+      logger.error('Raw search failed', {
+        term,
+        requestId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (requestId === rawSearchRequestId.current) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Raw Search Failed',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+        setRawSearchResults([]);
+      }
+    } finally {
+      if (requestId === rawSearchRequestId.current) {
+        setIsRawSearchLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!rawSearchEnabled) {
+      rawSearchRequestId.current += 1;
+      if (rawSearchResults.length > 0) {
+        logger.info('Raw search disabled, clearing results');
+      }
+      setRawSearchResults([]);
+      setIsRawSearchLoading(false);
+      return;
+    }
+
+    const term = searchText.trim();
+    if (!term) {
+      rawSearchRequestId.current += 1;
+      logger.info('Raw search term empty, clearing results');
+      setRawSearchResults([]);
+      setIsRawSearchLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      runRawSearch(term);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [rawSearchEnabled, searchText]);
+
+  const toggleRawSearch = async () => {
+    const next = !rawSearchEnabled;
+    setRawSearchEnabled(next);
+    if (!next) {
+      logger.info('Raw search turned off, reloading cache');
+      await reloadFromCache();
+    } else {
+      logger.info('Raw search turned on');
+    }
+  };
+
   const normalizedSearch = searchText.trim().toLowerCase();
   const shouldBypassFilters = rawSearchEnabled && normalizedSearch.length > 0;
+  const activeTasks = shouldBypassFilters ? rawSearchResults : tasks;
 
   const matchesSearch = (task: VideoProgressTask) => {
     if (!normalizedSearch) return true;
@@ -1363,15 +1441,15 @@ export default function VideoProgress() {
   };
 
   // Apply both stage and status filters (unless raw search is active)
-  const filteredTasks = tasks.filter((task) => {
-    if ((task.assignedvideoeditor || '').trim() !== 'Jerami Singleton') {
+  const filteredTasks = activeTasks.filter((task) => {
+    if (shouldBypassFilters) {
+      return true;
+    }
+    if (!shouldIncludeTask(task)) {
       return false;
     }
     if (!matchesSearch(task)) {
       return false;
-    }
-    if (shouldBypassFilters) {
-      return true;
     }
     // When stageFilter is 'all', show only 'In Queue' stage (truly active work)
     // When stageFilter is explicitly set, show ONLY that stage
@@ -1405,7 +1483,7 @@ export default function VideoProgress() {
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || isRawSearchLoading}
       navigationTitle="Video Progress (ProspectID)"
       searchBarPlaceholder="Search athletes..."
       searchText={searchText}
@@ -1435,11 +1513,15 @@ export default function VideoProgress() {
       }
     >
       {filteredTasks.length === 0 ? (
-        <List.EmptyView icon={Icon.CheckCircle} title="No Active Tasks" description="All done!" />
+        <List.EmptyView
+          icon={Icon.CheckCircle}
+          title={shouldBypassFilters ? 'No Raw Search Results' : 'No Active Tasks'}
+          description={shouldBypassFilters ? 'Try a different search' : 'All done!'}
+        />
       ) : (
         <List.Section
           title={`In Progress (${filteredTasks.length})`}
-          subtitle={rawSearchEnabled ? 'Raw Search' : undefined}
+          subtitle={shouldBypassFilters ? 'Raw Search' : undefined}
         >
           {filteredTasks.map((task) => (
             <List.Item
@@ -1485,7 +1567,7 @@ export default function VideoProgress() {
                   <Action
                     title={`Raw Search Mode: ${rawSearchEnabled ? 'On' : 'Off'}`}
                     icon={rawSearchEnabled ? Icon.CheckCircle : Icon.Circle}
-                    onAction={() => setRawSearchEnabled((prev) => !prev)}
+                    onAction={toggleRawSearch}
                     shortcut={{ modifiers: ['cmd'], key: 'f' }}
                   />
                   {stageFilter === 'Done' && (
@@ -1524,7 +1606,18 @@ export default function VideoProgress() {
                   <Action
                     title="Reload Tasks"
                     icon={Icon.ArrowClockwise}
-                    onAction={loadTasks}
+                    onAction={async () => {
+                      if (shouldBypassFilters) {
+                        const term = searchText.trim();
+                        if (!term) {
+                          logger.warn('Raw search reload skipped (empty term)');
+                          return;
+                        }
+                        await runRawSearch(term);
+                        return;
+                      }
+                      await loadTasks();
+                    }}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                   />
                 </ActionPanel>

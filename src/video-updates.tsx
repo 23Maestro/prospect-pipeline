@@ -15,9 +15,6 @@ import { useForm, FormValidation } from "@raycast/utils";
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from "./lib/python-server-client";
 import * as cheerio from "cheerio";
 import * as fs from "fs";
-import { deleteCraftTask } from "./lib/craft-tasks";
-
-
 
 // Logging utility - writes to file and console (console helps during dev)
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
@@ -1029,20 +1026,6 @@ export default function VideoUpdatesCommand(
         log('✅ Email sent automatically', { template: picked.value, recipientCount: 1 + parentIds.length + 1 });
       } catch (emailError) {
         log('⚠️ Email send failed, continuing', emailError);
-      }
-
-      // Auto-delete Craft "In Queue" task after video completion
-      try {
-        const deleteResult = await deleteCraftTask({
-          athleteName,
-          taskType: 'in_queue',
-        });
-        if (deleteResult.deleted_count > 0) {
-          log('✅ Craft task deleted', { athleteName, count: deleteResult.deleted_count });
-        }
-      } catch (craftError) {
-        // Never block workflow on Craft errors
-        log('⚠️ Craft task deletion skipped', craftError);
       }
 
       if (videoMsgId) {

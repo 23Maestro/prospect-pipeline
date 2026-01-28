@@ -7,7 +7,11 @@ from fastapi import APIRouter, HTTPException, Request
 from typing import Optional
 import logging
 
-from app.models.schemas import AthleteIdentifiers
+from app.models.schemas import (
+    AthleteIdentifiers,
+    RawAthleteSearchRequest,
+    RawAthleteSearchResponse
+)
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 from app.cache import athlete_cache
@@ -137,6 +141,153 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
         athlete_cache.set(athlete_main_id, result)
     
     return result
+
+
+def _merge_search_results(
+    base_results: list,
+    new_results: list
+) -> list:
+    merged = {}
+    for item in base_results + new_results:
+        if not isinstance(item, dict):
+            continue
+        athlete_id = item.get("athlete_id")
+        if not athlete_id:
+            continue
+        existing = merged.get(athlete_id, {})
+        for key, value in item.items():
+            if existing.get(key) in (None, "", []) and value not in (None, "", []):
+                existing[key] = value
+        existing_source = existing.get("source")
+        new_source = item.get("source")
+        if new_source:
+            if existing_source:
+                if new_source not in str(existing_source):
+                    existing["source"] = f"{existing_source}|{new_source}"
+            else:
+                existing["source"] = new_source
+        if not existing:
+            existing = item
+        merged[athlete_id] = existing
+    return list(merged.values())
+
+
+@router.post("/raw-search", response_model=RawAthleteSearchResponse)
+async def raw_search(request: Request, payload: RawAthleteSearchRequest):
+    """
+    Global athlete search that uses legacy search endpoints.
+    Uses /search/searchathlete and /admin/searchathlete.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    term = (payload.term or "").strip()
+    results = []
+    sources = []
+
+    if not term:
+        return RawAthleteSearchResponse(success=True, count=0, results=[], sources=[])
+
+    logger.info(
+        "🔎 Raw athlete search term=%s email=%s first_name=%s last_name=%s include_admin_search=%s",
+        term,
+        payload.email,
+        payload.first_name,
+        payload.last_name,
+        payload.include_admin_search
+    )
+
+    try:
+        # Primary: global search endpoint
+        endpoint, params = translator.search_athlete_to_legacy(term, payload.searching_for)
+        search_response = await session.get(endpoint, params=params)
+        logger.info(
+            "📥 searchathlete status=%s content_type=%s length=%s",
+            search_response.status_code,
+            search_response.headers.get("content-type"),
+            len(search_response.text or "")
+        )
+        parsed = translator.parse_search_athlete_response(search_response.text or "")
+        results = _merge_search_results(results, parsed.get("results", []))
+        sources.append({
+            "source": "searchathlete",
+            "status": search_response.status_code,
+            "count": len(parsed.get("results", [])),
+            "format": parsed.get("format")
+        })
+
+        # Optional: admin search (email/name)
+        should_admin_search = payload.include_admin_search or payload.email or payload.first_name or payload.last_name
+        if should_admin_search:
+            admin_filters = {}
+            email_value = payload.email
+            if not email_value and "@" in term:
+                email_value = term
+            if email_value:
+                admin_filters["email"] = email_value
+            if payload.first_name or payload.last_name:
+                admin_filters["first_name"] = payload.first_name or ""
+                admin_filters["last_name"] = payload.last_name or ""
+            if not admin_filters:
+                name_parts = term.split()
+                if len(name_parts) >= 2:
+                    admin_filters["first_name"] = name_parts[0]
+                    admin_filters["last_name"] = " ".join(name_parts[1:])
+                else:
+                    admin_filters["searchany"] = term
+
+            endpoint, form_data = translator.admin_search_athlete_to_legacy(admin_filters)
+            admin_response = await session.post(endpoint, data=form_data)
+            logger.info(
+                "📥 admin searchathlete status=%s content_type=%s length=%s",
+                admin_response.status_code,
+                admin_response.headers.get("content-type"),
+                len(admin_response.text or "")
+            )
+            admin_parsed = translator.parse_admin_search_athlete_response(admin_response.text or "")
+            results = _merge_search_results(results, admin_parsed.get("results", []))
+            sources.append({
+                "source": "admin_search",
+                "status": admin_response.status_code,
+                "count": len(admin_parsed.get("results", [])),
+                "format": admin_parsed.get("format")
+            })
+
+        # Optional: scout recent search for entries that have both IDs
+        if payload.include_recent_search:
+            recent_limit = 5
+            recent_count = 0
+            for item in results:
+                athlete_id = item.get("athlete_id")
+                athlete_main_id = item.get("athlete_main_id")
+                if not athlete_id or not athlete_main_id:
+                    continue
+                endpoint, params = translator.scout_recent_search_to_legacy(athlete_id, athlete_main_id)
+                recent_response = await session.get(endpoint, params=params)
+                recent_parsed = translator.parse_scout_recent_search_response(recent_response.text or "")
+                sources.append({
+                    "source": "scoutrecentsearch",
+                    "status": recent_response.status_code,
+                    "athlete_id": athlete_id,
+                    "count": len(recent_parsed.get("entries", [])),
+                    "format": recent_parsed.get("format")
+                })
+                recent_count += 1
+                if recent_count >= recent_limit:
+                    break
+
+        return RawAthleteSearchResponse(
+            success=True,
+            count=len(results),
+            results=results,
+            sources=sources
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Raw athlete search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/athletetaskid/{task_id}/resolve")

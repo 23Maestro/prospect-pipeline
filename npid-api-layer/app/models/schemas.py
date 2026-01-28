@@ -4,7 +4,7 @@ Clean, typed interfaces your Raycast extension talks to.
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import Optional, List, Literal, Dict
+from typing import Optional, List, Literal, Dict, Any
 from enum import Enum
 
 
@@ -179,6 +179,40 @@ class VideoProgressResponse(BaseModel):
     success: bool
     count: int
     tasks: List[dict]  # Includes: positions, video_due_date
+
+
+class RawAthleteSearchRequest(BaseModel):
+    """Request for global athlete search (raw search)."""
+    term: str = Field(..., description="Search term (name, email, or ID)")
+    searching_for: Optional[str] = Field(None, description="Legacy searchingfor parameter")
+    email: Optional[str] = Field(None, description="Search by email (admin search)")
+    first_name: Optional[str] = Field(None, description="Search by first name (admin search)")
+    last_name: Optional[str] = Field(None, description="Search by last name (admin search)")
+    include_admin_search: bool = Field(True, description="Whether to run admin search fallback")
+    include_recent_search: bool = Field(False, description="Whether to call scoutrecentsearch when IDs are available")
+
+
+class RawAthleteSearchResult(BaseModel):
+    """Normalized athlete search result."""
+    athlete_id: str
+    athlete_main_id: Optional[str] = None
+    name: Optional[str] = None
+    grad_year: Optional[str] = None
+    sport: Optional[str] = None
+    state: Optional[str] = None
+    city: Optional[str] = None
+    high_school: Optional[str] = None
+    email: Optional[str] = None
+    positions: Optional[str] = None
+    source: Optional[str] = None
+
+
+class RawAthleteSearchResponse(BaseModel):
+    """Response from global athlete search."""
+    success: bool
+    count: int
+    results: List[RawAthleteSearchResult]
+    sources: Optional[List[Dict[str, Any]]] = None
 
 
 class Assignment(BaseModel):

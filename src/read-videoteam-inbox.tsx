@@ -23,7 +23,6 @@ import { apiFetch } from './lib/python-server-client';
 import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { ensureAthleteIds } from './lib/athlete-id-resolver';
-import { createCraftTask, getDueDateString, type CraftTaskType } from './lib/craft-tasks';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -360,66 +359,6 @@ function EmailContentDetail({
                 );
               }}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
-            />
-          </ActionPanel.Section>
-
-          <ActionPanel.Section title="Craft Tasks">
-            <Action
-              title="Create Follow-Up Task"
-              icon={Icon.Envelope}
-              onAction={async () => {
-                const athleteName = resolvedAthleteName || sanitizeAthleteName(message.name) || 'Unknown';
-                const result = await createCraftTask({
-                  athleteName,
-                  taskType: 'email_follow_up',
-                  dueDate: getDueDateString(7),
-                  notes: `RE: ${message.subject}`,
-                });
-                await showToast({
-                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
-                  title: result.success ? 'Follow-Up Created' : 'Creation Failed',
-                  message: result.message,
-                });
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
-            />
-            <Action
-              title="Create Dropbox Reminder"
-              icon={Icon.Folder}
-              onAction={async () => {
-                const athleteName = resolvedAthleteName || sanitizeAthleteName(message.name) || 'Unknown';
-                const result = await createCraftTask({
-                  athleteName,
-                  taskType: 'dropbox_folders',
-                  dueDate: getDueDateString(7),
-                  notes: `Dropbox folder for ${athleteName}`,
-                });
-                await showToast({
-                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
-                  title: result.success ? 'Reminder Created' : 'Creation Failed',
-                  message: result.message,
-                });
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'b' }}
-            />
-            <Action
-              title="Create In Queue Task"
-              icon={Icon.Plus}
-              onAction={async () => {
-                const athleteName = resolvedAthleteName || sanitizeAthleteName(message.name) || 'Unknown';
-                const result = await createCraftTask({
-                  athleteName,
-                  taskType: 'in_queue',
-                  dueDate: getDueDateString(7),
-                  notes: `From inbox: ${message.subject}`,
-                });
-                await showToast({
-                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
-                  title: result.success ? 'Task Created' : 'Creation Failed',
-                  message: result.message,
-                });
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'q' }}
             />
           </ActionPanel.Section>
 

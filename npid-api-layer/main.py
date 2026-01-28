@@ -11,7 +11,6 @@ from app.routers.email import router as email_router
 from app.routers.inbox import router as inbox_router
 from app.routers.notes import router as notes_router
 from app.routers.contacts import router as contacts_router
-from app.routers.craft_tasks import router as craft_router
 from app.routers.tasks import router as tasks_router
 
 LOG_DIR = Path("/Users/singleton23/raycast_logs")
@@ -76,5 +75,4 @@ app.include_router(email_router, prefix="/api/v1", tags=["email"])
 app.include_router(inbox_router, prefix="/api/v1/inbox", tags=["inbox"])
 app.include_router(notes_router, prefix="/api/v1/notes", tags=["notes"])
 app.include_router(contacts_router, prefix="/api/v1/contacts", tags=["contacts"])
-app.include_router(craft_router, prefix="/api/v1/craft", tags=["craft"])
 app.include_router(tasks_router, prefix="/api/v1/tasks", tags=["tasks"])

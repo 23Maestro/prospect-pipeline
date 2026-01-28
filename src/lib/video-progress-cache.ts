@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { environment } from '@raycast/api';
-import initSqlJs, { Database as SQLDatabase } from 'sql.js';
+import initSqlJs from 'sql.js';
 import { logger } from './logger';
 
 export interface CachedVideoTask {
@@ -46,33 +46,113 @@ export interface CachedContactInfo {
 }
 
 const DB_DIR = path.join(os.homedir(), '.prospect-pipeline');
-const DB_PATH = path.join(DB_DIR, 'video-progress-cache.sqlite');
+const LEGACY_SQLJS_PATH = path.join(DB_DIR, 'video-progress-cache.sqlite');
+const SQLJS_DB_PATH = path.join(DB_DIR, 'progress.db');
+const MIN_ACTIVE_GRAD_YEAR = 2026;
 const SQLPromise = initSqlJs({
   locateFile: (file) => path.join(environment.assetsPath, file),
 });
 
-let db: SQLDatabase | null = null;
+type StatementRunner = {
+  run: (params?: Record<string, any>) => void;
+  finalize: () => void;
+};
 
-async function getDb(): Promise<SQLDatabase> {
-  if (db) return db;
-  fs.mkdirSync(DB_DIR, { recursive: true });
+type CacheBackend = {
+  kind: 'sqljs' | 'native';
+  path: string;
+  exec: (sql: string) => void;
+  run: (sql: string, params?: Record<string, any>) => void;
+  prepare: (sql: string) => StatementRunner;
+  all: <T = Record<string, any>>(sql: string, params?: Record<string, any>) => T[];
+  get: <T = Record<string, any>>(sql: string, params?: Record<string, any>) => T | null;
+  transaction: (fn: () => void) => void;
+  persist: () => void;
+};
+
+let backend: CacheBackend | null = null;
+
+async function initSqlJsBackend(): Promise<CacheBackend> {
   const SQL = await SQLPromise;
   let fileData: Uint8Array | undefined;
-  if (fs.existsSync(DB_PATH)) {
-    fileData = fs.readFileSync(DB_PATH);
+  if (!fs.existsSync(SQLJS_DB_PATH) && fs.existsSync(LEGACY_SQLJS_PATH)) {
+    fs.copyFileSync(LEGACY_SQLJS_PATH, SQLJS_DB_PATH);
+    logger.info('📦 CACHE: Migrated SQL.js cache to progress.db', {
+      from: LEGACY_SQLJS_PATH,
+      to: SQLJS_DB_PATH,
+    });
   }
-  db = fileData ? new SQL.Database(fileData) : new SQL.Database();
-  initSchema(db);
-  return db;
+
+  if (fs.existsSync(SQLJS_DB_PATH)) {
+    fileData = fs.readFileSync(SQLJS_DB_PATH);
+  }
+  const database = fileData ? new SQL.Database(fileData) : new SQL.Database();
+
+  const sqljsBackend: CacheBackend = {
+    kind: 'sqljs',
+    path: SQLJS_DB_PATH,
+    exec: (sql: string) => {
+      database.run(sql);
+    },
+    run: (sql: string, params?: Record<string, any>) => {
+      database.run(sql, params);
+    },
+    prepare: (sql: string) => {
+      const stmt = database.prepare(sql);
+      return {
+        run: (params?: Record<string, any>) => {
+          stmt.run(params);
+        },
+        finalize: () => stmt.free(),
+      };
+    },
+    all: <T = Record<string, any>>(sql: string, params?: Record<string, any>) => {
+      const res = database.exec(sql, params);
+      if (!res.length) return [];
+      const rowset = res[0];
+      return rowset.values.map((row) => {
+        const obj: Record<string, any> = {};
+        rowset.columns.forEach((col, idx) => {
+          obj[col] = row[idx];
+        });
+        return obj as T;
+      });
+    },
+    get: <T = Record<string, any>>(sql: string, params?: Record<string, any>) => {
+      const rows = sqljsBackend.all<T>(sql, params);
+      return rows.length ? rows[0] : null;
+    },
+    transaction: (fn: () => void) => {
+      database.run('BEGIN TRANSACTION;');
+      try {
+        fn();
+        database.run('COMMIT;');
+      } catch (error) {
+        database.run('ROLLBACK;');
+        throw error;
+      }
+    },
+    persist: () => {
+      const data = database.export();
+      fs.writeFileSync(SQLJS_DB_PATH, Buffer.from(data));
+    },
+  };
+
+  return sqljsBackend;
 }
 
-function persist(database: SQLDatabase) {
-  const data = database.export();
-  fs.writeFileSync(DB_PATH, Buffer.from(data));
+async function getBackend(): Promise<CacheBackend> {
+  if (backend) return backend;
+  fs.mkdirSync(DB_DIR, { recursive: true });
+
+  backend = await initSqlJsBackend();
+  initSchema(backend);
+  logger.info('✅ CACHE: Using SQL.js cache (progress.db)', { path: backend.path });
+  return backend;
 }
 
-function initSchema(database: SQLDatabase) {
-  database.run(
+function initSchema(database: CacheBackend) {
+  database.exec(
     `
     CREATE TABLE IF NOT EXISTS video_tasks (
       id INTEGER PRIMARY KEY,
@@ -100,23 +180,23 @@ function initSchema(database: SQLDatabase) {
   `,
   );
   try {
-    database.run(`ALTER TABLE video_tasks ADD COLUMN athlete_main_id TEXT;`);
+    database.exec(`ALTER TABLE video_tasks ADD COLUMN athlete_main_id TEXT;`);
   } catch {
     // ignore if exists
   }
   try {
-    database.run(`ALTER TABLE video_tasks ADD COLUMN jersey_number TEXT;`);
+    database.exec(`ALTER TABLE video_tasks ADD COLUMN jersey_number TEXT;`);
   } catch {
     // ignore if exists
   }
   try {
-    database.run(`ALTER TABLE video_tasks ADD COLUMN date_completed TEXT;`);
+    database.exec(`ALTER TABLE video_tasks ADD COLUMN date_completed TEXT;`);
   } catch {
     // ignore if exists
   }
 
   // Contact info table for enriched contact data
-  database.run(
+  database.exec(
     `
     CREATE TABLE IF NOT EXISTS contact_info (
       contact_id INTEGER PRIMARY KEY,
@@ -138,11 +218,11 @@ function initSchema(database: SQLDatabase) {
   `,
   );
 
-  persist(database);
+  database.persist();
 }
 
 export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
-  const database = await getDb();
+  const database = await getBackend();
   const now = new Date().toISOString();
   const stmt = database.prepare(
     `
@@ -189,16 +269,21 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
   `,
   );
 
-  database.run('BEGIN TRANSACTION;');
-  for (const task of tasks) {
-    if (task.id === undefined || task.id === null) continue;
-    stmt.run({
-      $id: task.id,
+  database.transaction(() => {
+    for (const task of tasks) {
+      if (task.id === undefined || task.id === null) continue;
+      const gradYearValue = Number(task.grad_year);
+      if (Number.isFinite(gradYearValue) && gradYearValue > 0 && gradYearValue < MIN_ACTIVE_GRAD_YEAR) {
+        continue;
+      }
+      const stageValue = (task.video_progress_stage || task.stage || '').toString().trim() || null;
+      stmt.run({
+        $id: task.id,
       $athlete_id: task.athlete_id,
       $athlete_main_id: task.athlete_main_id || '',
       $athletename: task.athletename || null,
       $video_progress_status: task.video_progress_status || null,
-      $stage: task.stage || null,
+      $stage: stageValue,
       $sport_name: task.sport_name || null,
       $grad_year: task.grad_year || null,
       $video_due_date: task.video_due_date || null,
@@ -213,39 +298,45 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
       $cached_at: now,
       $jersey_number: task.jersey_number || null,
       $date_completed: task.date_completed || null,
-    });
-  }
-  database.run('COMMIT;');
-  stmt.free();
-  persist(database);
+      });
+    }
+  });
+  stmt.finalize();
+  database.run(
+    'DELETE FROM video_tasks WHERE grad_year IS NOT NULL AND grad_year != "" AND CAST(grad_year AS INTEGER) < $min_grad_year',
+    { $min_grad_year: MIN_ACTIVE_GRAD_YEAR }
+  );
+  database.persist();
+}
+
+export async function purgeLegacyTasks(minGradYear: number = MIN_ACTIVE_GRAD_YEAR) {
+  const database = await getBackend();
+  database.run(
+    'DELETE FROM video_tasks WHERE grad_year IS NOT NULL AND grad_year != "" AND CAST(grad_year AS INTEGER) < $min_grad_year',
+    { $min_grad_year: minGradYear }
+  );
+  database.persist();
+  logger.info('🧹 CACHE: Purged legacy tasks', { minGradYear });
 }
 
 export async function getCachedTasks(): Promise<CachedVideoTask[]> {
-  const database = await getDb();
-  const res = database.exec('SELECT * FROM video_tasks ORDER BY cached_at DESC');
-  if (!res.length) return [];
-  const rowset = res[0];
-  return rowset.values.map((row) => {
-    const obj: Record<string, any> = {};
-    rowset.columns.forEach((col, idx) => {
-      obj[col] = row[idx];
-    });
-    return obj as CachedVideoTask;
-  });
+  const database = await getBackend();
+  return database.all<CachedVideoTask>('SELECT * FROM video_tasks ORDER BY cached_at DESC');
 }
 
 export async function getLastCachedAt(): Promise<number | null> {
-  const database = await getDb();
-  const res = database.exec('SELECT MAX(cached_at) as last_cached_at FROM video_tasks');
-  if (!res.length || !res[0].values.length) return null;
-  const last = res[0].values[0][0] as string | null;
+  const database = await getBackend();
+  const row = database.get<{ last_cached_at: string | null }>(
+    'SELECT MAX(cached_at) as last_cached_at FROM video_tasks'
+  );
+  const last = row?.last_cached_at ?? null;
   if (!last) return null;
   const ts = Date.parse(last);
   return Number.isNaN(ts) ? null : ts;
 }
 
 export async function updateCachedTaskStatusStage(id: number, updates: { status?: string; stage?: string }) {
-  const database = await getDb();
+  const database = await getBackend();
   const updatedAt = new Date().toISOString();
 
   // Build SET clause dynamically based on what's being updated
@@ -279,7 +370,7 @@ export async function updateCachedTaskStatusStage(id: number, updates: { status?
     `UPDATE video_tasks SET ${setClauses.join(', ')} WHERE id = $id`,
     params,
   );
-  persist(database);
+  database.persist();
 }
 
 /**
@@ -287,7 +378,7 @@ export async function updateCachedTaskStatusStage(id: number, updates: { status?
  * Used when manually editing the completion date for Done tasks.
  */
 export async function updateCachedCompletionDate(id: number, dateCompleted: string) {
-  const database = await getDb();
+  const database = await getBackend();
   const updatedAt = new Date().toISOString();
 
   database.run(
@@ -302,7 +393,7 @@ export async function updateCachedCompletionDate(id: number, dateCompleted: stri
       $updated_at: updatedAt,
     }
   );
-  persist(database);
+  database.persist();
 }
 
 /**
@@ -311,7 +402,7 @@ export async function updateCachedCompletionDate(id: number, dateCompleted: stri
  * This stores which athlete_main_id corresponds to a given athlete_id.
  */
 export async function cacheAthleteMainId(athleteId: number, athleteMainId: string) {
-  const database = await getDb();
+  const database = await getBackend();
   const updatedAt = new Date().toISOString();
   database.run(
     `
@@ -328,7 +419,7 @@ export async function cacheAthleteMainId(athleteId: number, athleteMainId: strin
       $updated_at: updatedAt,
     },
   );
-  persist(database);
+  database.persist();
 }
 
 /**
@@ -336,13 +427,12 @@ export async function cacheAthleteMainId(athleteId: number, athleteMainId: strin
  * Returns the distinct athlete_main_id value associated with this athlete_id.
  */
 export async function getCachedAthleteMainId(athleteId: number): Promise<string | null> {
-  const database = await getDb();
-  const res = database.exec(
+  const database = await getBackend();
+  const row = database.get<{ athlete_main_id: string }>(
     'SELECT athlete_main_id FROM video_tasks WHERE athlete_id = $athlete_id AND athlete_main_id IS NOT NULL AND athlete_main_id != "" LIMIT 1',
     { $athlete_id: athleteId }
   );
-  if (!res.length || !res[0].values.length) return null;
-  return res[0].values[0][0] as string;
+  return row?.athlete_main_id ?? null;
 }
 
 /**
@@ -350,7 +440,7 @@ export async function getCachedAthleteMainId(athleteId: number): Promise<string 
  * Stores jersey number after successful API fetch.
  */
 export async function updateCachedJerseyNumber(athleteId: number, jerseyNumber: string) {
-  const database = await getDb();
+  const database = await getBackend();
   const updatedAt = new Date().toISOString();
   database.run(
     `
@@ -367,7 +457,7 @@ export async function updateCachedJerseyNumber(athleteId: number, jerseyNumber: 
       $updated_at: updatedAt,
     },
   );
-  persist(database);
+  database.persist();
 }
 
 /**
@@ -375,13 +465,12 @@ export async function updateCachedJerseyNumber(athleteId: number, jerseyNumber: 
  * Returns null if not cached or not available.
  */
 export async function getCachedJerseyNumber(athleteId: number): Promise<string | null> {
-  const database = await getDb();
-  const res = database.exec(
+  const database = await getBackend();
+  const row = database.get<{ jersey_number: string }>(
     'SELECT jersey_number FROM video_tasks WHERE athlete_id = $athlete_id AND jersey_number IS NOT NULL AND jersey_number != "" LIMIT 1',
     { $athlete_id: athleteId }
   );
-  if (!res.length || !res[0].values.length) return null;
-  return res[0].values[0][0] as string;
+  return row?.jersey_number ?? null;
 }
 
 /**
@@ -397,7 +486,7 @@ export async function getCachedJerseyNumber(athleteId: number): Promise<string |
  * @returns Object with athlete_id and athlete_main_id, or null if not found
  */
 export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string): Promise<{ athlete_id: number; athlete_main_id: string } | null> {
-  const database = await getDb();
+  const database = await getBackend();
   const id = typeof videoMsgId === 'string' ? parseInt(videoMsgId, 10) : videoMsgId;
 
   if (isNaN(id)) {
@@ -405,8 +494,8 @@ export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string)
     return null;
   }
 
-  const res = database.exec(
-    `SELECT athlete_id, athlete_main_id 
+  const row = database.get<{ athlete_id: number; athlete_main_id: string }>(
+    `SELECT athlete_id, athlete_main_id
      FROM video_tasks 
      WHERE id = $id 
        AND athlete_id IS NOT NULL 
@@ -416,15 +505,14 @@ export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string)
     { $id: id }
   );
 
-  if (!res.length || !res[0].values.length) {
+  if (!row) {
     console.warn(`⚠️ No athlete IDs found in cache for video_msg_id: ${videoMsgId}`);
     return null;
   }
 
-  const [athleteId, athleteMainId] = res[0].values[0];
   return {
-    athlete_id: athleteId as number,
-    athlete_main_id: athleteMainId as string,
+    athlete_id: row.athlete_id,
+    athlete_main_id: row.athlete_main_id,
   };
 }
 
@@ -433,7 +521,7 @@ export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string)
  * Upsert pattern - updates existing or inserts new.
  */
 export async function upsertContactInfo(contact: Partial<CachedContactInfo>): Promise<void> {
-  const database = await getDb();
+  const database = await getBackend();
   const now = new Date().toISOString();
 
   logger.info(`💾 CACHE: Upserting contact info for ${contact.contactId}`, {
@@ -485,7 +573,7 @@ export async function upsertContactInfo(contact: Partial<CachedContactInfo>): Pr
       $updated_at: now,
     }
   );
-  persist(database);
+  database.persist();
   logger.info(`✅ CACHE: Successfully upserted contact info for ${contact.contactId}`);
 }
 
@@ -494,27 +582,20 @@ export async function upsertContactInfo(contact: Partial<CachedContactInfo>): Pr
  * Returns null if not found.
  */
 export async function getCachedContactInfo(contactId: number): Promise<CachedContactInfo | null> {
-  const database = await getDb();
+  const database = await getBackend();
   logger.debug(`🔍 CACHE: Checking cache for contact ${contactId}`);
 
-  const res = database.exec(
+  const row = database.get<CachedContactInfo>(
     'SELECT * FROM contact_info WHERE contact_id = $contact_id LIMIT 1',
     { $contact_id: contactId }
   );
 
-  if (!res.length || !res[0].values.length) {
+  if (!row) {
     logger.debug(`❌ CACHE: Cache miss for contact ${contactId}`);
     return null;
   }
 
-  const row = res[0].values[0];
-  const cols = res[0].columns;
-  const obj: Record<string, any> = {};
-  cols.forEach((col, idx) => {
-    obj[col] = row[idx];
-  });
-
-  const cached = obj as CachedContactInfo;
+  const cached = row as CachedContactInfo;
   logger.info(`✅ CACHE: Cache hit for contact ${contactId}`, {
     studentName: cached.studentName,
     cachedAt: cached.cachedAt,

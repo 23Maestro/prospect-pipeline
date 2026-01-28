@@ -1756,6 +1756,334 @@ class LegacyTranslator:
         return {"contacts": contacts}
 
     @staticmethod
+    def search_athlete_to_legacy(term: str, searching_for: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert global athlete search request to legacy params.
+        GET /search/searchathlete
+        """
+        endpoint = "/search/searchathlete"
+        params = {
+            "searchingfor": searching_for if searching_for is not None else "undefined",
+            "term": term
+        }
+        return endpoint, params
+
+    @staticmethod
+    def admin_search_athlete_to_legacy(filters: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert admin athlete search filters to legacy form data.
+        POST /admin/searchathlete
+        """
+        endpoint = "/admin/searchathlete"
+        form_data = {
+            "pagename": "findathletes",
+            "searchany": "",
+            "headersearchstring": "",
+            "headersearchingfor": "",
+            "headersearchdate": "",
+            "headersearchmonth": "",
+            "first_name": "",
+            "last_name": "",
+            "email": "",
+            "parentemail": "",
+            "sport": "0",
+            "states": "0",
+            "athlete_school": "0",
+            "grad_year": "",
+            "Athl_Sales_Stage": "",
+            "select_club_sport": "",
+            "select_club_state": "",
+            "select_club_name": "",
+            "createddatefrom": "",
+            "createddateto": "",
+            "logindatefrom": "",
+            "logindateto": "",
+            "clientdatefrom": "",
+            "clientdateto": ""
+        }
+
+        if filters:
+            for key, value in filters.items():
+                if value is None:
+                    continue
+                form_data[key] = value
+
+        return endpoint, form_data
+
+    @staticmethod
+    def scout_recent_search_to_legacy(athlete_selected: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert scout recent search request to legacy params.
+        GET /admin/scoutrecentsearch
+        """
+        endpoint = "/admin/scoutrecentsearch"
+        params = {
+            "athlete_selected": athlete_selected,
+            "athlete_main_id": athlete_main_id
+        }
+        return endpoint, params
+
+    @staticmethod
+    def _split_location(location: str) -> Tuple[Optional[str], Optional[str]]:
+        if not location:
+            return None, None
+        parts = [part.strip() for part in location.split(",") if part.strip()]
+        if len(parts) >= 2:
+            return parts[0], parts[1]
+        return parts[0] if parts else None, None
+
+    @staticmethod
+    def _normalize_search_results_from_json(payload: Any, source: str) -> List[Dict[str, Any]]:
+        def pick_value(data: Dict[str, Any], keys: List[str]) -> Optional[str]:
+            for key in keys:
+                if key in data and data[key] not in (None, ""):
+                    return str(data[key]).strip()
+            return None
+
+        items: List[Any] = []
+        if isinstance(payload, dict):
+            for key in ("data", "results", "athletes", "items"):
+                if key in payload and isinstance(payload[key], list):
+                    items = payload[key]
+                    break
+            if not items:
+                items = [payload]
+        elif isinstance(payload, list):
+            items = payload
+
+        results: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            athlete_id = pick_value(item, [
+                "athlete_id", "athleteId", "id", "contactid", "contact_id", "contactId", "player_id", "playerId"
+            ])
+            if not athlete_id:
+                continue
+
+            name = pick_value(item, ["name", "athletename", "full_name", "fullName", "player_name", "athlete_name", "contactname"])
+            grad_year = pick_value(item, ["grad_year", "gradYear", "class_year", "graduation_year", "graduationYear", "year"])
+            sport = pick_value(item, ["sport", "sport_name", "sportName"])
+            state = pick_value(item, ["state", "state_abbr", "stateAbbr", "state_abbrev", "stateAbbrev", "high_school_state", "hs_state"])
+            city = pick_value(item, ["city", "high_school_city", "hs_city"])
+            high_school = pick_value(item, ["high_school", "highSchool", "school", "school_name", "schoolName"])
+            email = pick_value(item, ["email", "athlete_email", "player_email"])
+            positions = pick_value(item, ["positions", "position", "pos"])
+            athlete_main_id = pick_value(item, ["athlete_main_id", "athleteMainId", "main_id", "athlete_mainid"])
+            location = pick_value(item, ["location", "city_state", "cityState", "citystate"])
+
+            if location and (not city or not state):
+                split_city, split_state = LegacyTranslator._split_location(location)
+                city = city or split_city
+                state = state or split_state
+
+            results.append({
+                "athlete_id": athlete_id,
+                "athlete_main_id": athlete_main_id,
+                "name": name,
+                "grad_year": grad_year,
+                "sport": sport,
+                "state": state,
+                "city": city,
+                "high_school": high_school,
+                "email": email,
+                "positions": positions,
+                "source": source
+            })
+
+        return results
+
+    @staticmethod
+    def parse_search_athlete_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse global search response.
+        Supports JSON and HTML responses.
+        """
+        results: List[Dict[str, Any]] = []
+
+        try:
+            data = json.loads(raw_response)
+            results = LegacyTranslator._normalize_search_results_from_json(data, "searchathlete")
+            return {"success": True, "results": results, "format": "json"}
+        except Exception:
+            pass
+
+        soup = BeautifulSoup(raw_response, 'html.parser')
+        athlete_elements = soup.select('.athlete-result, .search-result')
+
+        for elem in athlete_elements[:50]:
+            try:
+                link = elem.select_one('a[href*="/athlete/"]')
+                href = link.get('href', '') if link else ''
+                athlete_id = None
+                if '/athlete/' in href:
+                    athlete_id = href.split('/athlete/')[-1].split('/')[0]
+                if not athlete_id:
+                    continue
+
+                name_elem = elem.select_one('.athlete-name, .name, h3, h4')
+                name = name_elem.text.strip() if name_elem else None
+                grad_elem = elem.select_one('.grad-year, .year')
+                grad_year = grad_elem.text.strip() if grad_elem else None
+                location_elem = elem.select_one('.location, .city-state')
+                location = location_elem.text.strip() if location_elem else None
+                city, state = LegacyTranslator._split_location(location or "")
+                school_elem = elem.select_one('.school, .high-school')
+                high_school = school_elem.text.strip() if school_elem else None
+
+                results.append({
+                    "athlete_id": str(athlete_id),
+                    "athlete_main_id": None,
+                    "name": name,
+                    "grad_year": grad_year,
+                    "sport": None,
+                    "state": state,
+                    "city": city,
+                    "high_school": high_school,
+                    "email": None,
+                    "positions": None,
+                    "source": "searchathlete"
+                })
+            except Exception:
+                continue
+
+        return {"success": True, "results": results, "format": "html"}
+
+    @staticmethod
+    def parse_admin_search_athlete_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse admin search athlete response.
+        Supports JSON and HTML tables.
+        """
+        results: List[Dict[str, Any]] = []
+
+        try:
+            data = json.loads(raw_response)
+            results = LegacyTranslator._normalize_search_results_from_json(data, "admin_search")
+            return {"success": True, "results": results, "format": "json"}
+        except Exception:
+            pass
+
+        soup = BeautifulSoup(raw_response, 'html.parser')
+        rows = soup.select('tr')
+
+        for row in rows:
+            try:
+                cells = [cell.get_text(strip=True) for cell in row.select('td')]
+                if not cells:
+                    continue
+
+                input_elem = row.select_one('input[contactid], input.contactselected')
+                contact_id = None
+                athlete_main_id = None
+                name = None
+
+                if input_elem:
+                    contact_id = input_elem.get('contactid') or input_elem.get('contact_id') or input_elem.get('value')
+                    athlete_main_id = input_elem.get('athlete_main_id') or input_elem.get('athleteMainId')
+                    name = input_elem.get('contactname')
+                if not contact_id:
+                    contact_id = row.get('contactid') or row.get('data-contactid') or row.get('data-contact-id')
+                if not athlete_main_id:
+                    athlete_main_id = row.get('athlete_main_id') or row.get('data-athlete-main-id')
+
+                link = row.select_one('a[href*="/athlete/"]')
+                athlete_id = None
+                if link:
+                    href = link.get('href', '')
+                    if '/athlete/' in href:
+                        athlete_id = href.split('/athlete/')[-1].split('/')[0]
+
+                if not athlete_id:
+                    athlete_id = contact_id
+
+                if not name:
+                    name = cells[0] if cells else None
+
+                email = None
+                for cell in cells:
+                    if '@' in cell:
+                        email = cell
+                        break
+
+                grad_year = None
+                state = None
+                sport = None
+                high_school = None
+                city = None
+
+                for cell in cells:
+                    if re.fullmatch(r'20\d{2}', cell):
+                        grad_year = cell
+                    if re.fullmatch(r'[A-Z]{2}', cell):
+                        state = state or cell
+                    if any(token in cell.lower() for token in ["football", "basketball", "baseball", "soccer", "volleyball", "lacrosse", "softball", "track", "wrestling"]):
+                        sport = sport or cell
+
+                if len(cells) >= 3 and not grad_year:
+                    for cell in cells:
+                        if re.search(r'20\d{2}', cell):
+                            grad_year = re.search(r'20\d{2}', cell).group(0)
+                            break
+
+                if len(cells) >= 2 and not high_school:
+                    high_school = cells[1] if cells[1] and '@' not in cells[1] else None
+
+                if len(cells) >= 3 and not city and ',' in cells[2]:
+                    city, state_candidate = LegacyTranslator._split_location(cells[2])
+                    state = state or state_candidate
+
+                if not athlete_id:
+                    continue
+
+                results.append({
+                    "athlete_id": str(athlete_id),
+                    "athlete_main_id": str(athlete_main_id) if athlete_main_id else None,
+                    "name": name,
+                    "grad_year": grad_year,
+                    "sport": sport,
+                    "state": state,
+                    "city": city,
+                    "high_school": high_school,
+                    "email": email,
+                    "positions": None,
+                    "source": "admin_search"
+                })
+            except Exception:
+                continue
+
+        return {"success": True, "results": results, "format": "html"}
+
+    @staticmethod
+    def parse_scout_recent_search_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse scout recent search response.
+        Returns a list of entries when possible.
+        """
+        entries: List[str] = []
+
+        try:
+            data = json.loads(raw_response)
+            if isinstance(data, list):
+                entries = [str(item) for item in data if item is not None]
+            elif isinstance(data, dict):
+                raw_list = data.get("data") or data.get("results") or data.get("entries") or []
+                if isinstance(raw_list, list):
+                    entries = [str(item) for item in raw_list if item is not None]
+            return {"success": True, "entries": entries, "format": "json"}
+        except Exception:
+            pass
+
+        soup = BeautifulSoup(raw_response, 'html.parser')
+        for row in soup.select('tr'):
+            text = row.get_text(" ", strip=True)
+            if text:
+                entries.append(text)
+
+        return {"success": True, "entries": entries, "format": "html"}
+
+    @staticmethod
     def assignment_defaults_to_legacy(contact_id: str) -> Tuple[str, Dict[str, Any]]:
         """
         Convert assignment defaults request to legacy params.
