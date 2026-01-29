@@ -46,6 +46,13 @@
       "description": "View and manage video editing progress for active tasks",
       "mode": "view",
       "icon": "active-video-tasks.png"
+    },
+    {
+      "name": "prospect-search",
+      "title": "Prospect Search",
+      "description": "Search global athlete records (ProspectID)",
+      "mode": "view",
+      "icon": "active-video-tasks.png"
     }
   ],
   "tools": [

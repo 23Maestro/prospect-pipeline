@@ -6,6 +6,8 @@ Handles athlete ID resolution and profile lookups.
 from fastapi import APIRouter, HTTPException, Request
 from typing import Optional
 import logging
+import time
+import httpx
 
 from app.models.schemas import (
     AthleteIdentifiers,
@@ -119,7 +121,31 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
             status_code=404,
             detail=f"Could not resolve athlete with ID: {any_id}"
         )
-    
+
+    # Prefer athleteinfo once IDs are known (fallback to profile data)
+    if athlete_id and athlete_main_id:
+        try:
+            endpoint, form_data = translator.contact_info_to_legacy(str(athlete_id), str(athlete_main_id))
+            info_response = await session.post(endpoint, data=form_data)
+            logger.info(
+                "📥 athleteinfo status=%s content_type=%s length=%s",
+                info_response.status_code,
+                info_response.headers.get("content-type"),
+                len(info_response.text or "")
+            )
+            if info_response.status_code == 200:
+                info_data = translator.parse_athleteinfo_response(info_response.text)
+                student = info_data.get("student", {}) or {}
+                profile = info_data.get("profile", {}) or {}
+
+                if student.get("firstName") or student.get("lastName"):
+                    profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
+                for key in ["grad_year", "sport", "high_school", "city", "state", "positions"]:
+                    if profile.get(key):
+                        profile_data[key] = profile.get(key)
+        except Exception as e:
+            logger.warning(f"⚠️ athleteinfo enrichment failed: {e}")
+
     result = AthleteIdentifiers(
         athlete_id=athlete_id,
         athlete_main_id=athlete_main_id or "",
@@ -131,6 +157,19 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
         positions=profile_data.get("positions"),
         sport=profile_data.get("sport"),
         jersey_number=profile_data.get("jersey_number")
+    )
+
+    logger.info(
+        "✅ Resolve result athlete_id=%s athlete_main_id=%s name=%s grad_year=%s high_school=%s city=%s state=%s sport=%s positions=%s",
+        result.athlete_id,
+        result.athlete_main_id,
+        result.name,
+        result.grad_year,
+        result.high_school,
+        result.city,
+        result.state,
+        result.sport,
+        result.positions
     )
 
     # Cache the result
@@ -200,12 +239,15 @@ async def raw_search(request: Request, payload: RawAthleteSearchRequest):
     try:
         # Primary: global search endpoint
         endpoint, params = translator.search_athlete_to_legacy(term, payload.searching_for)
+        search_start = time.monotonic()
         search_response = await session.get(endpoint, params=params)
+        search_ms = int((time.monotonic() - search_start) * 1000)
         logger.info(
-            "📥 searchathlete status=%s content_type=%s length=%s",
+            "📥 searchathlete status=%s content_type=%s length=%s duration_ms=%s",
             search_response.status_code,
             search_response.headers.get("content-type"),
-            len(search_response.text or "")
+            len(search_response.text or ""),
+            search_ms
         )
         parsed = translator.parse_search_athlete_response(search_response.text or "")
         results = _merge_search_results(results, parsed.get("results", []))
@@ -213,7 +255,8 @@ async def raw_search(request: Request, payload: RawAthleteSearchRequest):
             "source": "searchathlete",
             "status": search_response.status_code,
             "count": len(parsed.get("results", [])),
-            "format": parsed.get("format")
+            "format": parsed.get("format"),
+            "duration_ms": search_ms
         })
 
         # Optional: admin search (email/name)
@@ -237,21 +280,34 @@ async def raw_search(request: Request, payload: RawAthleteSearchRequest):
                     admin_filters["searchany"] = term
 
             endpoint, form_data = translator.admin_search_athlete_to_legacy(admin_filters)
-            admin_response = await session.post(endpoint, data=form_data)
-            logger.info(
-                "📥 admin searchathlete status=%s content_type=%s length=%s",
-                admin_response.status_code,
-                admin_response.headers.get("content-type"),
-                len(admin_response.text or "")
-            )
-            admin_parsed = translator.parse_admin_search_athlete_response(admin_response.text or "")
-            results = _merge_search_results(results, admin_parsed.get("results", []))
-            sources.append({
-                "source": "admin_search",
-                "status": admin_response.status_code,
-                "count": len(admin_parsed.get("results", [])),
-                "format": admin_parsed.get("format")
-            })
+            try:
+                admin_start = time.monotonic()
+                admin_response = await session.post(endpoint, data=form_data)
+                admin_ms = int((time.monotonic() - admin_start) * 1000)
+                logger.info(
+                    "📥 admin searchathlete status=%s content_type=%s length=%s duration_ms=%s",
+                    admin_response.status_code,
+                    admin_response.headers.get("content-type"),
+                    len(admin_response.text or ""),
+                    admin_ms
+                )
+                admin_parsed = translator.parse_admin_search_athlete_response(admin_response.text or "")
+                results = _merge_search_results(results, admin_parsed.get("results", []))
+                sources.append({
+                    "source": "admin_search",
+                    "status": admin_response.status_code,
+                    "count": len(admin_parsed.get("results", [])),
+                    "format": admin_parsed.get("format"),
+                    "duration_ms": admin_ms
+                })
+            except httpx.ReadTimeout:
+                logger.warning("⏱️ admin searchathlete timed out (continuing with existing results)")
+                sources.append({
+                    "source": "admin_search",
+                    "status": "timeout",
+                    "count": 0,
+                    "format": None
+                })
 
         # Optional: scout recent search for entries that have both IDs
         if payload.include_recent_search:
@@ -263,14 +319,17 @@ async def raw_search(request: Request, payload: RawAthleteSearchRequest):
                 if not athlete_id or not athlete_main_id:
                     continue
                 endpoint, params = translator.scout_recent_search_to_legacy(athlete_id, athlete_main_id)
+                recent_start = time.monotonic()
                 recent_response = await session.get(endpoint, params=params)
+                recent_ms = int((time.monotonic() - recent_start) * 1000)
                 recent_parsed = translator.parse_scout_recent_search_response(recent_response.text or "")
                 sources.append({
                     "source": "scoutrecentsearch",
                     "status": recent_response.status_code,
                     "athlete_id": athlete_id,
                     "count": len(recent_parsed.get("entries", [])),
-                    "format": recent_parsed.get("format")
+                    "format": recent_parsed.get("format"),
+                    "duration_ms": recent_ms
                 })
                 recent_count += 1
                 if recent_count >= recent_limit:
@@ -357,6 +416,12 @@ async def get_athlete_details(request: Request, athlete_id: str):
     try:
         # Get the athlete media page
         response = await session.get(f"/athlete/media/{athlete_id}")
+        logger.info(
+            "📥 athlete details status=%s content_type=%s length=%s",
+            response.status_code,
+            response.headers.get("content-type"),
+            len(response.text or "")
+        )
         
         if response.status_code != 200:
             raise HTTPException(status_code=404, detail="Athlete not found")

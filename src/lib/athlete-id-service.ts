@@ -55,10 +55,6 @@ export async function resolveAndCacheAthleteMainId(
       if (data.athlete_main_id) {
         // ALWAYS write back to cache
         await cacheAthleteMainId(numericId, data.athlete_main_id);
-        logger.info('athlete_main_id resolved and cached', {
-          athleteId: id,
-          athleteMainId: data.athlete_main_id,
-        });
         return {
           athleteId: id,
           athleteMainId: data.athlete_main_id,
@@ -146,7 +142,7 @@ export async function batchResolveAndCache(
     }
   }
 
-  logger.info('Batch resolution complete', {
+  logger.debug('Batch resolution complete', {
     total: tasks.length,
     fromCache: stats.cached,
     apiResolved: stats.resolved,

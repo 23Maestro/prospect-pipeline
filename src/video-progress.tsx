@@ -50,33 +50,16 @@ interface VideoProgressTask {
   high_school: string;
   high_school_city: string;
   high_school_state: string;
+  updated_at?: string;
+  cached_at?: string;
   date_completed?: string;
   raw_search?: boolean;
   [key: string]: any;
 }
 
-interface RawSearchResult {
-  athlete_id: string;
-  athlete_main_id?: string;
-  name?: string;
-  grad_year?: string;
-  sport?: string;
-  state?: string;
-  city?: string;
-  high_school?: string;
-  email?: string;
-  positions?: string;
-  source?: string;
-}
-
-interface RawSearchResponse {
-  success: boolean;
-  count: number;
-  results: RawSearchResult[];
-  sources?: Array<Record<string, any>>;
-}
-
-const MIN_ACTIVE_GRAD_YEAR = 2026;
+const CUTOFF_DAYS = 365;
+const ASSIGNED_EDITOR = 'Jerami Singleton';
+const ALLOWED_STAGES = new Set(['in queue', 'on hold', 'awaiting client', 'done']);
 const STAGE_PRIORITY: Record<string, number> = {
   'in queue': 1,
   'awaiting client': 2,
@@ -102,48 +85,6 @@ function getPositions(task: VideoProgressTask): string {
   return [task.primaryposition, task.secondaryposition, task.thirdposition]
     .filter(pos => pos && pos !== 'NA')
     .join(' | ');
-}
-
-function splitRawPositions(positions?: string): { primary: string; secondary: string; third: string } {
-  if (!positions) {
-    return { primary: '', secondary: '', third: '' };
-  }
-  const parts = positions
-    .split(/[|,]/)
-    .map((part) => part.trim())
-    .filter(Boolean);
-  return {
-    primary: parts[0] || '',
-    secondary: parts[1] || '',
-    third: parts[2] || '',
-  };
-}
-
-function mapRawSearchResultToTask(result: RawSearchResult, index: number): VideoProgressTask {
-  const rawId = Number(result.athlete_id);
-  const athleteId = Number.isFinite(rawId) && rawId > 0 ? rawId : -(index + 1);
-  const gradYear = Number(result.grad_year) || 0;
-  const positions = splitRawPositions(result.positions);
-  const sourceLabel = result.source ? `Raw Search (${result.source})` : 'Raw Search';
-
-  return {
-    athlete_id: athleteId,
-    athlete_main_id: result.athlete_main_id,
-    athletename: result.name || result.athlete_id || 'Unknown',
-    video_progress_status: sourceLabel,
-    stage: sourceLabel,
-    sport_name: result.sport || '',
-    grad_year: gradYear,
-    video_due_date: '',
-    assignedvideoeditor: '',
-    primaryposition: positions.primary,
-    secondaryposition: positions.secondary,
-    thirdposition: positions.third,
-    high_school: result.high_school || '',
-    high_school_city: result.city || '',
-    high_school_state: result.state || '',
-    raw_search: true,
-  };
 }
 
 function getStatusIcon(status: string): { source: string } | Icon {
@@ -312,11 +253,20 @@ function generateDropboxFolder(task: VideoProgressTask): string {
 }
 
 function shouldIncludeTask(task: VideoProgressTask): boolean {
-  if (!task.assignedvideoeditor || task.assignedvideoeditor.trim() !== 'Jerami Singleton') {
+  if (!task.assignedvideoeditor || task.assignedvideoeditor.trim() !== ASSIGNED_EDITOR) {
     return false;
   }
-  const gradYear = Number(task.grad_year);
-  if (Number.isFinite(gradYear) && gradYear > 0 && gradYear < MIN_ACTIVE_GRAD_YEAR) {
+  const stageValue = normalizeStageValue(getTaskStage(task));
+  if (!ALLOWED_STAGES.has(stageValue)) {
+    return false;
+  }
+  const cutoffMs = Date.now() - CUTOFF_DAYS * 24 * 60 * 60 * 1000;
+  const updatedAt = task.updated_at || task.cached_at;
+  if (!updatedAt) {
+    return false;
+  }
+  const updatedTs = Date.parse(updatedAt);
+  if (Number.isNaN(updatedTs) || updatedTs < cutoffMs) {
     return false;
   }
   return true;
@@ -333,6 +283,12 @@ function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
     const aStageRank = STAGE_PRIORITY[aStage] ?? 99;
     const bStageRank = STAGE_PRIORITY[bStage] ?? 99;
     if (aStageRank !== bStageRank) return aStageRank - bStageRank;
+
+    if (aStage === 'done' && bStage === 'done') {
+      const aCompleted = a.date_completed ? new Date(a.date_completed).getTime() : Number.NEGATIVE_INFINITY;
+      const bCompleted = b.date_completed ? new Date(b.date_completed).getTime() : Number.NEGATIVE_INFINITY;
+      if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+    }
 
     const aDue = a.video_due_date ? new Date(a.video_due_date).getTime() : Number.POSITIVE_INFINITY;
     const bDue = b.video_due_date ? new Date(b.video_due_date).getTime() : Number.POSITIVE_INFINITY;
@@ -1192,7 +1148,6 @@ export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [stageFilter, setStageFilter] = useState<string>('In Queue');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
   const [rawSearchEnabled, setRawSearchEnabled] = useState(false);
   const [searchText, setSearchText] = useState('');
   const [rawSearchResults, setRawSearchResults] = useState<VideoProgressTask[]>([]);
@@ -1217,12 +1172,14 @@ export default function VideoProgress() {
   };
 
   const loadTasks = async () => {
+    let hadCache = false;
     try {
       setIsLoading(true);
 
       // Try cache first
       const cached = await getCachedTasks();
       if (cached.length > 0) {
+        hadCache = true;
         const filtered = cached.filter(shouldIncludeTask);
         setTasks(sortTasks(filtered));
         setIsLoading(false);
@@ -1269,16 +1226,18 @@ export default function VideoProgress() {
       setTasks(sortTasks(filtered));
 
       await showToast({
-        style: filtered.length > 0 ? Toast.Style.Success : Toast.Style.Failure,
+        style: Toast.Style.Success,
         title: `Found ${filtered.length} active tasks`,
-        message: filtered.length === 0 ? 'All tasks are done!' : 'Ready to work',
+        message: filtered.length === 0 ? 'No active tasks right now' : 'Ready to work',
       });
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to load tasks',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      if (!hadCache) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to load tasks',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1286,49 +1245,23 @@ export default function VideoProgress() {
 
   const runRawSearch = async (term: string) => {
     const requestId = ++rawSearchRequestId.current;
-    const isEmail = term.includes('@');
-    logger.info('Raw search start', { term, requestId, isEmail });
+    logger.info('Raw search start (cache)', { term, requestId });
     setIsRawSearchLoading(true);
     try {
-      const response = await apiFetch('/athlete/raw-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          term,
-          email: isEmail ? term : undefined,
-          include_admin_search: true,
-          include_recent_search: true,
-        }),
+      const cached = await getCachedTasks();
+      const normalizedTerm = term.trim().toLowerCase();
+      const matches = cached.filter((task) => {
+        const name = (task.athletename || '').toLowerCase();
+        return name.includes(normalizedTerm);
       });
-      const { text, json, contentType } = await readResponseBody(response);
-      logger.info('Raw search response', {
+      const mapped = matches.map((task) => ({
+        ...task,
+        raw_search: true,
+      }));
+
+      logger.info('Raw search cache results', {
         term,
         requestId,
-        status: response.status,
-        contentType,
-        length: text.length,
-        preview: text.slice(0, 400),
-      });
-      if (!response.ok) {
-        const errMessage = json?.detail || json?.message || text.slice(0, 200) || `HTTP ${response.status}`;
-        throw new Error(errMessage);
-      }
-
-      const payload = json as RawSearchResponse | null;
-      if (!payload || !Array.isArray(payload.results)) {
-        throw new Error('Invalid raw search response');
-      }
-      if (payload.sources) {
-        logger.info('Raw search sources', { term, requestId, sources: payload.sources });
-      }
-
-      const results = payload.results;
-      const mapped = results.map((result, index) => mapRawSearchResultToTask(result, index));
-
-      logger.info('Raw search mapped results', {
-        term,
-        requestId,
-        apiCount: payload.count,
         count: mapped.length,
         sample: mapped[0] ? { athlete_id: mapped[0].athlete_id, name: mapped[0].athletename } : null,
       });
@@ -1420,7 +1353,7 @@ export default function VideoProgress() {
     return haystack.includes(normalizedSearch);
   };
 
-  // Apply both stage and status filters (unless raw search is active)
+  // Apply stage filter (unless raw search is active)
   const filteredTasks = activeTasks.filter((task) => {
     if (shouldBypassFilters) {
       return true;
@@ -1438,8 +1371,7 @@ export default function VideoProgress() {
       stageFilter === 'all'
         ? true
         : normalizeStageValue(stageValue) === normalizeStageValue(stageFilter);
-    const statusMatch = statusFilter === 'all' || task.video_progress_status === statusFilter;
-    return stageMatch && statusMatch;
+    return stageMatch;
   });
 
   // Handle combined filter change
@@ -1452,14 +1384,11 @@ export default function VideoProgress() {
       if (stage === 'Done') {
         await reloadFromCache();
       }
-    } else if (value.startsWith('status:')) {
-      setStatusFilter(value.replace('status:', ''));
     }
   };
 
   // Build current filter value for display
-  const currentFilterValue =
-    stageFilter !== 'all' ? `stage:${stageFilter}` : `status:${statusFilter}`;
+  const currentFilterValue = `stage:${stageFilter}`;
 
   return (
     <List
@@ -1470,7 +1399,7 @@ export default function VideoProgress() {
       onSearchTextChange={setSearchText}
       searchBarAccessory={
         <List.Dropdown
-          tooltip="Filter by Stage or Status (⌘P)"
+          tooltip="Filter by Stage (⌘P)"
           value={currentFilterValue}
           onChange={handleFilterChange}
         >
@@ -1480,14 +1409,6 @@ export default function VideoProgress() {
             <List.Dropdown.Item title="Awaiting Client" value="stage:Awaiting Client" />
             <List.Dropdown.Item title="On Hold" value="stage:On Hold" />
             <List.Dropdown.Item title="Done" value="stage:Done" />
-          </List.Dropdown.Section>
-          <List.Dropdown.Section title="📊 Status">
-            <List.Dropdown.Item title="All Statuses" value="status:all" />
-            <List.Dropdown.Item title="Revisions" value="status:Revisions" />
-            <List.Dropdown.Item title="HUDL" value="status:HUDL" />
-            <List.Dropdown.Item title="Dropbox" value="status:Dropbox" />
-            <List.Dropdown.Item title="Not Approved" value="status:Not Approved" />
-            <List.Dropdown.Item title="External Links" value="status:External Links" />
           </List.Dropdown.Section>
         </List.Dropdown>
       }
@@ -1501,7 +1422,7 @@ export default function VideoProgress() {
       ) : (
         <List.Section
           title={`In Progress (${filteredTasks.length})`}
-          subtitle={shouldBypassFilters ? 'Raw Search' : undefined}
+          subtitle={rawSearchEnabled ? 'Raw Search' : undefined}
         >
           {filteredTasks.map((task) => (
             <List.Item

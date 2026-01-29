@@ -538,6 +538,135 @@ class LegacyTranslator:
         try:
             tree = HTMLParser(html)
 
+            def _clean_text(value: Optional[str]) -> Optional[str]:
+                if not value:
+                    return None
+                cleaned = re.sub(r'\s+', ' ', value).strip()
+                if not cleaned:
+                    return None
+                lowered = cleaned.lower()
+                if "z-index" in lowered or "position:" in lowered or "background:" in lowered:
+                    return None
+                return cleaned
+
+            def _first_non_empty(values: List[Optional[str]]) -> Optional[str]:
+                for value in values:
+                    cleaned = _clean_text(value)
+                    if cleaned:
+                        return cleaned
+                return None
+
+            # Extract core profile fields from input/select elements when present
+            def _input_value(name: str) -> Optional[str]:
+                node = tree.css_first(f'input[name="{name}"]')
+                if not node:
+                    return None
+                value = node.attributes.get("value", "")
+                return _clean_text(value)
+
+            def _select_value(name: str) -> Optional[str]:
+                node = tree.css_first(f'select[name="{name}"]')
+                if not node:
+                    return None
+                selected = node.css_first('option[selected]')
+                if selected and selected.text(strip=True):
+                    return _clean_text(selected.text(strip=True))
+                for option in node.css('option'):
+                    text = option.text(strip=True)
+                    if text:
+                        return _clean_text(text)
+                return None
+
+            def _text_following(node) -> Optional[str]:
+                if not node:
+                    return None
+                if node.next:
+                    next_text = node.next.text(strip=True) if hasattr(node.next, 'text') else None
+                    cleaned = _clean_text(next_text)
+                    if cleaned:
+                        return cleaned
+                parent = node.parent
+                if parent:
+                    for sibling in parent.css('span, div, td, dd, p, h4, h3'):
+                        if sibling is node:
+                            continue
+                        cleaned = _clean_text(sibling.text(strip=True))
+                        if cleaned:
+                            return cleaned
+                    if parent.next:
+                        next_text = parent.next.text(strip=True) if hasattr(parent.next, 'text') else None
+                        cleaned = _clean_text(next_text)
+                        if cleaned:
+                            return cleaned
+                return None
+
+            def _label_value(label: str) -> Optional[str]:
+                label_lower = label.lower()
+                for node in tree.css('label, th, td, dt, div, span, p'):
+                    text = _clean_text(node.text(strip=True))
+                    if not text:
+                        continue
+                    if text.lower() == label_lower:
+                        return _text_following(node)
+                return None
+
+            first_name = _input_value("first_name")
+            last_name = _input_value("last_name")
+            name_from_inputs = _first_non_empty([
+                " ".join([n for n in [first_name, last_name] if n]).strip() if (first_name or last_name) else None
+            ])
+            if name_from_inputs:
+                data["name"] = name_from_inputs
+
+            if not data.get("grad_year"):
+                data["grad_year"] = _first_non_empty([
+                    _input_value("grad_year"),
+                    _select_value("grad_year"),
+                    _label_value("Grad Year"),
+                ])
+            if not data.get("sport"):
+                data["sport"] = _first_non_empty([
+                    _select_value("sport"),
+                    _label_value("Sport"),
+                ])
+            if not data.get("high_school"):
+                data["high_school"] = _first_non_empty([
+                    _input_value("high_school"),
+                    _label_value("High School"),
+                ])
+            if not data.get("city"):
+                data["city"] = _input_value("city")
+            if not data.get("state"):
+                data["state"] = _input_value("state")
+            if not data.get("positions"):
+                data["positions"] = _first_non_empty([
+                    _input_value("positions"),
+                    _label_value("Positions"),
+                ])
+
+            # Location fallback: "City, ST"
+            if not data.get("city") or not data.get("state"):
+                location_text = _label_value("Location") or _label_value("City")
+                if location_text and "," in location_text:
+                    parts = [p.strip() for p in location_text.split(",")]
+                    if len(parts) >= 2:
+                        data.setdefault("city", parts[0])
+                        data.setdefault("state", parts[1])
+
+            # Name fallback from prominent headings
+            if not data.get("name"):
+                heading = tree.css_first('h1, h2, h3')
+                if heading:
+                    heading_text = _clean_text(heading.text(strip=True))
+                    if heading_text:
+                        data["name"] = heading_text
+
+            # Grad year fallback from "2028 - Sophomore" pattern
+            if not data.get("grad_year"):
+                year_match = re.search(r'\b(20\d{2})\b', html)
+                if year_match:
+                    data["grad_year"] = year_match.group(1)
+
             # Map grade level to tab ID patterns for context
             grade_patterns = {
                 12: ["senior", "12"],
@@ -593,6 +722,24 @@ class LegacyTranslator:
                     logger.debug(f"🔍 Found {len(jersey_labels)} labels containing 'jersey': {jersey_labels[:10]}")
                 else:
                     logger.debug(f"🔍 No labels containing 'jersey' found at all")
+
+            debug_fields = {}
+            patterns = {
+                "first_name": r'name="first_name"[^>]*value="([^"]*)"',
+                "last_name": r'name="last_name"[^>]*value="([^"]*)"',
+                "sport": r'name="sport"[^>]*>([^<]{1,80})',
+                "high_school": r'name="high_school"[^>]*value="([^"]*)"',
+                "city": r'name="city"[^>]*value="([^"]*)"',
+                "state": r'name="state"[^>]*value="([^"]*)"',
+                "grad_year": r'name="grad_year"[^>]*value="([^"]*)"',
+            }
+            for key, pattern in patterns.items():
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match and match.group(1):
+                    debug_fields[key] = match.group(1).strip()
+
+            if debug_fields:
+                logger.info("🔎 Profile debug fields (not persisted): %s", debug_fields)
 
         except Exception as e:
             logger.error(f"Profile data extraction error: {e}", exc_info=True)
@@ -792,7 +939,15 @@ class LegacyTranslator:
         Returns: {
             "student": {"firstName": ..., "lastName": ..., "phone": ..., "email": ...},
             "parent1": {"firstName": ..., "lastName": ..., "relationship": ..., "phone": ..., "email": ...},
-            "parent2": {...} or None
+            "parent2": {...} or None,
+            "profile": {
+                "sport": ...,
+                "grad_year": ...,
+                "high_school": ...,
+                "city": ...,
+                "state": ...,
+                "positions": ...
+            }
         }
         """
         import logging
@@ -819,6 +974,36 @@ class LegacyTranslator:
                 value = inp.attributes.get('value', '')
                 if value:
                     return value.strip() if value.strip() else None
+            return None
+
+        def get_input_value_contains(keys: List[str]) -> Optional[str]:
+            inputs = tree.css('input')
+            for inp in inputs:
+                if not inp.attributes:
+                    continue
+                name = (inp.attributes.get('name', '') or '').lower()
+                for key in keys:
+                    if key in name:
+                        value = inp.attributes.get('value', '')
+                        if value:
+                            return value.strip()
+            return None
+
+        def get_select_value_contains(keys: List[str]) -> Optional[str]:
+            selects = tree.css('select')
+            for sel in selects:
+                if not sel.attributes:
+                    continue
+                name = (sel.attributes.get('name', '') or '').lower()
+                for key in keys:
+                    if key in name:
+                        selected = sel.css_first('option[selected]')
+                        if selected and selected.text(strip=True):
+                            return selected.text(strip=True)
+                        for option in sel.css('option'):
+                            text = option.text(strip=True)
+                            if text:
+                                return text
             return None
 
         # Extract student data
@@ -948,8 +1133,37 @@ class LegacyTranslator:
         if parent2:
             parent2['email'] = parent2_email
 
-        logger.info(f"📋 Parsed contact data - Student: {student.get('firstName')} {student.get('lastName')}, Parent1: {parent1.get('firstName') if parent1 else None}")
-        return {"student": student, "parent1": parent1, "parent2": parent2}
+        # Extract profile fields from athleteinfo (best-effort)
+        sport = get_select_value_contains(["sport"]) or get_input_value_contains(["sport"])
+        grad_year = get_select_value_contains(["grad_year", "graduation"]) or get_input_value_contains(["grad_year", "graduation"])
+        high_school = get_input_value_contains(["high_school", "school"]) or get_select_value_contains(["high_school", "school"])
+        city = get_input_value_contains(["city"])
+        state = get_input_value_contains(["state"])
+        primary_pos = get_input_value_contains(["primaryposition", "primary_position"])
+        secondary_pos = get_input_value_contains(["secondaryposition", "secondary_position"])
+        third_pos = get_input_value_contains(["thirdposition", "third_position"])
+        positions = get_input_value_contains(["positions"])
+        if not positions:
+            position_parts = [primary_pos, secondary_pos, third_pos]
+            positions = ", ".join([p for p in position_parts if p and p != "NA"])
+
+        profile = {
+            "sport": sport,
+            "grad_year": grad_year,
+            "high_school": high_school,
+            "city": city,
+            "state": state,
+            "positions": positions
+        }
+
+        logger.info(
+            "📋 Parsed athleteinfo: student=%s %s, parent1=%s, profile=%s",
+            student.get('firstName'),
+            student.get('lastName'),
+            parent1.get('firstName') if parent1 else None,
+            profile
+        )
+        return {"student": student, "parent1": parent1, "parent2": parent2, "profile": profile}
 
     @staticmethod
     def parse_contact_emails_response(html_text: str) -> List[str]:
@@ -1905,6 +2119,15 @@ class LegacyTranslator:
         try:
             data = json.loads(raw_response)
             results = LegacyTranslator._normalize_search_results_from_json(data, "searchathlete")
+            if results:
+                sample = results[0]
+                logger.info(
+                    "✅ searchathlete parsed format=json count=%s sample=%s",
+                    len(results),
+                    {k: sample.get(k) for k in ["athlete_id", "athlete_main_id", "name", "grad_year", "sport", "high_school", "state", "city", "email"]}
+                )
+            else:
+                logger.info("✅ searchathlete parsed format=json count=0")
             return {"success": True, "results": results, "format": "json"}
         except Exception:
             pass
@@ -1948,6 +2171,15 @@ class LegacyTranslator:
             except Exception:
                 continue
 
+        if results:
+            sample = results[0]
+            logger.info(
+                "✅ searchathlete parsed format=html count=%s sample=%s",
+                len(results),
+                {k: sample.get(k) for k in ["athlete_id", "athlete_main_id", "name", "grad_year", "sport", "high_school", "state", "city", "email"]}
+            )
+        else:
+            logger.info("✅ searchathlete parsed format=html count=0")
         return {"success": True, "results": results, "format": "html"}
 
     @staticmethod
@@ -1961,12 +2193,60 @@ class LegacyTranslator:
         try:
             data = json.loads(raw_response)
             results = LegacyTranslator._normalize_search_results_from_json(data, "admin_search")
+            if results:
+                sample = results[0]
+                logger.info(
+                    "✅ admin_search parsed format=json count=%s sample=%s",
+                    len(results),
+                    {k: sample.get(k) for k in ["athlete_id", "athlete_main_id", "name", "grad_year", "sport", "high_school", "state", "city", "email"]}
+                )
+            else:
+                logger.info("✅ admin_search parsed format=json count=0")
             return {"success": True, "results": results, "format": "json"}
         except Exception:
             pass
 
         soup = BeautifulSoup(raw_response, 'html.parser')
         rows = soup.select('tr')
+
+        # Try to map headers to column indices when possible
+        header_map: Dict[str, int] = {}
+        header_row = soup.select_one('tr th')
+        if header_row:
+            headers = [th.get_text(strip=True).lower() for th in header_row.parent.select('th')]
+            for idx, label in enumerate(headers):
+                if 'first name' in label:
+                    header_map['first_name'] = idx
+                if 'last name' in label:
+                    header_map['last_name'] = idx
+                if label == 'sport' or 'sport' in label:
+                    header_map['sport'] = idx
+                if 'high school' in label:
+                    header_map['high_school'] = idx
+                if label == 'state' or 'state' in label:
+                    header_map['state'] = idx
+                if 'grad year' in label or 'grad' in label:
+                    header_map['grad_year'] = idx
+
+        def _has_suspicious_text(value: Optional[str]) -> bool:
+            if not value:
+                return False
+            lowered = value.lower()
+            return any(token in lowered for token in [
+                "view player id",
+                "fixed;",
+                "z-index",
+                "position: fixed",
+                "background:",
+                "height:",
+                "width:",
+                "top:",
+                "left:",
+            ])
+
+        def _summarize_cells(cells: List[str]) -> str:
+            raw = " | ".join(cells)
+            return raw if len(raw) <= 240 else f"{raw[:240]}..."
 
         for row in rows:
             try:
@@ -1992,12 +2272,29 @@ class LegacyTranslator:
                 athlete_id = None
                 if link:
                     href = link.get('href', '')
-                    if '/athlete/' in href:
-                        athlete_id = href.split('/athlete/')[-1].split('/')[0]
+                    match = re.search(r'/athlete/(?:profile/)?(\d+)', href)
+                    if match:
+                        athlete_id = match.group(1)
 
                 if not athlete_id:
                     athlete_id = contact_id
+                if athlete_id and not re.fullmatch(r'\d+', str(athlete_id)):
+                    logger.warning(
+                        "⚠️ admin_search athlete_id not numeric id=%s href=%s cells=%s",
+                        athlete_id,
+                        href or "",
+                        _summarize_cells(cells)
+                    )
 
+                if header_map and not name:
+                    first = None
+                    last = None
+                    if 'first_name' in header_map and header_map['first_name'] < len(cells):
+                        first = cells[header_map['first_name']]
+                    if 'last_name' in header_map and header_map['last_name'] < len(cells):
+                        last = cells[header_map['last_name']]
+                    if first or last:
+                        name = " ".join([value for value in [first, last] if value]).strip()
                 if not name:
                     name = cells[0] if cells else None
 
@@ -2021,6 +2318,16 @@ class LegacyTranslator:
                     if any(token in cell.lower() for token in ["football", "basketball", "baseball", "soccer", "volleyball", "lacrosse", "softball", "track", "wrestling"]):
                         sport = sport or cell
 
+                if header_map:
+                    if not sport and 'sport' in header_map and header_map['sport'] < len(cells):
+                        sport = cells[header_map['sport']]
+                    if not high_school and 'high_school' in header_map and header_map['high_school'] < len(cells):
+                        high_school = cells[header_map['high_school']]
+                    if not state and 'state' in header_map and header_map['state'] < len(cells):
+                        state = cells[header_map['state']]
+                    if not grad_year and 'grad_year' in header_map and header_map['grad_year'] < len(cells):
+                        grad_year = cells[header_map['grad_year']]
+
                 if len(cells) >= 3 and not grad_year:
                     for cell in cells:
                         if re.search(r'20\d{2}', cell):
@@ -2036,6 +2343,18 @@ class LegacyTranslator:
 
                 if not athlete_id:
                     continue
+
+                if any(_has_suspicious_text(value) for value in [name, high_school, sport, city, state]):
+                    logger.warning(
+                        "⚠️ admin_search suspicious fields id=%s name=%s high_school=%s city=%s state=%s sport=%s cells=%s",
+                        athlete_id,
+                        name,
+                        high_school,
+                        city,
+                        state,
+                        sport,
+                        _summarize_cells(cells)
+                    )
 
                 results.append({
                     "athlete_id": str(athlete_id),
@@ -2053,6 +2372,15 @@ class LegacyTranslator:
             except Exception:
                 continue
 
+        if results:
+            sample = results[0]
+            logger.info(
+                "✅ admin_search parsed format=html count=%s sample=%s",
+                len(results),
+                {k: sample.get(k) for k in ["athlete_id", "athlete_main_id", "name", "grad_year", "sport", "high_school", "state", "city", "email"]}
+            )
+        else:
+            logger.info("✅ admin_search parsed format=html count=0")
         return {"success": True, "results": results, "format": "html"}
 
     @staticmethod

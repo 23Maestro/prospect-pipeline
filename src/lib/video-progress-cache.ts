@@ -24,6 +24,8 @@ export interface CachedVideoTask {
   high_school_state: string;
   updated_at: string;
   cached_at: string;
+  source?: string;
+  last_seen_at?: string;
   jersey_number?: string;
   date_completed?: string;
 }
@@ -173,6 +175,8 @@ function initSchema(database: CacheBackend) {
       high_school_state TEXT,
       updated_at TEXT,
       cached_at TEXT,
+      source TEXT,
+      last_seen_at TEXT,
       jersey_number TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_video_tasks_status ON video_tasks (video_progress_status);
@@ -191,6 +195,16 @@ function initSchema(database: CacheBackend) {
   }
   try {
     database.exec(`ALTER TABLE video_tasks ADD COLUMN date_completed TEXT;`);
+  } catch {
+    // ignore if exists
+  }
+  try {
+    database.exec(`ALTER TABLE video_tasks ADD COLUMN source TEXT;`);
+  } catch {
+    // ignore if exists
+  }
+  try {
+    database.exec(`ALTER TABLE video_tasks ADD COLUMN last_seen_at TEXT;`);
   } catch {
     // ignore if exists
   }
@@ -224,16 +238,17 @@ function initSchema(database: CacheBackend) {
 export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
   const database = await getBackend();
   const now = new Date().toISOString();
+  const syncAt = now;
   const stmt = database.prepare(
     `
     INSERT INTO video_tasks (
       id, athlete_id, athlete_main_id, athletename, video_progress_status, stage, sport_name, grad_year,
       video_due_date, assignedvideoeditor, primaryposition, secondaryposition, thirdposition,
-      high_school, high_school_city, high_school_state, updated_at, cached_at, jersey_number, date_completed
+      high_school, high_school_city, high_school_state, updated_at, cached_at, source, last_seen_at, jersey_number, date_completed
     ) VALUES (
       $id, $athlete_id, $athlete_main_id, $athletename, $video_progress_status, $stage, $sport_name, $grad_year,
       $video_due_date, $assignedvideoeditor, $primaryposition, $secondaryposition, $thirdposition,
-      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $jersey_number, $date_completed
+      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $source, $last_seen_at, $jersey_number, $date_completed
     )
     ON CONFLICT(id) DO UPDATE SET
       -- STATIC FIELDS (preserve if API returns null)
@@ -260,6 +275,8 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
       assignedvideoeditor=excluded.assignedvideoeditor,
       updated_at=excluded.updated_at,
       cached_at=excluded.cached_at,
+      source=excluded.source,
+      last_seen_at=excluded.last_seen_at,
 
       -- SPECIAL: date_completed (preserve if Done)
       date_completed=CASE
@@ -279,29 +296,39 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
       const stageValue = (task.video_progress_stage || task.stage || '').toString().trim() || null;
       stmt.run({
         $id: task.id,
-      $athlete_id: task.athlete_id,
-      $athlete_main_id: task.athlete_main_id || '',
-      $athletename: task.athletename || null,
-      $video_progress_status: task.video_progress_status || null,
-      $stage: stageValue,
-      $sport_name: task.sport_name || null,
-      $grad_year: task.grad_year || null,
-      $video_due_date: task.video_due_date || null,
-      $assignedvideoeditor: task.assignedvideoeditor || null,
-      $primaryposition: task.primaryposition || null,
-      $secondaryposition: task.secondaryposition || null,
-      $thirdposition: task.thirdposition || null,
-      $high_school: task.high_school || null,
-      $high_school_city: task.high_school_city || null,
-      $high_school_state: task.high_school_state || null,
-      $updated_at: task.updated_at || now,
-      $cached_at: now,
-      $jersey_number: task.jersey_number || null,
-      $date_completed: task.date_completed || null,
+        $athlete_id: task.athlete_id,
+        $athlete_main_id: task.athlete_main_id || '',
+        $athletename: task.athletename || null,
+        $video_progress_status: task.video_progress_status || null,
+        $stage: stageValue,
+        $sport_name: task.sport_name || null,
+        $grad_year: task.grad_year || null,
+        $video_due_date: task.video_due_date || null,
+        $assignedvideoeditor: task.assignedvideoeditor || null,
+        $primaryposition: task.primaryposition || null,
+        $secondaryposition: task.secondaryposition || null,
+        $thirdposition: task.thirdposition || null,
+        $high_school: task.high_school || null,
+        $high_school_city: task.high_school_city || null,
+        $high_school_state: task.high_school_state || null,
+        $updated_at: task.updated_at || now,
+        $cached_at: now,
+        $source: task.source || 'server',
+        $last_seen_at: syncAt,
+        $jersey_number: task.jersey_number || null,
+        $date_completed: task.date_completed || null,
       });
     }
   });
   stmt.finalize();
+  database.run(
+    `
+    DELETE FROM video_tasks
+    WHERE (source IS NULL OR source = 'server')
+      AND (last_seen_at IS NULL OR last_seen_at < $sync_at)
+  `,
+    { $sync_at: syncAt }
+  );
   database.run(
     'DELETE FROM video_tasks WHERE grad_year IS NOT NULL AND grad_year != "" AND CAST(grad_year AS INTEGER) < $min_grad_year',
     { $min_grad_year: MIN_ACTIVE_GRAD_YEAR }

@@ -8,6 +8,8 @@ import logging
 import httpx
 import re
 import json
+from datetime import datetime, timedelta
+import zlib
 
 from app.models.schemas import (
     VideoSubmitRequest,
@@ -20,6 +22,8 @@ from app.models.schemas import (
     DueDateUpdateResponse,
     VideoProgressFilters,
     VideoProgressResponse,
+    MaterializeTaskRequest,
+    MaterializeTaskResponse,
     VideoAttachmentsResponse,
     SeasonsResponse,
     Season,
@@ -421,8 +425,8 @@ async def get_video_progress(
 
         if "application/json" not in content_type:
             if is_json_payload:
-                logger.warning(
-                    "⚠️ Video progress returned JSON payload with non-JSON content-type=%s",
+                logger.debug(
+                    "Video progress returned JSON payload with non-JSON content-type=%s",
                     content_type
                 )
             else:
@@ -452,6 +456,80 @@ async def get_video_progress(
     except Exception as e:
         logger.error(f"❌ Video progress fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/materialize", response_model=MaterializeTaskResponse)
+async def materialize_video_task(request: Request, payload: MaterializeTaskRequest):
+    """
+    Materialize a video progress task for a global prospect.
+    Reuses the video progress request path to check for existing tasks first.
+    """
+    session = get_video_progress_session(request)
+    translator = LegacyTranslator()
+
+    filters = {
+        "search_all_fields": payload.athlete_id,
+        "video_editor": payload.assigned_editor,
+    }
+    endpoint, form_data = translator.video_progress_to_legacy(filters)
+
+    try:
+        response = await session.post_video_progress(endpoint, data=form_data)
+        raw_text = response.text or ""
+        result = translator.parse_video_progress_response(raw_text)
+
+        if not result.get("success"):
+            raise HTTPException(status_code=502, detail="Video progress lookup failed")
+
+        tasks = result.get("tasks", [])
+        matches = [
+            task for task in tasks
+            if str(task.get("athlete_id")) == str(payload.athlete_id)
+            and (task.get("assignedvideoeditor") or "").strip() == payload.assigned_editor
+        ]
+        if matches:
+            return MaterializeTaskResponse(success=True, existed=True, task=matches[0])
+
+        # No existing task → materialize a synthetic row for cache
+        try:
+            athlete_num = int(str(payload.athlete_id))
+        except ValueError:
+            athlete_num = zlib.crc32(str(payload.athlete_id).encode("utf-8"))
+        synthetic_id = -abs(int(athlete_num))
+        now = datetime.utcnow().isoformat()
+        due_date = ""
+        if str(payload.stage).strip().lower() == "in queue":
+            due_date = (datetime.utcnow().date() + timedelta(days=7)).strftime("%m/%d/%Y")
+
+        task = {
+            "id": synthetic_id,
+            "athlete_id": int(str(payload.athlete_id)),
+            "athlete_main_id": payload.athlete_main_id,
+            "athletename": payload.athlete_name or f"Athlete {payload.athlete_id}",
+            "video_progress_status": payload.status or "",
+            "video_progress_stage": payload.stage,
+            "stage": payload.stage,
+            "sport_name": payload.sport_name or "",
+            "grad_year": payload.grad_year or "",
+            "video_due_date": due_date,
+            "assignedvideoeditor": payload.assigned_editor,
+            "primaryposition": "",
+            "secondaryposition": "",
+            "thirdposition": "",
+            "high_school": payload.high_school or "",
+            "high_school_city": payload.city or "",
+            "high_school_state": payload.state or "",
+            "updated_at": now,
+            "cached_at": now,
+            "source": payload.source or "raycast:global_prospect_ingest",
+        }
+
+        return MaterializeTaskResponse(success=True, existed=False, task=task)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"❌ Materialize task error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/attachments", response_model=VideoAttachmentsResponse)

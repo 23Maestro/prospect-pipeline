@@ -181,6 +181,29 @@ class VideoProgressResponse(BaseModel):
     tasks: List[dict]  # Includes: positions, video_due_date
 
 
+class MaterializeTaskRequest(BaseModel):
+    """Request to materialize a video progress task from global search."""
+    athlete_id: str
+    athlete_main_id: str
+    athlete_name: Optional[str] = None
+    sport_name: Optional[str] = None
+    grad_year: Optional[str] = None
+    high_school: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    assigned_editor: str = Field(default="Jerami Singleton")
+    stage: str = Field(default="In Queue")
+    status: Optional[str] = Field(default="")
+    source: Optional[str] = Field(default="raycast:global_prospect_ingest")
+
+
+class MaterializeTaskResponse(BaseModel):
+    """Response for materialized task."""
+    success: bool
+    existed: bool
+    task: Dict[str, Any]
+
+
 class RawAthleteSearchRequest(BaseModel):
     """Request for global athlete search (raw search)."""
     term: str = Field(..., description="Search term (name, email, or ID)")
