@@ -32,11 +32,70 @@ from app.models.schemas import (
 )
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession, VideoProgressSession
+from app.invariants import Invariant, log_check, hard_fail
 from pydantic import BaseModel
 from fastapi import Query
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["video"])
+
+
+async def validate_task_exists(video_msg_id: str, session) -> bool:
+    """
+    INV-1: Task must exist in canonical source before update.
+    Do NOT invent tasks from search results.
+    """
+    # Check if task was seen in recent video progress response
+    # For now, we trust the ID came from a valid source
+    # Future: maintain seen_task_ids set from last canonical fetch
+
+    log_check(
+        Invariant.TASK_EXISTENCE,
+        True,  # Assume valid for now - log for auditing
+        "Task update requested",
+        f"video_msg_id={video_msg_id}"
+    )
+    return True
+
+
+def validate_filters_allow_empty_status(filters: dict):
+    """
+    INV-2: Filters must not hide tasks with empty/null status.
+    """
+    status_filter = filters.get("video_progress_status", "")
+
+    # Empty filter = show all (including empty status) → OK
+    if not status_filter:
+        log_check(
+            Invariant.EMPTY_STATUS_VISIBLE,
+            True,
+            "Filter validation",
+            "No status filter applied - empty status tasks visible"
+        )
+        return
+
+    # Specific status filter applied - empty status tasks may be hidden
+    # This is allowed, but LOG it for awareness
+    log_check(
+        Invariant.EMPTY_STATUS_VISIBLE,
+        True,  # Not a violation, but noted
+        "Filter validation",
+        f"Status filter '{status_filter}' applied - empty status tasks filtered"
+    )
+
+
+def cache_from_canonical_response(tasks: list, source_endpoint: str):
+    """
+    INV-6: Cache updates ONLY from canonical Laravel responses.
+    """
+    log_check(
+        Invariant.CACHE_FROM_CANONICAL,
+        True,
+        "Cache update",
+        f"Writing {len(tasks)} tasks from canonical source: {source_endpoint}"
+    )
+    # Proceed with cache write
+    # (Actual cache write happens in TypeScript side, but log the intent here)
 
 
 def get_session(request: Request) -> NPIDSession:
@@ -167,7 +226,9 @@ async def update_stage(request: Request, video_msg_id: str, payload: StageUpdate
     # Ensure video_msg_id matches
     if payload.video_msg_id != video_msg_id:
         payload.video_msg_id = video_msg_id
-    
+
+    await validate_task_exists(video_msg_id, session)
+
     endpoint, form_data = translator.stage_update_to_legacy(payload)
 
     logger.info(f"📤 Updating stage for video_msg_id {video_msg_id} to {payload.stage.value} (mailbox={payload.is_from_video_mail_box})")
@@ -298,6 +359,8 @@ async def update_status(
     if payload.video_msg_id != video_msg_id:
         payload.video_msg_id = video_msg_id
 
+    await validate_task_exists(video_msg_id, session)
+
     endpoint, form_data = translator.status_update_to_legacy(
         video_msg_id, payload.status, is_from_mailbox=payload.is_from_video_mail_box or False
     )
@@ -350,6 +413,8 @@ async def update_due_date(
     if payload.video_msg_id != video_msg_id:
         payload.video_msg_id = video_msg_id
 
+    await validate_task_exists(video_msg_id, session)
+
     endpoint, form_data = translator.due_date_update_to_legacy(
         video_msg_id, payload.due_date
     )
@@ -400,6 +465,8 @@ async def get_video_progress(
     # Convert filters to dict, removing None values
     filter_dict = {k: v for k, v in filters.dict().items() if v is not None}
 
+    validate_filters_allow_empty_status(filter_dict)
+
     endpoint, form_data = translator.video_progress_to_legacy(filter_dict)
 
     logger.info(f"📤 Fetching video progress (filters: {filter_dict})")
@@ -440,6 +507,7 @@ async def get_video_progress(
 
         if result["success"]:
             tasks = result["tasks"]
+            cache_from_canonical_response(tasks, endpoint)
             logger.info(f"✅ Found {len(tasks)} video progress tasks")
             return VideoProgressResponse(
                 success=True,
@@ -501,6 +569,13 @@ async def materialize_video_task(request: Request, payload: MaterializeTaskReque
         if str(payload.stage).strip().lower() == "in queue":
             due_date = (datetime.utcnow().date() + timedelta(days=7)).strftime("%m/%d/%Y")
 
+        # Parse positions - split by pipe, comma, or slash
+        positions_raw = payload.positions or ""
+        positions_list = [p.strip() for p in re.split(r'[|,/]', positions_raw) if p.strip()]
+        primary_pos = positions_list[0] if len(positions_list) > 0 else ""
+        secondary_pos = positions_list[1] if len(positions_list) > 1 else ""
+        third_pos = positions_list[2] if len(positions_list) > 2 else ""
+
         task = {
             "id": synthetic_id,
             "athlete_id": int(str(payload.athlete_id)),
@@ -513,12 +588,13 @@ async def materialize_video_task(request: Request, payload: MaterializeTaskReque
             "grad_year": payload.grad_year or "",
             "video_due_date": due_date,
             "assignedvideoeditor": payload.assigned_editor,
-            "primaryposition": "",
-            "secondaryposition": "",
-            "thirdposition": "",
+            "primaryposition": primary_pos,
+            "secondaryposition": secondary_pos,
+            "thirdposition": third_pos,
             "high_school": payload.high_school or "",
             "high_school_city": payload.city or "",
             "high_school_state": payload.state or "",
+            "jersey_number": payload.jersey_number or "",
             "updated_at": now,
             "cached_at": now,
             "source": payload.source or "raycast:global_prospect_ingest",

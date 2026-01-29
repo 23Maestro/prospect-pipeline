@@ -54,6 +54,7 @@ interface VideoProgressTask {
   cached_at?: string;
   date_completed?: string;
   raw_search?: boolean;
+  jersey_number?: string;
   [key: string]: any;
 }
 
@@ -298,8 +299,15 @@ function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
 
 function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): string {
   const positions = getPositions(task);
+  const jersey = task.jersey_number || '';
+
+  // Build name line with jersey number if available
+  const nameLine = jersey
+    ? `${task.athletename.toUpperCase()} ${jersey}`
+    : task.athletename.toUpperCase();
+
   const lines = [
-    task.athletename.toUpperCase(),
+    nameLine,
     positions ? `Class of ${task.grad_year} - ${positions}` : `Class of ${task.grad_year}`,
     task.high_school,
     `${task.high_school_city}, ${task.high_school_state}`,

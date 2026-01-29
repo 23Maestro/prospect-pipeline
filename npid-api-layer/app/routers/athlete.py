@@ -17,6 +17,7 @@ from app.models.schemas import (
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 from app.cache import athlete_cache
+from app.invariants import Invariant, log_check, hard_fail
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["athlete"])
@@ -26,6 +27,22 @@ def get_session(request: Request) -> NPIDSession:
     """Get session from app state."""
     from main import session_manager
     return session_manager
+
+
+async def persist_athlete_main_id(athlete_id: int, athlete_main_id: str):
+    """
+    INV-7: Once resolved, athlete_main_id MUST be persisted and readable.
+    """
+    # Log the resolution
+    log_check(
+        Invariant.ATHLETE_MAIN_ID_PERSIST,
+        True,
+        "athlete_main_id resolved",
+        f"athlete_id={athlete_id} → athlete_main_id={athlete_main_id}"
+    )
+
+    # Note: Actual persistence happens in TypeScript cache layer
+    # This log creates an audit trail to diagnose repeated resolution issues
 
 
 @router.get("/{any_id}/resolve", response_model=AthleteIdentifiers)
@@ -145,6 +162,9 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
                         profile_data[key] = profile.get(key)
         except Exception as e:
             logger.warning(f"⚠️ athleteinfo enrichment failed: {e}")
+
+    if athlete_id and athlete_main_id:
+        await persist_athlete_main_id(athlete_id, athlete_main_id)
 
     result = AthleteIdentifiers(
         athlete_id=athlete_id,

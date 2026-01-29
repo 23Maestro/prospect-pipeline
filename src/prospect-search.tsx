@@ -26,6 +26,7 @@ interface ProspectResult {
   email?: string;
   positions?: string;
   source?: string;
+  jersey_number?: string;
 }
 
 interface ProspectSearchResponse {
@@ -38,27 +39,41 @@ interface ProspectSearchResponse {
 const ASSIGNED_EDITOR = 'Jerami Singleton';
 const STAGE_OPTIONS = ['In Queue', 'Awaiting Client', 'On Hold', 'Done'];
 const STATUS_OPTIONS = ['', 'HUDL', 'Dropbox', 'Revisions', 'Not Approved', 'External Links'];
+const MIN_GRAD_YEAR = 2026;
 
 function formatLocation(result: ProspectResult): string {
   const parts = [result.city, result.state].filter(Boolean);
   return parts.join(', ');
 }
 
+function cleanPositions(positions?: string): string | null {
+  if (!positions) return null;
+  // Remove "Positions" prefix if present
+  let cleaned = positions.replace(/^Positions?\s*/i, '').trim();
+  // Clean up common formatting issues
+  cleaned = cleaned.replace(/,\s*/g, ', ');
+  return cleaned || null;
+}
+
 function buildProspectMarkdown(result: ProspectResult): string {
-  const lines = [
-    `# ${result.name || `Athlete ${result.athlete_id}`}`,
-    '',
-    `**Athlete ID:** ${result.athlete_id || 'N/A'}`,
-    `**Athlete Main ID:** ${result.athlete_main_id || 'N/A'}`,
-    `**Grad Year:** ${result.grad_year || 'N/A'}`,
-    `**Sport:** ${result.sport || 'N/A'}`,
-    `**High School:** ${result.high_school || 'N/A'}`,
-    `**Location:** ${formatLocation(result) || 'N/A'}`,
-    `**Email:** ${result.email || 'N/A'}`,
-    `**Positions:** ${result.positions || 'N/A'}`,
-    `**Source:** ${result.source || 'N/A'}`,
-  ];
-  return lines.join('\n');
+  const location = formatLocation(result) || 'N/A';
+  const positions = cleanPositions(result.positions) || 'N/A';
+  const jersey = result.jersey_number || '—';
+
+  return `# ${result.name || `Athlete ${result.athlete_id}`}
+
+| Field | Value |
+|-------|-------|
+| Athlete ID | ${result.athlete_id || 'N/A'} |
+| Main ID | ${result.athlete_main_id || 'N/A'} |
+| Grad Year | ${result.grad_year || 'N/A'} |
+| Sport | ${result.sport || 'N/A'} |
+| High School | ${result.high_school || 'N/A'} |
+| Location | ${location} |
+| Email | ${result.email || 'N/A'} |
+| Positions | ${positions} |
+| Jersey # | ${jersey} |
+`;
 }
 
 async function parseJsonResponse(response: Response) {
@@ -107,6 +122,7 @@ async function ensureProspectDetails(result: ProspectResult): Promise<ProspectRe
     city: result.city || details.city,
     state: result.state || details.state,
     positions: result.positions || details.positions,
+    jersey_number: details.jersey_number,
   };
 }
 
@@ -255,7 +271,13 @@ export default function ProspectSearch() {
       }
 
       if (requestId === requestIdRef.current) {
-        setResults(payload.results);
+        // Filter out old grad years (< 2026)
+        const filteredResults = payload.results.filter((r) => {
+          const year = parseInt(r.grad_year || '', 10);
+          // Keep if no grad year (don't filter unknown) or if >= MIN_GRAD_YEAR
+          return isNaN(year) || year >= MIN_GRAD_YEAR;
+        });
+        setResults(filteredResults);
       }
 
       logger.info('Prospect search results', {
@@ -321,6 +343,8 @@ export default function ProspectSearch() {
           high_school: enriched.high_school,
           city: enriched.city,
           state: enriched.state,
+          positions: enriched.positions,
+          jersey_number: enriched.jersey_number,
           assigned_editor: ASSIGNED_EDITOR,
           stage: payload.stage,
           status: payload.status,

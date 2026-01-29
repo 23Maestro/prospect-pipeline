@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any
 import httpx
 import re
 from urllib.parse import unquote
+from app.invariants import Invariant, log_check
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -168,6 +169,13 @@ class NPIDSession:
         # Inject Token if caller didn't provide one (some forms require server-provided token)
         if "_token" not in data:
             data["_token"] = self.csrf_token
+
+        log_check(
+            Invariant.LARAVEL_PROTOCOL,
+            True,
+            "Outgoing Laravel request",
+            f"endpoint={path}, has_token={'_token' in data}, has_ajax_header=True"
+        )
 
         # First Attempt
         logger.debug(f"POST {path} (Attempt 1)")

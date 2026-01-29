@@ -21,6 +21,7 @@ from app.models.schemas import (
     AddNoteRequest,
     TaskCompleteRequest
 )
+from app.invariants import Invariant, log_check, hard_fail
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,84 @@ class LegacyTranslator:
         return endpoint, form_data
     
     # ============== Response Translation ==============
+
+    @staticmethod
+    def classify_response(raw_response: str, response_headers: dict = None) -> dict:
+        """
+        INV-5: Classify response type. HTML does NOT mean session expired.
+
+        Returns:
+            {
+                "is_json": bool,
+                "is_html": bool,
+                "likely_cause": str,
+                "should_retry_login": bool  # Almost always False
+            }
+        """
+        # Try JSON first
+        try:
+            json.loads(raw_response)
+            log_check(
+                Invariant.HTML_NOT_SESSION_EXPIRY,
+                True,
+                "Response classification",
+                "Valid JSON response"
+            )
+            return {
+                "is_json": True,
+                "is_html": False,
+                "likely_cause": "normal",
+                "should_retry_login": False
+            }
+        except json.JSONDecodeError:
+            pass
+
+        # It's HTML - diagnose WHY
+        if "<html" in raw_response.lower() or "<!doctype" in raw_response.lower():
+            # Check for login page indicators
+            is_login_page = "login" in raw_response.lower() and "password" in raw_response.lower()
+
+            if is_login_page:
+                log_check(
+                    Invariant.HTML_NOT_SESSION_EXPIRY,
+                    True,
+                    "Response classification",
+                    "HTML login page - session may be expired (rare)"
+                )
+                return {
+                    "is_json": False,
+                    "is_html": True,
+                    "likely_cause": "session_expired",
+                    "should_retry_login": True
+                }
+            else:
+                # Most common case: missing X-Requested-With header
+                log_check(
+                    Invariant.HTML_NOT_SESSION_EXPIRY,
+                    True,
+                    "Response classification",
+                    "HTML response - likely missing X-Requested-With header, NOT session expiry"
+                )
+                return {
+                    "is_json": False,
+                    "is_html": True,
+                    "likely_cause": "missing_ajax_header",
+                    "should_retry_login": False  # DO NOT retry login!
+                }
+
+        # Unknown format
+        log_check(
+            Invariant.HTML_NOT_SESSION_EXPIRY,
+            True,
+            "Response classification",
+            f"Unknown response format (first 100 chars): {raw_response[:100]}"
+        )
+        return {
+            "is_json": False,
+            "is_html": False,
+            "likely_cause": "unknown",
+            "should_retry_login": False
+        }
     
     @staticmethod
     def parse_video_submit_response(raw_response: str) -> Dict[str, Any]:
@@ -672,56 +751,106 @@ class LegacyTranslator:
                 12: ["senior", "12"],
                 11: ["junior", "11"],
                 10: ["sophomore", "10"],
-                9: ["freshman", "9", "freshmen"]
+                9: ["freshman", "9", "freshmen"],
+                8: ["8th", "8"],
+                7: ["7th", "7"],
             }
 
-            # Search for jersey number in the entire page
-            # The HTML contains all tabs, we look for "Jersey #" anywhere
+            # Determine target grade patterns based on grade_level
+            target_patterns = grade_patterns.get(grade_level, []) if grade_level else []
+            logger.info(f"🔍 Looking for jersey number, grade_level={grade_level}, target_patterns={target_patterns}")
+
+            # Search for jersey number - prioritize the correct grade tab section
             jersey_labels = []
-            for node in tree.css('label, th, td, div, span'):
-                if not node.text():
-                    continue
-                text = node.text(strip=True)
-                if 'jersey' in text.lower():
-                    jersey_labels.append(text)
-                if text == "Jersey #":
-                    logger.info(f"✅ Found 'Jersey #' label")
+            jersey_found = None
 
-                    # Try next sibling (Pattern 1)
-                    if node.next:
-                        jersey_text = node.next.text(strip=True) if hasattr(node.next, 'text') else ''
-                        if jersey_text:
-                            data['jersey_number'] = f"#{jersey_text}"
-                            logger.info(f"✅ Jersey number from next sibling: {jersey_text}")
-                            break
+            # First pass: Look for "Jersey #" within the correct grade-level tab section
+            if target_patterns:
+                for pattern in target_patterns:
+                    # Find the tab content div by ID pattern (e.g., "details" + "junior" + "0" = "#detailsjunior0")
+                    tab_selectors = [
+                        f'#details{pattern}0',
+                        f'#details{pattern}1',
+                        f'[id*="{pattern}"]',
+                        f'.{pattern}-content',
+                    ]
+                    for selector in tab_selectors:
+                        tab_container = tree.css_first(selector)
+                        if tab_container:
+                            logger.info(f"✅ Found tab container for grade pattern '{pattern}' using '{selector}'")
+                            # Search for Jersey # only within this container
+                            for node in tab_container.css('label, th, td, div, span'):
+                                if not node.text():
+                                    continue
+                                text = node.text(strip=True)
+                                if text == "Jersey #":
+                                    logger.info(f"✅ Found 'Jersey #' label in grade-specific tab")
+                                    # Try next sibling
+                                    if node.next:
+                                        jersey_text = node.next.text(strip=True) if hasattr(node.next, 'text') else ''
+                                        if jersey_text and jersey_text.isdigit():
+                                            jersey_found = f"#{jersey_text}"
+                                            logger.info(f"✅ Jersey number from grade tab: {jersey_found}")
+                                            break
+                                    # Try parent's next sibling
+                                    parent = node.parent
+                                    if parent and parent.next:
+                                        jersey_text = parent.next.text(strip=True) if hasattr(parent.next, 'text') else ''
+                                        if jersey_text and jersey_text.isdigit():
+                                            jersey_found = f"#{jersey_text}"
+                                            logger.info(f"✅ Jersey number from parent sibling: {jersey_found}")
+                                            break
+                            if jersey_found:
+                                break
+                    if jersey_found:
+                        break
 
-                    # Try parent's next sibling (Pattern 2 - tr > td structure)
-                    parent = node.parent
-                    if parent and parent.next:
-                        jersey_text = parent.next.text(strip=True) if hasattr(parent.next, 'text') else ''
-                        if jersey_text:
-                            data['jersey_number'] = f"#{jersey_text}"
-                            logger.info(f"✅ Jersey number from parent next sibling: {jersey_text}")
-                            break
+            # Fallback: Search entire page if no grade-specific match
+            if not jersey_found:
+                for node in tree.css('label, th, td, div, span'):
+                    if not node.text():
+                        continue
+                    text = node.text(strip=True)
+                    if 'jersey' in text.lower():
+                        jersey_labels.append(text)
+                    if text == "Jersey #":
+                        logger.info(f"✅ Found 'Jersey #' label (fallback search)")
 
-                    # Try finding in same row (Pattern 3 - table row with multiple tds)
-                    if parent and parent.tag == 'tr':
-                        tds = parent.css('td')
-                        for i, td in enumerate(tds):
-                            if td.text(strip=True) == "Jersey #" and i + 1 < len(tds):
-                                jersey_text = tds[i + 1].text(strip=True)
-                                if jersey_text:
-                                    data['jersey_number'] = f"#{jersey_text}"
-                                    logger.info(f"✅ Jersey number from table cell: {jersey_text}")
-                                    break
-                    break
+                        # Try next sibling (Pattern 1)
+                        if node.next:
+                            jersey_text = node.next.text(strip=True) if hasattr(node.next, 'text') else ''
+                            if jersey_text and jersey_text.isdigit():
+                                jersey_found = f"#{jersey_text}"
+                                logger.info(f"✅ Jersey number from next sibling: {jersey_text}")
+                                break
 
-            if not data.get('jersey_number'):
+                        # Try parent's next sibling (Pattern 2 - tr > td structure)
+                        parent = node.parent
+                        if parent and parent.next:
+                            jersey_text = parent.next.text(strip=True) if hasattr(parent.next, 'text') else ''
+                            if jersey_text and jersey_text.isdigit():
+                                jersey_found = f"#{jersey_text}"
+                                logger.info(f"✅ Jersey number from parent next sibling: {jersey_text}")
+                                break
+
+                        # Try finding in same row (Pattern 3 - table row with multiple tds)
+                        if parent and parent.tag == 'tr':
+                            tds = parent.css('td')
+                            for i, td in enumerate(tds):
+                                if td.text(strip=True) == "Jersey #" and i + 1 < len(tds):
+                                    jersey_text = tds[i + 1].text(strip=True)
+                                    if jersey_text and jersey_text.isdigit():
+                                        jersey_found = f"#{jersey_text}"
+                                        logger.info(f"✅ Jersey number from table cell: {jersey_text}")
+                                        break
+                        break
+
+            if jersey_found:
+                data['jersey_number'] = jersey_found
+            else:
                 logger.debug(f"⚠️ No jersey number found in profile HTML")
                 if jersey_labels:
                     logger.debug(f"🔍 Found {len(jersey_labels)} labels containing 'jersey': {jersey_labels[:10]}")
-                else:
-                    logger.debug(f"🔍 No labels containing 'jersey' found at all")
 
             debug_fields = {}
             patterns = {

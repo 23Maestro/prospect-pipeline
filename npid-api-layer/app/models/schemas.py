@@ -191,6 +191,8 @@ class MaterializeTaskRequest(BaseModel):
     high_school: Optional[str] = None
     city: Optional[str] = None
     state: Optional[str] = None
+    positions: Optional[str] = None
+    jersey_number: Optional[str] = None
     assigned_editor: str = Field(default="Jerami Singleton")
     stage: str = Field(default="In Queue")
     status: Optional[str] = Field(default="")
