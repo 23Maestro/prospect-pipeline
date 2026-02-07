@@ -14,6 +14,7 @@ import {
 import { useForm, FormValidation } from "@raycast/utils";
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from "./lib/python-server-client";
 import { resolveAndCacheAthleteMainId } from "./lib/athlete-id-service";
+import { updateCachedTaskStatusStage } from "./lib/video-progress-cache";
 import * as cheerio from "cheerio";
 import * as fs from "fs";
 
@@ -1020,6 +1021,17 @@ export default function VideoUpdatesCommand(
       if (videoMsgId) {
         await updateStageDone(videoMsgId);
         log('✅ Stage updated to done', { videoMsgId });
+        const numericId = Number(videoMsgId);
+        if (!Number.isNaN(numericId)) {
+          try {
+            await updateCachedTaskStatusStage(numericId, { stage: 'Done' });
+            log('✅ Cache updated to Done', { videoMsgId });
+          } catch (cacheError) {
+            log('⚠️ Cache update failed', cacheError);
+          }
+        } else {
+          log('⚠️ Invalid video_msg_id for cache update', { videoMsgId });
+        }
       } else {
         log('⚠️ No video_msg_id; skipped stage update');
       }

@@ -7,7 +7,7 @@ import {
   VideoTeamContact,
   VideoTeamSearchCategory,
 } from "../types/video-team";
-import { logger } from "./logger";
+import { logger, notesLogger, searchLogger } from "./logger";
 
 /**
  * Fetch inbox threads via FastAPI.
@@ -258,7 +258,7 @@ export async function fetchAthleteNotes(
   athleteId: string,
   athleteMainId: string
 ): Promise<AthleteNote[]> {
-  console.log('📝 fetchAthleteNotes API call:', { athleteId, athleteMainId });
+  notesLogger.info('NOTES_API_LIST_START', { athleteId, athleteMainId });
   const response = await apiFetch("/notes/list", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -268,11 +268,16 @@ export async function fetchAthleteNotes(
     }),
   });
 
-  console.log('📝 notes/list response status:', response.status);
+  notesLogger.info('NOTES_API_LIST_RESPONSE', { athleteId, athleteMainId, status: response.status });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('📝 notes/list error response:', errorText);
+    notesLogger.error('NOTES_API_LIST_FAILURE', {
+      athleteId,
+      athleteMainId,
+      status: response.status,
+      errorPreview: errorText.slice(0, 300),
+    });
     let error: any;
     try {
       error = JSON.parse(errorText);
@@ -284,7 +289,7 @@ export async function fetchAthleteNotes(
   }
 
   const data = await response.json() as { notes?: AthleteNote[] };
-  console.log('📝 notes/list success, notes count:', data?.notes?.length ?? 0);
+  notesLogger.info('NOTES_API_LIST_SUCCESS', { athleteId, athleteMainId, count: data?.notes?.length ?? 0 });
   return data?.notes ?? [];
 }
 
@@ -297,7 +302,12 @@ export async function addAthleteNote(params: {
   title: string;
   description: string;
 }): Promise<void> {
-  console.log('📝 addAthleteNote API call:', params);
+  notesLogger.info('NOTES_API_ADD_START', {
+    athleteId: params.athleteId,
+    athleteMainId: params.athleteMainId,
+    titlePreview: params.title.slice(0, 100),
+    descriptionLength: params.description.length,
+  });
   const response = await apiFetch("/notes/add", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -309,11 +319,20 @@ export async function addAthleteNote(params: {
     }),
   });
 
-  console.log('📝 notes/add response status:', response.status);
+  notesLogger.info('NOTES_API_ADD_RESPONSE', {
+    athleteId: params.athleteId,
+    athleteMainId: params.athleteMainId,
+    status: response.status,
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.error('📝 notes/add error response:', errorText);
+    notesLogger.error('NOTES_API_ADD_FAILURE', {
+      athleteId: params.athleteId,
+      athleteMainId: params.athleteMainId,
+      status: response.status,
+      errorPreview: errorText.slice(0, 300),
+    });
     let error: any;
     try {
       error = JSON.parse(errorText);
@@ -325,7 +344,11 @@ export async function addAthleteNote(params: {
   }
 
   const result = await response.json().catch(() => ({})) as any;
-  console.log('📝 notes/add response:', result);
+  notesLogger.info('NOTES_API_ADD_SUCCESS', {
+    athleteId: params.athleteId,
+    athleteMainId: params.athleteMainId,
+    resultPreview: JSON.stringify(result).slice(0, 200),
+  });
   if (result?.success === false) {
     throw new Error(result?.message || "Failed to add note");
   }
@@ -435,7 +458,10 @@ export async function bulkResolveAthleteMainIds(
     const athleteId = thread.contact_id || (thread as any).athlete_id;
 
     if (!athleteId) {
-      console.warn('⚠️ Thread missing contact_id; skipping resolve:', thread);
+      searchLogger.warn('BULK_RESOLVE_SKIP_MISSING_CONTACT_ID', {
+        threadId: thread.id,
+        itemCode: thread.itemCode,
+      });
       continue;
     }
 
@@ -446,7 +472,7 @@ export async function bulkResolveAthleteMainIds(
     }
   }
 
-  console.log(`🔍 BULK RESOLVE: ${missingIds.length} of ${threads.length} threads missing athlete_main_id`);
+  searchLogger.info('BULK_RESOLVE_START', { missing: missingIds.length, total: threads.length });
 
   if (missingIds.length === 0) {
     return { athleteMainIds };
@@ -464,17 +490,20 @@ export async function bulkResolveAthleteMainIds(
         });
 
         if (!response.ok) {
-          console.warn(`⚠️ Failed to resolve ${athleteId}: ${response.status}`);
+          searchLogger.warn('BULK_RESOLVE_ONE_FAILURE', { athleteId, status: response.status });
           return;
         }
 
         const data = (await response.json()) as ResolvedAthleteIds;
         if (data.athlete_main_id) {
           athleteMainIds.set(athleteId, data.athlete_main_id);
-          console.log(`✅ Resolved ${athleteId} → main_id: ${data.athlete_main_id}`);
+          searchLogger.info('BULK_RESOLVE_ONE_SUCCESS', { athleteId, athleteMainId: data.athlete_main_id });
         }
       } catch (error) {
-        console.error(`❌ Error resolving ${athleteId}:`, error);
+        searchLogger.error('BULK_RESOLVE_ONE_EXCEPTION', {
+          athleteId,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     });
 
@@ -482,10 +511,10 @@ export async function bulkResolveAthleteMainIds(
 
     // Progress logging
     const progress = Math.min(i + BATCH_SIZE, missingIds.length);
-    console.log(`📊 Progress: ${progress}/${missingIds.length} resolved`);
+    searchLogger.info('BULK_RESOLVE_PROGRESS', { progress, total: missingIds.length });
   }
 
-  console.log(`✅ BULK RESOLVE: Resolved ${athleteMainIds.size} athlete_main_ids`);
+  searchLogger.info('BULK_RESOLVE_COMPLETE', { resolved: athleteMainIds.size, total: threads.length });
   return { athleteMainIds };
 }
 

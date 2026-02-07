@@ -14,11 +14,15 @@ import {
 } from '@raycast/api';
 import { format } from 'date-fns';
 import { useEffect, useState, useRef } from 'react';
+import path from 'path';
 import { apiFetch } from './lib/python-server-client';
+import { executePythonScript } from './lib/python-executor';
+import { getPythonScriptPath, WORKSPACE_ROOT } from './lib/python-config';
 import {
   getCachedTasks,
   upsertTasks,
   updateCachedTaskStatusStage,
+  updateCachedTaskDueDate,
   getCachedContactInfo,
   upsertContactInfo,
 } from './lib/video-progress-cache';
@@ -29,9 +33,20 @@ import {
   transformCacheToContactInfo,
   type ContactInfo,
 } from './lib/npid-mcp-adapter';
+import { getInQueueReminderDefaultDate } from './lib/craft-reminder-date';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
-import { logger } from './lib/logger';
+import { craftLogger, logger } from './lib/logger';
 import EmailStudentAthletesCommand from './email-student-athletes';
+
+interface Preferences {
+  craftBaseUrl?: string;
+  craftApiToken?: string;
+  craftInQueueBlockId?: string;
+  craftEmailFollowUpBlockId?: string;
+  craftDropboxFoldersBlockId?: string;
+  dropboxToken?: string;
+  scoutApiKey?: string;
+}
 
 interface VideoProgressTask {
   id?: number; // video_msg_id for updates
@@ -67,6 +82,22 @@ const STAGE_PRIORITY: Record<string, number> = {
   'on hold': 3,
   'done': 4,
 };
+const CRAFT_ICON = 'Craft_Liquid_Glass.png';
+const CRAFT_MCP_CLIENT_SCRIPT = getPythonScriptPath('craft_mcp_client.py');
+const CRAFT_MCP_PYTHON_PATH = path.join(WORKSPACE_ROOT, 'src', 'python', 'venv', 'bin', 'python');
+
+type ReminderType = 'inbox-follow-up' | 'in-queue' | 'dropbox-folder';
+
+const CRAFT_TARGET_DOCUMENT_BY_TYPE: Record<ReminderType, string> = {
+  'inbox-follow-up': 'Email Follow Up',
+  'in-queue': 'In Queue',
+  'dropbox-folder': 'Dropbox Folders',
+};
+const CRAFT_DEFAULT_DOC_BLOCK_IDS: Partial<Record<ReminderType, string>> = {
+  'in-queue': 'B6A1A7FC-7A56-4C50-B621-5AA46FB68AFB',
+  'inbox-follow-up': 'BBD4A1F5-E02D-41B6-9AC7-699E488FD8D1',
+  'dropbox-folder': '19B66AEB-FDCA-4569-9FCD-F1906D67098E',
+};
 
 async function readResponseBody(response: any) {
   const contentType = response?.headers?.get?.('content-type') || '';
@@ -80,6 +111,230 @@ async function readResponseBody(response: any) {
     }
   }
   return { text, json, contentType };
+}
+
+function formatReminderDate(value: Date): string {
+  return format(value, 'yyyy-MM-dd');
+}
+
+function buildMarker(markerType: string, athleteName: string, reminderDate: string): string {
+  const athleteSlug = athleteName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const marker = `npid-${markerType}-${athleteSlug}-${reminderDate}`;
+  return marker;
+}
+
+function getReminderMarkerTypes(reminderType: ReminderType): string[] {
+  if (reminderType === 'inbox-follow-up') return ['inbox-follow-up', 'follow-up'];
+  if (reminderType === 'in-queue') return ['in-queue', 'due-date'];
+  return ['dropbox-folder'];
+}
+
+function buildReminderMarkdown(athleteName: string): string {
+  const markdown = `- [ ] ${athleteName}`;
+  craftLogger.debug('CRAFT_MARKDOWN_BUILD', {
+    athleteName,
+    markdownPreview: markdown.slice(0, 180),
+  });
+  return markdown;
+}
+
+function normalizeCraftBaseUrl(rawBaseUrl: string): string {
+  const trimmed = (rawBaseUrl || '').trim().replace(/\/+$/, '');
+  if (!trimmed) return '';
+  try {
+    const url = new URL(trimmed);
+    const isMcpUrl = url.hostname === 'mcp.craft.do' && /^\/links\/[^/]+\/mcp\/?$/i.test(url.pathname);
+    if (isMcpUrl) {
+      return trimmed;
+    }
+    craftLogger.error('CRAFT_MCP_URL_REQUIRED', {
+      inputPreview: trimmed.slice(0, 140),
+    });
+    return '';
+  } catch {
+    craftLogger.error('CRAFT_MCP_URL_PARSE_FAILED', {
+      inputPreview: trimmed.slice(0, 140),
+    });
+    return '';
+  }
+}
+
+function extractCraftBlockId(rawValue?: string): string | undefined {
+  const raw = (rawValue || '').trim();
+  if (!raw) return undefined;
+  if (/^[A-Za-z0-9-]{8,}$/.test(raw)) {
+    return raw;
+  }
+  try {
+    const parsed = new URL(raw);
+    const blockId = parsed.searchParams.get('blockId')?.trim();
+    if (blockId && /^[A-Za-z0-9-]{8,}$/.test(blockId)) {
+      return blockId;
+    }
+  } catch {
+    // ignore parse failures and fall through
+  }
+  return undefined;
+}
+
+function extractCraftPassword(rawValue?: string): string | undefined {
+  const raw = (rawValue || '').trim();
+  if (!raw) return undefined;
+  const match = raw.match(/^password\s*(?::|is)?\s*(.+)$/i);
+  let value = (match?.[1] || raw).trim();
+  value = value.replace(/^:+\s*/, '');
+  if (/^bearer\s+/i.test(value) || /^authorization\s*:/i.test(raw)) {
+    throw new Error('MCP mode expects a Craft password value, not an Authorization/Bearer token');
+  }
+  return value;
+}
+
+function getCraftConfig(): { baseUrl: string; password?: string } {
+  const prefs = getPreferenceValues<Preferences>();
+  const baseUrl = normalizeCraftBaseUrl(prefs.craftBaseUrl || '');
+  const password = extractCraftPassword(prefs.craftApiToken);
+  craftLogger.info('CRAFT_CONFIG_READ', {
+    hasBaseUrl: !!baseUrl,
+    hasPassword: !!password,
+    baseUrlPreview: baseUrl ? `${baseUrl.slice(0, 60)}...` : '',
+  });
+  if (!baseUrl) {
+    craftLogger.error('CRAFT_CONFIG_MISSING', {
+      hasBaseUrl: !!baseUrl,
+      hasPassword: !!password,
+    });
+    throw new Error('Set Craft Base URL to an MCP link: https://mcp.craft.do/links/<id>/mcp');
+  }
+  return { baseUrl: baseUrl.replace(/\/+$/, ''), password };
+}
+
+function getCraftDocumentOverrideId(reminderType: ReminderType): string | undefined {
+  const prefs = getPreferenceValues<Preferences>();
+  const rawOverride =
+    reminderType === 'in-queue'
+      ? prefs.craftInQueueBlockId
+      : reminderType === 'inbox-follow-up'
+      ? prefs.craftEmailFollowUpBlockId
+      : prefs.craftDropboxFoldersBlockId;
+  const parsed = extractCraftBlockId(rawOverride);
+  if (rawOverride && !parsed) {
+    craftLogger.warn('CRAFT_DOC_OVERRIDE_INVALID', {
+      reminderType,
+      rawOverridePreview: String(rawOverride).slice(0, 140),
+    });
+  }
+  if (parsed) {
+    craftLogger.info('CRAFT_DOC_OVERRIDE_RESOLVED', {
+      reminderType,
+      documentId: parsed,
+      source: 'preference',
+    });
+    return parsed;
+  }
+  const defaultId = CRAFT_DEFAULT_DOC_BLOCK_IDS[reminderType];
+  if (defaultId) {
+    craftLogger.info('CRAFT_DOC_OVERRIDE_RESOLVED', {
+      reminderType,
+      documentId: defaultId,
+      source: 'default',
+    });
+    return defaultId;
+  }
+  return undefined;
+}
+
+async function resolveTargetDocumentId(
+  _baseUrl: string,
+  _password: string | undefined,
+  reminderType: ReminderType
+): Promise<string> {
+  const overrideId = getCraftDocumentOverrideId(reminderType);
+  if (overrideId) {
+    craftLogger.info('CRAFT_DOCUMENT_RESOLVED', {
+      strategy: 'block_id_override',
+      reminderType,
+      documentId: overrideId,
+    });
+    return overrideId;
+  }
+  throw new Error(
+    `Missing block ID for ${CRAFT_TARGET_DOCUMENT_BY_TYPE[reminderType]}. Set the corresponding Craft block ID preference.`
+  );
+}
+
+type CraftMcpUpsertResponse = {
+  success?: boolean;
+  operation?: 'create' | 'update';
+  document_id?: string;
+  matched_block_id?: string;
+  created_block_id?: string;
+  error?: string;
+};
+
+async function upsertReminderViaMcp(params: {
+  mcpUrl: string;
+  password?: string;
+  reminderType: ReminderType;
+  documentId: string;
+  markdown: string;
+  athleteName: string;
+  reminderDate: string;
+}): Promise<CraftMcpUpsertResponse> {
+  const markerTypes = getReminderMarkerTypes(params.reminderType);
+  const markers = markerTypes.map((t) => buildMarker(t, params.athleteName, params.reminderDate));
+  craftLogger.info('CRAFT_MCP_UPSERT_START', {
+    mcpUrl: params.mcpUrl,
+    reminderType: params.reminderType,
+    documentId: params.documentId,
+    markers,
+    scheduleDate: params.reminderDate,
+    hasPassword: !!params.password,
+  });
+  const result = await executePythonScript<CraftMcpUpsertResponse>(
+    CRAFT_MCP_CLIENT_SCRIPT,
+    'upsert_reminder',
+    {
+      mcp_url: params.mcpUrl,
+      password: params.password || '',
+      document_id: params.documentId,
+      markdown: params.markdown,
+      schedule_date: params.reminderDate,
+      athlete_name: params.athleteName,
+      markers,
+    },
+    {
+      contextName: 'Craft MCP Client',
+      pythonPath: CRAFT_MCP_PYTHON_PATH,
+      timeout: 45000,
+    }
+  );
+  craftLogger.info('CRAFT_MCP_UPSERT_RESULT', result);
+  return result;
+}
+
+function getDueReminderDefaultDate(videoDueDate?: string): Date {
+  if (!videoDueDate) {
+    craftLogger.info('CRAFT_DUE_DEFAULT_FALLBACK_TODAY', { reason: 'missing_video_due_date' });
+    return getInQueueReminderDefaultDate(videoDueDate);
+  }
+  const parsed = new Date(videoDueDate);
+  if (Number.isNaN(parsed.getTime())) {
+    craftLogger.warn('CRAFT_DUE_DEFAULT_FALLBACK_TODAY', {
+      reason: 'invalid_video_due_date',
+      videoDueDate,
+    });
+    return getInQueueReminderDefaultDate(videoDueDate);
+  }
+  const d = getInQueueReminderDefaultDate(videoDueDate);
+  craftLogger.info('CRAFT_DUE_DEFAULT_FROM_VIDEO_DUE_DATE', {
+    videoDueDate,
+    defaultReminderDate: formatReminderDate(d),
+  });
+  return d;
 }
 
 function getPositions(task: VideoProgressTask): string {
@@ -111,7 +366,7 @@ function getStageIcon(stage: string): { source: string } | Icon {
     case 'In Queue':
       return { source: 'in-queue-stage.png' };
     case 'Awaiting Client':
-      return { source: 'awaiting-stage.png' };
+      return { source: 'awaiting-client.png' };
     case 'On Hold':
       return { source: 'on-hold-stage.png' };
     case 'Done':
@@ -297,6 +552,29 @@ function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
   });
 }
 
+function sortDoneTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
+  const parseTs = (value?: string) => {
+    if (!value) return null;
+    const ts = Date.parse(value);
+    return Number.isNaN(ts) ? null : ts;
+  };
+
+  return [...tasks].sort((a, b) => {
+    const aCompleted = parseTs(a.date_completed);
+    const bCompleted = parseTs(b.date_completed);
+
+    if (aCompleted !== null || bCompleted !== null) {
+      if (aCompleted === null) return 1;
+      if (bCompleted === null) return -1;
+      if (aCompleted !== bCompleted) return bCompleted - aCompleted;
+    }
+
+    const aFallback = parseTs(a.cached_at || a.updated_at) ?? 0;
+    const bFallback = parseTs(b.cached_at || b.updated_at) ?? 0;
+    return bFallback - aFallback;
+  });
+}
+
 function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): string {
   const positions = getPositions(task);
   const jersey = task.jersey_number || '';
@@ -474,7 +752,7 @@ ${approvedDetail}
       markdown={`# ${task.athletename}\n\n${metadata}`}
       actions={
         <ActionPanel>
-          <ActionPanel.Section title="Athlete Notes">
+          <ActionPanel.Section title="Athlete Note">
             <Action
               title="View Notes"
               icon={Icon.Clipboard}
@@ -522,10 +800,10 @@ ${approvedDetail}
             />
           </ActionPanel.Section>
 
-          <ActionPanel.Section title="Contact Info">
+          <ActionPanel.Section title="Web Actions">
             <Action
-              title="View Contact Info"
-              icon={Icon.Person}
+              title="Contact Info"
+              icon="☎️"
               onAction={async () => {
                 const mainId = await resolveMainId();
                 if (!mainId) {
@@ -546,6 +824,48 @@ ${approvedDetail}
                 );
               }}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'i' }}
+            />
+            <Action.OpenInBrowser
+              title="General Info"
+              url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${task.athlete_id}`}
+              icon="👤"
+              shortcut={{ modifiers: ['shift', 'cmd'], key: 'o' }}
+            />
+            <Action.OpenInBrowser
+              title="View PlayerID"
+              url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
+              icon="🌍"
+              shortcut={{ modifiers: ['cmd'], key: 'o' }}
+            />
+            <Action.OpenInBrowser
+              title="Task: Video Progress ID"
+              url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
+              icon={Icon.Globe}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+            />
+          </ActionPanel.Section>
+
+          <ActionPanel.Section title="Update Task">
+            <Action.Push
+              title="Update Status"
+              icon="📊"
+              target={<UpdateStatusForm task={task} onUpdate={onStatusUpdate} />}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'x' }}
+            />
+            <Action.Push
+              title="Update Stage"
+              icon="🔄"
+              target={<UpdateStageForm task={task} onUpdate={onStatusUpdate} />}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
+            />
+          </ActionPanel.Section>
+
+          <ActionPanel.Section title="Update Due Date">
+            <Action.Push
+              title="Edit Due Date"
+              icon="🗓️"
+              target={<EditDueDateForm task={task} onUpdate={onStatusUpdate} />}
+              shortcut={{ modifiers: ['cmd'], key: 'd' }}
             />
           </ActionPanel.Section>
 
@@ -589,50 +909,6 @@ ${approvedDetail}
               }}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'f' }}
             />
-          </ActionPanel.Section>
-
-          <ActionPanel.Section title="Update Task">
-            <Action.Push
-              title="Update Status"
-              icon="📊"
-              target={<UpdateStatusForm task={task} onUpdate={onStatusUpdate} />}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'x' }}
-            />
-            <Action.Push
-              title="Update Stage"
-              icon="🔄"
-              target={<UpdateStageForm task={task} onUpdate={onStatusUpdate} />}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
-            />
-          </ActionPanel.Section>
-
-          <ActionPanel.Section title="Update Due Date">
-            <Action.Push
-              title="Edit Due Date"
-              icon="🗓️"
-              target={<EditDueDateForm task={task} onUpdate={onStatusUpdate} />}
-              shortcut={{ modifiers: ['cmd'], key: 'd' }}
-            />
-          </ActionPanel.Section>
-
-          <ActionPanel.Section>
-            <Action.OpenInBrowser
-              title="View PlayerID"
-              url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
-              icon="🌍"
-              shortcut={{ modifiers: ['cmd'], key: 'o' }}
-            />
-            <Action.OpenInBrowser
-              title="General Info"
-              url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${task.athlete_id}`}
-              icon={Icon.Person}
-              shortcut={{ modifiers: ['shift', 'cmd'], key: 'o' }}
-            />
-            <Action.OpenInBrowser
-              title="Task: Video Progress ID"
-              url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
-              icon={Icon.Globe}
-            />
             <Action title="Back" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -644,6 +920,116 @@ ${approvedDetail}
 interface EditDueDateFormProps {
   task: VideoProgressTask;
   onUpdate: (updatedTasks?: VideoProgressTask[]) => void;
+}
+
+interface CraftReminderFormProps {
+  task: VideoProgressTask;
+  reminderType: ReminderType;
+}
+
+function CraftReminderForm({ task, reminderType }: CraftReminderFormProps) {
+  const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const reminderTitle =
+    reminderType === 'inbox-follow-up'
+      ? 'Inbox Follow Ups'
+      : reminderType === 'in-queue'
+      ? 'In Queue Reminders'
+      : 'Dropbox Folder Reminders';
+  const defaultDate = reminderType === 'in-queue' ? getDueReminderDefaultDate(task.video_due_date) : new Date();
+  craftLogger.info('CRAFT_FORM_OPEN', {
+    athleteId: task.athlete_id,
+    athleteName: task.athletename,
+    reminderType,
+    defaultReminderDate: formatReminderDate(defaultDate),
+    videoDueDate: task.video_due_date || null,
+  });
+
+  const handleSubmit = async (values: { reminderDate: Date }) => {
+    setIsSubmitting(true);
+    try {
+      craftLogger.info('CRAFT_SUBMIT_START', {
+        athleteId: task.athlete_id,
+        athleteName: task.athletename,
+        reminderType,
+        inputReminderDate: values?.reminderDate ? formatReminderDate(values.reminderDate) : null,
+      });
+      const { baseUrl, password } = getCraftConfig();
+      const reminderDate = formatReminderDate(values.reminderDate);
+      const markdown = buildReminderMarkdown(task.athletename);
+      craftLogger.debug('CRAFT_SUBMIT_PREPARED', {
+        reminderDate,
+        markdownPreview: markdown.slice(0, 200),
+      });
+      const documentId = await resolveTargetDocumentId(baseUrl, password, reminderType);
+      const result = await upsertReminderViaMcp({
+        mcpUrl: baseUrl,
+        password,
+        reminderType,
+        documentId,
+        markdown,
+        athleteName: task.athletename,
+        reminderDate,
+      });
+      if (!result?.success) {
+        throw new Error(result?.error || 'Craft MCP upsert failed');
+      }
+      craftLogger.info('CRAFT_SUBMIT_DONE', {
+        operation: result.operation || 'create',
+        blockId: result.matched_block_id || result.created_block_id || null,
+        documentId,
+        athleteName: task.athletename,
+        reminderType,
+        reminderDate,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: result.operation === 'update' ? 'Updated Craft reminder' : 'Created Craft reminder',
+        message: task.athletename,
+      });
+      pop();
+    } catch (error) {
+      craftLogger.error('CRAFT_SUBMIT_FAILED', {
+        athleteId: task.athlete_id,
+        athleteName: task.athletename,
+        reminderType,
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Craft reminder failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <Form
+      isLoading={isSubmitting}
+      navigationTitle={`Craft • ${reminderTitle}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title={
+              reminderType === 'inbox-follow-up'
+                ? 'Save Inbox Follow Up'
+                : reminderType === 'in-queue'
+                ? 'Save In Queue Reminder'
+                : 'Save Dropbox Folder Reminder'
+            }
+            onSubmit={handleSubmit}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Description text={`Athlete: ${task.athletename}`} />
+      <Form.Description text={`Type: ${reminderTitle}`} />
+      <Form.DatePicker id="reminderDate" title="Reminder Date" defaultValue={defaultDate} />
+    </Form>
+  );
 }
 
 function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
@@ -678,6 +1064,8 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
         const err = await response.json().catch(() => ({})) as any;
         throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
       }
+
+      await updateCachedTaskDueDate(task.id, formattedDate);
 
       await showToast({
         style: Toast.Style.Success,
@@ -1345,6 +1733,7 @@ export default function VideoProgress() {
   const normalizedSearch = searchText.trim().toLowerCase();
   const shouldBypassFilters = rawSearchEnabled && normalizedSearch.length > 0;
   const activeTasks = shouldBypassFilters ? rawSearchResults : tasks;
+  const doneCutoffTs = Date.parse('2025-06-01T00:00:00Z');
 
   const matchesSearch = (task: VideoProgressTask) => {
     if (!normalizedSearch) return true;
@@ -1379,8 +1768,24 @@ export default function VideoProgress() {
       stageFilter === 'all'
         ? true
         : normalizeStageValue(stageValue) === normalizeStageValue(stageFilter);
-    return stageMatch;
+    if (!stageMatch) {
+      return false;
+    }
+    if (stageFilter === 'Done') {
+      const completedAt = task.date_completed ? Date.parse(task.date_completed) : NaN;
+      if (!task.date_completed || Number.isNaN(completedAt)) {
+        return false;
+      }
+      if (!Number.isNaN(doneCutoffTs) && completedAt < doneCutoffTs) {
+        return false;
+      }
+    }
+    return true;
   });
+  const visibleTasks =
+    stageFilter === 'Done' && !shouldBypassFilters
+      ? sortDoneTasks(filteredTasks)
+      : filteredTasks;
 
   // Handle combined filter change
   const handleFilterChange = async (value: string) => {
@@ -1421,7 +1826,7 @@ export default function VideoProgress() {
         </List.Dropdown>
       }
     >
-      {filteredTasks.length === 0 ? (
+      {visibleTasks.length === 0 ? (
         <List.EmptyView
           icon={Icon.CheckCircle}
           title={shouldBypassFilters ? 'No Raw Search Results' : 'No Active Tasks'}
@@ -1429,10 +1834,10 @@ export default function VideoProgress() {
         />
       ) : (
         <List.Section
-          title={`In Progress (${filteredTasks.length})`}
+          title={`In Progress (${visibleTasks.length})`}
           subtitle={rawSearchEnabled ? 'Raw Search' : undefined}
         >
-          {filteredTasks.map((task) => (
+          {visibleTasks.map((task) => (
             <List.Item
               key={task.id ?? task.athlete_id}
               icon={getStageIcon(getTaskStage(task))}
@@ -1473,6 +1878,21 @@ export default function VideoProgress() {
                     }
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
                   />
+                  <Action.Push
+                    title="Inbox Follow Ups"
+                    icon={CRAFT_ICON}
+                    target={<CraftReminderForm task={task} reminderType="inbox-follow-up" />}
+                  />
+                  <Action.Push
+                    title="In Queue Reminders"
+                    icon={CRAFT_ICON}
+                    target={<CraftReminderForm task={task} reminderType="in-queue" />}
+                  />
+                  <Action.Push
+                    title="Dropbox Folder Reminders"
+                    icon={CRAFT_ICON}
+                    target={<CraftReminderForm task={task} reminderType="dropbox-folder" />}
+                  />
                   <Action
                     title={`Raw Search Mode: ${rawSearchEnabled ? 'On' : 'Off'}`}
                     icon={rawSearchEnabled ? Icon.CheckCircle : Icon.Circle}
@@ -1505,6 +1925,7 @@ export default function VideoProgress() {
                     title="Task: Video Progress ID"
                     url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
                     icon={Icon.Globe}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
                   />
                   <Action.CopyToClipboard
                     title="Copy Athlete Name"

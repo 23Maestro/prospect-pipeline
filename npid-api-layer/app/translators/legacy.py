@@ -2902,8 +2902,9 @@ class LegacyTranslator:
         """
         if not reply_text:
             return ""
-        # Send reply text as-is (Python doesn't escape HTML)
-        return reply_text
+        # Preserve line breaks in HTML (Laravel expects HTML content)
+        normalized = reply_text.replace("\r\n", "\n").replace("\r", "\n")
+        return normalized.replace("\n", "<br>")
 
     @staticmethod
     def _build_previous_message_block(message_id: str, detail_data: Dict[str, Any]) -> str:

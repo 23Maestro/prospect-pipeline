@@ -401,6 +401,29 @@ export async function updateCachedTaskStatusStage(id: number, updates: { status?
 }
 
 /**
+ * Update the due date for a task in the cache.
+ * Used after a successful due date update API call.
+ */
+export async function updateCachedTaskDueDate(id: number, dueDate: string) {
+  const database = await getBackend();
+  const updatedAt = new Date().toISOString();
+
+  database.run(
+    `UPDATE video_tasks
+     SET video_due_date = $video_due_date,
+         updated_at = $updated_at,
+         cached_at = $updated_at
+     WHERE id = $id`,
+    {
+      $id: id,
+      $video_due_date: dueDate,
+      $updated_at: updatedAt,
+    }
+  );
+  database.persist();
+}
+
+/**
  * Update the completion date for a task.
  * Used when manually editing the completion date for Done tasks.
  */

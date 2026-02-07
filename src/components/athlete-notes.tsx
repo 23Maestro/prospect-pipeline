@@ -2,6 +2,7 @@ import { Action, ActionPanel, Form, List, Toast, showToast } from '@raycast/api'
 import { useEffect, useState } from 'react';
 import { AthleteNote } from '../types/video-team';
 import { fetchAthleteNotes, addAthleteNote } from '../lib/npid-mcp-adapter';
+import { notesLogger } from '../lib/logger';
 
 interface AthleteNotesListProps {
   athleteId: string;
@@ -15,14 +16,18 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
 
   useEffect(() => {
     const load = async () => {
-      console.log('📝 AthleteNotesList loading notes:', { athleteId, athleteMainId, athleteName });
+      notesLogger.info('NOTES_LIST_LOAD_START', { athleteId, athleteMainId, athleteName });
       setIsLoading(true);
       try {
         const data = await fetchAthleteNotes(athleteId, athleteMainId);
-        console.log('📝 Notes loaded:', data.length);
+        notesLogger.info('NOTES_LIST_LOAD_SUCCESS', { count: data.length, athleteId, athleteMainId });
         setNotes(data);
       } catch (error) {
-        console.error('📝 Failed to load notes:', error);
+        notesLogger.error('NOTES_LIST_LOAD_FAILURE', {
+          athleteId,
+          athleteMainId,
+          error: error instanceof Error ? error.message : String(error),
+        });
         await showToast({
           style: Toast.Style.Failure,
           title: 'Failed to load notes',
@@ -106,7 +111,12 @@ export function AddAthleteNoteForm({
       return;
     }
 
-    console.log('📝 AddAthleteNoteForm submitting:', { athleteId, athleteMainId, title, description });
+    notesLogger.info('NOTES_ADD_SUBMIT_START', {
+      athleteId,
+      athleteMainId,
+      titlePreview: title.slice(0, 100),
+      descriptionLength: description.length,
+    });
     setIsSubmitting(true);
     try {
       await addAthleteNote({
@@ -115,7 +125,7 @@ export function AddAthleteNoteForm({
         title: title.trim(),
         description: description.trim(),
       });
-      console.log('📝 Note added successfully');
+      notesLogger.info('NOTES_ADD_SUBMIT_SUCCESS', { athleteId, athleteMainId });
       await showToast({
         style: Toast.Style.Success,
         title: 'Note added',
@@ -123,7 +133,11 @@ export function AddAthleteNoteForm({
       });
       onComplete?.();
     } catch (error) {
-      console.error('📝 Failed to add note:', error);
+      notesLogger.error('NOTES_ADD_SUBMIT_FAILURE', {
+        athleteId,
+        athleteMainId,
+        error: error instanceof Error ? error.message : String(error),
+      });
       await showToast({
         style: Toast.Style.Failure,
         title: 'Failed to add note',

@@ -577,7 +577,48 @@ function normalizeMessageContent(raw: string): string {
   const stripped = decodeHtmlEntities(stripHtml(raw))
     .replace(/\r\n/g, '\n')
     .replace(/\r/g, '\n');
-  const withLinkBreaks = stripped.replace(/(https?:\/\/\S+)/g, '\n\n$1\n\n');
+
+  const shouldDropLine = (line: string) => {
+    if (!line) return false;
+    if (/^Yahoo Mail:/i.test(line)) return true;
+    if (/^National Prospect ID#yiv\d+/i.test(line)) return true;
+    if (/#yiv\d+/i.test(line)) return true;
+    if (/@media only screen/i.test(line)) return true;
+    if (line.includes('{') && line.includes('}') && line.includes(':')) return true;
+    if (/^\|+\s*$/.test(line)) return true;
+    return false;
+  };
+
+  const isSignatureStart = (line: string) => {
+    return (
+      /^Connect With Us$/i.test(line) ||
+      /^NATIONAL PROSPECT ID\b/i.test(line) ||
+      /^National Prospect ID\b/i.test(line) ||
+      /^About Us\s*\|/i.test(line) ||
+      /Unsubscribe/i.test(line) ||
+      /Private Policy/i.test(line) ||
+      /Terms/i.test(line)
+    );
+  };
+
+  const cleanedLines: string[] = [];
+  for (const rawLine of stripped.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) {
+      cleanedLines.push('');
+      continue;
+    }
+    if (shouldDropLine(line)) {
+      continue;
+    }
+    if (isSignatureStart(line)) {
+      break;
+    }
+    cleanedLines.push(line);
+  }
+
+  const cleaned = cleanedLines.join('\n');
+  const withLinkBreaks = cleaned.replace(/(https?:\/\/\S+)/g, '\n\n$1\n\n');
   return withLinkBreaks.replace(/\n{3,}/g, '\n\n').trim();
 }
 

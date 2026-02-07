@@ -52,7 +52,7 @@
       "title": "Prospect Search",
       "description": "Search global athlete records (ProspectID)",
       "mode": "view",
-      "icon": "active-video-tasks.png"
+      "icon": "search-prospects.png"
     }
   ],
   "tools": [
@@ -98,12 +98,49 @@
       "description": "Used for video stage/status updates (required)",
       "type": "password",
       "required": false
+    },
+    {
+      "name": "craftBaseUrl",
+      "title": "Craft MCP URL",
+      "description": "MCP endpoint only (example: https://mcp.craft.do/links/<id>/mcp).",
+      "type": "textfield",
+      "placeholder": "https://mcp.craft.do/links/<id>/mcp",
+      "required": false
+    },
+    {
+      "name": "craftApiToken",
+      "title": "Craft MCP Password",
+      "description": "Optional MCP password (examples: !500243 or password:!500243). Do not use Bearer/Authorization values.",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "craftInQueueBlockId",
+      "title": "Craft In Queue Block ID",
+      "description": "Optional override for due-date reminders. Paste block ID or craftdocs://open?blockId=... link.",
+      "type": "textfield",
+      "required": false
+    },
+    {
+      "name": "craftEmailFollowUpBlockId",
+      "title": "Craft Email Follow Up Block ID",
+      "description": "Optional override for follow-up reminders. Paste block ID or craftdocs://open?blockId=... link.",
+      "type": "textfield",
+      "required": false
+    },
+    {
+      "name": "craftDropboxFoldersBlockId",
+      "title": "Craft Dropbox Folders Block ID",
+      "description": "Optional override for dropbox-folder reminders. Paste block ID or craftdocs://open?blockId=... link.",
+      "type": "textfield",
+      "required": false
     }
   ],
   "scripts": {
     "build": "ray build",
     "dev": "ray develop",
     "lint": "eslint . --ext .ts,.tsx",
+    "test:craft-reminder-date": "rm -rf /tmp/craft-reminder-tests && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir /tmp/craft-reminder-tests src/lib/craft-reminder-date.ts src/lib/craft-reminder-date.test.ts && node --test /tmp/craft-reminder-tests/craft-reminder-date.test.js",
     "api": "cd npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
     "dev:all": "concurrently --kill-others -n \"RAY,API\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm:dev\" \"npm:api\"",
     "backfill-ids": "npx tsx scripts/backfill-athlete-main-id.ts"
