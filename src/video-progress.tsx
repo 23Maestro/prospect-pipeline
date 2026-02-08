@@ -23,6 +23,7 @@ import {
   upsertTasks,
   updateCachedTaskStatusStage,
   updateCachedTaskDueDate,
+  updateCachedTaskAssignedEditor,
   getCachedContactInfo,
   upsertContactInfo,
 } from './lib/video-progress-cache';
@@ -35,7 +36,7 @@ import {
 } from './lib/npid-mcp-adapter';
 import { getInQueueReminderDefaultDate } from './lib/craft-reminder-date';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
-import { craftLogger, logger } from './lib/logger';
+import { craftLogger, logger, videoProgressLogger } from './lib/logger';
 import EmailStudentAthletesCommand from './email-student-athletes';
 
 interface Preferences {
@@ -338,7 +339,14 @@ function getDueReminderDefaultDate(videoDueDate?: string): Date {
 }
 
 function getPositions(task: VideoProgressTask): string {
+  const normalizePosition = (value?: string) =>
+    (value || '')
+      .replace(/^Positions?/i, '')
+      .replace(/^[:\-\s]+/, '')
+      .trim();
+
   return [task.primaryposition, task.secondaryposition, task.thirdposition]
+    .map((pos) => normalizePosition(pos))
     .filter(pos => pos && pos !== 'NA')
     .join(' | ');
 }
@@ -1735,6 +1743,95 @@ export default function VideoProgress() {
   const activeTasks = shouldBypassFilters ? rawSearchResults : tasks;
   const doneCutoffTs = Date.parse('2025-06-01T00:00:00Z');
 
+  const refreshViewsFromCache = async () => {
+    const cached = await getCachedTasks();
+    const filtered = cached.filter(shouldIncludeTask);
+    setTasks(sortTasks(filtered));
+
+    if (rawSearchEnabled && normalizedSearch.length > 0) {
+      const matches = cached.filter((task) => {
+        const name = (task.athletename || '').toLowerCase();
+        return name.includes(normalizedSearch);
+      });
+      setRawSearchResults(
+        matches.map((task) => ({
+          ...task,
+          raw_search: true,
+        }))
+      );
+    }
+  };
+
+  const assignTaskToMeFromCache = async (task: VideoProgressTask) => {
+    if (!task.id) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cannot assign owner',
+        message: 'Missing task id in cache row',
+      });
+      return;
+    }
+
+    const feature = 'video-progress.assign-editor-cache';
+    videoProgressLogger.info('VIDEO_PROGRESS_ASSIGN_EDITOR', {
+      event: 'VIDEO_PROGRESS_ASSIGN_EDITOR',
+      step: 'assign_editor',
+      status: 'start',
+      feature,
+      context: {
+        taskId: task.id,
+        athleteId: task.athlete_id,
+        athleteName: task.athletename,
+        fromEditor: task.assignedvideoeditor || '',
+        toEditor: ASSIGNED_EDITOR,
+      },
+    });
+
+    try {
+      await updateCachedTaskAssignedEditor(task.id, ASSIGNED_EDITOR);
+      await refreshViewsFromCache();
+
+      videoProgressLogger.info('VIDEO_PROGRESS_ASSIGN_EDITOR', {
+        event: 'VIDEO_PROGRESS_ASSIGN_EDITOR',
+        step: 'assign_editor',
+        status: 'success',
+        feature,
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          athleteName: task.athletename,
+          toEditor: ASSIGNED_EDITOR,
+        },
+      });
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Assigned to Jerami Singleton',
+        message: task.athletename,
+      });
+    } catch (error) {
+      videoProgressLogger.error('VIDEO_PROGRESS_ASSIGN_EDITOR', {
+        event: 'VIDEO_PROGRESS_ASSIGN_EDITOR',
+        step: 'assign_editor',
+        status: 'failure',
+        feature,
+        error: error instanceof Error ? error.message : String(error),
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          athleteName: task.athletename,
+          toEditor: ASSIGNED_EDITOR,
+        },
+      });
+
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Assign owner failed',
+        message: error instanceof Error ? error.message : 'Unknown cache error',
+      });
+    }
+  };
+
   const matchesSearch = (task: VideoProgressTask) => {
     if (!normalizedSearch) return true;
     const haystack = [
@@ -1773,6 +1870,7 @@ export default function VideoProgress() {
     }
     if (stageFilter === 'Done') {
       const completedAt = task.date_completed ? Date.parse(task.date_completed) : NaN;
+      // Done view should only show entries with an explicit completion timestamp (green tag source).
       if (!task.date_completed || Number.isNaN(completedAt)) {
         return false;
       }
@@ -1892,6 +1990,12 @@ export default function VideoProgress() {
                     title="Dropbox Folder Reminders"
                     icon={CRAFT_ICON}
                     target={<CraftReminderForm task={task} reminderType="dropbox-folder" />}
+                  />
+                  <Action
+                    title="Assign to Jerami Singleton (Cache)"
+                    icon={Icon.Person}
+                    onAction={() => assignTaskToMeFromCache(task)}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
                   />
                   <Action
                     title={`Raw Search Mode: ${rawSearchEnabled ? 'On' : 'Off'}`}

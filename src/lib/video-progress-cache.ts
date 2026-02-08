@@ -28,6 +28,7 @@ export interface CachedVideoTask {
   last_seen_at?: string;
   jersey_number?: string;
   date_completed?: string;
+  assigned_editor_override?: string;
 }
 
 export interface CachedContactInfo {
@@ -177,7 +178,8 @@ function initSchema(database: CacheBackend) {
       cached_at TEXT,
       source TEXT,
       last_seen_at TEXT,
-      jersey_number TEXT
+      jersey_number TEXT,
+      assigned_editor_override TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_video_tasks_status ON video_tasks (video_progress_status);
     CREATE INDEX IF NOT EXISTS idx_video_tasks_cached_at ON video_tasks (cached_at);
@@ -205,6 +207,11 @@ function initSchema(database: CacheBackend) {
   }
   try {
     database.exec(`ALTER TABLE video_tasks ADD COLUMN last_seen_at TEXT;`);
+  } catch {
+    // ignore if exists
+  }
+  try {
+    database.exec(`ALTER TABLE video_tasks ADD COLUMN assigned_editor_override TEXT;`);
   } catch {
     // ignore if exists
   }
@@ -244,11 +251,13 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
     INSERT INTO video_tasks (
       id, athlete_id, athlete_main_id, athletename, video_progress_status, stage, sport_name, grad_year,
       video_due_date, assignedvideoeditor, primaryposition, secondaryposition, thirdposition,
-      high_school, high_school_city, high_school_state, updated_at, cached_at, source, last_seen_at, jersey_number, date_completed
+      high_school, high_school_city, high_school_state, updated_at, cached_at, source, last_seen_at, jersey_number, date_completed,
+      assigned_editor_override
     ) VALUES (
       $id, $athlete_id, $athlete_main_id, $athletename, $video_progress_status, $stage, $sport_name, $grad_year,
       $video_due_date, $assignedvideoeditor, $primaryposition, $secondaryposition, $thirdposition,
-      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $source, $last_seen_at, $jersey_number, $date_completed
+      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $source, $last_seen_at, $jersey_number, $date_completed,
+      $assigned_editor_override
     )
     ON CONFLICT(id) DO UPDATE SET
       -- STATIC FIELDS (preserve if API returns null)
@@ -272,7 +281,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
         ELSE excluded.stage
       END,
       video_due_date=excluded.video_due_date,
-      assignedvideoeditor=excluded.assignedvideoeditor,
+      assignedvideoeditor=COALESCE(video_tasks.assigned_editor_override, excluded.assignedvideoeditor),
       updated_at=excluded.updated_at,
       cached_at=excluded.cached_at,
       source=excluded.source,
@@ -317,6 +326,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
         $last_seen_at: syncAt,
         $jersey_number: task.jersey_number || null,
         $date_completed: task.date_completed || null,
+        $assigned_editor_override: null,
       });
     }
   });
@@ -417,6 +427,30 @@ export async function updateCachedTaskDueDate(id: number, dueDate: string) {
     {
       $id: id,
       $video_due_date: dueDate,
+      $updated_at: updatedAt,
+    }
+  );
+  database.persist();
+}
+
+/**
+ * Update the assigned video editor for a task in the cache.
+ * Cache-only mutation for local workflow adjustments.
+ */
+export async function updateCachedTaskAssignedEditor(id: number, assignedEditor: string) {
+  const database = await getBackend();
+  const updatedAt = new Date().toISOString();
+
+  database.run(
+    `UPDATE video_tasks
+     SET assignedvideoeditor = $assignedvideoeditor,
+         assigned_editor_override = $assignedvideoeditor,
+         updated_at = $updated_at,
+         cached_at = $updated_at
+     WHERE id = $id`,
+    {
+      $id: id,
+      $assignedvideoeditor: assignedEditor,
       $updated_at: updatedAt,
     }
   );

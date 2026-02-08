@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from './lib/python-server-client';
 import { upsertTasks } from './lib/video-progress-cache';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
-import { logger } from './lib/logger';
+import { logger, searchLogger } from './lib/logger';
 
 interface ProspectResult {
   athlete_id: string;
@@ -48,11 +48,56 @@ function formatLocation(result: ProspectResult): string {
 
 function cleanPositions(positions?: string): string | null {
   if (!positions) return null;
-  // Remove "Positions" prefix if present
-  let cleaned = positions.replace(/^Positions?\s*/i, '').trim();
-  // Clean up common formatting issues
-  cleaned = cleaned.replace(/,\s*/g, ', ');
+  // Remove leading "Positions" prefix and normalize separators to " | "
+  const withoutPrefix = positions.replace(/^Positions?/i, '').replace(/^[:\-\s]+/, '').trim();
+  const tokens = withoutPrefix
+    .split(/\||,|\/|•/)
+    .map((token) => token.replace(/^Positions?/i, '').trim())
+    .filter(Boolean);
+  const cleaned = tokens.length ? tokens.join(' | ') : withoutPrefix;
   return cleaned || null;
+}
+
+function normalizePositionsWithLogging(rawPositions?: string, athleteId?: string): string | null {
+  const feature = 'prospect-search.positions-normalization';
+  searchLogger.info('PROSPECT_POSITIONS_NORMALIZE', {
+    event: 'PROSPECT_POSITIONS_NORMALIZE',
+    step: 'normalize_positions',
+    status: 'start',
+    feature,
+    context: {
+      athleteId: athleteId || null,
+      hasPositions: !!rawPositions,
+      rawPreview: rawPositions ? String(rawPositions).slice(0, 120) : null,
+    },
+  });
+
+  try {
+    const normalized = cleanPositions(rawPositions);
+    searchLogger.info('PROSPECT_POSITIONS_NORMALIZE', {
+      event: 'PROSPECT_POSITIONS_NORMALIZE',
+      step: 'normalize_positions',
+      status: 'success',
+      feature,
+      context: {
+        athleteId: athleteId || null,
+        normalizedPreview: normalized ? normalized.slice(0, 120) : null,
+      },
+    });
+    return normalized;
+  } catch (error) {
+    searchLogger.error('PROSPECT_POSITIONS_NORMALIZE', {
+      event: 'PROSPECT_POSITIONS_NORMALIZE',
+      step: 'normalize_positions',
+      status: 'failure',
+      feature,
+      error: error instanceof Error ? error.message : String(error),
+      context: {
+        athleteId: athleteId || null,
+      },
+    });
+    return cleanPositions(rawPositions);
+  }
 }
 
 function buildProspectMarkdown(result: ProspectResult): string {
@@ -112,6 +157,8 @@ async function fetchAthleteResolve(athleteId: string, gradYear?: string) {
 
 async function ensureProspectDetails(result: ProspectResult): Promise<ProspectResult> {
   const details = await fetchAthleteResolve(result.athlete_id, result.grad_year);
+  const mergedPositions = result.positions || details.positions;
+  const normalizedPositions = normalizePositionsWithLogging(mergedPositions, result.athlete_id);
   return {
     ...result,
     athlete_main_id: result.athlete_main_id || details.athlete_main_id,
@@ -121,7 +168,7 @@ async function ensureProspectDetails(result: ProspectResult): Promise<ProspectRe
     high_school: result.high_school || details.high_school,
     city: result.city || details.city,
     state: result.state || details.state,
-    positions: result.positions || details.positions,
+    positions: normalizedPositions || mergedPositions,
     jersey_number: details.jersey_number,
   };
 }
@@ -323,6 +370,7 @@ export default function ProspectSearch() {
 
     try {
       const enriched = await ensureProspectDetails(result);
+      const normalizedPositions = normalizePositionsWithLogging(enriched.positions, enriched.athlete_id);
       let athleteMainId = enriched.athlete_main_id;
       if (!athleteMainId) {
         const resolved = await resolveAndCacheAthleteMainId(enriched.athlete_id);
@@ -331,6 +379,20 @@ export default function ProspectSearch() {
         }
         athleteMainId = resolved.athleteMainId;
       }
+      searchLogger.info('PROSPECT_MATERIALIZE_REQUEST', {
+        event: 'PROSPECT_MATERIALIZE_REQUEST',
+        step: 'materialize_request',
+        status: 'start',
+        feature: 'prospect-search.materialize-task',
+        context: {
+          athleteId: enriched.athlete_id,
+          athleteMainId: athleteMainId || null,
+          positions: normalizedPositions,
+          assignedEditor: ASSIGNED_EDITOR,
+          stage: payload.stage,
+          statusValue: payload.status || '',
+        },
+      });
       const response = await apiFetch('/video/materialize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -343,7 +405,7 @@ export default function ProspectSearch() {
           high_school: enriched.high_school,
           city: enriched.city,
           state: enriched.state,
-          positions: enriched.positions,
+          positions: normalizedPositions,
           jersey_number: enriched.jersey_number,
           assigned_editor: ASSIGNED_EDITOR,
           stage: payload.stage,
@@ -359,6 +421,17 @@ export default function ProspectSearch() {
           json?.message ||
           text.slice(0, 200) ||
           `HTTP ${response.status}`;
+        searchLogger.error('PROSPECT_MATERIALIZE_REQUEST', {
+          event: 'PROSPECT_MATERIALIZE_REQUEST',
+          step: 'materialize_request',
+          status: 'failure',
+          feature: 'prospect-search.materialize-task',
+          error: errMessage,
+          context: {
+            athleteId: enriched.athlete_id,
+            statusCode: response.status,
+          },
+        });
         throw new Error(errMessage);
       }
 
@@ -367,11 +440,44 @@ export default function ProspectSearch() {
         throw new Error('Materialize response missing task');
       }
 
+      searchLogger.info('PROSPECT_MATERIALIZE_REQUEST', {
+        event: 'PROSPECT_MATERIALIZE_REQUEST',
+        step: 'materialize_request',
+        status: 'success',
+        feature: 'prospect-search.materialize-task',
+        context: {
+          athleteId: enriched.athlete_id,
+          taskId: task.id || null,
+          existed: !!json?.existed,
+        },
+      });
+
       await upsertTasks([task]);
+      searchLogger.info('PROSPECT_MATERIALIZE_UPSERT', {
+        event: 'PROSPECT_MATERIALIZE_UPSERT',
+        step: 'materialize_upsert',
+        status: 'success',
+        feature: 'prospect-search.materialize-task',
+        context: {
+          athleteId: enriched.athlete_id,
+          taskId: task.id || null,
+          existed: !!json?.existed,
+        },
+      });
       toast.style = Toast.Style.Success;
       toast.title = json?.existed ? 'Task already exists' : 'Task created';
       toast.message = enriched.name || `Athlete ${enriched.athlete_id}`;
     } catch (error) {
+      searchLogger.error('PROSPECT_MATERIALIZE_UPSERT', {
+        event: 'PROSPECT_MATERIALIZE_UPSERT',
+        step: 'materialize_upsert',
+        status: 'failure',
+        feature: 'prospect-search.materialize-task',
+        error: error instanceof Error ? error.message : 'Unknown error',
+        context: {
+          athleteId: result.athlete_id,
+        },
+      });
       toast.style = Toast.Style.Failure;
       toast.title = 'Materialize failed';
       toast.message = error instanceof Error ? error.message : 'Unknown error';
