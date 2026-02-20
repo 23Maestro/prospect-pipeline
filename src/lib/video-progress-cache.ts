@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import { environment } from '@raycast/api';
 import initSqlJs from 'sql.js';
-import { logger } from './logger';
+import { logger, videoProgressLogger } from './logger';
 
 export interface CachedVideoTask {
   id: number;
@@ -246,6 +246,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
   const database = await getBackend();
   const now = new Date().toISOString();
   const syncAt = now;
+  const mergeFeature = 'video-progress.cache.merge-manual-native';
   const stmt = database.prepare(
     `
     INSERT INTO video_tasks (
@@ -331,6 +332,128 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
     }
   });
   stmt.finalize();
+
+  videoProgressLogger.info('VIDEO_PROGRESS_MANUAL_NATIVE_MERGE', {
+    event: 'VIDEO_PROGRESS_MANUAL_NATIVE_MERGE',
+    step: 'merge_scan',
+    status: 'start',
+    feature: mergeFeature,
+    context: {
+      incomingTaskCount: tasks.length,
+    },
+  });
+
+  try {
+    const serverRows = database.all<{
+      id: number;
+      athlete_id: number;
+      athlete_main_id: string | null;
+      date_completed: string | null;
+    }>(
+      `SELECT id, athlete_id, athlete_main_id, date_completed
+       FROM video_tasks
+       WHERE id > 0
+         AND source = 'server'`
+    );
+
+    let mergedCount = 0;
+    let deletedCount = 0;
+    const sampleMerged: Array<{ athleteId: number; nativeId: number; manualId: number }> = [];
+
+    for (const serverRow of serverRows) {
+      const manualRow = database.get<{
+        id: number;
+        athlete_id: number;
+        athlete_main_id: string | null;
+        assigned_editor_override: string | null;
+        assignedvideoeditor: string | null;
+        date_completed: string | null;
+      }>(
+        `SELECT id, athlete_id, athlete_main_id, assigned_editor_override, assignedvideoeditor, date_completed
+         FROM video_tasks
+         WHERE athlete_id = $athlete_id
+           AND id < 0
+           AND source LIKE 'raycast:%'
+         ORDER BY cached_at DESC
+         LIMIT 1`,
+        { $athlete_id: serverRow.athlete_id }
+      );
+
+      if (!manualRow) {
+        continue;
+      }
+
+      const updateClauses: string[] = [];
+      const updateParams: Record<string, unknown> = {
+        $id: serverRow.id,
+        $updated_at: now,
+      };
+
+      if ((!serverRow.athlete_main_id || serverRow.athlete_main_id === '') && manualRow.athlete_main_id) {
+        updateClauses.push('athlete_main_id = $athlete_main_id');
+        updateParams.$athlete_main_id = manualRow.athlete_main_id;
+      }
+
+      if (manualRow.assigned_editor_override) {
+        updateClauses.push('assigned_editor_override = $assigned_editor_override');
+        updateClauses.push('assignedvideoeditor = $assignedvideoeditor');
+        updateParams.$assigned_editor_override = manualRow.assigned_editor_override;
+        updateParams.$assignedvideoeditor = manualRow.assigned_editor_override;
+      }
+
+      if ((!serverRow.date_completed || serverRow.date_completed === '') && manualRow.date_completed) {
+        updateClauses.push('date_completed = $date_completed');
+        updateParams.$date_completed = manualRow.date_completed;
+      }
+
+      if (updateClauses.length > 0) {
+        updateClauses.push('updated_at = $updated_at', 'cached_at = $updated_at');
+        database.run(
+          `UPDATE video_tasks
+           SET ${updateClauses.join(', ')}
+           WHERE id = $id`,
+          updateParams
+        );
+      }
+
+      database.run('DELETE FROM video_tasks WHERE id = $manual_id', { $manual_id: manualRow.id });
+      mergedCount += 1;
+      deletedCount += 1;
+
+      if (sampleMerged.length < 5) {
+        sampleMerged.push({
+          athleteId: serverRow.athlete_id,
+          nativeId: serverRow.id,
+          manualId: manualRow.id,
+        });
+      }
+    }
+
+    videoProgressLogger.info('VIDEO_PROGRESS_MANUAL_NATIVE_MERGE', {
+      event: 'VIDEO_PROGRESS_MANUAL_NATIVE_MERGE',
+      step: 'merge_scan',
+      status: 'success',
+      feature: mergeFeature,
+      context: {
+        scannedServerRows: serverRows.length,
+        mergedCount,
+        deletedCount,
+        sampleMerged,
+      },
+    });
+  } catch (error) {
+    videoProgressLogger.error('VIDEO_PROGRESS_MANUAL_NATIVE_MERGE', {
+      event: 'VIDEO_PROGRESS_MANUAL_NATIVE_MERGE',
+      step: 'merge_scan',
+      status: 'failure',
+      feature: mergeFeature,
+      error: error instanceof Error ? error.message : String(error),
+      context: {
+        incomingTaskCount: tasks.length,
+      },
+    });
+  }
+
   database.run(
     `
     DELETE FROM video_tasks

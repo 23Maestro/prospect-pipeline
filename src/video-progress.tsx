@@ -27,7 +27,7 @@ import {
   getCachedContactInfo,
   upsertContactInfo,
 } from './lib/video-progress-cache';
-import { batchResolveAndCache, getAthleteMainId } from './lib/athlete-id-service';
+import { getAthleteMainId } from './lib/athlete-id-service';
 import {
   fetchContactInfo,
   transformContactInfoToCache,
@@ -416,6 +416,44 @@ function formatDate(dateString: string): string {
   } catch {
     return dateString;
   }
+}
+
+function isManualIngestTask(task: Pick<VideoProgressTask, 'id' | 'source'>): boolean {
+  const source = (task.source || '').toLowerCase();
+  const hasSyntheticId = typeof task.id === 'number' && task.id < 0;
+  return hasSyntheticId || source.startsWith('raycast:');
+}
+
+function parseTaskTimestamp(task: VideoProgressTask): number {
+  const ts = Date.parse(task.cached_at || task.updated_at || '');
+  return Number.isNaN(ts) ? 0 : ts;
+}
+
+function preferTaskForSameAthlete(current: VideoProgressTask, incoming: VideoProgressTask): VideoProgressTask {
+  const currentManual = isManualIngestTask(current);
+  const incomingManual = isManualIngestTask(incoming);
+
+  if (currentManual !== incomingManual) {
+    return incomingManual ? current : incoming;
+  }
+
+  return parseTaskTimestamp(incoming) >= parseTaskTimestamp(current) ? incoming : current;
+}
+
+function dedupeTasksPreferNative(tasks: VideoProgressTask[]): VideoProgressTask[] {
+  const byAthlete = new Map<string, VideoProgressTask>();
+
+  for (const task of tasks) {
+    const athleteKey = task.athlete_id ? `athlete:${task.athlete_id}` : `row:${task.id ?? task.athletename}`;
+    const existing = byAthlete.get(athleteKey);
+    if (!existing) {
+      byAthlete.set(athleteKey, task);
+      continue;
+    }
+    byAthlete.set(athleteKey, preferTaskForSameAthlete(existing, task));
+  }
+
+  return Array.from(byAthlete.values());
 }
 
 function normalizeStatus(displayStatus: string): 'revisions' | 'hudl' | 'dropbox' | 'external_links' | 'not_approved' {
@@ -1565,12 +1603,12 @@ export default function VideoProgress() {
 
   const reloadFromCache = async (updatedTasks?: VideoProgressTask[]) => {
     if (updatedTasks) {
-      setTasks(updatedTasks);
+      setTasks(dedupeTasksPreferNative(updatedTasks));
       return;
     }
     // Reload from cache only (instant, no API call)
     const cached = await getCachedTasks();
-    const filtered = cached.filter(shouldIncludeTask);
+    const filtered = dedupeTasksPreferNative(cached.filter(shouldIncludeTask));
     const sorted = sortTasks(filtered);
     setTasks(sorted);
   };
@@ -1584,7 +1622,7 @@ export default function VideoProgress() {
       const cached = await getCachedTasks();
       if (cached.length > 0) {
         hadCache = true;
-        const filtered = cached.filter(shouldIncludeTask);
+        const filtered = dedupeTasksPreferNative(cached.filter(shouldIncludeTask));
         setTasks(sortTasks(filtered));
         setIsLoading(false);
       }
@@ -1621,12 +1659,9 @@ export default function VideoProgress() {
       // Update cache
       await upsertTasks(data);
 
-      // Batch resolve athlete_main_ids for newly fetched tasks
-      await batchResolveAndCache(data);
-
       // Reload from cache to get date_completed preservation
       const updatedCache = await getCachedTasks();
-      const filtered = updatedCache.filter(shouldIncludeTask);
+      const filtered = dedupeTasksPreferNative(updatedCache.filter(shouldIncludeTask));
       setTasks(sortTasks(filtered));
 
       await showToast({
@@ -1658,7 +1693,7 @@ export default function VideoProgress() {
         const name = (task.athletename || '').toLowerCase();
         return name.includes(normalizedTerm);
       });
-      const mapped = matches.map((task) => ({
+      const mapped = dedupeTasksPreferNative(matches).map((task) => ({
         ...task,
         raw_search: true,
       }));
@@ -1745,7 +1780,7 @@ export default function VideoProgress() {
 
   const refreshViewsFromCache = async () => {
     const cached = await getCachedTasks();
-    const filtered = cached.filter(shouldIncludeTask);
+    const filtered = dedupeTasksPreferNative(cached.filter(shouldIncludeTask));
     setTasks(sortTasks(filtered));
 
     if (rawSearchEnabled && normalizedSearch.length > 0) {
@@ -1754,7 +1789,7 @@ export default function VideoProgress() {
         return name.includes(normalizedSearch);
       });
       setRawSearchResults(
-        matches.map((task) => ({
+        dedupeTasksPreferNative(matches).map((task) => ({
           ...task,
           raw_search: true,
         }))
@@ -1941,15 +1976,20 @@ export default function VideoProgress() {
               icon={getStageIcon(getTaskStage(task))}
               title={task.athletename}
               subtitle={`${task.grad_year} • ${normalizeSportName(task.sport_name)} • ${getPositions(task)}`}
-              accessories={[
-                getTaskStage(task) === 'Done' && task.date_completed
-                  ? { tag: { value: formatDate(task.date_completed), color: Color.Green } }
-                  : { text: formatDate(task.video_due_date) },
-                {
-                  icon: getStatusIcon(task.video_progress_status),
-                  text: task.video_progress_status,
-                },
-              ]}
+              accessories={
+                [
+                  getTaskStage(task) === 'Done' && task.date_completed
+                    ? { tag: { value: formatDate(task.date_completed), color: Color.Green } }
+                    : { text: formatDate(task.video_due_date) },
+                  isManualIngestTask(task)
+                    ? { tag: { value: 'Manual', color: Color.Orange } }
+                    : undefined,
+                  {
+                    icon: getStatusIcon(task.video_progress_status),
+                    text: task.video_progress_status,
+                  },
+                ].filter(Boolean) as List.Item.Accessory[]
+              }
               actions={
                 <ActionPanel>
                   <Action
