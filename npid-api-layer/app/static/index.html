@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Recruiting API Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <div class="hero-glow hero-glow-left" aria-hidden="true"></div>
+  <div class="hero-glow hero-glow-right" aria-hidden="true"></div>
+
+  <header class="portal-header">
+    <div class="brand-block">
+      <img class="brand-logo" src="/static/prospect-id-logo.png" alt="Prospect ID logo" />
+      <div>
+        <h1>Recruiting Operations Portal</h1>
+        <p>Find athletes fast, then pull progress, contact data, and notes in one view.</p>
+      </div>
+    </div>
+  </header>
+
+  <main class="portal-grid">
+    <section class="panel search-panel">
+      <div class="panel-title-row">
+        <h2>Search</h2>
+        <span id="searchStatus" class="status-chip">Idle</span>
+      </div>
+      <form id="searchForm" class="search-form">
+        <label for="searchInput">Athlete Name or Email</label>
+        <div class="search-input-row">
+          <input id="searchInput" type="text" placeholder="Ex: Jane Doe or jane@email.com" required />
+          <button type="submit">Find</button>
+        </div>
+      </form>
+      <div id="searchMeta" class="search-meta"></div>
+      <ul id="resultList" class="result-list" aria-live="polite"></ul>
+    </section>
+
+    <section class="panel detail-panel">
+      <div class="panel-title-row">
+        <h2 id="athleteHeader">Athlete Details</h2>
+        <span id="detailStatus" class="status-chip">No Selection</span>
+      </div>
+
+      <div id="emptyState" class="empty-state">
+        Select an athlete from the search results to load profile, video progress, contacts, and notes.
+      </div>
+
+      <div id="detailContent" class="detail-content hidden">
+        <div class="identity-grid" id="identityGrid"></div>
+
+        <nav class="tabs" role="tablist">
+          <button type="button" class="tab active" data-tab="video">Video Progress</button>
+          <button type="button" class="tab" data-tab="contact">Contact Info</button>
+          <button type="button" class="tab" data-tab="notes">Notes</button>
+        </nav>
+
+        <section class="tab-panel active" data-panel="video">
+          <div id="videoPanel" class="data-stack"></div>
+        </section>
+
+        <section class="tab-panel" data-panel="contact">
+          <div id="contactPanel" class="data-stack"></div>
+        </section>
+
+        <section class="tab-panel" data-panel="notes">
+          <div id="notesPanel" class="data-stack"></div>
+          <form id="addNoteForm" class="add-note-form">
+            <h3>Add Note</h3>
+            <label for="noteTitle">Title</label>
+            <input id="noteTitle" type="text" maxlength="180" required />
+            <label for="noteDescription">Description</label>
+            <textarea id="noteDescription" rows="5" required></textarea>
+            <button type="submit">Save Note</button>
+          </form>
+        </section>
+      </div>
+    </section>
+  </main>
+
+  <template id="resultItemTemplate">
+    <li class="result-item">
+      <button type="button" class="result-button">
+        <div class="result-main"></div>
+        <div class="result-sub"></div>
+      </button>
+    </li>
+  </template>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

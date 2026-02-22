@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import logging
+import os
 from pathlib import Path
 
 from app.session import session_manager, video_progress_session_manager
@@ -37,9 +40,19 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NPID API Bridge", version="1.0")
 
+STATIC_DIR = Path(__file__).parent / "app" / "static"
+DEFAULT_ALLOWED_ORIGINS = "https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000"
+STATIC_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _parse_allowed_origins() -> list[str]:
+    raw_value = os.getenv("ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS)
+    origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
+    return origins or ["https://recruiting-api.prospectid.com"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_parse_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,6 +79,20 @@ def health():
         "status": "ok",
         "session_authenticated": session_manager.is_authenticated
     }
+
+
+@app.get("/")
+def portal_home():
+    portal_file = STATIC_DIR / "index.html"
+    if portal_file.exists():
+        return FileResponse(portal_file)
+    return {
+        "status": "ok",
+        "message": "Portal UI not found. Ensure app/static/index.html exists."
+    }
+
+
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # MOUNT THESE – this is what you were missing
