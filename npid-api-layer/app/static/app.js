@@ -3,6 +3,7 @@ const state = {
   selected: null,
   selectedResolved: null,
   selectionRequestId: 0,
+  searchRequestId: 0,
 };
 
 const el = {
@@ -94,15 +95,26 @@ function dedupeByAthleteId(items) {
 }
 
 async function rawSearch(term) {
+  const parts = term.trim().split(/\s+/).filter(Boolean);
+  const firstName = parts.length >= 2 ? parts[0] : undefined;
+  const lastName = parts.length >= 2 ? parts.slice(1).join(" ") : undefined;
+
   return api("/api/v1/athlete/raw-search", {
     method: "POST",
     body: JSON.stringify({
       term,
       email: term.includes("@") ? term : undefined,
+      first_name: firstName,
+      last_name: lastName,
       include_admin_search: true,
       include_recent_search: false,
     }),
   });
+}
+
+function shouldUseFallbackSearch(term) {
+  const trimmed = term.trim();
+  return trimmed.includes("@") || /^\d{5,}$/.test(trimmed);
 }
 
 async function fallbackVideoSearch(term) {
@@ -371,15 +383,21 @@ async function selectAthlete(result) {
 }
 
 async function runSearch(term) {
+  const requestId = ++state.searchRequestId;
+  const submitButton = el.searchForm.querySelector("button[type='submit']");
+  submitButton.disabled = true;
+  submitButton.textContent = "Searching...";
   setSearchStatus("Searching");
   el.searchMeta.textContent = "Running global search...";
 
   try {
     let payload = await rawSearch(term);
+    if (requestId !== state.searchRequestId) return;
     let results = Array.isArray(payload?.results) ? payload.results : [];
 
-    if (!results.length) {
+    if (!results.length && shouldUseFallbackSearch(term)) {
       const fallback = await fallbackVideoSearch(term);
+      if (requestId !== state.searchRequestId) return;
       payload = {
         ...payload,
         results: fallback.results,
@@ -408,10 +426,15 @@ async function runSearch(term) {
     el.searchMeta.textContent = `${state.searchResults.length} result(s)${sourceLabel ? ` • Sources: ${sourceLabel}` : ""}`;
     setSearchStatus("Ready");
   } catch (error) {
+    if (requestId !== state.searchRequestId) return;
     state.searchResults = [];
     renderResults([]);
     setSearchStatus("Error");
     el.searchMeta.innerHTML = `<span class="error-message">${escapeHtml(error instanceof Error ? error.message : String(error))}</span>`;
+  } finally {
+    if (requestId !== state.searchRequestId) return;
+    submitButton.disabled = false;
+    submitButton.textContent = "Find";
   }
 }
 

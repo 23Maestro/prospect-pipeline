@@ -7,18 +7,24 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260222c" />
 </head>
 <body>
   <div class="hero-glow hero-glow-left" aria-hidden="true"></div>
   <div class="hero-glow hero-glow-right" aria-hidden="true"></div>
+  <div class="grid-noise" aria-hidden="true"></div>
 
   <header class="portal-header">
     <div class="brand-block">
       <img class="brand-logo" src="/static/prospect-id-logo.png" alt="Prospect ID logo" />
-      <div>
+      <div class="brand-copy">
         <h1>Recruiting Operations Portal</h1>
-        <p>Find athletes fast, then pull progress, contact data, and notes in one view.</p>
+        <p>One command center for athlete search, progress intel, contact context, and notes.</p>
+        <div class="header-metrics">
+          <span>Unified Search</span>
+          <span>Live Progress</span>
+          <span>Recruiting Notes</span>
+        </div>
       </div>
     </div>
   </header>
@@ -29,6 +35,7 @@
         <h2>Search</h2>
         <span id="searchStatus" class="status-chip">Idle</span>
       </div>
+      <p class="panel-intro">Look up by athlete name or email to load profile and recruiting data.</p>
       <form id="searchForm" class="search-form">
         <label for="searchInput">Athlete Name or Email</label>
         <div class="search-input-row">
@@ -45,6 +52,7 @@
         <h2 id="athleteHeader">Athlete Details</h2>
         <span id="detailStatus" class="status-chip">No Selection</span>
       </div>
+      <p class="panel-intro">Profile identity, video workflow, contact channels, and note history.</p>
 
       <div id="emptyState" class="empty-state">
         Select an athlete from the search results to load profile, video progress, contacts, and notes.
@@ -91,6 +99,6 @@
     </li>
   </template>
 
-  <script src="/static/app.js" defer></script>
+  <script src="/static/app.js?v=20260222c" defer></script>
 </body>
 </html>
