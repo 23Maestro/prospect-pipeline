@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/static/styles.css?v=20260222c" />
+  <link rel="stylesheet" href="/static/styles.css?v=20260222d" />
 </head>
 <body>
   <div class="hero-glow hero-glow-left" aria-hidden="true"></div>
@@ -18,24 +18,19 @@
     <div class="brand-block">
       <img class="brand-logo" src="/static/prospect-id-logo.png" alt="Prospect ID logo" />
       <div class="brand-copy">
-        <h1>Recruiting Operations Portal</h1>
-        <p>One command center for athlete search, progress intel, contact context, and notes.</p>
-        <div class="header-metrics">
-          <span>Unified Search</span>
-          <span>Live Progress</span>
-          <span>Recruiting Notes</span>
-        </div>
+        <h1>Recruiting Portal</h1>
+        <p>Search athletes and view progress, contacts, and notes.</p>
       </div>
     </div>
   </header>
 
   <main class="portal-grid">
     <section class="panel search-panel">
+      <div class="search-shell">
       <div class="panel-title-row">
         <h2>Search</h2>
-        <span id="searchStatus" class="status-chip">Idle</span>
+        <span id="searchStatus" class="status-chip" data-state="idle" aria-live="polite">Idle</span>
       </div>
-      <p class="panel-intro">Look up by athlete name or email to load profile and recruiting data.</p>
       <form id="searchForm" class="search-form">
         <label for="searchInput">Athlete Name or Email</label>
         <div class="search-input-row">
@@ -43,16 +38,19 @@
           <button type="submit">Find</button>
         </div>
       </form>
-      <div id="searchMeta" class="search-meta"></div>
-      <ul id="resultList" class="result-list" aria-live="polite"></ul>
+      </div>
+      <div class="results-shell">
+        <div id="searchMeta" class="search-meta" aria-live="polite"></div>
+        <ul id="resultList" class="result-list" aria-live="polite"></ul>
+      </div>
     </section>
 
     <section class="panel detail-panel">
+      <div class="detail-shell">
       <div class="panel-title-row">
         <h2 id="athleteHeader">Athlete Details</h2>
-        <span id="detailStatus" class="status-chip">No Selection</span>
+        <span id="detailStatus" class="status-chip" data-state="idle" aria-live="polite">No Selection</span>
       </div>
-      <p class="panel-intro">Profile identity, video workflow, contact channels, and note history.</p>
 
       <div id="emptyState" class="empty-state">
         Select an athlete from the search results to load profile, video progress, contacts, and notes.
@@ -61,21 +59,21 @@
       <div id="detailContent" class="detail-content hidden">
         <div class="identity-grid" id="identityGrid"></div>
 
-        <nav class="tabs" role="tablist">
-          <button type="button" class="tab active" data-tab="video">Video Progress</button>
-          <button type="button" class="tab" data-tab="contact">Contact Info</button>
-          <button type="button" class="tab" data-tab="notes">Notes</button>
+        <nav class="tabs" role="tablist" aria-label="Athlete detail sections">
+          <button type="button" class="tab active" id="tab-video" data-tab="video" role="tab" aria-controls="panel-video" aria-selected="true">Video Progress</button>
+          <button type="button" class="tab" id="tab-contact" data-tab="contact" role="tab" aria-controls="panel-contact" aria-selected="false">Contact Info</button>
+          <button type="button" class="tab" id="tab-notes" data-tab="notes" role="tab" aria-controls="panel-notes" aria-selected="false">Notes</button>
         </nav>
 
-        <section class="tab-panel active" data-panel="video">
+        <section class="tab-panel active" id="panel-video" data-panel="video" role="tabpanel" aria-labelledby="tab-video">
           <div id="videoPanel" class="data-stack"></div>
         </section>
 
-        <section class="tab-panel" data-panel="contact">
+        <section class="tab-panel" id="panel-contact" data-panel="contact" role="tabpanel" aria-labelledby="tab-contact" hidden>
           <div id="contactPanel" class="data-stack"></div>
         </section>
 
-        <section class="tab-panel" data-panel="notes">
+        <section class="tab-panel" id="panel-notes" data-panel="notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
           <div id="notesPanel" class="data-stack"></div>
           <form id="addNoteForm" class="add-note-form">
             <h3>Add Note</h3>
@@ -86,6 +84,7 @@
             <button type="submit">Save Note</button>
           </form>
         </section>
+      </div>
       </div>
     </section>
   </main>
@@ -99,6 +98,6 @@
     </li>
   </template>
 
-  <script src="/static/app.js?v=20260222c" defer></script>
+  <script src="/static/app.js?v=20260222d" defer></script>
 </body>
 </html>

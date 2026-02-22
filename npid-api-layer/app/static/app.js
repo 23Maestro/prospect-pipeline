@@ -4,6 +4,7 @@ const state = {
   selectedResolved: null,
   selectionRequestId: 0,
   searchRequestId: 0,
+  resultFocusIndex: -1,
 };
 
 const el = {
@@ -55,10 +56,38 @@ async function api(path, options = {}) {
 
 function setSearchStatus(message) {
   el.searchStatus.textContent = message;
+  const normalized = String(message || "").toLowerCase();
+  if (normalized.includes("search")) {
+    el.searchStatus.dataset.state = "loading";
+    return;
+  }
+  if (normalized.includes("error")) {
+    el.searchStatus.dataset.state = "error";
+    return;
+  }
+  if (normalized.includes("ready")) {
+    el.searchStatus.dataset.state = "ready";
+    return;
+  }
+  el.searchStatus.dataset.state = "idle";
 }
 
 function setDetailStatus(message) {
   el.detailStatus.textContent = message;
+  const normalized = String(message || "").toLowerCase();
+  if (normalized.includes("load")) {
+    el.detailStatus.dataset.state = "loading";
+    return;
+  }
+  if (normalized.includes("error")) {
+    el.detailStatus.dataset.state = "error";
+    return;
+  }
+  if (normalized.includes("ready")) {
+    el.detailStatus.dataset.state = "ready";
+    return;
+  }
+  el.detailStatus.dataset.state = "idle";
 }
 
 function escapeHtml(value) {
@@ -76,6 +105,30 @@ function infoMessage(text) {
 
 function errorMessage(text) {
   return `<div class="error-message">${escapeHtml(text)}</div>`;
+}
+
+function skeletonBlock(lines = 3) {
+  return `
+    <div class="skeleton-card" aria-hidden="true">
+      ${Array.from({ length: lines }, () => '<div class="skeleton-line"></div>').join("")}
+    </div>
+  `;
+}
+
+function renderResultsSkeleton(count = 6) {
+  state.resultFocusIndex = -1;
+  el.resultList.innerHTML = Array.from({ length: count }, () => `
+    <li class="result-item">
+      ${skeletonBlock(2)}
+    </li>
+  `).join("");
+}
+
+function renderDetailSkeleton() {
+  el.identityGrid.innerHTML = Array.from({ length: 4 }, () => skeletonBlock(2)).join("");
+  el.videoPanel.innerHTML = skeletonBlock(3) + skeletonBlock(3);
+  el.contactPanel.innerHTML = skeletonBlock(3);
+  el.notesPanel.innerHTML = skeletonBlock(2);
 }
 
 function pickAthleteId(task) {
@@ -115,6 +168,43 @@ async function rawSearch(term) {
 function shouldUseFallbackSearch(term) {
   const trimmed = term.trim();
   return trimmed.includes("@") || /^\d{5,}$/.test(trimmed);
+}
+
+function getResultButtons() {
+  return Array.from(el.resultList.querySelectorAll(".result-button"));
+}
+
+function setResultFocusIndex(index, shouldFocus = true) {
+  const buttons = getResultButtons();
+  if (!buttons.length) {
+    state.resultFocusIndex = -1;
+    return;
+  }
+
+  const bounded = Math.max(0, Math.min(index, buttons.length - 1));
+  state.resultFocusIndex = bounded;
+  buttons.forEach((button, idx) => {
+    button.tabIndex = idx === bounded ? 0 : -1;
+  });
+
+  if (shouldFocus) {
+    buttons[bounded].focus();
+  }
+}
+
+function activateTab(tabName) {
+  el.tabs.forEach((tab) => {
+    const active = tab.dataset.tab === tabName;
+    tab.classList.toggle("active", active);
+    tab.setAttribute("aria-selected", active ? "true" : "false");
+    tab.tabIndex = active ? 0 : -1;
+  });
+
+  el.panels.forEach((panel) => {
+    const active = panel.dataset.panel === tabName;
+    panel.classList.toggle("active", active);
+    panel.hidden = !active;
+  });
 }
 
 async function fallbackVideoSearch(term) {
@@ -157,6 +247,7 @@ function renderResults(results) {
   el.resultList.innerHTML = "";
 
   if (!results.length) {
+    state.resultFocusIndex = -1;
     const noRow = document.createElement("li");
     noRow.className = "info-message";
     noRow.textContent = "No results found.";
@@ -192,6 +283,12 @@ function renderResults(results) {
     li.appendChild(button);
     el.resultList.appendChild(li);
   }
+
+  const selectedIndex = state.selected
+    ? results.findIndex((item) => String(item.athlete_id) === String(state.selected.athlete_id))
+    : -1;
+  const initialIndex = selectedIndex >= 0 ? selectedIndex : 0;
+  setResultFocusIndex(initialIndex, false);
 }
 
 function renderIdentity(result) {
@@ -305,7 +402,7 @@ async function loadContact(selected, resolved) {
   const contactId = selected.contact_id || resolved?.contact_id || selected.athlete_id;
 
   if (!athleteMainId) {
-    el.contactPanel.innerHTML = '<div class="error-message">Missing athlete_main_id. Contact info cannot be loaded.</div>';
+    el.contactPanel.innerHTML = errorMessage("Missing athlete_main_id. Contact info cannot be loaded.");
     return;
   }
 
@@ -316,7 +413,7 @@ async function loadContact(selected, resolved) {
 async function loadNotes(selected, resolved) {
   const athleteMainId = resolved?.athlete_main_id || selected.athlete_main_id;
   if (!athleteMainId) {
-    el.notesPanel.innerHTML = '<div class="error-message">Missing athlete_main_id. Notes cannot be loaded.</div>';
+    el.notesPanel.innerHTML = errorMessage("Missing athlete_main_id. Notes cannot be loaded.");
     return;
   }
 
@@ -345,10 +442,7 @@ async function selectAthlete(result) {
   el.emptyState.classList.add("hidden");
   el.detailContent.classList.remove("hidden");
   el.athleteHeader.textContent = state.selected.name || `Athlete ${state.selected.athlete_id}`;
-  renderIdentity(state.selected);
-  el.videoPanel.innerHTML = infoMessage("Loading video progress...");
-  el.contactPanel.innerHTML = infoMessage("Loading contact info...");
-  el.notesPanel.innerHTML = infoMessage("Loading notes...");
+  renderDetailSkeleton();
 
   try {
     const resolved = await api(`/api/v1/athlete/${encodeURIComponent(state.selected.athlete_id)}/resolve`);
@@ -389,6 +483,7 @@ async function runSearch(term) {
   submitButton.textContent = "Searching...";
   setSearchStatus("Searching");
   el.searchMeta.textContent = "Running global search...";
+  renderResultsSkeleton();
 
   try {
     let payload = await rawSearch(term);
@@ -447,11 +542,59 @@ el.searchForm.addEventListener("submit", async (event) => {
 
 el.tabs.forEach((tab) => {
   tab.addEventListener("click", () => {
-    const target = tab.dataset.tab;
-    el.tabs.forEach((item) => item.classList.toggle("active", item === tab));
-    el.panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.panel === target));
+    activateTab(tab.dataset.tab);
+  });
+
+  tab.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const activeIndex = el.tabs.indexOf(tab);
+    if (activeIndex < 0) return;
+    let nextIndex = activeIndex;
+    if (event.key === "ArrowRight") nextIndex = (activeIndex + 1) % el.tabs.length;
+    if (event.key === "ArrowLeft") nextIndex = (activeIndex - 1 + el.tabs.length) % el.tabs.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = el.tabs.length - 1;
+    const nextTab = el.tabs[nextIndex];
+    activateTab(nextTab.dataset.tab);
+    nextTab.focus();
   });
 });
+
+el.resultList.addEventListener("keydown", (event) => {
+  const buttons = getResultButtons();
+  if (!buttons.length) return;
+
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    setResultFocusIndex(state.resultFocusIndex + 1);
+    return;
+  }
+  if (event.key === "ArrowUp") {
+    event.preventDefault();
+    setResultFocusIndex(state.resultFocusIndex - 1);
+    return;
+  }
+  if (event.key === "Home") {
+    event.preventDefault();
+    setResultFocusIndex(0);
+    return;
+  }
+  if (event.key === "End") {
+    event.preventDefault();
+    setResultFocusIndex(buttons.length - 1);
+    return;
+  }
+  if (event.key === "Enter") {
+    const active = document.activeElement;
+    if (active && active.classList.contains("result-button")) {
+      event.preventDefault();
+      active.click();
+    }
+  }
+});
+
+activateTab("video");
 
 el.addNoteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
