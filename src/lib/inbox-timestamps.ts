@@ -1,7 +1,8 @@
-import { NPIDInboxMessage } from "../types/video-team";
-import { fetchMessageDetail } from "./npid-mcp-adapter";
+import { NPIDInboxMessage } from '../types/video-team';
+import { fetchMessageDetail } from './npid-mcp-adapter';
 
-const DATE_REGEX = /\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Mon|Tue|Wed|Thu|Fri|Sat|Sun/i;
+const DATE_REGEX =
+  /\d{4}|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Mon|Tue|Wed|Thu|Fri|Sat|Sun/i;
 const TIME_REGEX = /\d{1,2}:\d{2}\s*(AM|PM)/i;
 
 export function shouldHydrateTimestamp(rawValue?: string | null): boolean {
@@ -15,10 +16,10 @@ export function shouldHydrateTimestamp(rawValue?: string | null): boolean {
 
 export async function hydrateThreadTimestamps(
   messages: NPIDInboxMessage[],
-  batchSize = 5
+  batchSize = 5,
 ): Promise<NPIDInboxMessage[]> {
   const toHydrate = messages.filter(
-    (msg) => shouldHydrateTimestamp(msg.timeStampDisplay) || shouldHydrateTimestamp(msg.timestamp)
+    (msg) => shouldHydrateTimestamp(msg.timeStampDisplay) || shouldHydrateTimestamp(msg.timestamp),
   );
 
   if (toHydrate.length === 0) {
@@ -35,10 +36,10 @@ export async function hydrateThreadTimestamps(
           const result = await fetchMessageDetail(msg.id, msg.itemCode || msg.id);
           return { id: msg.id, timestamp: result.timestamp || result.time_stamp };
         } catch (error) {
-          console.error("Failed to hydrate timestamp", error);
+          console.error('Failed to hydrate timestamp', error);
           return null;
         }
-      })
+      }),
     );
 
     details.forEach((detail) => {

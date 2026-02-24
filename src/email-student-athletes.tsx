@@ -108,7 +108,7 @@ async function fetchRecipients(athleteId: string): Promise<EmailRecipients | nul
   try {
     log('📧 fetching recipients for athlete', athleteId);
     const resp = await apiFetch(`/email/recipients/${encodeURIComponent(athleteId)}`);
-    const json = await resp.json().catch(() => ({})) as any;
+    const json = (await resp.json().catch(() => ({}))) as any;
     if (!resp.ok) {
       log('⚠️ recipients fetch failed', { status: resp.status, json });
       return null;
@@ -143,7 +143,10 @@ async function fetchTemplateData(templateId: string, athleteId: string) {
     subject: string;
     message: string;
   };
-  log('✅ template data fetched', { hasSubject: Boolean(result.subject), hasMessage: Boolean(result.message) });
+  log('✅ template data fetched', {
+    hasSubject: Boolean(result.subject),
+    hasMessage: Boolean(result.message),
+  });
   return result;
 }
 
@@ -226,7 +229,10 @@ export default function EmailStudentAthletesCommand(
 
       try {
         toast.title = 'Fetching template data...';
-        const templateData = await fetchTemplateData(formValues.emailTemplate, selectedPlayer.player_id);
+        const templateData = await fetchTemplateData(
+          formValues.emailTemplate,
+          selectedPlayer.player_id,
+        );
 
         toast.title = 'Sending email via FastAPI...';
         toast.message = `Template ID: ${formValues.emailTemplate}`;
@@ -238,7 +244,9 @@ export default function EmailStudentAthletesCommand(
           senderEmail: templateData.sender_email || 'videoteam@prospectid.com',
           subject: templateData.subject || '',
           message: templateData.message || '',
-          parentIds: (recipients?.parents || []).filter((p) => p.checked !== false).map((p) => p.id),
+          parentIds: (recipients?.parents || [])
+            .filter((p) => p.checked !== false)
+            .map((p) => p.id),
           otherEmail: recipients?.other_email || 'jholcomb@prospectid.com',
         });
 
@@ -308,7 +316,6 @@ export default function EmailStudentAthletesCommand(
 
     const timeoutId = setTimeout(searchPlayers, 500);
     return () => clearTimeout(timeoutId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemProps.athleteName.value]);
 
   useEffect(() => {
@@ -382,9 +389,7 @@ export default function EmailStudentAthletesCommand(
         autoFocus
       />
 
-      {isSearching && (
-        <Form.Description text="🔍 Searching NPID database..." />
-      )}
+      {isSearching && <Form.Description text="🔍 Searching NPID database..." />}
 
       {selectedPlayer && (
         <Form.Description
@@ -400,11 +405,17 @@ export default function EmailStudentAthletesCommand(
         {emailTemplates.length === 0 ? (
           <Form.Dropdown.Item
             value=""
-            title={selectedPlayer ? 'No templates available' : 'Search for an athlete to load templates'}
+            title={
+              selectedPlayer ? 'No templates available' : 'Search for an athlete to load templates'
+            }
           />
         ) : (
           emailTemplates.map((template) => (
-            <Form.Dropdown.Item key={template.value} value={template.value} title={template.title} />
+            <Form.Dropdown.Item
+              key={template.value}
+              value={template.value}
+              title={template.title}
+            />
           ))
         )}
       </Form.Dropdown>

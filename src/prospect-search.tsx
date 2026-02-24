@@ -1,13 +1,4 @@
-import {
-  Action,
-  ActionPanel,
-  Detail,
-  Form,
-  Icon,
-  List,
-  Toast,
-  showToast,
-} from '@raycast/api';
+import { Action, ActionPanel, Detail, Form, Icon, List, Toast, showToast } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from './lib/python-server-client';
 import { upsertTasks } from './lib/video-progress-cache';
@@ -49,7 +40,10 @@ function formatLocation(result: ProspectResult): string {
 function cleanPositions(positions?: string): string | null {
   if (!positions) return null;
   // Remove leading "Positions" prefix and normalize separators to " | "
-  const withoutPrefix = positions.replace(/^Positions?/i, '').replace(/^[:\-\s]+/, '').trim();
+  const withoutPrefix = positions
+    .replace(/^Positions?/i, '')
+    .replace(/^[:\-\s]+/, '')
+    .trim();
   const tokens = withoutPrefix
     .split(/\||,|\/|•/)
     .map((token) => token.replace(/^Positions?/i, '').trim())
@@ -266,11 +260,7 @@ function MaterializeTaskForm({
       </Form.Dropdown>
       <Form.Dropdown id="status" title="Status" value={status} onChange={setStatus}>
         {STATUS_OPTIONS.map((option) => (
-          <Form.Dropdown.Item
-            key={option || 'blank'}
-            value={option}
-            title={option || 'Blank'}
-          />
+          <Form.Dropdown.Item key={option || 'blank'} value={option} title={option || 'Blank'} />
         ))}
       </Form.Dropdown>
     </Form>
@@ -305,10 +295,7 @@ export default function ProspectSearch() {
 
       if (!response.ok) {
         const errMessage =
-          json?.detail ||
-          json?.message ||
-          text.slice(0, 200) ||
-          `HTTP ${response.status}`;
+          json?.detail || json?.message || text.slice(0, 200) || `HTTP ${response.status}`;
         throw new Error(errMessage);
       }
 
@@ -370,7 +357,10 @@ export default function ProspectSearch() {
 
     try {
       const enriched = await ensureProspectDetails(result);
-      const normalizedPositions = normalizePositionsWithLogging(enriched.positions, enriched.athlete_id);
+      const normalizedPositions = normalizePositionsWithLogging(
+        enriched.positions,
+        enriched.athlete_id,
+      );
       let athleteMainId = enriched.athlete_main_id;
       if (!athleteMainId) {
         const resolved = await resolveAndCacheAthleteMainId(enriched.athlete_id);
@@ -417,10 +407,7 @@ export default function ProspectSearch() {
       const { json, text } = await parseJsonResponse(response);
       if (!response.ok) {
         const errMessage =
-          json?.detail ||
-          json?.message ||
-          text.slice(0, 200) ||
-          `HTTP ${response.status}`;
+          json?.detail || json?.message || text.slice(0, 200) || `HTTP ${response.status}`;
         searchLogger.error('PROSPECT_MATERIALIZE_REQUEST', {
           event: 'PROSPECT_MATERIALIZE_REQUEST',
           step: 'materialize_request',
@@ -525,10 +512,12 @@ export default function ProspectSearch() {
               ]
                 .filter(Boolean)
                 .join(' • ')}
-              accessories={[
-                result.email ? { icon: Icon.Envelope, text: result.email } : undefined,
-                result.source ? { text: result.source } : undefined,
-              ].filter(Boolean) as { icon?: Icon; text?: string }[]}
+              accessories={
+                [
+                  result.email ? { icon: Icon.Envelope, text: result.email } : undefined,
+                  result.source ? { text: result.source } : undefined,
+                ].filter(Boolean) as { icon?: Icon; text?: string }[]
+              }
               actions={
                 <ActionPanel>
                   <Action.Push
@@ -549,10 +538,7 @@ export default function ProspectSearch() {
                   {result.email ? (
                     <Action.CopyToClipboard title="Copy Email" content={result.email} />
                   ) : null}
-                  <Action.CopyToClipboard
-                    title="Copy Athlete ID"
-                    content={result.athlete_id}
-                  />
+                  <Action.CopyToClipboard title="Copy Athlete ID" content={result.athlete_id} />
                   {result.athlete_main_id ? (
                     <Action.CopyToClipboard
                       title="Copy Athlete Main ID"

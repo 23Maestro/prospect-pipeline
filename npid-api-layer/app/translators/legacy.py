@@ -495,12 +495,60 @@ class LegacyTranslator:
         Laravel returns HTTP 200 with no meaningful body on success.
         Mirrors: src/python/npid_api_client.py:1346-1351
         """
-        # Laravel just returns HTTP 200, no JSON to parse
-        # Empty response or any content = success (HTTP status determines success)
-        return {
-            "success": True,
-            "raw": raw_response[:500] if raw_response else ""
-        }
+        raw = raw_response or ""
+        trimmed = raw.strip()
+
+        # Canonical success from Laravel is often empty body with 200.
+        if not trimmed:
+            return {"success": True, "raw": ""}
+
+        # Try direct JSON first.
+        try:
+            parsed = json.loads(trimmed)
+            if isinstance(parsed, dict):
+                success_value = parsed.get("success", True)
+                success = (
+                    success_value
+                    if isinstance(success_value, bool)
+                    else str(success_value).lower() == "true"
+                )
+                return {
+                    "success": success,
+                    "message": parsed.get("message", ""),
+                    "raw": parsed,
+                }
+        except json.JSONDecodeError:
+            pass
+
+        lowered = trimmed.lower()
+
+        # Detect embedded nested success markers in non-JSON/garbled payloads.
+        if '"success":"false"' in lowered or '"success":false' in lowered:
+            return {
+                "success": False,
+                "message": "Legacy response indicated status update failure",
+                "raw": raw[:500],
+            }
+
+        failure_markers = [
+            "error",
+            "exception",
+            "failed",
+            "fatal",
+            "traceback",
+            "login",
+            "csrf",
+            "token mismatch",
+        ]
+        if any(marker in lowered for marker in failure_markers):
+            return {
+                "success": False,
+                "message": "Legacy response contained failure markers",
+                "raw": raw[:500],
+            }
+
+        # Fallback: preserve legacy behavior when no clear failure marker exists.
+        return {"success": True, "raw": raw[:500]}
 
     @staticmethod
     def parse_due_date_update_response(raw_response: str) -> Dict[str, Any]:
@@ -772,10 +820,13 @@ class LegacyTranslator:
                         f'#details{pattern}0',
                         f'#details{pattern}1',
                         f'[id*="{pattern}"]',
-                        f'.{pattern}-content',
                     ]
                     for selector in tab_selectors:
-                        tab_container = tree.css_first(selector)
+                        try:
+                            tab_container = tree.css_first(selector)
+                        except Exception:
+                            logger.debug("Skipping invalid selector during profile jersey parse: %s", selector)
+                            continue
                         if tab_container:
                             logger.info(f"✅ Found tab container for grade pattern '{pattern}' using '{selector}'")
                             # Search for Jersey # only within this container
@@ -2563,6 +2614,178 @@ class LegacyTranslator:
             }
         except:
             return {"stage": None, "status": None}
+
+    @staticmethod
+    def extract_sport_alias(profile_html: str) -> Optional[str]:
+        """
+        Extract sport_alias from athlete profile HTML script URLs.
+        """
+        if not profile_html:
+            return None
+        patterns = [
+            r'sport_alias=([a-z_]+)',
+            r'sportAlias=([a-z_]+)',
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, profile_html, re.IGNORECASE)
+            if match:
+                return match.group(1).lower()
+        return None
+
+    @staticmethod
+    def normalize_sport_alias(sport_value: Optional[str]) -> Optional[str]:
+        """
+        Convert sport labels to the legacy sport_alias format expected by athletic_seasons.
+        """
+        if not sport_value:
+            return None
+        normalized = str(sport_value).strip().lower()
+        if not normalized:
+            return None
+
+        explicit = {
+            "football": "football",
+            "basketball": "basketball",
+            "baseball": "baseball",
+            "softball": "softball",
+            "soccer": "soccer",
+            "lacrosse": "lacrosse",
+            "track": "track-field",
+            "track and field": "track-field",
+            "track & field": "track-field",
+            "volleyball": "volleyball",
+            "wrestling": "wrestling",
+            "golf": "golf",
+            "tennis": "tennis",
+            "cross country": "cross-country",
+        }
+        if normalized in explicit:
+            return explicit[normalized]
+        return re.sub(r"[^a-z0-9]+", "-", normalized).strip("-") or None
+
+    @staticmethod
+    def athletic_seasons_to_legacy(athlete_id: str, athlete_main_id: str, sport_alias: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for athletic seasons HTML (contains details panes with Jersey # rows).
+        GET /template/template/athletic_seasons
+        """
+        endpoint = "/template/template/athletic_seasons"
+        params = {
+            "filter": "career",
+            "id": "",
+            "athlete_id": athlete_id,
+            "sport_alias": sport_alias,
+            "athlete_main_id": athlete_main_id,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_jersey_from_athletic_seasons(html_response: str) -> Dict[str, Any]:
+        """
+        Parse jersey from athletic seasons HTML with deterministic attempt order:
+        senior -> junior -> sophomore -> freshman.
+        """
+        soup = BeautifulSoup(html_response or "", "html.parser")
+        grade_order = ["senior", "junior", "sophomore", "freshman"]
+        attempts: List[Dict[str, Any]] = []
+
+        if not html_response:
+            return {"jersey_number": None, "attempts": attempts, "failure_reason": "empty_response"}
+
+        for grade in grade_order:
+            containers = soup.select(f'div[id^="details{grade}"]')
+            if not containers:
+                attempts.append({
+                    "selector_attempted": f'div[id^="details{grade}"]',
+                    "selector_found": False,
+                    "extracted_value": None,
+                    "failure_reason": "200_selector_missing",
+                })
+                continue
+
+            sorted_containers = sorted(containers, key=lambda node: node.get("id") or "")
+            for container in sorted_containers:
+                container_id = container.get("id") or f"details{grade}"
+                value_node = container.select_one("div.col-md-3.col-xs-7:-soup-contains('Jersey #')")
+                if not value_node:
+                    attempts.append({
+                        "selector_attempted": f"#{container_id} :: Jersey # row",
+                        "selector_found": False,
+                        "extracted_value": None,
+                        "failure_reason": "200_selector_missing",
+                    })
+                    continue
+
+                row = value_node.find_parent("div", class_="col-md-12")
+                candidate = ""
+                if row:
+                    cols = row.select("div")
+                    if len(cols) >= 2:
+                        candidate = cols[1].get_text(" ", strip=True)
+
+                digits_match = re.search(r"\d+", candidate or "")
+                if digits_match:
+                    jersey = f"#{digits_match.group(0)}"
+                    attempts.append({
+                        "selector_attempted": f"#{container_id} :: Jersey # row",
+                        "selector_found": True,
+                        "extracted_value": jersey,
+                        "failure_reason": None,
+                    })
+                    return {"jersey_number": jersey, "attempts": attempts, "failure_reason": None}
+
+                attempts.append({
+                    "selector_attempted": f"#{container_id} :: Jersey # row",
+                    "selector_found": True,
+                    "extracted_value": None,
+                    "failure_reason": "unexpected_dom_shift",
+                })
+
+        return {"jersey_number": None, "attempts": attempts, "failure_reason": "js_rendered_not_in_raw_html"}
+
+    @staticmethod
+    def athlete_transactions_to_legacy(contact_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:
+        endpoint = "/template/template/athlete_transactionslist"
+        params = {"id": contact_id, "athlete_main_id": athlete_main_id}
+        return endpoint, params
+
+    @staticmethod
+    def athlete_campaigns_to_legacy(contact_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:
+        endpoint = "/template/template/athlete_campaignslist"
+        params = {"id": contact_id, "athlete_main_id": athlete_main_id}
+        return endpoint, params
+
+    @staticmethod
+    def athlete_emails_to_legacy(contact_id: str) -> Tuple[str, Dict[str, Any]]:
+        endpoint = "/template/template/athlete_emailslist"
+        params = {"id": contact_id}
+        return endpoint, params
+
+    @staticmethod
+    def parse_admin_table_response(html_response: str) -> Dict[str, Any]:
+        soup = BeautifulSoup(html_response or "", "html.parser")
+        table = soup.select_one("table")
+        if not table:
+            return {"headers": [], "rows": [], "table_found": False}
+
+        headers = [th.get_text(" ", strip=True) for th in table.select("thead th")]
+        if not headers:
+            first_row = table.select_one("tr")
+            if first_row:
+                headers = [cell.get_text(" ", strip=True) for cell in first_row.select("th,td")]
+
+        rows: List[List[str]] = []
+        body_rows = table.select("tbody tr")
+        for row in body_rows:
+            cells = [cell.get_text(" ", strip=True) for cell in row.select("td")]
+            if cells:
+                rows.append(cells)
+
+        return {
+            "headers": headers,
+            "rows": rows,
+            "table_found": True,
+        }
 
     @staticmethod
     def tasks_list_to_legacy(athlete_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:

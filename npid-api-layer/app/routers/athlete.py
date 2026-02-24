@@ -4,20 +4,21 @@ Handles athlete ID resolution and profile lookups.
 """
 
 from fastapi import APIRouter, HTTPException, Request
-from typing import Optional
+from typing import Optional, Dict, Any
 import logging
 import time
 import httpx
 
 from app.models.schemas import (
     AthleteIdentifiers,
+    AdminAthleteTableResponse,
     RawAthleteSearchRequest,
     RawAthleteSearchResponse
 )
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 from app.cache import athlete_cache
-from app.invariants import Invariant, log_check, hard_fail
+from app.invariants import Invariant, log_check
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["athlete"])
@@ -27,6 +28,25 @@ def get_session(request: Request) -> NPIDSession:
     """Get session from app state."""
     from main import session_manager
     return session_manager
+
+
+def _log_admin_table_event(
+    feature: str,
+    status: str,
+    step: str,
+    context: Dict[str, Any],
+    error: Optional[str] = None,
+):
+    payload = {
+        "event": feature,
+        "step": step,
+        "status": status,
+        "feature": feature,
+        "context": context,
+    }
+    if error:
+        payload["error"] = error
+    logger.info("ADMIN_TABLE_EVENT %s", payload)
 
 
 async def persist_athlete_main_id(athlete_id: int, athlete_main_id: str):
@@ -46,7 +66,12 @@ async def persist_athlete_main_id(athlete_id: int, athlete_main_id: str):
 
 
 @router.get("/{any_id}/resolve", response_model=AthleteIdentifiers)
-async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int] = None):
+async def resolve_athlete(
+    request: Request,
+    any_id: str,
+    grad_year: Optional[int] = None,
+    force_refresh: bool = False,
+):
     """
     Resolve all known IDs for an athlete given any single ID.
 
@@ -62,18 +87,28 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
     # Check cache first
     cached = athlete_cache.get(any_id)
     if cached:
-        logger.info(f"📦 Cache hit for {any_id}")
-        return cached
+        cached_jersey = getattr(cached, "jersey_number", None)
+        missing_jersey = not bool(cached_jersey)
+        if not force_refresh and not missing_jersey:
+            logger.info(f"📦 Cache hit for {any_id}")
+            return cached
+        logger.info(
+            "🔄 Cache bypass for %s (force_refresh=%s, missing_jersey=%s)",
+            any_id,
+            force_refresh,
+            missing_jersey,
+        )
     
     logger.info(f"🔍 Resolving athlete IDs for {any_id}")
     
     athlete_id = None
     athlete_main_id = None
     profile_data = {}
+    profile_html = ""
 
     async def hydrate_from_profile(aid: str):
         """Fetch profile page to extract main_id and metadata."""
-        nonlocal athlete_id, athlete_main_id, profile_data
+        nonlocal athlete_id, athlete_main_id, profile_data, profile_html
         try:
             # Fetch full profile page (hash fragments don't work server-side)
             # The HTML contains all grade levels, we'll parse the correct one
@@ -93,6 +128,7 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
             logger.info(f"📥 Profile response: status={profile_response.status_code}, length={len(profile_response.text)}, has_athlete={('athlete' in profile_response.text.lower())}")
             if profile_response.status_code == 200 and "athlete" in profile_response.text.lower():
                 athlete_id = aid
+                profile_html = profile_response.text or ""
                 athlete_main_id = translator.extract_athlete_main_id(profile_response.text) or athlete_main_id
                 logger.info(f"📝 Extracted athlete_main_id: {athlete_main_id}")
                 # Only hydrate profile data if we don't already have it
@@ -163,6 +199,99 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
         except Exception as e:
             logger.warning(f"⚠️ athleteinfo enrichment failed: {e}")
 
+    if athlete_id and athlete_main_id and not profile_data.get("jersey_number"):
+        feature = "VIDEO_PROGRESS_JERSEY_RESOLVE"
+        endpoint = "/template/template/athletic_seasons"
+        sport_alias = translator.extract_sport_alias(profile_html or "")
+        if not sport_alias:
+            sport_alias = translator.normalize_sport_alias(profile_data.get("sport"))
+        if not sport_alias:
+            logger.info(
+                "JERSEY_RESOLVE %s",
+                {
+                    "event": feature,
+                    "step": "parse",
+                    "status": "failure",
+                    "feature": feature,
+                    "error": "sport_alias_missing",
+                    "context": {
+                        "athleteId": athlete_id,
+                        "endpointAttempted": endpoint,
+                        "httpStatus": None,
+                        "htmlLength": len(profile_html or ""),
+                        "selectorAttempted": "sport_alias regex",
+                        "selectorFound": False,
+                        "extractedValue": None,
+                        "failureReason": "unexpected_dom_shift",
+                    },
+                },
+            )
+        else:
+            try:
+                seasons_endpoint, seasons_params = translator.athletic_seasons_to_legacy(
+                    str(athlete_id),
+                    str(athlete_main_id),
+                    sport_alias,
+                )
+                seasons_response = await session.get(seasons_endpoint, params=seasons_params)
+                seasons_html = seasons_response.text or ""
+                parsed = translator.parse_jersey_from_athletic_seasons(seasons_html)
+
+                attempts = parsed.get("attempts", [])
+                if not attempts:
+                    attempts = [{
+                        "selector_attempted": "div[id^='details']",
+                        "selector_found": False,
+                        "extracted_value": None,
+                        "failure_reason": "empty_response" if len(seasons_html) == 0 else "200_selector_missing",
+                    }]
+
+                for attempt in attempts:
+                    logger.info(
+                        "JERSEY_RESOLVE %s",
+                        {
+                            "event": feature,
+                            "step": "parse",
+                            "status": "success" if attempt.get("extracted_value") else "failure",
+                            "feature": feature,
+                            "error": attempt.get("failure_reason"),
+                            "context": {
+                                "athleteId": athlete_id,
+                                "endpointAttempted": seasons_endpoint,
+                                "httpStatus": seasons_response.status_code,
+                                "htmlLength": len(seasons_html),
+                                "selectorAttempted": attempt.get("selector_attempted"),
+                                "selectorFound": bool(attempt.get("selector_found")),
+                                "extractedValue": attempt.get("extracted_value"),
+                                "failureReason": attempt.get("failure_reason"),
+                            },
+                        },
+                    )
+
+                if parsed.get("jersey_number"):
+                    profile_data["jersey_number"] = parsed["jersey_number"]
+            except Exception as e:
+                logger.info(
+                    "JERSEY_RESOLVE %s",
+                    {
+                        "event": feature,
+                        "step": "request",
+                        "status": "failure",
+                        "feature": feature,
+                        "error": str(e),
+                        "context": {
+                            "athleteId": athlete_id,
+                            "endpointAttempted": endpoint,
+                            "httpStatus": None,
+                            "htmlLength": 0,
+                            "selectorAttempted": "athletic seasons request",
+                            "selectorFound": False,
+                            "extractedValue": None,
+                            "failureReason": "unexpected_dom_shift",
+                        },
+                    },
+                )
+
     if athlete_id and athlete_main_id:
         await persist_athlete_main_id(athlete_id, athlete_main_id)
 
@@ -200,6 +329,168 @@ async def resolve_athlete(request: Request, any_id: str, grad_year: Optional[int
         athlete_cache.set(athlete_main_id, result)
     
     return result
+
+
+@router.get("/{contact_id}/admin/payments", response_model=AdminAthleteTableResponse)
+async def get_admin_payments(request: Request, contact_id: str, athlete_main_id: str):
+    session = get_session(request)
+    translator = LegacyTranslator()
+    feature = "VIDEO_PROGRESS_ADMIN_PAYMENTS_FETCH"
+    endpoint, params = translator.athlete_transactions_to_legacy(contact_id, athlete_main_id)
+    _log_admin_table_event(feature, "start", "request", {"contactId": contact_id, "endpoint": endpoint})
+    try:
+        response = await session.get(endpoint, params=params)
+        html = response.text or ""
+        parsed = translator.parse_admin_table_response(html)
+        headers = parsed.get("headers", [])
+        rows = parsed.get("rows", [])
+
+        # Remove low-value columns for Raycast payments view.
+        drop_headers = {"area scout", "event coordinator"}
+        keep_indexes = [
+            idx for idx, header in enumerate(headers)
+            if str(header).strip().lower() not in drop_headers
+        ]
+        if keep_indexes and len(keep_indexes) != len(headers):
+            headers = [headers[idx] for idx in keep_indexes]
+            rows = [[row[idx] if idx < len(row) else "" for idx in keep_indexes] for row in rows]
+
+        row_count = len(rows)
+        _log_admin_table_event(
+            feature,
+            "success",
+            "parse",
+            {
+                "contactId": contact_id,
+                "endpoint": endpoint,
+                "httpStatus": response.status_code,
+                "htmlLength": len(html),
+                "selectorAttempted": "table",
+                "selectorFound": bool(parsed.get("table_found")),
+                "rowCount": row_count,
+                "parsingErrors": None,
+                "fallbackAttempts": 0,
+            },
+        )
+        return AdminAthleteTableResponse(
+            headers=headers,
+            rows=rows,
+            count=row_count,
+            status_code=response.status_code,
+            html_length=len(html),
+            table_found=bool(parsed.get("table_found")),
+            endpoint=endpoint,
+            message="No data returned from endpoint." if row_count == 0 else None,
+        )
+    except Exception as e:
+        _log_admin_table_event(
+            feature,
+            "failure",
+            "request",
+            {"contactId": contact_id, "endpoint": endpoint},
+            str(e),
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{contact_id}/admin/emails", response_model=AdminAthleteTableResponse)
+async def get_admin_emails(request: Request, contact_id: str):
+    session = get_session(request)
+    translator = LegacyTranslator()
+    feature = "VIDEO_PROGRESS_ADMIN_EMAILS_FETCH"
+    endpoint, params = translator.athlete_emails_to_legacy(contact_id)
+    _log_admin_table_event(feature, "start", "request", {"contactId": contact_id, "endpoint": endpoint})
+    try:
+        response = await session.get(endpoint, params=params)
+        html = response.text or ""
+        parsed = translator.parse_admin_table_response(html)
+        all_rows = parsed.get("rows", [])
+        limited_rows = all_rows[:6]
+        _log_admin_table_event(
+            feature,
+            "success",
+            "parse",
+            {
+                "contactId": contact_id,
+                "endpoint": endpoint,
+                "httpStatus": response.status_code,
+                "htmlLength": len(html),
+                "selectorAttempted": "table",
+                "selectorFound": bool(parsed.get("table_found")),
+                "rowCount": len(all_rows),
+                "rowCountRendered": len(limited_rows),
+                "parsingErrors": None,
+                "fallbackAttempts": 0,
+            },
+        )
+        return AdminAthleteTableResponse(
+            headers=parsed.get("headers", []),
+            rows=limited_rows,
+            count=len(limited_rows),
+            status_code=response.status_code,
+            html_length=len(html),
+            table_found=bool(parsed.get("table_found")),
+            endpoint=endpoint,
+            message="No data returned from endpoint." if len(limited_rows) == 0 else None,
+        )
+    except Exception as e:
+        _log_admin_table_event(
+            feature,
+            "failure",
+            "request",
+            {"contactId": contact_id, "endpoint": endpoint},
+            str(e),
+        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/{contact_id}/admin/campaigns", response_model=AdminAthleteTableResponse)
+async def get_admin_campaigns(request: Request, contact_id: str, athlete_main_id: str):
+    session = get_session(request)
+    translator = LegacyTranslator()
+    feature = "VIDEO_PROGRESS_ADMIN_CAMPAIGNS_FETCH"
+    endpoint, params = translator.athlete_campaigns_to_legacy(contact_id, athlete_main_id)
+    _log_admin_table_event(feature, "start", "request", {"contactId": contact_id, "endpoint": endpoint})
+    try:
+        response = await session.get(endpoint, params=params)
+        html = response.text or ""
+        parsed = translator.parse_admin_table_response(html)
+        row_count = len(parsed.get("rows", []))
+        _log_admin_table_event(
+            feature,
+            "success",
+            "parse",
+            {
+                "contactId": contact_id,
+                "endpoint": endpoint,
+                "httpStatus": response.status_code,
+                "htmlLength": len(html),
+                "selectorAttempted": "table",
+                "selectorFound": bool(parsed.get("table_found")),
+                "rowCount": row_count,
+                "parsingErrors": None,
+                "fallbackAttempts": 0,
+            },
+        )
+        return AdminAthleteTableResponse(
+            headers=parsed.get("headers", []),
+            rows=parsed.get("rows", []),
+            count=row_count,
+            status_code=response.status_code,
+            html_length=len(html),
+            table_found=bool(parsed.get("table_found")),
+            endpoint=endpoint,
+            message="No data returned from endpoint." if row_count == 0 else None,
+        )
+    except Exception as e:
+        _log_admin_table_event(
+            feature,
+            "failure",
+            "request",
+            {"contactId": contact_id, "endpoint": endpoint},
+            str(e),
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def _merge_search_results(

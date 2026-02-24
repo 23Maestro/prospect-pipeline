@@ -80,7 +80,7 @@
     "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
     "concurrently": "^9.2.1",
-    "eslint": "^9.37.0",
+    "eslint": "^10.0.1",
     "globals": "^16.4.0",
     "typescript": "^4.9.5"
   },
@@ -139,7 +139,8 @@
   "scripts": {
     "build": "ray build",
     "dev": "ray develop",
-    "lint": "eslint . --ext .ts,.tsx",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint",
     "test:craft-reminder-date": "rm -rf /tmp/craft-reminder-tests && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir /tmp/craft-reminder-tests src/lib/craft-reminder-date.ts src/lib/craft-reminder-date.test.ts && node --test /tmp/craft-reminder-tests/craft-reminder-date.test.js",
     "api": "cd npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
     "dev:all": "concurrently --kill-others -n \"RAY,API\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm:dev\" \"npm:api\"",

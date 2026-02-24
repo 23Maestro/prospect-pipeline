@@ -1,0 +1,5 @@
+.venv/
+npid-api-layer/
+mcp-servers/
+src/python/
+src/lib/prospect-pipeline/

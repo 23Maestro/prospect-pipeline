@@ -13,13 +13,13 @@ export function calculateSeasonName(gradYear: number, currentDate: Date = new Da
   const gradeLevel = 12 - yearsUntilGrad;
 
   const seasonMap: Record<number, string> = {
-    7: "7th Grade Season",
-    8: "8th Grade Season",
-    9: "Freshman Season",
-    10: "Sophomore Season",
-    11: "Junior Season",
-    12: "Senior Season"
+    7: '7th Grade Season',
+    8: '8th Grade Season',
+    9: 'Freshman Season',
+    10: 'Sophomore Season',
+    11: 'Junior Season',
+    12: 'Senior Season',
   };
 
-  return seasonMap[gradeLevel] || "";
+  return seasonMap[gradeLevel] || '';
 }

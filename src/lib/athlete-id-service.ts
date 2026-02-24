@@ -30,7 +30,7 @@ export interface AthleteIds {
  * @returns AthleteIds object with source indicator, or null if invalid input
  */
 export async function resolveAndCacheAthleteMainId(
-  athleteId: string | number
+  athleteId: string | number,
 ): Promise<AthleteIds | null> {
   const id = String(athleteId);
   const numericId = parseInt(id, 10);
@@ -93,7 +93,7 @@ export async function getAthleteMainId(athleteId: string | number): Promise<stri
  * @param tasks - Array of task objects with athlete_id and optional athlete_main_id
  */
 export async function batchResolveAndCache(
-  tasks: Array<{ athlete_id: number | string; athlete_main_id?: string }>
+  tasks: Array<{ athlete_id: number | string; athlete_main_id?: string }>,
 ): Promise<{ cached: number; resolved: number; failed: number }> {
   const stats = { cached: 0, resolved: 0, failed: 0 };
   const needsResolution: number[] = [];
@@ -125,9 +125,7 @@ export async function batchResolveAndCache(
   const batches = chunk(toResolve, 5);
 
   for (const batch of batches) {
-    const results = await Promise.allSettled(
-      batch.map((id) => resolveAndCacheAthleteMainId(id))
-    );
+    const results = await Promise.allSettled(batch.map((id) => resolveAndCacheAthleteMainId(id)));
 
     for (const result of results) {
       if (result.status === 'fulfilled' && result.value) {
@@ -163,7 +161,7 @@ export async function batchResolveAndCache(
  */
 export async function ensureAthleteIds(
   athleteId: string | number | null | undefined,
-  athleteMainId?: string | null | undefined
+  athleteMainId?: string | null | undefined,
 ): Promise<{ athleteId: string; athleteMainId: string } | null> {
   if (!athleteId) return null;
 
@@ -192,6 +190,6 @@ export async function ensureAthleteIds(
 // Helper function to split array into chunks
 function chunk<T>(arr: T[], size: number): T[][] {
   return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
-    arr.slice(i * size, i * size + size)
+    arr.slice(i * size, i * size + size),
   );
 }

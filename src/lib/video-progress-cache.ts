@@ -252,12 +252,12 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
     INSERT INTO video_tasks (
       id, athlete_id, athlete_main_id, athletename, video_progress_status, stage, sport_name, grad_year,
       video_due_date, assignedvideoeditor, primaryposition, secondaryposition, thirdposition,
-      high_school, high_school_city, high_school_state, updated_at, cached_at, source, last_seen_at, jersey_number, date_completed,
+      high_school, high_school_city, high_school_state, updated_at, cached_at, source, last_seen_at, jersey_number,
       assigned_editor_override
     ) VALUES (
       $id, $athlete_id, $athlete_main_id, $athletename, $video_progress_status, $stage, $sport_name, $grad_year,
       $video_due_date, $assignedvideoeditor, $primaryposition, $secondaryposition, $thirdposition,
-      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $source, $last_seen_at, $jersey_number, $date_completed,
+      $high_school, $high_school_city, $high_school_state, $updated_at, $cached_at, $source, $last_seen_at, $jersey_number,
       $assigned_editor_override
     )
     ON CONFLICT(id) DO UPDATE SET
@@ -286,13 +286,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
       updated_at=excluded.updated_at,
       cached_at=excluded.cached_at,
       source=excluded.source,
-      last_seen_at=excluded.last_seen_at,
-
-      -- SPECIAL: date_completed (preserve if Done)
-      date_completed=CASE
-        WHEN LOWER(excluded.stage) = 'done' THEN COALESCE(excluded.date_completed, date_completed)
-        ELSE NULL
-      END
+      last_seen_at=excluded.last_seen_at
   `,
   );
 
@@ -300,7 +294,11 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
     for (const task of tasks) {
       if (task.id === undefined || task.id === null) continue;
       const gradYearValue = Number(task.grad_year);
-      if (Number.isFinite(gradYearValue) && gradYearValue > 0 && gradYearValue < MIN_ACTIVE_GRAD_YEAR) {
+      if (
+        Number.isFinite(gradYearValue) &&
+        gradYearValue > 0 &&
+        gradYearValue < MIN_ACTIVE_GRAD_YEAR
+      ) {
         continue;
       }
       const stageValue = (task.video_progress_stage || task.stage || '').toString().trim() || null;
@@ -326,7 +324,6 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
         $source: task.source || 'server',
         $last_seen_at: syncAt,
         $jersey_number: task.jersey_number || null,
-        $date_completed: task.date_completed || null,
         $assigned_editor_override: null,
       });
     }
@@ -353,7 +350,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
       `SELECT id, athlete_id, athlete_main_id, date_completed
        FROM video_tasks
        WHERE id > 0
-         AND source = 'server'`
+         AND source = 'server'`,
     );
 
     let mergedCount = 0;
@@ -376,7 +373,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
            AND source LIKE 'raycast:%'
          ORDER BY cached_at DESC
          LIMIT 1`,
-        { $athlete_id: serverRow.athlete_id }
+        { $athlete_id: serverRow.athlete_id },
       );
 
       if (!manualRow) {
@@ -389,7 +386,10 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
         $updated_at: now,
       };
 
-      if ((!serverRow.athlete_main_id || serverRow.athlete_main_id === '') && manualRow.athlete_main_id) {
+      if (
+        (!serverRow.athlete_main_id || serverRow.athlete_main_id === '') &&
+        manualRow.athlete_main_id
+      ) {
         updateClauses.push('athlete_main_id = $athlete_main_id');
         updateParams.$athlete_main_id = manualRow.athlete_main_id;
       }
@@ -401,7 +401,10 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
         updateParams.$assignedvideoeditor = manualRow.assigned_editor_override;
       }
 
-      if ((!serverRow.date_completed || serverRow.date_completed === '') && manualRow.date_completed) {
+      if (
+        (!serverRow.date_completed || serverRow.date_completed === '') &&
+        manualRow.date_completed
+      ) {
         updateClauses.push('date_completed = $date_completed');
         updateParams.$date_completed = manualRow.date_completed;
       }
@@ -412,7 +415,7 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
           `UPDATE video_tasks
            SET ${updateClauses.join(', ')}
            WHERE id = $id`,
-          updateParams
+          updateParams,
         );
       }
 
@@ -459,12 +462,13 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
     DELETE FROM video_tasks
     WHERE (source IS NULL OR source = 'server')
       AND (last_seen_at IS NULL OR last_seen_at < $sync_at)
+      AND (date_completed IS NULL OR TRIM(date_completed) = '')
   `,
-    { $sync_at: syncAt }
+    { $sync_at: syncAt },
   );
   database.run(
     'DELETE FROM video_tasks WHERE grad_year IS NOT NULL AND grad_year != "" AND CAST(grad_year AS INTEGER) < $min_grad_year',
-    { $min_grad_year: MIN_ACTIVE_GRAD_YEAR }
+    { $min_grad_year: MIN_ACTIVE_GRAD_YEAR },
   );
   database.persist();
 }
@@ -473,7 +477,7 @@ export async function purgeLegacyTasks(minGradYear: number = MIN_ACTIVE_GRAD_YEA
   const database = await getBackend();
   database.run(
     'DELETE FROM video_tasks WHERE grad_year IS NOT NULL AND grad_year != "" AND CAST(grad_year AS INTEGER) < $min_grad_year',
-    { $min_grad_year: minGradYear }
+    { $min_grad_year: minGradYear },
   );
   database.persist();
   logger.info('🧹 CACHE: Purged legacy tasks', { minGradYear });
@@ -487,7 +491,7 @@ export async function getCachedTasks(): Promise<CachedVideoTask[]> {
 export async function getLastCachedAt(): Promise<number | null> {
   const database = await getBackend();
   const row = database.get<{ last_cached_at: string | null }>(
-    'SELECT MAX(cached_at) as last_cached_at FROM video_tasks'
+    'SELECT MAX(cached_at) as last_cached_at FROM video_tasks',
   );
   const last = row?.last_cached_at ?? null;
   if (!last) return null;
@@ -495,7 +499,10 @@ export async function getLastCachedAt(): Promise<number | null> {
   return Number.isNaN(ts) ? null : ts;
 }
 
-export async function updateCachedTaskStatusStage(id: number, updates: { status?: string; stage?: string }) {
+export async function updateCachedTaskStatusStage(
+  id: number,
+  updates: { status?: string; stage?: string },
+) {
   const database = await getBackend();
   const updatedAt = new Date().toISOString();
 
@@ -526,10 +533,7 @@ export async function updateCachedTaskStatusStage(id: number, updates: { status?
 
   setClauses.push('updated_at = $updated_at', 'cached_at = $updated_at');
 
-  database.run(
-    `UPDATE video_tasks SET ${setClauses.join(', ')} WHERE id = $id`,
-    params,
-  );
+  database.run(`UPDATE video_tasks SET ${setClauses.join(', ')} WHERE id = $id`, params);
   database.persist();
 }
 
@@ -551,7 +555,7 @@ export async function updateCachedTaskDueDate(id: number, dueDate: string) {
       $id: id,
       $video_due_date: dueDate,
       $updated_at: updatedAt,
-    }
+    },
   );
   database.persist();
 }
@@ -575,7 +579,7 @@ export async function updateCachedTaskAssignedEditor(id: number, assignedEditor:
       $id: id,
       $assignedvideoeditor: assignedEditor,
       $updated_at: updatedAt,
-    }
+    },
   );
   database.persist();
 }
@@ -598,7 +602,7 @@ export async function updateCachedCompletionDate(id: number, dateCompleted: stri
       $id: id,
       $date_completed: dateCompleted,
       $updated_at: updatedAt,
-    }
+    },
   );
   database.persist();
 }
@@ -637,7 +641,7 @@ export async function getCachedAthleteMainId(athleteId: number): Promise<string 
   const database = await getBackend();
   const row = database.get<{ athlete_main_id: string }>(
     'SELECT athlete_main_id FROM video_tasks WHERE athlete_id = $athlete_id AND athlete_main_id IS NOT NULL AND athlete_main_id != "" LIMIT 1',
-    { $athlete_id: athleteId }
+    { $athlete_id: athleteId },
   );
   return row?.athlete_main_id ?? null;
 }
@@ -675,7 +679,7 @@ export async function getCachedJerseyNumber(athleteId: number): Promise<string |
   const database = await getBackend();
   const row = database.get<{ jersey_number: string }>(
     'SELECT jersey_number FROM video_tasks WHERE athlete_id = $athlete_id AND jersey_number IS NOT NULL AND jersey_number != "" LIMIT 1',
-    { $athlete_id: athleteId }
+    { $athlete_id: athleteId },
   );
   return row?.jersey_number ?? null;
 }
@@ -683,16 +687,18 @@ export async function getCachedJerseyNumber(athleteId: number): Promise<string |
 /**
  * Resolve athlete_id and athlete_main_id from video_msg_id.
  * This is the CRITICAL fallback for inbox threads that don't have athlete IDs in the HTML.
- * 
+ *
  * How it works:
  * - video_msg_id (e.g., 13681) is the same as the "id" field in video_tasks
  * - This maps: video_msg_id → athlete_id + athlete_main_id
  * - Used by inbox when Laravel doesn't provide athlete IDs upfront
- * 
+ *
  * @param videoMsgId - The numeric video message/thread ID
  * @returns Object with athlete_id and athlete_main_id, or null if not found
  */
-export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string): Promise<{ athlete_id: number; athlete_main_id: string } | null> {
+export async function resolveAthleteIdsByVideoMsgId(
+  videoMsgId: number | string,
+): Promise<{ athlete_id: number; athlete_main_id: string } | null> {
   const database = await getBackend();
   const id = typeof videoMsgId === 'string' ? parseInt(videoMsgId, 10) : videoMsgId;
 
@@ -709,7 +715,7 @@ export async function resolveAthleteIdsByVideoMsgId(videoMsgId: number | string)
        AND athlete_main_id IS NOT NULL 
        AND athlete_main_id != ""
      LIMIT 1`,
-    { $id: id }
+    { $id: id },
   );
 
   if (!row) {
@@ -778,7 +784,7 @@ export async function upsertContactInfo(contact: Partial<CachedContactInfo>): Pr
       $parent2_phone: contact.parent2Phone || null,
       $cached_at: now,
       $updated_at: now,
-    }
+    },
   );
   database.persist();
   logger.info(`✅ CACHE: Successfully upserted contact info for ${contact.contactId}`);
@@ -794,7 +800,7 @@ export async function getCachedContactInfo(contactId: number): Promise<CachedCon
 
   const row = database.get<CachedContactInfo>(
     'SELECT * FROM contact_info WHERE contact_id = $contact_id LIMIT 1',
-    { $contact_id: contactId }
+    { $contact_id: contactId },
   );
 
   if (!row) {

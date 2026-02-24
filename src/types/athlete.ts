@@ -2,7 +2,7 @@ export interface AthleteSummary {
   id: string;
   name: string;
   gradYear: number;
-  sport: "Football" | "Basketball" | "Baseball" | "Soccer" | "Volleyball" | "Softball";
+  sport: 'Football' | 'Basketball' | 'Baseball' | 'Soccer' | 'Volleyball' | 'Softball';
   state: string;
 }
 

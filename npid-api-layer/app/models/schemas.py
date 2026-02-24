@@ -106,6 +106,18 @@ class AthleteIdentifiers(BaseModel):
     jersey_number: Optional[str] = None
 
 
+class AdminAthleteTableResponse(BaseModel):
+    """Structured table response for admin athlete sub-views."""
+    headers: List[str]
+    rows: List[List[str]]
+    count: int
+    status_code: int
+    html_length: int
+    table_found: bool
+    endpoint: str
+    message: Optional[str] = None
+
+
 class VideoSubmitResponse(BaseModel):
     """Response from video submission."""
     success: bool
@@ -158,8 +170,10 @@ class VideoProgressFilters(BaseModel):
     """Filters for video progress search."""
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    email: Optional[str] = None
     sport: Optional[str] = None
     grad_year: Optional[str] = None
+    search_all_fields: Optional[str] = None
     select_club_sport: Optional[str] = None
     select_club_state: Optional[str] = None
     select_club_name: Optional[str] = None

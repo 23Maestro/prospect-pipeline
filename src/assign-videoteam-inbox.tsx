@@ -140,7 +140,13 @@ function AssignmentModal({
         }
       })
       .finally(() => setIsLoadingDefaults(false));
-  }, [contactId, contactLookup, modalData.athleteMainId, modalData.stages, modalData.videoStatuses]);
+  }, [
+    contactId,
+    contactLookup,
+    modalData.athleteMainId,
+    modalData.stages,
+    modalData.videoStatuses,
+  ]);
 
   const handleAssignment = async () => {
     const selectedContact = contactLookup.get(contactId);
@@ -160,11 +166,7 @@ function AssignmentModal({
       navigationTitle={`Assign • ${message.name}`}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title="Assign to Video Team"
-            icon="✅"
-            onSubmit={handleAssignment}
-          />
+          <Action.SubmitForm title="Assign to Video Team" icon="✅" onSubmit={handleAssignment} />
           <Action title="Cancel" icon="❌" onAction={onCancel} />
         </ActionPanel>
       }
@@ -218,13 +220,7 @@ function AssignmentModal({
 }
 
 // Reply Form Component
-function ReplyForm({
-  message,
-  onBack,
-}: {
-  message: NPIDInboxMessage;
-  onBack: () => void;
-}) {
+function ReplyForm({ message, onBack }: { message: NPIDInboxMessage; onBack: () => void }) {
   const [replyText, setReplyText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -281,8 +277,6 @@ function ReplyForm({
   );
 }
 
-
-
 function EmailContentDetail({
   message,
   onBack,
@@ -338,12 +332,8 @@ function EmailContentDetail({
       <Detail.Metadata.Label title="Email" text={message.email || 'No email'} />
       <Detail.Metadata.Separator />
       <Detail.Metadata.Label title="Received" text={displayTimestamp} />
-      {message.stage && (
-        <Detail.Metadata.Label title="Stage" text={message.stage} />
-      )}
-      {message.videoStatus && (
-        <Detail.Metadata.Label title="Status" text={message.videoStatus} />
-      )}
+      {message.stage && <Detail.Metadata.Label title="Stage" text={message.stage} />}
+      {message.videoStatus && <Detail.Metadata.Label title="Status" text={message.videoStatus} />}
       {message.attachments && message.attachments.length > 0 && (
         <Detail.Metadata.Label
           title="Attachments"
@@ -369,11 +359,7 @@ function EmailContentDetail({
       actions={
         <ActionPanel>
           <ActionPanel.Section>
-            <Action
-              title="Assign to Video Team"
-              icon="✅"
-              onAction={() => onAssign(message)}
-            />
+            <Action title="Assign to Video Team" icon="✅" onAction={() => onAssign(message)} />
             <Action
               title="Reply to Email"
               icon="📧"
@@ -449,7 +435,8 @@ export default function InboxCheck() {
 
       if (toast) {
         toast.style = hydrated.length > 0 ? Toast.Style.Success : Toast.Style.Failure;
-        toast.title = hydrated.length > 0 ? `Found ${hydrated.length} assignable messages` : 'Inbox empty';
+        toast.title =
+          hydrated.length > 0 ? `Found ${hydrated.length} assignable messages` : 'Inbox empty';
         toast.message = hydrated.length === 0 ? 'Inbox Zero! 🎉' : 'Fresh from server';
       }
 
@@ -496,16 +483,16 @@ export default function InboxCheck() {
       const fallbackContact: VideoTeamContact | null =
         modalData.contactTask && (modalData.athleteMainId || message.athleteMainId)
           ? {
-            contactId: modalData.contactTask,
-            athleteMainId: modalData.athleteMainId ?? message.athleteMainId ?? null,
-            name: message.name || message.email || modalData.contactTask,
-            sport: null,
-            gradYear: null,
-            state: null,
-            top500: null,
-            videoEditor: null,
-            email: message.email,
-          }
+              contactId: modalData.contactTask,
+              athleteMainId: modalData.athleteMainId ?? message.athleteMainId ?? null,
+              name: message.name || message.email || modalData.contactTask,
+              sport: null,
+              gradYear: null,
+              state: null,
+              top500: null,
+              videoEditor: null,
+              email: message.email,
+            }
           : null;
 
       if (
@@ -626,11 +613,11 @@ export default function InboxCheck() {
           { text: formatTimestamp(message) },
           ...(hasAttachments
             ? [
-              {
-                icon: '📎',
-                tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
-              },
-            ]
+                {
+                  icon: '📎',
+                  tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
+                },
+              ]
             : []),
         ];
 
@@ -651,7 +638,7 @@ export default function InboxCheck() {
                   />
                   <Action
                     title="Assign to Video Team"
-                    icon='/Users/singleton23/Raycast/prospect-pipeline/assets/add-video-task.png'
+                    icon="/Users/singleton23/Raycast/prospect-pipeline/assets/add-video-task.png"
                     onAction={() => handleAssignTask(message)}
                   />
                 </ActionPanel.Section>
@@ -665,7 +652,7 @@ export default function InboxCheck() {
                           key={attachment.url}
                           title={`Download ${attachment.fileName}`}
                           url={attachment.url!}
-                          icon='📥'
+                          icon="📥"
                         />
                       ))}
                   </ActionPanel.Section>

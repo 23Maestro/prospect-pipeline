@@ -185,3 +185,30 @@ Set `LOG_LEVEL=DEBUG` in `.env` for verbose output including all request/respons
 ## Integration with Raycast
 
 Update your Raycast extension to call `http://localhost:8000/api/v1/...` instead of the Python scripts that hit Laravel directly. The response format is guaranteed stable even when Laravel changes underneath.
+
+## External Portal
+
+A lightweight web portal is served at the FastAPI root path (`/`) and uses existing JSON endpoints for:
+
+- Athlete search and ID resolution
+- Video progress summary
+- Contact info
+- Notes list and add
+
+Static assets are located in `app/static/`.
+
+## CORS Configuration
+
+CORS origins are controlled by `ALLOWED_ORIGINS` (comma-separated).
+
+Default:
+
+```
+https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000
+```
+
+## Cloudflare Tunnel
+
+Cloudflare setup and always-on launchd steps are documented in:
+
+- `CLOUDFLARE_TUNNEL_SETUP.md`

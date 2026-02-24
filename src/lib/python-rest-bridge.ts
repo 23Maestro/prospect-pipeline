@@ -13,15 +13,9 @@ const execAsync = promisify(exec);
 // Use absolute paths since Raycast compiles to its config directory
 const PROJECT_ROOT = path.join(homedir(), 'Raycast', 'prospect-pipeline');
 
-const PYTHON_CLIENT_PATH = path.join(
-  PROJECT_ROOT,
-  'mcp-servers/npid-native/npid_api_client.py'
-);
+const PYTHON_CLIENT_PATH = path.join(PROJECT_ROOT, 'mcp-servers/npid-native/npid_api_client.py');
 
-const PYTHON_VENV_PATH = path.join(
-  PROJECT_ROOT,
-  'mcp-servers/npid-native/venv/bin/python3'
-);
+const PYTHON_VENV_PATH = path.join(PROJECT_ROOT, 'mcp-servers/npid-native/venv/bin/python3');
 
 interface RestClientResponse<T = any> {
   success?: boolean;
@@ -38,7 +32,7 @@ interface RestClientResponse<T = any> {
  */
 export async function callRestClient<T = any>(
   method: string,
-  params: Record<string, any> = {}
+  params: Record<string, any> = {},
 ): Promise<T> {
   try {
     // Serialize params as JSON
@@ -103,4 +97,3 @@ export async function checkRestClientHealth(): Promise<boolean> {
     return false;
   }
 }
-

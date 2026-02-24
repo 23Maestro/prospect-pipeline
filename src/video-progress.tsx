@@ -28,6 +28,7 @@ import {
   upsertContactInfo,
 } from './lib/video-progress-cache';
 import { getAthleteMainId } from './lib/athlete-id-service';
+import { resolveAndCacheJerseyNumber } from './lib/jersey-number-service';
 import {
   fetchContactInfo,
   transformContactInfoToCache,
@@ -74,6 +75,17 @@ interface VideoProgressTask {
   [key: string]: any;
 }
 
+interface AdminAthleteTableResponse {
+  headers: string[];
+  rows: string[][];
+  count: number;
+  status_code: number;
+  html_length: number;
+  table_found: boolean;
+  endpoint: string;
+  message?: string | null;
+}
+
 const CUTOFF_DAYS = 365;
 const ASSIGNED_EDITOR = 'Jerami Singleton';
 const ALLOWED_STAGES = new Set(['in queue', 'on hold', 'awaiting client', 'done']);
@@ -81,7 +93,7 @@ const STAGE_PRIORITY: Record<string, number> = {
   'in queue': 1,
   'awaiting client': 2,
   'on hold': 3,
-  'done': 4,
+  done: 4,
 };
 const CRAFT_ICON = 'Craft_Liquid_Glass.png';
 const CRAFT_MCP_CLIENT_SCRIPT = getPythonScriptPath('craft_mcp_client.py');
@@ -112,6 +124,14 @@ async function readResponseBody(response: any) {
     }
   }
   return { text, json, contentType };
+}
+
+function extractApiErrorMessage(statusCode: number, text: string, json: any): string {
+  return json?.message || json?.detail || text.slice(0, 200) || `HTTP ${statusCode}`;
+}
+
+function isExplicitFailurePayload(json: any): boolean {
+  return !!(json && typeof json === 'object' && 'success' in json && json.success === false);
 }
 
 function formatReminderDate(value: Date): string {
@@ -148,7 +168,8 @@ function normalizeCraftBaseUrl(rawBaseUrl: string): string {
   if (!trimmed) return '';
   try {
     const url = new URL(trimmed);
-    const isMcpUrl = url.hostname === 'mcp.craft.do' && /^\/links\/[^/]+\/mcp\/?$/i.test(url.pathname);
+    const isMcpUrl =
+      url.hostname === 'mcp.craft.do' && /^\/links\/[^/]+\/mcp\/?$/i.test(url.pathname);
     if (isMcpUrl) {
       return trimmed;
     }
@@ -219,8 +240,8 @@ function getCraftDocumentOverrideId(reminderType: ReminderType): string | undefi
     reminderType === 'in-queue'
       ? prefs.craftInQueueBlockId
       : reminderType === 'inbox-follow-up'
-      ? prefs.craftEmailFollowUpBlockId
-      : prefs.craftDropboxFoldersBlockId;
+        ? prefs.craftEmailFollowUpBlockId
+        : prefs.craftDropboxFoldersBlockId;
   const parsed = extractCraftBlockId(rawOverride);
   if (rawOverride && !parsed) {
     craftLogger.warn('CRAFT_DOC_OVERRIDE_INVALID', {
@@ -251,7 +272,7 @@ function getCraftDocumentOverrideId(reminderType: ReminderType): string | undefi
 async function resolveTargetDocumentId(
   _baseUrl: string,
   _password: string | undefined,
-  reminderType: ReminderType
+  reminderType: ReminderType,
 ): Promise<string> {
   const overrideId = getCraftDocumentOverrideId(reminderType);
   if (overrideId) {
@@ -263,7 +284,7 @@ async function resolveTargetDocumentId(
     return overrideId;
   }
   throw new Error(
-    `Missing block ID for ${CRAFT_TARGET_DOCUMENT_BY_TYPE[reminderType]}. Set the corresponding Craft block ID preference.`
+    `Missing block ID for ${CRAFT_TARGET_DOCUMENT_BY_TYPE[reminderType]}. Set the corresponding Craft block ID preference.`,
   );
 }
 
@@ -311,7 +332,7 @@ async function upsertReminderViaMcp(params: {
       contextName: 'Craft MCP Client',
       pythonPath: CRAFT_MCP_PYTHON_PATH,
       timeout: 45000,
-    }
+    },
   );
   craftLogger.info('CRAFT_MCP_UPSERT_RESULT', result);
   return result;
@@ -347,7 +368,7 @@ function getPositions(task: VideoProgressTask): string {
 
   return [task.primaryposition, task.secondaryposition, task.thirdposition]
     .map((pos) => normalizePosition(pos))
-    .filter(pos => pos && pos !== 'NA')
+    .filter((pos) => pos && pos !== 'NA')
     .join(' | ');
 }
 
@@ -429,7 +450,10 @@ function parseTaskTimestamp(task: VideoProgressTask): number {
   return Number.isNaN(ts) ? 0 : ts;
 }
 
-function preferTaskForSameAthlete(current: VideoProgressTask, incoming: VideoProgressTask): VideoProgressTask {
+function preferTaskForSameAthlete(
+  current: VideoProgressTask,
+  incoming: VideoProgressTask,
+): VideoProgressTask {
   const currentManual = isManualIngestTask(current);
   const incomingManual = isManualIngestTask(incoming);
 
@@ -444,7 +468,9 @@ function dedupeTasksPreferNative(tasks: VideoProgressTask[]): VideoProgressTask[
   const byAthlete = new Map<string, VideoProgressTask>();
 
   for (const task of tasks) {
-    const athleteKey = task.athlete_id ? `athlete:${task.athlete_id}` : `row:${task.id ?? task.athletename}`;
+    const athleteKey = task.athlete_id
+      ? `athlete:${task.athlete_id}`
+      : `row:${task.id ?? task.athletename}`;
     const existing = byAthlete.get(athleteKey);
     if (!existing) {
       byAthlete.set(athleteKey, task);
@@ -456,7 +482,9 @@ function dedupeTasksPreferNative(tasks: VideoProgressTask[]): VideoProgressTask[
   return Array.from(byAthlete.values());
 }
 
-function normalizeStatus(displayStatus: string): 'revisions' | 'hudl' | 'dropbox' | 'external_links' | 'not_approved' {
+function normalizeStatus(
+  displayStatus: string,
+): 'revisions' | 'hudl' | 'dropbox' | 'external_links' | 'not_approved' {
   switch (displayStatus.toLowerCase()) {
     case 'revise':
     case 'revisions':
@@ -528,11 +556,7 @@ function getSeasonName(gradYear: number): string {
 function generateYouTubeTitle(task: VideoProgressTask): string {
   // Dynamic title: "Name Class of YEAR Season"
   const seasonName = getSeasonName(task.grad_year);
-  const parts = [
-    task.athletename,
-    task.grad_year ? `Class of ${task.grad_year}` : '',
-    seasonName,
-  ]
+  const parts = [task.athletename, task.grad_year ? `Class of ${task.grad_year}` : '', seasonName]
     .filter(Boolean)
     .join(' ');
   return parts;
@@ -552,6 +576,13 @@ function generateDropboxFolder(task: VideoProgressTask): string {
   return [pascalName, task.grad_year, normalizeSportName(task.sport_name), task.high_school_state]
     .filter(Boolean)
     .join('_');
+}
+
+function formatApprovedJerseyToken(raw?: string): string {
+  if (!raw) return '';
+  const match = raw.match(/\d+/);
+  if (!match) return '';
+  return `#${match[0]}`;
 }
 
 function shouldIncludeTask(task: VideoProgressTask): boolean {
@@ -587,8 +618,12 @@ function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
     if (aStageRank !== bStageRank) return aStageRank - bStageRank;
 
     if (aStage === 'done' && bStage === 'done') {
-      const aCompleted = a.date_completed ? new Date(a.date_completed).getTime() : Number.NEGATIVE_INFINITY;
-      const bCompleted = b.date_completed ? new Date(b.date_completed).getTime() : Number.NEGATIVE_INFINITY;
+      const aCompleted = a.date_completed
+        ? new Date(a.date_completed).getTime()
+        : Number.NEGATIVE_INFINITY;
+      const bCompleted = b.date_completed
+        ? new Date(b.date_completed).getTime()
+        : Number.NEGATIVE_INFINITY;
       if (aCompleted !== bCompleted) return bCompleted - aCompleted;
     }
 
@@ -621,9 +656,9 @@ function sortDoneTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
   });
 }
 
-function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): string {
+function ApprovedVideoDetail(task: VideoProgressTask, jerseyOverride?: string): string {
   const positions = getPositions(task);
-  const jersey = task.jersey_number || '';
+  const jersey = formatApprovedJerseyToken(jerseyOverride || task.jersey_number || '');
 
   // Build name line with jersey number if available
   const nameLine = jersey
@@ -639,6 +674,292 @@ function ApprovedVideoDetail(task: VideoProgressTask, onBack: () => void): strin
   return lines.join('\n');
 }
 
+function toMarkdownTable(headers: string[], rows: string[][]): string {
+  if (!headers.length) return '';
+  const escapeCell = (value: string) => (value || '').replace(/\|/g, '\\|').replace(/\n/g, ' ');
+  const headerLine = `| ${headers.map(escapeCell).join(' | ')} |`;
+  const separatorLine = `| ${headers.map(() => '---').join(' | ')} |`;
+  const rowLines = rows.map((row) => {
+    const normalized = headers.map((_, idx) => escapeCell(row[idx] || ''));
+    return `| ${normalized.join(' | ')} |`;
+  });
+  return [headerLine, separatorLine, ...rowLines].join('\n');
+}
+
+function buildAdminMarkdown(
+  title: string,
+  athleteName: string,
+  payload: AdminAthleteTableResponse | null,
+): string {
+  const headerBlock = `# ${athleteName}\n\n## ${title}`;
+  if (!payload) {
+    return `${headerBlock}\n\nLoading...`;
+  }
+  if (!payload.rows.length) {
+    return `${headerBlock}\n\nNo data returned from endpoint.`;
+  }
+  const rows = title === 'Payments' ? convertRowsTo12HourTime(payload.rows) : payload.rows;
+  return `${headerBlock}\n\n${toMarkdownTable(payload.headers, rows)}`;
+}
+
+function convertRowsTo12HourTime(rows: string[][]): string[][] {
+  return rows.map((row) =>
+    row.map((cell) =>
+      cell.replace(
+        /\b(\d{1,2}\/\d{1,2}\/\d{4})\s+(\d{2}):(\d{2}):(\d{2})\b/g,
+        (_match, datePart: string, hourStr: string, minute: string, second: string) => {
+          const hour = Number(hourStr);
+          const normalizedHour = Number.isNaN(hour) ? hourStr : String(((hour + 11) % 12) + 1);
+          const suffix = Number.isNaN(hour) || hour < 12 ? 'AM' : 'PM';
+          return `${datePart} ${normalizedHour}:${minute}:${second} ${suffix}`;
+        },
+      ),
+    ),
+  );
+}
+
+function getAdminSectionUrl(
+  athleteId: number,
+  section: 'contact' | 'payments' | 'emails' | 'campaigns',
+): string {
+  const base = `https://dashboard.nationalpid.com/admin/athletes?contactid=${athleteId}`;
+  if (section === 'payments') {
+    return `${base}#:~:text=Payments-,Campaigns,-Campaigns`;
+  }
+  if (section === 'emails') {
+    return `${base}#:~:text=Email-,Payments,-Campaigns`;
+  }
+  if (section === 'campaigns') {
+    return `${base}#:~:text=Campaigns`;
+  }
+  return `${base}#:~:text=General,-Progress`;
+}
+
+function AdminAthleteTableDetail({
+  task,
+  title,
+  endpoint,
+}: {
+  task: VideoProgressTask;
+  title: string;
+  endpoint: string;
+}) {
+  const { push, pop } = useNavigation();
+  const [isLoading, setIsLoading] = useState(true);
+  const [payload, setPayload] = useState<AdminAthleteTableResponse | null>(null);
+
+  const resolveMainId = async () => {
+    return task.athlete_main_id || (await getAthleteMainId(task.athlete_id));
+  };
+
+  const openView = async (target: 'main' | 'contact' | 'payments' | 'emails' | 'campaigns') => {
+    const feature = 'VIDEO_PROGRESS_DETAIL_VIEW_SWITCH';
+    videoProgressLogger.info(feature, {
+      event: feature,
+      step: 'request',
+      status: 'start',
+      feature,
+      context: { athleteId: task.athlete_id, from: title, to: target },
+    });
+    try {
+      if (target === 'main') {
+        pop();
+      } else if (target === 'contact') {
+        const mainId = await resolveMainId();
+        if (!mainId) throw new Error('missing_athlete_main_id');
+        push(
+          <ContactInfoDetail
+            task={task}
+            contactId={String(task.athlete_id)}
+            athleteMainId={mainId}
+            athleteName={task.athletename}
+            onBack={pop}
+          />,
+        );
+      } else if (target === 'payments') {
+        const mainId = await resolveMainId();
+        if (!mainId) throw new Error('missing_athlete_main_id');
+        push(
+          <AdminAthleteTableDetail
+            task={task}
+            title="Payments"
+            endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/payments?athlete_main_id=${encodeURIComponent(mainId)}`}
+          />,
+        );
+      } else if (target === 'emails') {
+        push(
+          <AdminAthleteTableDetail
+            task={task}
+            title="Email List"
+            endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/emails`}
+          />,
+        );
+      } else {
+        const mainId = await resolveMainId();
+        if (!mainId) throw new Error('missing_athlete_main_id');
+        push(
+          <AdminAthleteTableDetail
+            task={task}
+            title="Campaigns"
+            endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/campaigns?athlete_main_id=${encodeURIComponent(mainId)}`}
+          />,
+        );
+      }
+      videoProgressLogger.info(feature, {
+        event: feature,
+        step: 'request',
+        status: 'success',
+        feature,
+        context: { athleteId: task.athlete_id, from: title, to: target },
+      });
+    } catch (error) {
+      videoProgressLogger.error(feature, {
+        event: feature,
+        step: 'request',
+        status: 'failure',
+        feature,
+        error: error instanceof Error ? error.message : String(error),
+        context: { athleteId: task.athlete_id, from: title, to: target },
+      });
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const featureMap: Record<string, string> = {
+      Payments: 'VIDEO_PROGRESS_ADMIN_PAYMENTS_FETCH',
+      'Email List': 'VIDEO_PROGRESS_ADMIN_EMAILS_FETCH',
+      Campaigns: 'VIDEO_PROGRESS_ADMIN_CAMPAIGNS_FETCH',
+    };
+    const feature = featureMap[title] || 'VIDEO_PROGRESS_ADMIN_TABLE_PARSE';
+
+    const load = async () => {
+      videoProgressLogger.info(feature, {
+        event: feature,
+        step: 'request',
+        status: 'start',
+        feature,
+        context: {
+          athleteId: task.athlete_id,
+          endpoint,
+        },
+      });
+      try {
+        const response = await apiFetch(endpoint);
+        const { text, json, contentType } = await readResponseBody(response);
+        if (!response.ok || !json) {
+          throw new Error(extractApiErrorMessage(response.status, text, json));
+        }
+        if (!active) return;
+        const data = json as AdminAthleteTableResponse;
+        setPayload(data);
+        videoProgressLogger.info(feature, {
+          event: feature,
+          step: 'parse',
+          status: 'success',
+          feature,
+          context: {
+            athleteId: task.athlete_id,
+            endpoint,
+            statusCode: response.status,
+            contentType,
+            tableFound: data.table_found,
+            rowCount: data.count,
+            htmlLength: data.html_length,
+          },
+        });
+      } catch (error) {
+        videoProgressLogger.error(feature, {
+          event: feature,
+          step: 'request',
+          status: 'failure',
+          feature,
+          error: error instanceof Error ? error.message : String(error),
+          context: {
+            athleteId: task.athlete_id,
+            endpoint,
+          },
+        });
+        if (!active) return;
+        setPayload({
+          headers: [],
+          rows: [],
+          count: 0,
+          status_code: 0,
+          html_length: 0,
+          table_found: false,
+          endpoint,
+          message: 'No data returned from endpoint.',
+        });
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [endpoint, task.athlete_id, title]);
+
+  return (
+    <Detail
+      navigationTitle={`${task.athletename} • ${title}`}
+      markdown={buildAdminMarkdown(title, task.athletename, payload)}
+      isLoading={isLoading}
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section title="Views">
+            <Action
+              title="Main"
+              icon={Icon.House}
+              shortcut={{ modifiers: ['cmd'], key: '1' }}
+              onAction={() => openView('main')}
+            />
+            <Action
+              title="Contact Info"
+              icon="☎️"
+              shortcut={{ modifiers: ['cmd'], key: '2' }}
+              onAction={() => openView('contact')}
+            />
+            <Action
+              title="Payments"
+              icon="💳"
+              shortcut={{ modifiers: ['cmd'], key: '3' }}
+              onAction={() => openView('payments')}
+            />
+            <Action
+              title="Email List"
+              icon={Icon.Envelope}
+              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              onAction={() => openView('emails')}
+            />
+            <Action
+              title="Campaigns"
+              icon="📣"
+              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              onAction={() => openView('campaigns')}
+            />
+          </ActionPanel.Section>
+          <Action.OpenInBrowser
+            title={
+              title === 'Payments'
+                ? 'Open Payments on Admin'
+                : title === 'Email List'
+                  ? 'Open Email on Admin'
+                  : 'Open Campaigns on Admin'
+            }
+            icon={Icon.Globe}
+            url={getAdminSectionUrl(
+              task.athlete_id,
+              title === 'Payments' ? 'payments' : title === 'Email List' ? 'emails' : 'campaigns',
+            )}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
 interface DetailProps {
   task: VideoProgressTask;
   onBack: () => void;
@@ -651,18 +972,76 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   const [youtubeTitle, setYoutubeTitle] = useState('');
   const [dropboxFolder, setDropboxFolder] = useState('');
   const [approvedDetail, setApprovedDetail] = useState('');
+  const [resolvedJersey, setResolvedJersey] = useState<string | undefined>(task.jersey_number);
 
   const resolveMainId = async () => {
     // Use central service - handles cache check, API fetch, and write-back
     return await getAthleteMainId(task.athlete_id);
   };
 
+  const resolveJerseyOnEncounter = async () => {
+    const feature = 'VIDEO_PROGRESS_JERSEY_RESOLVE';
+    videoProgressLogger.info(feature, {
+      event: feature,
+      step: 'request',
+      status: 'start',
+      feature,
+      context: {
+        athleteId: task.athlete_id,
+        endpoint: `/athlete/${task.athlete_id}/resolve`,
+      },
+    });
+    try {
+      const shouldForceRefresh = false;
+      const result = await resolveAndCacheJerseyNumber(task.athlete_id, {
+        gradYear: task.grad_year,
+        forceRefresh: shouldForceRefresh,
+      });
+      if (result.jerseyNumber) {
+        setResolvedJersey(result.jerseyNumber);
+      }
+      videoProgressLogger.info(feature, {
+        event: feature,
+        step: 'parse',
+        status: result.jerseyNumber ? 'success' : 'failure',
+        feature,
+        error: result.jerseyNumber ? undefined : result.error || 'resolve_response_missing_jersey',
+        context: {
+          athleteId: task.athlete_id,
+          endpoint: result.endpoint,
+          statusCode: result.statusCode || null,
+          contentType: result.contentType || null,
+          source: result.source,
+          forceRefresh: result.forceRefresh,
+          extractedValue: result.jerseyNumber || null,
+        },
+      });
+    } catch (error) {
+      videoProgressLogger.error(feature, {
+        event: feature,
+        step: 'request',
+        status: 'failure',
+        feature,
+        error: error instanceof Error ? error.message : String(error),
+        context: {
+          athleteId: task.athlete_id,
+          endpoint: `/athlete/${task.athlete_id}/resolve`,
+        },
+      });
+    }
+  };
 
   useEffect(() => {
     setYoutubeTitle(generateYouTubeTitle(task));
     setDropboxFolder(generateDropboxFolder(task));
-    setApprovedDetail(ApprovedVideoDetail(task, onBack));
+    setResolvedJersey(task.jersey_number);
+    setApprovedDetail(ApprovedVideoDetail(task, task.jersey_number));
+    void resolveJerseyOnEncounter();
   }, [task]);
+
+  useEffect(() => {
+    setApprovedDetail(ApprovedVideoDetail(task, resolvedJersey));
+  }, [resolvedJersey, task]);
 
   const handleStatusChange = async (newStatus: string) => {
     if (!task.id) {
@@ -676,18 +1055,46 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
 
     setIsUpdating(true);
     try {
+      const feature = 'video-progress.detail.status-update';
       const normalizedStatus = normalizeStatus(newStatus);
+      videoProgressLogger.info('VIDEO_PROGRESS_STATUS_UPDATE', {
+        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
+        step: 'request',
+        status: 'start',
+        feature,
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          statusDisplay: newStatus,
+          statusNormalized: normalizedStatus,
+        },
+      });
       const response = await apiFetch(`/video/${task.id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_msg_id: String(task.id), status: normalizedStatus }),
       });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as any;
-        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+      const { text, json, contentType } = await readResponseBody(response);
+      if (!response.ok || isExplicitFailurePayload(json)) {
+        throw new Error(extractApiErrorMessage(response.status, text, json));
       }
       // Update cache for instant UI feedback
       await updateCachedTaskStatusStage(task.id, { status: newStatus });
+      videoProgressLogger.info('VIDEO_PROGRESS_STATUS_UPDATE', {
+        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
+        step: 'request',
+        status: 'success',
+        feature,
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          statusCode: response.status,
+          contentType,
+          bodyPreview: text.slice(0, 200),
+          statusDisplay: newStatus,
+          statusNormalized: normalizedStatus,
+        },
+      });
 
       await showToast({
         style: Toast.Style.Success,
@@ -701,6 +1108,18 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
       onStatusUpdate(filtered);
       onBack();
     } catch (error) {
+      videoProgressLogger.error('VIDEO_PROGRESS_STATUS_UPDATE', {
+        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
+        step: 'request',
+        status: 'failure',
+        feature: 'video-progress.detail.status-update',
+        error: error instanceof Error ? error.message : String(error),
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          statusDisplay: newStatus,
+        },
+      });
       await showToast({
         style: Toast.Style.Failure,
         title: 'Update Failed',
@@ -743,7 +1162,8 @@ function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
         bodyPreview: text.slice(0, 500),
       });
       if (!response.ok) {
-        const errMessage = json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
+        const errMessage =
+          json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
         throw new Error(errMessage);
       }
       // Update cache for instant UI feedback
@@ -817,7 +1237,7 @@ ${approvedDetail}
                     athleteId={String(task.athlete_id)}
                     athleteMainId={mainId}
                     athleteName={task.athletename}
-                  />
+                  />,
                 );
               }}
             />
@@ -840,13 +1260,25 @@ ${approvedDetail}
                     athleteMainId={mainId}
                     athleteName={task.athletename}
                     onComplete={() => pop()}
-                  />
+                  />,
                 );
               }}
             />
           </ActionPanel.Section>
 
           <ActionPanel.Section title="Web Actions">
+            <Action
+              title="Main View"
+              icon={Icon.House}
+              shortcut={{ modifiers: ['cmd'], key: '1' }}
+              onAction={async () => {
+                await showToast({
+                  style: Toast.Style.Success,
+                  title: 'Main View',
+                  message: 'Already on main view',
+                });
+              }}
+            />
             <Action
               title="Contact Info"
               icon="☎️"
@@ -862,14 +1294,65 @@ ${approvedDetail}
                 }
                 push(
                   <ContactInfoDetail
+                    task={task}
                     contactId={String(task.athlete_id)}
                     athleteMainId={mainId}
                     athleteName={task.athletename}
                     onBack={pop}
-                  />
+                  />,
                 );
               }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'i' }}
+              shortcut={{ modifiers: ['cmd'], key: '2' }}
+            />
+            <Action
+              title="Payments"
+              icon="💳"
+              shortcut={{ modifiers: ['cmd'], key: '3' }}
+              onAction={async () => {
+                const mainId = await resolveMainId();
+                if (!mainId) {
+                  return;
+                }
+                push(
+                  <AdminAthleteTableDetail
+                    task={task}
+                    title="Payments"
+                    endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/payments?athlete_main_id=${encodeURIComponent(mainId)}`}
+                  />,
+                );
+              }}
+            />
+            <Action
+              title="Email List"
+              icon={Icon.Envelope}
+              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              onAction={async () => {
+                push(
+                  <AdminAthleteTableDetail
+                    task={task}
+                    title="Email List"
+                    endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/emails`}
+                  />,
+                );
+              }}
+            />
+            <Action
+              title="Campaigns"
+              icon="📣"
+              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              onAction={async () => {
+                const mainId = await resolveMainId();
+                if (!mainId) {
+                  return;
+                }
+                push(
+                  <AdminAthleteTableDetail
+                    task={task}
+                    title="Campaigns"
+                    endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/campaigns?athlete_main_id=${encodeURIComponent(mainId)}`}
+                  />,
+                );
+              }}
             />
             <Action.OpenInBrowser
               title="General Info"
@@ -980,9 +1463,10 @@ function CraftReminderForm({ task, reminderType }: CraftReminderFormProps) {
     reminderType === 'inbox-follow-up'
       ? 'Inbox Follow Ups'
       : reminderType === 'in-queue'
-      ? 'In Queue Reminders'
-      : 'Dropbox Folder Reminders';
-  const defaultDate = reminderType === 'in-queue' ? getDueReminderDefaultDate(task.video_due_date) : new Date();
+        ? 'In Queue Reminders'
+        : 'Dropbox Folder Reminders';
+  const defaultDate =
+    reminderType === 'in-queue' ? getDueReminderDefaultDate(task.video_due_date) : new Date();
   craftLogger.info('CRAFT_FORM_OPEN', {
     athleteId: task.athlete_id,
     athleteName: task.athletename,
@@ -1061,10 +1545,10 @@ function CraftReminderForm({ task, reminderType }: CraftReminderFormProps) {
           <Action.SubmitForm
             title={
               reminderType === 'inbox-follow-up'
-                ? 'Save Inbox Follow Up'
+                ? 'Save Inbox Follow up'
                 : reminderType === 'in-queue'
-                ? 'Save In Queue Reminder'
-                : 'Save Dropbox Folder Reminder'
+                  ? 'Save In Queue Reminder'
+                  : 'Save Dropbox Folder Reminder'
             }
             onSubmit={handleSubmit}
           />
@@ -1102,12 +1586,12 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_msg_id: String(task.id),
-          due_date: formattedDate
+          due_date: formattedDate,
         }),
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as any;
+        const err = (await response.json().catch(() => ({}))) as any;
         throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
       }
 
@@ -1133,27 +1617,18 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
   };
 
   // Parse current due date or default to today
-  const currentDate = task.video_due_date
-    ? new Date(task.video_due_date)
-    : new Date();
+  const currentDate = task.video_due_date ? new Date(task.video_due_date) : new Date();
 
   return (
     <Form
       isLoading={isSubmitting}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title="Update Due Date"
-            onSubmit={handleSubmit}
-          />
+          <Action.SubmitForm title="Update Due Date" onSubmit={handleSubmit} />
         </ActionPanel>
       }
     >
-      <Form.DatePicker
-        id="dueDate"
-        title="Due Date"
-        defaultValue={currentDate}
-      />
+      <Form.DatePicker id="dueDate" title="Due Date" defaultValue={currentDate} />
       <Form.Description text={`Editing due date for: ${task.athletename}`} />
     </Form>
   );
@@ -1206,28 +1681,19 @@ function UpdateCompletionDateForm({ task, onBack, onUpdate }: UpdateCompletionDa
     }
   };
 
-  const currentDate = task.date_completed
-    ? new Date(task.date_completed)
-    : new Date();
+  const currentDate = task.date_completed ? new Date(task.date_completed) : new Date();
 
   return (
     <Form
       isLoading={isSubmitting}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title="Update Completion Date"
-            onSubmit={handleSubmit}
-          />
+          <Action.SubmitForm title="Update Completion Date" onSubmit={handleSubmit} />
           <Action title="Cancel" icon={Icon.XMarkCircle} onAction={onBack} />
         </ActionPanel>
       }
     >
-      <Form.DatePicker
-        id="completionDate"
-        title="Completion Date"
-        defaultValue={currentDate}
-      />
+      <Form.DatePicker id="completionDate" title="Completion Date" defaultValue={currentDate} />
       <Form.Description text={`Editing completion date for: ${task.athletename}`} />
     </Form>
   );
@@ -1260,25 +1726,61 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
 
   const handleSubmit = async () => {
     if (!task.id) {
-      await showToast({ style: Toast.Style.Failure, title: 'Cannot Update', message: 'Missing video message ID' });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cannot Update',
+        message: 'Missing video message ID',
+      });
       return;
     }
 
     setIsSubmitting(true);
     try {
+      const feature = 'video-progress.form.status-update';
       const normalizedStatus = normalizeStatus(selectedStatus);
+      videoProgressLogger.info('VIDEO_PROGRESS_STATUS_UPDATE', {
+        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
+        step: 'request',
+        status: 'start',
+        feature,
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          statusDisplay: selectedStatus,
+          statusNormalized: normalizedStatus,
+        },
+      });
       const response = await apiFetch(`/video/${task.id}/status`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ video_msg_id: String(task.id), status: normalizedStatus }),
       });
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({})) as any;
-        throw new Error(err?.message || err?.detail || `HTTP ${response.status}`);
+      const { text, json, contentType } = await readResponseBody(response);
+      if (!response.ok || isExplicitFailurePayload(json)) {
+        throw new Error(extractApiErrorMessage(response.status, text, json));
       }
 
       await updateCachedTaskStatusStage(task.id, { status: selectedStatus });
-      await showToast({ style: Toast.Style.Success, title: 'Status Updated', message: `Updated to ${selectedStatus}` });
+      videoProgressLogger.info('VIDEO_PROGRESS_STATUS_UPDATE', {
+        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
+        step: 'request',
+        status: 'success',
+        feature,
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          statusCode: response.status,
+          contentType,
+          bodyPreview: text.slice(0, 200),
+          statusDisplay: selectedStatus,
+          statusNormalized: normalizedStatus,
+        },
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Status Updated',
+        message: `Updated to ${selectedStatus}`,
+      });
 
       const allTasks = await getCachedTasks();
       const filtered = sortTasks(
@@ -1286,14 +1788,30 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
           (t) =>
             shouldIncludeTask(t) &&
             ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-              t.video_progress_status
-            )
-        )
+              t.video_progress_status,
+            ),
+        ),
       );
       onUpdate(filtered);
       pop();
     } catch (error) {
-      await showToast({ style: Toast.Style.Failure, title: 'Update Failed', message: error instanceof Error ? error.message : 'Unknown error' });
+      videoProgressLogger.error('VIDEO_PROGRESS_STATUS_UPDATE', {
+        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
+        step: 'request',
+        status: 'failure',
+        feature: 'video-progress.form.status-update',
+        error: error instanceof Error ? error.message : String(error),
+        context: {
+          taskId: task.id,
+          athleteId: task.athlete_id,
+          statusDisplay: selectedStatus,
+        },
+      });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Update Failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1310,7 +1828,12 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
       }
     >
       <Form.Description text={`Updating status for: ${task.athletename}`} />
-      <Form.Dropdown id="status" title="Video Status" value={selectedStatus} onChange={setSelectedStatus}>
+      <Form.Dropdown
+        id="status"
+        title="Video Status"
+        value={selectedStatus}
+        onChange={setSelectedStatus}
+      >
         {STATUS_OPTIONS.map((opt) => (
           <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.label} />
         ))}
@@ -1331,7 +1854,11 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
 
   const handleSubmit = async () => {
     if (!task.id) {
-      await showToast({ style: Toast.Style.Failure, title: 'Cannot Update', message: 'Missing video message ID' });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Cannot Update',
+        message: 'Missing video message ID',
+      });
       return;
     }
 
@@ -1357,12 +1884,17 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
         bodyPreview: text.slice(0, 500),
       });
       if (!response.ok) {
-        const errMessage = json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
+        const errMessage =
+          json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
         throw new Error(errMessage);
       }
 
       await updateCachedTaskStatusStage(task.id, { stage: selectedStage });
-      await showToast({ style: Toast.Style.Success, title: 'Stage Updated', message: `Updated to ${selectedStage}` });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Stage Updated',
+        message: `Updated to ${selectedStage}`,
+      });
 
       const allTasks = await getCachedTasks();
       const filtered = sortTasks(
@@ -1370,14 +1902,18 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
           (t) =>
             shouldIncludeTask(t) &&
             ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
-              t.video_progress_status
-            )
-        )
+              t.video_progress_status,
+            ),
+        ),
       );
       onUpdate(filtered);
       pop();
     } catch (error) {
-      await showToast({ style: Toast.Style.Failure, title: 'Update Failed', message: error instanceof Error ? error.message : 'Unknown error' });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Update Failed',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1394,7 +1930,12 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
       }
     >
       <Form.Description text={`Updating stage for: ${task.athletename}`} />
-      <Form.Dropdown id="stage" title="Video Stage" value={selectedStage} onChange={setSelectedStage}>
+      <Form.Dropdown
+        id="stage"
+        title="Video Stage"
+        value={selectedStage}
+        onChange={setSelectedStage}
+      >
         {STAGE_OPTIONS.map((opt) => (
           <Form.Dropdown.Item key={opt.value} value={opt.value} title={opt.label} />
         ))}
@@ -1404,15 +1945,87 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
 }
 
 interface ContactInfoDetailProps {
+  task: VideoProgressTask;
   contactId: string;
   athleteMainId: string;
   athleteName: string;
   onBack: () => void;
 }
 
-function ContactInfoDetail({ contactId, athleteMainId, athleteName, onBack }: ContactInfoDetailProps) {
+function ContactInfoDetail({
+  task,
+  contactId,
+  athleteMainId,
+  athleteName,
+  onBack,
+}: ContactInfoDetailProps) {
+  const { push } = useNavigation();
   const [contactInfo, setContactInfo] = useState<ContactInfo | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+
+  const resolveMainId = async () => {
+    return task.athlete_main_id || athleteMainId || (await getAthleteMainId(task.athlete_id));
+  };
+
+  const openView = async (target: 'main' | 'payments' | 'emails' | 'campaigns') => {
+    const feature = 'VIDEO_PROGRESS_DETAIL_VIEW_SWITCH';
+    videoProgressLogger.info(feature, {
+      event: feature,
+      step: 'request',
+      status: 'start',
+      feature,
+      context: { athleteId: task.athlete_id, from: 'Contact Info', to: target },
+    });
+    try {
+      if (target === 'main') {
+        onBack();
+      } else if (target === 'payments') {
+        const mainId = await resolveMainId();
+        if (!mainId) throw new Error('missing_athlete_main_id');
+        push(
+          <AdminAthleteTableDetail
+            task={task}
+            title="Payments"
+            endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/payments?athlete_main_id=${encodeURIComponent(mainId)}`}
+          />,
+        );
+      } else if (target === 'emails') {
+        push(
+          <AdminAthleteTableDetail
+            task={task}
+            title="Email List"
+            endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/emails`}
+          />,
+        );
+      } else {
+        const mainId = await resolveMainId();
+        if (!mainId) throw new Error('missing_athlete_main_id');
+        push(
+          <AdminAthleteTableDetail
+            task={task}
+            title="Campaigns"
+            endpoint={`/athlete/${encodeURIComponent(String(task.athlete_id))}/admin/campaigns?athlete_main_id=${encodeURIComponent(mainId)}`}
+          />,
+        );
+      }
+      videoProgressLogger.info(feature, {
+        event: feature,
+        step: 'request',
+        status: 'success',
+        feature,
+        context: { athleteId: task.athlete_id, from: 'Contact Info', to: target },
+      });
+    } catch (error) {
+      videoProgressLogger.error(feature, {
+        event: feature,
+        step: 'request',
+        status: 'failure',
+        feature,
+        error: error instanceof Error ? error.message : String(error),
+        context: { athleteId: task.athlete_id, from: 'Contact Info', to: target },
+      });
+    }
+  };
 
   useEffect(() => {
     loadContactInfo();
@@ -1421,7 +2034,10 @@ function ContactInfoDetail({ contactId, athleteMainId, athleteName, onBack }: Co
   const loadContactInfo = async () => {
     try {
       setIsLoading(true);
-      logger.info(`📞 CONTACT_INFO: Starting load for athlete ${contactId}`, { athleteName, athleteMainId });
+      logger.info(`📞 CONTACT_INFO: Starting load for athlete ${contactId}`, {
+        athleteName,
+        athleteMainId,
+      });
 
       // Cache-first: check SQLite cache
       const cached = await getCachedContactInfo(Number(contactId));
@@ -1477,6 +2093,38 @@ function ContactInfoDetail({ contactId, athleteMainId, athleteName, onBack }: Co
       isLoading={isLoading}
       actions={
         <ActionPanel>
+          <ActionPanel.Section title="Views">
+            <Action
+              title="Main"
+              icon={Icon.House}
+              shortcut={{ modifiers: ['cmd'], key: '1' }}
+              onAction={() => openView('main')}
+            />
+            <Action
+              title="Contact Info"
+              icon="☎️"
+              shortcut={{ modifiers: ['cmd'], key: '2' }}
+              onAction={loadContactInfo}
+            />
+            <Action
+              title="Payments"
+              icon="💳"
+              shortcut={{ modifiers: ['cmd'], key: '3' }}
+              onAction={() => openView('payments')}
+            />
+            <Action
+              title="Email List"
+              icon={Icon.Envelope}
+              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              onAction={() => openView('emails')}
+            />
+            <Action
+              title="Campaigns"
+              icon="📣"
+              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              onAction={() => openView('campaigns')}
+            />
+          </ActionPanel.Section>
           <ActionPanel.Section title="Student Athlete">
             {contactInfo?.studentAthlete.email && (
               <Action.CopyToClipboard
@@ -1539,6 +2187,12 @@ function ContactInfoDetail({ contactId, athleteMainId, athleteName, onBack }: Co
           )}
 
           <ActionPanel.Section>
+            <Action.OpenInBrowser
+              title="Open Contact Info on Admin"
+              icon={Icon.Globe}
+              url={getAdminSectionUrl(task.athlete_id, 'contact')}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'o' }}
+            />
             <Action
               title="Refresh Contact Info"
               icon={Icon.ArrowClockwise}
@@ -1632,24 +2286,24 @@ export default function VideoProgress() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          first_name: "",
-          last_name: "",
-          email: "",
-          sport: "0",
-          states: "0",
-          athlete_school: "0",
-          editorassigneddatefrom: "",
-          editorassigneddateto: "",
-          grad_year: "",
-          video_progress: "",
-          video_progress_stage: "",
-          video_progress_status: ""
+          first_name: '',
+          last_name: '',
+          email: '',
+          sport: '0',
+          states: '0',
+          athlete_school: '0',
+          editorassigneddatefrom: '',
+          editorassigneddateto: '',
+          grad_year: '',
+          video_progress: '',
+          video_progress_stage: '',
+          video_progress_status: '',
         }),
       });
       if (!response.ok) {
         throw new Error(`Failed to load tasks (HTTP ${response.status})`);
       }
-      const result = await response.json() as any;
+      const result = (await response.json()) as any;
       const data = result.tasks || [];
 
       if (!Array.isArray(data)) {
@@ -1702,7 +2356,9 @@ export default function VideoProgress() {
         term,
         requestId,
         count: mapped.length,
-        sample: mapped[0] ? { athlete_id: mapped[0].athlete_id, name: mapped[0].athletename } : null,
+        sample: mapped[0]
+          ? { athlete_id: mapped[0].athlete_id, name: mapped[0].athletename }
+          : null,
       });
 
       if (requestId === rawSearchRequestId.current) {
@@ -1792,7 +2448,7 @@ export default function VideoProgress() {
         dedupeTasksPreferNative(matches).map((task) => ({
           ...task,
           raw_search: true,
-        }))
+        })),
       );
     }
   };
@@ -1916,20 +2572,59 @@ export default function VideoProgress() {
     return true;
   });
   const visibleTasks =
-    stageFilter === 'Done' && !shouldBypassFilters
-      ? sortDoneTasks(filteredTasks)
-      : filteredTasks;
+    stageFilter === 'Done' && !shouldBypassFilters ? sortDoneTasks(filteredTasks) : filteredTasks;
+
+  const jumpToStageFilter = async (stage: string) => {
+    setStageFilter(stage);
+    if (stage === 'Done') {
+      await reloadFromCache();
+    }
+  };
+
+  const renderStageViewActions = () => (
+    <ActionPanel.Section title="Stage Views">
+      <Action
+        title="🔎 All"
+        onAction={() => jumpToStageFilter('all')}
+        shortcut={{ modifiers: ['cmd'], key: '1' }}
+      />
+      <Action
+        title="🔎 In Queue"
+        onAction={() => jumpToStageFilter('In Queue')}
+        shortcut={{ modifiers: ['cmd'], key: '2' }}
+      />
+      <Action
+        title="🔎 Awaiting"
+        onAction={() => jumpToStageFilter('Awaiting Client')}
+        shortcut={{ modifiers: ['cmd'], key: '3' }}
+      />
+      <Action
+        title="🔎 On Hold"
+        onAction={() => jumpToStageFilter('On Hold')}
+        shortcut={{ modifiers: ['cmd'], key: '4' }}
+      />
+      <Action
+        title="🔎 Done"
+        onAction={() => jumpToStageFilter('Done')}
+        shortcut={{ modifiers: ['cmd'], key: '5' }}
+      />
+    </ActionPanel.Section>
+  );
+
+  const renderRawSearchToggleAction = () => (
+    <Action
+      title={`Raw Search Mode: ${rawSearchEnabled ? 'On' : 'Off'}`}
+      icon={rawSearchEnabled ? Icon.CheckCircle : Icon.Circle}
+      onAction={toggleRawSearch}
+      shortcut={{ modifiers: ['cmd'], key: 'f' }}
+    />
+  );
 
   // Handle combined filter change
   const handleFilterChange = async (value: string) => {
     if (value.startsWith('stage:')) {
       const stage = value.replace('stage:', '');
-      setStageFilter(stage);
-
-      // Reload from cache when switching to Done
-      if (stage === 'Done') {
-        await reloadFromCache();
-      }
+      await jumpToStageFilter(stage);
     }
   };
 
@@ -1943,6 +2638,12 @@ export default function VideoProgress() {
       searchBarPlaceholder="Search athletes..."
       searchText={searchText}
       onSearchTextChange={setSearchText}
+      actions={
+        <ActionPanel>
+          {renderRawSearchToggleAction()}
+          {renderStageViewActions()}
+        </ActionPanel>
+      }
       searchBarAccessory={
         <List.Dropdown
           tooltip="Filter by Stage (⌘P)"
@@ -1964,6 +2665,12 @@ export default function VideoProgress() {
           icon={Icon.CheckCircle}
           title={shouldBypassFilters ? 'No Raw Search Results' : 'No Active Tasks'}
           description={shouldBypassFilters ? 'Try a different search' : 'All done!'}
+          actions={
+            <ActionPanel>
+              {renderRawSearchToggleAction()}
+              {renderStageViewActions()}
+            </ActionPanel>
+          }
         />
       ) : (
         <List.Section
@@ -2001,7 +2708,7 @@ export default function VideoProgress() {
                           task={task}
                           onBack={pop}
                           onStatusUpdate={reloadFromCache}
-                        />
+                        />,
                       )
                     }
                     shortcut={{ modifiers: ['cmd'], key: 'return' }}
@@ -2037,12 +2744,7 @@ export default function VideoProgress() {
                     onAction={() => assignTaskToMeFromCache(task)}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
                   />
-                  <Action
-                    title={`Raw Search Mode: ${rawSearchEnabled ? 'On' : 'Off'}`}
-                    icon={rawSearchEnabled ? Icon.CheckCircle : Icon.Circle}
-                    onAction={toggleRawSearch}
-                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                  />
+                  {renderRawSearchToggleAction()}
                   {stageFilter === 'Done' && (
                     <Action
                       title="Set Completion Date"
@@ -2053,7 +2755,7 @@ export default function VideoProgress() {
                             task={task}
                             onBack={pop}
                             onUpdate={reloadFromCache}
-                          />
+                          />,
                         )
                       }
                       shortcut={{ modifiers: ['cmd'], key: 'd' }}
@@ -2094,6 +2796,7 @@ export default function VideoProgress() {
                     }}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                   />
+                  {renderStageViewActions()}
                 </ActionPanel>
               }
             />

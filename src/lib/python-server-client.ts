@@ -1,9 +1,9 @@
-import { executePythonScript } from "./python-executor";
-import { NPID_CLIENT_PATH } from "./python-config";
-import { ensureServerRunning } from "./api-bootstrap";
-import fetch, { RequestInit } from "node-fetch";
+import { executePythonScript } from './python-executor';
+import { NPID_CLIENT_PATH } from './python-config';
+import { ensureServerRunning } from './api-bootstrap';
+import fetch, { RequestInit } from 'node-fetch';
 
-export const API_BASE = "http://127.0.0.1:8000/api/v1";
+export const API_BASE = 'http://127.0.0.1:8000/api/v1';
 
 export interface SeasonsRequest {
   athleteId: string;
@@ -21,10 +21,10 @@ export interface SeasonsRequest {
  */
 export async function callPythonServer<T>(
   method: string,
-  args: Record<string, unknown> = {}
+  args: Record<string, unknown> = {},
 ): Promise<T> {
   return executePythonScript<T>(NPID_CLIENT_PATH, method, args, {
-    contextName: "NPID Client",
+    contextName: 'NPID Client',
   });
 }
 
@@ -33,7 +33,7 @@ export async function callPythonServer<T>(
  */
 export async function apiFetch(endpoint: string, options?: RequestInit) {
   await ensureServerRunning();
-  const url = `${API_BASE}${endpoint.startsWith("/") ? endpoint : "/" + endpoint}`;
+  const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   return fetch(url, options);
 }
 
@@ -42,9 +42,9 @@ export async function apiFetch(endpoint: string, options?: RequestInit) {
  * Returns Laravel's JSON response directly.
  */
 export async function getSeasons(params: SeasonsRequest) {
-  const response = await apiFetch("/video/seasons", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/video/seasons', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       athlete_id: params.athleteId,
       athlete_main_id: params.athleteMainId,

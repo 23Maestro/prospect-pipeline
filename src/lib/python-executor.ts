@@ -4,8 +4,8 @@
  * Uses spawn array form (no shell: true) to eliminate command injection risks
  */
 
-import { spawn } from "child_process";
-import { PYTHON_PATH, getPythonEnv } from "./python-config";
+import { spawn } from 'child_process';
+import { PYTHON_PATH, getPythonEnv } from './python-config';
 
 /**
  * Options for Python script execution
@@ -34,14 +34,16 @@ export async function executePythonScript<T>(
   scriptPath: string,
   method: string,
   args: Record<string, unknown> = {},
-  options: ExecutePythonScriptOptions = {}
+  options: ExecutePythonScriptOptions = {},
 ): Promise<T> {
-  const { pythonPath = PYTHON_PATH, contextName = "Python Script" } = options;
+  const { pythonPath = PYTHON_PATH, contextName = 'Python Script' } = options;
 
   // Validate method name to prevent command injection
   // Allow only alphanumeric, underscore, and hyphen characters
   if (!/^[a-zA-Z0-9_-]+$/.test(method)) {
-    throw new Error(`Invalid method name: ${method}. Only alphanumeric, underscore, and hyphen allowed.`);
+    throw new Error(
+      `Invalid method name: ${method}. Only alphanumeric, underscore, and hyphen allowed.`,
+    );
   }
 
   return new Promise<T>((resolve, reject) => {
@@ -53,33 +55,47 @@ export async function executePythonScript<T>(
       env: getPythonEnv(),
     });
 
-    let stdout = "";
-    let stderr = "";
+    let stdout = '';
+    let stderr = '';
 
-    childProcess.stdout.on("data", (data) => {
+    childProcess.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
-    childProcess.stderr.on("data", (data) => {
+    childProcess.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
-    childProcess.on("close", (code) => {
+    childProcess.on('close', (code) => {
       if (code === 0) {
         try {
           const result = JSON.parse(stdout);
           resolve(result as T);
         } catch (error) {
-          console.error(`${contextName}: Failed to parse output`, { error, stdout: stdout.substring(0, 200) });
-          reject(new Error(`${contextName}: Failed to parse output - ${error instanceof Error ? error.message : String(error)}`));
+          console.error(`${contextName}: Failed to parse output`, {
+            error,
+            stdout: stdout.substring(0, 200),
+          });
+          reject(
+            new Error(
+              `${contextName}: Failed to parse output - ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          );
         }
       } else {
-        console.error(`${contextName}: Process exited with code ${code}`, { stderr, stdout: stdout.substring(0, 200) });
-        reject(new Error(`${contextName}: Process failed (exit ${code}): ${stderr || stdout.substring(0, 200)}`));
+        console.error(`${contextName}: Process exited with code ${code}`, {
+          stderr,
+          stdout: stdout.substring(0, 200),
+        });
+        reject(
+          new Error(
+            `${contextName}: Process failed (exit ${code}): ${stderr || stdout.substring(0, 200)}`,
+          ),
+        );
       }
     });
 
-    childProcess.on("error", (err) => {
+    childProcess.on('error', (err) => {
       console.error(`${contextName}: Spawn error`, err);
       reject(new Error(`${contextName}: Failed to spawn process - ${err.message}`));
     });

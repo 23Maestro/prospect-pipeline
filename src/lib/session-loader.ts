@@ -44,9 +44,9 @@ export function getAuthHeaders(): Record<string, string> {
     .join('; ');
 
   return {
-    'Cookie': cookieString,
+    Cookie: cookieString,
     'User-Agent': 'Mozilla/5.0',
-    'Accept': 'application/json, text/plain, */*',
+    Accept: 'application/json, text/plain, */*',
     'X-Requested-With': 'XMLHttpRequest',
   };
 }

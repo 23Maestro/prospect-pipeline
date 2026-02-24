@@ -34,7 +34,9 @@ export async function createFileRequest(athleteName: string): Promise<FileReques
       throw new Error(`Account fetch failed: ${accountResponse.status}`);
     }
 
-    const accountData = await accountResponse.json() as { root_info: { root_namespace_id: string } };
+    const accountData = (await accountResponse.json()) as {
+      root_info: { root_namespace_id: string };
+    };
     const rootNamespaceId = accountData.root_info.root_namespace_id;
 
     console.log('✓ Root namespace ID:', rootNamespaceId);
@@ -58,11 +60,15 @@ export async function createFileRequest(athleteName: string): Promise<FileReques
     });
 
     if (!fileRequestResponse.ok) {
-      const error = await fileRequestResponse.json() as { error_summary?: string };
+      const error = (await fileRequestResponse.json()) as { error_summary?: string };
       throw new Error(`File request failed: ${error.error_summary || fileRequestResponse.status}`);
     }
 
-    const fileRequestData = await fileRequestResponse.json() as { url: string; id: string; destination: string };
+    const fileRequestData = (await fileRequestResponse.json()) as {
+      url: string;
+      id: string;
+      destination: string;
+    };
 
     console.log('✓ File request created successfully');
     console.log('URL:', fileRequestData.url);
@@ -84,7 +90,9 @@ export async function createFileRequest(athleteName: string): Promise<FileReques
   }
 }
 
-export async function batchCreateFileRequests(athleteNames: string[]): Promise<Array<{ name: string } & FileRequestResult>> {
+export async function batchCreateFileRequests(
+  athleteNames: string[],
+): Promise<Array<{ name: string } & FileRequestResult>> {
   const results: Array<{ name: string } & FileRequestResult> = [];
 
   for (const name of athleteNames) {

@@ -1,4 +1,4 @@
-import { apiFetch } from "./python-server-client";
+import { apiFetch } from './python-server-client';
 import {
   AssignVideoTeamPayload,
   NPIDInboxMessage,
@@ -6,8 +6,8 @@ import {
   VideoTeamAssignmentModal,
   VideoTeamContact,
   VideoTeamSearchCategory,
-} from "../types/video-team";
-import { logger, notesLogger, searchLogger } from "./logger";
+} from '../types/video-team';
+import { logger, notesLogger, searchLogger } from './logger';
 
 /**
  * Fetch inbox threads via FastAPI.
@@ -15,19 +15,19 @@ import { logger, notesLogger, searchLogger } from "./logger";
  */
 export async function fetchInboxThreads(
   limit: number,
-  filter_assigned: "unassigned" | "assigned" | "both",
+  filter_assigned: 'unassigned' | 'assigned' | 'both',
   pageStartNumber = 1,
   onlyPagination = false,
-  searchText = ""
+  searchText = '',
 ): Promise<NPIDInboxMessage[]> {
-  const response = await apiFetch("/inbox/threads", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/inbox/threads', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       limit,
       filter_assigned,
       page_start_number: pageStartNumber,
-      only_pagination: false,  // Always false - matches Python reference
+      only_pagination: false, // Always false - matches Python reference
       search_text: searchText,
     }),
   });
@@ -36,7 +36,7 @@ export async function fetchInboxThreads(
     throw new Error(`Failed to fetch inbox threads: ${response.status}`);
   }
 
-  const data = await response.json() as any;
+  const data = (await response.json()) as any;
   return data.threads || [];
 }
 
@@ -46,7 +46,7 @@ export async function fetchInboxThreads(
  */
 export async function fetchMessageDetail(
   message_id: string,
-  item_code: string
+  item_code: string,
 ): Promise<{
   content: string;
   timestamp?: string;
@@ -70,9 +70,9 @@ export async function fetchMessageDetail(
     expiresAt?: string | null;
   }>;
 }> {
-  const response = await apiFetch("/inbox/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/inbox/message', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message_id, item_code }),
   });
 
@@ -87,18 +87,16 @@ export async function fetchMessageDetail(
  * Fetch athlete name via FastAPI.
  * Endpoint: GET /api/v1/athlete/{athlete_id}/name
  */
-export async function fetchAthleteName(
-  athleteId: string
-): Promise<string | null> {
+export async function fetchAthleteName(athleteId: string): Promise<string | null> {
   const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/name`, {
-    method: "GET",
+    method: 'GET',
   });
 
   if (!response.ok) {
     return null;
   }
 
-  const data = await response.json().catch(() => ({})) as any;
+  const data = (await response.json().catch(() => ({}))) as any;
   return data?.name ? String(data.name) : null;
 }
 
@@ -109,24 +107,24 @@ export async function fetchAthleteName(
 export async function sendInboxReply(
   message_id: string,
   item_code: string,
-  reply_text: string
+  reply_text: string,
 ): Promise<{ success: boolean }> {
   logger.info('inbox/reply request', {
     message_id,
     item_code,
     reply_text_length: reply_text.length,
   });
-  const response = await apiFetch("/inbox/reply", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/inbox/reply', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message_id, item_code, reply_text }),
   });
 
   logger.info('inbox/reply response', {
     status: response.status,
     status_text: response.statusText,
-    content_type: response.headers.get("content-type"),
-    location: response.headers.get("location"),
+    content_type: response.headers.get('content-type'),
+    location: response.headers.get('location'),
   });
 
   if (!response.ok) {
@@ -141,11 +139,12 @@ export async function sendInboxReply(
     } catch {
       error = { detail: errorText };
     }
-    const errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
+    const errorMsg =
+      typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
     throw new Error(errorMsg || `Reply failed: ${response.status}`);
   }
 
-  const result = await response.json() as any;
+  const result = (await response.json()) as any;
   logger.info('inbox/reply success', result);
   return result;
 }
@@ -156,11 +155,11 @@ export async function sendInboxReply(
  */
 export async function fetchAssignmentModal(
   message_id: string,
-  item_code: string
+  item_code: string,
 ): Promise<{ modal: VideoTeamAssignmentModal; contacts: VideoTeamContact[] }> {
-  const response = await apiFetch("/inbox/assignment-modal", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/inbox/assignment-modal', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message_id, item_code }),
   });
 
@@ -168,10 +167,10 @@ export async function fetchAssignmentModal(
     throw new Error(`Failed to fetch assignment modal: ${response.status}`);
   }
 
-  const data = await response.json() as any;
+  const data = (await response.json()) as any;
   return {
     modal: data.modal,
-    contacts: [] // Contacts fetched separately via search
+    contacts: [], // Contacts fetched separately via search
   };
 }
 
@@ -180,12 +179,15 @@ export async function fetchAssignmentModal(
  * Endpoint: POST /api/v1/inbox/assign
  * Returns: { success, contact_id, athlete_main_id, message_id }
  */
-export async function assignVideoTeamMessage(
-  payload: AssignVideoTeamPayload
-): Promise<{ success: boolean; contact_id?: string; athlete_main_id?: string; message_id?: string }> {
-  const response = await apiFetch("/inbox/assign", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+export async function assignVideoTeamMessage(payload: AssignVideoTeamPayload): Promise<{
+  success: boolean;
+  contact_id?: string;
+  athlete_main_id?: string;
+  message_id?: string;
+}> {
+  const response = await apiFetch('/inbox/assign', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       ...payload,
       contactFor: payload.searchFor ?? payload.contactFor ?? 'athlete',
@@ -193,7 +195,7 @@ export async function assignVideoTeamMessage(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({})) as any;
+    const error = (await response.json().catch(() => ({}))) as any;
     throw new Error(error.detail || `Assignment failed: ${response.status}`);
   }
 
@@ -205,9 +207,9 @@ export async function assignVideoTeamMessage(
  * Endpoint: POST /api/v1/inbox/contacts/search
  */
 async function searchContacts(query: string, search_type: string): Promise<VideoTeamContact[]> {
-  const response = await apiFetch("/inbox/contacts/search", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/inbox/contacts/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ query, search_type }),
   });
 
@@ -215,7 +217,7 @@ async function searchContacts(query: string, search_type: string): Promise<Video
     return [];
   }
 
-  const data = await response.json() as any;
+  const data = (await response.json()) as any;
   return data.contacts || [];
 }
 
@@ -232,7 +234,7 @@ async function searchContacts(query: string, search_type: string): Promise<Video
  */
 export async function resolveContactsForAssignment(
   searchValue: string,
-  defaultSearchFor: VideoTeamSearchCategory
+  defaultSearchFor: VideoTeamSearchCategory,
 ): Promise<{ contacts: VideoTeamContact[]; searchForUsed: VideoTeamSearchCategory }> {
   // STEP 1: Always try athlete first (default behavior)
   let contacts = await searchContacts(searchValue, defaultSearchFor);
@@ -256,19 +258,23 @@ export async function resolveContactsForAssignment(
  */
 export async function fetchAthleteNotes(
   athleteId: string,
-  athleteMainId: string
+  athleteMainId: string,
 ): Promise<AthleteNote[]> {
   notesLogger.info('NOTES_API_LIST_START', { athleteId, athleteMainId });
-  const response = await apiFetch("/notes/list", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/notes/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       athlete_id: String(athleteId),
       athlete_main_id: String(athleteMainId),
     }),
   });
 
-  notesLogger.info('NOTES_API_LIST_RESPONSE', { athleteId, athleteMainId, status: response.status });
+  notesLogger.info('NOTES_API_LIST_RESPONSE', {
+    athleteId,
+    athleteMainId,
+    status: response.status,
+  });
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -284,12 +290,17 @@ export async function fetchAthleteNotes(
     } catch {
       error = { detail: errorText };
     }
-    const errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
+    const errorMsg =
+      typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
     throw new Error(errorMsg || `Failed to load notes: ${response.status}`);
   }
 
-  const data = await response.json() as { notes?: AthleteNote[] };
-  notesLogger.info('NOTES_API_LIST_SUCCESS', { athleteId, athleteMainId, count: data?.notes?.length ?? 0 });
+  const data = (await response.json()) as { notes?: AthleteNote[] };
+  notesLogger.info('NOTES_API_LIST_SUCCESS', {
+    athleteId,
+    athleteMainId,
+    count: data?.notes?.length ?? 0,
+  });
   return data?.notes ?? [];
 }
 
@@ -308,9 +319,9 @@ export async function addAthleteNote(params: {
     titlePreview: params.title.slice(0, 100),
     descriptionLength: params.description.length,
   });
-  const response = await apiFetch("/notes/add", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/notes/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       athlete_id: String(params.athleteId),
       athlete_main_id: String(params.athleteMainId),
@@ -339,18 +350,19 @@ export async function addAthleteNote(params: {
     } catch {
       error = { detail: errorText };
     }
-    const errorMsg = typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
+    const errorMsg =
+      typeof error.detail === 'string' ? error.detail : JSON.stringify(error.detail || error);
     throw new Error(errorMsg || `Failed to add note: ${response.status}`);
   }
 
-  const result = await response.json().catch(() => ({})) as any;
+  const result = (await response.json().catch(() => ({}))) as any;
   notesLogger.info('NOTES_API_ADD_SUCCESS', {
     athleteId: params.athleteId,
     athleteMainId: params.athleteMainId,
     resultPreview: JSON.stringify(result).slice(0, 200),
   });
   if (result?.success === false) {
-    throw new Error(result?.message || "Failed to add note");
+    throw new Error(result?.message || 'Failed to add note');
   }
 }
 
@@ -359,11 +371,11 @@ export async function addAthleteNote(params: {
  * Endpoint: POST /api/v1/inbox/assignment-defaults
  */
 export async function fetchAssignmentDefaults(
-  contact_id: string
+  contact_id: string,
 ): Promise<{ stage?: string; status?: string }> {
-  const response = await apiFetch("/inbox/assignment-defaults", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/inbox/assignment-defaults', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ contact_id }),
   });
 
@@ -381,12 +393,12 @@ export async function fetchAssignmentDefaults(
  */
 export async function sendEmailToAthlete(
   athleteName: string,
-  templateName: string
+  templateName: string,
 ): Promise<{ success: boolean; error?: string }> {
   // For now, keep using callPythonServer until email router is connected
   // to the video progress page email functionality
-  const { callPythonServer } = await import("./python-server-client");
-  return callPythonServer<{ success: boolean; error?: string }>("send_email_to_athlete", {
+  const { callPythonServer } = await import('./python-server-client');
+  return callPythonServer<{ success: boolean; error?: string }>('send_email_to_athlete', {
     athlete_name: athleteName,
     template_name: templateName,
   });
@@ -410,9 +422,9 @@ export interface VideoAttachment {
  * Endpoint: GET /api/v1/video/attachments
  */
 export async function fetchVideoAttachments(): Promise<VideoAttachment[]> {
-  const response = await apiFetch("/video/attachments", {
-    method: "GET",
-    headers: { "Content-Type": "application/json" },
+  const response = await apiFetch('/video/attachments', {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
   });
 
   if (!response.ok) {
@@ -446,7 +458,7 @@ export interface ResolvedAthleteIds {
  * This function proactively resolves all missing IDs on inbox load.
  */
 export async function bulkResolveAthleteMainIds(
-  threads: NPIDInboxMessage[]
+  threads: NPIDInboxMessage[],
 ): Promise<{ athleteMainIds: Map<string, string> }> {
   const athleteMainIds = new Map<string, string>();
   const missingIds: string[] = [];
@@ -485,8 +497,8 @@ export async function bulkResolveAthleteMainIds(
     const promises = batch.map(async (athleteId) => {
       try {
         const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`, {
-          method: "GET",
-          headers: { "Content-Type": "application/json" },
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
         });
 
         if (!response.ok) {
@@ -497,7 +509,10 @@ export async function bulkResolveAthleteMainIds(
         const data = (await response.json()) as ResolvedAthleteIds;
         if (data.athlete_main_id) {
           athleteMainIds.set(athleteId, data.athlete_main_id);
-          searchLogger.info('BULK_RESOLVE_ONE_SUCCESS', { athleteId, athleteMainId: data.athlete_main_id });
+          searchLogger.info('BULK_RESOLVE_ONE_SUCCESS', {
+            athleteId,
+            athleteMainId: data.athlete_main_id,
+          });
         }
       } catch (error) {
         searchLogger.error('BULK_RESOLVE_ONE_EXCEPTION', {
@@ -514,7 +529,10 @@ export async function bulkResolveAthleteMainIds(
     searchLogger.info('BULK_RESOLVE_PROGRESS', { progress, total: missingIds.length });
   }
 
-  searchLogger.info('BULK_RESOLVE_COMPLETE', { resolved: athleteMainIds.size, total: threads.length });
+  searchLogger.info('BULK_RESOLVE_COMPLETE', {
+    resolved: athleteMainIds.size,
+    total: threads.length,
+  });
   return { athleteMainIds };
 }
 
@@ -547,12 +565,12 @@ export interface ContactInfo {
  */
 export async function fetchContactInfo(
   contactId: string,
-  athleteMainId: string
+  athleteMainId: string,
 ): Promise<ContactInfo> {
   logger.info(`🌐 API: Fetching contact info for ${contactId}`, { athleteMainId });
 
   const response = await apiFetch(
-    `/contacts/${contactId}/enriched?athlete_main_id=${athleteMainId}`
+    `/contacts/${contactId}/enriched?athlete_main_id=${athleteMainId}`,
   );
 
   if (!response.ok) {

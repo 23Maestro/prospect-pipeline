@@ -4,11 +4,13 @@ import { calculateSeasonName } from './season-calculator';
 import fetch from 'node-fetch';
 
 export class NPIDClient {
-  private baseUrl: string = "https://dashboard.nationalpid.com";
+  private baseUrl: string = 'https://dashboard.nationalpid.com';
 
   private async getFreshCSRFToken(): Promise<string> {
     const headers = getAuthHeaders();
-    const resp = await fetch(`${this.baseUrl}/rulestemplates/template/videoteammessagelist`, { headers });
+    const resp = await fetch(`${this.baseUrl}/rulestemplates/template/videoteammessagelist`, {
+      headers,
+    });
     const html = await resp.text();
     const match = html.match(/<input[^>]*name="_token"[^>]*value="([^"]+)"/);
     if (!match) throw new Error('No CSRF token found in page');
@@ -46,7 +48,7 @@ export class NPIDClient {
         video_editor: '',
         video_progress: '',
         video_progress_stage: '',
-        video_progress_status: ''
+        video_progress_status: '',
       }).toString(),
     });
 
@@ -97,7 +99,7 @@ export class NPIDClient {
         video_editor: '',
         video_progress: '',
         video_progress_stage: '',
-        video_progress_status: ''
+        video_progress_status: '',
       }).toString(),
     });
 
@@ -113,11 +115,9 @@ export class NPIDClient {
     if (!player) return null;
 
     // Build positions string from primary/secondary/third
-    const positions = [
-      player.primaryposition,
-      player.secondaryposition,
-      player.thirdposition
-    ].filter(p => p && p !== 'NA').join(', ');
+    const positions = [player.primaryposition, player.secondaryposition, player.thirdposition]
+      .filter((p) => p && p !== 'NA')
+      .join(', ');
 
     const gradYear = player.grad_year || 0;
     const seasonName = calculateSeasonName(gradYear);

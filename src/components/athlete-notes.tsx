@@ -20,7 +20,11 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
       setIsLoading(true);
       try {
         const data = await fetchAthleteNotes(athleteId, athleteMainId);
-        notesLogger.info('NOTES_LIST_LOAD_SUCCESS', { count: data.length, athleteId, athleteMainId });
+        notesLogger.info('NOTES_LIST_LOAD_SUCCESS', {
+          count: data.length,
+          athleteId,
+          athleteMainId,
+        });
         setNotes(data);
       } catch (error) {
         notesLogger.error('NOTES_LIST_LOAD_FAILURE', {
@@ -55,10 +59,12 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
             key={`${note.title}-${index}`}
             title={note.title || `Note ${index + 1}`}
             subtitle={note.created_by ? `By ${note.created_by}` : undefined}
-            accessories={[
-              note.created_at ? { text: formatDate(note.created_at) } : undefined,
-              note.metadata ? { text: note.metadata } : undefined,
-            ].filter(Boolean) as { text: string }[]}
+            accessories={
+              [
+                note.created_at ? { text: formatDate(note.created_at) } : undefined,
+                note.metadata ? { text: note.metadata } : undefined,
+              ].filter(Boolean) as { text: string }[]
+            }
             detail={
               <List.Item.Detail
                 markdown={note.description || '_No description provided_'}
@@ -68,7 +74,10 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
                       <List.Item.Detail.Metadata.Label title="Created By" text={note.created_by} />
                     )}
                     {note.created_at && (
-                      <List.Item.Detail.Metadata.Label title="Created At" text={formatDate(note.created_at)} />
+                      <List.Item.Detail.Metadata.Label
+                        title="Created At"
+                        text={formatDate(note.created_at)}
+                      />
                     )}
                     {note.metadata && (
                       <List.Item.Detail.Metadata.Label title="Info" text={note.metadata} />
@@ -158,9 +167,7 @@ export function AddAthleteNoteForm({
         </ActionPanel>
       }
     >
-      <Form.Description
-        text={`Adding note for ${athleteName ?? `athlete ${athleteId}`}`}
-      />
+      <Form.Description text={`Adding note for ${athleteName ?? `athlete ${athleteId}`}`} />
       <Form.TextField
         id="title"
         title="Title"
