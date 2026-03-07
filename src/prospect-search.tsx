@@ -1,6 +1,6 @@
 import { Action, ActionPanel, Detail, Form, Icon, List, Toast, showToast } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
-import { apiFetch } from './lib/python-server-client';
+import { apiFetch } from './lib/fastapi-client';
 import { upsertTasks } from './lib/video-progress-cache';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
 import { logger, searchLogger } from './lib/logger';

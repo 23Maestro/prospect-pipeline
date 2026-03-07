@@ -1,5 +1,5 @@
 import { executePythonScript } from './python-executor';
-import { NPID_CLIENT_PATH } from './python-config';
+import { NPID_CLIENT_PATH } from './python-env';
 import { ensureServerRunning } from './api-bootstrap';
 import fetch, { RequestInit } from 'node-fetch';
 

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { apiFetch } from './lib/python-server-client';
+import { apiFetch } from './lib/fastapi-client';
 import * as fs from 'fs';
 
 const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';

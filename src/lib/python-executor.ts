@@ -5,7 +5,7 @@
  */
 
 import { spawn } from 'child_process';
-import { PYTHON_PATH, getPythonEnv } from './python-config';
+import { PYTHON_PATH, getPythonEnv } from './python-env';
 
 /**
  * Options for Python script execution

@@ -1,4 +1,4 @@
-import { apiFetch } from './python-server-client';
+import { apiFetch } from './fastapi-client';
 import {
   AssignVideoTeamPayload,
   NPIDInboxMessage,
@@ -397,7 +397,7 @@ export async function sendEmailToAthlete(
 ): Promise<{ success: boolean; error?: string }> {
   // For now, keep using callPythonServer until email router is connected
   // to the video progress page email functionality
-  const { callPythonServer } = await import('./python-server-client');
+  const { callPythonServer } = await import('./fastapi-client');
   return callPythonServer<{ success: boolean; error?: string }>('send_email_to_athlete', {
     athlete_name: athleteName,
     template_name: templateName,
@@ -624,19 +624,19 @@ export function transformCacheToContactInfo(cached: any): ContactInfo {
     },
     parent1: cached.parent1Name
       ? {
-          name: cached.parent1Name,
-          relationship: cached.parent1Relationship || 'Parent',
-          email: cached.parent1Email,
-          phone: cached.parent1Phone,
-        }
+        name: cached.parent1Name,
+        relationship: cached.parent1Relationship || 'Parent',
+        email: cached.parent1Email,
+        phone: cached.parent1Phone,
+      }
       : null,
     parent2: cached.parent2Name
       ? {
-          name: cached.parent2Name,
-          relationship: cached.parent2Relationship || 'Parent',
-          email: cached.parent2Email,
-          phone: cached.parent2Phone,
-        }
+        name: cached.parent2Name,
+        relationship: cached.parent2Relationship || 'Parent',
+        email: cached.parent2Email,
+        phone: cached.parent2Phone,
+      }
       : null,
   };
 }

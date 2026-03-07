@@ -1,0 +1,25 @@
+flowchart TD
+  classDef fail fill:#ffecec,stroke:#d33,stroke-width:2px,color:#900
+  classDef policy fill:#eefaf0,stroke:#2f855a,stroke-width:1px,color:#123
+
+  A["Athlete selected in\nemail-student-athletes"]
+  B["Fetch email templates"]
+  C["Fetch template data"]
+  D["Fetch recipient list"]
+  E{"Apply recipient\npolicy"}:::policy
+  F["Build /email/send payload"]
+  G["Send request"]
+  H["Parse response + log"]
+  I["Optional: verify\nvia Email List view"]
+
+  A --> B --> C --> D --> E
+  E -->|"Editing Done"| P1["athlete + parents\n+ allowed other"]:::policy
+  E -->|"Video Adjustments"| P2["jholcomb@prospectid.com\nonly"]:::policy
+  P1 --> F
+  P2 --> F
+  F --> G --> H --> I
+
+  B -->|"fetch error"| X1["Template fetch failed"]:::fail
+  D -->|"fetch error"| X2["Recipient fetch failed"]:::fail
+  E -->|"invalid rule"| X3["Policy conflict"]:::fail
+  G -->|"non-2xx"| X4["Send failed"]:::fail

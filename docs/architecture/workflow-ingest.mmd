@@ -1,0 +1,25 @@
+flowchart TD
+  classDef fail fill:#ffecec,stroke:#d33,stroke-width:2px,color:#900
+  classDef store fill:#eef7ff,stroke:#2b6cb0,stroke-width:1px,color:#123
+
+  A["manual-sa-additions\n(search term, optional athleteId)"]
+  B["POST /athlete/raw-search"]
+  C{"Candidates?"}
+  D["Select / disambiguate"]
+  E["GET /athlete/id/resolve"]
+  F{"athlete_main_id\nresolved?"}
+  G["POST /video/materialize"]
+  H["upsertTasks to cache"]
+  I[("progress.db")]:::store
+  J["video-progress reloads"]
+
+  A --> B --> C
+  C -->|"none"| X1["No candidates"]:::fail
+  C -->|"one or selected"| D
+  C -->|"multiple, no ID"| X2["Ambiguous"]:::fail
+  D --> E --> F
+  F -->|"yes"| G
+  F -->|"no"| X3["Unresolved ID"]:::fail
+  G -->|"2xx"| H --> I --> J
+  G -->|"non-2xx"| X4["Materialize failed"]:::fail
+  H -->|"write error"| X5["Cache error"]:::fail

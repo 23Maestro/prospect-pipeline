@@ -27,7 +27,7 @@
 
 **Full docs:**
 - Python implementation: `src/python/npid_api_client.py:606`
-- API Contract: `NPID-API-specs/ATHLETE_MAIN_ID_INVARIANT.md`
+- API Contract: `docs/api-specs/ATHLETE_MAIN_ID_INVARIANT.md`
 
 ---
 

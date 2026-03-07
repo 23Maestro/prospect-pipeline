@@ -12,7 +12,7 @@ import {
   Color,
 } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
-import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/python-server-client';
+import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/fastapi-client';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
 import { updateCachedTaskStatusStage } from './lib/video-progress-cache';
 import * as cheerio from 'cheerio';
@@ -614,12 +614,12 @@ export default function VideoUpdatesCommand(
         season: '',
         videoType:
           props.draftValues?.videoType &&
-          [
-            'Full Season Highlight',
-            'Partial Season Highlight',
-            'Single Game Highlight',
-            'Skills/Training Video',
-          ].includes(props.draftValues.videoType)
+            [
+              'Full Season Highlight',
+              'Partial Season Highlight',
+              'Single Game Highlight',
+              'Skills/Training Video',
+            ].includes(props.draftValues.videoType)
             ? props.draftValues.videoType
             : '',
       },

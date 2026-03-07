@@ -1,5 +1,5 @@
 import { Action, Tool } from '@raycast/api';
-import { apiFetch } from '../lib/python-server-client';
+import { apiFetch } from '../lib/fastapi-client';
 import { resolveAndCacheAthleteMainId } from '../lib/athlete-id-service';
 import { upsertTasks } from '../lib/video-progress-cache';
 import { searchLogger } from '../lib/logger';

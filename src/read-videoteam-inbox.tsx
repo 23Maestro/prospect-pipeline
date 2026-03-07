@@ -19,10 +19,10 @@ import {
   fetchMessageDetail,
   sendInboxReply,
 } from './lib/npid-mcp-adapter';
-import { apiFetch } from './lib/python-server-client';
+import { apiFetch } from './lib/fastapi-client';
 import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
-import { ensureAthleteIds } from './lib/athlete-id-resolver';
+import { ensureAthleteIds } from './lib/athlete-id-service';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -39,14 +39,20 @@ function EmailContentDetail({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [detailedTimestamp, setDetailedTimestamp] = useState<string>('');
+  const [detailResult, setDetailResult] = useState<{
+    contact_id?: string;
+    athlete_main_id?: string;
+    athlete_links?: {
+      profile?: string;
+      notes?: string;
+      search?: string;
+      addVideoForm?: string;
+    };
+  } | null>(null);
   const [detailAttachments, setDetailAttachments] = useState<
     Array<{ fileName: string; url: string; downloadable: boolean }>
   >([]);
   const [resolvedAthleteName, setResolvedAthleteName] = useState<string | null>(null);
-  // Initialize from message (contact_id/athlete_id), then update from API if available
-  const resolved = resolveAthleteIdentifiers(message);
-  const [contactId, setContactId] = useState<string | null>(resolved.contactId);
-  const [athleteMainId, setAthleteMainId] = useState<string | null>(resolved.athleteMainId);
   const [athleteLinks, setAthleteLinks] = useState<{
     profile?: string;
     notes?: string;
@@ -63,23 +69,13 @@ function EmailContentDetail({
         const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
 
         if (details && details.content) {
+          setDetailResult(details);
           setFullContent(details.content);
           if (details.timestamp) {
             setDetailedTimestamp(details.timestamp);
           }
           if (details.attachments && details.attachments.length > 0) {
             setDetailAttachments(details.attachments);
-          }
-          // ✅ Extract contact_id from message detail (parsed from athlete_profile_link)
-          if (details.contact_id) {
-            setContactId(details.contact_id);
-            console.log(`✅ Extracted contact_id from message detail: ${details.contact_id}`);
-          }
-          if (details.athlete_main_id) {
-            setAthleteMainId(details.athlete_main_id);
-            console.log(
-              `✅ Extracted athlete_main_id from message detail: ${details.athlete_main_id}`,
-            );
           }
           if (details.athlete_links) {
             setAthleteLinks((prev) => ({ ...prev, ...details.athlete_links }));
@@ -133,29 +129,42 @@ function EmailContentDetail({
   const normalizedContent = normalizeMessageContent(contentToDisplay) || contentToDisplay;
   const markdownContent = `# ${message.subject}\n\n---\n\n${normalizedContent}${error ? `\n\n> ⚠️ ${error}` : ''}`;
 
-  const resolveContactId = async (): Promise<string | null> => {
-    if (contactId) return contactId;
+  const resolveInboxActionContext = async (): Promise<{
+    contactId: string | null;
+    athleteMainId: string | null;
+  }> => {
+    const knownContactId = message.contact_id || detailResult?.contact_id || null;
+    const knownAthleteMainId = message.athleteMainId || detailResult?.athlete_main_id || null;
+
+    if (knownContactId) {
+      return {
+        contactId: String(knownContactId),
+        athleteMainId: knownAthleteMainId ? String(knownAthleteMainId) : null,
+      };
+    }
 
     try {
       const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
-      if (details?.contact_id) {
-        setContactId(details.contact_id);
-        console.log(`✅ Extracted contact_id on demand: ${details.contact_id}`);
-      }
-      if (details?.athlete_main_id) {
-        setAthleteMainId(details.athlete_main_id);
-      }
+      setDetailResult(details);
       if (details?.athlete_links) {
         setAthleteLinks((prev) => ({ ...prev, ...details.athlete_links }));
       }
-      if (details?.contact_id) {
-        return details.contact_id;
-      }
+      return {
+        contactId: details?.contact_id ? String(details.contact_id) : null,
+        athleteMainId: details?.athlete_main_id ? String(details.athlete_main_id) : null,
+      };
     } catch (err) {
       console.error('Failed to resolve contact_id for action:', err);
+      return {
+        contactId: null,
+        athleteMainId: knownAthleteMainId ? String(knownAthleteMainId) : null,
+      };
     }
+  };
 
-    return null;
+  const resolveContactId = async (): Promise<string | null> => {
+    const context = await resolveInboxActionContext();
+    return context.contactId;
   };
 
   const resolveAthleteName = async (athleteIdOverride?: string): Promise<string | null> => {
@@ -175,8 +184,8 @@ function EmailContentDetail({
     athleteId: string;
     athleteMainId: string;
   } | null> => {
-    const resolvedContactId = await resolveContactId();
-    if (!resolvedContactId) {
+    const context = await resolveInboxActionContext();
+    if (!context.contactId) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'Missing contact_id',
@@ -185,7 +194,7 @@ function EmailContentDetail({
       return null;
     }
 
-    const ids = await ensureAthleteIds(resolvedContactId, athleteMainId || undefined);
+    const ids = await ensureAthleteIds(context.contactId, context.athleteMainId || undefined);
     if (!ids) {
       await showToast({
         style: Toast.Style.Failure,
@@ -633,33 +642,12 @@ function appendQueryParams(url: string, params: Record<string, string>): string 
   return `${url}${separator}${query}`;
 }
 
-/**
- * Extract athlete_id (contact_id) from message.
- * athlete_id == contact_id (same value, different field names across endpoints)
- */
-function resolveAthleteIdentifiers(message: NPIDInboxMessage): {
-  athleteId: string | null;
-  contactId: string | null;
-  athleteMainId: string | null;
-} {
-  // contact_id is extracted from message detail response (athlete_profile_link HTML)
-  const athleteId = message.contact_id ? String(message.contact_id) : null;
-
-  return {
-    athleteId,
-    contactId: athleteId, // Same value as athleteId
-    athleteMainId: message.athleteMainId ? String(message.athleteMainId) : null,
-  };
-}
-
 // UpdateStageForm Component - Allows updating video stage and status from inbox
 function UpdateStageForm({
-  athleteId,
   videoMsgId,
   athleteName,
   onBack,
 }: {
-  athleteId: string;
   videoMsgId: string;
   athleteName: string;
   onBack: () => void;
@@ -918,13 +906,9 @@ function UploadVideoForm({
 // Post-upload automation: Send email template 172 + update stage to done
 async function runPostUploadActions({
   athleteId,
-  athleteMainId,
-  athleteName,
   videoMsgId,
 }: {
   athleteId: string;
-  athleteMainId: string;
-  athleteName: string;
   videoMsgId: string;
 }) {
   try {
@@ -1054,8 +1038,6 @@ export default function InboxCheck() {
 
       // Bump version when thread schema/ID parsing changes to avoid stale cached threads.
       const CACHE_KEY_THREADS = `assigned_inbox_threads_v3_page_${pageStartNumber}_search_${searchQuery}`;
-      const CACHE_KEY_THREADS_TIME = `assigned_inbox_threads_time_v3_page_${pageStartNumber}_search_${searchQuery}`;
-
       // When searching, skip cache and fetch fresh to avoid stale results
       if (isSearching) {
         console.log('🔍 SEARCH MODE: Skipping cache, fetching fresh results');
@@ -1112,9 +1094,9 @@ export default function InboxCheck() {
       const toast = silent
         ? null
         : await showToast({
-            style: Toast.Style.Animated,
-            title: `Fetching ${isSearching ? 'search results' : 'assigned messages'} (${pageRangeLabel})…`,
-          });
+          style: Toast.Style.Animated,
+          title: `Fetching ${isSearching ? 'search results' : 'assigned messages'} (${pageRangeLabel})…`,
+        });
 
       try {
         if (!silent) setIsLoading(true);
@@ -1247,11 +1229,11 @@ export default function InboxCheck() {
               { icon: Icon.CheckCircle, tooltip: 'Assigned' },
               ...(hasAttachments
                 ? [
-                    {
-                      icon: Icon.Paperclip,
-                      tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
-                    },
-                  ]
+                  {
+                    icon: Icon.Paperclip,
+                    tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
+                  },
+                ]
                 : []),
             ]}
             keywords={[message.subject, message.preview, message.email, message.name]}

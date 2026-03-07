@@ -12,7 +12,7 @@
  * cache write-backs happen consistently across all call sites.
  */
 
-import { apiFetch } from './python-server-client';
+import { apiFetch } from './fastapi-client';
 import { cacheAthleteMainId, getCachedAthleteMainId } from './video-progress-cache';
 import { logger } from './logger';
 

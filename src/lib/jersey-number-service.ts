@@ -1,4 +1,4 @@
-import { apiFetch } from './python-server-client';
+import { apiFetch } from './fastapi-client';
 import { getCachedJerseyNumber, updateCachedJerseyNumber } from './video-progress-cache';
 
 export interface JerseyResolveResult {

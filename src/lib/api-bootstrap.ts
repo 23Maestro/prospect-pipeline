@@ -1,6 +1,6 @@
 import { execSync, spawn } from 'child_process';
 import fetch from 'node-fetch';
-import { API_LAYER_ROOT, WORKSPACE_ROOT } from './python-config';
+import { API_LAYER_ROOT, WORKSPACE_ROOT } from './python-env';
 import * as fs from 'fs';
 import * as path from 'path';
 

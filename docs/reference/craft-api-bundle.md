@@ -15,7 +15,7 @@ This markdown contains up to 5 daily notes closest to today's date, followed by 
       {
         "id": "9CC2C2B8-497D-4EA1-AFF6-BD25309080D9",
         "type": "text",
-        "markdown": "AIzaSyA3sMaaHFeMHc815ND47FgslrQkSM3sC8Y"
+        "markdown": "example-value"
       },
       {
         "id": "1AED6298-CB37-4FC1-8F55-4B70539C7CB5",

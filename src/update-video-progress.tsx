@@ -1,6 +1,6 @@
 import { Action, ActionPanel, Form, Toast, showToast } from '@raycast/api';
 import { useState } from 'react';
-import { apiFetch } from './lib/python-server-client';
+import { apiFetch } from './lib/fastapi-client';
 import { videoProgressLogger } from './lib/logger';
 
 type Stage = 'on_hold' | 'awaiting_client' | 'in_queue' | 'done';

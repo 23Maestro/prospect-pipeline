@@ -1,0 +1,91 @@
+flowchart LR
+  classDef deprecated fill:#fff2f2,stroke:#d33,stroke-width:2px,color:#900
+  classDef store fill:#eef7ff,stroke:#2b6cb0,stroke-width:1px,color:#123
+
+  subgraph ui["Raycast UI Commands"]
+    C1["video-progress"]
+    C2["video-updates"]
+    C3["email-student-athletes"]
+    C4["read-videoteam-inbox"]
+    C5["assign-videoteam-inbox"]
+    C6["prospect-search"]:::deprecated
+  end
+
+  subgraph tool["Raycast AI Tool"]
+    T1["manual-sa-additions"]
+  end
+
+  subgraph lib["Shared Services · TypeScript"]
+    S1["python-server-client\n/ apiFetch"]
+    S2["athlete-id-service"]
+    S3["jersey-number-service"]
+    S4["video-progress-cache\nSQLite"]
+    S5["npid-mcp-adapter"]
+  end
+
+  subgraph api["FastAPI · npid-api-layer"]
+    A1["/api/v1/athlete"]
+    A2["/api/v1/video"]
+    A3["/api/v1/email"]
+    A4["/api/v1/inbox"]
+    A5["/api/v1/contacts"]
+    A6["/api/v1/tasks"]
+    A7["/api/v1/notes"]
+  end
+
+  subgraph stores["Data Stores"]
+    D1[("progress.db")]:::store
+    D2[("raycast_logs")]:::store
+  end
+
+  subgraph npid["External · NPID Laravel"]
+    E1[("dashboard.nationalpid.com")]
+  end
+
+  C1 --> S3
+  C1 --> S2
+  C1 --> S4
+  C1 --> S5
+  C1 --> S1
+  C2 --> S1
+  C2 --> S2
+  C2 --> S4
+  C3 --> S1
+  C4 --> S5
+  C5 --> S5
+  C6 --> S1
+  C6 --> S4
+  T1 --> S1
+  T1 --> S4
+
+  S2 --> S4
+  S2 --> S1
+  S3 --> S4
+  S3 --> S1
+  S5 --> S1
+
+  S1 --> A1
+  S1 --> A2
+  S1 --> A3
+  S1 --> A4
+  S1 --> A5
+  S1 --> A6
+  S1 --> A7
+
+  A1 --> E1
+  A2 --> E1
+  A3 --> E1
+  A4 --> E1
+  A5 --> E1
+  A6 --> E1
+  A7 --> E1
+
+  C1 -.-> D2
+  C2 -.-> D2
+  C3 -.-> D2
+  C4 -.-> D2
+  C5 -.-> D2
+  C6 -.-> D2
+  T1 -.-> D2
+
+  S4 --> D1

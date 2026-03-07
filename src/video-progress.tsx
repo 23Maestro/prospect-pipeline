@@ -15,9 +15,9 @@ import {
 import { format } from 'date-fns';
 import { useEffect, useState, useRef } from 'react';
 import path from 'path';
-import { apiFetch } from './lib/python-server-client';
+import { apiFetch } from './lib/fastapi-client';
 import { executePythonScript } from './lib/python-executor';
-import { getPythonScriptPath, WORKSPACE_ROOT } from './lib/python-config';
+import { getPythonScriptPath, WORKSPACE_ROOT } from './lib/python-env';
 import {
   getCachedTasks,
   upsertTasks,
