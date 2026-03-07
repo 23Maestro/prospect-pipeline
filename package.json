@@ -71,7 +71,7 @@
     "node-fetch": "^3.3.0",
     "pickleparser": "^0.2.1",
     "python-shell": "^5.0.0",
-    "sql.js": "^1.10.3"
+    "sql.js": "^1.14.0"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.1.1",
