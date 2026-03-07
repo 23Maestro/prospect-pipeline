@@ -97,6 +97,8 @@ interface AddAthleteNoteFormProps {
   athleteId: string;
   athleteMainId: string;
   athleteName?: string;
+  initialTitle?: string;
+  initialDescription?: string;
   onComplete?: () => void;
 }
 
@@ -104,10 +106,12 @@ export function AddAthleteNoteForm({
   athleteId,
   athleteMainId,
   athleteName,
+  initialTitle,
+  initialDescription,
   onComplete,
 }: AddAthleteNoteFormProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
+  const [title, setTitle] = useState(initialTitle ?? '');
+  const [description, setDescription] = useState(initialDescription ?? '');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {

@@ -2,6 +2,7 @@ import {
   Action,
   ActionPanel,
   Cache,
+  Color,
   Icon,
   List,
   Toast,
@@ -23,6 +24,7 @@ import { apiFetch } from './lib/fastapi-client';
 import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { ensureAthleteIds } from './lib/athlete-id-service';
+import { detectHudlCredentials } from './lib/inbox-credential-detector';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -107,6 +109,12 @@ function EmailContentDetail({
   const displayTimestamp = detailedTimestamp || message.timestamp || 'Unknown';
 
   const displayName = sanitizeAthleteName(resolvedAthleteName || message.name) || 'Unknown';
+  const displayContent = detailResult
+    ? contentToDisplay
+    : normalizeMessageContent(contentToDisplay) || contentToDisplay;
+  const formattedContent = detailResult ? formatReplyHeaderLabel(displayContent) : displayContent;
+  const hudlDetection =
+    detailResult && !isLoading ? detectHudlCredentials(contentToDisplay) : { tier: 'none' as const };
 
   const metadata = (
     <Detail.Metadata>
@@ -123,11 +131,20 @@ function EmailContentDetail({
           ))}
         </>
       )}
+      {hudlDetection.tier !== 'none' && (
+        <>
+          <Detail.Metadata.Separator />
+          <Detail.Metadata.TagList title="Hudl Detection">
+            <Detail.Metadata.TagList.Item
+              text={hudlDetection.tier === 'high' ? 'Hudl Tier 1' : 'Hudl Tier 2'}
+              color={hudlDetection.tier === 'high' ? Color.Green : Color.Orange}
+            />
+          </Detail.Metadata.TagList>
+        </>
+      )}
     </Detail.Metadata>
   );
-
-  const normalizedContent = normalizeMessageContent(contentToDisplay) || contentToDisplay;
-  const markdownContent = `# ${message.subject}\n\n---\n\n${normalizedContent}${error ? `\n\n> ⚠️ ${error}` : ''}`;
+  const markdownContent = `# ${message.subject}\n\n---\n\n${formattedContent}${error ? `\n\n> ⚠️ ${error}` : ''}`;
 
   const resolveInboxActionContext = async (): Promise<{
     contactId: string | null;
@@ -253,6 +270,7 @@ function EmailContentDetail({
             <Action
               title="View Notes"
               icon={Icon.Clipboard}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'l' }}
               onAction={async () => {
                 const ids = await resolveAthleteIdsForMainIdAction();
                 if (!ids) return;
@@ -272,6 +290,7 @@ function EmailContentDetail({
             <Action
               title="Add Note"
               icon={Icon.Plus}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
               onAction={async () => {
                 const ids = await resolveAthleteIdsForMainIdAction();
                 if (!ids) return;
@@ -296,6 +315,40 @@ function EmailContentDetail({
                 );
               }}
             />
+            {(hudlDetection.tier === 'high' || hudlDetection.tier === 'medium') &&
+              hudlDetection.emailOrUsername &&
+              hudlDetection.password && (
+                <Action
+                  title="Add Hudl Note"
+                  icon={{ source: Icon.Lock, tintColor: Color.Green }}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'h' }}
+                  onAction={async () => {
+                    const ids = await resolveAthleteIdsForMainIdAction();
+                    if (!ids) return;
+
+                    const athleteName =
+                      (await resolveAthleteName(ids.athleteId)) || message.name || 'Unknown Athlete';
+
+                    push(
+                      <AddAthleteNoteForm
+                        athleteId={ids.athleteId}
+                        athleteMainId={ids.athleteMainId}
+                        athleteName={athleteName}
+                        initialTitle="Hudl"
+                        initialDescription={`${hudlDetection.emailOrUsername}\n${hudlDetection.password}`}
+                        onComplete={() => {
+                          pop();
+                          showToast({
+                            style: Toast.Style.Success,
+                            title: 'Hudl note added',
+                            message: `Note added for ${athleteName}`,
+                          });
+                        }}
+                      />,
+                    );
+                  }}
+                />
+              )}
           </ActionPanel.Section>
 
           <ActionPanel.Section title="Video Management">
@@ -317,7 +370,7 @@ function EmailContentDetail({
                   await showToast({
                     style: Toast.Style.Failure,
                     title: 'Missing video_msg_id',
-                    message: 'Cannot update stage/status without video_msg_id',
+                    message: 'Cannot update stage without video_msg_id',
                   });
                   return;
                 }
@@ -342,36 +395,6 @@ function EmailContentDetail({
                 );
               }}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
-            />
-            <Action
-              title="Upload Video"
-              icon={Icon.Upload}
-              onAction={async () => {
-                const ids = await resolveAthleteIdsForMainIdAction();
-                if (!ids) return;
-
-                const athleteName = await resolveAthleteName(ids.athleteId);
-                if (!athleteName) {
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Missing athlete name',
-                    message: 'Could not fetch athlete name from athletename endpoint',
-                  });
-                  return;
-                }
-
-                push(
-                  <UploadVideoForm
-                    athleteId={ids.athleteId}
-                    athleteMainId={ids.athleteMainId}
-                    athleteName={athleteName}
-                    videoMsgId={String(message.video_msg_id)}
-                    sportAlias={message.sport_alias || ''}
-                    onBack={pop}
-                  />,
-                );
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
             />
           </ActionPanel.Section>
 
@@ -400,6 +423,25 @@ function EmailContentDetail({
                 )
               }
               shortcut={{ modifiers: ['cmd'], key: 'o' }}
+            />
+            <Action
+              title="Task: Video Progress ID"
+              icon={Icon.Globe}
+              onAction={async () => {
+                const resolvedContactId = await resolveContactId();
+                if (!resolvedContactId) {
+                  await showToast({
+                    style: Toast.Style.Failure,
+                    title: 'Missing contact_id',
+                    message: 'Contact ID not found in inbox thread or message link.',
+                  });
+                  return;
+                }
+                await open(
+                  `https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${resolvedContactId}`,
+                );
+              }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             />
             <Action
               title="Athlete Notes Tab"
@@ -632,6 +674,44 @@ function normalizeMessageContent(raw: string): string {
   return withLinkBreaks.replace(/\n{3,}/g, '\n\n').trim();
 }
 
+function formatReplyHeaderLabel(content: string): string {
+  if (!content) return content;
+
+  const replyPatterns: Array<{
+    pattern: RegExp;
+    format: (match: RegExpMatchArray) => string;
+  }> = [
+    {
+      pattern:
+        /(^|\n\n)On\s+([A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)\s+.+?\s+wrote:(\n\n|$)/i,
+      format: (match) => `${match[1] || ''}**Reply** · *${match[2].trim()}*${match[3] || '\n\n'}`,
+    },
+    {
+      pattern:
+        /(^|\n\n)On\s+([A-Za-z]{6,9},\s+[A-Za-z]{5,9}\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}\s*[AP]M),\s+.+?\s+wrote:(\n\n|$)/i,
+      format: (match) => `${match[1] || ''}**Reply** · *${match[2].trim()}*${match[3] || '\n\n'}`,
+    },
+    {
+      pattern:
+        /\s+On\s+([A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)\s+.+?\s+wrote:\s+/i,
+      format: (match) => `\n\n**Reply** · *${match[1].trim()}*\n\n`,
+    },
+    {
+      pattern:
+        /\s+On\s+([A-Za-z]{6,9},\s+[A-Za-z]{5,9}\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}\s*[AP]M),\s+.+?\s+wrote:\s+/i,
+      format: (match) => `\n\n**Reply** · *${match[1].trim()}*\n\n`,
+    },
+  ];
+
+  for (const { pattern, format } of replyPatterns) {
+    const match = content.match(pattern);
+    if (!match) continue;
+    return content.replace(pattern, format(match));
+  }
+
+  return content;
+}
+
 function appendQueryParams(url: string, params: Record<string, string>): string {
   const keys = Object.keys(params).filter((key) => params[key]);
   if (keys.length === 0) return url;
@@ -653,16 +733,14 @@ function UpdateStageForm({
   onBack: () => void;
 }) {
   const [stage, setStage] = useState<string>('in_queue');
-  const [status, setStatus] = useState<string>('hudl');
 
   async function handleSubmit() {
     const toast = await showToast({
       style: Toast.Style.Animated,
-      title: 'Updating video progress...',
+      title: 'Updating video stage...',
     });
 
     try {
-      // Update stage (include mailbox context)
       const stageResp = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/stage`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -673,24 +751,13 @@ function UpdateStageForm({
         throw new Error(err.detail || `Stage update failed: ${stageResp.status}`);
       }
 
-      // Update status (include mailbox context)
-      const statusResp = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_msg_id: videoMsgId, status, is_from_video_mail_box: true }),
-      });
-      if (!statusResp.ok) {
-        const err = (await statusResp.json().catch(() => ({}))) as any;
-        throw new Error(err.detail || `Status update failed: ${statusResp.status}`);
-      }
-
       toast.style = Toast.Style.Success;
-      toast.title = 'Video progress updated';
-      toast.message = `${athleteName}: ${stage} / ${status}`;
+      toast.title = 'Video stage updated';
+      toast.message = `${athleteName}: ${stage}`;
       onBack();
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Update failed';
+      toast.title = 'Stage update failed';
       toast.message = error instanceof Error ? error.message : 'Unknown error';
     }
   }
@@ -713,287 +780,8 @@ function UpdateStageForm({
         <Form.Dropdown.Item value="in_queue" title="In Queue" />
         <Form.Dropdown.Item value="done" title="Done" />
       </Form.Dropdown>
-
-      <Form.Dropdown id="status" title="Video Status" value={status} onChange={setStatus}>
-        <Form.Dropdown.Item value="revisions" title="Revisions" />
-        <Form.Dropdown.Item value="hudl" title="HUDL" />
-        <Form.Dropdown.Item value="dropbox" title="Dropbox" />
-        <Form.Dropdown.Item value="external_links" title="External Links" />
-        <Form.Dropdown.Item value="not_approved" title="Not Approved" />
-      </Form.Dropdown>
     </Form>
   );
-}
-
-// UploadVideoForm Component - Allows uploading videos with auto-email from inbox
-function UploadVideoForm({
-  athleteId,
-  athleteMainId,
-  athleteName,
-  videoMsgId,
-  sportAlias,
-  onBack,
-}: {
-  athleteId: string;
-  athleteMainId: string;
-  athleteName: string;
-  videoMsgId: string;
-  sportAlias: string;
-  onBack: () => void;
-}) {
-  const [youtubeLink, setYoutubeLink] = useState('');
-  const [videoType, setVideoType] = useState('');
-  const [season, setSeason] = useState('');
-  const [seasons, setSeasons] = useState<{ value: string; title: string }[]>([]);
-  const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
-
-  // Fetch seasons when video type changes
-  useEffect(() => {
-    if (!videoType || !athleteId || !athleteMainId) {
-      setSeasons([]);
-      setSeason('');
-      return;
-    }
-
-    const fetchSeasons = async () => {
-      setIsFetchingSeasons(true);
-      try {
-        const response = await apiFetch(
-          `/video/seasons?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&video_type=${encodeURIComponent(videoType)}&sport=${encodeURIComponent(sportAlias || '')}`,
-          { method: 'GET' },
-        );
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch seasons: ${response.status}`);
-        }
-
-        const data = (await response.json()) as any;
-        const seasonOptions = data.seasons || [];
-        setSeasons(seasonOptions);
-
-        // Auto-select first season if available
-        if (seasonOptions.length > 0) {
-          setSeason(seasonOptions[0].value);
-        }
-      } catch (error) {
-        console.error('Failed to fetch seasons:', error);
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'Failed to fetch seasons',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-        setSeasons([]);
-      } finally {
-        setIsFetchingSeasons(false);
-      }
-    };
-
-    fetchSeasons();
-  }, [videoType, athleteId, athleteMainId, sportAlias]);
-
-  async function handleSubmit() {
-    const toast = await showToast({
-      style: Toast.Style.Animated,
-      title: 'Uploading video...',
-    });
-
-    try {
-      // Submit video
-      const response = await apiFetch('/video/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          athlete_id: athleteId,
-          athlete_main_id: athleteMainId,
-          video_url: youtubeLink,
-          video_type: videoType,
-          season: season,
-          source: 'youtube',
-          auto_approve: true,
-          sport: sportAlias,
-        }),
-      });
-
-      if (!response.ok) {
-        const err = (await response.json().catch(() => ({}))) as any;
-        throw new Error(err.detail || `Upload failed: ${response.status}`);
-      }
-
-      toast.style = Toast.Style.Success;
-      toast.title = 'Video uploaded!';
-
-      // Run post-upload automation (send email template 172 + update stage to done)
-      try {
-        await runPostUploadActions({
-          athleteId,
-          athleteMainId,
-          athleteName,
-          videoMsgId,
-        });
-      } catch (automationError) {
-        console.error('Post-upload automation failed:', automationError);
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'Video uploaded, but automation failed',
-          message: automationError instanceof Error ? automationError.message : 'Unknown error',
-        });
-      }
-
-      onBack();
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Upload failed';
-      toast.message = error instanceof Error ? error.message : 'Unknown error';
-    }
-  }
-
-  return (
-    <Form
-      navigationTitle={`Upload Video: ${athleteName}`}
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm title="Upload Video" onSubmit={handleSubmit} icon={Icon.Upload} />
-          <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
-        </ActionPanel>
-      }
-    >
-      <Form.Description
-        text={`Athlete: ${athleteName}\nID: ${athleteId} | Main ID: ${athleteMainId}`}
-      />
-
-      <Form.TextField
-        id="youtubeLink"
-        title="YouTube Link"
-        placeholder="https://www.youtube.com/watch?v=..."
-        value={youtubeLink}
-        onChange={setYoutubeLink}
-      />
-
-      <Form.Dropdown
-        id="videoType"
-        title="Video Type"
-        value={videoType}
-        onChange={setVideoType}
-        isLoading={!youtubeLink}
-      >
-        <Form.Dropdown.Item value="" title="-- Select Video Type --" />
-        <Form.Dropdown.Item value="Full Season Highlight" title="Full Season Highlight" />
-        <Form.Dropdown.Item value="Partial Season Highlight" title="Partial Season Highlight" />
-        <Form.Dropdown.Item value="Single Game Highlight" title="Single Game Highlight" />
-        <Form.Dropdown.Item value="Skills/Training Video" title="Skills/Training Video" />
-      </Form.Dropdown>
-
-      <Form.Dropdown
-        id="season"
-        title="Season/Team"
-        value={season}
-        onChange={setSeason}
-        isLoading={isFetchingSeasons}
-      >
-        {seasons.length === 0 ? (
-          <Form.Dropdown.Item
-            value=""
-            title={isFetchingSeasons ? '-- Loading Seasons --' : '-- Select Video Type First --'}
-          />
-        ) : (
-          seasons.map((s) => <Form.Dropdown.Item key={s.value} value={s.value} title={s.title} />)
-        )}
-      </Form.Dropdown>
-    </Form>
-  );
-}
-
-// Post-upload automation: Send email template 172 + update stage to done
-async function runPostUploadActions({
-  athleteId,
-  videoMsgId,
-}: {
-  athleteId: string;
-  videoMsgId: string;
-}) {
-  try {
-    console.log('🤖 Post-upload automation start', { athleteId, videoMsgId });
-
-    // Fetch template 172 (Editing Done)
-    const templatesResp = await apiFetch(
-      `/email/templates?athlete_id=${encodeURIComponent(athleteId)}`,
-    );
-    if (!templatesResp.ok) {
-      throw new Error('Failed to fetch email templates');
-    }
-
-    const templates = (await templatesResp.json()) as any;
-    const template172 = templates.find((t: any) => t.value === '172') || templates[0];
-
-    if (!template172) {
-      console.warn('⚠️ Template 172 not found, skipping email');
-      return;
-    }
-
-    // Fetch template data
-    const dataResp = await apiFetch(
-      `/email/template-data?template_id=${encodeURIComponent(template172.value)}&athlete_id=${encodeURIComponent(athleteId)}`,
-    );
-    if (!dataResp.ok) {
-      throw new Error('Failed to fetch template data');
-    }
-
-    const data = (await dataResp.json()) as any;
-
-    // Fetch recipients
-    const recipientsResp = await apiFetch(
-      `/email/recipients?athlete_id=${encodeURIComponent(athleteId)}`,
-    );
-    if (!recipientsResp.ok) {
-      throw new Error('Failed to fetch recipients');
-    }
-
-    const recipientsData = (await recipientsResp.json()) as any;
-    const parentIds = (recipientsData.parents || [])
-      .filter((p: any) => p?.id)
-      .map((p: any) => String(p.id));
-
-    // Send email to athlete + parents + jholcomb
-    const emailResp = await apiFetch('/email/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        athlete_id: athleteId,
-        template_id: template172.value,
-        sender_name: data.sender_name || 'Prospect ID Video',
-        sender_email: data.sender_email || 'videoteam@prospectid.com',
-        subject: data.subject || '',
-        message: data.message || '',
-        include_athlete: true,
-        parent_ids: parentIds,
-        other_email: 'jholcomb@prospectid.com',
-      }),
-    });
-
-    if (!emailResp.ok) {
-      throw new Error('Failed to send email');
-    }
-
-    console.log('✅ Email sent (template 172)');
-
-    // Update stage to done
-    if (videoMsgId) {
-      const stageResp = await apiFetch(`/video/${encodeURIComponent(videoMsgId)}/stage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_msg_id: videoMsgId, stage: 'done' }),
-      });
-
-      if (stageResp.ok) {
-        console.log('✅ Stage updated to done');
-      } else {
-        console.warn('⚠️ Failed to update stage to done');
-      }
-    }
-  } catch (error) {
-    console.error('⚠️ Post-upload automation failed', error);
-    throw error;
-  }
 }
 
 const INBOX_PAGE_SIZE = 50;

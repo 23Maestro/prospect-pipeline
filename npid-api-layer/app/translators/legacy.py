@@ -10,7 +10,6 @@ import logging
 from typing import Dict, Any, Optional, Tuple, List
 from bs4 import BeautifulSoup
 import html2text
-from email_reply_parser import EmailReplyParser
 import html
 from html import escape
 from app.models.schemas import (
@@ -1719,13 +1718,199 @@ class LegacyTranslator:
     @staticmethod
     def _parse_email_content(raw_content: str, strip_template: bool = True) -> str:
         """
-        Clean email content using html2text and email_reply_parser.
+        Clean email content for Raycast display.
 
         - Converts HTML to clean markdown/text
-        - Uses email_reply_parser to extract visible reply (strips quoted replies)
+        - Keeps at most one visible quoted reply block
         - Optionally strips NPID video instructions template
-        - Strips Jerami's signature block (only shown in outgoing replies, not when reading)
+        - Strips NPID's outgoing signature block (only shown in outgoing replies, not when reading)
         """
+        reply_header_pattern = (
+            r'(?mi)^On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+.+?\s+wrote:$'
+        )
+        reply_header_inline_pattern = (
+            r'(?i)(On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+.+?\s+wrote:)'
+        )
+
+        def _compact_reply_headers(value: str) -> str:
+            # Legacy mail often inserts hard line breaks before "wrote:" or mid-header.
+            value = re.sub(r'[ \t]*\n[ \t]*(wrote:)', r' \1', value, flags=re.IGNORECASE)
+            value = re.sub(
+                r'(^|\n)(On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+)(.+?)(\s+wrote:)',
+                lambda match: (
+                    f"{match.group(1)}{match.group(2)}{' '.join(match.group(3).split())}{match.group(4)}"
+                ),
+                value,
+                flags=re.IGNORECASE,
+            )
+            return value
+
+        def _strip_npid_signature(value: str) -> str:
+            signature_patterns = [
+                r'Kind\s*Regards,?\s*\|?\s*Jerami\s+Singleton.*?(?:Web\s+www\.(?:prospectid|nationalpid)\.com|$)',
+                r'Kind\s*Regards,?\s*\n+.*?Jerami\s+Singleton.*?(?:Web\s+www\.(?:prospectid|nationalpid)\.com|$)',
+                r'\|\s*Jerami\s+Singleton\s*\n+Content\s+Creator.*?Web\s+www\.(?:prospectid|nationalpid)\.com',
+                r'Kind\s*Regards,?\s*\n+(?:Phone|Email|Web)\b.*',
+            ]
+            for pattern in signature_patterns:
+                value = re.sub(pattern, '', value, flags=re.IGNORECASE | re.DOTALL)
+            return value
+
+        def _limit_reply_depth(value: str) -> str:
+            reply_headers = list(re.finditer(reply_header_pattern, value))
+            if len(reply_headers) <= 1:
+                return value
+            return value[: reply_headers[1].start()].rstrip()
+
+        def _sanitize_visible_reply(value: str) -> str:
+            reply_header = re.search(reply_header_inline_pattern, value)
+            if not reply_header:
+                return value
+
+            current_message = value[:reply_header.start()].rstrip()
+            reply_header_text = reply_header.group(1).strip()
+            reply_body = value[reply_header.end():].strip()
+            if not reply_body:
+                return current_message
+
+            reply_body = re.sub(r'(?m)^\s*>+\s*', '', reply_body)
+            reply_body = re.sub(r'\s+>+\s*', ' ', reply_body)
+
+            reply_probe = ' '.join(reply_body.split()).lower()
+            template_markers = [
+                '[image: logo]',
+                'https://nationalpid.com',
+                'dashboard.nationalpid.com/auth/loginclick here',
+                'dashboard.nationalpid.com/click/',
+                'so we know you received this message.',
+                'connect with us',
+                'national prospect id#yiv',
+                'body {width:100%',
+                'sent from yahoo mail for iphone on sunday',
+                'kind regards, video team at national prospect id',
+            ]
+            if any(marker in reply_probe[:700] for marker in template_markers):
+                return current_message
+
+            cutoff_markers = [
+                r'(?i)\[image:\s*(?:facebook|twitter|instagram|linkedin|youtube|logo)\b',
+                r'(?i)\*?connect with us\*?',
+                r'(?i)\bnational prospect id\b',
+                r'(?i)(?:----|––)\s*On .+? wrote:\s*(?:----|––)',
+                reply_header_inline_pattern,
+            ]
+            cutoff_positions = []
+            for pattern in cutoff_markers:
+                match = re.search(pattern, reply_body)
+                if match:
+                    cutoff_positions.append(match.start())
+            if cutoff_positions:
+                reply_body = reply_body[: min(cutoff_positions)].rstrip()
+
+            kind_regards_match = re.search(r'(?im)^\s*>?\s*Kind\s*Regards,?\s*$', reply_body)
+            if kind_regards_match:
+                reply_body = reply_body[:kind_regards_match.start()].rstrip()
+
+            if not reply_body:
+                return current_message
+
+            reply_body = re.sub(r'\s+', ' ', reply_body).strip()
+            return f"{current_message}\n\n{reply_header_text}\n\n{reply_body}".strip()
+
+        def _normalize_for_display(value: str) -> str:
+            signoff_re = re.compile(
+                r'^(best|kind|warm|many)\s+regards,?$|^regards,?$|^sincerely,?$|^thanks,?$|^thank\s+you,?$',
+                re.IGNORECASE,
+            )
+            greeting_re = re.compile(r'^(hi|hello|dear|hey)\b.*[,.!?]?$', re.IGNORECASE)
+            reply_header_re = re.compile(reply_header_pattern, re.IGNORECASE)
+            numbered_item_re = re.compile(r'^\d+\.\s+')
+            bullet_item_re = re.compile(r'^(?:[-*•]|\d+\))\s+')
+            continuation_re = re.compile(r'^(?:[a-z0-9"(]|\d+\b)')
+            sent_from_re = re.compile(r'^Sent from .+$', re.IGNORECASE)
+
+            def classify_line(line: str) -> str:
+                if reply_header_re.match(line):
+                    return 'reply_header'
+                if signoff_re.match(line):
+                    return 'signoff'
+                if greeting_re.match(line):
+                    return 'greeting'
+                if sent_from_re.match(line):
+                    return 'sent_from'
+                if numbered_item_re.match(line):
+                    return 'numbered_item'
+                if bullet_item_re.match(line):
+                    return 'bullet_item'
+                return 'plain_paragraph'
+
+            def should_merge_segments(previous: str, current: str, block_type: str) -> bool:
+                if not previous or not current:
+                    return False
+                if block_type not in ('plain_paragraph', 'numbered_item'):
+                    return False
+                if re.search(r'[.!?:]$|["”]$', previous):
+                    return False
+                previous_is_short_fragment = len(previous.split()) <= 10
+                return previous_is_short_fragment or bool(continuation_re.match(current))
+
+            value = re.sub(r'\s+(Sent from [^\n]+)', r'\n\n\1', value, flags=re.IGNORECASE)
+            lines = [html.unescape(line).replace('\xa0', ' ').strip() for line in value.splitlines()]
+            blocks: List[Dict[str, Any]] = []
+            previous_was_signoff = False
+
+            def append_to_current(line: str, block_type: str) -> None:
+                if blocks and blocks[-1]['type'] == block_type:
+                    blocks[-1]['parts'].append(line)
+                else:
+                    blocks.append({'type': block_type, 'parts': [line]})
+
+            for line in lines:
+                if not line:
+                    continue
+
+                line_type = classify_line(line)
+
+                if previous_was_signoff:
+                    append_to_current(line, 'signoff_name')
+                    previous_was_signoff = False
+                    continue
+
+                if line_type in ('reply_header', 'greeting', 'bullet_item', 'sent_from'):
+                    blocks.append({'type': line_type, 'parts': [line]})
+                    continue
+
+                if line_type == 'signoff':
+                    blocks.append({'type': 'signoff', 'parts': [line]})
+                    previous_was_signoff = True
+                    continue
+
+                if line_type == 'numbered_item':
+                    blocks.append({'type': 'numbered_item', 'parts': [line]})
+                    continue
+
+                if blocks and blocks[-1]['type'] in ('plain_paragraph', 'numbered_item'):
+                    blocks[-1]['parts'].append(line)
+                else:
+                    blocks.append({'type': 'plain_paragraph', 'parts': [line]})
+
+            rendered_blocks: List[str] = []
+            for block in blocks:
+                parts = [part for part in block['parts'] if part]
+                if not parts:
+                    continue
+
+                merged_parts: List[str] = [parts[0]]
+                for part in parts[1:]:
+                    if should_merge_segments(merged_parts[-1], part, block['type']):
+                        merged_parts[-1] = f"{merged_parts[-1]} {part}".strip()
+                    else:
+                        merged_parts.append(part)
+
+                rendered_blocks.append('\n'.join(merged_parts) if block['type'] == 'bullet_item' else ' '.join(merged_parts))
+
+            return '\n\n'.join(block for block in rendered_blocks if block).strip()
+
         if not raw_content:
             return ""
 
@@ -1747,29 +1932,16 @@ class LegacyTranslator:
             h.unicode_snob = True # Use Unicode instead of ASCII equivalents
             content = h.handle(content)
 
-        # Add line breaks before reply chain initiators for readability
-        # Pattern: "defense. On Thu, Dec 4, 2025 at 6:11 AM" → "defense.\n\nOn Thu, Dec 4, 2025 at 6:11 AM"
+        # Add a separator before the first visible reply block when it's collapsed into one line.
         content = re.sub(
-            r'\s+(On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s+[APap][Mm])',
+            r'\s+(On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+\d{1,2}:\d{2}\s*[APap][Mm].*?wrote:)',
             r'\n\n\1',
             content,
             flags=re.IGNORECASE
         )
 
-        # DON'T strip quoted replies - keep full thread with line breaks for readability
-
-        # Strip Jerami's signature block when DISPLAYING messages (signature is only for outgoing)
-        # Pattern: "Kind Regards," followed by signature details
-        signature_patterns = [
-            # Full signature block with pipe separator
-            r'Kind\s*Regards,?\s*\|?\s*Jerami\s+Singleton.*?(?:Web\s+www\.(?:prospectid|nationalpid)\.com|$)',
-            # Signature starting with "Kind Regards" through web line
-            r'Kind\s*Regards,?\s*\n+.*?Jerami\s+Singleton.*?(?:Web\s+www\.(?:prospectid|nationalpid)\.com|$)',
-            # Just the signature details without "Kind Regards"
-            r'\|\s*Jerami\s+Singleton\s*\n+Content\s+Creator.*?Web\s+www\.(?:prospectid|nationalpid)\.com',
-        ]
-        for pattern in signature_patterns:
-            content = re.sub(pattern, '', content, flags=re.IGNORECASE | re.DOTALL)
+        content = _compact_reply_headers(content)
+        content = _strip_npid_signature(content)
 
         # Strip NPID video instructions template
         if strip_template:
@@ -1791,22 +1963,10 @@ class LegacyTranslator:
                 # Template detected - already stripped above via wrote_patterns
                 pass
 
-        # Use email_reply_parser to extract just the visible reply (most recent)
-        parsed = EmailReplyParser.parse_reply(content)
-
-        # Clean up and ensure Markdown line breaks
-        lines = parsed.split('\n')
-        cleaned = []
-        for line in lines:
-            line = line.strip()
-            if line:
-                # Add two spaces at the end of each non-empty line for a hard break in Markdown
-                cleaned.append(line + "  ")
-            else:
-                cleaned.append("")
-
-        # Join with double newlines to ensure paragraph separation
-        return '\n\n'.join(cleaned).strip()
+        content = _limit_reply_depth(content)
+        content = _sanitize_visible_reply(content)
+        content = _normalize_for_display(content)
+        return content
 
     @staticmethod
     def parse_message_detail_response(response_text: str, message_id: str, item_code: str) -> Dict[str, Any]:
@@ -1890,22 +2050,54 @@ class LegacyTranslator:
                         f"&sport_alias=&athlete_main_id={manage_ids['athlete_main_id']}"
                     )
 
-            # EXTRACT ATTACHMENTS BEFORE CLEANING (preserve download URLs)
+            # Extract attachments before body normalization so URLs remain intact.
             attachments = []
             if raw_message_html:
                 soup = BeautifulSoup(raw_message_html, 'html.parser')
+                seen_urls = set()
+                attachment_selectors = [
+                    'a[href]',
+                    'a[data-url]',
+                    '[data-url][data-filename]',
+                ]
+                filename_markers = ('.mp4', '.mov', '.avi', '.m4v', '.pdf', '.zip', '.doc', '.docx')
 
-                # Look for attachment links (common patterns in NPID emails)
-                attachment_links = soup.select('a[href*="download"], a[href*="attachment"], a[href*=".mp4"], a[href*=".mov"]')
-                for link in attachment_links:
-                    href = link.get('href', '')
-                    text = link.get_text(strip=True)
-                    if href and ('download' in href.lower() or any(ext in href.lower() for ext in ['.mp4', '.mov', '.avi', '.pdf', '.zip'])):
-                        # Extract filename from link text or URL
-                        filename = text if text and not text.lower().startswith(('click', 'download', 'here')) else href.split('/')[-1]
+                for selector in attachment_selectors:
+                    for node in soup.select(selector):
+                        href = (node.get('href') or node.get('data-url') or '').strip()
+                        if not href or href.startswith(('mailto:', 'javascript:', '#')):
+                            continue
+
+                        lowered_href = href.lower()
+                        text = node.get_text(" ", strip=True)
+                        filename = (
+                            node.get('data-filename')
+                            or node.get('download')
+                            or (text if text and text.lower() not in ('download', 'click here', 'here') else '')
+                            or href.split('/')[-1].split('?')[0]
+                        ).strip()
+
+                        if not filename:
+                            continue
+
+                        is_attachment = (
+                            'download' in lowered_href
+                            or 'attachment' in lowered_href
+                            or any(marker in lowered_href for marker in filename_markers)
+                            or any(marker in filename.lower() for marker in filename_markers)
+                            or bool(node.get('data-filename'))
+                        )
+                        if not is_attachment:
+                            continue
+
+                        absolute_url = href if href.startswith('http') else f"https://dashboard.nationalpid.com{href}"
+                        if absolute_url in seen_urls:
+                            continue
+                        seen_urls.add(absolute_url)
+
                         attachments.append({
                             "fileName": filename,
-                            "url": href if href.startswith('http') else f"https://dashboard.nationalpid.com{href}",
+                            "url": absolute_url,
                             "downloadable": True,
                             "expiresAt": None
                         })
