@@ -6,19 +6,24 @@ export interface HudlCredentialDetection {
   password?: string;
 }
 
-const USER_LABEL_RE =
-  /\b(?:email|username|user|login|hudl(?:\s+email)?)(?:\s+is)?\s*[-:]?\s*([^\s]+)/gi;
+const LABELED_EMAIL_RE =
+  /\bemail(?:\s+is)?\s*[-:]?\s*([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/gi;
+const LABELED_LOGIN_RE =
+  /\b(?:username|user|login|hudl(?:\s+email)?)\b(?:\s+is)?\s*[-:]?\s*([^\s]+)/gi;
 const PASSWORD_LABEL_RE = /\b(?:password|pass|pw)(?:\s+is)?\s*[-:]?\s*([^\s]+)/gi;
-const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
+const GENERIC_LOGIN_WORDS = new Set([
+  "hudl",
+  "login",
+  "information",
+  "info",
+  "credentials",
+  "credential",
+  "details",
+]);
 
 function normalizeCredentialToken(value: string): string {
   return value.trim().replace(/[>,.;:)}\]]+$/, "").replace(/^[[(<{]+/, "");
-}
-
-function findLabeledValue(regex: RegExp, content: string): string | undefined {
-  const match = regex.exec(content);
-  regex.lastIndex = 0;
-  return match?.[1] ? normalizeCredentialToken(match[1]) : undefined;
 }
 
 function looksLikePassword(value: string): boolean {
@@ -28,6 +33,46 @@ function looksLikePassword(value: string): boolean {
   return hasLetter && hasDigitOrSymbol;
 }
 
+function isRealEmail(value?: string): value is string {
+  return !!value && /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(value);
+}
+
+function collectMatches(regex: RegExp, content: string): string[] {
+  const values: string[] = [];
+  for (const match of content.matchAll(regex)) {
+    const token = normalizeCredentialToken(match[1] ?? match[0] ?? "");
+    if (token) {
+      values.push(token);
+    }
+  }
+  return values;
+}
+
+function findFirstLabeledEmail(content: string): string | undefined {
+  const labeledEmails = collectMatches(LABELED_EMAIL_RE, content);
+  return labeledEmails.find(isRealEmail);
+}
+
+function findFirstGenericLoginEmail(content: string): string | undefined {
+  const loginMatches = collectMatches(LABELED_LOGIN_RE, content);
+  return loginMatches.find((value) => {
+    if (!isRealEmail(value)) return false;
+    return !GENERIC_LOGIN_WORDS.has(value.toLowerCase());
+  });
+}
+
+function findFirstVisibleEmail(content: string): string | undefined {
+  const emails = Array.from(content.matchAll(EMAIL_RE))
+    .map((match) => normalizeCredentialToken(match[0]))
+    .filter(isRealEmail);
+  return emails[0];
+}
+
+function findFirstPassword(content: string): string | undefined {
+  const passwords = collectMatches(PASSWORD_LABEL_RE, content).filter(looksLikePassword);
+  return passwords[0];
+}
+
 export function detectHudlCredentials(content: string): HudlCredentialDetection {
   if (!content) {
     return { tier: "none" };
@@ -35,43 +80,26 @@ export function detectHudlCredentials(content: string): HudlCredentialDetection 
 
   const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 
-  const labeledUser = findLabeledValue(USER_LABEL_RE, normalized);
-  const labeledPassword = findLabeledValue(PASSWORD_LABEL_RE, normalized);
-  if (labeledUser && labeledPassword) {
+  const labeledEmail = findFirstLabeledEmail(normalized);
+  const genericLoginEmail = findFirstGenericLoginEmail(normalized);
+  const visibleEmail = labeledEmail || genericLoginEmail || findFirstVisibleEmail(normalized);
+  const password = findFirstPassword(normalized);
+
+  if (!visibleEmail || !password) {
+    return { tier: "none" };
+  }
+
+  if (labeledEmail && password) {
     return {
       tier: "high",
-      emailOrUsername: labeledUser,
-      password: labeledPassword,
+      emailOrUsername: visibleEmail,
+      password,
     };
   }
 
-  const emailMatch = normalized.match(EMAIL_RE)?.[0];
-  if (emailMatch && labeledPassword) {
-    return {
-      tier: "medium",
-      emailOrUsername: normalizeCredentialToken(emailMatch),
-      password: labeledPassword,
-    };
-  }
-
-  if (labeledUser) {
-    const lines = normalized.split("\n").map((line) => line.trim()).filter(Boolean);
-    const labeledLineIndex = lines.findIndex((line) => line.toLowerCase().includes(labeledUser.toLowerCase()));
-    if (labeledLineIndex >= 0) {
-      const nearby = lines.slice(labeledLineIndex, labeledLineIndex + 3).join(" ");
-      const passwordCandidate = nearby.match(
-        /\b(?:password|pass|pw)?\s*[-:]?\s*([^\s]+)/i,
-      )?.[1];
-      const cleanedCandidate = passwordCandidate ? normalizeCredentialToken(passwordCandidate) : "";
-      if (cleanedCandidate && cleanedCandidate.toLowerCase() !== labeledUser.toLowerCase() && looksLikePassword(cleanedCandidate)) {
-        return {
-          tier: "medium",
-          emailOrUsername: labeledUser,
-          password: cleanedCandidate,
-        };
-      }
-    }
-  }
-
-  return { tier: "none" };
+  return {
+    tier: "medium",
+    emailOrUsername: visibleEmail,
+    password,
+  };
 }

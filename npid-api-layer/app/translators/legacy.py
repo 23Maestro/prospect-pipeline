@@ -1656,7 +1656,10 @@ class LegacyTranslator:
                 subject = re.sub(r'^(Re:\s*|RE:\s*|Fwd:\s*|FWD:\s*)+', '', raw_subject).strip()
 
                 preview_elem = elem.select_one('.tit_univ')
-                preview = preview_elem.text.strip()[:300] if preview_elem else ""
+                preview_raw = preview_elem.get_text("\n", strip=True) if preview_elem else ""
+                unassigned_body = LegacyTranslator._parse_email_content_strict(preview_raw, max_length=300)
+                assigned_body = preview_raw[:300]
+                preview = unassigned_body if filter_assigned == 'unassigned' else assigned_body
 
                 date_elem = elem.select_one('.date_css')
                 timestamp = date_elem.text.strip() if date_elem else ""
@@ -1685,6 +1688,10 @@ class LegacyTranslator:
                     "subject": subject,
                     "preview": preview,
                     "content": preview,
+                    "unassignedBody": unassigned_body,
+                    "assignedBody": assigned_body,
+                    "latestVisibleBody": unassigned_body,
+                    "contextualBody": assigned_body,
                     "timestamp": timestamp,
                     "can_assign": has_plus,
                     "canAssign": has_plus,
@@ -1969,7 +1976,140 @@ class LegacyTranslator:
         return content
 
     @staticmethod
-    def parse_message_detail_response(response_text: str, message_id: str, item_code: str) -> Dict[str, Any]:
+    def _parse_email_content_strict(raw_content: str, max_length: Optional[int] = None) -> str:
+        """
+        Strict body parser for unassigned inbox usage.
+
+        Keeps only the latest visible sender body and strips:
+        - quoted reply chains
+        - Prospect ID templates
+        - signatures / footer noise
+        """
+        if not raw_content:
+            return ""
+
+        content = raw_content
+        html_hints = ['<html', '<body', '<div', '<p', '<br', '<table', '<span', '<tr', '<td']
+        if any(hint in content.lower() for hint in html_hints):
+            content = re.sub(r'<br\s*/?>', '\n\n', content, flags=re.IGNORECASE)
+            h = html2text.HTML2Text()
+            h.ignore_links = True
+            h.ignore_images = True
+            h.ignore_emphasis = False
+            h.body_width = 0
+            h.protect_links = True
+            h.unicode_snob = True
+            content = h.handle(content)
+
+        content = re.sub(
+            r'\s+(>+\s*On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+\d{1,2}:\d{2}\s*[APap][Mm].*?wrote:)',
+            r'\n\n\1',
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r'\s+(On\s+[A-Za-z]+,\s+[A-Za-z]+\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+\d{1,2}:\d{2}\s*[APap][Mm].*?wrote:)',
+            r'\n\n\1',
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r'\s+(>+\s*On\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:,\s+at|,)\s+\d{1,2}:\d{2}\s*[APap][Mm].*?wrote:)',
+            r'\n\n\1',
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = re.sub(
+            r'\s+(On\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:,\s+at|,)\s+\d{1,2}:\d{2}\s*[APap][Mm].*?wrote:)',
+            r'\n\n\1',
+            content,
+            flags=re.IGNORECASE,
+        )
+        content = html.unescape(content).replace("\r\n", "\n").replace("\r", "\n")
+        content = re.sub(r'[ \t]*\n[ \t]*(wrote:)', r' \1', content, flags=re.IGNORECASE)
+        content = re.sub(
+            r'(^|\n)(>+\s*)?(On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+)(.+?)(\s+wrote:)',
+            lambda match: (
+                f"{match.group(1)}{match.group(2) or ''}{match.group(3)}{' '.join(match.group(4).split())}{match.group(5)}"
+            ),
+            content,
+            flags=re.IGNORECASE,
+        )
+
+        reply_header = re.search(
+            r'(^|\n)>*\s*On\s+[A-Za-z]{3,9},?\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+.+?\s+wrote:',
+            content,
+            flags=re.IGNORECASE,
+        )
+        if not reply_header:
+            reply_header = re.search(
+                r'(^|\n)>*\s*On\s+[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:,\s+at|,)\s+\d{1,2}:\d{2}\s*[APap][Mm].*?wrote:',
+                content,
+                flags=re.IGNORECASE,
+            )
+        if reply_header:
+            content = content[: reply_header.start()].rstrip()
+
+        def _should_drop_line(line: str) -> bool:
+            if not line:
+                return False
+            if re.match(r'^Yahoo Mail:', line, re.IGNORECASE):
+                return True
+            if re.match(r'^National Prospect ID#yiv\d+', line, re.IGNORECASE):
+                return True
+            if re.search(r'#yiv\d+', line, re.IGNORECASE):
+                return True
+            if re.match(r'^@media only screen', line, re.IGNORECASE):
+                return True
+            if "{" in line and "}" in line and ":" in line:
+                return True
+            if re.match(r'^\|+\s*$', line):
+                return True
+            return False
+
+        def _is_cutoff_line(line: str) -> bool:
+            return bool(
+                re.match(r'^\s*>*\s*Kind\s*Regards,?\s*$', line, re.IGNORECASE)
+                or re.match(r'^\s*>*\s*Regards,?\s*$', line, re.IGNORECASE)
+                or re.match(r'^Connect With Us$', line, re.IGNORECASE)
+                or re.match(r'^NATIONAL PROSPECT ID\b', line, re.IGNORECASE)
+                or re.match(r'^National Prospect ID\b', line, re.IGNORECASE)
+                or re.match(r'^About Us\s*\|', line, re.IGNORECASE)
+                or re.search(r'Unsubscribe', line, re.IGNORECASE)
+                or re.search(r'Private Policy', line, re.IGNORECASE)
+                or re.search(r'Terms', line, re.IGNORECASE)
+                or re.search(r'Video Team at National Prospect ID', line, re.IGNORECASE)
+                or re.search(r'18291 N\. Pima Road', line, re.IGNORECASE)
+                or re.search(r'NPID Dropbox folder', line, re.IGNORECASE)
+                or re.search(r'helping thousands of athletes connect to college coaches', line, re.IGNORECASE)
+            )
+
+        cleaned_lines: List[str] = []
+        for raw_line in content.split("\n"):
+            line = raw_line.strip()
+            if not line:
+                cleaned_lines.append("")
+                continue
+            if _should_drop_line(line):
+                continue
+            if _is_cutoff_line(line):
+                break
+            cleaned_lines.append(line)
+
+        cleaned = "\n".join(cleaned_lines)
+        cleaned = re.sub(r'(https?://\S+)', r'\n\n\1\n\n', cleaned)
+        cleaned = re.sub(r'\n{3,}', '\n\n', cleaned).strip()
+        if max_length is not None:
+            return cleaned[:max_length]
+        return cleaned
+
+    @staticmethod
+    def parse_message_detail_response(
+        response_text: str,
+        message_id: str,
+        item_code: str,
+        strict_body: bool = False,
+    ) -> Dict[str, Any]:
         """
         Parse message detail from JSON response.
         Uses html2text and email_reply_parser for clean extraction.
@@ -2102,8 +2242,9 @@ class LegacyTranslator:
                             "expiresAt": None
                         })
 
-            # Parse and clean the email content (strips links via ignore_links=True)
-            content = LegacyTranslator._parse_email_content(raw_content, strip_template=True)
+            unassigned_body = LegacyTranslator._parse_email_content_strict(raw_content)
+            assigned_body = LegacyTranslator._parse_email_content(raw_content, strip_template=True)
+            content = unassigned_body if strict_body else assigned_body
 
             # Clean subject
             raw_subject = data.get('subject', '') or data.get('message_subject', '')
@@ -2117,6 +2258,10 @@ class LegacyTranslator:
                 "message_id": message_id,
                 "item_code": item_code,
                 "content": content,
+                "unassigned_body": unassigned_body,
+                "assigned_body": assigned_body,
+                "latest_visible_body": unassigned_body,
+                "contextual_body": assigned_body,
                 "subject": subject,
                 "from_email": data.get('from_email', ''),
                 "from_name": from_name,
@@ -2131,7 +2276,16 @@ class LegacyTranslator:
             }
         except Exception as e:
             logger.warning(f"Failed to parse message detail: {e}")
-            return {"message_id": message_id, "item_code": item_code, "content": "", "attachments": []}
+            return {
+                "message_id": message_id,
+                "item_code": item_code,
+                "content": "",
+                "unassigned_body": "",
+                "assigned_body": "",
+                "latest_visible_body": "",
+                "contextual_body": "",
+                "attachments": [],
+            }
 
     @staticmethod
     def assignment_modal_to_legacy(message_id: str, item_code: str) -> Tuple[str, Dict[str, Any]]:

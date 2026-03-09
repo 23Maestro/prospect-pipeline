@@ -3,6 +3,7 @@ import {
   AssignVideoTeamPayload,
   NPIDInboxMessage,
   AthleteNote,
+  InboxMessageDetailResponse,
   VideoTeamAssignmentModal,
   VideoTeamContact,
   VideoTeamSearchCategory,
@@ -47,33 +48,17 @@ export async function fetchInboxThreads(
 export async function fetchMessageDetail(
   message_id: string,
   item_code: string,
-): Promise<{
-  content: string;
-  timestamp?: string;
-  subject?: string;
-  from_name?: string;
-  from_email?: string;
-  message_id?: string;
-  item_code?: string;
-  contact_id?: string;
-  athlete_main_id?: string;
-  athlete_links?: {
-    profile?: string;
-    notes?: string;
-    search?: string;
-    addVideoForm?: string;
-  };
-  attachments?: Array<{
-    fileName: string;
-    url: string;
-    downloadable: boolean;
-    expiresAt?: string | null;
-  }>;
-}> {
+  options?: { bodyMode?: 'contextual' | 'strict'; strictBody?: boolean },
+): Promise<InboxMessageDetailResponse> {
   const response = await apiFetch('/inbox/message', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message_id, item_code }),
+    body: JSON.stringify({
+      message_id,
+      item_code,
+      body_mode: options?.bodyMode ?? (options?.strictBody ? 'strict' : 'contextual'),
+      strict_body: options?.strictBody ?? false,
+    }),
   });
 
   if (!response.ok) {

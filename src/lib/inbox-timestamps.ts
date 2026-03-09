@@ -33,7 +33,9 @@ export async function hydrateThreadTimestamps(
     const details = await Promise.all(
       batch.map(async (msg) => {
         try {
-          const result = await fetchMessageDetail(msg.id, msg.itemCode || msg.id);
+          const result = await fetchMessageDetail(msg.id, msg.itemCode || msg.id, {
+            bodyMode: 'contextual',
+          });
           return { id: msg.id, timestamp: result.timestamp };
         } catch (error) {
           console.error('Failed to hydrate timestamp', error);

@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Clipboard,
   Cache,
   Color,
   Icon,
@@ -25,6 +26,17 @@ import { hydrateThreadTimestamps } from './lib/inbox-timestamps';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { ensureAthleteIds } from './lib/athlete-id-service';
 import { detectHudlCredentials } from './lib/inbox-credential-detector';
+import { detectDropboxRequest } from './lib/inbox-dropbox-detector';
+import { getCachedTasks } from './lib/video-progress-cache';
+import {
+  extractFirstName,
+  formatAssignedReplyHeaderLabel,
+  normalizeInboxDisplayBody,
+  sanitizeAthleteName,
+} from './lib/inbox-message-format';
+import { generateInboxReplyDraft } from './lib/inbox-ai-draft';
+import { inboxLogger } from './lib/logger';
+import { VideoProgressDetail, type VideoProgressTask, shouldIncludeTask, sortTasks } from './video-progress';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -34,7 +46,10 @@ function EmailContentDetail({
 }: {
   message: NPIDInboxMessage;
   onBack: () => void;
-  onReply: (message: NPIDInboxMessage) => void;
+  onReply: (
+    message: NPIDInboxMessage,
+    options?: { autoGenerate?: boolean; initialReply?: string },
+  ) => void;
 }) {
   const { push, pop } = useNavigation();
   const [fullContent, setFullContent] = useState<string | null>(null);
@@ -68,11 +83,22 @@ function EmailContentDetail({
         setIsLoading(true);
         setError(null);
 
-        const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
+        const details = await fetchMessageDetail(message.id, message.itemCode || message.id, {
+          bodyMode: 'contextual',
+        });
 
-        if (details && details.content) {
+        const assignedBody =
+          details.assigned_body ||
+          details.contextual_body ||
+          details.content ||
+          message.assignedBody ||
+          message.contextualBody ||
+          message.content ||
+          message.preview;
+
+        if (details && assignedBody) {
           setDetailResult(details);
-          setFullContent(details.content);
+          setFullContent(assignedBody);
           if (details.timestamp) {
             setDetailedTimestamp(details.timestamp);
           }
@@ -84,26 +110,30 @@ function EmailContentDetail({
           }
         } else {
           // Fallback to preview if no content returned
-          setFullContent(message.content || message.preview || 'No content available');
+          setFullContent(
+            message.assignedBody || message.contextualBody || message.content || message.preview || 'No content available',
+          );
         }
       } catch (err) {
         console.error('Failed to fetch full message:', err);
         setError(err instanceof Error ? err.message : 'Failed to load full message');
         // Fallback to preview on error
-        setFullContent(message.content || message.preview || 'No content available');
+        setFullContent(
+          message.assignedBody || message.contextualBody || message.content || message.preview || 'No content available',
+        );
       } finally {
         setIsLoading(false);
       }
     };
 
     loadFullMessage();
-  }, [message.id, message.itemCode, message.content, message.preview]);
+  }, [message.id, message.itemCode, message.content, message.preview, message.contextualBody, message.assignedBody]);
 
   // Notes resolution is now on-demand when actions are clicked
 
   const contentToDisplay = isLoading
     ? 'Loading full message...'
-    : fullContent || message.preview || 'No content available';
+    : fullContent || message.assignedBody || message.contextualBody || message.preview || 'No content available';
 
   // Use detailed timestamp if available, otherwise raw or unknown
   const displayTimestamp = detailedTimestamp || message.timestamp || 'Unknown';
@@ -111,10 +141,60 @@ function EmailContentDetail({
   const displayName = sanitizeAthleteName(resolvedAthleteName || message.name) || 'Unknown';
   const displayContent = detailResult
     ? contentToDisplay
-    : normalizeMessageContent(contentToDisplay) || contentToDisplay;
-  const formattedContent = detailResult ? formatReplyHeaderLabel(displayContent) : displayContent;
+    : normalizeInboxDisplayBody(contentToDisplay) || contentToDisplay;
+  const formattedContent = detailResult
+    ? formatAssignedReplyHeaderLabel(displayContent)
+    : displayContent;
   const hudlDetection =
-    detailResult && !isLoading ? detectHudlCredentials(contentToDisplay) : { tier: 'none' as const };
+    detailResult && !isLoading
+      ? detectHudlCredentials(contentToDisplay)
+      : { tier: 'none' as const };
+  const dropboxDetection = detectDropboxRequest(contentToDisplay);
+
+  const buildDropboxReply = (dropboxUrl: string) => {
+    const displayName = sanitizeAthleteName(message.name) || 'Student Athlete';
+    return `Hi ${displayName} and family,
+
+${dropboxUrl}
+
+Please limit the number of clips to a max of 35 and let me know when you have uploaded all of your plays.`;
+  };
+
+  const handleOpenDropboxReplyFromClipboard = async () => {
+    const clipboardText = (await Clipboard.readText())?.trim() || '';
+    if (!clipboardText) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Clipboard is empty',
+        message: 'Copy the Dropbox link first.',
+      });
+      return;
+    }
+
+    if (!/dropbox\.com/i.test(clipboardText)) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Clipboard does not contain a Dropbox link',
+        message: 'Copy the Dropbox folder link first.',
+      });
+      return;
+    }
+
+    const initialReply = buildDropboxReply(clipboardText);
+    inboxLogger.info('INBOX_DROPBOX_TEMPLATE', {
+      event: 'INBOX_DROPBOX_TEMPLATE',
+      step: 'clipboard_open',
+      status: 'success',
+      feature: 'read-videoteam-inbox.detail',
+      context: {
+        messageId: message.id,
+        clipboardLength: clipboardText.length,
+        detectedDropboxRequest: dropboxDetection.detected,
+      },
+    });
+
+    onReply({ ...message, content: contentToDisplay }, { initialReply });
+  };
 
   const metadata = (
     <Detail.Metadata>
@@ -142,6 +222,14 @@ function EmailContentDetail({
           </Detail.Metadata.TagList>
         </>
       )}
+      {dropboxDetection.detected && (
+        <>
+          <Detail.Metadata.Separator />
+          <Detail.Metadata.TagList title="Dropbox Detection">
+            <Detail.Metadata.TagList.Item text="Dropbox Request" color={Color.Blue} />
+          </Detail.Metadata.TagList>
+        </>
+      )}
     </Detail.Metadata>
   );
   const markdownContent = `# ${message.subject}\n\n---\n\n${formattedContent}${error ? `\n\n> ⚠️ ${error}` : ''}`;
@@ -161,7 +249,9 @@ function EmailContentDetail({
     }
 
     try {
-      const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
+      const details = await fetchMessageDetail(message.id, message.itemCode || message.id, {
+        bodyMode: 'contextual',
+      });
       setDetailResult(details);
       if (details?.athlete_links) {
         setAthleteLinks((prev) => ({ ...prev, ...details.athlete_links }));
@@ -260,8 +350,22 @@ function EmailContentDetail({
             <Action
               title="Reply to Email"
               icon={Icon.Reply}
-              onAction={() => onReply(message)}
+              onAction={() => onReply({ ...message, content: contentToDisplay })}
               shortcut={{ modifiers: ['cmd'], key: 'return' }}
+            />
+            <Action
+              title="Draft Reply with AI"
+              icon={Icon.Wand}
+              onAction={() =>
+                onReply({ ...message, content: contentToDisplay }, { autoGenerate: true })
+              }
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+            />
+            <Action
+              title="Use Dropbox Template from Clipboard"
+              icon={Icon.Folder}
+              onAction={handleOpenDropboxReplyFromClipboard}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
             />
             <Action title="Back to Inbox" onAction={onBack} icon={Icon.ArrowLeft} />
           </ActionPanel.Section>
@@ -327,7 +431,9 @@ function EmailContentDetail({
                     if (!ids) return;
 
                     const athleteName =
-                      (await resolveAthleteName(ids.athleteId)) || message.name || 'Unknown Athlete';
+                      (await resolveAthleteName(ids.athleteId)) ||
+                      message.name ||
+                      'Unknown Athlete';
 
                     push(
                       <AddAthleteNoteForm
@@ -400,50 +506,6 @@ function EmailContentDetail({
 
           <ActionPanel.Section title="Quick Links">
             <Action
-              title="General Info"
-              icon={Icon.Person}
-              onAction={async () => {
-                const name = await resolveAthleteName();
-                const firstName = extractFirstName(name || message.name);
-                await openAthleteLink(
-                  'search',
-                  (id) => `https://dashboard.nationalpid.com/admin/athletes?contactid=${id}`,
-                  firstName ? { firstname: firstName } : undefined,
-                );
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'g' }}
-            />
-            <Action
-              title="View PlayerID"
-              icon={Icon.Star}
-              onAction={() =>
-                openAthleteLink(
-                  'profile',
-                  (id) => `https://dashboard.nationalpid.com/athlete/profile/${id}`,
-                )
-              }
-              shortcut={{ modifiers: ['cmd'], key: 'o' }}
-            />
-            <Action
-              title="Task: Video Progress ID"
-              icon={Icon.Globe}
-              onAction={async () => {
-                const resolvedContactId = await resolveContactId();
-                if (!resolvedContactId) {
-                  await showToast({
-                    style: Toast.Style.Failure,
-                    title: 'Missing contact_id',
-                    message: 'Contact ID not found in inbox thread or message link.',
-                  });
-                  return;
-                }
-                await open(
-                  `https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${resolvedContactId}`,
-                );
-              }}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
-            />
-            <Action
               title="Athlete Notes Tab"
               icon={Icon.Clipboard}
               onAction={() =>
@@ -469,10 +531,152 @@ function EmailContentDetail({
 }
 
 // Reply Form Component
-function ReplyForm({ message, onBack }: { message: NPIDInboxMessage; onBack: () => void }) {
+function ReplyForm({
+  message,
+  onBack,
+  autoGenerate = false,
+  initialReply = '',
+}: {
+  message: NPIDInboxMessage;
+  onBack: () => void;
+  autoGenerate?: boolean;
+  initialReply?: string;
+}) {
   // Signature is automatically appended by FastAPI (HTML formatted)
-  const [replyText, setReplyText] = useState('');
+  const [replyText, setReplyText] = useState(initialReply);
   const [isLoading, setIsLoading] = useState(false);
+  const autoGenerateStartedRef = useRef(false);
+
+  useEffect(() => {
+    setReplyText(initialReply);
+  }, [initialReply]);
+
+  const buildDropboxTemplate = useCallback(
+    (dropboxUrl: string) => {
+      const displayName = sanitizeAthleteName(message.name) || 'Student Athlete';
+      return `Hi ${displayName} and family,
+
+${dropboxUrl}
+
+Please limit the number of clips to a max of 35 and let me know when you have uploaded all of your plays.`;
+    },
+    [message.name],
+  );
+
+  const handleGenerateDraft = useCallback(async () => {
+    if (isLoading) return;
+
+    setIsLoading(true);
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: 'Generating AI draft',
+      message: message.subject || message.name,
+    });
+
+    inboxLogger.info('INBOX_AI_DRAFT_FORM', {
+      event: 'INBOX_AI_DRAFT_FORM',
+      step: 'generate',
+      status: 'start',
+      feature: 'read-videoteam-inbox.reply-form',
+      context: {
+        messageId: message.id,
+        autoGenerate,
+      },
+    });
+
+    try {
+      const result = await generateInboxReplyDraft(message);
+      setReplyText(result.reply);
+      toast.style = Toast.Style.Success;
+      toast.title = 'AI draft ready';
+      toast.message = result.category;
+      inboxLogger.info('INBOX_AI_DRAFT_FORM', {
+        event: 'INBOX_AI_DRAFT_FORM',
+        step: 'generate',
+        status: 'success',
+        feature: 'read-videoteam-inbox.reply-form',
+        context: {
+          messageId: message.id,
+          category: result.category,
+          replyLength: result.reply.length,
+        },
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Failed to generate draft';
+      toast.style = Toast.Style.Failure;
+      toast.title = 'AI draft failed';
+      toast.message = errorMessage;
+      inboxLogger.error('INBOX_AI_DRAFT_FORM', {
+        event: 'INBOX_AI_DRAFT_FORM',
+        step: 'generate',
+        status: 'failure',
+        feature: 'read-videoteam-inbox.reply-form',
+        error: errorMessage,
+        context: {
+          messageId: message.id,
+        },
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [autoGenerate, isLoading, message]);
+
+  useEffect(() => {
+    if (!autoGenerate || autoGenerateStartedRef.current) return;
+    autoGenerateStartedRef.current = true;
+    handleGenerateDraft();
+  }, [autoGenerate, handleGenerateDraft]);
+
+  const handleApplyDropboxTemplate = useCallback(async () => {
+    const clipboardText = (await Clipboard.readText())?.trim() || '';
+    if (!clipboardText) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Clipboard is empty',
+        message: 'Copy the Dropbox link first.',
+      });
+      return;
+    }
+
+    if (!/dropbox\.com/i.test(clipboardText)) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Clipboard does not contain a Dropbox link',
+        message: 'Copy the Dropbox folder link first.',
+      });
+      return;
+    }
+
+    inboxLogger.info('INBOX_DROPBOX_TEMPLATE', {
+      event: 'INBOX_DROPBOX_TEMPLATE',
+      step: 'apply',
+      status: 'start',
+      feature: 'read-videoteam-inbox.reply-form',
+      context: {
+        messageId: message.id,
+        clipboardLength: clipboardText.length,
+      },
+    });
+
+    const template = buildDropboxTemplate(clipboardText);
+    setReplyText(template);
+
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Dropbox template applied',
+    });
+
+    inboxLogger.info('INBOX_DROPBOX_TEMPLATE', {
+      event: 'INBOX_DROPBOX_TEMPLATE',
+      step: 'apply',
+      status: 'success',
+      feature: 'read-videoteam-inbox.reply-form',
+      context: {
+        messageId: message.id,
+        replyLength: template.length,
+      },
+    });
+  }, [buildDropboxTemplate, message.id]);
 
   const handleSubmit = async () => {
     if (!replyText.trim()) {
@@ -507,6 +711,17 @@ function ReplyForm({ message, onBack }: { message: NPIDInboxMessage; onBack: () 
         <ActionPanel>
           <ActionPanel.Section>
             <Action.SubmitForm title="Send Reply" onSubmit={handleSubmit} icon={Icon.Check} />
+            <Action
+              title="Generate Draft with AI"
+              onAction={handleGenerateDraft}
+              icon={Icon.Wand}
+            />
+            <Action
+              title="Use Dropbox Template from Clipboard"
+              onAction={handleApplyDropboxTemplate}
+              icon={Icon.Folder}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
+            />
             <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -519,7 +734,7 @@ function ReplyForm({ message, onBack }: { message: NPIDInboxMessage; onBack: () 
       <Form.TextArea
         id="reply"
         title="Message"
-        placeholder="Type your reply here..."
+        placeholder="Type your reply here or generate one with AI..."
         value={replyText}
         onChange={setReplyText}
       />
@@ -595,121 +810,6 @@ function formatTimestamp(message: NPIDInboxMessage): string {
   }
 
   return 'No date';
-}
-
-function stripHtml(value: string): string {
-  return value.replace(/<\/?[a-z][^>]*>/gi, ' ');
-}
-
-function decodeHtmlEntities(value: string): string {
-  return value
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>');
-}
-
-function sanitizeAthleteName(raw?: string | null): string | null {
-  if (!raw) return null;
-  const stripped = decodeHtmlEntities(stripHtml(raw));
-  const normalized = stripped.replace(/\s+/g, ' ').trim();
-  if (!normalized) return null;
-  const splitOnDash = normalized.split(' - ')[0]?.trim();
-  return splitOnDash || normalized;
-}
-
-function extractFirstName(raw?: string | null): string {
-  const cleaned = sanitizeAthleteName(raw);
-  if (!cleaned) return '';
-  return cleaned.split(/\s+/)[0] || '';
-}
-
-function normalizeMessageContent(raw: string): string {
-  if (!raw) return raw;
-  const stripped = decodeHtmlEntities(stripHtml(raw)).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-
-  const shouldDropLine = (line: string) => {
-    if (!line) return false;
-    if (/^Yahoo Mail:/i.test(line)) return true;
-    if (/^National Prospect ID#yiv\d+/i.test(line)) return true;
-    if (/#yiv\d+/i.test(line)) return true;
-    if (/@media only screen/i.test(line)) return true;
-    if (line.includes('{') && line.includes('}') && line.includes(':')) return true;
-    if (/^\|+\s*$/.test(line)) return true;
-    return false;
-  };
-
-  const isSignatureStart = (line: string) => {
-    return (
-      /^Connect With Us$/i.test(line) ||
-      /^NATIONAL PROSPECT ID\b/i.test(line) ||
-      /^National Prospect ID\b/i.test(line) ||
-      /^About Us\s*\|/i.test(line) ||
-      /Unsubscribe/i.test(line) ||
-      /Private Policy/i.test(line) ||
-      /Terms/i.test(line)
-    );
-  };
-
-  const cleanedLines: string[] = [];
-  for (const rawLine of stripped.split('\n')) {
-    const line = rawLine.trim();
-    if (!line) {
-      cleanedLines.push('');
-      continue;
-    }
-    if (shouldDropLine(line)) {
-      continue;
-    }
-    if (isSignatureStart(line)) {
-      break;
-    }
-    cleanedLines.push(line);
-  }
-
-  const cleaned = cleanedLines.join('\n');
-  const withLinkBreaks = cleaned.replace(/(https?:\/\/\S+)/g, '\n\n$1\n\n');
-  return withLinkBreaks.replace(/\n{3,}/g, '\n\n').trim();
-}
-
-function formatReplyHeaderLabel(content: string): string {
-  if (!content) return content;
-
-  const replyPatterns: Array<{
-    pattern: RegExp;
-    format: (match: RegExpMatchArray) => string;
-  }> = [
-    {
-      pattern:
-        /(^|\n\n)On\s+([A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)\s+.+?\s+wrote:(\n\n|$)/i,
-      format: (match) => `${match[1] || ''}**Reply** · *${match[2].trim()}*${match[3] || '\n\n'}`,
-    },
-    {
-      pattern:
-        /(^|\n\n)On\s+([A-Za-z]{6,9},\s+[A-Za-z]{5,9}\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}\s*[AP]M),\s+.+?\s+wrote:(\n\n|$)/i,
-      format: (match) => `${match[1] || ''}**Reply** · *${match[2].trim()}*${match[3] || '\n\n'}`,
-    },
-    {
-      pattern:
-        /\s+On\s+([A-Za-z]{3},\s+[A-Za-z]{3}\s+\d{1,2},\s+\d{4}\s+at\s+\d{1,2}:\d{2}\s*[AP]M)\s+.+?\s+wrote:\s+/i,
-      format: (match) => `\n\n**Reply** · *${match[1].trim()}*\n\n`,
-    },
-    {
-      pattern:
-        /\s+On\s+([A-Za-z]{6,9},\s+[A-Za-z]{5,9}\s+\d{1,2},\s+\d{4},\s+\d{1,2}:\d{2}\s*[AP]M),\s+.+?\s+wrote:\s+/i,
-      format: (match) => `\n\n**Reply** · *${match[1].trim()}*\n\n`,
-    },
-  ];
-
-  for (const { pattern, format } of replyPatterns) {
-    const match = content.match(pattern);
-    if (!match) continue;
-    return content.replace(pattern, format(match));
-  }
-
-  return content;
 }
 
 function appendQueryParams(url: string, params: Record<string, string>): string {
@@ -817,6 +917,113 @@ export default function InboxCheck() {
     setPageStartNumber(1);
   };
 
+  const resolveThreadActionContext = useCallback(
+    async (message: NPIDInboxMessage): Promise<{
+      contactId: string | null;
+      athleteLinks: NonNullable<NPIDInboxMessage['athleteLinks']>;
+    }> => {
+      const knownLinks = message.athleteLinks || {
+        profile: '',
+        search: '',
+        notes: '',
+        addVideoForm: '',
+      };
+      const knownContactId = message.contact_id || null;
+
+      if (knownContactId && (knownLinks.profile || knownLinks.search || knownLinks.notes)) {
+        return { contactId: String(knownContactId), athleteLinks: knownLinks };
+      }
+
+      try {
+        const details = await fetchMessageDetail(message.id, message.itemCode || message.id, {
+          bodyMode: 'contextual',
+        });
+        return {
+          contactId: details?.contact_id ? String(details.contact_id) : knownContactId ? String(knownContactId) : null,
+          athleteLinks: {
+            ...knownLinks,
+            ...(details?.athlete_links || {}),
+          },
+        };
+      } catch {
+        return {
+          contactId: knownContactId ? String(knownContactId) : null,
+          athleteLinks: knownLinks,
+        };
+      }
+    },
+    [],
+  );
+
+  const openThreadAthleteLink = useCallback(
+    async (
+      message: NPIDInboxMessage,
+      kind: 'profile' | 'notes' | 'search',
+      fallbackUrl: (id: string) => string,
+      extraParams?: Record<string, string>,
+    ) => {
+      const context = await resolveThreadActionContext(message);
+      if (!context.contactId) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Missing contact_id',
+          message: 'Contact ID not found in inbox thread or message link.',
+        });
+        return;
+      }
+
+      const raw = context.athleteLinks?.[kind] || '';
+      const url = raw
+        ? raw.startsWith('http')
+          ? raw
+          : `https://dashboard.nationalpid.com${raw}`
+        : fallbackUrl(context.contactId);
+      const finalUrl = extraParams ? appendQueryParams(url, extraParams) : url;
+      await open(finalUrl);
+    },
+    [resolveThreadActionContext],
+  );
+
+  const openVideoProgressForThread = useCallback(
+    async (message: NPIDInboxMessage) => {
+      const context = await resolveThreadActionContext(message);
+      if (!context.contactId) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Missing contact_id',
+          message: 'Contact ID not found in inbox thread or message link.',
+        });
+        return;
+      }
+
+      const cachedTasks = (await getCachedTasks()) as VideoProgressTask[];
+      const matches = sortTasks(
+        cachedTasks.filter(
+          (task) => String(task.athlete_id) === context.contactId && shouldIncludeTask(task),
+        ),
+      );
+      const task = matches[0];
+
+      if (!task) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Video Progress entry not found',
+          message: `No cached active task found for ${message.name || context.contactId}.`,
+        });
+        return;
+      }
+
+      push(
+        <VideoProgressDetail
+          task={task}
+          onBack={pop}
+          onStatusUpdate={() => undefined}
+        />,
+      );
+    },
+    [pop, push, resolveThreadActionContext],
+  );
+
   const loadInboxMessages = useCallback(async () => {
     try {
       setIsLoading(true);
@@ -882,9 +1089,9 @@ export default function InboxCheck() {
       const toast = silent
         ? null
         : await showToast({
-          style: Toast.Style.Animated,
-          title: `Fetching ${isSearching ? 'search results' : 'assigned messages'} (${pageRangeLabel})…`,
-        });
+            style: Toast.Style.Animated,
+            title: `Fetching ${isSearching ? 'search results' : 'assigned messages'} (${pageRangeLabel})…`,
+          });
 
       try {
         if (!silent) setIsLoading(true);
@@ -1017,11 +1224,11 @@ export default function InboxCheck() {
               { icon: Icon.CheckCircle, tooltip: 'Assigned' },
               ...(hasAttachments
                 ? [
-                  {
-                    icon: Icon.Paperclip,
-                    tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
-                  },
-                ]
+                    {
+                      icon: Icon.Paperclip,
+                      tooltip: `${message.attachments?.length} attachment(s), ${downloadableCount} downloadable`,
+                    },
+                  ]
                 : []),
             ]}
             keywords={[message.subject, message.preview, message.email, message.name]}
@@ -1036,7 +1243,16 @@ export default function InboxCheck() {
                         <EmailContentDetail
                           message={message}
                           onBack={pop}
-                          onReply={(msg) => push(<ReplyForm message={msg} onBack={pop} />)}
+                          onReply={(msg, options) =>
+                            push(
+                              <ReplyForm
+                                message={msg}
+                                onBack={pop}
+                                autoGenerate={options?.autoGenerate}
+                                initialReply={options?.initialReply}
+                              />,
+                            )
+                          }
                         />,
                       )
                     }
@@ -1045,6 +1261,108 @@ export default function InboxCheck() {
                     title="Reply to Email"
                     icon={Icon.Reply}
                     onAction={() => push(<ReplyForm message={message} onBack={pop} />)}
+                  />
+                  <Action
+                    title="Draft Reply with AI"
+                    icon={Icon.Wand}
+                    onAction={() =>
+                      push(<ReplyForm message={message} onBack={pop} autoGenerate={true} />)
+                    }
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                  />
+                  <Action
+                    title="Use Dropbox Template from Clipboard"
+                    icon={Icon.Folder}
+                    onAction={async () => {
+                      const clipboardText = (await Clipboard.readText())?.trim() || '';
+                      if (!clipboardText) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: 'Clipboard is empty',
+                          message: 'Copy the Dropbox link first.',
+                        });
+                        return;
+                      }
+
+                      if (!/dropbox\.com/i.test(clipboardText)) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: 'Clipboard does not contain a Dropbox link',
+                          message: 'Copy the Dropbox folder link first.',
+                        });
+                        return;
+                      }
+
+                      const displayName = sanitizeAthleteName(message.name) || 'Student Athlete';
+                      const initialReply = `Hi ${displayName} and family,
+
+${clipboardText}
+
+Please limit the number of clips to a max of 35 and let me know when you have uploaded all of your plays.`;
+
+                      push(
+                        <ReplyForm message={message} onBack={pop} initialReply={initialReply} />,
+                      );
+                    }}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
+                  />
+                </ActionPanel.Section>
+
+                <ActionPanel.Section title="Quick Links">
+                  <Action
+                    title="General Info"
+                    icon={Icon.Person}
+                    onAction={async () => {
+                      const context = await resolveThreadActionContext(message);
+                      const name =
+                        (context.contactId && (await fetchAthleteName(context.contactId))) ||
+                        message.name;
+                      const firstName = extractFirstName(name || message.name);
+                      await openThreadAthleteLink(
+                        message,
+                        'search',
+                        (id) => `https://dashboard.nationalpid.com/admin/athletes?contactid=${id}`,
+                        firstName ? { firstname: firstName } : undefined,
+                      );
+                    }}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'g' }}
+                  />
+                  <Action
+                    title="View PlayerID"
+                    icon={Icon.Star}
+                    onAction={() =>
+                      openThreadAthleteLink(
+                        message,
+                        'profile',
+                        (id) => `https://dashboard.nationalpid.com/athlete/profile/${id}`,
+                      )
+                    }
+                    shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                  />
+                  <Action
+                    title="Task: Video Progress ID"
+                    icon={Icon.Globe}
+                    onAction={async () => {
+                      const context = await resolveThreadActionContext(message);
+                      if (!context.contactId) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: 'Missing contact_id',
+                          message: 'Contact ID not found in inbox thread or message link.',
+                        });
+                        return;
+                      }
+                      await open(
+                        `https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${context.contactId}`,
+                      );
+                    }}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+                  />
+                  <Action
+                    title="Video Progress"
+                    icon={Icon.List}
+                    onAction={() => void openVideoProgressForThread(message)}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
                   />
                 </ActionPanel.Section>
 

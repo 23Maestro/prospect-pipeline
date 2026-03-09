@@ -12,6 +12,8 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { useEffect, useMemo, useState } from 'react';
+import { detectDropboxRequest } from './lib/inbox-dropbox-detector';
+import { normalizeInboxDisplayBody } from './lib/inbox-message-format';
 import {
   assignVideoTeamMessage,
   fetchAssignmentDefaults,
@@ -299,32 +301,52 @@ function EmailContentDetail({
         setIsLoading(true);
         setError(null);
 
-        const details = await fetchMessageDetail(message.id, message.itemCode || message.id);
+        const details = await fetchMessageDetail(message.id, message.itemCode || message.id, {
+          bodyMode: 'strict',
+        });
 
-        if (details && details.content) {
-          setFullContent(details.content);
+        const unassignedBody =
+          details.unassigned_body ||
+          details.latest_visible_body ||
+          details.content ||
+          message.unassignedBody ||
+          message.latestVisibleBody ||
+          message.content ||
+          message.preview;
+
+        if (details && unassignedBody) {
+          setFullContent(unassignedBody);
           if (details.timestamp) {
             setDetailedTimestamp(details.timestamp);
           }
         } else {
           // Fallback to preview if no content returned
-          setFullContent(message.content || message.preview || 'No content available');
+          setFullContent(
+            message.unassignedBody || message.latestVisibleBody || message.content || message.preview || 'No content available',
+          );
         }
       } catch (err) {
         console.error('Failed to fetch full message:', err);
         setError(err instanceof Error ? err.message : 'Failed to load full message');
         // Fallback to preview on error
-        setFullContent(message.content || message.preview || 'No content available');
+        setFullContent(
+          message.unassignedBody || message.latestVisibleBody || message.content || message.preview || 'No content available',
+        );
       } finally {
         setIsLoading(false);
       }
     };
 
     loadFullMessage();
-  }, [message.id, message.itemCode, message.content, message.preview]);
+  }, [message.id, message.itemCode, message.content, message.preview, message.latestVisibleBody, message.unassignedBody]);
 
   const received = formatTimestamp(message);
   const displayTimestamp = detailedTimestamp || received;
+  const contentToDisplay = isLoading
+    ? 'Loading full message...'
+    : fullContent || message.unassignedBody || message.latestVisibleBody || message.preview || 'No content available';
+  const cleanedContent = contentToDisplay;
+  const dropboxDetection = detectDropboxRequest(cleanedContent);
 
   const metadata = (
     <Detail.Metadata>
@@ -340,15 +362,19 @@ function EmailContentDetail({
           text={message.attachments.map((attachment) => attachment.fileName).join(', ')}
         />
       )}
+      {dropboxDetection.detected && (
+        <>
+          <Detail.Metadata.Separator />
+          <Detail.Metadata.TagList title="Dropbox Detection">
+            <Detail.Metadata.TagList.Item text="Dropbox Request" color={Color.Blue} />
+          </Detail.Metadata.TagList>
+        </>
+      )}
     </Detail.Metadata>
   );
 
-  const contentToDisplay = isLoading
-    ? 'Loading full message...'
-    : fullContent || message.preview || 'No content available';
-
   // Clean markdown - email details are in the metadata sidebar
-  const markdown = `# ${message.subject}\n\n---\n\n${contentToDisplay}${error ? `\n\n> ⚠️ ${error}` : ''}`;
+  const markdown = `# ${message.subject}\n\n---\n\n${cleanedContent}${error ? `\n\n> ⚠️ ${error}` : ''}`;
 
   return (
     <Detail
@@ -394,6 +420,8 @@ export default function InboxCheck() {
   const [isLoading, setIsLoading] = useState(true);
   const { push, pop } = useNavigation();
   const cache = new Cache();
+  const cacheKey = 'inbox_threads_unassigned_strict_v2';
+  const cacheTimeKey = 'inbox_threads_unassigned_strict_v2_time';
 
   useEffect(() => {
     void loadInboxMessages();
@@ -403,7 +431,7 @@ export default function InboxCheck() {
     try {
       setIsLoading(true);
 
-      const cached = cache.get('inbox_threads');
+      const cached = cache.get(cacheKey);
       if (cached) {
         setMessages(JSON.parse(cached) as NPIDInboxMessage[]);
       }
@@ -430,8 +458,8 @@ export default function InboxCheck() {
       const hydrated = await hydrateThreadTimestamps(threads);
 
       const now = Date.now();
-      cache.set('inbox_threads', JSON.stringify(hydrated));
-      cache.set('inbox_threads_time', now.toString());
+      cache.set(cacheKey, JSON.stringify(hydrated));
+      cache.set(cacheTimeKey, now.toString());
 
       if (toast) {
         toast.style = hydrated.length > 0 ? Toast.Style.Success : Toast.Style.Failure;
@@ -608,9 +636,22 @@ export default function InboxCheck() {
         const hasAttachments = message.attachments && message.attachments.length > 0;
         const downloadableCount =
           message.attachments?.filter((att) => att.downloadable && att.url).length || 0;
+        const dropboxDetection = detectDropboxRequest(
+          normalizeInboxDisplayBody(
+            message.unassignedBody || message.latestVisibleBody || message.content || message.preview || '',
+          ),
+        );
 
         const accessories = [
           { text: formatTimestamp(message) },
+          ...(dropboxDetection.detected
+            ? [
+                {
+                  icon: { source: Icon.Folder, tintColor: Color.Blue },
+                  tooltip: 'Dropbox request detected',
+                },
+              ]
+            : []),
           ...(hasAttachments
             ? [
                 {

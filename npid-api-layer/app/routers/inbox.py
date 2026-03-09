@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 import logging
 from typing import Optional
 from pydantic import BaseModel
+from typing_extensions import Literal
 
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
@@ -34,6 +35,8 @@ class InboxThreadsRequest(BaseModel):
 class MessageDetailRequest(BaseModel):
     message_id: str
     item_code: str
+    body_mode: Literal["contextual", "strict"] = "contextual"
+    strict_body: bool = False
 
 
 class AssignmentModalRequest(BaseModel):
@@ -121,7 +124,10 @@ async def get_message_detail(request: Request, payload: MessageDetailRequest):
             payload.message_id, payload.item_code
         )
         response = await session.get(endpoint, params=params)
-        result = translator.parse_message_detail_response(response.text, payload.message_id, payload.item_code)
+        strict_body = payload.body_mode == "strict" or payload.strict_body
+        result = translator.parse_message_detail_response(
+            response.text, payload.message_id, payload.item_code, strict_body=strict_body
+        )
 
         logger.info(f"✅ Message detail fetched ({len(result.get('content', ''))} chars)")
         return {"success": True, **result}

@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Form, List, Toast, showToast } from '@raycast/api';
+import { Action, ActionPanel, Clipboard, Form, List, Toast, showToast } from '@raycast/api';
 import { useEffect, useState } from 'react';
 import { AthleteNote } from '../types/video-team';
 import { fetchAthleteNotes, addAthleteNote } from '../lib/npid-mcp-adapter';
@@ -55,41 +55,71 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
         <List.EmptyView title="No notes found" description="Add a note from the previous screen." />
       ) : (
         notes.map((note, index) => (
-          <List.Item
-            key={`${note.title}-${index}`}
-            title={note.title || `Note ${index + 1}`}
-            subtitle={note.created_by ? `By ${note.created_by}` : undefined}
-            accessories={
-              [
-                note.created_at ? { text: formatDate(note.created_at) } : undefined,
-                note.metadata ? { text: note.metadata } : undefined,
-              ].filter(Boolean) as { text: string }[]
-            }
-            detail={
-              <List.Item.Detail
-                markdown={note.description || '_No description provided_'}
-                metadata={
-                  <List.Item.Detail.Metadata>
-                    {note.created_by && (
-                      <List.Item.Detail.Metadata.Label title="Created By" text={note.created_by} />
-                    )}
-                    {note.created_at && (
-                      <List.Item.Detail.Metadata.Label
-                        title="Created At"
-                        text={formatDate(note.created_at)}
-                      />
-                    )}
-                    {note.metadata && (
-                      <List.Item.Detail.Metadata.Label title="Info" text={note.metadata} />
-                    )}
-                  </List.Item.Detail.Metadata>
-                }
-              />
-            }
-          />
+          <AthleteNoteItem key={`${note.title}-${index}`} note={note} index={index} />
         ))
       )}
     </List>
+  );
+}
+
+function AthleteNoteItem({ note, index }: { note: AthleteNote; index: number }) {
+  const hudlCredentials = parseHudlNote(note);
+
+  return (
+    <List.Item
+      key={`${note.title}-${index}`}
+      title={note.title || `Note ${index + 1}`}
+      subtitle={note.created_by ? `By ${note.created_by}` : undefined}
+      accessories={
+        [
+          note.created_at ? { text: formatDate(note.created_at) } : undefined,
+          note.metadata ? { text: note.metadata } : undefined,
+        ].filter(Boolean) as { text: string }[]
+      }
+      detail={
+        <List.Item.Detail
+          markdown={note.description || '_No description provided_'}
+          metadata={
+            <List.Item.Detail.Metadata>
+              {note.created_by && (
+                <List.Item.Detail.Metadata.Label title="Created By" text={note.created_by} />
+              )}
+              {note.created_at && (
+                <List.Item.Detail.Metadata.Label
+                  title="Created At"
+                  text={formatDate(note.created_at)}
+                />
+              )}
+              {note.metadata && (
+                <List.Item.Detail.Metadata.Label title="Info" text={note.metadata} />
+              )}
+            </List.Item.Detail.Metadata>
+          }
+        />
+      }
+      actions={
+        <ActionPanel>
+          {hudlCredentials && (
+            <ActionPanel.Section title="Hudl">
+              <Action
+                title="Paste Email"
+                onAction={async () => {
+                  await Clipboard.paste(hudlCredentials.email);
+                }}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+              />
+              <Action
+                title="Paste Password"
+                onAction={async () => {
+                  await Clipboard.paste(hudlCredentials.password);
+                }}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+              />
+            </ActionPanel.Section>
+          )}
+        </ActionPanel>
+      }
+    />
   );
 }
 
@@ -203,4 +233,27 @@ function formatDate(value?: string | null) {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function parseHudlNote(note: AthleteNote): { email: string; password: string } | null {
+  if ((note.title || '').trim().toLowerCase() !== 'hudl') {
+    return null;
+  }
+
+  const lines = (note.description || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  if (lines.length < 2) {
+    return null;
+  }
+
+  const [email, password] = lines;
+  const isEmail = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i.test(email);
+  if (!isEmail || !password) {
+    return null;
+  }
+
+  return { email, password };
 }

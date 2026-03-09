@@ -39,6 +39,7 @@ import { getInQueueReminderDefaultDate } from './lib/craft-reminder-date';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { craftLogger, logger, videoProgressLogger } from './lib/logger';
 import EmailStudentAthletesCommand from './email-student-athletes';
+import VideoUpdatesCommand from './video-updates';
 
 interface Preferences {
   craftBaseUrl?: string;
@@ -50,7 +51,7 @@ interface Preferences {
   scoutApiKey?: string;
 }
 
-interface VideoProgressTask {
+export interface VideoProgressTask {
   id?: number; // video_msg_id for updates
   athlete_id: number;
   athlete_main_id?: string;
@@ -585,7 +586,7 @@ function formatApprovedJerseyToken(raw?: string): string {
   return `#${match[0]}`;
 }
 
-function shouldIncludeTask(task: VideoProgressTask): boolean {
+export function shouldIncludeTask(task: VideoProgressTask): boolean {
   if (!task.assignedvideoeditor || task.assignedvideoeditor.trim() !== ASSIGNED_EDITOR) {
     return false;
   }
@@ -605,7 +606,7 @@ function shouldIncludeTask(task: VideoProgressTask): boolean {
   return true;
 }
 
-function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
+export function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
   return [...tasks].sort((a, b) => {
     const aYear = Number(a.grad_year) || 9999;
     const bYear = Number(b.grad_year) || 9999;
@@ -966,7 +967,7 @@ interface DetailProps {
   onStatusUpdate: (updatedTasks?: VideoProgressTask[]) => void;
 }
 
-function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
+export function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   const { push, pop } = useNavigation();
   const [isUpdating, setIsUpdating] = useState(false);
   const [youtubeTitle, setYoutubeTitle] = useState('');
@@ -1375,6 +1376,16 @@ ${approvedDetail}
           </ActionPanel.Section>
 
           <ActionPanel.Section title="Update Task">
+            <Action.Push
+              title="Video Updates"
+              icon={Icon.Pencil}
+              target={
+                <VideoUpdatesCommand
+                  draftValues={{ athleteName: task.athletename, youtubeLink: '', season: '', videoType: '' }}
+                />
+              }
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
+            />
             <Action.Push
               title="Update Status"
               icon="📊"
@@ -2722,6 +2733,16 @@ export default function VideoProgress() {
                       />
                     }
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+                  />
+                  <Action.Push
+                    title="Video Updates"
+                    icon={Icon.Pencil}
+                    target={
+                      <VideoUpdatesCommand
+                        draftValues={{ athleteName: task.athletename, youtubeLink: '', season: '', videoType: '' }}
+                      />
+                    }
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
                   />
                   <Action.Push
                     title="Inbox Follow Ups"

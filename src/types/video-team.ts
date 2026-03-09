@@ -32,6 +32,10 @@ export interface NPIDInboxMessage {
   subject: string;
   content: string;
   preview: string;
+  unassignedBody?: string;
+  assignedBody?: string;
+  latestVisibleBody?: string;
+  contextualBody?: string;
   status: 'assigned' | 'unassigned';
   timestamp: string;
   timeStampDisplay: string | null;
@@ -100,6 +104,29 @@ export interface VideoTeamMessageDetail {
     clientUpdate: string;
     lastPayment: string;
   };
+}
+
+export interface InboxMessageDetailResponse {
+  content: string;
+  unassigned_body?: string;
+  assigned_body?: string;
+  latest_visible_body?: string;
+  contextual_body?: string;
+  timestamp?: string;
+  subject?: string;
+  from_name?: string;
+  from_email?: string;
+  message_id?: string;
+  item_code?: string;
+  contact_id?: string;
+  athlete_main_id?: string;
+  athlete_links?: {
+    profile?: string;
+    notes?: string;
+    search?: string;
+    addVideoForm?: string;
+  };
+  attachments?: VideoTeamAttachment[];
 }
 
 export type VideoTeamSearchCategory =
