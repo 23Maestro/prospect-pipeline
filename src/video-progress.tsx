@@ -634,6 +634,36 @@ export function sortTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
   });
 }
 
+function sortInQueueTasksByDueDate(tasks: VideoProgressTask[]): VideoProgressTask[] {
+  const baseOrder = sortTasks(tasks);
+  const baseIndex = new Map<number | string, number>();
+  baseOrder.forEach((task, index) => {
+    baseIndex.set(task.id ?? `athlete:${task.athlete_id}`, index);
+  });
+
+  const parseDue = (value?: string) => {
+    if (!value) return null;
+    const ts = Date.parse(value);
+    return Number.isNaN(ts) ? null : ts;
+  };
+
+  return [...tasks].sort((a, b) => {
+    const aDue = parseDue(a.video_due_date);
+    const bDue = parseDue(b.video_due_date);
+
+    if (aDue === null && bDue === null) {
+      return (baseIndex.get(a.id ?? `athlete:${a.athlete_id}`) ?? 0) -
+        (baseIndex.get(b.id ?? `athlete:${b.athlete_id}`) ?? 0);
+    }
+    if (aDue === null) return 1;
+    if (bDue === null) return -1;
+    if (aDue !== bDue) return aDue - bDue;
+
+    return (baseIndex.get(a.id ?? `athlete:${a.athlete_id}`) ?? 0) -
+      (baseIndex.get(b.id ?? `athlete:${b.athlete_id}`) ?? 0);
+  });
+}
+
 function sortDoneTasks(tasks: VideoProgressTask[]): VideoProgressTask[] {
   const parseTs = (value?: string) => {
     if (!value) return null;
@@ -2582,8 +2612,13 @@ export default function VideoProgress() {
     }
     return true;
   });
-  const visibleTasks =
-    stageFilter === 'Done' && !shouldBypassFilters ? sortDoneTasks(filteredTasks) : filteredTasks;
+  const visibleTasks = shouldBypassFilters
+    ? filteredTasks
+    : stageFilter === 'Done'
+      ? sortDoneTasks(filteredTasks)
+      : stageFilter === 'In Queue'
+        ? sortInQueueTasksByDueDate(filteredTasks)
+        : filteredTasks;
 
   const jumpToStageFilter = async (stage: string) => {
     setStageFilter(stage);

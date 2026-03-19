@@ -139,9 +139,7 @@ function EmailContentDetail({
   const displayTimestamp = detailedTimestamp || message.timestamp || 'Unknown';
 
   const displayName = sanitizeAthleteName(resolvedAthleteName || message.name) || 'Unknown';
-  const displayContent = detailResult
-    ? contentToDisplay
-    : normalizeInboxDisplayBody(contentToDisplay) || contentToDisplay;
+  const displayContent = normalizeInboxDisplayBody(contentToDisplay) || contentToDisplay;
   const formattedContent = detailResult
     ? formatAssignedReplyHeaderLabel(displayContent)
     : displayContent;

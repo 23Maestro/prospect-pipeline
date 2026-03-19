@@ -38,6 +38,13 @@ export function normalizeInboxDisplayBody(raw: string): string {
         `${prefix}${quotePrefix || ''}${intro}${String(middle).replace(/\s+/g, ' ').trim()}${suffix}`,
     );
 
+  const firstReplyHeaderMatch = compactedReplyHeaders.match(
+    /(^|\n| )>?\s*On\s+(?:[A-Za-z]{3,9},\s+)?[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:,\s+at|\s+at|,)\s+\d{1,2}:\d{2}\s*[AP]M,?\s+.+?\s+wrote:/i,
+  );
+  const replyTrimmed = firstReplyHeaderMatch
+    ? compactedReplyHeaders.slice(0, firstReplyHeaderMatch.index).trimEnd()
+    : compactedReplyHeaders;
+
   const shouldDropLine = (line: string) => {
     if (!line) return false;
     if (/^Yahoo Mail:/i.test(line)) return true;
@@ -62,7 +69,7 @@ export function normalizeInboxDisplayBody(raw: string): string {
   };
 
   const cleanedLines: string[] = [];
-  for (const rawLine of compactedReplyHeaders.split('\n')) {
+  for (const rawLine of replyTrimmed.split('\n')) {
     const line = rawLine.trim();
     if (!line) {
       cleanedLines.push('');
