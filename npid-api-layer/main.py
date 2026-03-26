@@ -6,7 +6,11 @@ import logging
 import os
 from pathlib import Path
 
-from app.session import session_manager, video_progress_session_manager
+from app.session import (
+    get_session_file_status,
+    session_manager,
+    video_progress_session_manager,
+)
 from app.routers.video import router as video_router
 from app.routers.athlete import router as athlete_router
 from app.routers.assignments import router as assignments_router
@@ -79,6 +83,43 @@ def health():
         "status": "ok",
         "session_authenticated": session_manager.is_authenticated
     }
+
+
+@app.get("/auth-status")
+async def auth_status():
+    shared_probe = await session_manager.probe_auth()
+    video_progress_probe = await video_progress_session_manager.probe_auth()
+
+    return {
+        "status": "ok",
+        "session_file": get_session_file_status(),
+        "shared_session": {
+            **session_manager.debug_snapshot(),
+            "probe": shared_probe,
+        },
+        "video_progress_session": {
+            **video_progress_session_manager.debug_snapshot(),
+            "probe": video_progress_probe,
+        },
+        "summary": {
+            "cookies_present": bool(session_manager.client.cookies),
+            "shared_session_valid": shared_probe["auth_valid"],
+            "video_progress_session_valid": video_progress_probe["auth_valid"],
+            "likely_disconnected": not (
+                shared_probe["auth_valid"] and video_progress_probe["auth_valid"]
+            ),
+        },
+    }
+
+
+@app.post("/auth/reload")
+async def auth_reload():
+    session_manager.reload_from_disk()
+    video_progress_session_manager.reload_from_disk()
+    await session_manager.refresh_csrf()
+    await video_progress_session_manager.refresh_csrf()
+
+    return await auth_status()
 
 
 @app.get("/")

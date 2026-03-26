@@ -9,6 +9,7 @@ import pickle
 import os
 from pathlib import Path
 from typing import Optional, Dict, Any
+from datetime import datetime, timezone
 import httpx
 import re
 from urllib.parse import unquote
@@ -22,6 +23,30 @@ NPID_BASE_URL = os.getenv("NPID_BASE_URL", "https://dashboard.nationalpid.com")
 SESSION_FILE = str(Path.home() / '.npid_session.pkl')
 DEFAULT_SCOUT_API_KEY = "594168a28d26571785afcb83997cb8185f482e56"
 NPID_API_KEY = os.getenv("NPID_API_KEY", DEFAULT_SCOUT_API_KEY)
+
+
+def get_session_file_status() -> Dict[str, Any]:
+    path = Path(SESSION_FILE)
+    status: Dict[str, Any] = {
+        "path": str(path),
+        "exists": path.exists(),
+    }
+
+    if not path.exists():
+        return status
+
+    stat_result = path.stat()
+    modified_at = datetime.fromtimestamp(stat_result.st_mtime, tz=timezone.utc)
+    age_seconds = max(0.0, (datetime.now(timezone.utc) - modified_at).total_seconds())
+
+    status.update(
+        {
+            "size_bytes": stat_result.st_size,
+            "modified_at": modified_at.isoformat(),
+            "age_seconds": round(age_seconds, 2),
+        }
+    )
+    return status
 
 
 class NPIDSession:
@@ -90,6 +115,12 @@ class NPIDSession:
             logger.error(f"❌ Failed to load session: {e}")
             # Do not crash; start with empty session
 
+    def reload_from_disk(self):
+        self.client.cookies.clear()
+        self.csrf_token = None
+        self.is_authenticated = False
+        self._load_session_sync(SESSION_FILE)
+
     async def refresh_csrf(self):
         """
         Fetches a fresh CSRF token from the dashboard.
@@ -114,6 +145,47 @@ class NPIDSession:
 
         except Exception as e:
             logger.error(f"❌ Failed to refresh CSRF: {e}")
+
+    def cookie_names(self) -> list[str]:
+        return sorted({cookie.name for cookie in self.client.cookies.jar})
+
+    def debug_snapshot(self) -> Dict[str, Any]:
+        return {
+            "cookies_loaded": bool(self.client.cookies),
+            "cookie_count": len(self.cookie_names()),
+            "cookie_names": self.cookie_names(),
+            "csrf_token_present": bool(self.csrf_token),
+        }
+
+    async def probe_auth(
+        self,
+        path: str = "/videoteammsg/videomailprogress",
+        expected_content_type_fragment: str = "text/html",
+    ) -> Dict[str, Any]:
+        response = await self.client.get(path)
+        content_type = (response.headers.get("content-type") or "").lower()
+        location = response.headers.get("Location")
+        body_preview = (response.text or "")[:200]
+        login_redirect = response.status_code in [301, 302] and bool(location and "/auth/login" in location)
+        login_markup = "/auth/login" in (response.text or "")
+        auth_valid = (
+            response.status_code == 200
+            and expected_content_type_fragment in content_type
+            and not login_redirect
+            and not login_markup
+        )
+
+        return {
+            "path": path,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+            "location": location,
+            "auth_valid": auth_valid,
+            "login_redirect": login_redirect,
+            "login_markup_detected": login_markup,
+            "body_preview": body_preview,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
 
     def _is_csrf_failure(self, resp: httpx.Response) -> bool:
         """
@@ -269,8 +341,23 @@ class VideoProgressSession:
             self.csrf_token = unquote(raw_token)
             logger.info("✅ [video-progress] CSRF token loaded from cookie")
 
+    def cookie_names(self) -> list[str]:
+        return sorted({cookie.name for cookie in self.client.cookies.jar})
+
+    def debug_snapshot(self) -> Dict[str, Any]:
+        return {
+            "cookies_loaded": bool(self.client.cookies),
+            "cookie_count": len(self.cookie_names()),
+            "cookie_names": self.cookie_names(),
+            "csrf_token_present": bool(self.csrf_token),
+            "form_token_present": bool(self.form_token),
+        }
+
     def _reload_cookies_from_disk(self):
         self.client.cookies.clear()
+        self.csrf_token = None
+        self.form_token = None
+        self.is_authenticated = False
         self._load_session_sync(SESSION_FILE)
         cookie_names = sorted({c.name for c in self.client.cookies.jar})
         logger.info("✅ [video-progress] Cookies loaded: %s", ", ".join(cookie_names) or "none")
@@ -315,6 +402,28 @@ class VideoProgressSession:
         except Exception as e:
             logger.error(f"❌ [video-progress] Failed to refresh CSRF: {e}")
 
+    async def probe_auth(self, path: str = "/videoteammsg/videomailprogress") -> Dict[str, Any]:
+        self._reload_cookies_from_disk()
+        response = await self.client.get(path)
+        content_type = (response.headers.get("content-type") or "").lower()
+        location = response.headers.get("Location")
+        body_preview = (response.text or "")[:200]
+        login_redirect = response.status_code in [301, 302] and bool(location and "/auth/login" in location)
+        login_markup = "/auth/login" in (response.text or "")
+        auth_valid = response.status_code == 200 and "text/html" in content_type and not login_redirect and not login_markup
+
+        return {
+            "path": path,
+            "status_code": response.status_code,
+            "content_type": response.headers.get("content-type"),
+            "location": location,
+            "auth_valid": auth_valid,
+            "login_redirect": login_redirect,
+            "login_markup_detected": login_markup,
+            "body_preview": body_preview,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     async def post_video_progress(self, path: str, data: Dict[str, Any] = None) -> httpx.Response:
         if data is None:
             data = {}
@@ -350,6 +459,10 @@ class VideoProgressSession:
 
     async def close(self):
         await self.client.aclose()
+
+    def reload_from_disk(self):
+        self._reload_cookies_from_disk()
+        self._hydrate_csrf_from_cookie()
 
 
 # Dedicated session manager for video progress only

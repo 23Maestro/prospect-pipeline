@@ -15,7 +15,10 @@ import {
 import { format } from 'date-fns';
 import { useEffect, useState, useRef } from 'react';
 import path from 'path';
-import { apiFetch } from './lib/fastapi-client';
+import {
+  apiFetch,
+  fetchAuthStatus,
+} from './lib/fastapi-client';
 import { executePythonScript } from './lib/python-executor';
 import { getPythonScriptPath, WORKSPACE_ROOT } from './lib/python-env';
 import {
@@ -37,7 +40,13 @@ import {
 } from './lib/npid-mcp-adapter';
 import { getInQueueReminderDefaultDate } from './lib/craft-reminder-date';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
+import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-action';
 import { craftLogger, logger, videoProgressLogger } from './lib/logger';
+import {
+  buildAuthRecoveryMarkdown,
+  diagnoseAuthFailure,
+  type AuthRecoveryState,
+} from './lib/npid-auth-recovery';
 import EmailStudentAthletesCommand from './email-student-athletes';
 import VideoUpdatesCommand from './video-updates';
 
@@ -298,6 +307,14 @@ type CraftMcpUpsertResponse = {
   error?: string;
 };
 
+type CraftMcpDeleteResponse = {
+  success?: boolean;
+  operation?: 'delete' | 'noop';
+  document_id?: string;
+  deleted_block_id?: string | null;
+  error?: string;
+};
+
 async function upsertReminderViaMcp(params: {
   mcpUrl: string;
   password?: string;
@@ -336,6 +353,114 @@ async function upsertReminderViaMcp(params: {
     },
   );
   craftLogger.info('CRAFT_MCP_UPSERT_RESULT', result);
+  return result;
+}
+
+async function deleteReminderViaMcp(params: {
+  mcpUrl: string;
+  password?: string;
+  reminderType: ReminderType;
+  documentId: string;
+  athleteName: string;
+}): Promise<CraftMcpDeleteResponse> {
+  const markerTypes = getReminderMarkerTypes(params.reminderType);
+  const markers = markerTypes.map((t) => buildMarker(t, params.athleteName, ''));
+  craftLogger.info('CRAFT_MCP_DELETE_START', {
+    mcpUrl: params.mcpUrl,
+    reminderType: params.reminderType,
+    documentId: params.documentId,
+    athleteName: params.athleteName,
+    markers,
+    hasPassword: !!params.password,
+  });
+  const result = await executePythonScript<CraftMcpDeleteResponse>(
+    CRAFT_MCP_CLIENT_SCRIPT,
+    'delete_reminder',
+    {
+      mcp_url: params.mcpUrl,
+      password: params.password || '',
+      document_id: params.documentId,
+      athlete_name: params.athleteName,
+      markers,
+    },
+    {
+      contextName: 'Craft MCP Client',
+      pythonPath: CRAFT_MCP_PYTHON_PATH,
+      timeout: 45000,
+    },
+  );
+  craftLogger.info('CRAFT_MCP_DELETE_RESULT', result);
+  return result;
+}
+
+async function saveCraftReminder(params: {
+  task: VideoProgressTask;
+  reminderType: ReminderType;
+  reminderDate: string;
+}): Promise<CraftMcpUpsertResponse> {
+  craftLogger.info('CRAFT_SAVE_START', {
+    athleteId: params.task.athlete_id,
+    athleteName: params.task.athletename,
+    reminderType: params.reminderType,
+    reminderDate: params.reminderDate,
+    videoDueDate: params.task.video_due_date || null,
+  });
+  const { baseUrl, password } = getCraftConfig();
+  const markdown = buildReminderMarkdown(params.task.athletename);
+  const documentId = await resolveTargetDocumentId(baseUrl, password, params.reminderType);
+  const result = await upsertReminderViaMcp({
+    mcpUrl: baseUrl,
+    password,
+    reminderType: params.reminderType,
+    documentId,
+    markdown,
+    athleteName: params.task.athletename,
+    reminderDate: params.reminderDate,
+  });
+  if (!result?.success) {
+    throw new Error(result?.error || 'Craft MCP upsert failed');
+  }
+  craftLogger.info('CRAFT_SAVE_DONE', {
+    athleteId: params.task.athlete_id,
+    athleteName: params.task.athletename,
+    reminderType: params.reminderType,
+    reminderDate: params.reminderDate,
+    operation: result.operation || 'create',
+    blockId: result.matched_block_id || result.created_block_id || null,
+    documentId,
+  });
+  return result;
+}
+
+async function deleteCraftReminder(params: {
+  task: VideoProgressTask;
+  reminderType: ReminderType;
+}): Promise<CraftMcpDeleteResponse> {
+  craftLogger.info('CRAFT_DELETE_START', {
+    athleteId: params.task.athlete_id,
+    athleteName: params.task.athletename,
+    reminderType: params.reminderType,
+  });
+  const { baseUrl, password } = getCraftConfig();
+  const documentId = await resolveTargetDocumentId(baseUrl, password, params.reminderType);
+  const result = await deleteReminderViaMcp({
+    mcpUrl: baseUrl,
+    password,
+    reminderType: params.reminderType,
+    documentId,
+    athleteName: params.task.athletename,
+  });
+  if (!result?.success) {
+    throw new Error(result?.error || 'Craft MCP delete failed');
+  }
+  craftLogger.info('CRAFT_DELETE_DONE', {
+    athleteId: params.task.athlete_id,
+    athleteName: params.task.athletename,
+    reminderType: params.reminderType,
+    operation: result.operation || 'noop',
+    blockId: result.deleted_block_id || null,
+    documentId,
+  });
   return result;
 }
 
@@ -652,15 +777,19 @@ function sortInQueueTasksByDueDate(tasks: VideoProgressTask[]): VideoProgressTas
     const bDue = parseDue(b.video_due_date);
 
     if (aDue === null && bDue === null) {
-      return (baseIndex.get(a.id ?? `athlete:${a.athlete_id}`) ?? 0) -
-        (baseIndex.get(b.id ?? `athlete:${b.athlete_id}`) ?? 0);
+      return (
+        (baseIndex.get(a.id ?? `athlete:${a.athlete_id}`) ?? 0) -
+        (baseIndex.get(b.id ?? `athlete:${b.athlete_id}`) ?? 0)
+      );
     }
     if (aDue === null) return 1;
     if (bDue === null) return -1;
     if (aDue !== bDue) return aDue - bDue;
 
-    return (baseIndex.get(a.id ?? `athlete:${a.athlete_id}`) ?? 0) -
-      (baseIndex.get(b.id ?? `athlete:${b.athlete_id}`) ?? 0);
+    return (
+      (baseIndex.get(a.id ?? `athlete:${a.athlete_id}`) ?? 0) -
+      (baseIndex.get(b.id ?? `athlete:${b.athlete_id}`) ?? 0)
+    );
   });
 }
 
@@ -971,6 +1100,11 @@ function AdminAthleteTableDetail({
               onAction={() => openView('campaigns')}
             />
           </ActionPanel.Section>
+          <ReconnectProspectIdAction
+            onReconnectSuccess={() =>
+              openView(title === 'Payments' ? 'payments' : title === 'Email List' ? 'emails' : 'campaigns')
+            }
+          />
           <Action.OpenInBrowser
             title={
               title === 'Payments'
@@ -1411,7 +1545,12 @@ ${approvedDetail}
               icon={Icon.Pencil}
               target={
                 <VideoUpdatesCommand
-                  draftValues={{ athleteName: task.athletename, youtubeLink: '', season: '', videoType: '' }}
+                  draftValues={{
+                    athleteName: task.athletename,
+                    youtubeLink: '',
+                    season: '',
+                    videoType: '',
+                  }}
                 />
               }
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
@@ -1479,6 +1618,7 @@ ${approvedDetail}
               }}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'f' }}
             />
+            <ReconnectProspectIdAction onReconnectSuccess={() => onStatusUpdate()} />
             <Action title="Back" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -1525,34 +1665,8 @@ function CraftReminderForm({ task, reminderType }: CraftReminderFormProps) {
         reminderType,
         inputReminderDate: values?.reminderDate ? formatReminderDate(values.reminderDate) : null,
       });
-      const { baseUrl, password } = getCraftConfig();
       const reminderDate = formatReminderDate(values.reminderDate);
-      const markdown = buildReminderMarkdown(task.athletename);
-      craftLogger.debug('CRAFT_SUBMIT_PREPARED', {
-        reminderDate,
-        markdownPreview: markdown.slice(0, 200),
-      });
-      const documentId = await resolveTargetDocumentId(baseUrl, password, reminderType);
-      const result = await upsertReminderViaMcp({
-        mcpUrl: baseUrl,
-        password,
-        reminderType,
-        documentId,
-        markdown,
-        athleteName: task.athletename,
-        reminderDate,
-      });
-      if (!result?.success) {
-        throw new Error(result?.error || 'Craft MCP upsert failed');
-      }
-      craftLogger.info('CRAFT_SUBMIT_DONE', {
-        operation: result.operation || 'create',
-        blockId: result.matched_block_id || result.created_block_id || null,
-        documentId,
-        athleteName: task.athletename,
-        reminderType,
-        reminderDate,
-      });
+      const result = await saveCraftReminder({ task, reminderType, reminderDate });
       await showToast({
         style: Toast.Style.Success,
         title: result.operation === 'update' ? 'Updated Craft reminder' : 'Created Craft reminder',
@@ -1593,6 +1707,7 @@ function CraftReminderForm({ task, reminderType }: CraftReminderFormProps) {
             }
             onSubmit={handleSubmit}
           />
+          <ReconnectProspectIdAction />
         </ActionPanel>
       }
     >
@@ -1621,6 +1736,10 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
     try {
       // Format date as MM/DD/YYYY (Laravel format)
       const formattedDate = format(values.dueDate, 'MM/dd/yyyy');
+      const nextReminderDate = formatReminderDate(
+        getDueReminderDefaultDate(format(values.dueDate, 'yyyy-MM-dd')),
+      );
+      const isInQueueStage = normalizeStage(getTaskStage(task) || 'In Queue') === 'in_queue';
 
       const response = await apiFetch(`/video/${task.id}/duedate`, {
         method: 'POST',
@@ -1637,11 +1756,31 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
       }
 
       await updateCachedTaskDueDate(task.id, formattedDate);
+      let craftErrorMessage: string | null = null;
+      if (isInQueueStage) {
+        try {
+          await saveCraftReminder({
+            task: { ...task, video_due_date: formattedDate },
+            reminderType: 'in-queue',
+            reminderDate: nextReminderDate,
+          });
+        } catch (error) {
+          craftErrorMessage = error instanceof Error ? error.message : String(error);
+          craftLogger.error('CRAFT_DUE_DATE_SYNC_FAILED', {
+            athleteId: task.athlete_id,
+            athleteName: task.athletename,
+            reminderType: 'in-queue',
+            videoDueDate: formattedDate,
+            reminderDate: nextReminderDate,
+            error: craftErrorMessage,
+          });
+        }
+      }
 
       await showToast({
-        style: Toast.Style.Success,
-        title: 'Due Date Updated',
-        message: `Updated to ${formattedDate}`,
+        style: craftErrorMessage ? Toast.Style.Failure : Toast.Style.Success,
+        title: craftErrorMessage ? 'Due Date Updated, Craft Failed' : 'Due Date Updated',
+        message: craftErrorMessage || `Updated to ${formattedDate}`,
       });
 
       onUpdate();
@@ -1666,6 +1805,7 @@ function EditDueDateForm({ task, onUpdate }: EditDueDateFormProps) {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update Due Date" onSubmit={handleSubmit} />
+          <ReconnectProspectIdAction />
         </ActionPanel>
       }
     >
@@ -1730,6 +1870,7 @@ function UpdateCompletionDateForm({ task, onBack, onUpdate }: UpdateCompletionDa
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update Completion Date" onSubmit={handleSubmit} />
+          <ReconnectProspectIdAction />
           <Action title="Cancel" icon={Icon.XMarkCircle} onAction={onBack} />
         </ActionPanel>
       }
@@ -1865,6 +2006,7 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Save Status" icon={Icon.Checkmark} onSubmit={handleSubmit} />
+          <ReconnectProspectIdAction />
         </ActionPanel>
       }
     >
@@ -1906,6 +2048,13 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
     setIsSubmitting(true);
     try {
       const normalizedStage = normalizeStage(selectedStage);
+      const previousStage = normalizeStage(getTaskStage(task) || 'In Queue');
+      const shouldCreateInQueueReminder = normalizedStage === 'in_queue';
+      const shouldDeleteInQueueReminder =
+        previousStage === 'in_queue' && normalizedStage !== 'in_queue';
+      const reminderDate = shouldCreateInQueueReminder
+        ? formatReminderDate(getDueReminderDefaultDate(task.video_due_date))
+        : null;
       logger.info('Stage update request', {
         videoMsgId: task.id,
         athleteId: task.athlete_id,
@@ -1931,10 +2080,62 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
       }
 
       await updateCachedTaskStatusStage(task.id, { stage: selectedStage });
+      let craftResult: CraftMcpUpsertResponse | null = null;
+      let craftDeleteResult: CraftMcpDeleteResponse | null = null;
+      let craftErrorMessage: string | null = null;
+      if (shouldCreateInQueueReminder && reminderDate) {
+        try {
+          craftResult = await saveCraftReminder({
+            task,
+            reminderType: 'in-queue',
+            reminderDate,
+          });
+        } catch (error) {
+          craftErrorMessage = error instanceof Error ? error.message : String(error);
+          craftLogger.error('CRAFT_AUTO_CREATE_FAILED', {
+            athleteId: task.athlete_id,
+            athleteName: task.athletename,
+            reminderType: 'in-queue',
+            reminderDate,
+            error: craftErrorMessage,
+          });
+        }
+      } else if (shouldDeleteInQueueReminder) {
+        try {
+          craftDeleteResult = await deleteCraftReminder({
+            task,
+            reminderType: 'in-queue',
+          });
+        } catch (error) {
+          craftErrorMessage = error instanceof Error ? error.message : String(error);
+          craftLogger.error('CRAFT_AUTO_DELETE_FAILED', {
+            athleteId: task.athlete_id,
+            athleteName: task.athletename,
+            reminderType: 'in-queue',
+            previousStage,
+            nextStage: normalizedStage,
+            error: craftErrorMessage,
+          });
+        }
+      }
       await showToast({
-        style: Toast.Style.Success,
-        title: 'Stage Updated',
-        message: `Updated to ${selectedStage}`,
+        style: craftErrorMessage ? Toast.Style.Failure : Toast.Style.Success,
+        title: craftErrorMessage
+          ? 'Stage Updated, Craft Failed'
+          : shouldCreateInQueueReminder && craftResult
+            ? 'Stage Updated + Craft Task Created'
+            : shouldDeleteInQueueReminder && craftDeleteResult?.operation === 'delete'
+              ? 'Stage Updated + Craft Task Deleted'
+              : shouldDeleteInQueueReminder
+                ? 'Stage Updated + Craft Already Clear'
+                : 'Stage Updated',
+        message: craftErrorMessage
+          ? craftErrorMessage
+          : shouldCreateInQueueReminder && reminderDate
+            ? `${task.athletename} scheduled for ${reminderDate}`
+            : shouldDeleteInQueueReminder
+              ? task.athletename
+              : `Updated to ${selectedStage}`,
       });
 
       const allTasks = await getCachedTasks();
@@ -1967,6 +2168,7 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Save Stage" icon={Icon.Checkmark} onSubmit={handleSubmit} />
+          <ReconnectProspectIdAction />
         </ActionPanel>
       }
     >
@@ -2240,6 +2442,7 @@ function ContactInfoDetail({
               onAction={loadContactInfo}
               shortcut={{ modifiers: ['cmd'], key: 'r' }}
             />
+            <ReconnectProspectIdAction onReconnectSuccess={loadContactInfo} />
             <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -2281,9 +2484,49 @@ function generateContactMarkdown(info: ContactInfo | null): string {
   return lines.join('\n');
 }
 
+function AuthRecoveryDetail(props: {
+  recovery: AuthRecoveryState;
+  onReconnectSuccess: () => Promise<void>;
+  onRetry: () => Promise<void>;
+  onDismiss: () => void;
+}) {
+  const { recovery, onReconnectSuccess, onRetry, onDismiss } = props;
+
+  return (
+    <Detail
+      navigationTitle="Prospect ID Recovery"
+      markdown={buildAuthRecoveryMarkdown(recovery)}
+      actions={
+        <ActionPanel>
+          <ReconnectProspectIdAction onReconnectSuccess={onReconnectSuccess} />
+          <Action
+            title="Retry Status Check"
+            icon={Icon.Repeat}
+            onAction={onRetry}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+          />
+          <Action.OpenInBrowser
+            title="Open Prospect ID Login"
+            url="https://dashboard.nationalpid.com/auth/login"
+            icon={Icon.Globe}
+            shortcut={{ modifiers: ['cmd'], key: 'o' }}
+          />
+          <Action
+            title="Continue With Cached Tasks"
+            icon={Icon.List}
+            onAction={onDismiss}
+            shortcut={{ modifiers: ['cmd'], key: 'escape' }}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
 export default function VideoProgress() {
   const [tasks, setTasks] = useState<VideoProgressTask[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [authRecovery, setAuthRecovery] = useState<AuthRecoveryState | null>(null);
   const [stageFilter, setStageFilter] = useState<string>('In Queue');
   const [rawSearchEnabled, setRawSearchEnabled] = useState(false);
   const [searchText, setSearchText] = useState('');
@@ -2306,6 +2549,21 @@ export default function VideoProgress() {
     const filtered = dedupeTasksPreferNative(cached.filter(shouldIncludeTask));
     const sorted = sortTasks(filtered);
     setTasks(sorted);
+  };
+
+  const retryAuthStatusCheck = async () => {
+    const authStatus = await fetchAuthStatus();
+    if (!authStatus.summary.likely_disconnected) {
+      setAuthRecovery(null);
+      await loadTasks();
+      return;
+    }
+
+    setAuthRecovery({
+      title: 'Prospect ID Session Needs Reconnect',
+      message: 'Prospect ID is still rejecting the saved session snapshot.',
+      authStatus,
+    });
   };
 
   const loadTasks = async () => {
@@ -2342,7 +2600,14 @@ export default function VideoProgress() {
         }),
       });
       if (!response.ok) {
-        throw new Error(`Failed to load tasks (HTTP ${response.status})`);
+        const { text, json } = await readResponseBody(response);
+        const message = extractApiErrorMessage(response.status, text, json);
+        const recovery = await diagnoseAuthFailure(response.status, message);
+        if (recovery) {
+          setAuthRecovery(recovery);
+          return;
+        }
+        throw new Error(`Failed to load tasks (HTTP ${response.status}): ${message}`);
       }
       const result = (await response.json()) as any;
       const data = result.tasks || [];
@@ -2358,6 +2623,7 @@ export default function VideoProgress() {
       const updatedCache = await getCachedTasks();
       const filtered = dedupeTasksPreferNative(updatedCache.filter(shouldIncludeTask));
       setTasks(sortTasks(filtered));
+      setAuthRecovery(null);
 
       await showToast({
         style: Toast.Style.Success,
@@ -2677,6 +2943,20 @@ export default function VideoProgress() {
   // Build current filter value for display
   const currentFilterValue = `stage:${stageFilter}`;
 
+  if (authRecovery) {
+    return (
+      <AuthRecoveryDetail
+        recovery={authRecovery}
+        onReconnectSuccess={async () => {
+          setAuthRecovery(null);
+          await loadTasks();
+        }}
+        onRetry={retryAuthStatusCheck}
+        onDismiss={() => setAuthRecovery(null)}
+      />
+    );
+  }
+
   return (
     <List
       isLoading={isLoading || isRawSearchLoading}
@@ -2688,6 +2968,7 @@ export default function VideoProgress() {
         <ActionPanel>
           {renderRawSearchToggleAction()}
           {renderStageViewActions()}
+          <ReconnectProspectIdAction onReconnectSuccess={loadTasks} />
         </ActionPanel>
       }
       searchBarAccessory={
@@ -2715,6 +2996,7 @@ export default function VideoProgress() {
             <ActionPanel>
               {renderRawSearchToggleAction()}
               {renderStageViewActions()}
+              <ReconnectProspectIdAction onReconnectSuccess={loadTasks} />
             </ActionPanel>
           }
         />
@@ -2774,7 +3056,12 @@ export default function VideoProgress() {
                     icon={Icon.Pencil}
                     target={
                       <VideoUpdatesCommand
-                        draftValues={{ athleteName: task.athletename, youtubeLink: '', season: '', videoType: '' }}
+                        draftValues={{
+                          athleteName: task.athletename,
+                          youtubeLink: '',
+                          season: '',
+                          videoType: '',
+                        }}
                       />
                     }
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
@@ -2851,6 +3138,19 @@ export default function VideoProgress() {
                       await loadTasks();
                     }}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                  />
+                  <ReconnectProspectIdAction
+                    onReconnectSuccess={async () => {
+                      if (shouldBypassFilters) {
+                        const term = searchText.trim();
+                        if (!term) {
+                          return;
+                        }
+                        await runRawSearch(term);
+                        return;
+                      }
+                      await loadTasks();
+                    }}
                   />
                   {renderStageViewActions()}
                 </ActionPanel>

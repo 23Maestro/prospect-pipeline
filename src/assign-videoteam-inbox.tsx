@@ -12,6 +12,7 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { useEffect, useMemo, useState } from 'react';
+import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-action';
 import { detectDropboxRequest } from './lib/inbox-dropbox-detector';
 import { normalizeInboxDisplayBody } from './lib/inbox-message-format';
 import {
@@ -169,6 +170,7 @@ function AssignmentModal({
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Assign to Video Team" icon="✅" onSubmit={handleAssignment} />
+          <ReconnectProspectIdAction />
           <Action title="Cancel" icon="❌" onAction={onCancel} />
         </ActionPanel>
       }
@@ -259,6 +261,7 @@ function ReplyForm({ message, onBack }: { message: NPIDInboxMessage; onBack: () 
         <ActionPanel>
           <ActionPanel.Section>
             <Action.SubmitForm title="Send Reply" onSubmit={handleSubmit} icon={Icon.Check} />
+            <ReconnectProspectIdAction />
             <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -392,6 +395,7 @@ function EmailContentDetail({
               onAction={() => onReply(message)}
               shortcut={{ modifiers: ['cmd'], key: 'return' }}
             />
+            <ReconnectProspectIdAction />
             <Action title="Back to Inbox" icon="⬅️" onAction={onBack} />
           </ActionPanel.Section>
 
@@ -712,6 +716,7 @@ export default function InboxCheck() {
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                     onAction={() => void reloadFromServer()}
                   />
+                  <ReconnectProspectIdAction onReconnectSuccess={reloadFromServer} />
                 </ActionPanel.Section>
               </ActionPanel>
             }

@@ -4,6 +4,51 @@ import { ensureServerRunning } from './api-bootstrap';
 import fetch, { RequestInit } from 'node-fetch';
 
 export const API_BASE = 'http://127.0.0.1:8000/api/v1';
+export const API_ROOT = 'http://127.0.0.1:8000';
+
+export interface AuthProbe {
+  path: string;
+  status_code: number;
+  content_type?: string | null;
+  location?: string | null;
+  auth_valid: boolean;
+  login_redirect: boolean;
+  login_markup_detected: boolean;
+  body_preview?: string;
+  checked_at: string;
+}
+
+export interface AuthStatusResponse {
+  status: string;
+  session_file: {
+    path: string;
+    exists: boolean;
+    size_bytes?: number;
+    modified_at?: string;
+    age_seconds?: number;
+  };
+  shared_session: {
+    cookies_loaded: boolean;
+    cookie_count: number;
+    cookie_names: string[];
+    csrf_token_present: boolean;
+    probe: AuthProbe;
+  };
+  video_progress_session: {
+    cookies_loaded: boolean;
+    cookie_count: number;
+    cookie_names: string[];
+    csrf_token_present: boolean;
+    form_token_present: boolean;
+    probe: AuthProbe;
+  };
+  summary: {
+    cookies_present: boolean;
+    shared_session_valid: boolean;
+    video_progress_session_valid: boolean;
+    likely_disconnected: boolean;
+  };
+}
 
 export interface SeasonsRequest {
   athleteId: string;
@@ -35,6 +80,28 @@ export async function apiFetch(endpoint: string, options?: RequestInit) {
   await ensureServerRunning();
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   return fetch(url, options);
+}
+
+export async function apiRootFetch(endpoint: string, options?: RequestInit) {
+  await ensureServerRunning();
+  const url = `${API_ROOT}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
+  return fetch(url, options);
+}
+
+export async function fetchAuthStatus(): Promise<AuthStatusResponse> {
+  const response = await apiRootFetch('/auth-status');
+  if (!response.ok) {
+    throw new Error(`Failed to fetch auth status (HTTP ${response.status})`);
+  }
+  return (await response.json()) as AuthStatusResponse;
+}
+
+export async function reloadAuthSessions(): Promise<AuthStatusResponse> {
+  const response = await apiRootFetch('/auth/reload', { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`Failed to reload auth sessions (HTTP ${response.status})`);
+  }
+  return (await response.json()) as AuthStatusResponse;
 }
 
 /**

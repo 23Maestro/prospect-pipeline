@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
 Minimal Craft MCP client bridge for Raycast.
-Implements reminder upsert using MCP tools only:
+Implements reminder upsert/delete using MCP tools only:
  - blocks_get
  - blocks_add
  - blocks_update
+ - blocks_delete
 """
 
 import asyncio
@@ -88,12 +89,48 @@ def _find_existing_block_by_athlete_and_schedule(
     return None
 
 
+def _find_existing_block_by_athlete_name(payload: Any, athlete_name: str) -> Optional[str]:
+    normalized_athlete = " ".join((athlete_name or "").split()).strip().lower()
+    if not normalized_athlete:
+        return None
+
+    for block in _iter_blocks(payload):
+        markdown = str(block.get("markdown") or "")
+        normalized_markdown = _normalize_task_markdown(markdown).lower()
+        if normalized_markdown == normalized_athlete:
+            block_id = block.get("id")
+            if block_id:
+                return str(block_id)
+    return None
+
+
 def _find_first_id(payload: Any) -> Optional[str]:
     for block in _iter_blocks(payload):
         block_id = block.get("id")
         if block_id:
             return str(block_id)
     return None
+
+
+async def _call_blocks_delete(session: ClientSession, block_id: str) -> None:
+    attempts = [
+        {"id": block_id},
+        {"blockId": block_id},
+        {"ids": [block_id]},
+        {"blockIds": [block_id]},
+    ]
+    last_error: Optional[Exception] = None
+
+    for arguments in attempts:
+        try:
+            await session.call_tool("blocks_delete", arguments=arguments)
+            return
+        except Exception as exc:
+            last_error = exc
+
+    if last_error:
+        raise last_error
+    raise RuntimeError("blocks_delete failed without an error")
 
 
 async def _upsert_reminder(args: Dict[str, Any]) -> Dict[str, Any]:
@@ -135,6 +172,8 @@ async def _upsert_reminder(args: Dict[str, Any]) -> Dict[str, Any]:
                 matched_block_id = _find_existing_block_by_athlete_and_schedule(
                     payload, athlete_name, schedule_date
                 )
+            if not matched_block_id:
+                matched_block_id = _find_existing_block_by_athlete_name(payload, athlete_name)
 
             if matched_block_id:
                 await session.call_tool(
@@ -181,6 +220,53 @@ async def _upsert_reminder(args: Dict[str, Any]) -> Dict[str, Any]:
             }
 
 
+async def _delete_reminder(args: Dict[str, Any]) -> Dict[str, Any]:
+    mcp_url = str(args.get("mcp_url") or "").strip()
+    document_id = str(args.get("document_id") or "").strip()
+    markers = [str(m).strip() for m in (args.get("markers") or []) if str(m).strip()]
+    athlete_name = str(args.get("athlete_name") or "").strip()
+    password = str(args.get("password") or "").strip()
+
+    if not mcp_url:
+        return {"success": False, "error": "missing mcp_url"}
+    if not document_id:
+        return {"success": False, "error": "missing document_id"}
+
+    request_url = mcp_url
+    if password:
+        sep = "&" if "?" in request_url else "?"
+        request_url = f"{request_url}{sep}password={password}"
+
+    async with streamablehttp_client(request_url) as (read_stream, write_stream, _):
+        async with ClientSession(read_stream, write_stream) as session:
+            await session.initialize()
+
+            get_result = await session.call_tool(
+                "blocks_get",
+                arguments={"id": document_id, "format": "json"},
+            )
+            payload = _parse_tool_payload(get_result)
+            matched_block_id = _find_existing_block_id(payload, markers)
+            if not matched_block_id:
+                matched_block_id = _find_existing_block_by_athlete_name(payload, athlete_name)
+
+            if not matched_block_id:
+                return {
+                    "success": True,
+                    "operation": "noop",
+                    "document_id": document_id,
+                    "deleted_block_id": None,
+                }
+
+            await _call_blocks_delete(session, matched_block_id)
+            return {
+                "success": True,
+                "operation": "delete",
+                "document_id": document_id,
+                "deleted_block_id": matched_block_id,
+            }
+
+
 def main() -> None:
     method = sys.argv[1] if len(sys.argv) > 1 else ""
     raw_args = sys.argv[2] if len(sys.argv) > 2 else "{}"
@@ -192,6 +278,10 @@ def main() -> None:
     try:
         if method == "upsert_reminder":
             result = asyncio.run(_upsert_reminder(args))
+            print(json.dumps(result))
+            return
+        if method == "delete_reminder":
+            result = asyncio.run(_delete_reminder(args))
             print(json.dumps(result))
             return
         print(json.dumps({"success": False, "error": f"unknown method: {method}"}))

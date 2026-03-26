@@ -14,6 +14,7 @@ import {
   Form,
 } from '@raycast/api';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-action';
 import { NPIDInboxMessage } from './types/video-team';
 import {
   fetchAthleteName,
@@ -365,6 +366,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
               onAction={handleOpenDropboxReplyFromClipboard}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
             />
+            <ReconnectProspectIdAction />
             <Action title="Back to Inbox" onAction={onBack} icon={Icon.ArrowLeft} />
           </ActionPanel.Section>
 
@@ -720,6 +722,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
               icon={Icon.Folder}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
             />
+            <ReconnectProspectIdAction />
             <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -768,6 +771,7 @@ function SearchInboxForm({
               onSubmit={handleSubmit}
               icon={Icon.MagnifyingGlass}
             />
+            <ReconnectProspectIdAction />
             <Action title="Cancel" onAction={onCancel} icon={Icon.XMarkCircle} />
           </ActionPanel.Section>
         </ActionPanel>
@@ -866,6 +870,7 @@ function UpdateStageForm({
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update Progress" onSubmit={handleSubmit} icon={Icon.Check} />
+          <ReconnectProspectIdAction />
           <Action title="Cancel" onAction={onBack} icon={Icon.XMarkCircle} />
         </ActionPanel>
       }
@@ -1409,6 +1414,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
                     shortcut={{ modifiers: ['cmd'], key: 'r' }}
                     onAction={() => reloadFromServer()}
                   />
+                  <ReconnectProspectIdAction onReconnectSuccess={reloadFromServer} />
                   {/* Hide pagination during search */}
                   {!isSearching && pageStartNumber === 1 ? (
                     <Action

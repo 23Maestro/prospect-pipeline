@@ -1,6 +1,7 @@
 import { Action, ActionPanel, Detail, Form, Icon, List, Toast, showToast } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from './lib/fastapi-client';
+import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-action';
 import { upsertTasks } from './lib/video-progress-cache';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
 import { logger, searchLogger } from './lib/logger';
@@ -224,6 +225,7 @@ function ProspectDetail({
             icon={Icon.Globe}
             url={`https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`}
           />
+          <ReconnectProspectIdAction />
         </ActionPanel>
       }
     />
@@ -246,6 +248,7 @@ function MaterializeTaskForm({
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Create Task" onSubmit={() => onSubmit({ stage, status })} />
+          <ReconnectProspectIdAction />
         </ActionPanel>
       }
     >
@@ -492,12 +495,34 @@ export default function ProspectSearch() {
       searchBarPlaceholder="Search by athlete name or email"
       searchText={searchText}
       onSearchTextChange={setSearchText}
+      actions={
+        <ActionPanel>
+          <ReconnectProspectIdAction
+            onReconnectSuccess={async () => {
+              const term = searchText.trim();
+              if (!term) return;
+              await runSearch(term);
+            }}
+          />
+        </ActionPanel>
+      }
     >
       {results.length === 0 ? (
         <List.EmptyView
           icon={Icon.MagnifyingGlass}
           title="Search ProspectID"
           description="Type a name or email to search global athlete records."
+          actions={
+            <ActionPanel>
+              <ReconnectProspectIdAction
+                onReconnectSuccess={async () => {
+                  const term = searchText.trim();
+                  if (!term) return;
+                  await runSearch(term);
+                }}
+              />
+            </ActionPanel>
+          }
         />
       ) : (
         <List.Section title={`Results (${results.length})`}>
@@ -545,6 +570,13 @@ export default function ProspectSearch() {
                       content={result.athlete_main_id}
                     />
                   ) : null}
+                  <ReconnectProspectIdAction
+                    onReconnectSuccess={async () => {
+                      const term = searchText.trim();
+                      if (!term) return;
+                      await runSearch(term);
+                    }}
+                  />
                 </ActionPanel>
               }
             />

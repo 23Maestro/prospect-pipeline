@@ -12,6 +12,7 @@ import {
   Color,
 } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
+import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-action';
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/fastapi-client';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
 import { updateCachedTaskStatusStage } from './lib/video-progress-cache';
@@ -1092,6 +1093,7 @@ export default function VideoUpdatesCommand(
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update NPID Video Profile" onSubmit={handleSubmit} />
+          <ReconnectProspectIdAction />
           <Action
             title="Focus Athlete Name"
             onAction={() => focus('athleteName')}
@@ -1317,6 +1319,7 @@ function RevisionUpdateForm({
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update YouTube Link" onSubmit={handleSubmit} />
+          <ReconnectProspectIdAction />
           <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
         </ActionPanel>
       }
@@ -1729,6 +1732,7 @@ function EditSAVideosForm({
                     onAction={refreshVideos}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                   />
+                  <ReconnectProspectIdAction onReconnectSuccess={refreshVideos} />
                   <Action title="Back" icon={Icon.ArrowLeft} onAction={onBack} />
                 </ActionPanel.Section>
               </ActionPanel>
