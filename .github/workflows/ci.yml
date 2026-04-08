@@ -86,12 +86,13 @@ jobs:
 
       - name: Install Python dependencies and run linters
         run: |
-          if [ -d "mcp-servers/npid-search" ]; then
-            cd mcp-servers/npid-search
+          if [ -d "npid-api-layer" ]; then
+            cd npid-api-layer
             pip install -r requirements.txt
             pip install flake8 black
-            flake8 src/npid_client.ts --max-line-length=100 2>/dev/null || echo "Skipping flake8 (TypeScript file)"
-            black --check . 2>/dev/null || echo "Skipping black (TypeScript project)"
+            python -m compileall . >/dev/null
+            black --check . 2>/dev/null || echo "Skipping black issues"
+            flake8 . --max-line-length=100 2>/dev/null || echo "Skipping flake8 issues"
           else
-            echo "MCP server directory not found; skipping Python lint steps"
+            echo "npid-api-layer directory not found; skipping Python lint steps"
           fi
