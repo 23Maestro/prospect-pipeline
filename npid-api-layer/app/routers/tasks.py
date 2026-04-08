@@ -5,7 +5,7 @@ FastAPI endpoints for athlete tasks.
 
 from fastapi import APIRouter, HTTPException, Request
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from app.models.schemas import (
     TaskListRequest,
@@ -58,6 +58,35 @@ def _summarize_tasks(tasks: List[Dict[str, Any]], limit: int = 5) -> List[Dict[s
             "description": _truncate(task.get("description"))
         })
     return summaries
+
+
+def _is_incomplete_task(task: Dict[str, Any]) -> bool:
+    return not _normalize_text(task.get("completion_date", ""))
+
+
+def _pick_task_from_candidates(tasks: List[Dict[str, Any]], payload: TaskCompleteRequest) -> Optional[Dict[str, Any]]:
+    if payload.task_id:
+        exact_match = next((task for task in tasks if str(task.get("task_id", "")) == str(payload.task_id)), None)
+        if exact_match:
+            return exact_match
+        return None
+
+    title_matches = [
+        task for task in tasks
+        if _normalize_text(task.get("title", "")) == _normalize_text(payload.task_title)
+        and task.get("task_id")
+    ]
+
+    if not title_matches:
+        return None
+
+    owner_matches = [
+        task for task in title_matches
+        if _normalize_text(task.get("assigned_owner", "")) == _normalize_text(payload.assigned_owner)
+    ]
+    candidate_pool = owner_matches or title_matches
+    incomplete_matches = [task for task in candidate_pool if _is_incomplete_task(task)]
+    return (incomplete_matches or candidate_pool)[0] if (incomplete_matches or candidate_pool) else None
 
 
 def _summarize_form_fields(form_data: Dict[str, Any], fields: List[str]) -> Dict[str, Any]:
@@ -177,9 +206,10 @@ async def complete_task(request: Request, payload: TaskCompleteRequest):
     translator = LegacyTranslator()
 
     logger.info(
-        "✅ Completing task athlete_id=%s athlete_main_id=%s task_title=%s assigned_owner=%s completed_date=%s completed_time=%s is_completed=%s",
+        "✅ Completing task athlete_id=%s athlete_main_id=%s task_id=%s task_title=%s assigned_owner=%s completed_date=%s completed_time=%s is_completed=%s",
         payload.athlete_id,
         payload.athlete_main_id,
+        payload.task_id,
         payload.task_title,
         payload.assigned_owner,
         payload.completed_date,
@@ -188,28 +218,28 @@ async def complete_task(request: Request, payload: TaskCompleteRequest):
     )
 
     try:
-        endpoint, params = translator.tasks_list_to_legacy(
-            payload.athlete_id, payload.athlete_main_id
-        )
-        list_response = await session.get(endpoint, params=params)
-        tasks_result = translator.parse_tasks_list_response(list_response.text)
-        tasks: List[Dict[str, Any]] = tasks_result.get("tasks", [])
-        logger.info(
-            "📊 Parsed tasks count=%s sample=%s",
-            len(tasks),
-            _summarize_tasks(tasks)
-        )
+        task_id = payload.task_id
+        target: Optional[Dict[str, Any]] = None
 
-        matching_tasks = [
-            task for task in tasks
-            if _normalize_text(task.get("title", "")) == _normalize_text(payload.task_title)
-            and _normalize_text(task.get("assigned_owner", "")) == _normalize_text(payload.assigned_owner)
-            and task.get("task_id")
-        ]
+        if payload.task_id:
+            logger.info("🎯 Exact task id requested task_id=%s", payload.task_id)
+            target = {"task_id": payload.task_id}
+        else:
+            endpoint, params = translator.tasks_list_to_legacy(
+                payload.athlete_id, payload.athlete_main_id
+            )
+            list_response = await session.get(endpoint, params=params)
+            tasks_result = translator.parse_tasks_list_response(list_response.text)
+            tasks: List[Dict[str, Any]] = tasks_result.get("tasks", [])
+            logger.info(
+                "📊 Parsed tasks count=%s sample=%s",
+                len(tasks),
+                _summarize_tasks(tasks)
+            )
+            target = _pick_task_from_candidates(tasks, payload)
+            logger.info("🔎 Fallback task candidate=%s", _summarize_tasks([target], limit=1) if target else [])
 
-        target = matching_tasks[0] if matching_tasks else None
         if not target:
-            logger.info("🔎 Match candidates=%s", _summarize_tasks(matching_tasks))
             logger.warning("⚠️ No matching task found")
             raise HTTPException(status_code=404, detail="Task not found for athlete")
 

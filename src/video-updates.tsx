@@ -4,6 +4,7 @@ import {
   ActionPanel,
   Action,
   showToast,
+  showHUD,
   Toast,
   LaunchProps,
   useNavigation,
@@ -16,31 +17,90 @@ import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-ac
 import { callPythonServer, getSeasons, apiFetch, SeasonsRequest } from './lib/fastapi-client';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
 import { updateCachedTaskStatusStage } from './lib/video-progress-cache';
+import { videoProgressLogger } from './lib/logger';
 import * as cheerio from 'cheerio';
-import * as fs from 'fs';
 
-// Logging utility - writes to file and console (console helps during dev)
-const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
-const rawConsoleLog = console.log.bind(console);
-function log(...args: any[]) {
-  const timestamp = new Date().toISOString();
-  const message = `[${timestamp}] ${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(' ')}`;
-  rawConsoleLog(message);
-  try {
-    fs.appendFileSync(LOG_FILE, message + '\n');
-  } catch {
-    rawConsoleLog('[ERROR] Failed to write log');
-    fs.appendFileSync(LOG_FILE, `[ERROR] Failed to write log\n`);
+const VIDEO_UPDATES_FEATURE = 'video-updates';
+
+type VideoUpdateLogStatus = 'start' | 'success' | 'failure';
+type PostUploadStep = 'email' | 'stage' | 'cache' | 'task';
+
+type PostUploadStepResult = {
+  step: PostUploadStep;
+  success: boolean;
+  error?: string;
+  skipped?: boolean;
+};
+
+type AthleteTaskSummary = {
+  task_id: string;
+  title?: string | null;
+  assigned_owner?: string | null;
+  completion_date?: string | null;
+  description?: string | null;
+};
+
+type EligibleTaskLookupResult =
+  | { eligible: true; taskId: string }
+  | { eligible: false; reason: 'missing_assignment' | 'assigned_to_other' | 'already_completed' | 'not_found' };
+
+function logVideoUpdateEvent(
+  event: string,
+  step: string,
+  status: VideoUpdateLogStatus,
+  context: Record<string, unknown>,
+  error?: string,
+) {
+  const payload = {
+    event,
+    step,
+    status,
+    feature: VIDEO_UPDATES_FEATURE,
+    ...(error ? { error } : {}),
+    context,
+  };
+  if (status === 'failure') {
+    videoProgressLogger.error(event, payload);
+  } else {
+    videoProgressLogger.info(event, payload);
   }
 }
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function normalizeText(value?: string | null): string {
+  return (value || '').trim().toLowerCase();
+}
+
+function log(...args: unknown[]) {
+  const message = args
+    .map((value) => {
+      if (value instanceof Error) return value.message;
+      if (typeof value === 'object' && value !== null) {
+        try {
+          return JSON.stringify(value);
+        } catch {
+          return '[object]';
+        }
+      }
+      return String(value);
+    })
+    .join(' ');
+  logVideoUpdateEvent('VIDEO_UPDATES_MISC', 'trace', 'success', {
+    message: message.slice(0, 500),
+  });
+}
+
 async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
-  log('🔍 searchVideoProgressPlayer called with:', query);
+  logVideoUpdateEvent('VIDEO_UPDATES_SEARCH', 'request', 'start', {
+    athleteQueryLength: query.length,
+  });
   try {
     const nameParts = query.split(' ');
     const firstName = nameParts[0] || '';
     const lastName = nameParts.slice(1).join(' ') || '';
-    log('🔍 Searching for:', { firstName, lastName });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -58,14 +118,18 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      log('⚠️ Search failed with status:', response.status);
+      logVideoUpdateEvent('VIDEO_UPDATES_SEARCH', 'request', 'failure', {
+        statusCode: response.status,
+      }, `HTTP ${response.status}`);
       return [];
     }
 
     const data = (await response.json()) as any;
     const results = data.tasks || [];
 
-    log('✅ Search returned', results.length, 'results');
+    logVideoUpdateEvent('VIDEO_UPDATES_SEARCH', 'parse', 'success', {
+      resultCount: results.length,
+    });
     return results.map((player: any) => ({
       primaryPosition: player.primaryposition,
       secondaryPosition: player.secondaryposition,
@@ -99,7 +163,11 @@ async function searchVideoProgressPlayer(query: string): Promise<NPIDPlayer[]> {
     }));
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
-      log('⏱️ Search timed out');
+      logVideoUpdateEvent('VIDEO_UPDATES_SEARCH', 'request', 'failure', {
+        timeoutMs: 20000,
+      }, 'search_timeout');
+    } else {
+      logVideoUpdateEvent('VIDEO_UPDATES_SEARCH', 'request', 'failure', {}, getErrorMessage(error));
     }
     console.error('NPID video progress search error:', error);
     return [];
@@ -122,7 +190,7 @@ function parseSortableHtml(html: string): string[] {
       .get()
       .filter(Boolean);
   } catch (error) {
-    log('⚠️ Failed to parse sortable HTML', error);
+    logVideoUpdateEvent('VIDEO_UPDATES_SUBMIT', 'parse-sortable-html', 'failure', {}, getErrorMessage(error));
     return [];
   }
 }
@@ -197,7 +265,7 @@ function parseSortableHtmlDetailed(
     }
     return items;
   } catch (error) {
-    log('⚠️ Failed to parse sortable HTML (detailed)', error);
+    logVideoUpdateEvent('VIDEO_UPDATES_EDIT_FORM', 'parse-sortable-html-detailed', 'failure', {}, getErrorMessage(error));
     return [];
   }
 }
@@ -448,8 +516,8 @@ export default function VideoUpdatesCommand(
   const [isFetchingMainId, setIsFetchingMainId] = useState(false);
   const [hasTriedMainId, setHasTriedMainId] = useState(false);
   const [seasons, setSeasons] = useState<{ value: string; title: string; season: string }[]>([]);
-  const [isFetchingSeasons, setIsFetchingSeasons] = useState(false);
-  const { push, pop } = useNavigation();
+  const [, setIsFetchingSeasons] = useState(false);
+  const { pop } = useNavigation();
 
   const { handleSubmit, itemProps, reset, focus, values, setValue } =
     useForm<VideoUpdateFormValues>({
@@ -505,10 +573,9 @@ export default function VideoUpdatesCommand(
 
           try {
             const selectedSeason = seasons.find((s) => s.value === formValues.season);
-
-            log('🎬 Submitting video:', {
+            logVideoUpdateEvent('VIDEO_UPDATES_SUBMIT', 'request', 'start', {
               athleteId,
-              youtubeLink: formValues.youtubeLink,
+              youtubeLinkLength: formValues.youtubeLink.length,
               season: formValues.season,
               seasonType: selectedSeason?.season,
               videoType: formValues.videoType,
@@ -536,11 +603,18 @@ export default function VideoUpdatesCommand(
               const error = (await response
                 .json()
                 .catch(() => ({ detail: `HTTP ${response.status}` }))) as any;
-              log('⚠️ video submit failed', { status: response.status, error });
+              logVideoUpdateEvent('VIDEO_UPDATES_SUBMIT', 'request', 'failure', {
+                athleteId,
+                statusCode: response.status,
+              }, error.detail || error.message || `HTTP ${response.status}`);
               throw new Error(error.detail || error.message || 'Unknown error');
             }
             const result = (await response.json()) as any;
-            log('📥 add_career_video response:', result);
+            logVideoUpdateEvent('VIDEO_UPDATES_SUBMIT', 'response', 'success', {
+              athleteId,
+              success: result?.success === true,
+              sortableHtmlLength: (result?.sortable_html || result?.data?.sortable_html || '').length,
+            });
             const success = response.ok && result?.success === true;
             if (success) {
               toast.style = Toast.Style.Success;
@@ -554,12 +628,16 @@ export default function VideoUpdatesCommand(
                   : 'Highlight added successfully';
 
               if (AUTO_POST_UPLOAD_ACTIONS) {
-                await runPostUploadActions({
+                const summary = await runPostUploadActions({
                   athleteId,
                   athleteMainId,
-                  athleteName,
                   videoMsgId,
                 });
+                if (summary.hasFailures) {
+                  toast.style = Toast.Style.Success;
+                  toast.title = 'Video Uploaded with Follow-Up Warnings';
+                  toast.message = summary.warningMessage;
+                }
               }
 
               reset();
@@ -878,13 +956,6 @@ export default function VideoUpdatesCommand(
   }) => {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 20000);
-    log('📨 Email send request', {
-      athleteId: params.athleteId,
-      templateId: params.templateId,
-      includeAthlete: params.includeAthlete ?? true,
-      parentCount: (params.parentIds ?? []).length,
-      otherEmail: params.otherEmail ?? '',
-    });
     const resp = await apiFetch('/email/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -902,11 +973,6 @@ export default function VideoUpdatesCommand(
       signal: controller.signal,
     });
     clearTimeout(timeout);
-    log('📨 Email send response', {
-      status: resp.status,
-      ok: resp.ok,
-      contentType: resp.headers.get('content-type'),
-    });
     if (!resp.ok) {
       const err = (await resp.json().catch(() => ({}))) as any;
       throw new Error(err.detail || `Email HTTP ${resp.status}`);
@@ -943,22 +1009,16 @@ export default function VideoUpdatesCommand(
   const completeVideoEditingTask = async ({
     athleteId,
     athleteMainId,
+    taskId,
   }: {
     athleteId: string;
     athleteMainId: string;
+    taskId?: string;
   }) => {
     const now = new Date();
     const completedDate = formatDate(now);
     const completedTime = formatTime(now);
     const description = `${completedDate} - Video Editing Complete`;
-
-    log('🧾 Task completion start', {
-      athleteId,
-      athleteMainId,
-      completedDate,
-      completedTime,
-      description,
-    });
 
     const resp = await apiFetch('/tasks/complete', {
       method: 'POST',
@@ -966,6 +1026,7 @@ export default function VideoUpdatesCommand(
       body: JSON.stringify({
         athlete_id: athleteId,
         athlete_main_id: athleteMainId,
+        task_id: taskId,
         task_title: 'Video Editing',
         assigned_owner: 'Jerami Singleton',
         description,
@@ -975,15 +1036,8 @@ export default function VideoUpdatesCommand(
       }),
     });
 
-    log('📥 Task completion response', {
-      status: resp.status,
-      ok: resp.ok,
-      contentType: resp.headers.get('content-type'),
-    });
-
     if (!resp.ok) {
       const errText = await resp.text();
-      log('⚠️ Task completion error body', { body: errText });
       let detail = '';
       try {
         const parsed = JSON.parse(errText) as any;
@@ -994,89 +1048,284 @@ export default function VideoUpdatesCommand(
       throw new Error(detail || `HTTP ${resp.status}`);
     }
 
-    const result = (await resp.json().catch(() => ({}))) as any;
-    log('✅ Task completion success', result);
+    return (await resp.json().catch(() => ({}))) as any;
+  };
+
+  const fetchEligibleJeramiVideoEditingTask = async ({
+    athleteId,
+    athleteMainId,
+  }: {
+    athleteId: string;
+    athleteMainId: string;
+  }): Promise<EligibleTaskLookupResult> => {
+    const resp = await apiFetch('/tasks/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        athlete_id: athleteId,
+        athlete_main_id: athleteMainId,
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text();
+      throw new Error(errText.slice(0, 200) || `Tasks HTTP ${resp.status}`);
+    }
+    const payload = (await resp.json().catch(() => ({}))) as any;
+    const tasks = (Array.isArray(payload.tasks) ? payload.tasks : []) as AthleteTaskSummary[];
+    const videoEditingMatches = tasks.filter(
+      (task) => normalizeText(task.title) === normalizeText('Video Editing') && task.task_id,
+    );
+    if (videoEditingMatches.length === 0) {
+      logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'select-task', 'success', {
+        athleteId,
+        athleteMainId,
+        reason: 'not_found',
+      });
+      return { eligible: false, reason: 'not_found' };
+    }
+
+    const jeramiMatches = videoEditingMatches.filter(
+      (task) => normalizeText(task.assigned_owner) === normalizeText('Jerami Singleton'),
+    );
+    if (jeramiMatches.length === 0) {
+      logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'select-task', 'success', {
+        athleteId,
+        athleteMainId,
+        reason: 'assigned_to_other',
+        candidateCount: videoEditingMatches.length,
+      });
+      return { eligible: false, reason: 'assigned_to_other' };
+    }
+
+    const incompleteJeramiMatches = jeramiMatches.filter((task) => !normalizeText(task.completion_date));
+    if (incompleteJeramiMatches.length === 0) {
+      logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'select-task', 'success', {
+        athleteId,
+        athleteMainId,
+        reason: 'already_completed',
+        candidateCount: jeramiMatches.length,
+      });
+      return { eligible: false, reason: 'already_completed' };
+    }
+
+    const chosen = incompleteJeramiMatches[0];
+    logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'select-task', 'success', {
+      athleteId,
+      athleteMainId,
+      taskId: chosen.task_id,
+      candidateCount: videoEditingMatches.length,
+      jeramiCandidateCount: jeramiMatches.length,
+      incompleteJeramiCandidateCount: incompleteJeramiMatches.length,
+    });
+    return { eligible: true, taskId: chosen.task_id };
+  };
+
+  const runEmailPostUploadStep = async ({
+    athleteId,
+  }: {
+    athleteId: string;
+  }): Promise<PostUploadStepResult> => {
+    logVideoUpdateEvent('VIDEO_UPDATES_EMAIL', 'request', 'start', {
+      athleteId,
+      templateId: DEFAULT_TEMPLATE_ID,
+    });
+    try {
+      const templates = await fetchTemplates(athleteId);
+      const picked = templates.find((t) => t.value === DEFAULT_TEMPLATE_ID) || templates[0];
+      if (!picked) {
+        throw new Error('No email templates available');
+      }
+      const data = await fetchTemplateData(picked.value, athleteId);
+      const recipients = await fetchRecipients(athleteId);
+      const parentIds = recipients.parents.filter((p: any) => p?.id).map((p: any) => String(p.id));
+      logVideoUpdateEvent('VIDEO_UPDATES_EMAIL', 'request', 'success', {
+        athleteId,
+        templateId: picked.value,
+        includeAthlete: true,
+        parentCount: parentIds.length,
+        otherEmail: 'jholcomb@prospectid.com',
+      });
+      await sendEmail({
+        athleteId,
+        templateId: picked.value,
+        senderName: data.sender_name || 'Prospect ID Video',
+        senderEmail: data.sender_email || 'videoteam@prospectid.com',
+        subject: data.subject || '',
+        message: data.message || '',
+        includeAthlete: true,
+        parentIds,
+        otherEmail: 'jholcomb@prospectid.com',
+      });
+      logVideoUpdateEvent('VIDEO_UPDATES_EMAIL', 'send', 'success', {
+        athleteId,
+        templateId: picked.value,
+        recipientCount: 1 + parentIds.length + 1,
+      });
+      return { step: 'email', success: true };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logVideoUpdateEvent('VIDEO_UPDATES_EMAIL', 'send', 'failure', { athleteId }, message);
+      return { step: 'email', success: false, error: message };
+    }
+  };
+
+  const runStageAndCachePostUploadSteps = async ({
+    athleteId,
+    videoMsgId,
+  }: {
+    athleteId: string;
+    videoMsgId: string;
+  }): Promise<PostUploadStepResult[]> => {
+    if (!videoMsgId) {
+      const error = 'missing_video_msg_id';
+      logVideoUpdateEvent('VIDEO_UPDATES_STAGE', 'request', 'failure', { athleteId }, error);
+      logVideoUpdateEvent('VIDEO_UPDATES_CACHE_SYNC', 'request', 'failure', { athleteId }, error);
+      return [
+        { step: 'stage', success: false, error },
+        { step: 'cache', success: false, error },
+      ];
+    }
+
+    const results: PostUploadStepResult[] = [];
+    logVideoUpdateEvent('VIDEO_UPDATES_STAGE', 'request', 'start', {
+      athleteId,
+      videoMsgId,
+    });
+    try {
+        await updateStageDone(videoMsgId);
+      logVideoUpdateEvent('VIDEO_UPDATES_STAGE', 'request', 'success', {
+        athleteId,
+        videoMsgId,
+      });
+      results.push({ step: 'stage', success: true });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logVideoUpdateEvent('VIDEO_UPDATES_STAGE', 'request', 'failure', { athleteId, videoMsgId }, message);
+      results.push({ step: 'stage', success: false, error: message });
+    }
+
+    logVideoUpdateEvent('VIDEO_UPDATES_CACHE_SYNC', 'request', 'start', {
+      athleteId,
+      videoMsgId,
+    });
+    const numericId = Number(videoMsgId);
+    if (Number.isNaN(numericId)) {
+      const error = 'invalid_video_msg_id';
+      logVideoUpdateEvent('VIDEO_UPDATES_CACHE_SYNC', 'request', 'failure', { athleteId, videoMsgId }, error);
+      results.push({ step: 'cache', success: false, error });
+      return results;
+    }
+
+    try {
+      await updateCachedTaskStatusStage(numericId, { stage: 'Done' });
+      logVideoUpdateEvent('VIDEO_UPDATES_CACHE_SYNC', 'request', 'success', {
+        athleteId,
+        videoMsgId,
+      });
+      results.push({ step: 'cache', success: true });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logVideoUpdateEvent('VIDEO_UPDATES_CACHE_SYNC', 'request', 'failure', { athleteId, videoMsgId }, message);
+      results.push({ step: 'cache', success: false, error: message });
+    }
+
+    return results;
+  };
+
+  const runTaskCompletionPostUploadStep = async ({
+    athleteId,
+    athleteMainId,
+  }: {
+    athleteId: string;
+    athleteMainId: string;
+  }): Promise<PostUploadStepResult> => {
+    logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'request', 'start', {
+      athleteId,
+      athleteMainId,
+    });
+    try {
+      const taskLookup = await fetchEligibleJeramiVideoEditingTask({ athleteId, athleteMainId });
+      if (!taskLookup.eligible) {
+        const hudMessage =
+          taskLookup.reason === 'assigned_to_other'
+            ? 'Upload complete. Task skipped: assigned to another editor.'
+            : taskLookup.reason === 'already_completed'
+              ? 'Upload complete. Task already completed.'
+              : 'Upload complete. No Jerami Video Editing task found.';
+        await showHUD(hudMessage);
+        return { step: 'task', success: true, skipped: true };
+      }
+
+      const taskId = taskLookup.taskId;
+      const result = await completeVideoEditingTask({ athleteId, athleteMainId, taskId });
+      logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'request', 'success', {
+        athleteId,
+        athleteMainId,
+        taskId,
+        responseTaskId: result?.task_id || taskId,
+      });
+      await showHUD('Video Editing task completed');
+      return { step: 'task', success: true };
+    } catch (error) {
+      const message = getErrorMessage(error);
+      logVideoUpdateEvent('VIDEO_UPDATES_TASK_COMPLETE', 'request', 'failure', {
+        athleteId,
+        athleteMainId,
+      }, message);
+      return { step: 'task', success: false, error: message };
+    }
+  };
+
+  const summarizePostUploadResults = (results: PostUploadStepResult[]) => {
+    const failures = results.filter((result) => !result.success);
+    const failedSteps = failures.map((result) => result.step);
+    const uniqueFailedSteps = Array.from(new Set(failedSteps));
+    return {
+      failures,
+      hasFailures: failures.length > 0,
+      failedSteps: uniqueFailedSteps,
+      warningMessage:
+        uniqueFailedSteps.length > 0
+          ? `Follow-up warnings: ${uniqueFailedSteps.join(', ')}`
+          : '',
+    };
   };
 
   const runPostUploadActions = async ({
     athleteId,
     athleteMainId,
-    athleteName,
     videoMsgId,
   }: {
     athleteId: string;
     athleteMainId: string;
-    athleteName: string;
     videoMsgId: string;
   }) => {
-    try {
-      log('🤖 Post-upload automation start', { athleteId, athleteMainId, videoMsgId });
-      const templates = await fetchTemplates(athleteId);
-      const picked = templates.find((t) => t.value === DEFAULT_TEMPLATE_ID) || templates[0];
-      if (!picked) {
-        log('⚠️ No templates available, skipping email');
-        return;
-      }
-      const data = await fetchTemplateData(picked.value, athleteId);
+    logVideoUpdateEvent('VIDEO_UPDATES_POST_UPLOAD', 'start', 'start', {
+      athleteId,
+      athleteMainId,
+      hasVideoMsgId: !!videoMsgId,
+    });
 
-      // Fetch recipients to include athlete + parents + Other
-      const recipients = await fetchRecipients(athleteId);
-      const parentIds = recipients.parents.filter((p: any) => p?.id).map((p: any) => String(p.id));
+    const results: PostUploadStepResult[] = [];
+    results.push(await runEmailPostUploadStep({ athleteId }));
+    results.push(...(await runStageAndCachePostUploadSteps({ athleteId, videoMsgId })));
+    results.push(await runTaskCompletionPostUploadStep({ athleteId, athleteMainId }));
 
-      log('📧 Sending email to all recipients', {
+    const summary = summarizePostUploadResults(results);
+    if (summary.hasFailures) {
+      logVideoUpdateEvent('VIDEO_UPDATES_POST_UPLOAD', 'complete', 'failure', {
         athleteId,
-        parentIds,
-        includeAthlete: true,
-        otherEmail: 'jholcomb@prospectid.com',
+        athleteMainId,
+        failedSteps: summary.failedSteps,
+      }, summary.warningMessage);
+    } else {
+      logVideoUpdateEvent('VIDEO_UPDATES_POST_UPLOAD', 'complete', 'success', {
+        athleteId,
+        athleteMainId,
       });
-
-      try {
-        await sendEmail({
-          athleteId,
-          templateId: picked.value,
-          senderName: data.sender_name || 'Prospect ID Video',
-          senderEmail: data.sender_email || 'videoteam@prospectid.com',
-          subject: data.subject || '',
-          message: data.message || '',
-          includeAthlete: true,
-          parentIds,
-          otherEmail: 'jholcomb@prospectid.com',
-        });
-        log('✅ Email sent automatically', {
-          template: picked.value,
-          recipientCount: 1 + parentIds.length + 1,
-        });
-      } catch (emailError) {
-        log('⚠️ Email send failed, continuing', emailError);
-      }
-
-      if (videoMsgId) {
-        await updateStageDone(videoMsgId);
-        log('✅ Stage updated to done', { videoMsgId });
-        const numericId = Number(videoMsgId);
-        if (!Number.isNaN(numericId)) {
-          try {
-            await updateCachedTaskStatusStage(numericId, { stage: 'Done' });
-            log('✅ Cache updated to Done', { videoMsgId });
-          } catch (cacheError) {
-            log('⚠️ Cache update failed', cacheError);
-          }
-        } else {
-          log('⚠️ Invalid video_msg_id for cache update', { videoMsgId });
-        }
-      } else {
-        log('⚠️ No video_msg_id; skipped stage update');
-      }
-
-      try {
-        await completeVideoEditingTask({ athleteId, athleteMainId });
-        log('✅ Task marked complete', { athleteId });
-      } catch (taskError) {
-        log('⚠️ Task completion skipped', taskError);
-      }
-    } catch (error) {
-      log('⚠️ Post-upload automation failed', error);
     }
+
+    return summary;
   };
 
   useEffect(() => {

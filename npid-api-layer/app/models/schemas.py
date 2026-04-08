@@ -314,6 +314,7 @@ class TaskPopupResponse(BaseModel):
 class TaskCompleteRequest(BaseModel):
     athlete_id: str
     athlete_main_id: str
+    task_id: Optional[str] = None
     task_title: str = Field(default="Video Editing")
     assigned_owner: str = Field(default="Jerami Singleton")
     description: str

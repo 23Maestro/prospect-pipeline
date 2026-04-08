@@ -1,63 +1,70 @@
-# MCP Terminal Guide
+# Terminal Guide For The Legacy Python NPID Client
 
-This guide explains how to use the command-line interface (CLI) provided in `npid_api_client.py` to interact with the NPID API from your terminal. This is a useful tool for testing and debugging.
+This guide explains how to run the legacy CLI entrypoint in [`src/python/npid_api_client.py`](/Users/singleton23/Raycast/prospect-pipeline/src/python/npid_api_client.py) directly from the terminal.
+
+This is useful for testing and debugging the older Python client flow. It is not the primary runtime path of the Raycast extension, which now uses the local FastAPI bridge in `npid-api-layer/`.
 
 ## Prerequisites
 
--   You must have Python 3 installed.
--   You must have the required python packages installed (`requests`, `beautifulsoup4`). You can install them with pip:
-    ```bash
-    pip install requests beautifulsoup4
-    ```
+- Python 3
+- Required Python packages from [`src/python/requirements.txt`](/Users/singleton23/Raycast/prospect-pipeline/src/python/requirements.txt)
+- A valid local Prospect ID session workflow
 
-## How to Use
+Install the Python dependencies if needed:
 
-1.  **Open your terminal.**
+```bash
+pip install -r src/python/requirements.txt
+```
 
-2.  **Navigate to the directory** where the script is located:
-    ```bash
-    cd /Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/
-    ```
+## How To Use
 
-3.  **Run the script** with the following format:
-    ```bash
-    python3 npid_api_client.py <method> [json_args]
-    ```
-    -   **`<method>`**: The name of the API function you want to call (e.g., `get_inbox_threads`).
-    -   **`[json_args]`** (optional): A JSON string with the arguments for the function.
+1. Open a terminal.
+2. Change to the repo root:
+
+```bash
+cd /Users/singleton23/Raycast/prospect-pipeline
+```
+
+3. Run the script with a method name and optional JSON arguments:
+
+```bash
+python3 src/python/npid_api_client.py <method> [json_args]
+```
+
+- `<method>`: the Python client method to invoke
+- `[json_args]`: optional JSON object string passed to that method
 
 ## Examples
 
-Here are a few examples of how to use the CLI:
-
 ### Get Inbox Threads
 
-This command fetches the 5 most recent unassigned threads from the inbox.
-
 ```bash
-python3 npid_api_client.py get_inbox_threads '{"limit": 5, "filter_assigned": "unassigned"}'
+python3 src/python/npid_api_client.py get_inbox_threads '{"limit": 5, "filter_assigned": "unassigned"}'
 ```
 
-### Search for a Player
-
-This command searches for a player with the name "John Doe".
+### Search For A Player
 
 ```bash
-python3 npid_api_client.py search_player '{"query": "John Doe"}'
+python3 src/python/npid_api_client.py search_player '{"query": "John Doe"}'
 ```
 
 ### Get Athlete Details
 
-This command gets the details for a player with the ID `12345`.
-
 ```bash
-python3 npid_api_client.py get_athlete_details '{"player_id": "12345"}'
+python3 src/python/npid_api_client.py get_athlete_details '{"player_id": "12345"}'
 ```
 
 ## Available Methods
 
-You can get a list of all available methods by running the script without any arguments:
+Run the script without arguments to print the current list of supported methods:
 
 ```bash
-python3 npid_api_client.py
+python3 src/python/npid_api_client.py
 ```
+
+## Important Context
+
+- This guide replaces old references to `mcp-servers/npid-native/`, which is not the current location of the Python client.
+- The active extension path is still:
+  `Raycast -> local FastAPI bridge -> legacy Laravel`
+- The `mcp-servers/npid-search/` server is legacy and separate from this terminal workflow.

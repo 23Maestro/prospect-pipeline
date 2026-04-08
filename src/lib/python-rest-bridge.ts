@@ -5,17 +5,13 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { homedir } from 'os';
-import path from 'path';
+import { NPID_CLIENT_PATH, WORKSPACE_ROOT } from './python-env';
 
 const execAsync = promisify(exec);
 
-// Use absolute paths since Raycast compiles to its config directory
-const PROJECT_ROOT = path.join(homedir(), 'Raycast', 'prospect-pipeline');
-
-const PYTHON_CLIENT_PATH = path.join(PROJECT_ROOT, 'mcp-servers/npid-native/npid_api_client.py');
-
-const PYTHON_VENV_PATH = path.join(PROJECT_ROOT, 'mcp-servers/npid-native/venv/bin/python3');
+// Legacy bridge retained for compatibility. The active path is the local FastAPI bridge,
+// but if this module is used, it should target the current Python client location.
+const PYTHON_VENV_PATH = `${WORKSPACE_ROOT}/.venv/bin/python3`;
 
 interface RestClientResponse<T = any> {
   success?: boolean;
@@ -43,7 +39,7 @@ export async function callRestClient<T = any>(
     const pythonCmd = PYTHON_VENV_PATH;
 
     // Execute Python script
-    const cmd = `${pythonCmd} "${PYTHON_CLIENT_PATH}" "${method}" "${escapedParams}"`;
+    const cmd = `${pythonCmd} "${NPID_CLIENT_PATH}" "${method}" "${escapedParams}"`;
 
     const { stdout, stderr } = await execAsync(cmd, {
       maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large responses
