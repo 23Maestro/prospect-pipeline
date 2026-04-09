@@ -10,7 +10,7 @@ function ScoutPrepResult({ values }: { values: ScoutPrepFormValues }) {
       markdown={buildScoutPrepMarkdown(values)}
       metadata={
         <Detail.Metadata>
-          <Detail.Metadata.TagList title="Athlete">
+          <Detail.Metadata.TagList title="Student Athlete">
             <Detail.Metadata.TagList.Item text={values.athleteName} color={Color.Blue} />
           </Detail.Metadata.TagList>
           <Detail.Metadata.TagList title="Parent 1">
@@ -89,16 +89,16 @@ export default function ScoutPrepCommand() {
         </ActionPanel>
       }
     >
-      <Form.TextField id="athleteName" title="Student Athlete" placeholder="Alex Smith" />
-      <Form.TextField id="parent1Name" title="Parent 1" placeholder="Anna Smith" />
-      <Form.TextField id="parent2Name" title="Parent 2" placeholder="Chris Smith" />
+      <Form.TextField id="athleteName" title="Student Athlete" placeholder="Student Athlete" />
+      <Form.TextField id="parent1Name" title="Parent 1" placeholder="Parent 1" />
+      <Form.TextField id="parent2Name" title="Parent 2" placeholder="Parent 2" />
       <Form.Dropdown id="gradYear" title="Grad Year" defaultValue="Junior">
         <Form.Dropdown.Item value="Freshman" title="Freshman" />
         <Form.Dropdown.Item value="Sophomore" title="Sophomore" />
         <Form.Dropdown.Item value="Junior" title="Junior" />
         <Form.Dropdown.Item value="Senior" title="Senior" />
       </Form.Dropdown>
-      <Form.TextField id="sport" title="Sport" placeholder="Football" />
+      <Form.TextField id="sport" title="Sport" placeholder="Sport" />
     </Form>
   );
 }
