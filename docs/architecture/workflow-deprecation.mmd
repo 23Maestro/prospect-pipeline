@@ -2,47 +2,73 @@ flowchart TD
   classDef dep fill:#fff2f2,stroke:#d33,stroke-width:2px,color:#900
   classDef gate fill:#fffbea,stroke:#b7791f,stroke-width:1px,color:#333
   classDef done fill:#eefaf0,stroke:#2f855a,stroke-width:1px,color:#123
+  classDef primary fill:#eef7ff,stroke:#2b6cb0,stroke-width:1px,color:#123
 
   subgraph now["Phase 1 · Current State"]
-    A["prospect-search · active"]:::dep
-    B["manual-sa-additions · active"]
+    A["prospect-search · standalone"]:::dep
+    B["video-updates · standalone"]
+    C["email-student-athletes · standalone"]
+    D["video-progress imports\nstandalone command views"]
+    E["manual-sa-additions · AI tool"]
   end
 
-  subgraph converge["Phase 2 · Convergence"]
-    C["Create shared\nprospect-ingest-service"]
-    D["prospect-search routes\nthrough shared service"]
-    E["AI tool routes\nthrough shared service"]
+  subgraph extract["Phase 2 · Shared Workflow Extraction"]
+    F["Extract athlete lookup service"]
+    G["Extract email workflow service"]
+    H["Extract post-upload workflow service"]
+    I["Create integration-owned\nworkflow views"]
   end
 
-  subgraph soft["Phase 3 · Soft Deprecation"]
-    F["prospect-search tagged\ndeprecated in UI + docs"]:::dep
-    G["AI tool + video-progress\npromoted as primary"]
+  subgraph hub["Phase 3 · Video Progress Hub"]
+    J["video-progress uses\nshared workflow views"]:::primary
+    K["standalone commands become\nthin wrappers"]:::primary
+    L["Email + video update parity\nvalidated inside hub"]:::gate
   end
 
-  subgraph gates["Phase 4 · Removal Gates"]
-    H["Parity checklist"]:::gate
-    I["Telemetry confidence"]:::gate
-    J["No regressions"]:::gate
-    K{"Go / No-Go"}:::gate
+  subgraph soft["Phase 4 · Soft Deprecation"]
+    M["prospect-search flagged deprecated"]:::dep
+    N["video-updates flagged fallback-only"]:::dep
+    O["email-student-athletes flagged\nfallback-only"]:::dep
+    P["Primary surfaces:\nvideo-progress + manual-sa-additions"]:::primary
   end
 
-  subgraph removal["Phase 5 · Removal"]
-    L["Remove from package.json"]
-    M["Delete prospect-search.tsx"]
-    N["Primary surfaces:\nmanual-sa-additions\nvideo-progress"]:::done
+  subgraph removal["Phase 5 · Removal Gates"]
+    Q["AI ingest parity"]:::gate
+    R["Integrated athlete-editing parity"]:::gate
+    S["Integrated email recipient parity"]:::gate
+    T{"Go / No-Go"}:::gate
+    U["Remove deprecated commands\nfrom package.json"]:::done
+    V["Delete redundant command files"]:::done
+    W["Final surface:\nscout-prep\nvideo-progress\nread-videoteam-inbox\nassign-videoteam-inbox\nmanual-sa-additions"]:::done
   end
 
-  A --> C
-  B --> C
-  C --> D
-  C --> E
-  D --> F
-  E --> G
-  F --> H
-  G --> I
+  A --> F
+  B --> F
+  C --> G
+  B --> H
+  D --> I
+  E --> F
+
   F --> J
-  H --> K
+  G --> J
+  H --> J
+  I --> J
   I --> K
-  J --> K
-  K -->|"Go"| L --> M --> N
-  K -.->|"No-Go"| NG["Keep soft-deprecated\nfix gaps, re-evaluate"]:::dep
+  J --> L
+  K --> L
+
+  L --> M
+  L --> N
+  L --> O
+  M --> P
+  N --> P
+  O --> P
+
+  P --> Q
+  P --> R
+  P --> S
+  Q --> T
+  R --> T
+  S --> T
+  T -->|"Go"| U --> V --> W
+  T -.->|"No-Go"| X["Keep fallback commands,\nfix gaps, re-evaluate"]:::dep

@@ -4,12 +4,12 @@ This folder contains **Mermaid diagrams** (`.mmd`) documenting the Prospect Pipe
 
 ## Files
 
-| File | Purpose |
-|------|---------|
-| `system-map.mmd` | **Master system map** — all layers (UI → Shared Services → FastAPI → External NPID), data stores, and logging |
-| `workflow-ingest.mmd` | **Prospect ingest flow** — from AI tool input through search → resolve → materialize → cache → list view |
-| `workflow-email.mmd` | **Email automation flow** — template fetch → recipient resolution → recipient-policy enforcement → send + log |
-| `workflow-deprecation.mmd` | **Deprecation roadmap** — phased plan for retiring `prospect-search` in favor of `manual-sa-additions` + `video-progress` |
+| File                       | Purpose                                                                                                                                                                            |
+| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `system-map.mmd`           | **Master system map** — all layers (UI → Shared Services → FastAPI → External NPID), data stores, and logging                                                                      |
+| `workflow-ingest.mmd`      | **Prospect ingest flow** — from AI tool input through search → resolve → materialize → cache → list view                                                                           |
+| `workflow-email.mmd`       | **Email automation flow** — template fetch → recipient resolution → recipient-policy enforcement → send + log                                                                      |
+| `workflow-deprecation.mmd` | **Command consolidation roadmap** — phased plan for retiring `prospect-search`, `video-updates`, and `email-student-athletes` in favor of `manual-sa-additions` + `video-progress` |
 
 ## How to Read
 

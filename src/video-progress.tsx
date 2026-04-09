@@ -15,10 +15,7 @@ import {
 import { format } from 'date-fns';
 import { useEffect, useState, useRef } from 'react';
 import path from 'path';
-import {
-  apiFetch,
-  fetchAuthStatus,
-} from './lib/fastapi-client';
+import { apiFetch, fetchAuthStatus } from './lib/fastapi-client';
 import { executePythonScript } from './lib/python-executor';
 import { getPythonScriptPath, WORKSPACE_ROOT } from './lib/python-env';
 import {
@@ -47,8 +44,8 @@ import {
   diagnoseAuthFailure,
   type AuthRecoveryState,
 } from './lib/npid-auth-recovery';
-import EmailStudentAthletesCommand from './email-student-athletes';
-import VideoUpdatesCommand from './video-updates';
+import EmailStudentAthletesView from './features/athlete-workflows/email-student-athletes-view';
+import VideoUpdatesView from './features/athlete-workflows/video-updates-view';
 
 interface Preferences {
   craftBaseUrl?: string;
@@ -1102,7 +1099,9 @@ function AdminAthleteTableDetail({
           </ActionPanel.Section>
           <ReconnectProspectIdAction
             onReconnectSuccess={() =>
-              openView(title === 'Payments' ? 'payments' : title === 'Email List' ? 'emails' : 'campaigns')
+              openView(
+                title === 'Payments' ? 'payments' : title === 'Email List' ? 'emails' : 'campaigns',
+              )
             }
           />
           <Action.OpenInBrowser
@@ -1544,7 +1543,8 @@ ${approvedDetail}
               title="Video Updates"
               icon={Icon.Pencil}
               target={
-                <VideoUpdatesCommand
+                <VideoUpdatesView
+                  enableDrafts={false}
                   draftValues={{
                     athleteName: task.athletename,
                     youtubeLink: '',
@@ -3045,7 +3045,8 @@ export default function VideoProgress() {
                     title="Email Student Athlete"
                     icon={Icon.Envelope}
                     target={
-                      <EmailStudentAthletesCommand
+                      <EmailStudentAthletesView
+                        key={`email-student-athletes-${task.id ?? task.athlete_id}-${task.athletename}`}
                         draftValues={{ athleteName: task.athletename, emailTemplate: '' }}
                       />
                     }
@@ -3055,7 +3056,8 @@ export default function VideoProgress() {
                     title="Video Updates"
                     icon={Icon.Pencil}
                     target={
-                      <VideoUpdatesCommand
+                      <VideoUpdatesView
+                        enableDrafts={false}
                         draftValues={{
                           athleteName: task.athletename,
                           youtubeLink: '',
