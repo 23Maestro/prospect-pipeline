@@ -53,6 +53,13 @@
       "description": "Search global athlete records (ProspectID)",
       "mode": "view",
       "icon": "search-prospects.png"
+    },
+    {
+      "name": "scout-prep",
+      "title": "Scout Prep",
+      "description": "Prep a live scouting call with voicemail and deficit guidance",
+      "mode": "view",
+      "icon": "prospect-pipeline.png"
     }
   ],
   "tools": [
