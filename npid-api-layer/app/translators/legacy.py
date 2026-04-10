@@ -8,6 +8,7 @@ import re
 import json
 import logging
 from typing import Dict, Any, Optional, Tuple, List
+from urllib.parse import parse_qs, urlparse
 from bs4 import BeautifulSoup
 import html2text
 import html
@@ -1185,6 +1186,19 @@ class LegacyTranslator:
                                 return text
             return None
 
+        def get_select_selected_option(name: str):
+            sel = tree.css_first(f'select[name="{name}"]')
+            if not sel:
+                return None
+            selected = sel.css_first('option[selected]') or sel.css_first("option[selected='true']")
+            if selected:
+                return selected
+            options = sel.css('option')
+            for option in options:
+                if option.attributes and option.attributes.get('selected') is not None:
+                    return option
+            return None
+
         # Extract student data
         student = {
             "firstName": get_input_value('first_name'),
@@ -1315,9 +1329,31 @@ class LegacyTranslator:
         # Extract profile fields from athleteinfo (best-effort)
         sport = get_select_value_contains(["sport"]) or get_input_value_contains(["sport"])
         grad_year = get_select_value_contains(["grad_year", "graduation"]) or get_input_value_contains(["grad_year", "graduation"])
-        high_school = get_input_value_contains(["high_school", "school"]) or get_select_value_contains(["high_school", "school"])
+
+        high_school = get_input_value_contains(["high_school", "school"])
         city = get_input_value_contains(["city"])
         state = get_input_value_contains(["state"])
+
+        school_option = get_select_selected_option("high_school")
+        if school_option:
+            school_value = (school_option.attributes.get('value', '') if school_option.attributes else '').strip()
+            school_text = school_option.text(strip=True)
+            school_city = (school_option.attributes.get('cityval', '') if school_option.attributes else '').strip()
+            if not high_school:
+                if school_value:
+                    high_school = school_value
+                elif school_text:
+                    high_school = school_text.split(',', 1)[0].strip()
+            if not city and school_city:
+                city = school_city
+            elif not city and school_text and ',' in school_text:
+                city = school_text.split(',', 1)[1].strip()
+
+        state_option = get_select_selected_option("high_school_state")
+        if state_option and not state:
+            state = state_option.text(strip=True) or None
+
+        gpa = get_input_value("gpa") or get_input_value_contains(["gpa"])
         primary_pos = get_input_value_contains(["primaryposition", "primary_position"])
         secondary_pos = get_input_value_contains(["secondaryposition", "secondary_position"])
         third_pos = get_input_value_contains(["thirdposition", "third_position"])
@@ -1332,7 +1368,8 @@ class LegacyTranslator:
             "high_school": high_school,
             "city": city,
             "state": state,
-            "positions": positions
+            "positions": positions,
+            "gpa": gpa,
         }
 
         logger.info(
@@ -3132,6 +3169,161 @@ class LegacyTranslator:
             "rows": rows,
             "table_found": True,
         }
+
+    @staticmethod
+    def portal_tasks_to_legacy(
+        assigned_to: str = "1408164",
+        range_value: str = "todayPastDue",
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for the dashboard task list XHR.
+        GET /tasks/taskslist?range=todayPastDue&assignedto=1408164
+        """
+        endpoint = "/tasks/taskslist"
+        params: Dict[str, Any] = {
+            "range": range_value,
+            "assignedto": assigned_to,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_portal_tasks_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse the dashboard task table returned by /tasks/taskslist.
+        """
+        raw_response = (html_response or "").strip()
+        tasks: List[Dict[str, Any]] = []
+
+        # Newer dashboard responses come back as a JSON array string rather than table HTML.
+        if raw_response.startswith("[") or raw_response.startswith("{"):
+            try:
+                payload = json.loads(raw_response)
+                items = payload if isinstance(payload, list) else payload.get("tasks", [])
+                for item in items:
+                    if not isinstance(item, dict):
+                        continue
+
+                    contact_id = str(item.get("contactid") or "").strip()
+                    athlete_main_id = str(item.get("athlete_main_id") or "").strip() or None
+                    athlete_name = str(item.get("contact") or "").strip()
+
+                    if not contact_id or not athlete_name:
+                        continue
+
+                    athlete_admin_url = (
+                        f"/admin/athletes?contactid={contact_id}&athlete_main_id={athlete_main_id}"
+                        if athlete_main_id
+                        else f"/admin/athletes?contactid={contact_id}"
+                    )
+                    athlete_task_url = f"{athlete_admin_url}&tasktab=1"
+
+                    tasks.append({
+                        "contact_id": contact_id,
+                        "athlete_main_id": athlete_main_id,
+                        "athlete_id": contact_id,
+                        "athlete_name": athlete_name,
+                        "due_date": item.get("duedate_usa"),
+                        "completion_date": item.get("completiondate_usa"),
+                        "assigned_owner": item.get("user"),
+                        "grad_year": str(item.get("grad_year") or "").strip() or None,
+                        "title": str(item.get("title") or "").strip() or None,
+                        "description": str(item.get("description") or "").strip() or None,
+                        "athlete_admin_url": athlete_admin_url,
+                        "athlete_profile_url": None,
+                        "athlete_task_url": athlete_task_url,
+                    })
+
+                return {"success": True, "tasks": tasks, "table_found": False}
+            except Exception:
+                logger.warning("Failed to parse scout tasks JSON payload; falling back to HTML parser")
+
+        soup = BeautifulSoup(html_response or "", "html.parser")
+
+        target_table = None
+        for table in soup.select("table"):
+            headers = [
+                cell.get_text(" ", strip=True).lower()
+                for cell in table.select("tr th")
+            ]
+            if all(
+                expected in headers
+                for expected in [
+                    "due date",
+                    "completion date",
+                    "assigned owner",
+                    "contact",
+                    "grad year",
+                    "title",
+                    "description",
+                ]
+            ):
+                target_table = table
+                break
+
+        if target_table is None:
+            return {"success": True, "tasks": [], "table_found": False}
+
+        def parse_contact_query(url: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+            if not url:
+                return None, None
+            parsed = urlparse(url)
+            query = parse_qs(parsed.query)
+            contact_id = (query.get("contactid") or [None])[0]
+            athlete_main_id = (query.get("athlete_main_id") or [None])[0]
+            return contact_id, athlete_main_id
+
+        body_rows = target_table.select("tbody tr") or target_table.select("tr")
+
+        for row in body_rows:
+            if row.find("th"):
+                continue
+            cells = row.find_all("td")
+            if len(cells) < 8:
+                continue
+
+            contact_cell = cells[4]
+            contact_link = contact_cell.find("a", href=re.compile(r"/admin/athletes\?contactid="))
+            profile_link = contact_cell.find("a", href=re.compile(r"/athlete/profile/\d+"))
+            task_link = contact_cell.find("a", href=re.compile(r"tasktab=1"))
+
+            contact_id, athlete_main_id = parse_contact_query(contact_link.get("href") if contact_link else None)
+            athlete_task_contact_id, athlete_task_main_id = parse_contact_query(task_link.get("href") if task_link else None)
+            if not contact_id:
+                contact_id = athlete_task_contact_id
+            if not athlete_main_id:
+                athlete_main_id = athlete_task_main_id
+
+            athlete_id = None
+            if profile_link and profile_link.get("href"):
+                match = re.search(r"/athlete/profile/(\d+)", profile_link.get("href", ""))
+                if match:
+                    athlete_id = match.group(1)
+
+            athlete_name = contact_link.get_text(" ", strip=True) if contact_link else contact_cell.get_text(" ", strip=True)
+            title_cell = cells[6]
+            title_link = title_cell.find("a")
+            title = title_link.get_text(" ", strip=True) if title_link else title_cell.get_text(" ", strip=True)
+
+            if not contact_id or not athlete_name:
+                continue
+
+            tasks.append({
+                "contact_id": contact_id,
+                "athlete_main_id": athlete_main_id,
+                "athlete_id": athlete_id or contact_id,
+                "athlete_name": athlete_name,
+                "due_date": cells[1].get_text(" ", strip=True) or None,
+                "completion_date": cells[2].get_text(" ", strip=True) or None,
+                "assigned_owner": cells[3].get_text(" ", strip=True) or None,
+                "grad_year": cells[5].get_text(" ", strip=True) or None,
+                "title": title or None,
+                "description": cells[7].get_text(" ", strip=True) or None,
+                "athlete_admin_url": contact_link.get("href") if contact_link else None,
+                "athlete_profile_url": profile_link.get("href") if profile_link else None,
+                "athlete_task_url": task_link.get("href") if task_link else None,
+            })
+
+        return {"success": True, "tasks": tasks, "table_found": True}
 
     @staticmethod
     def tasks_list_to_legacy(athlete_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:

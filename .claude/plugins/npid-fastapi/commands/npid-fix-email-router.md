@@ -5,6 +5,13 @@ description: Fix email router import violation
 
 # Fix Email Router Import Bug
 
+Historical note: this is only for older branches that still import `get_session` from `app.session`.
+Do not run this by default when debugging 404s. First verify:
+
+- route presence in `http://127.0.0.1:8000/openapi.json`
+- stale FastAPI server restart
+- session/auth validity via `/auth-status`
+
 Apply vetted fix to `npid-api-layer/app/routers/email.py` to resolve ImportError.
 
 ## Bug Details
@@ -12,6 +19,7 @@ Apply vetted fix to `npid-api-layer/app/routers/email.py` to resolve ImportError
 **File:** `npid-api-layer/app/routers/email.py:14`
 
 **Current (BROKEN):**
+
 ```python
 from app.session import get_session  # ❌ Function doesn't exist
 ```
@@ -23,11 +31,13 @@ from app.session import get_session  # ❌ Function doesn't exist
 ### Step 1: Change Import Statement (Line 14)
 
 **Replace:**
+
 ```python
 from app.session import get_session
 ```
 
 **With:**
+
 ```python
 from app.session import NPIDSession
 ```
@@ -106,11 +116,13 @@ async def get_email_templates(request: Request, athlete_id: str):
 After fix applied:
 
 1. **Start FastAPI:**
+
    ```bash
    cd npid-api-layer && venv/bin/python -m uvicorn main:app --reload --port 8000
    ```
 
 2. **Test endpoints:**
+
    ```bash
    # Test templates
    http GET :8000/api/v1/email/templates/1464610

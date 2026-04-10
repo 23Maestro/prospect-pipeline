@@ -193,7 +193,7 @@ async def resolve_athlete(
 
                 if student.get("firstName") or student.get("lastName"):
                     profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
-                for key in ["grad_year", "sport", "high_school", "city", "state", "positions"]:
+                for key in ["grad_year", "sport", "high_school", "city", "state", "positions", "gpa"]:
                     if profile.get(key):
                         profile_data[key] = profile.get(key)
         except Exception as e:
@@ -305,11 +305,12 @@ async def resolve_athlete(
         state=profile_data.get("state"),
         positions=profile_data.get("positions"),
         sport=profile_data.get("sport"),
-        jersey_number=profile_data.get("jersey_number")
+        jersey_number=profile_data.get("jersey_number"),
+        gpa=profile_data.get("gpa"),
     )
 
     logger.info(
-        "✅ Resolve result athlete_id=%s athlete_main_id=%s name=%s grad_year=%s high_school=%s city=%s state=%s sport=%s positions=%s",
+        "✅ Resolve result athlete_id=%s athlete_main_id=%s name=%s grad_year=%s high_school=%s city=%s state=%s sport=%s positions=%s gpa=%s",
         result.athlete_id,
         result.athlete_main_id,
         result.name,
@@ -318,7 +319,8 @@ async def resolve_athlete(
         result.city,
         result.state,
         result.sport,
-        result.positions
+        result.positions,
+        result.gpa,
     )
 
     # Cache the result

@@ -104,6 +104,7 @@ class AthleteIdentifiers(BaseModel):
     positions: Optional[str] = None
     sport: Optional[str] = None
     jersey_number: Optional[str] = None
+    gpa: Optional[str] = None
 
 
 class AdminAthleteTableResponse(BaseModel):
@@ -452,3 +453,27 @@ class ContactInfoResponse(BaseModel):
     class Config:
         populate_by_name = True
         by_alias = True
+
+
+class ScoutPortalTask(BaseModel):
+    """Single task row from the admin portal task list."""
+    contact_id: str
+    athlete_main_id: Optional[str] = None
+    athlete_id: Optional[str] = None
+    athlete_name: str
+    due_date: Optional[str] = None
+    completion_date: Optional[str] = None
+    assigned_owner: Optional[str] = None
+    grad_year: Optional[str] = None
+    title: Optional[str] = None
+    description: Optional[str] = None
+    athlete_admin_url: Optional[str] = None
+    athlete_profile_url: Optional[str] = None
+    athlete_task_url: Optional[str] = None
+
+
+class ScoutPortalTasksResponse(BaseModel):
+    """Task list shown on the admin portal landing page."""
+    success: bool
+    count: int
+    tasks: List[ScoutPortalTask]
