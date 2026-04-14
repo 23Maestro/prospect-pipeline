@@ -71,6 +71,7 @@
     }
   ],
   "dependencies": {
+    "@huggingface/transformers": "^4.0.1",
     "@raycast/api": "^1.102.7",
     "@raycast/utils": "^2.2.1",
     "cheerio": "^1.0.0",

@@ -13,6 +13,15 @@ export type ScoutPrepAIOutput = {
   localTimeLabel?: string | null;
   rapportSource: 'ai' | 'fallback';
   hasMascotCue: boolean;
+  microEnrichment?: ScoutPrepMicroEnrichment | null;
+};
+
+export type ScoutPrepMicroEnrichment = {
+  rapportAnchor?: string | null;
+  suggestedLiveRapportLane?: string | null;
+  gpaToneLine?: string | null;
+  deficitEmphasis?: string | null;
+  sportPromptBias?: string | null;
 };
 
 export type ScoutPortalTask = {
@@ -80,4 +89,26 @@ export type ScoutPrepContext = {
     description?: string | null;
     row_text?: string | null;
   }>;
+};
+
+export type SalesStageOption = {
+  value: string;
+  label: string;
+  selected: boolean;
+};
+
+export type SalesStageOptionsResponse = {
+  success: boolean;
+  count: number;
+  selected_value?: string | null;
+  selected_label?: string | null;
+  options: SalesStageOption[];
+};
+
+export type MeetingSetTemplateResponse = {
+  success: boolean;
+  meeting_name?: string | null;
+  selected_recruit_timezone?: string | null;
+  recruit_timezone_options: SalesStageOption[];
+  details_template?: string | null;
 };

@@ -4,6 +4,7 @@ import { fetchAthleteNotes, fetchContactInfo } from './npid-mcp-adapter';
 import { buildScoutPrepCard } from '../features/scout-prep/content';
 import { buildScoutPrepFallbackOutput } from './scout-prep-ai';
 import type {
+  ScoutPrepAIOutput,
   ScoutPrepFormValues,
   ScoutPrepGrade,
   ScoutPortalTask,
@@ -263,9 +264,10 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
 export function buildScoutPrepDetailMarkdown(
   values: ScoutPrepFormValues,
   context: ScoutPrepContext,
+  output?: ScoutPrepAIOutput | null,
 ): string {
   try {
-    const card = buildScoutPrepCard(values, context, buildScoutPrepFallbackOutput(values, context));
+    const card = buildScoutPrepCard(values, context, output || buildScoutPrepFallbackOutput(values, context));
     logInfo('SCOUT_PREP_CARD_BUILD', 'assemble-card', 'success', {
       anchorCount: card.diagnostics.anchorCount,
       snapshotFieldCount: card.diagnostics.snapshotFieldCount,

@@ -477,3 +477,28 @@ class ScoutPortalTasksResponse(BaseModel):
     success: bool
     count: int
     tasks: List[ScoutPortalTask]
+
+
+class SalesStageOption(BaseModel):
+    """Official sales-stage option from legacy Laravel."""
+    value: str
+    label: str
+    selected: bool = False
+
+
+class SalesStageOptionsResponse(BaseModel):
+    """Official sales-stage options for an athlete."""
+    success: bool
+    count: int
+    selected_value: Optional[str] = None
+    selected_label: Optional[str] = None
+    options: List[SalesStageOption]
+
+
+class MeetingSetTemplateResponse(BaseModel):
+    """Hydrated Meeting Set modal template."""
+    success: bool
+    meeting_name: Optional[str] = None
+    selected_recruit_timezone: Optional[str] = None
+    recruit_timezone_options: List[SalesStageOption]
+    details_template: Optional[str] = None

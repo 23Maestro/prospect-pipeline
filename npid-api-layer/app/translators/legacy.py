@@ -3187,6 +3187,153 @@ class LegacyTranslator:
         return endpoint, params
 
     @staticmethod
+    def sales_stage_options_to_legacy(athlete_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for official sales-stage dropdown options.
+        GET /admin/salesstage?athleteid=...
+        """
+        endpoint = "/admin/salesstage"
+        params: Dict[str, Any] = {
+            "athleteid": athlete_id,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_sales_stage_options_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse official sales-stage options from legacy HTML/select markup.
+        """
+        soup = BeautifulSoup(raw_response or "", "html.parser")
+        target_select = None
+
+        for select in soup.select("select"):
+            options = select.find_all("option")
+            labels = [option.get_text(" ", strip=True) for option in options]
+            if "Meeting Set" in labels and "Left Voice Mail 1" in labels:
+                target_select = select
+                break
+
+        options: List[Dict[str, Any]] = []
+        selected_value: Optional[str] = None
+        selected_label: Optional[str] = None
+
+        if target_select is None:
+            return {
+                "success": True,
+                "count": 0,
+                "selected_value": None,
+                "selected_label": None,
+                "options": [],
+            }
+
+        for option in target_select.find_all("option"):
+            label = option.get_text(" ", strip=True)
+            value = (option.get("value") or "").strip()
+            if not label or label.lower() == "select":
+                continue
+            selected = option.has_attr("selected")
+            if selected:
+                selected_value = value or label
+                selected_label = label
+            options.append({
+                "value": value or label,
+                "label": label,
+                "selected": selected,
+            })
+
+        return {
+            "success": True,
+            "count": len(options),
+            "selected_value": selected_value,
+            "selected_label": selected_label,
+            "options": options,
+        }
+
+    @staticmethod
+    def meeting_set_template_to_legacy(
+        adminathlete: str,
+        athlete_main_id: str,
+        cal_date: str = "",
+        cal_time: str = "",
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for Meeting Set modal template hydration.
+        GET /template/template/meetingset?cal_date=&cal_time=&adminathlete=...&athlete_main_id=...
+        """
+        endpoint = "/template/template/meetingset"
+        params: Dict[str, Any] = {
+            "cal_date": cal_date,
+            "cal_time": cal_time,
+            "adminathlete": adminathlete,
+            "athlete_main_id": athlete_main_id,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_meeting_set_template_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse hydrated Meeting Set modal form.
+        """
+        soup = BeautifulSoup(raw_response or "", "html.parser")
+        form = soup.find("form") or soup
+
+        meeting_name: Optional[str] = None
+        details_template: Optional[str] = None
+        timezone_options: List[Dict[str, Any]] = []
+        selected_timezone: Optional[str] = None
+
+        text_inputs = [
+            input_elem for input_elem in form.find_all("input")
+            if (input_elem.get("type") or "text").lower() in ("text", "search")
+        ]
+        for input_elem in text_inputs:
+            value = (input_elem.get("value") or "").strip()
+            name = (input_elem.get("name") or "").lower()
+            if not value:
+                continue
+            if "meeting" in name or meeting_name is None:
+                meeting_name = value
+                if "meeting" in name:
+                    break
+
+        for textarea in form.find_all("textarea"):
+            value = textarea.get_text("\n", strip=False).strip()
+            if value:
+                details_template = value
+                break
+
+        target_select = None
+        timezone_labels = {"AST", "EST", "CST", "MST", "PST", "AKST", "HST"}
+        for select in form.find_all("select"):
+            option_labels = {option.get_text(" ", strip=True) for option in select.find_all("option")}
+            if timezone_labels.intersection(option_labels):
+                target_select = select
+                break
+
+        if target_select is not None:
+            for option in target_select.find_all("option"):
+                label = option.get_text(" ", strip=True)
+                value = (option.get("value") or "").strip()
+                if not label:
+                    continue
+                selected = option.has_attr("selected")
+                if selected:
+                    selected_timezone = value or label
+                timezone_options.append({
+                    "value": value or label,
+                    "label": label,
+                    "selected": selected,
+                })
+
+        return {
+            "success": True,
+            "meeting_name": meeting_name,
+            "selected_recruit_timezone": selected_timezone,
+            "recruit_timezone_options": timezone_options,
+            "details_template": details_template,
+        }
+
+    @staticmethod
     def parse_portal_tasks_response(html_response: str) -> Dict[str, Any]:
         """
         Parse the dashboard task table returned by /tasks/taskslist.

@@ -1,9 +1,29 @@
 import cityTimezones from 'city-timezones';
-import type { ScoutPrepAIOutput, ScoutPrepContext, ScoutPrepFormValues } from '../features/scout-prep/types';
+import type {
+  ScoutPrepAIOutput,
+  ScoutPrepContext,
+  ScoutPrepFormValues,
+  ScoutPrepMicroEnrichment,
+} from '../features/scout-prep/types';
 import { buildDeterministicRapportCues } from '../features/scout-prep/content';
 import { searchLogger } from './logger';
 
 const FEATURE = 'scout-prep.ai';
+const LOCAL_MODEL_ID = 'onnx-community/Qwen3-0.6B-ONNX';
+const LOCAL_MODEL_TIMEOUT_MS = 25000;
+const LOCAL_GENERATION_TIMEOUT_MS = 12000;
+
+let localGeneratorPromise: Promise<unknown> | null = null;
+
+async function loadTransformersPipeline(): Promise<
+  (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown>
+> {
+  const dynamicImport = new Function('specifier', 'return import(specifier)') as (
+    specifier: string,
+  ) => Promise<{ pipeline: (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown> }>;
+  const transformers = await dynamicImport('@huggingface/transformers');
+  return transformers.pipeline;
+}
 
 const CITY_STATE_TIMEZONE_OVERRIDES: Record<string, string> = {
   'LONDON|OH': 'America/New_York',
@@ -144,6 +164,26 @@ function clean(value?: string | null): string | null {
   return trimmed || null;
 }
 
+function compactLine(value: unknown): string | null {
+  const cleaned = String(value || '')
+    .replace(/^[\s"'`*-]+|[\s"'`*-]+$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned || cleaned.length > 180 || cleaned.split(/[.!?]/).filter(Boolean).length > 2) {
+    return null;
+  }
+  return cleaned;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
+    }),
+  ]);
+}
+
 function titleCase(value?: string | null): string {
   return String(value || '')
     .trim()
@@ -251,76 +291,169 @@ function formatLocalTimeLabel(context: ScoutPrepContext): string | null {
   return `Current local time in ${location}: ${localTime}`;
 }
 
-export function buildScoutPrepAIPrompt(values: ScoutPrepFormValues, context: ScoutPrepContext): string {
+export function buildScoutPrepMicroEnrichmentPrompt(
+  values: ScoutPrepFormValues,
+  context: ScoutPrepContext,
+  localTimeLabel?: string | null,
+): string {
   const athleteName = clean(context.contactInfo.studentAthlete.name || values.athleteName) || 'Unknown Athlete';
+  const parent1 = clean(context.contactInfo.parent1?.name || values.parent1Name);
+  const parent2 = clean(context.contactInfo.parent2?.name || values.parent2Name);
   const sport = clean(context.resolved.sport || values.sport);
   const school = clean(context.resolved.high_school);
   const city = clean(context.resolved.city);
   const state = clean(context.resolved.state);
   const gradYear = clean(values.gradYear);
   const gpa = clean(context.resolved.gpa);
-  const taskTitle = clean(context.task.title);
-  const taskDescription = clean(context.task.description);
+  const position = clean(context.resolved.positions);
 
-  return `You are helping a Prospect ID scout prepare a recruiting call.
-
-Return strict JSON only with this shape:
-{"rapport_cues":["cue 1","cue 2"],"has_mascot_cue":true}
+  return `You are filling five tiny Scout Prep card slots.
+Do not rewrite the script. Do not generate a call. Do not add markdown.
+Return strict JSON only with these exact keys:
+{"rapportAnchor":"","suggestedLiveRapportLane":"","gpaToneLine":"","deficitEmphasis":"","sportPromptBias":""}
 
 Rules:
-- Return exactly 2 rapport cues.
-- Each cue must be grounded in the provided athlete context.
-- Prioritize one strong local or sport cue.
-- Use the second cue for the high school, mascot, or school-community tie-in.
-- If you can confidently identify the mascot from the school, city, and state context, use it.
-- If you cannot confidently identify the mascot, use the school name instead.
-- Do not use GPA, academics, or generic praise as a rapport cue if a school or mascot cue is available.
-- Keep each cue under 22 words.
-- Do not mention uncertainty.
-- Do not use markdown.
-- Do not add keys beyond the required JSON keys.
-- Do not write a greeting or opener line.
-- No fluff. No validation language. No "impressed by" phrasing.
+- One short factual sentence per value.
+- No value over 22 words.
+- Tone: live recruiting call, practical, skimmable.
+- Keep fixed close, meeting, handoff, and final confirmation language untouched.
+- Do not mention mascots.
+- If location/sport hook is weak, use safe regional sports culture.
+- GPA >= 3.0: praise/celebrate. GPA 2.5-2.99: encourage/build up. GPA < 2.5: encouragement plus academic urgency.
+- Freshman/Sophomore: get on the map. Junior: coaches should already be reaching out. Senior: where things stand right now.
+- Football bias: position, varsity, size, speed, offseason training.
+- Baseball bias: travel ball, varsity, pop time, velo, 60.
+- Basketball bias: varsity, AAU, size, role, exposure.
 
-Athlete context:
+Context:
 athlete_name: ${athleteName}
+parent_1: ${parent1 || 'unknown'}
+parent_2: ${parent2 || 'unknown'}
 sport: ${sport || 'unknown'}
-high_school: ${school || 'unknown'}
-city: ${city || 'unknown'}
-state: ${state || 'unknown'}
 grad_year: ${gradYear || 'unknown'}
 gpa: ${gpa || 'unknown'}
-task_title: ${taskTitle || 'unknown'}
-task_description: ${taskDescription || 'unknown'}`;
+position: ${position || 'unknown'}
+school: ${school || 'unknown'}
+city: ${city || 'unknown'}
+state: ${state || 'unknown'}
+local_time: ${localTimeLabel || 'unknown'}`;
 }
 
-function sanitizeCue(value: unknown): string | null {
-  const cleaned = String(value || '')
-    .replace(/^[-*•\s]+/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return cleaned || null;
+function extractGeneratedText(output: unknown): string {
+  if (Array.isArray(output)) {
+    const first = output[0] as { generated_text?: unknown };
+    return String(first?.generated_text || '');
+  }
+  if (output && typeof output === 'object' && 'generated_text' in output) {
+    return String((output as { generated_text?: unknown }).generated_text || '');
+  }
+  return String(output || '');
 }
 
-function parseAIResponse(raw: string): {
-  rapportCues: string[];
-  hasMascotCue: boolean;
-} | null {
-  const normalized = raw.trim().replace(/^```(?:json)?\s*|\s*```$/g, '');
-  const parsed = JSON.parse(normalized) as {
-    rapport_cues?: unknown;
-    has_mascot_cue?: unknown;
+function parseMicroEnrichment(raw: string): ScoutPrepMicroEnrichment | null {
+  const start = raw.indexOf('{');
+  const end = raw.lastIndexOf('}');
+  if (start === -1 || end === -1 || end <= start) {
+    return null;
+  }
+
+  const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+  const enrichment: ScoutPrepMicroEnrichment = {
+    rapportAnchor: compactLine(parsed.rapportAnchor),
+    suggestedLiveRapportLane: compactLine(parsed.suggestedLiveRapportLane),
+    gpaToneLine: compactLine(parsed.gpaToneLine),
+    deficitEmphasis: compactLine(parsed.deficitEmphasis),
+    sportPromptBias: compactLine(parsed.sportPromptBias),
   };
 
-  const rapportCues = Array.isArray(parsed.rapport_cues)
-    ? parsed.rapport_cues.map(sanitizeCue).filter((value): value is string => Boolean(value)).slice(0, 2)
-    : [];
-  const hasMascotCue = Boolean(parsed.has_mascot_cue);
+  return Object.values(enrichment).some(Boolean) ? enrichment : null;
+}
 
-  return {
-    rapportCues,
-    hasMascotCue,
-  };
+async function getLocalGenerator(): Promise<unknown> {
+  if (!localGeneratorPromise) {
+    const startedAt = Date.now();
+    logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'start', {
+      model: LOCAL_MODEL_ID,
+    });
+    localGeneratorPromise = withTimeout(
+      loadTransformersPipeline().then((transformersPipeline) =>
+        transformersPipeline('text-generation', LOCAL_MODEL_ID, { dtype: 'q4' }),
+      ),
+      LOCAL_MODEL_TIMEOUT_MS,
+      'Local scout-prep model load',
+    ).then((generator) => {
+      logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'success', {
+        model: LOCAL_MODEL_ID,
+        elapsedMs: Date.now() - startedAt,
+      });
+      return generator;
+    }).catch((error) => {
+      localGeneratorPromise = null;
+      throw error;
+    });
+  }
+  return localGeneratorPromise;
+}
+
+export async function generateScoutPrepLocalEnrichment(
+  values: ScoutPrepFormValues,
+  context: ScoutPrepContext,
+): Promise<ScoutPrepAIOutput | null> {
+  const fallback = buildScoutPrepFallbackOutput(values, context);
+  const prompt = buildScoutPrepMicroEnrichmentPrompt(values, context, fallback.localTimeLabel);
+  const startedAt = Date.now();
+
+  try {
+    logInfo('SCOUT_PREP_LOCAL_MODEL', 'generate', 'start', {
+      model: LOCAL_MODEL_ID,
+      athleteName: values.athleteName,
+    });
+    const generator = (await getLocalGenerator()) as (
+      prompt: string,
+      options: Record<string, unknown>,
+    ) => Promise<unknown>;
+    const output = await withTimeout(
+      generator(prompt, {
+        max_new_tokens: 140,
+        temperature: 0.2,
+        do_sample: false,
+        return_full_text: false,
+      }),
+      LOCAL_GENERATION_TIMEOUT_MS,
+      'Local scout-prep model generation',
+    );
+    const microEnrichment = parseMicroEnrichment(extractGeneratedText(output));
+    if (!microEnrichment) {
+      logFailure('SCOUT_PREP_LOCAL_MODEL', 'parse', 'Local model returned unusable JSON', {
+        model: LOCAL_MODEL_ID,
+      });
+      return null;
+    }
+
+    logInfo('SCOUT_PREP_LOCAL_MODEL', 'generate', 'success', {
+      model: LOCAL_MODEL_ID,
+      elapsedMs: Date.now() - startedAt,
+      slotCount: Object.values(microEnrichment).filter(Boolean).length,
+    });
+
+    return {
+      ...fallback,
+      rapportSource: 'ai',
+      hasMascotCue: false,
+      microEnrichment,
+    };
+  } catch (error) {
+    logFailure(
+      'SCOUT_PREP_LOCAL_MODEL',
+      'generate',
+      error instanceof Error ? error.message : String(error),
+      {
+        model: LOCAL_MODEL_ID,
+        elapsedMs: Date.now() - startedAt,
+      },
+    );
+    return null;
+  }
 }
 
 export function buildScoutPrepFallbackOutput(
@@ -340,60 +473,4 @@ export function buildScoutPrepFallbackOutput(
     rapportSource: 'fallback',
     hasMascotCue: false,
   };
-}
-
-export function parseScoutPrepAIOutput(
-  raw: string,
-  values: ScoutPrepFormValues,
-  context: ScoutPrepContext,
-): ScoutPrepAIOutput | null {
-  const parsed = parseAIResponse(raw);
-  if (!parsed || parsed.rapportCues.length === 0) {
-    return null;
-  }
-
-  const fallback = buildScoutPrepFallbackOutput(values, context);
-  return {
-    ...fallback,
-    rapportCues: parsed.rapportCues,
-    rapportSource: 'ai',
-    hasMascotCue: parsed.hasMascotCue,
-  };
-}
-
-export function logScoutPrepAIStart(values: ScoutPrepFormValues, context: ScoutPrepContext) {
-  logInfo('SCOUT_PREP_AI_REQUEST', 'ask', 'start', {
-    athleteName: values.athleteName,
-    hasSport: Boolean(clean(context.resolved.sport || values.sport)),
-    hasSchool: Boolean(clean(context.resolved.high_school)),
-    hasCity: Boolean(clean(context.resolved.city)),
-    hasState: Boolean(clean(context.resolved.state)),
-    hasGpa: Boolean(clean(context.resolved.gpa)),
-  });
-}
-
-export function logScoutPrepAISuccess(
-  values: ScoutPrepFormValues,
-  aiOutput: ScoutPrepAIOutput,
-  model: string,
-) {
-  logInfo('SCOUT_PREP_AI_REQUEST', 'ask', 'success', {
-    athleteName: values.athleteName,
-    model,
-    cueCount: aiOutput.rapportCues.length,
-    hasMascotCue: aiOutput.hasMascotCue,
-    hasLocalTime: Boolean(aiOutput.localTimeLabel),
-  });
-}
-
-export function logScoutPrepAIFailure(
-  values: ScoutPrepFormValues,
-  step: string,
-  error: string,
-  context?: Record<string, unknown>,
-) {
-  logFailure('SCOUT_PREP_AI_REQUEST', step, error, {
-    athleteName: values.athleteName,
-    ...(context || {}),
-  });
 }
