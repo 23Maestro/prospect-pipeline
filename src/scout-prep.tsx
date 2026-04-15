@@ -218,6 +218,11 @@ function buildScoutPrepTaskUrl(task: ScoutPortalTask, athleteMainId?: string | n
   return url.toString();
 }
 
+function buildScoutPrepPlayerIdUrl(task: ScoutPortalTask, athleteId?: string | null): string {
+  const resolvedAthleteId = String(athleteId || task.contact_id || '').trim();
+  return `${DASHBOARD_BASE_URL}/athlete/profile/${encodeURIComponent(resolvedAthleteId)}`;
+}
+
 function buildPostCallPreviewMarkdown(
   task: ScoutPortalTask,
   values: Record<string, string | undefined>,
@@ -700,6 +705,11 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
               context?.resolved.athlete_main_id || context?.task.athlete_main_id,
             )}
           />
+          <Action.OpenInBrowser
+            title="Open Player ID"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+            url={buildScoutPrepPlayerIdUrl(task, context?.resolved.athlete_id)}
+          />
         </ActionPanel>
       }
     />
@@ -763,6 +773,11 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             title="Open Athlete Task Tab"
             shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
             url={buildScoutPrepTaskUrl(task)}
+          />
+          <Action.OpenInBrowser
+            title="Open Player ID"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+            url={buildScoutPrepPlayerIdUrl(task)}
           />
         </ActionPanel>
       }

@@ -1,6 +1,6 @@
 import { Color, Detail } from '@raycast/api';
 import { apiFetch, apiRootFetch } from './fastapi-client';
-import { fetchAthleteNotes, fetchContactInfo } from './npid-mcp-adapter';
+import { fetchAthleteNotes, fetchContactInfo, type ContactInfo } from './npid-mcp-adapter';
 import { buildScoutPrepCard } from '../features/scout-prep/content';
 import { buildScoutPrepFallbackOutput } from './scout-prep-ai';
 import type {
@@ -12,6 +12,13 @@ import type {
 } from '../features/scout-prep/types';
 import type { AthleteTaskSummary } from '../types/athlete-workflows';
 import { searchLogger } from './logger';
+import {
+  getCachedScoutPrepContactInfo,
+  getCachedScoutPrepMeasurables,
+  setCachedScoutPrepContactInfo,
+  setCachedScoutPrepMeasurables,
+  type ScoutPrepMeasurables,
+} from './scout-prep-cache';
 
 const FEATURE = 'scout-prep';
 
@@ -175,8 +182,6 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
     state?: string | null;
     positions?: string | null;
     gpa?: string | null;
-    height?: string | null;
-    weight?: string | null;
   };
   const athleteMainId = String(task.athlete_main_id || resolved.athlete_main_id || '').trim();
 
@@ -200,8 +205,6 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
       hasState: Boolean(String(resolved.state || '').trim()),
       hasPositions: Boolean(String(resolved.positions || '').trim()),
       hasGpa: Boolean(String(resolved.gpa || '').trim()),
-      hasHeight: Boolean(String(resolved.height || '').trim()),
-      hasWeight: Boolean(String(resolved.weight || '').trim()),
     },
   });
 
@@ -223,10 +226,20 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
     athleteId,
     athleteMainId,
   });
-  const [contactInfo, notes, tasks] = await Promise.all([
-    fetchContactInfo(String(task.contact_id), athleteMainId),
+  logInfo('SCOUT_PREP_CONTACT_CACHE', 'request', 'start', {
+    contactId: task.contact_id,
+    athleteId,
+    athleteMainId,
+  });
+  logInfo('SCOUT_PREP_MEASURABLES', 'request', 'start', {
+    contactId: task.contact_id,
+    athleteId,
+  });
+  const [contactInfo, notes, tasks, measurables] = await Promise.all([
+    loadScoutPrepContactInfo(String(task.contact_id), athleteMainId, athleteId),
     fetchAthleteNotes(athleteId, athleteMainId),
     fetchAthleteTasks(athleteId, athleteMainId),
+    loadScoutPrepMeasurables(athleteId, String(task.contact_id)),
   ]);
 
   logInfo('SCOUT_PREP_CONTEXT_LOAD', 'hydrate-context', 'success', {
@@ -254,11 +267,121 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
 
   return {
     task,
-    resolved,
+    resolved: {
+      ...resolved,
+      height: measurables.height || null,
+      weight: measurables.weight || null,
+    },
     contactInfo,
     notes,
     tasks,
   };
+}
+
+async function loadScoutPrepContactInfo(
+  contactId: string,
+  athleteMainId: string,
+  athleteId: string,
+): Promise<ContactInfo> {
+  const cached = await getCachedScoutPrepContactInfo(contactId, athleteMainId);
+  if (cached?.isFresh) {
+    logInfo('SCOUT_PREP_CONTACT_CACHE', 'parse', 'success', {
+      contactId,
+      athleteId,
+      athleteMainId,
+      source: 'cache',
+      cacheAgeMs: cached.cacheAgeMs,
+      hasParent1: Boolean(cached.data.parent1),
+      hasParent2: Boolean(cached.data.parent2),
+    });
+    return cached.data;
+  }
+
+  try {
+    const contactInfo = await fetchContactInfo(contactId, athleteMainId);
+    await setCachedScoutPrepContactInfo(contactId, athleteMainId, contactInfo);
+    logInfo('SCOUT_PREP_CONTACT_CACHE', 'parse', 'success', {
+      contactId,
+      athleteId,
+      athleteMainId,
+      source: 'api',
+      hasParent1: Boolean(contactInfo.parent1),
+      hasParent2: Boolean(contactInfo.parent2),
+    });
+    return contactInfo;
+  } catch (error) {
+    if (cached) {
+      logInfo('SCOUT_PREP_CONTACT_CACHE', 'parse', 'success', {
+        contactId,
+        athleteId,
+        athleteMainId,
+        source: 'stale-cache',
+        cacheAgeMs: cached.cacheAgeMs,
+        hasParent1: Boolean(cached.data.parent1),
+        hasParent2: Boolean(cached.data.parent2),
+      });
+      return cached.data;
+    }
+    throw error;
+  }
+}
+
+async function loadScoutPrepMeasurables(
+  athleteId: string,
+  contactId: string,
+): Promise<ScoutPrepMeasurables> {
+  const cached = await getCachedScoutPrepMeasurables(athleteId);
+  if (cached?.isFresh) {
+    logInfo('SCOUT_PREP_MEASURABLES', 'parse', 'success', {
+      contactId,
+      athleteId,
+      source: 'cache',
+      cacheAgeMs: cached.cacheAgeMs,
+      hasHeight: Boolean(String(cached.data.height || '').trim()),
+      hasWeight: Boolean(String(cached.data.weight || '').trim()),
+    });
+    return cached.data;
+  }
+
+  const measurablesResponse = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/measurables`);
+  if (measurablesResponse.ok) {
+    const measurables = (await measurablesResponse.json().catch(() => ({}))) as ScoutPrepMeasurables;
+    await setCachedScoutPrepMeasurables(athleteId, measurables);
+    logInfo('SCOUT_PREP_MEASURABLES', 'parse', 'success', {
+      contactId,
+      athleteId,
+      source: 'api',
+      hasHeight: Boolean(String(measurables.height || '').trim()),
+      hasWeight: Boolean(String(measurables.weight || '').trim()),
+    });
+    return measurables;
+  }
+
+  const errorText = await measurablesResponse.text().catch(() => '');
+  if (cached) {
+    logInfo('SCOUT_PREP_MEASURABLES', 'parse', 'success', {
+      contactId,
+      athleteId,
+      source: 'stale-cache',
+      cacheAgeMs: cached.cacheAgeMs,
+      hasHeight: Boolean(String(cached.data.height || '').trim()),
+      hasWeight: Boolean(String(cached.data.weight || '').trim()),
+    });
+    return cached.data;
+  }
+
+  logFailure(
+    'SCOUT_PREP_MEASURABLES',
+    'request',
+    errorText.slice(0, 200) || `Measurables HTTP ${measurablesResponse.status}`,
+    {
+      contactId,
+      athleteId,
+      statusCode: measurablesResponse.status,
+      responsePreview: errorText.slice(0, 120),
+    },
+  );
+  throw new Error(errorText.slice(0, 200) || `Measurables HTTP ${measurablesResponse.status}`);
 }
 
 export function buildScoutPrepDetailMarkdown(

@@ -105,6 +105,11 @@ class AthleteIdentifiers(BaseModel):
     sport: Optional[str] = None
     jersey_number: Optional[str] = None
     gpa: Optional[str] = None
+
+
+class AthleteMeasurables(BaseModel):
+    """Height and weight parsed from athlete profile page."""
+    athlete_id: str
     height: Optional[str] = None
     weight: Optional[str] = None
 

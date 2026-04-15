@@ -770,17 +770,6 @@ class LegacyTranslator:
                     _input_value("positions"),
                     _label_value("Positions"),
                 ])
-            if not data.get("height"):
-                data["height"] = _first_non_empty([
-                    _input_value("height"),
-                    _label_value("Height"),
-                ])
-            if not data.get("weight"):
-                data["weight"] = _first_non_empty([
-                    _input_value("weight"),
-                    _label_value("Weight"),
-                ])
-
             # Location fallback: "City, ST"
             if not data.get("city") or not data.get("state"):
                 location_text = _label_value("Location") or _label_value("City")
@@ -935,6 +924,44 @@ class LegacyTranslator:
             logger.error(f"Profile data extraction error: {e}", exc_info=True)
 
         return data
+
+    @staticmethod
+    def parse_athlete_profile_measurables(html: str) -> Dict[str, Any]:
+        """Extract only height/weight from athlete profile page."""
+        if not html:
+            return {}
+
+        from selectolax.parser import HTMLParser
+
+        tree = HTMLParser(html)
+
+        def _clean_text(value: Optional[str]) -> Optional[str]:
+            if not value:
+                return None
+            cleaned = re.sub(r'\s+', ' ', value).strip()
+            return cleaned or None
+
+        def _box_title_value(label: str) -> Optional[str]:
+            label_lower = label.lower()
+            for node in tree.css('.box-title'):
+                text = _clean_text(node.text(strip=True))
+                if not text or text.lower() != label_lower:
+                    continue
+                parent = node.parent
+                if not parent:
+                    continue
+                candidate = parent.css_first('.border-header')
+                if not candidate:
+                    continue
+                cleaned = _clean_text(candidate.text(strip=True))
+                if cleaned:
+                    return cleaned.replace("''", '"')
+            return None
+
+        return {
+            "height": _box_title_value("Height"),
+            "weight": _box_title_value("Weight"),
+        }
 
     @staticmethod
     def parse_video_progress_ids(html: str) -> Dict[str, Any]:

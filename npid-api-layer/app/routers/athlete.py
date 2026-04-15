@@ -11,6 +11,7 @@ import httpx
 
 from app.models.schemas import (
     AthleteIdentifiers,
+    AthleteMeasurables,
     AdminAthleteTableResponse,
     RawAthleteSearchRequest,
     RawAthleteSearchResponse
@@ -193,7 +194,7 @@ async def resolve_athlete(
 
                 if student.get("firstName") or student.get("lastName"):
                     profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
-                for key in ["grad_year", "sport", "high_school", "city", "state", "positions", "gpa", "height", "weight"]:
+                for key in ["grad_year", "sport", "high_school", "city", "state", "positions", "gpa"]:
                     if profile.get(key):
                         profile_data[key] = profile.get(key)
         except Exception as e:
@@ -331,6 +332,65 @@ async def resolve_athlete(
         athlete_cache.set(athlete_main_id, result)
     
     return result
+
+
+@router.get("/{athlete_id}/measurables", response_model=AthleteMeasurables)
+async def get_athlete_measurables(
+    request: Request,
+    athlete_id: str,
+):
+    session = get_session(request)
+    translator = LegacyTranslator()
+    feature = "athlete-measurables"
+
+    logger.info(
+        "ATHLETE_MEASURABLES %s",
+        {
+            "event": "ATHLETE_MEASURABLES",
+            "step": "request-profile",
+            "status": "start",
+            "feature": feature,
+            "context": {"athleteId": athlete_id},
+        },
+    )
+
+    try:
+        response = await session.get(f"/athlete/profile/{athlete_id}")
+        parsed = translator.parse_athlete_profile_measurables(response.text or "")
+        logger.info(
+            "ATHLETE_MEASURABLES %s",
+            {
+                "event": "ATHLETE_MEASURABLES",
+                "step": "parse-profile",
+                "status": "success",
+                "feature": feature,
+                "context": {
+                    "athleteId": athlete_id,
+                    "statusCode": response.status_code,
+                    "htmlLength": len(response.text or ""),
+                    "hasHeight": bool(str(parsed.get("height") or "").strip()),
+                    "hasWeight": bool(str(parsed.get("weight") or "").strip()),
+                },
+            },
+        )
+        return AthleteMeasurables(
+            athlete_id=str(athlete_id),
+            height=parsed.get("height"),
+            weight=parsed.get("weight"),
+        )
+    except Exception as exc:
+        logger.info(
+            "ATHLETE_MEASURABLES %s",
+            {
+                "event": "ATHLETE_MEASURABLES",
+                "step": "parse-profile",
+                "status": "failure",
+                "feature": feature,
+                "error": str(exc),
+                "context": {"athleteId": athlete_id},
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/{contact_id}/admin/payments", response_model=AdminAthleteTableResponse)

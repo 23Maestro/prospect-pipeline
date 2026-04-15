@@ -566,14 +566,18 @@ export async function fetchContactInfo(
     throw new Error(`Failed to fetch contact info: ${response.status}`);
   }
 
-  const data = await response.json();
+  const data = (await response.json().catch(() => ({}))) as ContactInfo & {
+    student_athlete?: unknown;
+    parent1?: unknown;
+    parent2?: unknown;
+  };
   logger.info(`✅ API: Successfully fetched contact info for ${contactId}`, {
-    hasStudent: !!data.student_athlete,
+    hasStudent: !!data.studentAthlete || !!data.student_athlete,
     hasParent1: !!data.parent1,
     hasParent2: !!data.parent2,
   });
 
-  return data;
+  return data as ContactInfo;
 }
 
 /**
