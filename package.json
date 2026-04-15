@@ -151,6 +151,7 @@
     "fix-lint": "ray lint --fix",
     "lint": "ray lint",
     "test:craft-reminder-date": "rm -rf /tmp/craft-reminder-tests && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir /tmp/craft-reminder-tests src/lib/craft-reminder-date.ts src/lib/craft-reminder-date.test.ts && node --test /tmp/craft-reminder-tests/craft-reminder-date.test.js",
+    "test:scout-prep-contact": "rm -rf /tmp/scout-prep-contact-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-contact-tests src/lib/scout-prep-contact.ts src/lib/scout-prep-contact.test.ts src/lib/scout-prep-ai.ts src/features/scout-prep/types.ts src/features/scout-prep/content.ts src/lib/logger.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-prep-contact-tests/lib/scout-prep-contact.test.js",
     "test:scout-prep-time": "rm -rf /tmp/scout-prep-time-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-time-tests src/lib/scout-prep-ai.ts src/lib/scout-prep-ai.test.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts src/lib/logger.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-prep-time-tests/lib/scout-prep-ai.test.js",
     "api": "cd npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
     "dev:all": "concurrently --kill-others -n \"RAY,API\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm:dev\" \"npm:api\"",

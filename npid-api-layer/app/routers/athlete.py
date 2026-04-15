@@ -193,7 +193,7 @@ async def resolve_athlete(
 
                 if student.get("firstName") or student.get("lastName"):
                     profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
-                for key in ["grad_year", "sport", "high_school", "city", "state", "positions", "gpa"]:
+                for key in ["grad_year", "sport", "high_school", "city", "state", "positions", "gpa", "height", "weight"]:
                     if profile.get(key):
                         profile_data[key] = profile.get(key)
         except Exception as e:

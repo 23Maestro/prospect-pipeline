@@ -1,0 +1,198 @@
+import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types';
+import { resolveTimezone } from './scout-prep-ai';
+
+type ContactCandidate = {
+  role: 'parent1' | 'parent2' | 'studentAthlete';
+  name: string | null;
+  rawPhone: string | null;
+  normalizedPhone: string | null;
+};
+
+export type ScoutPrepContactSelection = {
+  primaryNumber: string | null;
+  backupNumber: string | null;
+  spokeTo: string | null;
+  otherParent: string | null;
+  recipientName: string | null;
+};
+
+const LEGACY_RECRUIT_TIMEZONE_BY_IANA: Record<string, string> = {
+  'America/New_York': 'EST',
+  'America/Detroit': 'EST',
+  'America/Indiana/Indianapolis': 'EST',
+  'America/Kentucky/Louisville': 'EST',
+  'America/Chicago': 'CST',
+  'America/Indiana/Knox': 'CST',
+  'America/Menominee': 'CST',
+  'America/North_Dakota/Beulah': 'CST',
+  'America/North_Dakota/Center': 'CST',
+  'America/North_Dakota/New_Salem': 'CST',
+  'America/Denver': 'MST',
+  'America/Boise': 'MST',
+  'America/Phoenix': 'MST',
+  'America/Los_Angeles': 'PST',
+  'America/Anchorage': 'AKST',
+  'Pacific/Honolulu': 'HST',
+  'America/Halifax': 'AST',
+};
+
+function firstName(value?: string | null): string | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  return trimmed.split(/\s+/)[0] || null;
+}
+
+export function normalizePhoneForMessages(raw?: string | null): string | null {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const hasLeadingPlus = trimmed.startsWith('+');
+  const digits = trimmed.replace(/\D/g, '');
+  if (!digits) {
+    return null;
+  }
+
+  if (hasLeadingPlus) {
+    return digits.length >= 10 ? `+${digits}` : null;
+  }
+  if (digits.length === 10) {
+    return `+1${digits}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+${digits}`;
+  }
+  return null;
+}
+
+function buildContactCandidates(context: ScoutPrepContext): ContactCandidate[] {
+  return [
+    {
+      role: 'parent1',
+      name: context.contactInfo.parent1?.name || null,
+      rawPhone: context.contactInfo.parent1?.phone || null,
+      normalizedPhone: normalizePhoneForMessages(context.contactInfo.parent1?.phone),
+    },
+    {
+      role: 'parent2',
+      name: context.contactInfo.parent2?.name || null,
+      rawPhone: context.contactInfo.parent2?.phone || null,
+      normalizedPhone: normalizePhoneForMessages(context.contactInfo.parent2?.phone),
+    },
+    {
+      role: 'studentAthlete',
+      name: context.contactInfo.studentAthlete.name || null,
+      rawPhone: context.contactInfo.studentAthlete.phone || null,
+      normalizedPhone: normalizePhoneForMessages(context.contactInfo.studentAthlete.phone),
+    },
+  ];
+}
+
+export function selectScoutPrepContactNumbers(
+  context: ScoutPrepContext,
+): ScoutPrepContactSelection {
+  const uniqueByPhone = new Map<string, ContactCandidate>();
+  for (const candidate of buildContactCandidates(context)) {
+    if (candidate.normalizedPhone && !uniqueByPhone.has(candidate.normalizedPhone)) {
+      uniqueByPhone.set(candidate.normalizedPhone, candidate);
+    }
+  }
+
+  const ordered = Array.from(uniqueByPhone.values());
+  const primary = ordered[0] || null;
+  const backup = ordered[1] || null;
+  const spokeTo =
+    context.contactInfo.parent1?.name ||
+    context.contactInfo.parent2?.name ||
+    context.contactInfo.studentAthlete.name ||
+    null;
+
+  let otherParent: string | null = null;
+  if (context.contactInfo.parent1?.name && context.contactInfo.parent2?.name) {
+    otherParent =
+      spokeTo === context.contactInfo.parent1.name
+        ? context.contactInfo.parent2.name
+        : context.contactInfo.parent1.name;
+  }
+
+  return {
+    primaryNumber: primary?.normalizedPhone || null,
+    backupNumber: backup?.normalizedPhone || null,
+    spokeTo,
+    otherParent,
+    recipientName: primary?.role === 'studentAthlete' ? null : primary?.name || null,
+  };
+}
+
+export function buildVoicemailFollowUpBody(context: ScoutPrepContext): string {
+  const greetingName =
+    firstName(context.contactInfo.parent1?.name) ||
+    firstName(context.contactInfo.parent2?.name) ||
+    'Peter';
+  const athleteName = context.contactInfo.studentAthlete.name || context.task.athlete_name;
+
+  return `Hi ${greetingName}, this is Jerami with Prospect ID. I just left you a voicemail regarding ${athleteName}'s recruiting process. When you have a minute, call me back here and I can help you with next steps.`;
+}
+
+export function buildMessagesComposeUrl(phone: string, body: string): string {
+  return `sms:${phone}?body=${encodeURIComponent(body)}`;
+}
+
+export function mapTimezoneToLegacyRecruitZone(timezone?: string | null): string | null {
+  if (!timezone) {
+    return null;
+  }
+  return LEGACY_RECRUIT_TIMEZONE_BY_IANA[timezone] || null;
+}
+
+function setTemplateValue(template: string, label: string, value?: string | null): string {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const replacement = value ? `${label}: ${value}` : `${label}:`;
+  const pattern = new RegExp(`^${escaped}:.*$`, 'm');
+  return pattern.test(template) ? template.replace(pattern, replacement) : template;
+}
+
+export function mergeMeetingDetailsTemplate(
+  template: string,
+  contactSelection: ScoutPrepContactSelection,
+): string {
+  let merged = template;
+  merged = setTemplateValue(merged, 'Main Number', contactSelection.primaryNumber);
+  merged = setTemplateValue(merged, 'Backup Number', contactSelection.backupNumber);
+  merged = setTemplateValue(merged, 'Spoke To', contactSelection.spokeTo);
+  merged = setTemplateValue(merged, 'Other Parent', contactSelection.otherParent);
+  return merged;
+}
+
+export function buildMeetingTemplateDefaults(
+  template: MeetingSetTemplateResponse,
+  context?: ScoutPrepContext | null,
+): MeetingSetTemplateResponse {
+  if (!context) {
+    return template;
+  }
+
+  const contactSelection = selectScoutPrepContactNumbers(context);
+  const computedTimezone = mapTimezoneToLegacyRecruitZone(
+    resolveTimezone(context.resolved.city, context.resolved.state),
+  );
+  const optionValues = new Set(
+    (template.recruit_timezone_options || []).map((option) => option.value),
+  );
+  const selectedTimezone =
+    computedTimezone && optionValues.has(computedTimezone)
+      ? computedTimezone
+      : template.selected_recruit_timezone || null;
+
+  return {
+    ...template,
+    selected_recruit_timezone: selectedTimezone,
+    details_template: mergeMeetingDetailsTemplate(
+      template.details_template || '',
+      contactSelection,
+    ),
+  };
+}

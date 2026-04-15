@@ -12,7 +12,6 @@ type ScoutPrepCardDiagnostics = {
   deficitGrade: ScoutPrepGrade;
   rapportSource: 'ai' | 'fallback';
   hasLocalTime: boolean;
-  hasMascotCue: boolean;
   hasState: boolean;
   hasCity: boolean;
   hasSchool: boolean;
@@ -509,7 +508,6 @@ export function buildScoutPrepCard(
       deficitGrade: values.gradYear,
       rapportSource: ai?.rapportSource || 'fallback',
       hasLocalTime: Boolean(ai?.localTimeInsight),
-      hasMascotCue: false,
       hasState: Boolean(String(context?.resolved.state || '').trim()),
       hasCity: Boolean(String(context?.resolved.city || '').trim()),
       hasSchool: Boolean(String(context?.resolved.high_school || '').trim()),

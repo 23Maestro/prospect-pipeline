@@ -770,6 +770,16 @@ class LegacyTranslator:
                     _input_value("positions"),
                     _label_value("Positions"),
                 ])
+            if not data.get("height"):
+                data["height"] = _first_non_empty([
+                    _input_value("height"),
+                    _label_value("Height"),
+                ])
+            if not data.get("weight"):
+                data["weight"] = _first_non_empty([
+                    _input_value("weight"),
+                    _label_value("Weight"),
+                ])
 
             # Location fallback: "City, ST"
             if not data.get("city") or not data.get("state"):
@@ -1354,6 +1364,8 @@ class LegacyTranslator:
             state = state_option.text(strip=True) or None
 
         gpa = get_input_value("gpa") or get_input_value_contains(["gpa"])
+        height = get_input_value("height") or get_input_value_contains(["height"])
+        weight = get_input_value("weight") or get_input_value_contains(["weight"])
         primary_pos = get_input_value_contains(["primaryposition", "primary_position"])
         secondary_pos = get_input_value_contains(["secondaryposition", "secondary_position"])
         third_pos = get_input_value_contains(["thirdposition", "third_position"])
@@ -1370,6 +1382,8 @@ class LegacyTranslator:
             "state": state,
             "positions": positions,
             "gpa": gpa,
+            "height": height,
+            "weight": weight,
         }
 
         logger.info(

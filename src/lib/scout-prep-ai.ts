@@ -14,6 +14,7 @@ const LOCAL_MODEL_TIMEOUT_MS = 25000;
 const LOCAL_GENERATION_TIMEOUT_MS = 12000;
 
 let localGeneratorPromise: Promise<unknown> | null = null;
+let localModelUnavailable = false;
 
 async function loadTransformersPipeline(): Promise<
   (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown>
@@ -357,7 +358,6 @@ Rules:
 - No value over 22 words.
 - Tone: live recruiting call, practical, skimmable.
 - Keep fixed close, meeting, handoff, and final confirmation language untouched.
-- Do not mention mascots.
 - If location/sport hook is weak, use safe regional sports culture.
 - GPA >= 3.0: praise/celebrate. GPA 2.5-2.99: encourage/build up. GPA < 2.5: encouragement plus academic urgency.
 - Freshman/Sophomore: get on the map. Junior: coaches should already be reaching out. Senior: where things stand right now.
@@ -410,6 +410,10 @@ function parseMicroEnrichment(raw: string): ScoutPrepMicroEnrichment | null {
 }
 
 async function getLocalGenerator(): Promise<unknown> {
+  if (localModelUnavailable) {
+    throw new Error('Local scout-prep model unavailable in Raycast runtime');
+  }
+
   if (!localGeneratorPromise) {
     const startedAt = Date.now();
     logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'start', {
@@ -431,6 +435,20 @@ async function getLocalGenerator(): Promise<unknown> {
       })
       .catch((error) => {
         localGeneratorPromise = null;
+        const message = error instanceof Error ? error.message : String(error);
+        if (message.includes("Cannot find package '@huggingface/transformers'")) {
+          localModelUnavailable = true;
+          searchLogger.warn('SCOUT_PREP_LOCAL_MODEL_UNAVAILABLE', {
+            event: 'SCOUT_PREP_LOCAL_MODEL_UNAVAILABLE',
+            step: 'load-model',
+            feature: FEATURE,
+            reason: message,
+            context: {
+              model: LOCAL_MODEL_ID,
+              fallback: 'deterministic-scout-prep-only',
+            },
+          });
+        }
         throw error;
       });
   }
@@ -441,6 +459,10 @@ export async function generateScoutPrepLocalEnrichment(
   values: ScoutPrepFormValues,
   context: ScoutPrepContext,
 ): Promise<ScoutPrepAIOutput | null> {
+  if (localModelUnavailable) {
+    return null;
+  }
+
   const fallback = buildScoutPrepFallbackOutput(values, context);
   const prompt = buildScoutPrepMicroEnrichmentPrompt(values, context, fallback.localTimeInsight);
   const startedAt = Date.now();
@@ -481,19 +503,18 @@ export async function generateScoutPrepLocalEnrichment(
     return {
       ...fallback,
       rapportSource: 'ai',
-      hasMascotCue: false,
       microEnrichment,
     };
   } catch (error) {
-    logFailure(
-      'SCOUT_PREP_LOCAL_MODEL',
-      'generate',
-      error instanceof Error ? error.message : String(error),
-      {
-        model: LOCAL_MODEL_ID,
-        elapsedMs: Date.now() - startedAt,
-      },
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("Cannot find package '@huggingface/transformers'")) {
+      localModelUnavailable = true;
+      return null;
+    }
+    logFailure('SCOUT_PREP_LOCAL_MODEL', 'generate', message, {
+      model: LOCAL_MODEL_ID,
+      elapsedMs: Date.now() - startedAt,
+    });
     return null;
   }
 }
@@ -516,6 +537,5 @@ export function buildScoutPrepFallbackOutput(
     rapportCues: buildDeterministicRapportCues(values, context),
     localTimeInsight,
     rapportSource: 'fallback',
-    hasMascotCue: false,
   };
 }

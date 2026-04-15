@@ -12,7 +12,6 @@ export type ScoutPrepAIOutput = {
   rapportCues: string[];
   localTimeInsight?: string | null;
   rapportSource: 'ai' | 'fallback';
-  hasMascotCue: boolean;
   microEnrichment?: ScoutPrepMicroEnrichment | null;
 };
 

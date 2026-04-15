@@ -1,4 +1,17 @@
-import { Action, ActionPanel, Color, Detail, Form, Icon, List, Toast, showToast, useNavigation } from '@raycast/api';
+import {
+  Action,
+  ActionPanel,
+  Color,
+  Detail,
+  Form,
+  Icon,
+  List,
+  Toast,
+  Clipboard,
+  open,
+  showToast,
+  useNavigation,
+} from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
@@ -7,6 +20,12 @@ import type {
   ScoutPortalTask,
   ScoutPrepFormValues,
 } from './features/scout-prep/types';
+import {
+  buildMeetingTemplateDefaults,
+  buildMessagesComposeUrl,
+  buildVoicemailFollowUpBody,
+  selectScoutPrepContactNumbers,
+} from './lib/scout-prep-contact';
 import {
   buildScoutPrepDetailMarkdown,
   buildScoutPrepMetadata,
@@ -20,6 +39,7 @@ import { searchLogger } from './lib/logger';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
+const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 
 const RATING_OPTIONS = [
   { value: '', title: 'Select rating' },
@@ -165,7 +185,43 @@ function buildFallbackMeetingDetails(): string {
   ].join('\n');
 }
 
-function buildPostCallPreviewMarkdown(task: ScoutPortalTask, values: Record<string, string | undefined>): string {
+function buildFallbackMeetingTemplate(
+  selectedTimezone: string = 'EST',
+): MeetingSetTemplateResponse {
+  return {
+    success: true,
+    meeting_name: '',
+    selected_recruit_timezone: selectedTimezone,
+    recruit_timezone_options: ['AST', 'EST', 'CST', 'MST', 'PST', 'AKST', 'HST'].map((zone) => ({
+      value: zone,
+      label: zone,
+      selected: zone === selectedTimezone,
+    })),
+    details_template: buildFallbackMeetingDetails(),
+  };
+}
+
+function buildScoutPrepAdminUrl(task: ScoutPortalTask, athleteMainId?: string | null): string {
+  const params = new URLSearchParams({
+    contactid: String(task.contact_id),
+  });
+  const resolvedAthleteMainId = String(athleteMainId || task.athlete_main_id || '').trim();
+  if (resolvedAthleteMainId) {
+    params.set('athlete_main_id', resolvedAthleteMainId);
+  }
+  return `${DASHBOARD_BASE_URL}/admin/athletes?${params.toString()}`;
+}
+
+function buildScoutPrepTaskUrl(task: ScoutPortalTask, athleteMainId?: string | null): string {
+  const url = new URL(buildScoutPrepAdminUrl(task, athleteMainId));
+  url.searchParams.set('tasktab', '1');
+  return url.toString();
+}
+
+function buildPostCallPreviewMarkdown(
+  task: ScoutPortalTask,
+  values: Record<string, string | undefined>,
+): string {
   const lines = [
     `# Post-Call Update`,
     '',
@@ -237,7 +293,9 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           return;
         }
         setStageOptions(options);
-        setSelectedStage(options.find((option) => option.selected)?.value || options[0]?.value || '');
+        setSelectedStage(
+          options.find((option) => option.selected)?.value || options[0]?.value || '',
+        );
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-options', 'success', {
           athleteId: task.contact_id,
           count: options.length,
@@ -268,7 +326,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     };
   }, [task]);
 
-  const selectedStageLabel = stageOptions.find((option) => option.value === selectedStage)?.label || selectedStage;
+  const selectedStageLabel =
+    stageOptions.find((option) => option.value === selectedStage)?.label || selectedStage;
 
   useEffect(() => {
     let active = true;
@@ -287,32 +346,49 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
         });
-        const template = await fetchMeetingSetTemplate(task);
+        const [template, context] = await Promise.all([
+          fetchMeetingSetTemplate(task),
+          loadScoutPrepContext(task),
+        ]);
         if (!active) {
           return;
         }
-        setMeetingTemplate(template);
+        setMeetingTemplate(
+          buildMeetingTemplateDefaults(
+            {
+              ...template,
+              details_template: template.details_template || buildFallbackMeetingDetails(),
+            },
+            context,
+          ),
+        );
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', 'success', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
           timezoneCount: template.recruit_timezone_options.length,
+          hasPrimaryPhone: Boolean(selectScoutPrepContactNumbers(context).primaryNumber),
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!active) {
           return;
         }
-        setMeetingTemplate({
-          success: true,
-          meeting_name: `${task.athlete_name} ${task.grad_year || ''}`.trim(),
-          selected_recruit_timezone: 'EST',
-          recruit_timezone_options: ['AST', 'EST', 'CST', 'MST', 'PST', 'AKST', 'HST'].map((zone) => ({
-            value: zone,
-            label: zone,
-            selected: zone === 'EST',
-          })),
-          details_template: buildFallbackMeetingDetails(),
-        });
+        try {
+          const context = await loadScoutPrepContext(task);
+          if (!active) {
+            return;
+          }
+          const fallbackTemplate = buildFallbackMeetingTemplate();
+          fallbackTemplate.meeting_name = `${task.athlete_name} ${task.grad_year || ''}`.trim();
+          setMeetingTemplate(buildMeetingTemplateDefaults(fallbackTemplate, context));
+        } catch {
+          if (!active) {
+            return;
+          }
+          const fallbackTemplate = buildFallbackMeetingTemplate();
+          fallbackTemplate.meeting_name = `${task.athlete_name} ${task.grad_year || ''}`.trim();
+          setMeetingTemplate(fallbackTemplate);
+        }
         logFailure('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', message, {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
@@ -331,7 +407,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   }, [selectedStage, selectedStageLabel, task]);
 
   const meetingTemplateKey = `${selectedStage}-${meetingTemplate?.meeting_name || 'meeting'}`;
-  const canRenderStageFields = !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
+  const canRenderStageFields =
+    !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
 
   return (
     <Form
@@ -344,7 +421,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             onSubmit={(values) => {
               const submittedValues = values as Record<string, string | undefined>;
               const stageValue = submittedValues.officialStage || '';
-              const stageLabel = stageOptions.find((option) => option.value === stageValue)?.label || stageValue;
+              const stageLabel =
+                stageOptions.find((option) => option.value === stageValue)?.label || stageValue;
               push(
                 <PostCallUpdatePreview
                   task={task}
@@ -393,27 +471,44 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
                 title="Recruit Time Zone"
                 defaultValue={
                   meetingTemplate?.selected_recruit_timezone ||
-                  meetingTemplate?.recruit_timezone_options.find((option) => option.selected)?.value ||
+                  meetingTemplate?.recruit_timezone_options.find((option) => option.selected)
+                    ?.value ||
                   'EST'
                 }
               >
                 {(meetingTemplate?.recruit_timezone_options || []).map((option) => (
-                  <Form.Dropdown.Item key={option.value} value={option.value} title={option.label} />
+                  <Form.Dropdown.Item
+                    key={option.value}
+                    value={option.value}
+                    title={option.label}
+                  />
                 ))}
               </Form.Dropdown>
               <Form.Dropdown id="rapportRating" title="Rapport Rating">
                 {RATING_OPTIONS.map((option) => (
-                  <Form.Dropdown.Item key={option.value} value={option.value} title={option.title} />
+                  <Form.Dropdown.Item
+                    key={option.value}
+                    value={option.value}
+                    title={option.title}
+                  />
                 ))}
               </Form.Dropdown>
               <Form.Dropdown id="urgencyRating" title="Urgency Rating">
                 {RATING_OPTIONS.map((option) => (
-                  <Form.Dropdown.Item key={option.value} value={option.value} title={option.title} />
+                  <Form.Dropdown.Item
+                    key={option.value}
+                    value={option.value}
+                    title={option.title}
+                  />
                 ))}
               </Form.Dropdown>
               <Form.Dropdown id="closeRating" title="Close Rating">
                 {RATING_OPTIONS.map((option) => (
-                  <Form.Dropdown.Item key={option.value} value={option.value} title={option.title} />
+                  <Form.Dropdown.Item
+                    key={option.value}
+                    value={option.value}
+                    title={option.title}
+                  />
                 ))}
               </Form.Dropdown>
               <Form.TextArea
@@ -439,6 +534,64 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
   const [metadata, setMetadata] = useState<JSX.Element | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [context, setContext] = useState<Awaited<ReturnType<typeof loadScoutPrepContext>> | null>(
+    null,
+  );
+
+  async function handleVoicemailFollowUp() {
+    if (!context) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Scout Prep still loading',
+        message: 'Wait for contact data before opening Messages.',
+      });
+      return;
+    }
+
+    const contactSelection = selectScoutPrepContactNumbers(context);
+    if (!contactSelection.primaryNumber) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No usable contact number',
+        message: 'Hydrated contact data did not include a Messages-safe number.',
+      });
+      return;
+    }
+
+    const body = buildVoicemailFollowUpBody(context);
+    const url = buildMessagesComposeUrl(contactSelection.primaryNumber, body);
+    logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
+      contactId: context.task.contact_id,
+      hasBackupNumber: Boolean(contactSelection.backupNumber),
+      recipientName: contactSelection.recipientName,
+    });
+    try {
+      await open(url);
+      logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
+        contactId: context.task.contact_id,
+        recipientName: contactSelection.recipientName,
+        mode: 'prefilled',
+      });
+    } catch (error) {
+      await Clipboard.copy(body);
+      await open(`sms:${contactSelection.primaryNumber}`);
+      logFailure(
+        'SCOUT_PREP_MESSAGES_HANDOFF',
+        'open-compose',
+        error instanceof Error ? error.message : String(error),
+        {
+          contactId: context.task.contact_id,
+          recipientName: contactSelection.recipientName,
+          mode: 'clipboard-fallback',
+        },
+      );
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Messages opened',
+        message: 'Voicemail text copied to clipboard.',
+      });
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -465,6 +618,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
           return;
         }
 
+        setContext(context);
         setMetadata(buildScoutPrepMetadata(values, context));
         setMarkdown(buildScoutPrepDetailMarkdown(values, context));
         setIsLoading(false);
@@ -514,10 +668,38 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       metadata={metadata}
       actions={
         <ActionPanel>
-          <Action.Push title="Post-Call Update" icon={Icon.Pencil} target={<PostCallUpdateForm task={task} />} />
-          <Action.Push title="Manual Scout Prep" icon={Icon.Wand} target={<ManualScoutPrepForm />} />
-          {task.athlete_admin_url ? <Action.OpenInBrowser title="Open Athlete Admin Page" url={task.athlete_admin_url} /> : null}
-          {task.athlete_task_url ? <Action.OpenInBrowser title="Open Athlete Task Tab" url={task.athlete_task_url} /> : null}
+          <Action.Push
+            title="Post-Call Update"
+            icon={Icon.Pencil}
+            target={<PostCallUpdateForm task={task} />}
+          />
+          <Action
+            title="Voicemail Follow-Up"
+            icon={Icon.Message}
+            shortcut={{ modifiers: ['cmd'], key: 'enter' }}
+            onAction={() => void handleVoicemailFollowUp()}
+          />
+          <Action.Push
+            title="Manual Scout Prep"
+            icon={Icon.Wand}
+            target={<ManualScoutPrepForm />}
+          />
+          <Action.OpenInBrowser
+            title="Open Athlete Admin Page"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
+            url={buildScoutPrepAdminUrl(
+              task,
+              context?.resolved.athlete_main_id || context?.task.athlete_main_id,
+            )}
+          />
+          <Action.OpenInBrowser
+            title="Open Athlete Task Tab"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+            url={buildScoutPrepTaskUrl(
+              task,
+              context?.resolved.athlete_main_id || context?.task.athlete_main_id,
+            )}
+          />
         </ActionPanel>
       }
     />
@@ -572,20 +754,16 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
             target={<ManualScoutPrepForm />}
           />
-          {task.athlete_admin_url ? (
-            <Action.OpenInBrowser
-              title="Open Athlete Admin Page"
-              shortcut={{ modifiers: ['cmd'], key: 'o' }}
-              url={task.athlete_admin_url}
-            />
-          ) : null}
-          {task.athlete_task_url ? (
-            <Action.OpenInBrowser
-              title="Open Athlete Task Tab"
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'o' }}
-              url={task.athlete_task_url}
-            />
-          ) : null}
+          <Action.OpenInBrowser
+            title="Open Athlete Admin Page"
+            shortcut={{ modifiers: ['cmd'], key: 'o' }}
+            url={buildScoutPrepAdminUrl(task)}
+          />
+          <Action.OpenInBrowser
+            title="Open Athlete Task Tab"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+            url={buildScoutPrepTaskUrl(task)}
+          />
         </ActionPanel>
       }
     />

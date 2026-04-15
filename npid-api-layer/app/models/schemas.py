@@ -105,6 +105,8 @@ class AthleteIdentifiers(BaseModel):
     sport: Optional[str] = None
     jersey_number: Optional[str] = None
     gpa: Optional[str] = None
+    height: Optional[str] = None
+    weight: Optional[str] = None
 
 
 class AdminAthleteTableResponse(BaseModel):

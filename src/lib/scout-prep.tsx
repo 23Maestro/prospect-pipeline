@@ -267,14 +267,17 @@ export function buildScoutPrepDetailMarkdown(
   output?: ScoutPrepAIOutput | null,
 ): string {
   try {
-    const card = buildScoutPrepCard(values, context, output || buildScoutPrepFallbackOutput(values, context));
+    const card = buildScoutPrepCard(
+      values,
+      context,
+      output || buildScoutPrepFallbackOutput(values, context),
+    );
     logInfo('SCOUT_PREP_CARD_BUILD', 'assemble-card', 'success', {
       anchorCount: card.diagnostics.anchorCount,
       snapshotFieldCount: card.diagnostics.snapshotFieldCount,
       chosenDeficitGrade: card.diagnostics.deficitGrade,
       rapportSource: card.diagnostics.rapportSource,
       hasLocalTime: card.diagnostics.hasLocalTime,
-      hasMascotCue: card.diagnostics.hasMascotCue,
       rapportInputs: {
         hasState: card.diagnostics.hasState,
         hasCity: card.diagnostics.hasCity,
