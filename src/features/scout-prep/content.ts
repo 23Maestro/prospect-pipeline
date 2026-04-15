@@ -201,7 +201,10 @@ function buildRapportQuestions(values: ScoutPrepFormValues, context?: ScoutPrepC
   return [sportQuestion, academicsQuestion];
 }
 
-function buildCurrentLevelBlock(values: ScoutPrepFormValues, context?: ScoutPrepContext): QuestionBlock {
+function buildCurrentLevelBlock(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): QuestionBlock {
   const sport = getSportFamily(context?.resolved.sport || values.sport);
 
   if (sport === 'baseball') {
@@ -244,7 +247,8 @@ function buildVarsityExperienceBlock(
 
   return {
     title: 'Varsity Experience',
-    anchor: 'By this stage, coaches are going to care about real varsity track record, not just upside.',
+    anchor:
+      'By this stage, coaches are going to care about real varsity track record, not just upside.',
     questions: [
       `How much varsity experience does ${first} really have at this point?`,
       'When he is at that level, what has he shown he can consistently do?',
@@ -314,7 +318,10 @@ function buildSportSpecificBlock(
   };
 }
 
-function buildMeasurablesBlock(values: ScoutPrepFormValues, context?: ScoutPrepContext): QuestionBlock {
+function buildMeasurablesBlock(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): QuestionBlock {
   const sport = getSportFamily(context?.resolved.sport || values.sport);
 
   if (sport === 'football') {
@@ -409,7 +416,9 @@ function buildCallPathLines(
       rapportCues[1] ? `> ${rapportCues[1]}` : null,
       `- Q1: ${rapportQuestions[0] || `What has ${athleteFirst} enjoyed most about ${sportLabel(values, context).toLowerCase()} so far?`}`,
       `- Q2: ${rapportQuestions[1] || `How has ${athleteFirst} handled the school side while trying to take this seriously?`}`,
-    ].filter(Boolean).join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n'),
     [
       '3. **Open Them Up**',
       `- What kind of kid is ${athleteFirst}? Any hobbies or interests that have him thinking about his major?`,
@@ -481,14 +490,16 @@ export function buildScoutPrepCard(
   const markdown = [
     '# Scout Prep Card',
     `**${context?.contactInfo.studentAthlete.name || values.athleteName}**`,
-    ai?.localTimeLabel ? `> ${ai.localTimeLabel}` : null,
+    ai?.localTimeInsight ? `> ${ai.localTimeInsight}` : null,
     '',
     '## Athlete Snapshot',
     snapshotLines.join('\n'),
     '',
     '## Call Path',
     callPathLines.join('\n\n'),
-  ].filter(Boolean).join('\n');
+  ]
+    .filter(Boolean)
+    .join('\n');
 
   return {
     markdown,
@@ -497,7 +508,7 @@ export function buildScoutPrepCard(
       snapshotFieldCount: snapshotLines.length,
       deficitGrade: values.gradYear,
       rapportSource: ai?.rapportSource || 'fallback',
-      hasLocalTime: Boolean(ai?.localTimeLabel),
+      hasLocalTime: Boolean(ai?.localTimeInsight),
       hasMascotCue: false,
       hasState: Boolean(String(context?.resolved.state || '').trim()),
       hasCity: Boolean(String(context?.resolved.city || '').trim()),

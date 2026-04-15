@@ -20,7 +20,9 @@ async function loadTransformersPipeline(): Promise<
 > {
   const dynamicImport = new Function('specifier', 'return import(specifier)') as (
     specifier: string,
-  ) => Promise<{ pipeline: (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown> }>;
+  ) => Promise<{
+    pipeline: (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown>;
+  }>;
   const transformers = await dynamicImport('@huggingface/transformers');
   return transformers.pipeline;
 }
@@ -131,6 +133,26 @@ const TIMEZONE_BY_STATE: Record<string, string> = {
   WISCONSIN: 'America/Chicago',
   WY: 'America/Denver',
   WYOMING: 'America/Denver',
+};
+
+const NATURAL_ZONE_LABELS: Record<string, string> = {
+  'America/New_York': 'Eastern',
+  'America/Detroit': 'Eastern',
+  'America/Indiana/Indianapolis': 'Eastern',
+  'America/Kentucky/Louisville': 'Eastern',
+  'America/Chicago': 'Central',
+  'America/Indiana/Knox': 'Central',
+  'America/Menominee': 'Central',
+  'America/North_Dakota/Beulah': 'Central',
+  'America/North_Dakota/Center': 'Central',
+  'America/North_Dakota/New_Salem': 'Central',
+  'America/Denver': 'Mountain',
+  'America/Boise': 'Mountain',
+  'America/Phoenix': 'Mountain',
+  'America/Los_Angeles': 'Pacific',
+  'America/Anchorage': 'Alaska',
+  'Pacific/Honolulu': 'Hawaii',
+  'America/Halifax': 'Atlantic',
 };
 
 function logInfo(
@@ -249,7 +271,7 @@ function detectTimezoneByCityState(city?: string | null, state?: string | null):
   return exactMatch.timezone || null;
 }
 
-function detectTimezone(state?: string | null, city?: string | null): string | null {
+export function resolveTimezone(city?: string | null, state?: string | null): string | null {
   const overrideTimezone = detectTimezoneOverride(city, state);
   if (overrideTimezone) {
     return overrideTimezone;
@@ -275,28 +297,46 @@ function buildLocationLabel(city?: string | null, state?: string | null): string
   return parts.join(', ');
 }
 
-function formatLocalTimeLabel(context: ScoutPrepContext): string | null {
-  const timezone = detectTimezone(context.resolved.state, context.resolved.city);
-  if (!timezone) {
-    return null;
-  }
-  const location = buildLocationLabel(context.resolved.city, context.resolved.state) || 'the client';
-  const localTime = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
+export function formatCurrentLocalTime(timeZone: string, now: Date = new Date()): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
-    timeZoneName: 'short',
-  }).format(new Date());
-  return `Current local time in ${location}: ${localTime}`;
+  }).format(now);
+}
+
+export function getNaturalZoneLabel(timeZone: string): string {
+  return NATURAL_ZONE_LABELS[timeZone] || timeZone.split('/').pop()?.replace(/_/g, ' ') || timeZone;
+}
+
+export function formatScoutPrepTimeInsight(
+  city?: string | null,
+  state?: string | null,
+  now: Date = new Date(),
+): string | null {
+  const timezone = resolveTimezone(city, state);
+  if (!timezone) {
+    return null;
+  }
+
+  const location = buildLocationLabel(city, state);
+  if (!location) {
+    return null;
+  }
+
+  const localTime = formatCurrentLocalTime(timezone, now);
+  const zoneLabel = getNaturalZoneLabel(timezone);
+  return `${localTime} | ${zoneLabel} | ${location}`;
 }
 
 export function buildScoutPrepMicroEnrichmentPrompt(
   values: ScoutPrepFormValues,
   context: ScoutPrepContext,
-  localTimeLabel?: string | null,
+  localTimeInsight?: string | null,
 ): string {
-  const athleteName = clean(context.contactInfo.studentAthlete.name || values.athleteName) || 'Unknown Athlete';
+  const athleteName =
+    clean(context.contactInfo.studentAthlete.name || values.athleteName) || 'Unknown Athlete';
   const parent1 = clean(context.contactInfo.parent1?.name || values.parent1Name);
   const parent2 = clean(context.contactInfo.parent2?.name || values.parent2Name);
   const sport = clean(context.resolved.sport || values.sport);
@@ -336,7 +376,7 @@ position: ${position || 'unknown'}
 school: ${school || 'unknown'}
 city: ${city || 'unknown'}
 state: ${state || 'unknown'}
-local_time: ${localTimeLabel || 'unknown'}`;
+local_time: ${localTimeInsight || 'unknown'}`;
 }
 
 function extractGeneratedText(output: unknown): string {
@@ -381,16 +421,18 @@ async function getLocalGenerator(): Promise<unknown> {
       ),
       LOCAL_MODEL_TIMEOUT_MS,
       'Local scout-prep model load',
-    ).then((generator) => {
-      logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'success', {
-        model: LOCAL_MODEL_ID,
-        elapsedMs: Date.now() - startedAt,
+    )
+      .then((generator) => {
+        logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'success', {
+          model: LOCAL_MODEL_ID,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return generator;
+      })
+      .catch((error) => {
+        localGeneratorPromise = null;
+        throw error;
       });
-      return generator;
-    }).catch((error) => {
-      localGeneratorPromise = null;
-      throw error;
-    });
   }
   return localGeneratorPromise;
 }
@@ -400,7 +442,7 @@ export async function generateScoutPrepLocalEnrichment(
   context: ScoutPrepContext,
 ): Promise<ScoutPrepAIOutput | null> {
   const fallback = buildScoutPrepFallbackOutput(values, context);
-  const prompt = buildScoutPrepMicroEnrichmentPrompt(values, context, fallback.localTimeLabel);
+  const prompt = buildScoutPrepMicroEnrichmentPrompt(values, context, fallback.localTimeInsight);
   const startedAt = Date.now();
 
   try {
@@ -460,16 +502,19 @@ export function buildScoutPrepFallbackOutput(
   values: ScoutPrepFormValues,
   context: ScoutPrepContext,
 ): ScoutPrepAIOutput {
-  const localTimeLabel = formatLocalTimeLabel(context);
+  const localTimeInsight = formatScoutPrepTimeInsight(
+    context.resolved.city,
+    context.resolved.state,
+  );
   logInfo('SCOUT_PREP_LOCAL_TIME', 'resolve', 'success', {
-    hasLocalTime: Boolean(localTimeLabel),
+    hasLocalTime: Boolean(localTimeInsight),
     hasCity: Boolean(clean(context.resolved.city)),
     hasState: Boolean(clean(context.resolved.state)),
   });
 
   return {
     rapportCues: buildDeterministicRapportCues(values, context),
-    localTimeLabel,
+    localTimeInsight,
     rapportSource: 'fallback',
     hasMascotCue: false,
   };

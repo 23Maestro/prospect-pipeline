@@ -558,7 +558,6 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
           <Action.Push
             title="Build Scout Prep"
             icon={Icon.Wand}
-            shortcut={{ modifiers: ['cmd'], key: 'enter' }}
             target={<ScoutPrepDetail task={task} />}
           />
           <Action.Push

@@ -10,7 +10,7 @@ export type ScoutPrepFormValues = {
 
 export type ScoutPrepAIOutput = {
   rapportCues: string[];
-  localTimeLabel?: string | null;
+  localTimeInsight?: string | null;
   rapportSource: 'ai' | 'fallback';
   hasMascotCue: boolean;
   microEnrichment?: ScoutPrepMicroEnrichment | null;
