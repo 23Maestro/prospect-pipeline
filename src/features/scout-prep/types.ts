@@ -104,6 +104,14 @@ export type SalesStageOptionsResponse = {
   options: SalesStageOption[];
 };
 
+export type SalesStageUpdateResponse = {
+  success: boolean;
+  stage: string;
+  athlete_id: string;
+  athlete_main_id: string;
+  status_code: number;
+};
+
 export type MeetingSetTemplateResponse = {
   success: boolean;
   meeting_name?: string | null;

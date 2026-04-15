@@ -3240,6 +3240,25 @@ class LegacyTranslator:
         return endpoint, params
 
     @staticmethod
+    def sales_stage_update_to_legacy(
+        athlete_main_id: str,
+        athlete_id: str,
+        stage: str,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for official sales-stage update.
+        POST /tasks/salesstage
+        Body: _token, athlete_main_id, athlete_id, stage
+        """
+        endpoint = "/tasks/salesstage"
+        data: Dict[str, Any] = {
+            "athlete_main_id": athlete_main_id,
+            "athlete_id": athlete_id,
+            "stage": stage,
+        }
+        return endpoint, data
+
+    @staticmethod
     def parse_sales_stage_options_response(raw_response: str) -> Dict[str, Any]:
         """
         Parse official sales-stage options from legacy HTML/select markup.

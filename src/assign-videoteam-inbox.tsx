@@ -325,7 +325,11 @@ function EmailContentDetail({
         } else {
           // Fallback to preview if no content returned
           setFullContent(
-            message.unassignedBody || message.latestVisibleBody || message.content || message.preview || 'No content available',
+            message.unassignedBody ||
+              message.latestVisibleBody ||
+              message.content ||
+              message.preview ||
+              'No content available',
           );
         }
       } catch (err) {
@@ -333,7 +337,11 @@ function EmailContentDetail({
         setError(err instanceof Error ? err.message : 'Failed to load full message');
         // Fallback to preview on error
         setFullContent(
-          message.unassignedBody || message.latestVisibleBody || message.content || message.preview || 'No content available',
+          message.unassignedBody ||
+            message.latestVisibleBody ||
+            message.content ||
+            message.preview ||
+            'No content available',
         );
       } finally {
         setIsLoading(false);
@@ -341,13 +349,24 @@ function EmailContentDetail({
     };
 
     loadFullMessage();
-  }, [message.id, message.itemCode, message.content, message.preview, message.latestVisibleBody, message.unassignedBody]);
+  }, [
+    message.id,
+    message.itemCode,
+    message.content,
+    message.preview,
+    message.latestVisibleBody,
+    message.unassignedBody,
+  ]);
 
   const received = formatTimestamp(message);
   const displayTimestamp = detailedTimestamp || received;
   const contentToDisplay = isLoading
     ? 'Loading full message...'
-    : fullContent || message.unassignedBody || message.latestVisibleBody || message.preview || 'No content available';
+    : fullContent ||
+      message.unassignedBody ||
+      message.latestVisibleBody ||
+      message.preview ||
+      'No content available';
   const cleanedContent = contentToDisplay;
   const dropboxDetection = detectDropboxRequest(cleanedContent);
 
@@ -642,7 +661,11 @@ export default function InboxCheck() {
           message.attachments?.filter((att) => att.downloadable && att.url).length || 0;
         const dropboxDetection = detectDropboxRequest(
           normalizeInboxDisplayBody(
-            message.unassignedBody || message.latestVisibleBody || message.content || message.preview || '',
+            message.unassignedBody ||
+              message.latestVisibleBody ||
+              message.content ||
+              message.preview ||
+              '',
           ),
         );
 

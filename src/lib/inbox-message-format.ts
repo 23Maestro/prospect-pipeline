@@ -97,7 +97,10 @@ export function formatAssignedReplyHeaderLabel(content: string): string {
 
   const withHeaderBoundaries = content
     .replace(/[ \t]*\n[ \t]*(wrote:)/gi, ' $1')
-    .replace(/([^\n])(\s+>?\s*On\s+(?:[A-Za-z]{3,9},\s+)?[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+\d{1,2}:\d{2}\s*[AP]M\s+.+?\s+wrote:)/gi, '$1\n\n$2\n\n');
+    .replace(
+      /([^\n])(\s+>?\s*On\s+(?:[A-Za-z]{3,9},\s+)?[A-Za-z]{3,9}\s+\d{1,2},\s+\d{4}(?:\s+at|,)\s+\d{1,2}:\d{2}\s*[AP]M\s+.+?\s+wrote:)/gi,
+      '$1\n\n$2\n\n',
+    );
 
   const matches = Array.from(withHeaderBoundaries.matchAll(replyHeaderPattern));
   if (matches.length === 0) {
@@ -107,7 +110,10 @@ export function formatAssignedReplyHeaderLabel(content: string): string {
   const maxReplyHeaders = 2;
   const visibleMatches = matches.slice(0, maxReplyHeaders);
   const cutoffIndex = matches.length > maxReplyHeaders ? matches[maxReplyHeaders].index : undefined;
-  const source = cutoffIndex !== undefined ? withHeaderBoundaries.slice(0, cutoffIndex).trimEnd() : withHeaderBoundaries;
+  const source =
+    cutoffIndex !== undefined
+      ? withHeaderBoundaries.slice(0, cutoffIndex).trimEnd()
+      : withHeaderBoundaries;
 
   let formatted = '';
   let cursor = 0;
@@ -127,7 +133,10 @@ export function formatAssignedReplyHeaderLabel(content: string): string {
   }
 
   formatted += source.slice(cursor).replace(/^[ \t]+/g, '');
-  return formatted.replace(/\n\n[ \t]+/g, '\n\n').replace(/\n{3,}/g, '\n\n').trim();
+  return formatted
+    .replace(/\n\n[ \t]+/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 // Backward-compatible aliases while inbox workflows migrate to clearer names.

@@ -343,9 +343,13 @@ async function loadScoutPrepMeasurables(
     return cached.data;
   }
 
-  const measurablesResponse = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/measurables`);
+  const measurablesResponse = await apiFetch(
+    `/athlete/${encodeURIComponent(athleteId)}/measurables`,
+  );
   if (measurablesResponse.ok) {
-    const measurables = (await measurablesResponse.json().catch(() => ({}))) as ScoutPrepMeasurables;
+    const measurables = (await measurablesResponse
+      .json()
+      .catch(() => ({}))) as ScoutPrepMeasurables;
     await setCachedScoutPrepMeasurables(athleteId, measurables);
     logInfo('SCOUT_PREP_MEASURABLES', 'parse', 'success', {
       contactId,

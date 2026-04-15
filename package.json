@@ -65,7 +65,7 @@
   "tools": [
     {
       "name": "manual-sa-additions",
-      "title": "Manual SA Additions",
+      "title": "Manual Sa Additions",
       "description": "AI assistant for loose-athlete search, resolve, and Video Progress materialization",
       "mode": "no-view"
     }

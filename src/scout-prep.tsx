@@ -13,16 +13,19 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
+import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
   MeetingSetTemplateResponse,
   SalesStageOption,
   ScoutPortalTask,
+  ScoutPrepContext,
   ScoutPrepFormValues,
 } from './features/scout-prep/types';
 import {
   buildMeetingTemplateDefaults,
   buildMessagesComposeUrl,
+  buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
   selectScoutPrepContactNumbers,
 } from './lib/scout-prep-contact';
@@ -34,7 +37,11 @@ import {
   loadScoutPrepContext,
 } from './lib/scout-prep';
 import { generateScoutPrepLocalEnrichment } from './lib/scout-prep-ai';
-import { fetchCuratedSalesStageOptions, fetchMeetingSetTemplate } from './lib/sales-stage';
+import {
+  fetchCuratedSalesStageOptions,
+  fetchMeetingSetTemplate,
+  updateSalesStage,
+} from './lib/sales-stage';
 import { searchLogger } from './lib/logger';
 
 const FEATURE = 'scout-prep';
@@ -223,6 +230,236 @@ function buildScoutPrepPlayerIdUrl(task: ScoutPortalTask, athleteId?: string | n
   return `${DASHBOARD_BASE_URL}/athlete/profile/${encodeURIComponent(resolvedAthleteId)}`;
 }
 
+function buildScoutPrepContactMarkdown(context: ScoutPrepContext | null): string {
+  if (!context) {
+    return '# Loading...';
+  }
+
+  const { contactInfo } = context;
+  const lines = [
+    '# Contact Information',
+    '',
+    `## ${contactInfo.studentAthlete.name || context.task.athlete_name}`,
+    `Phone: ${contactInfo.studentAthlete.phone || 'N/A'}`,
+    '',
+  ];
+
+  if (contactInfo.parent1) {
+    lines.push(
+      `## ${contactInfo.parent1.name} (${contactInfo.parent1.relationship})`,
+      `Phone: ${contactInfo.parent1.phone || 'N/A'}`,
+      '',
+    );
+  }
+
+  if (contactInfo.parent2) {
+    lines.push(
+      `## ${contactInfo.parent2.name} (${contactInfo.parent2.relationship})`,
+      `Phone: ${contactInfo.parent2.phone || 'N/A'}`,
+      '',
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function ScoutPrepContactDetail({
+  task,
+  initialContext,
+}: {
+  task: ScoutPortalTask;
+  initialContext?: ScoutPrepContext | null;
+}) {
+  const [context, setContext] = useState<ScoutPrepContext | null>(initialContext || null);
+  const [isLoading, setIsLoading] = useState(!initialContext);
+
+  async function loadContactInfo() {
+    setIsLoading(true);
+    try {
+      const loadedContext = await loadScoutPrepContext(task);
+      setContext(loadedContext);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to Load Contact Info',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!initialContext) {
+      void loadContactInfo();
+    }
+  }, [task.contact_id]);
+
+  const contactInfo = context?.contactInfo;
+
+  return (
+    <Detail
+      navigationTitle={`Contact Info • ${task.athlete_name}`}
+      markdown={buildScoutPrepContactMarkdown(context)}
+      isLoading={isLoading}
+      actions={
+        <ActionPanel>
+          <ActionPanel.Section title="Student Athlete">
+            {contactInfo?.studentAthlete.phone ? (
+              <Action.CopyToClipboard
+                title="Copy Student Athlete Phone"
+                content={contactInfo.studentAthlete.phone}
+                icon={Icon.Phone}
+                shortcut={{ modifiers: ['cmd'], key: 't' }}
+              />
+            ) : null}
+          </ActionPanel.Section>
+          {contactInfo?.parent1 ? (
+            <ActionPanel.Section title={`Parent 1 (${contactInfo.parent1.relationship})`}>
+              {contactInfo.parent1.phone ? (
+                <Action.CopyToClipboard
+                  title="Copy Parent 1 Phone"
+                  content={contactInfo.parent1.phone}
+                  icon={Icon.Phone}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                />
+              ) : null}
+            </ActionPanel.Section>
+          ) : null}
+          {contactInfo?.parent2 ? (
+            <ActionPanel.Section title={`Parent 2 (${contactInfo.parent2.relationship})`}>
+              {contactInfo.parent2.phone ? (
+                <Action.CopyToClipboard
+                  title="Copy Parent 2 Phone"
+                  content={contactInfo.parent2.phone}
+                  icon={Icon.Phone}
+                  shortcut={{ modifiers: ['cmd', 'opt'], key: 't' }}
+                />
+              ) : null}
+            </ActionPanel.Section>
+          ) : null}
+          <ActionPanel.Section>
+            <Action
+              title="Refresh Contact Info"
+              icon={Icon.ArrowClockwise}
+              shortcut={{ modifiers: ['cmd'], key: 'r' }}
+              onAction={() => void loadContactInfo()}
+            />
+            <Action.OpenInBrowser
+              title="Open Contact Info on Admin"
+              icon={Icon.Globe}
+              url={buildScoutPrepAdminUrl(
+                task,
+                context?.resolved.athlete_main_id || context?.task.athlete_main_id,
+              )}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'o' }}
+            />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+type ScoutPrepParentOption = {
+  id: 'parent1' | 'parent2';
+  name: string;
+};
+
+function getScoutPrepParentOptions(context: ScoutPrepContext): ScoutPrepParentOption[] {
+  return [
+    context.contactInfo.parent1?.name
+      ? { id: 'parent1' as const, name: context.contactInfo.parent1.name }
+      : null,
+    context.contactInfo.parent2?.name
+      ? { id: 'parent2' as const, name: context.contactInfo.parent2.name }
+      : null,
+  ].filter(Boolean) as ScoutPrepParentOption[];
+}
+
+function buildLeavingVoicemailMarkdown(body: string): string {
+  return ['# Leaving a Voice Mail', '', '```text', body, '```'].join('\n');
+}
+
+function LeavingVoicemailDetail({
+  task,
+  context,
+  parentName,
+}: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+  parentName: string;
+}) {
+  const body = buildScoutPrepLeavingVoicemailBody({
+    parentName,
+    athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
+  });
+
+  return (
+    <Detail
+      navigationTitle={`Voice Mail • ${task.athlete_name}`}
+      markdown={buildLeavingVoicemailMarkdown(body)}
+      actions={
+        <ActionPanel>
+          <Action.CopyToClipboard
+            title="Copy Voice Mail"
+            icon={Icon.Clipboard}
+            content={body}
+            shortcut={{ modifiers: ['cmd'], key: 'c' }}
+          />
+          <Action.Push
+            title="Contact Info"
+            icon={Icon.Phone}
+            target={<ScoutPrepContactDetail task={task} initialContext={context} />}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function LeavingVoicemailParentForm({
+  task,
+  context,
+  parentOptions,
+}: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+  parentOptions: ScoutPrepParentOption[];
+}) {
+  const { push } = useNavigation();
+
+  return (
+    <Form
+      navigationTitle={`Voice Mail • ${task.athlete_name}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Generate Voice Mail"
+            onSubmit={(values) => {
+              const selected = String((values as { parentId?: string }).parentId || '');
+              const parent =
+                parentOptions.find((option) => option.id === selected) || parentOptions[0];
+              if (!parent) {
+                return;
+              }
+              push(
+                <LeavingVoicemailDetail task={task} context={context} parentName={parent.name} />,
+              );
+            }}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Dropdown id="parentId" title="Parent" defaultValue={parentOptions[0]?.id}>
+        {parentOptions.map((parent) => (
+          <Form.Dropdown.Item key={parent.id} value={parent.id} title={parent.name} />
+        ))}
+      </Form.Dropdown>
+    </Form>
+  );
+}
+
 function buildPostCallPreviewMarkdown(
   task: ScoutPortalTask,
   values: Record<string, string | undefined>,
@@ -255,7 +492,7 @@ function buildPostCallPreviewMarkdown(
 
   lines.push(
     '',
-    '> Save path is intentionally blocked until the real legacy POST capture is available.',
+    '> Official sales stage saved. Meeting Set detail save is still separate until that legacy POST is captured.',
   );
 
   return lines.join('\n');
@@ -283,6 +520,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   const [meetingTemplate, setMeetingTemplate] = useState<MeetingSetTemplateResponse | null>(null);
   const [isLoadingStages, setIsLoadingStages] = useState(true);
   const [isLoadingMeetingTemplate, setIsLoadingMeetingTemplate] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -415,6 +653,67 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   const canRenderStageFields =
     !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
 
+  async function handleSubmit(values: Record<string, string | undefined>) {
+    if (isSaving) {
+      return;
+    }
+
+    const stageValue = values.officialStage || selectedStage || '';
+    const stageLabel =
+      stageOptions.find((option) => option.value === stageValue)?.label || stageValue;
+    if (!stageLabel) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Select a sales stage',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
+      const athleteMainId = String(
+        task.athlete_main_id || context?.resolved.athlete_main_id || '',
+      ).trim();
+      const athleteId = String(task.contact_id || context?.task.contact_id || '').trim();
+
+      if (!athleteMainId || !athleteId) {
+        throw new Error('Missing athlete_main_id or athlete_id for sales stage update');
+      }
+
+      await updateSalesStage({
+        athleteMainId,
+        athleteId,
+        stage: stageLabel,
+      });
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Sales stage saved',
+        message: stageLabel,
+      });
+
+      push(
+        <PostCallUpdatePreview
+          task={task}
+          values={{
+            ...values,
+            officialStage: stageLabel,
+          }}
+        />,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to save sales stage',
+        message,
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <Form
       isLoading={isLoadingStages}
@@ -422,29 +721,13 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Preview Post-Call Update"
-            onSubmit={(values) => {
-              const submittedValues = values as Record<string, string | undefined>;
-              const stageValue = submittedValues.officialStage || '';
-              const stageLabel =
-                stageOptions.find((option) => option.value === stageValue)?.label || stageValue;
-              push(
-                <PostCallUpdatePreview
-                  task={task}
-                  values={{
-                    ...submittedValues,
-                    officialStage: stageLabel,
-                  }}
-                />,
-              );
-            }}
+            title={isSaving ? 'Saving Sales Stage…' : 'Save Sales Stage'}
+            onSubmit={(values) => void handleSubmit(values as Record<string, string | undefined>)}
           />
         </ActionPanel>
       }
     >
-      <Form.Description
-        text={`Official sales stage stays primary. Save is blocked until we capture the live legacy POST.`}
-      />
+      <Form.Description text="Saves the official sales stage through the captured legacy endpoint." />
       {canRenderStageFields ? (
         <Form.Dropdown
           id="officialStage"
@@ -536,6 +819,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 }
 
 function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
+  const { push, pop } = useNavigation();
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
   const [metadata, setMetadata] = useState<JSX.Element | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
@@ -596,6 +880,103 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
         message: 'Voicemail text copied to clipboard.',
       });
     }
+  }
+
+  async function handleLeavingVoicemail() {
+    let activeContext = context;
+    if (!activeContext) {
+      try {
+        activeContext = await loadScoutPrepContext(task);
+        setContext(activeContext);
+      } catch (error) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Scout Prep still loading',
+          message: error instanceof Error ? error.message : 'Wait for contact data.',
+        });
+        return;
+      }
+    }
+
+    const parentOptions = getScoutPrepParentOptions(activeContext);
+    if (parentOptions.length === 0) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No parent contact available',
+      });
+      return;
+    }
+
+    if (parentOptions.length === 1) {
+      push(
+        <LeavingVoicemailDetail
+          task={task}
+          context={activeContext}
+          parentName={parentOptions[0].name}
+        />,
+      );
+      return;
+    }
+
+    push(
+      <LeavingVoicemailParentForm
+        task={task}
+        context={activeContext}
+        parentOptions={parentOptions}
+      />,
+    );
+  }
+
+  async function resolveNotesContext(): Promise<ScoutPrepContext | null> {
+    if (context) {
+      return context;
+    }
+
+    try {
+      const loadedContext = await loadScoutPrepContext(task);
+      setContext(loadedContext);
+      return loadedContext;
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing ID',
+        message: error instanceof Error ? error.message : 'Could not resolve athlete_main_id',
+      });
+      return null;
+    }
+  }
+
+  async function handleViewNotes() {
+    const notesContext = await resolveNotesContext();
+    if (!notesContext) {
+      return;
+    }
+    push(
+      <AthleteNotesList
+        athleteId={String(notesContext.task.contact_id)}
+        athleteMainId={String(
+          notesContext.resolved.athlete_main_id || notesContext.task.athlete_main_id,
+        )}
+        athleteName={notesContext.contactInfo.studentAthlete.name || task.athlete_name}
+      />,
+    );
+  }
+
+  async function handleAddNote() {
+    const notesContext = await resolveNotesContext();
+    if (!notesContext) {
+      return;
+    }
+    push(
+      <AddAthleteNoteForm
+        athleteId={String(notesContext.task.contact_id)}
+        athleteMainId={String(
+          notesContext.resolved.athlete_main_id || notesContext.task.athlete_main_id,
+        )}
+        athleteName={notesContext.contactInfo.studentAthlete.name || task.athlete_name}
+        onComplete={() => pop()}
+      />,
+    );
   }
 
   useEffect(() => {
@@ -684,6 +1065,18 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             shortcut={{ modifiers: ['cmd'], key: 'enter' }}
             onAction={() => void handleVoicemailFollowUp()}
           />
+          <Action
+            title="Leaving a Voice Mail"
+            icon={Icon.Phone}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
+            onAction={() => void handleLeavingVoicemail()}
+          />
+          <Action.Push
+            title="Contact Info"
+            icon={Icon.Phone}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
+            target={<ScoutPrepContactDetail task={task} initialContext={context} />}
+          />
           <Action.Push
             title="Manual Scout Prep"
             icon={Icon.Wand}
@@ -710,6 +1103,20 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             url={buildScoutPrepPlayerIdUrl(task, context?.resolved.athlete_id)}
           />
+          <ActionPanel.Section title="Athlete Note">
+            <Action
+              title="View Notes"
+              icon={Icon.Clipboard}
+              shortcut={{ modifiers: ['cmd'], key: 'n' }}
+              onAction={() => void handleViewNotes()}
+            />
+            <Action
+              title="Add Note"
+              icon={Icon.Plus}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'l' }}
+              onAction={() => void handleAddNote()}
+            />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
@@ -717,6 +1124,85 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 }
 
 function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
+  const { push, pop } = useNavigation();
+
+  async function handleLeavingVoicemail() {
+    try {
+      const context = await loadScoutPrepContext(task);
+      const parentOptions = getScoutPrepParentOptions(context);
+      if (parentOptions.length === 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'No parent contact available',
+        });
+        return;
+      }
+
+      if (parentOptions.length === 1) {
+        push(
+          <LeavingVoicemailDetail
+            task={task}
+            context={context}
+            parentName={parentOptions[0].name}
+          />,
+        );
+        return;
+      }
+
+      push(
+        <LeavingVoicemailParentForm task={task} context={context} parentOptions={parentOptions} />,
+      );
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to load contact data',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
+
+  async function loadTaskNotesContext(): Promise<ScoutPrepContext | null> {
+    try {
+      return await loadScoutPrepContext(task);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing ID',
+        message: error instanceof Error ? error.message : 'Could not resolve athlete_main_id',
+      });
+      return null;
+    }
+  }
+
+  async function handleViewNotes() {
+    const context = await loadTaskNotesContext();
+    if (!context) {
+      return;
+    }
+    push(
+      <AthleteNotesList
+        athleteId={String(context.task.contact_id)}
+        athleteMainId={String(context.resolved.athlete_main_id || context.task.athlete_main_id)}
+        athleteName={context.contactInfo.studentAthlete.name || task.athlete_name}
+      />,
+    );
+  }
+
+  async function handleAddNote() {
+    const context = await loadTaskNotesContext();
+    if (!context) {
+      return;
+    }
+    push(
+      <AddAthleteNoteForm
+        athleteId={String(context.task.contact_id)}
+        athleteMainId={String(context.resolved.athlete_main_id || context.task.athlete_main_id)}
+        athleteName={context.contactInfo.studentAthlete.name || task.athlete_name}
+        onComplete={() => pop()}
+      />,
+    );
+  }
+
   return (
     <List.Item
       key={`${task.contact_id}-${task.title || 'task'}`}
@@ -758,6 +1244,18 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             shortcut={{ modifiers: ['cmd'], key: 'u' }}
             target={<PostCallUpdateForm task={task} />}
           />
+          <Action
+            title="Leaving a Voice Mail"
+            icon={Icon.Phone}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
+            onAction={() => void handleLeavingVoicemail()}
+          />
+          <Action.Push
+            title="Contact Info"
+            icon={Icon.Phone}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
+            target={<ScoutPrepContactDetail task={task} />}
+          />
           <Action.Push
             title="Manual Scout Prep"
             icon={Icon.Pencil}
@@ -779,6 +1277,20 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             url={buildScoutPrepPlayerIdUrl(task)}
           />
+          <ActionPanel.Section title="Athlete Note">
+            <Action
+              title="View Notes"
+              icon={Icon.Clipboard}
+              shortcut={{ modifiers: ['cmd'], key: 'n' }}
+              onAction={() => void handleViewNotes()}
+            />
+            <Action
+              title="Add Note"
+              icon={Icon.Plus}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'l' }}
+              onAction={() => void handleAddNote()}
+            />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />

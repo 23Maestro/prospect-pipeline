@@ -4,6 +4,7 @@ import type {
   MeetingSetTemplateResponse,
   SalesStageOption,
   SalesStageOptionsResponse,
+  SalesStageUpdateResponse,
   ScoutPortalTask,
 } from '../features/scout-prep/types';
 
@@ -18,11 +19,13 @@ const CURATED_STAGE_LABELS = new Set([
   'Meeting Set',
 ]);
 
-const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = Array.from(CURATED_STAGE_LABELS).map((label) => ({
-  value: label,
-  label,
-  selected: false,
-}));
+const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = Array.from(CURATED_STAGE_LABELS).map(
+  (label) => ({
+    value: label,
+    label,
+    selected: false,
+  }),
+);
 
 function logInfo(
   event: string,
@@ -50,7 +53,9 @@ function logFailure(event: string, step: string, error: string, context?: Record
   });
 }
 
-export async function fetchCuratedSalesStageOptions(athleteId: string): Promise<SalesStageOption[]> {
+export async function fetchCuratedSalesStageOptions(
+  athleteId: string,
+): Promise<SalesStageOption[]> {
   logInfo('SALES_STAGE_OPTIONS_LOAD', 'request', 'start', { athleteId });
   const response = await apiFetch(`/sales/stages/${encodeURIComponent(athleteId)}`);
 
@@ -115,6 +120,56 @@ export async function fetchMeetingSetTemplate(
     hasMeetingName: Boolean(String(payload.meeting_name || '').trim()),
     timezoneCount: payload.recruit_timezone_options?.length || 0,
     hasDetailsTemplate: Boolean(String(payload.details_template || '').trim()),
+  });
+  return payload;
+}
+
+export async function updateSalesStage(args: {
+  athleteMainId: string;
+  athleteId: string;
+  stage: string;
+}): Promise<SalesStageUpdateResponse> {
+  const athleteMainId = args.athleteMainId.trim();
+  const athleteId = args.athleteId.trim();
+  const stage = args.stage.trim();
+
+  logInfo('SALES_STAGE_UPDATE', 'request', 'start', {
+    athleteId,
+    athleteMainId,
+    stage,
+  });
+
+  const response = await apiFetch('/sales/stage', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      athlete_main_id: athleteMainId,
+      athlete_id: athleteId,
+      stage,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Sales stage update HTTP ${response.status}`;
+    logFailure('SALES_STAGE_UPDATE', 'request', message, {
+      athleteId,
+      athleteMainId,
+      stage,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as SalesStageUpdateResponse;
+  logInfo('SALES_STAGE_UPDATE', 'parse', 'success', {
+    athleteId,
+    athleteMainId,
+    stage: payload.stage,
+    statusCode: payload.status_code,
   });
   return payload;
 }

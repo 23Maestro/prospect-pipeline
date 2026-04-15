@@ -1,4 +1,4 @@
-export type HudlCredentialTier = "high" | "medium" | "low" | "none";
+export type HudlCredentialTier = 'high' | 'medium' | 'low' | 'none';
 
 export interface HudlCredentialDetection {
   tier: HudlCredentialTier;
@@ -6,24 +6,26 @@ export interface HudlCredentialDetection {
   password?: string;
 }
 
-const LABELED_EMAIL_RE =
-  /\bemail(?:\s+is)?\s*[-:]?\s*([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/gi;
+const LABELED_EMAIL_RE = /\bemail(?:\s+is)?\s*[-:]?\s*([A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,})\b/gi;
 const LABELED_LOGIN_RE =
   /\b(?:username|user|login|hudl(?:\s+email)?)\b(?:\s+is)?\s*[-:]?\s*([^\s]+)/gi;
 const PASSWORD_LABEL_RE = /\b(?:password|pass|pw)(?:\s+is)?\s*[-:]?\s*([^\s]+)/gi;
 const EMAIL_RE = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const GENERIC_LOGIN_WORDS = new Set([
-  "hudl",
-  "login",
-  "information",
-  "info",
-  "credentials",
-  "credential",
-  "details",
+  'hudl',
+  'login',
+  'information',
+  'info',
+  'credentials',
+  'credential',
+  'details',
 ]);
 
 function normalizeCredentialToken(value: string): string {
-  return value.trim().replace(/[>,.;:)}\]]+$/, "").replace(/^[[(<{]+/, "");
+  return value
+    .trim()
+    .replace(/[>,.;:)}\]]+$/, '')
+    .replace(/^[[(<{]+/, '');
 }
 
 function looksLikePassword(value: string): boolean {
@@ -40,7 +42,7 @@ function isRealEmail(value?: string): value is string {
 function collectMatches(regex: RegExp, content: string): string[] {
   const values: string[] = [];
   for (const match of content.matchAll(regex)) {
-    const token = normalizeCredentialToken(match[1] ?? match[0] ?? "");
+    const token = normalizeCredentialToken(match[1] ?? match[0] ?? '');
     if (token) {
       values.push(token);
     }
@@ -75,10 +77,10 @@ function findFirstPassword(content: string): string | undefined {
 
 export function detectHudlCredentials(content: string): HudlCredentialDetection {
   if (!content) {
-    return { tier: "none" };
+    return { tier: 'none' };
   }
 
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  const normalized = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 
   const labeledEmail = findFirstLabeledEmail(normalized);
   const genericLoginEmail = findFirstGenericLoginEmail(normalized);
@@ -86,19 +88,19 @@ export function detectHudlCredentials(content: string): HudlCredentialDetection 
   const password = findFirstPassword(normalized);
 
   if (!visibleEmail || !password) {
-    return { tier: "none" };
+    return { tier: 'none' };
   }
 
   if (labeledEmail && password) {
     return {
-      tier: "high",
+      tier: 'high',
       emailOrUsername: visibleEmail,
       password,
     };
   }
 
   return {
-    tier: "medium",
+    tier: 'medium',
     emailOrUsername: visibleEmail,
     password,
   };

@@ -502,6 +502,22 @@ class SalesStageOptionsResponse(BaseModel):
     options: List[SalesStageOption]
 
 
+class SalesStageUpdateRequest(BaseModel):
+    """Update official sales-stage value for an athlete."""
+    athlete_main_id: str
+    athlete_id: str
+    stage: str
+
+
+class SalesStageUpdateResponse(BaseModel):
+    """Result from legacy sales-stage update."""
+    success: bool
+    stage: str
+    athlete_id: str
+    athlete_main_id: str
+    status_code: int
+
+
 class MeetingSetTemplateResponse(BaseModel):
     """Hydrated Meeting Set modal template."""
     success: bool

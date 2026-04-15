@@ -28,7 +28,7 @@ export async function fetchInboxThreads(
       limit,
       filter_assigned,
       page_start_number: pageStartNumber,
-      only_pagination: false, // Always false - matches Python reference
+      only_pagination: onlyPagination,
       search_text: searchText,
     }),
   });
@@ -613,19 +613,19 @@ export function transformCacheToContactInfo(cached: any): ContactInfo {
     },
     parent1: cached.parent1Name
       ? {
-        name: cached.parent1Name,
-        relationship: cached.parent1Relationship || 'Parent',
-        email: cached.parent1Email,
-        phone: cached.parent1Phone,
-      }
+          name: cached.parent1Name,
+          relationship: cached.parent1Relationship || 'Parent',
+          email: cached.parent1Email,
+          phone: cached.parent1Phone,
+        }
       : null,
     parent2: cached.parent2Name
       ? {
-        name: cached.parent2Name,
-        relationship: cached.parent2Relationship || 'Parent',
-        email: cached.parent2Email,
-        phone: cached.parent2Phone,
-      }
+          name: cached.parent2Name,
+          relationship: cached.parent2Relationship || 'Parent',
+          email: cached.parent2Email,
+          phone: cached.parent2Phone,
+        }
       : null,
   };
 }

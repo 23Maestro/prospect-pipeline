@@ -18,13 +18,11 @@ type CacheRecord<T> = {
   data: T;
 };
 
-export type CacheReadResult<T> =
-  | {
-      data: T;
-      isFresh: boolean;
-      cacheAgeMs: number;
-    }
-  | null;
+export type CacheReadResult<T> = {
+  data: T;
+  isFresh: boolean;
+  cacheAgeMs: number;
+} | null;
 
 function buildMeasurablesKey(athleteId: string): string {
   return `scout-prep:measurables:${String(athleteId).trim()}`;

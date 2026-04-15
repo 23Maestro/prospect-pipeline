@@ -37,7 +37,12 @@ import {
 } from './lib/inbox-message-format';
 import { generateInboxReplyDraft } from './lib/inbox-ai-draft';
 import { inboxLogger } from './lib/logger';
-import { VideoProgressDetail, type VideoProgressTask, shouldIncludeTask, sortTasks } from './video-progress';
+import {
+  VideoProgressDetail,
+  type VideoProgressTask,
+  shouldIncludeTask,
+  sortTasks,
+} from './video-progress';
 
 // Email Content Detail Component - Enhanced with Attachments
 function EmailContentDetail({
@@ -112,7 +117,11 @@ function EmailContentDetail({
         } else {
           // Fallback to preview if no content returned
           setFullContent(
-            message.assignedBody || message.contextualBody || message.content || message.preview || 'No content available',
+            message.assignedBody ||
+              message.contextualBody ||
+              message.content ||
+              message.preview ||
+              'No content available',
           );
         }
       } catch (err) {
@@ -120,7 +129,11 @@ function EmailContentDetail({
         setError(err instanceof Error ? err.message : 'Failed to load full message');
         // Fallback to preview on error
         setFullContent(
-          message.assignedBody || message.contextualBody || message.content || message.preview || 'No content available',
+          message.assignedBody ||
+            message.contextualBody ||
+            message.content ||
+            message.preview ||
+            'No content available',
         );
       } finally {
         setIsLoading(false);
@@ -128,13 +141,24 @@ function EmailContentDetail({
     };
 
     loadFullMessage();
-  }, [message.id, message.itemCode, message.content, message.preview, message.contextualBody, message.assignedBody]);
+  }, [
+    message.id,
+    message.itemCode,
+    message.content,
+    message.preview,
+    message.contextualBody,
+    message.assignedBody,
+  ]);
 
   // Notes resolution is now on-demand when actions are clicked
 
   const contentToDisplay = isLoading
     ? 'Loading full message...'
-    : fullContent || message.assignedBody || message.contextualBody || message.preview || 'No content available';
+    : fullContent ||
+      message.assignedBody ||
+      message.contextualBody ||
+      message.preview ||
+      'No content available';
 
   // Use detailed timestamp if available, otherwise raw or unknown
   const displayTimestamp = detailedTimestamp || message.timestamp || 'Unknown';
@@ -921,7 +945,9 @@ export default function InboxCheck() {
   };
 
   const resolveThreadActionContext = useCallback(
-    async (message: NPIDInboxMessage): Promise<{
+    async (
+      message: NPIDInboxMessage,
+    ): Promise<{
       contactId: string | null;
       athleteLinks: NonNullable<NPIDInboxMessage['athleteLinks']>;
     }> => {
@@ -942,7 +968,11 @@ export default function InboxCheck() {
           bodyMode: 'contextual',
         });
         return {
-          contactId: details?.contact_id ? String(details.contact_id) : knownContactId ? String(knownContactId) : null,
+          contactId: details?.contact_id
+            ? String(details.contact_id)
+            : knownContactId
+              ? String(knownContactId)
+              : null,
           athleteLinks: {
             ...knownLinks,
             ...(details?.athlete_links || {}),
@@ -1016,13 +1046,7 @@ export default function InboxCheck() {
         return;
       }
 
-      push(
-        <VideoProgressDetail
-          task={task}
-          onBack={pop}
-          onStatusUpdate={() => undefined}
-        />,
-      );
+      push(<VideoProgressDetail task={task} onBack={pop} onStatusUpdate={() => undefined} />);
     },
     [pop, push, resolveThreadActionContext],
   );

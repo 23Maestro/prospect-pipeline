@@ -528,26 +528,6 @@ function getStageIcon(stage: string): { source: string } | Icon {
   }
 }
 
-function getStatusColor(status: string) {
-  switch (status) {
-    case 'Revise':
-    case 'Revisions':
-      return '#AF52DE';
-    case 'HUDL':
-      return '#FF3B30';
-    case 'Dropbox':
-      return '#007AFF';
-    case 'Not Approved':
-      return '#FF9500';
-    case 'Uploads':
-      return '#FF2D92';
-    case 'External Links':
-      return '#34C759';
-    default:
-      return '#8E8E93';
-  }
-}
-
 const getTaskStage = (task: VideoProgressTask) =>
   (task.video_progress_stage || task.stage || '').trim();
 
@@ -1132,7 +1112,6 @@ interface DetailProps {
 
 export function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProps) {
   const { push, pop } = useNavigation();
-  const [isUpdating, setIsUpdating] = useState(false);
   const [youtubeTitle, setYoutubeTitle] = useState('');
   const [dropboxFolder, setDropboxFolder] = useState('');
   const [approvedDetail, setApprovedDetail] = useState('');
@@ -1206,154 +1185,6 @@ export function VideoProgressDetail({ task, onBack, onStatusUpdate }: DetailProp
   useEffect(() => {
     setApprovedDetail(ApprovedVideoDetail(task, resolvedJersey));
   }, [resolvedJersey, task]);
-
-  const handleStatusChange = async (newStatus: string) => {
-    if (!task.id) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Cannot Update',
-        message: 'Missing video message ID',
-      });
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      const feature = 'video-progress.detail.status-update';
-      const normalizedStatus = normalizeStatus(newStatus);
-      videoProgressLogger.info('VIDEO_PROGRESS_STATUS_UPDATE', {
-        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
-        step: 'request',
-        status: 'start',
-        feature,
-        context: {
-          taskId: task.id,
-          athleteId: task.athlete_id,
-          statusDisplay: newStatus,
-          statusNormalized: normalizedStatus,
-        },
-      });
-      const response = await apiFetch(`/video/${task.id}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_msg_id: String(task.id), status: normalizedStatus }),
-      });
-      const { text, json, contentType } = await readResponseBody(response);
-      if (!response.ok || isExplicitFailurePayload(json)) {
-        throw new Error(extractApiErrorMessage(response.status, text, json));
-      }
-      // Update cache for instant UI feedback
-      await updateCachedTaskStatusStage(task.id, { status: newStatus });
-      videoProgressLogger.info('VIDEO_PROGRESS_STATUS_UPDATE', {
-        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
-        step: 'request',
-        status: 'success',
-        feature,
-        context: {
-          taskId: task.id,
-          athleteId: task.athlete_id,
-          statusCode: response.status,
-          contentType,
-          bodyPreview: text.slice(0, 200),
-          statusDisplay: newStatus,
-          statusNormalized: normalizedStatus,
-        },
-      });
-
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Status Updated',
-        message: `Updated to ${newStatus}`,
-      });
-
-      // Get fresh data from cache and pass to parent
-      const allTasks = await getCachedTasks();
-      const filtered = sortTasks(allTasks.filter(shouldIncludeTask));
-      onStatusUpdate(filtered);
-      onBack();
-    } catch (error) {
-      videoProgressLogger.error('VIDEO_PROGRESS_STATUS_UPDATE', {
-        event: 'VIDEO_PROGRESS_STATUS_UPDATE',
-        step: 'request',
-        status: 'failure',
-        feature: 'video-progress.detail.status-update',
-        error: error instanceof Error ? error.message : String(error),
-        context: {
-          taskId: task.id,
-          athleteId: task.athlete_id,
-          statusDisplay: newStatus,
-        },
-      });
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Update Failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    } finally {
-      setIsUpdating(false);
-    }
-  };
-
-  const handleStageChange = async (newStage: string) => {
-    if (!task.id) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Cannot Update',
-        message: 'Missing video message ID',
-      });
-      return;
-    }
-
-    setIsUpdating(true);
-    try {
-      const normalizedStage = normalizeStage(newStage);
-      logger.info('Stage update request', {
-        videoMsgId: task.id,
-        athleteId: task.athlete_id,
-        stage: newStage,
-        normalizedStage,
-      });
-      const response = await apiFetch(`/video/${task.id}/stage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ video_msg_id: String(task.id), stage: normalizedStage }),
-      });
-      const { text, json, contentType } = await readResponseBody(response);
-      logger.info('Stage update response', {
-        videoMsgId: task.id,
-        status: response.status,
-        contentType,
-        bodyPreview: text.slice(0, 500),
-      });
-      if (!response.ok) {
-        const errMessage =
-          json?.message || json?.detail || text.slice(0, 200) || `HTTP ${response.status}`;
-        throw new Error(errMessage);
-      }
-      // Update cache for instant UI feedback
-      await updateCachedTaskStatusStage(task.id, { stage: newStage });
-
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Stage Updated',
-        message: `Updated to ${newStage}`,
-      });
-
-      // Get fresh data from cache and pass to parent
-      const allTasks = await getCachedTasks();
-      const filtered = sortTasks(allTasks.filter(shouldIncludeTask));
-      onStatusUpdate(filtered);
-      onBack();
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Update Failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
-    } finally {
-      setIsUpdating(false);
-    }
-  };
 
   const metadata = `
 ${normalizeSportName(task.sport_name)} | ${task.grad_year} | ${getPositions(task)} | ${task.high_school} | ${task.high_school_city}, ${task.high_school_state} | ${formatDate(task.video_due_date)} | ${getTaskStage(task)} | ${task.video_progress_status}
@@ -2512,7 +2343,7 @@ function AuthRecoveryDetail(props: {
             shortcut={{ modifiers: ['cmd'], key: 'o' }}
           />
           <Action
-            title="Continue With Cached Tasks"
+            title="Continue with Cached Tasks"
             icon={Icon.List}
             onAction={onDismiss}
             shortcut={{ modifiers: ['cmd'], key: 'escape' }}
@@ -2896,27 +2727,27 @@ export default function VideoProgress() {
   const renderStageViewActions = () => (
     <ActionPanel.Section title="Stage Views">
       <Action
-        title="🔎 All"
+        title="All"
         onAction={() => jumpToStageFilter('all')}
         shortcut={{ modifiers: ['cmd'], key: '1' }}
       />
       <Action
-        title="🔎 In Queue"
+        title="In Queue"
         onAction={() => jumpToStageFilter('In Queue')}
         shortcut={{ modifiers: ['cmd'], key: '2' }}
       />
       <Action
-        title="🔎 Awaiting"
+        title="Awaiting"
         onAction={() => jumpToStageFilter('Awaiting Client')}
         shortcut={{ modifiers: ['cmd'], key: '3' }}
       />
       <Action
-        title="🔎 On Hold"
+        title="On Hold"
         onAction={() => jumpToStageFilter('On Hold')}
         shortcut={{ modifiers: ['cmd'], key: '4' }}
       />
       <Action
-        title="🔎 Done"
+        title="Done"
         onAction={() => jumpToStageFilter('Done')}
         shortcut={{ modifiers: ['cmd'], key: '5' }}
       />

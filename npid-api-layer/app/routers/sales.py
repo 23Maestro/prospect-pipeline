@@ -6,7 +6,12 @@ FastAPI endpoints for official sales-stage workflows in scout-prep.
 from fastapi import APIRouter, HTTPException, Request
 import logging
 
-from app.models.schemas import SalesStageOptionsResponse, MeetingSetTemplateResponse
+from app.models.schemas import (
+    MeetingSetTemplateResponse,
+    SalesStageOptionsResponse,
+    SalesStageUpdateRequest,
+    SalesStageUpdateResponse,
+)
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 
@@ -181,6 +186,110 @@ async def get_meeting_set_template(
                 "context": {
                     "adminathlete": adminathlete,
                     "athleteMainId": athlete_main_id,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/stage", response_model=SalesStageUpdateResponse)
+async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest):
+    """
+    Update official sales stage through legacy /tasks/salesstage.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+    stage = payload.stage.strip()
+    athlete_main_id = payload.athlete_main_id.strip()
+    athlete_id = payload.athlete_id.strip()
+
+    if not athlete_main_id or not athlete_id or not stage:
+        raise HTTPException(status_code=400, detail="athlete_main_id, athlete_id, and stage are required")
+
+    logger.info(
+        "SALES_STAGE_UPDATE %s",
+        {
+            "event": "SALES_STAGE_UPDATE",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "athleteId": athlete_id,
+                "athleteMainId": athlete_main_id,
+                "stage": stage,
+            },
+        },
+    )
+
+    try:
+        endpoint, data = translator.sales_stage_update_to_legacy(
+            athlete_main_id=athlete_main_id,
+            athlete_id=athlete_id,
+            stage=stage,
+        )
+        response = await session.post(endpoint, data=data)
+        body_preview = (response.text or "")[:200]
+        if response.status_code >= 400:
+            logger.error(
+                "SALES_STAGE_UPDATE %s",
+                {
+                    "event": "SALES_STAGE_UPDATE",
+                    "step": "response",
+                    "status": "failure",
+                    "feature": FEATURE,
+                    "error": body_preview or f"HTTP {response.status_code}",
+                    "context": {
+                        "athleteId": athlete_id,
+                        "athleteMainId": athlete_main_id,
+                        "stage": stage,
+                        "statusCode": response.status_code,
+                    },
+                },
+            )
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=body_preview or f"Sales stage update HTTP {response.status_code}",
+            )
+
+        logger.info(
+            "SALES_STAGE_UPDATE %s",
+            {
+                "event": "SALES_STAGE_UPDATE",
+                "step": "response",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
+                    "stage": stage,
+                    "endpoint": endpoint,
+                    "statusCode": response.status_code,
+                    "bodyPreview": body_preview,
+                },
+            },
+        )
+        return SalesStageUpdateResponse(
+            success=True,
+            stage=stage,
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+            status_code=response.status_code,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "SALES_STAGE_UPDATE %s",
+            {
+                "event": "SALES_STAGE_UPDATE",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
+                    "stage": stage,
                 },
             },
         )

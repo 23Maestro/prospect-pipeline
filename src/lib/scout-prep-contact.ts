@@ -137,6 +137,28 @@ export function buildVoicemailFollowUpBody(context: ScoutPrepContext): string {
   return `Hi ${greetingName}, this is Jerami with Prospect ID. I just left you a voicemail regarding ${athleteName}'s recruiting process. When you have a minute, call me back here and I can help you with next steps.`;
 }
 
+export function buildScoutPrepLeavingVoicemailBody(args: {
+  parentName: string;
+  athleteName: string;
+  relationship?: 'son' | 'daughter';
+}): string {
+  const parentFirstName = firstName(args.parentName) || args.parentName || 'Parent';
+  const athleteFirstName = firstName(args.athleteName) || args.athleteName || 'your athlete';
+  const relationship = args.relationship || 'son';
+
+  return [
+    `Hi ${parentFirstName}, this is Jerami Singleton, college football scout with National Prospect ID.`,
+    '',
+    `The reason why I’m calling is because I had some information come across my desk today about your ${relationship} ${athleteFirstName}.`,
+    '',
+    `I had some questions I wanted to ask you about his desire to play college football, and I wanted to learn more about his academics and football talent.`,
+    '',
+    'Please give me a call back today, my number here is 407-473-3637.',
+    '',
+    `Thanks ${parentFirstName}, talk to you soon. Bye, Bye.`,
+  ].join('\n');
+}
+
 export function buildMessagesComposeUrl(phone: string, body: string): string {
   return `sms:${phone}?body=${encodeURIComponent(body)}`;
 }

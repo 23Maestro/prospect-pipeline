@@ -3,7 +3,6 @@ import type {
   ScoutPrepContext,
   ScoutPrepFormValues,
   ScoutPrepGrade,
-  ScoutPrepMicroEnrichment,
 } from './types';
 
 type ScoutPrepCardDiagnostics = {
@@ -26,12 +25,7 @@ type ScoutPrepCardResult = {
 
 type GpaBand = 'high' | 'medium' | 'low' | 'unknown';
 type SportFamily = 'football' | 'basketball' | 'baseball' | 'generic';
-type QuestionBlock = {
-  title: string;
-  anchor: string;
-  questions: string[];
-  reminder?: string;
-};
+type FootballPositionGroup = 'ol_dl' | 'skill' | 'qb' | 'lb_db' | 'generic';
 
 function normalizeSport(value?: string | null): string {
   return String(value || '')
@@ -102,6 +96,37 @@ function getSportFamily(value?: string | null): SportFamily {
   return 'generic';
 }
 
+function getFootballPositionGroup(value?: string | null): FootballPositionGroup {
+  const normalized = String(value || '')
+    .toUpperCase()
+    .replace(/\bWIDE RECEIVER\b/g, 'WR')
+    .replace(/\bRUNNING BACK\b/g, 'RB')
+    .replace(/\bTIGHT END\b/g, 'TE')
+    .replace(/\bOFFENSIVE LINE\b/g, 'OL')
+    .replace(/\bDEFENSIVE LINE\b/g, 'DL')
+    .replace(/\bLINEBACKER\b/g, 'LB')
+    .replace(/\bDEFENSIVE BACK\b/g, 'DB')
+    .replace(/\bCORNERBACK\b/g, 'CB')
+    .replace(/\bSAFETY\b/g, 'S');
+
+  const tokens = new Set(
+    normalized
+      .split(/[^A-Z0-9]+/)
+      .map((token) => token.trim())
+      .filter(Boolean),
+  );
+
+  if (tokens.has('QB')) return 'qb';
+  if (['OL', 'OT', 'OG', 'C', 'DL', 'DT', 'DE', 'NT'].some((token) => tokens.has(token))) {
+    return 'ol_dl';
+  }
+  if (['WR', 'RB', 'TE', 'ATH'].some((token) => tokens.has(token))) return 'skill';
+  if (['LB', 'MLB', 'OLB', 'ILB', 'DB', 'CB', 'S', 'FS', 'SS'].some((token) => tokens.has(token))) {
+    return 'lb_db';
+  }
+  return 'generic';
+}
+
 function athleteFirstName(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
   return (
     firstName(context?.contactInfo.studentAthlete.name || values.athleteName) || values.athleteName
@@ -138,232 +163,113 @@ export function buildDeterministicRapportCues(
   values: ScoutPrepFormValues,
   context?: ScoutPrepContext,
 ): string[] {
-  const sport = getSportFamily(context?.resolved.sport || values.sport);
   const state = titleCase(context?.resolved.state);
   const cityState = formatCityState(context?.resolved.city, context?.resolved.state);
-  const school = String(context?.resolved.high_school || '').trim();
-  const gpa = String(context?.resolved.gpa || '').trim();
-  const gpaBand = getGpaBand(context?.resolved.gpa);
+  const athleteFirst = athleteFirstName(values, context);
+  const sport = getSportFamily(context?.resolved.sport || values.sport);
 
-  const localCue =
-    sport === 'football' && state
-      ? `${state} football is serious football country.`
-      : sport === 'basketball' && state
-        ? `${state} hoops culture gives you an easy way into the conversation.`
-        : sport === 'baseball' && cityState
-          ? `${cityState} is a clean way to open before you get into baseball development.`
-          : school
-            ? `${school} gives you a clean local tie-in right away.`
-            : cityState
-              ? `${cityState} gives you an easy local opener.`
-              : `Use ${sportLabel(values, context)} as the easy entry point before you qualify him.`;
-
-  const academicsCue =
-    gpaBand === 'high' && gpa
-      ? `And with a ${gpa} GPA, it sounds like he is doing his part in the classroom too.`
-      : gpaBand === 'low'
-        ? `Academics may need a little more support, so keep that part encouraging and direct.`
-        : school
-          ? `Reference ${school} early so the call feels tied to his real school world.`
-          : `Keep the opener human and simple before you start qualifying him.`;
-
-  return [localCue, academicsCue].slice(0, 2);
-}
-
-function lineOrFallback(value: string | null | undefined, fallback: string): string {
-  const cleaned = String(value || '').trim();
-  return cleaned || fallback;
+  if (state) {
+    const followUp =
+      sport === 'football'
+        ? `What about ${athleteFirst}, is he big into following football too?`
+        : `Is ${athleteFirst} pretty locked in on ${sportLabel(values, context).toLowerCase()} right now?`;
+    return [`You guys are up in ${state}, right?`, followUp];
+  }
+  if (cityState) {
+    return [`You guys are in ${cityState}, right?`];
+  }
+  return [
+    `Is ${athleteFirst} pretty locked in on ${sportLabel(values, context).toLowerCase()} right now?`,
+  ];
 }
 
 function buildRapportQuestions(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
-  const sport = getSportFamily(context?.resolved.sport || values.sport);
   const first = athleteFirstName(values, context);
-  const gpaBand = getGpaBand(context?.resolved.gpa);
+  const state = titleCase(context?.resolved.state);
+  const sport = getSportFamily(context?.resolved.sport || values.sport);
+
+  if (sport === 'football') {
+    return [
+      state ? `You guys are up in ${state}, right?` : 'Is football pretty big around your area?',
+      `What about ${first}, is he big into following football too?`,
+    ].slice(0, state ? 2 : 1);
+  }
+
+  return [
+    state
+      ? `You guys are up in ${state}, right?`
+      : `Is ${sportLabel(values, context).toLowerCase()} pretty big for him right now?`,
+  ];
+}
+
+function buildGpaToneLine(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
   const gpa = String(context?.resolved.gpa || '').trim();
+  if (!gpa) {
+    return `How is ${athleteFirstName(values, context)} doing in the classroom right now?`;
+  }
 
-  const sportQuestion =
-    sport === 'football'
-      ? 'How big of a deal is football around your area once the season gets going?'
-      : sport === 'basketball'
-        ? 'Is basketball pretty much year-round for him at this point between school ball and everything else?'
-        : sport === 'baseball'
-          ? 'Is travel baseball a big part of the picture for him right now, or mostly school ball?'
-          : `What has ${first} enjoyed most about ${sportLabel(values, context)} so far?`;
-
-  const academicsQuestion =
-    gpaBand === 'high' && gpa
-      ? `With that ${gpa} GPA, has school discipline always come pretty naturally for ${first}?`
-      : gpaBand === 'low'
-        ? `How is ${first} doing balancing school with everything else right now?`
-        : `How has ${first} handled the school side while trying to take this seriously?`;
-
-  return [sportQuestion, academicsQuestion];
+  const band = getGpaBand(gpa);
+  if (band === 'high') {
+    return `With a ${gpa}, it sounds like he’s doing his part in the classroom too.`;
+  }
+  if (band === 'medium') {
+    return `He can get into college with a ${gpa}.`;
+  }
+  return 'Academically, that’s something we’ll want to keep improving, but it doesn’t mean options are gone.';
 }
 
-function buildCurrentLevelBlock(
+function buildPositionSpecificPrompts(
   values: ScoutPrepFormValues,
   context?: ScoutPrepContext,
-): QuestionBlock {
+): string[] {
   const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const position = cleanPositions(context?.resolved.positions);
 
-  if (sport === 'baseball') {
-    return {
-      title: 'Current Level',
-      anchor: 'With baseball, school role and travel role both matter.',
-      questions: [
-        'Is he on varsity right now, JV, or still working into that role?',
-        'Where has he really carved out innings or opportunities so far?',
-      ],
-    };
+  if (sport !== 'football') {
+    return [
+      position
+        ? `I see ${athleteFirstName(values, context)} plays ${position}. Where does he fit best right now?`
+        : 'What role is he playing the most right now?',
+      'What do coaches usually notice first when they watch him?',
+    ];
   }
 
-  return {
-    title: 'Current Level',
-    anchor: 'You want to understand his real role right now before you jump into upside.',
-    questions: [
-      'Is he on varsity right now, JV, or a mix of both?',
-      'Where has he really carved out his role so far?',
-    ],
-  };
-}
-
-function buildVarsityExperienceBlock(
-  values: ScoutPrepFormValues,
-  context?: ScoutPrepContext,
-): QuestionBlock {
-  const first = athleteFirstName(values, context);
-
-  if (values.gradYear === 'Freshman' || values.gradYear === 'Sophomore') {
-    return {
-      title: 'Varsity Experience',
-      anchor: 'At this stage, the goal is to learn how fast he is growing into varsity-level ball.',
-      questions: [
-        `How much varsity experience has ${first} had so far?`,
-        'Has that level come pretty naturally, or has he really had to grow into it?',
-      ],
-    };
+  const prefix = position ? `I see ${athleteFirstName(values, context)} plays ${position}.` : '';
+  const group = getFootballPositionGroup(position);
+  if (group === 'ol_dl') {
+    return [
+      `${prefix} What’s his size and frame looking like right now?`.trim(),
+      'Where is he strength-wise: squat, bench, or anything coaches ask about?',
+      'How quick is he off the ball, and what kind of varsity role does he have?',
+    ];
   }
-
-  return {
-    title: 'Varsity Experience',
-    anchor:
-      'By this stage, coaches are going to care about real varsity track record, not just upside.',
-    questions: [
-      `How much varsity experience does ${first} really have at this point?`,
-      'When he is at that level, what has he shown he can consistently do?',
-    ],
-  };
-}
-
-function buildSportSpecificBlock(
-  values: ScoutPrepFormValues,
-  context?: ScoutPrepContext,
-  enrichment?: ScoutPrepMicroEnrichment | null,
-): QuestionBlock {
-  const sport = getSportFamily(context?.resolved.sport || values.sport);
-
-  if (sport === 'football') {
-    return {
-      title: 'Sport-Specific / Position',
-      anchor: lineOrFallback(
-        enrichment?.sportPromptBias,
-        'Football recruiting gets clearer once you know role, position fit, and what jumps off the film.',
-      ),
-      questions: [
-        'What position is he playing the most right now?',
-        'What do you feel coaches would notice first about him on the field?',
-      ],
-    };
+  if (group === 'skill') {
+    return [
+      `${prefix} What kind of production did he have this season?`.trim(),
+      'What are his speed numbers, and how explosive does he look in space?',
+      'Is he a main option, rotation guy, returner, or used in multiple roles?',
+    ];
   }
-
-  if (sport === 'basketball') {
-    return {
-      title: 'Sport-Specific / Position',
-      anchor: lineOrFallback(
-        enrichment?.sportPromptBias,
-        'Basketball recruiting gets sharper once you know role, level, and what separates him.',
-      ),
-      questions: [
-        'Is he mostly a guard, forward, or a little bit of both right now?',
-        'What do you feel really separates him when people watch him play?',
-      ],
-    };
+  if (group === 'qb') {
+    return [
+      `${prefix} How does he lead the group when things get tight?`.trim(),
+      'How would you describe his arm talent, accuracy, and decision-making?',
+      'What does his coach say he does best as a quarterback?',
+    ];
   }
-
-  if (sport === 'baseball') {
-    return {
-      title: 'Sport-Specific / Position',
-      anchor: lineOrFallback(
-        enrichment?.sportPromptBias,
-        'Baseball recruiting gets clearer once you know position fit and which tools really carry him.',
-      ),
-      questions: [
-        'What position is he playing the most right now?',
-        'What tools or traits do you feel stand out first when coaches watch him?',
-      ],
-    };
+  if (group === 'lb_db') {
+    return [
+      `${prefix} What kind of production does he have: tackles, coverage plays, turnovers?`.trim(),
+      'How is his speed, instincts, and ability to play in space?',
+      'Can he play multiple spots, or is he locked into one role?',
+    ];
   }
-
-  return {
-    title: 'Sport-Specific / Position',
-    anchor: lineOrFallback(
-      enrichment?.sportPromptBias,
-      'You want a clean picture of role and what coaches would notice first.',
-    ),
-    questions: [
-      'What role is he playing the most right now?',
-      'What do you feel coaches would notice first about him?',
-    ],
-  };
-}
-
-function buildMeasurablesBlock(
-  values: ScoutPrepFormValues,
-  context?: ScoutPrepContext,
-): QuestionBlock {
-  const sport = getSportFamily(context?.resolved.sport || values.sport);
-
-  if (sport === 'football') {
-    return {
-      title: 'Measurables / Numbers',
-      anchor: 'Football coaches react quickly to clean measurables and testing numbers.',
-      questions: [
-        'Are there any numbers that really stand out about him right now?',
-        'Height, weight, 40, anything like that you feel coaches usually react to?',
-      ],
-    };
-  }
-
-  if (sport === 'basketball') {
-    return {
-      title: 'Measurables / Numbers',
-      anchor: 'With basketball, size, length, and athletic tools help frame the player fast.',
-      questions: [
-        'What measurables do you feel stand out the most right now?',
-        'Height, length, vertical, anything coaches usually respond to?',
-      ],
-    };
-  }
-
-  if (sport === 'baseball') {
-    return {
-      title: 'Measurables / Numbers',
-      anchor: 'With baseball, coaches usually want a clean tool-based snapshot pretty fast.',
-      questions: [
-        'Are there any numbers that really stand out right now?',
-        'Velocity, pop time, 60, anything coaches usually react to?',
-      ],
-    };
-  }
-
-  return {
-    title: 'Measurables / Numbers',
-    anchor: 'Useful numbers help coaches place the athlete faster.',
-    questions: [
-      'Are there any numbers that really stand out right now?',
-      'What measurables do coaches usually react to first?',
-    ],
-  };
+  return [
+    position
+      ? `I see ${athleteFirstName(values, context)} plays ${position}. What does he do best there?`
+      : 'What position is he playing the most right now?',
+    'What do you feel coaches would notice first about him on the field?',
+  ];
 }
 
 function buildSummaryLine(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
@@ -382,99 +288,164 @@ function buildSummaryLine(values: ScoutPrepFormValues, context?: ScoutPrepContex
   return `“So from what I’m hearing, ${first} is serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who he is.”`;
 }
 
-function buildCallPathLines(
-  values: ScoutPrepFormValues,
-  context?: ScoutPrepContext,
-  enrichment?: ScoutPrepMicroEnrichment | null,
-): string[] {
+function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
+  const athleteFirst = athleteFirstName(values, context);
+  const heightWeight = [context?.resolved.height, context?.resolved.weight]
+    .filter(Boolean)
+    .join('/');
+
+  if (values.gradYear === 'Junior') {
+    return [
+      '“You’re behind in recruiting, we gotta get him caught up.”',
+      '“There’s other kids his age that have phone calls, for sure.”',
+      heightWeight
+        ? `“Being ${heightWeight}, we just gotta get him caught up.”`
+        : '“If you want to get your son caught up in recruiting, be ready for this call.”',
+    ];
+  }
+
+  if (values.gradYear === 'Freshman' || values.gradYear === 'Sophomore') {
+    return [
+      `“For sophomores, the big thing is just getting ${athleteFirst} on the map.”`,
+      '“If he’s not getting calls at that point, he’s behind in recruiting.”',
+    ];
+  }
+
+  return [
+    `“With seniors, the question is where do things stand right now for ${athleteFirst}?”`,
+    '“We need to know what is real, what is still open, and what needs to happen next.”',
+  ];
+}
+
+function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
+  const sport = getSportFamily(context?.resolved.sport || values.sport);
+  if (sport === 'football') {
+    return [
+      'Height, weight, 40, shuttle, anything like that you feel coaches usually react to?',
+      'Any updated strength numbers or offseason testing numbers?',
+    ];
+  }
+  return [
+    'Are there any numbers that really stand out right now?',
+    'What measurables do coaches usually react to first?',
+  ];
+}
+
+function blockQuote(lines: string[]): string {
+  return lines.map((line) => `> ${line}`).join('\n>\n');
+}
+
+function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const athleteFirst = athleteFirstName(values, context);
   const parent1First =
     firstName(context?.contactInfo.parent1?.name || values.parent1Name) || 'Parent';
-  const parent2First = firstName(context?.contactInfo.parent2?.name || values.parent2Name);
-  const sport = sportLabel(values, context);
   const position = cleanPositions(context?.resolved.positions);
   const gpa = String(context?.resolved.gpa || '').trim();
-  const gradeLabel = values.gradYear.toLowerCase();
-  const fallbackRapportCues = buildDeterministicRapportCues(values, context);
-  const rapportCues = [
-    lineOrFallback(enrichment?.rapportAnchor, fallbackRapportCues[0] || ''),
-    lineOrFallback(enrichment?.suggestedLiveRapportLane, fallbackRapportCues[1] || ''),
-  ].filter(Boolean);
   const rapportQuestions = buildRapportQuestions(values, context);
-  const currentLevelBlock = buildCurrentLevelBlock(values, context);
-  const varsityBlock = buildVarsityExperienceBlock(values, context);
-  const sportBlock = buildSportSpecificBlock(values, context, enrichment);
-  const measurableBlock = buildMeasurablesBlock(values, context);
-  const commitmentNames = [parent1First, parent2First, athleteFirst].filter(Boolean).join(', ');
+  const positionPrompts = buildPositionSpecificPrompts(values, context);
+  const measurablePrompts = buildMeasurablePrompts(values, context);
+  const parent2Name = context?.contactInfo.parent2?.name || values.parent2Name || 'Mom';
 
   return [
-    `1. **Open / Connect Dots**\n“Hi ${parent1First}, this is Jerami, I’m a ${sport} scout with Prospect ID. The reason I’m calling is ${athleteFirst} filled out some info about playing in college. Did they mention that to you?”`,
     [
-      '2. **Rapport / Open**',
-      `#### **Anchor: ${rapportCues[0] || `Use ${sport} as the easiest way into the conversation.`}**`,
-      rapportCues[1] ? `> ${rapportCues[1]}` : null,
-      `- Q1: ${rapportQuestions[0] || `What has ${athleteFirst} enjoyed most about ${sportLabel(values, context).toLowerCase()} so far?`}`,
-      `- Q2: ${rapportQuestions[1] || `How has ${athleteFirst} handled the school side while trying to take this seriously?`}`,
-    ]
-      .filter(Boolean)
-      .join('\n'),
+      '### Greeting',
+      '',
+      blockQuote([
+        `Hi ${parent1First}, I’m Jerami Singleton, college football scout with Prospect ID. How are you today?`,
+        `The reason I’m calling is ${athleteFirst} created a profile for connecting with college coaches and is showing an interest in playing in college. Did he happen to mention that to you?`,
+      ]),
+    ].join('\n'),
     [
-      '3. **Open Them Up**',
-      `- What kind of kid is ${athleteFirst}? Any hobbies or interests that have him thinking about his major?`,
+      '### Connect the Dots',
+      '',
+      '**If Unaware, Say:**',
+      blockQuote([
+        'Let me take a step back and explain.',
+        'It looks like your son filled out some information with us online about playing in college.',
+        `Do you support ${athleteFirst} taking this step? Is ${athleteFirst} looking to play college football?`,
+        'My job is to follow up with you and learn a little bit more about him as a student and as an athlete.',
+        'We help families understand where they’re at in the recruiting process and what needs to happen next.',
+        'I just want to make sure you understand who we are and why I’m calling before we move forward.',
+      ]),
+      '',
+      '**If Aware, Proceed Here:**',
+      blockQuote([
+        `What we do is help athletes connect directly to college coaches, and because we only work with 500 athletes per grad year for football, we’re pretty selective on who we bring on board. So I’ve got a few questions for you about ${athleteFirst}.`,
+      ]),
+    ].join('\n'),
+    [
+      '### Qualify',
+      '',
+      '**Small rapport**',
+      ...rapportQuestions.map((question) => `- ${question}`),
+      '',
+      '**Athlete intent / parent support**',
+      `- Do you support ${athleteFirst} taking this step?`,
+      `- Is ${athleteFirst} looking to play college football?`,
+      '',
+      '**Academics**',
+      `- ${buildGpaToneLine(values, context)}`,
       gpa
-        ? `- ${lineOrFallback(enrichment?.gpaToneLine, `You must be proud. It’s not easy to excel on and off the field, has school discipline always come pretty naturally for ${athleteFirst}?`)}`
-        : `- What has stood out most to you about how ${athleteFirst} handles school and ${sport.toLowerCase()}?`,
+        ? '- Is that about where he is right now, or has it moved recently?'
+        : '- Do you know where his GPA is sitting?',
+      '',
+      '**Current level**',
+      '- Is he on varsity right now, JV, or a mix of both?',
+      position
+        ? `- I see ${athleteFirst} plays ${position}. Where has he really carved out his role?`
+        : '- Where has he really carved out his role so far?',
+      '',
+      '**Offseason / development**',
+      '- What is he doing this offseason to get better?',
+      '- Is he training, lifting, doing camps, or working with a position coach?',
+      '',
+      '**Position-specific prompts**',
+      ...positionPrompts.map((question) => `- ${question}`),
+      '',
+      '**Measurables**',
+      ...measurablePrompts.map((question) => `- ${question}`),
+      '',
+      '**Coach feedback / eye test**',
+      '- What has his coach said about him?',
+      '- When someone watches him, what do you think jumps out first?',
     ].join('\n'),
     [
-      '4. **Qualify + Build Up**',
-      `> We work with what we call our Top 500 team, meaning we only work with 500 ${sport} athletes per grad class.`,
-      `> And I want to see if ${athleteFirst} qualifies.`,
+      '### Summary → Deficit',
       '',
-      `**${currentLevelBlock.title}**`,
-      '',
-      `- Q1: ${position ? `I see ${athleteFirst} plays ${position}. What’s his favorite position?` : currentLevelBlock.questions[0]}`,
-      '- Q2: What were his stats like?',
-      '',
-      `**${varsityBlock.title.replace('Varsity', 'JV/Varsity')}**`,
-      '',
-      `- Q1: ${varsityBlock.questions[0]}`,
-      '',
-      `**${sportBlock.title}**`,
-      '',
-      `- ${sportBlock.anchor}`,
-      '',
-      `**${measurableBlock.title}**`,
-      '',
-      `- Q1: ${measurableBlock.questions[0]}`,
-      `- Q2: ${measurableBlock.questions[1]}`,
-    ].join('\n'),
-    [
-      '5. **Summarize Them Back**',
       buildSummaryLine(values, context),
       '',
-      `He’s going to have a real chance to play in college. If you wait too long, it gets difficult to get caught up in the process, because coaches have already built relationships with other athletes.`,
+      '**Deficit**',
+      ...buildDeficitLines(values, context).map((line) => `- ${line.replace(/^“|”$/g, '')}`),
     ].join('\n'),
     [
-      '6. **Deficit**',
-      `#### **${lineOrFallback(enrichment?.deficitEmphasis, `For ${gradeLabel}s, the big thing is just getting ${athleteFirst} on the map.`)}** I’m surprised there’s not more interest yet. What do you think is going on?`,
+      '### Introduce Scout',
+      '',
+      blockQuote([
+        `So the next step, ${parent1First}, is we’ve gotta get you on the phone with one of our top scouts.`,
+        'I’m gonna schedule you with [Scout Name]. He’s one of the best scouts in the entire industry.',
+        'If I book you with [Scout Name], you guys have to be ready for the call.',
+        'Let me check the calendar.',
+      ]),
     ].join('\n'),
     [
-      '7. **Closing Handoff**',
-      `> “So the next step, ${parent1First}, is we gotta get you on the phone with one of our scouts, okay? Let me take a look at who’s available. What’s your availability looking like this weekend, or maybe Monday?”`,
+      '### Set Meeting',
+      '',
+      blockQuote([
+        'He’s got two openings.',
+        'He’s got one [Day/Time Option 1]. Or [Day/Time Option 2].',
+        'He’s got a couple requirements for that meeting.',
+        `Number one, he needs to have the full family there, so that means yourself, ${athleteFirst}, and ${athleteFirst}’s mom. What’s mom’s name again?`,
+      ]),
+      parent2Name !== 'Mom' ? `> Mom: ${parent2Name}` : null,
+      '',
+      blockQuote([
+        'Number two, he’s gonna walk you through a Zoom meeting, so make sure you have internet and Zoom ready when he calls.',
+        'We don’t want to waste your time, and we don’t want to waste [Scout Name]’s time either.',
+        'I’m gonna send you an email with the details about the meeting, so you can read through the details, okay?',
+        'He’s gonna be calling from a [Area Code] phone number, so watch out for his number.',
+      ]),
     ].join('\n'),
-    [
-      '8. **Lock the Commitment**',
-      `“But here’s the thing, ${parent1First}, he’s one of the best scouts in the nation, in the entire industry, okay? So if I book you for him, you guys have to show up. Can you make it for sure${commitmentNames ? `, ${commitmentNames}` : ''}?”`,
-    ].join('\n'),
-    [
-      '9. **Meeting Requirements**',
-      '“Number one, like I said, you have to have all three of you guys on the phone together, okay? The Head Scout is going to walk you through a 45 minute Zoom meeting, so make sure you have internet and Zoom pulled up when he calls.”',
-    ].join('\n'),
-    [
-      '10. **Final Confirmation**',
-      '“I’m also going to send you an email with the details about the meeting, so you can read through everything, okay? He’s going to be calling from a [area code] phone number, so watch out for his number.”',
-    ].join('\n'),
-  ];
+  ].map((section) => section.replace(/\nnull\b/g, ''));
 }
 
 export function buildScoutPrepCard(
@@ -484,7 +455,7 @@ export function buildScoutPrepCard(
 ): ScoutPrepCardResult {
   const anchors = buildDeterministicRapportCues(values, context);
   const snapshotLines = buildSnapshotLines(values, context);
-  const callPathLines = buildCallPathLines(values, context, ai?.microEnrichment);
+  const callPathLines = buildCallPathLines(values, context);
 
   const markdown = [
     '# Scout Prep Card',
