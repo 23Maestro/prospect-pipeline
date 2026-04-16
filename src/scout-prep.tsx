@@ -12,7 +12,7 @@ import {
   showToast,
   useNavigation,
 } from '@raycast/api';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
@@ -40,14 +40,25 @@ import {
   buildScoutPrepMetadata,
   buildScoutPrepValues,
   completeScoutPrepTaskAfterVoicemail,
+  fetchAthleteTasks,
   fetchScoutTaskPopup,
   fetchScoutPortalTasks,
+  findNewestIncompleteFollowUpTask,
   findNewestIncompleteConfirmationTask,
   loadScoutPrepContext,
   stripMoveThisTaskPrefix,
   updateScoutPrepTask,
 } from './lib/scout-prep';
+import {
+  addScoutPrepFollowUpPointer,
+  getCachedScoutPrepFollowUpTask,
+  listScoutPrepFollowUpPointers,
+  removeScoutPrepFollowUpPointer,
+  setCachedScoutPrepFollowUpTask,
+  type ScoutPrepFollowUpPointer,
+} from './lib/scout-prep-follow-up-index';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
+import { ensureProspectDetails, runProspectRawSearch, type ProspectResult } from './lib/prospect-search';
 import {
   fetchCuratedSalesStageOptions,
   fetchMeetingSetTemplate,
@@ -59,6 +70,7 @@ const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
 const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const FOLLOW_UP_AUTO_REFRESH_LIMIT = 12;
 
 const RATING_OPTIONS = [
   { value: '', title: 'Select rating' },
@@ -632,6 +644,30 @@ function PostCallUpdatePreview({
   );
 }
 
+type TrackedFollowUpItem = {
+  pointer: ScoutPrepFollowUpPointer;
+  task: ScoutPortalTask;
+  createdTask: ScoutAthleteTask;
+};
+
+function buildScoutPrepTaskFromProspect(result: ProspectResult): ScoutPortalTask | null {
+  const athleteId = String(result.athlete_id || '').trim();
+  const athleteMainId = String(result.athlete_main_id || '').trim();
+  if (!athleteId || !athleteMainId) {
+    return null;
+  }
+
+  return {
+    contact_id: athleteId,
+    athlete_id: athleteId,
+    athlete_main_id: athleteMainId,
+    athlete_name: result.name || `Athlete ${athleteId}`,
+    grad_year: result.grad_year || null,
+    title: 'Prospect Search Result',
+    description: [result.sport, result.high_school].filter(Boolean).join(' • ') || 'Prospect Search Result',
+  };
+}
+
 function formatDateForLegacyInput(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -1056,6 +1092,15 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         message: taskCompletionMessage || stageLabel,
       });
 
+      if (salesStageResult.created_task) {
+        await addScoutPrepFollowUpPointer({
+          athleteId,
+          athleteMainId,
+          athleteName: task.athlete_name,
+          gradYear: task.grad_year,
+        });
+      }
+
       push(
         <PostCallUpdatePreview
           task={task}
@@ -1191,7 +1236,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
   const { push, pop } = useNavigation();
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
-  const [metadata, setMetadata] = useState<JSX.Element | undefined>(undefined);
+  const [metadata, setMetadata] = useState<ReactElement | undefined>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadScoutPrepContext>> | null>(
     null,
@@ -1640,7 +1685,15 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
   );
 }
 
-function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
+function ScoutPrepTaskItem({
+  task,
+  onToggleProspectSearchMode,
+  isProspectSearchMode,
+}: {
+  task: ScoutPortalTask;
+  onToggleProspectSearchMode: () => void;
+  isProspectSearchMode: boolean;
+}) {
   const { push, pop } = useNavigation();
 
   async function handleLeavingVoicemail() {
@@ -1839,13 +1892,8 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
           <Action.Push
             title="Head Scout Schedules"
             icon={Icon.Calendar}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
             target={<HeadScoutSchedulesRoot />}
-          />
-          <Action.Push
-            title="Manual Scout Prep"
-            icon={Icon.Pencil}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
-            target={<ManualScoutPrepForm />}
           />
           <Action.OpenInBrowser
             title="Open Athlete Admin Page"
@@ -1861,6 +1909,12 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             title="Open Player ID"
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             url={buildScoutPrepPlayerIdUrl(task)}
+          />
+          <Action
+            title={isProspectSearchMode ? 'Exit Prospect Search' : 'Prospect Search Mode'}
+            icon={Icon.MagnifyingGlass}
+            shortcut={{ modifiers: ['cmd'], key: 'f' }}
+            onAction={onToggleProspectSearchMode}
           />
           <Action
             title="Reschedule Confirmation Call"
@@ -1894,17 +1948,162 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
   );
 }
 
+function TrackedFollowUpListItem({
+  item,
+  onRemove,
+  onToggleProspectSearchMode,
+  isProspectSearchMode,
+}: {
+  item: TrackedFollowUpItem;
+  onRemove: (item: TrackedFollowUpItem) => Promise<void>;
+  onToggleProspectSearchMode: () => void;
+  isProspectSearchMode: boolean;
+}) {
+  const { task, createdTask } = item;
+
+  return (
+    <List.Item
+      key={`follow-up:${task.contact_id}:${task.athlete_main_id || 'missing-main-id'}`}
+      icon={Icon.Repeat}
+      title={task.athlete_name}
+      subtitle={createdTask.title || 'Follow-Up Task'}
+      detail={
+        <List.Item.Detail
+          markdown={[
+            `# ${task.athlete_name}`,
+            '',
+            `- Task: ${createdTask.title || 'N/A'}`,
+            `- Due Date: ${createdTask.due_date || 'N/A'}`,
+            `- Description: ${createdTask.description || 'N/A'}`,
+          ].join('\n')}
+          metadata={
+            <List.Item.Detail.Metadata>
+              {task.grad_year ? (
+                <List.Item.Detail.Metadata.TagList title="Grad Year">
+                  <List.Item.Detail.Metadata.TagList.Item text={task.grad_year} color={Color.Purple} />
+                </List.Item.Detail.Metadata.TagList>
+              ) : null}
+              <List.Item.Detail.Metadata.Label title="Athlete ID" text={task.contact_id} />
+              {task.athlete_main_id ? (
+                <List.Item.Detail.Metadata.Label title="Athlete Main ID" text={task.athlete_main_id} />
+              ) : null}
+            </List.Item.Detail.Metadata>
+          }
+        />
+      }
+      actions={
+        <ActionPanel>
+          <Action.Push
+            title="Build Scout Prep"
+            icon={Icon.Wand}
+            target={<ScoutPrepDetail task={task} />}
+          />
+          <Action.OpenInBrowser
+            title="Open Athlete Task Tab"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+            url={buildScoutPrepTaskUrl(task)}
+          />
+          <Action
+            title="Remove From Follow-Up List"
+            icon={Icon.Trash}
+            shortcut={{ modifiers: ['cmd'], key: 'backspace' }}
+            onAction={() => void onRemove(item)}
+          />
+          <Action
+            title={isProspectSearchMode ? 'Exit Prospect Search' : 'Prospect Search Mode'}
+            icon={Icon.MagnifyingGlass}
+            shortcut={{ modifiers: ['cmd'], key: 'f' }}
+            onAction={onToggleProspectSearchMode}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function ProspectSearchListItem({
+  result,
+  onToggleProspectSearchMode,
+  isProspectSearchMode,
+}: {
+  result: ProspectResult;
+  onToggleProspectSearchMode: () => void;
+  isProspectSearchMode: boolean;
+}) {
+  const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
+  const location = [result.city, result.state].filter(Boolean).join(', ');
+  const markdown = [
+    `# ${result.name || `Athlete ${result.athlete_id}`}`,
+    '',
+    `- Athlete ID: ${result.athlete_id || 'N/A'}`,
+    `- Athlete Main ID: ${result.athlete_main_id || 'N/A'}`,
+    `- Grad Year: ${result.grad_year || 'N/A'}`,
+    `- Sport: ${result.sport || 'N/A'}`,
+    `- High School: ${result.high_school || 'N/A'}`,
+    `- Location: ${location || 'N/A'}`,
+    `- Email: ${result.email || 'N/A'}`,
+  ].join('\n');
+
+  return (
+    <List.Item
+      key={`prospect:${result.athlete_id}:${result.athlete_main_id || 'missing-main-id'}`}
+      icon={Icon.MagnifyingGlass}
+      title={result.name || `Athlete ${result.athlete_id}`}
+      subtitle={
+        [result.grad_year ? `Class ${result.grad_year}` : null, result.sport, result.high_school]
+          .filter(Boolean)
+          .join(' • ') || result.athlete_id
+      }
+      detail={<List.Item.Detail markdown={markdown} />}
+      actions={
+        <ActionPanel>
+          {scoutPrepTask ? (
+            <Action.Push
+              title="Build Scout Prep"
+              icon={Icon.Wand}
+              target={<ScoutPrepDetail task={scoutPrepTask} />}
+            />
+          ) : null}
+          <Action.OpenInBrowser
+            title="Open Prospect Profile"
+            icon={Icon.Globe}
+            url={`https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`}
+          />
+          <Action
+            title={isProspectSearchMode ? 'Exit Prospect Search' : 'Prospect Search Mode'}
+            icon={Icon.MagnifyingGlass}
+            shortcut={{ modifiers: ['cmd'], key: 'f' }}
+            onAction={onToggleProspectSearchMode}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
 export default function ScoutPrepCommand() {
   const [tasks, setTasks] = useState<ScoutPortalTask[]>([]);
+  const [trackedFollowUps, setTrackedFollowUps] = useState<TrackedFollowUpItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProspectSearchMode, setIsProspectSearchMode] = useState(false);
+  const [taskSearchText, setTaskSearchText] = useState('');
+  const [prospectSearchText, setProspectSearchText] = useState('');
+  const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
+  const [isProspectSearching, setIsProspectSearching] = useState(false);
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
+  const prospectSearchRequestIdRef = useRef(0);
 
-  const loadTasks = async () => {
+  const hasProspectSearchText = prospectSearchText.trim().length > 0;
+  const isSearchModeActive = isProspectSearchMode;
+
+  const loadTasks = async (options?: { forceRefreshFollowUps?: boolean }) => {
     if (loadTasksPromiseRef.current) {
       logInfo('SCOUT_PREP_TASK_LIST', 'reuse-inflight-load', 'start');
       return loadTasksPromiseRef.current;
     }
+
+    const forceRefreshFollowUps = Boolean(options?.forceRefreshFollowUps);
 
     const pendingLoad = (async () => {
       setIsLoading(true);
@@ -1912,9 +2111,81 @@ export default function ScoutPrepCommand() {
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'start');
         const data = await fetchScoutPortalTasks();
         const bottomUpTasks = [...data].reverse();
+        const pointers = await listScoutPrepFollowUpPointers();
+        const autoRefreshSet = new Set(
+          pointers
+            .slice(0, FOLLOW_UP_AUTO_REFRESH_LIMIT)
+            .map((pointer) => `${pointer.athleteId}:${pointer.athleteMainId}`),
+        );
+        const resolvedFollowUps = (
+          await Promise.all(
+            pointers.map(async (pointer) => {
+              try {
+                const pointerKey = `${pointer.athleteId}:${pointer.athleteMainId}`;
+                const shouldRefresh = forceRefreshFollowUps || autoRefreshSet.has(pointerKey);
+
+                let followUpTask =
+                  !shouldRefresh
+                    ? await getCachedScoutPrepFollowUpTask(pointer.athleteId, pointer.athleteMainId)
+                    : undefined;
+
+                if (followUpTask === undefined) {
+                  const athleteTasks = await fetchAthleteTasks(pointer.athleteId, pointer.athleteMainId);
+                  followUpTask = findNewestIncompleteFollowUpTask(athleteTasks);
+                  await setCachedScoutPrepFollowUpTask(
+                    pointer.athleteId,
+                    pointer.athleteMainId,
+                    followUpTask,
+                  );
+                }
+
+                if (!followUpTask) {
+                  if (shouldRefresh) {
+                    await removeScoutPrepFollowUpPointer(pointer.athleteId, pointer.athleteMainId);
+                  }
+                  return null;
+                }
+
+                const matchingGlobalTask =
+                  bottomUpTasks.find(
+                    (candidate) =>
+                      String(candidate.contact_id) === pointer.athleteId &&
+                      String(candidate.athlete_main_id || '').trim() === pointer.athleteMainId,
+                  ) || null;
+
+                const task: ScoutPortalTask = {
+                  task_id: followUpTask.task_id,
+                  contact_id: pointer.athleteId,
+                  athlete_id: pointer.athleteId,
+                  athlete_main_id: pointer.athleteMainId,
+                  athlete_name: matchingGlobalTask?.athlete_name || pointer.athleteName,
+                  grad_year: matchingGlobalTask?.grad_year || pointer.gradYear || null,
+                  due_date: followUpTask.due_date || matchingGlobalTask?.due_date || null,
+                  completion_date: followUpTask.completion_date || null,
+                  assigned_owner: followUpTask.assigned_owner || matchingGlobalTask?.assigned_owner || null,
+                  title: followUpTask.title || matchingGlobalTask?.title || null,
+                  description: followUpTask.description || matchingGlobalTask?.description || null,
+                };
+
+                return {
+                  pointer,
+                  task,
+                  createdTask: followUpTask,
+                } satisfies TrackedFollowUpItem;
+              } catch {
+                return null;
+              }
+            }),
+          )
+        ).filter((item): item is TrackedFollowUpItem => Boolean(item));
+
         setTasks(bottomUpTasks);
+        setTrackedFollowUps(resolvedFollowUps);
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'success', {
           count: bottomUpTasks.length,
+          followUpCount: resolvedFollowUps.length,
+          followUpForceRefresh: forceRefreshFollowUps,
+          followUpAutoRefreshLimit: FOLLOW_UP_AUTO_REFRESH_LIMIT,
           firstAthlete: bottomUpTasks[0]?.athlete_name || null,
           lastAthlete: bottomUpTasks[bottomUpTasks.length - 1]?.athlete_name || null,
         });
@@ -1945,44 +2216,188 @@ export default function ScoutPrepCommand() {
     void loadTasks();
   }, []);
 
+  useEffect(() => {
+    if (!isProspectSearchMode) {
+      setProspectResults([]);
+      setIsProspectSearching(false);
+      return;
+    }
+
+    const term = prospectSearchText.trim();
+    if (!term) {
+      setProspectResults([]);
+      setIsProspectSearching(false);
+      return;
+    }
+
+    const requestId = ++prospectSearchRequestIdRef.current;
+    setIsProspectSearching(true);
+
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const results = await runProspectRawSearch(term);
+          if (requestId !== prospectSearchRequestIdRef.current) {
+            return;
+          }
+          const enrichedResults =
+            results.length === 1 ? [await ensureProspectDetails(results[0])] : results;
+          if (requestId !== prospectSearchRequestIdRef.current) {
+            return;
+          }
+          setProspectResults(enrichedResults);
+        } catch (error) {
+          if (requestId !== prospectSearchRequestIdRef.current) {
+            return;
+          }
+          setProspectResults([]);
+          await showToast({
+            style: Toast.Style.Failure,
+            title: 'Prospect Search Failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+        } finally {
+          if (requestId === prospectSearchRequestIdRef.current) {
+            setIsProspectSearching(false);
+          }
+        }
+      })();
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [isProspectSearchMode, prospectSearchText]);
+
+  async function handleRemoveTrackedFollowUp(item: TrackedFollowUpItem) {
+    await removeScoutPrepFollowUpPointer(item.pointer.athleteId, item.pointer.athleteMainId);
+    setTrackedFollowUps((current) =>
+      current.filter(
+        (entry) =>
+          !(
+            entry.pointer.athleteId === item.pointer.athleteId &&
+            entry.pointer.athleteMainId === item.pointer.athleteMainId
+          ),
+      ),
+    );
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Removed from follow-up list',
+      message: item.task.athlete_name,
+    });
+  }
+
+  function toggleProspectSearchMode() {
+    setIsProspectSearchMode((current) => {
+      const next = !current;
+      if (next) {
+        setTaskSearchText('');
+      } else {
+        setProspectSearchText('');
+        setProspectResults([]);
+        setIsProspectSearching(false);
+      }
+      return next;
+    });
+  }
+
   return (
     <List
-      isLoading={isLoading}
-      isShowingDetail
-      navigationTitle="Scout Prep"
-      searchBarPlaceholder="Filter scout tasks..."
-      actions={
-        <ActionPanel>
-          <Action.Push
-            title="Manual Scout Prep"
-            icon={Icon.Pencil}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
-            target={<ManualScoutPrepForm />}
-          />
-          <Action
-            title="Reload Scout Tasks"
-            icon={Icon.ArrowClockwise}
-            shortcut={{ modifiers: ['cmd'], key: 'r' }}
-            onAction={() => void loadTasks()}
-          />
-        </ActionPanel>
+      isLoading={isLoading || isProspectSearching}
+      isShowingDetail={!isSearchModeActive}
+      navigationTitle={isSearchModeActive ? 'Scout Prep Search' : 'Scout Prep'}
+      filtering={isSearchModeActive ? false : true}
+      throttle
+      searchBarPlaceholder={
+        isSearchModeActive
+          ? 'Prospect Search'
+          : 'Search Task List'
       }
+      searchText={isSearchModeActive ? prospectSearchText : taskSearchText}
+      onSearchTextChange={isSearchModeActive ? setProspectSearchText : setTaskSearchText}
     >
-      {tasks.length === 0 ? (
+      {isSearchModeActive ? (
+        <List.Section title={`Prospect Search`} subtitle={String(prospectResults.length)}>
+          {prospectResults.length > 0 ? (
+            prospectResults.map((result) => (
+              <ProspectSearchListItem
+                key={`search:${result.athlete_id}:${result.athlete_main_id || result.name || 'result'}`}
+                result={result}
+                onToggleProspectSearchMode={toggleProspectSearchMode}
+                isProspectSearchMode={isSearchModeActive}
+              />
+            ))
+          ) : (
+            <List.Item
+              icon={Icon.MagnifyingGlass}
+              title={
+                isProspectSearching
+                  ? 'Searching ProspectID'
+                  : hasProspectSearchText
+                    ? 'No Prospect Matches'
+                    : 'Prospect Search'
+              }
+              subtitle={
+                isProspectSearching
+                  ? 'Searching…'
+                  : hasProspectSearchText
+                    ? 'No matches found'
+                    : 'Enter athlete name or email'
+              }
+              actions={
+                <ActionPanel>
+                  <Action
+                    title={isSearchModeActive ? 'Exit Prospect Search' : 'Prospect Search Mode'}
+                    icon={Icon.MagnifyingGlass}
+                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                    onAction={toggleProspectSearchMode}
+                  />
+                </ActionPanel>
+              }
+            />
+          )}
+        </List.Section>
+      ) : trackedFollowUps.length > 0 ? (
+        <List.Section title="Follow-Up List" subtitle={String(trackedFollowUps.length)}>
+          {trackedFollowUps.map((item) => (
+            <TrackedFollowUpListItem
+              key={`tracked:${item.pointer.athleteId}:${item.pointer.athleteMainId}`}
+              item={item}
+              onRemove={handleRemoveTrackedFollowUp}
+              onToggleProspectSearchMode={toggleProspectSearchMode}
+              isProspectSearchMode={isSearchModeActive}
+            />
+          ))}
+        </List.Section>
+      ) : tasks.length === 0 && trackedFollowUps.length === 0 ? (
         <List.EmptyView
           title="No scout tasks found"
           description="The landing-page task list is empty."
           actions={
             <ActionPanel>
-              <Action.Push title="Manual Scout Prep" target={<ManualScoutPrepForm />} />
+              <Action
+                title={isSearchModeActive ? 'Exit Prospect Search' : 'Prospect Search Mode'}
+                icon={Icon.MagnifyingGlass}
+                shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                onAction={toggleProspectSearchMode}
+              />
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
+              <Action
+                title="Refresh Follow-Up List"
+                onAction={() => void loadTasks({ forceRefreshFollowUps: true })}
+              />
             </ActionPanel>
           }
         />
       ) : (
-        tasks.map((task) => (
-          <ScoutPrepTaskItem key={`${task.contact_id}-${task.title || 'task'}`} task={task} />
-        ))
+        <List.Section title="Today / Past Due" subtitle={String(tasks.length)}>
+          {tasks.map((task) => (
+            <ScoutPrepTaskItem
+              key={`${task.contact_id}-${task.title || 'task'}`}
+              task={task}
+              onToggleProspectSearchMode={toggleProspectSearchMode}
+              isProspectSearchMode={isSearchModeActive}
+            />
+          ))}
+        </List.Section>
       )}
     </List>
   );

@@ -5,94 +5,20 @@ import { ReconnectProspectIdAction } from './components/reconnect-prospect-id-ac
 import { upsertTasks } from './lib/video-progress-cache';
 import { resolveAndCacheAthleteMainId } from './lib/athlete-id-service';
 import { logger, searchLogger } from './lib/logger';
-
-interface ProspectResult {
-  athlete_id: string;
-  athlete_main_id?: string;
-  name?: string;
-  grad_year?: string;
-  sport?: string;
-  state?: string;
-  city?: string;
-  high_school?: string;
-  email?: string;
-  positions?: string;
-  source?: string;
-  jersey_number?: string;
-}
-
-interface ProspectSearchResponse {
-  success: boolean;
-  count: number;
-  results: ProspectResult[];
-  sources?: Array<Record<string, any>>;
-}
+import {
+  cleanPositions,
+  ensureProspectDetails,
+  normalizePositionsWithLogging,
+  runProspectRawSearch,
+  type ProspectResult,
+} from './lib/prospect-search';
 
 const ASSIGNED_EDITOR = 'Jerami Singleton';
 const STAGE_OPTIONS = ['In Queue', 'Awaiting Client', 'On Hold', 'Done'];
 const STATUS_OPTIONS = ['', 'HUDL', 'Dropbox', 'Revisions', 'Not Approved', 'External Links'];
-const MIN_GRAD_YEAR = 2026;
-
 function formatLocation(result: ProspectResult): string {
   const parts = [result.city, result.state].filter(Boolean);
   return parts.join(', ');
-}
-
-function cleanPositions(positions?: string): string | null {
-  if (!positions) return null;
-  // Remove leading "Positions" prefix and normalize separators to " | "
-  const withoutPrefix = positions
-    .replace(/^Positions?/i, '')
-    .replace(/^[:\-\s]+/, '')
-    .trim();
-  const tokens = withoutPrefix
-    .split(/\||,|\/|•/)
-    .map((token) => token.replace(/^Positions?/i, '').trim())
-    .filter(Boolean);
-  const cleaned = tokens.length ? tokens.join(' | ') : withoutPrefix;
-  return cleaned || null;
-}
-
-function normalizePositionsWithLogging(rawPositions?: string, athleteId?: string): string | null {
-  const feature = 'prospect-search.positions-normalization';
-  searchLogger.info('PROSPECT_POSITIONS_NORMALIZE', {
-    event: 'PROSPECT_POSITIONS_NORMALIZE',
-    step: 'normalize_positions',
-    status: 'start',
-    feature,
-    context: {
-      athleteId: athleteId || null,
-      hasPositions: !!rawPositions,
-      rawPreview: rawPositions ? String(rawPositions).slice(0, 120) : null,
-    },
-  });
-
-  try {
-    const normalized = cleanPositions(rawPositions);
-    searchLogger.info('PROSPECT_POSITIONS_NORMALIZE', {
-      event: 'PROSPECT_POSITIONS_NORMALIZE',
-      step: 'normalize_positions',
-      status: 'success',
-      feature,
-      context: {
-        athleteId: athleteId || null,
-        normalizedPreview: normalized ? normalized.slice(0, 120) : null,
-      },
-    });
-    return normalized;
-  } catch (error) {
-    searchLogger.error('PROSPECT_POSITIONS_NORMALIZE', {
-      event: 'PROSPECT_POSITIONS_NORMALIZE',
-      step: 'normalize_positions',
-      status: 'failure',
-      feature,
-      error: error instanceof Error ? error.message : String(error),
-      context: {
-        athleteId: athleteId || null,
-      },
-    });
-    return cleanPositions(rawPositions);
-  }
 }
 
 function buildProspectMarkdown(result: ProspectResult): string {
@@ -116,56 +42,13 @@ function buildProspectMarkdown(result: ProspectResult): string {
 `;
 }
 
-async function parseJsonResponse(response: Response) {
+async function parseJsonResponse(response: { text(): Promise<string> }) {
   const text = await response.text();
   try {
     return { json: JSON.parse(text), text };
   } catch {
     return { json: null, text };
   }
-}
-
-async function fetchAthleteResolve(athleteId: string, gradYear?: string) {
-  logger.info('Prospect resolve request', { athlete_id: athleteId, grad_year: gradYear || null });
-  const params = gradYear ? `?grad_year=${encodeURIComponent(gradYear)}` : '';
-  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve${params}`);
-  const { json, text } = await parseJsonResponse(response);
-  if (!response.ok) {
-    const errMessage =
-      json?.detail || json?.message || text.slice(0, 200) || `HTTP ${response.status}`;
-    throw new Error(errMessage);
-  }
-  const details = json as Record<string, any>;
-  logger.info('Prospect resolve response', {
-    athlete_id: details?.athlete_id || athleteId,
-    athlete_main_id: details?.athlete_main_id,
-    name: details?.name,
-    grad_year: details?.grad_year,
-    sport: details?.sport,
-    high_school: details?.high_school,
-    city: details?.city,
-    state: details?.state,
-    positions: details?.positions,
-  });
-  return details;
-}
-
-async function ensureProspectDetails(result: ProspectResult): Promise<ProspectResult> {
-  const details = await fetchAthleteResolve(result.athlete_id, result.grad_year);
-  const mergedPositions = result.positions || details.positions;
-  const normalizedPositions = normalizePositionsWithLogging(mergedPositions, result.athlete_id);
-  return {
-    ...result,
-    athlete_main_id: result.athlete_main_id || details.athlete_main_id,
-    name: result.name || details.name,
-    grad_year: result.grad_year || details.grad_year,
-    sport: result.sport || details.sport,
-    high_school: result.high_school || details.high_school,
-    city: result.city || details.city,
-    state: result.state || details.state,
-    positions: normalizedPositions || mergedPositions,
-    jersey_number: details.jersey_number,
-  };
 }
 
 type MaterializePayload = {
@@ -278,49 +161,20 @@ export default function ProspectSearch() {
 
   const runSearch = async (term: string) => {
     const requestId = ++requestIdRef.current;
-    const isEmail = term.includes('@');
     setIsLoading(true);
-    logger.info('Prospect search start', { term, requestId, isEmail });
+    logger.info('Prospect search start', { term, requestId, isEmail: term.includes('@') });
 
     try {
-      const response = await apiFetch('/athlete/raw-search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          term,
-          email: isEmail ? term : undefined,
-          include_admin_search: true,
-          include_recent_search: false,
-        }),
-      });
-
-      const { json, text } = await parseJsonResponse(response);
-
-      if (!response.ok) {
-        const errMessage =
-          json?.detail || json?.message || text.slice(0, 200) || `HTTP ${response.status}`;
-        throw new Error(errMessage);
-      }
-
-      const payload = json as ProspectSearchResponse | null;
-      if (!payload || !Array.isArray(payload.results)) {
-        throw new Error('Invalid search response');
-      }
+      const filteredResults = await runProspectRawSearch(term);
 
       if (requestId === requestIdRef.current) {
-        // Filter out old grad years (< 2026)
-        const filteredResults = payload.results.filter((r) => {
-          const year = parseInt(r.grad_year || '', 10);
-          // Keep if no grad year (don't filter unknown) or if >= MIN_GRAD_YEAR
-          return isNaN(year) || year >= MIN_GRAD_YEAR;
-        });
         setResults(filteredResults);
       }
 
       logger.info('Prospect search results', {
         term,
         requestId,
-        count: payload.results.length,
+        count: filteredResults.length,
       });
     } catch (error) {
       logger.error('Prospect search failed', {
