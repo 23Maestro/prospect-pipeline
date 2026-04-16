@@ -137,12 +137,27 @@ test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and a
   const body = buildScoutPrepLeavingVoicemailBody({
     parentName: 'Jamie Smith',
     athleteName: 'Bryson Smith',
+    sport: 'Football',
   });
 
   assert.match(body, /^Hi Jamie, this is Jerami Singleton/);
+  assert.match(body, /college football scout/);
   assert.match(body, /your son Bryson/);
   assert.match(body, /407-473-3637/);
   assert.match(body, /Thanks Jamie, talk to you soon\. Bye, Bye\.$/);
+});
+
+test('buildScoutPrepLeavingVoicemailBody: uses the provided sport for non-football athletes', () => {
+  const body = buildScoutPrepLeavingVoicemailBody({
+    parentName: 'Amy Torres',
+    athleteName: 'Jason Torres',
+    sport: "Men's Basketball",
+  });
+
+  assert.match(body, /college men's basketball scout/);
+  assert.match(body, /desire to play college men's basketball/);
+  assert.match(body, /men's basketball talent/);
+  assert.doesNotMatch(body, /football/);
 });
 
 test('buildScoutPrepCard: uses one stable call path and exact connect/scout blocks', () => {
@@ -178,6 +193,44 @@ test('buildScoutPrepCard: uses one stable call path and exact connect/scout bloc
   );
   assert.doesNotMatch(card, /team of all-star scouts/i);
   assert.doesNotMatch(card, /Top 500 team/i);
+});
+
+test('buildScoutPrepCard: uses resolved sport in live script copy', () => {
+  const card = buildScoutPrepCard(
+    {
+      athleteName: 'Jason Torres',
+      parent1Name: 'Amy Torres',
+      gradYear: 'Sophomore',
+      sport: "Men's Basketball",
+    },
+    buildContext({
+      resolved: {
+        sport: "Men's Basketball",
+        positions: null,
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jason Torres',
+          email: null,
+          phone: null,
+        },
+        parent1: {
+          name: 'Amy Torres',
+          relationship: 'Mother',
+          email: null,
+          phone: null,
+        },
+        parent2: null,
+      },
+    }),
+  ).markdown;
+
+  assert.match(card, /college men's basketball scout/);
+  assert.match(card, /looking to play college men's basketball/);
+  assert.match(card, /grad year for men's basketball/);
+  assert.doesNotMatch(card, /college football/);
+  assert.doesNotMatch(card, /grad year for football/);
 });
 
 test('buildScoutPrepCard: branches football prompts by position group', () => {

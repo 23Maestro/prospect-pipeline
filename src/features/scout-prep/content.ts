@@ -137,6 +137,10 @@ function sportLabel(values: ScoutPrepFormValues, context?: ScoutPrepContext): st
   return titleCase(context?.resolved.sport || values.sport) || 'their sport';
 }
 
+function collegeSportLabel(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
+  return `college ${sportLabel(values, context).toLowerCase()}`;
+}
+
 function buildSnapshotLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const snapshot: Array<[string, string | null | undefined]> = [
     ['Athlete', context?.contactInfo.studentAthlete.name || values.athleteName],
@@ -341,6 +345,8 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
     firstName(context?.contactInfo.parent1?.name || values.parent1Name) || 'Parent';
   const position = cleanPositions(context?.resolved.positions);
   const gpa = String(context?.resolved.gpa || '').trim();
+  const sport = sportLabel(values, context);
+  const collegeSport = collegeSportLabel(values, context);
   const rapportQuestions = buildRapportQuestions(values, context);
   const positionPrompts = buildPositionSpecificPrompts(values, context);
   const measurablePrompts = buildMeasurablePrompts(values, context);
@@ -351,7 +357,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '### Greeting',
       '',
       blockQuote([
-        `Hi ${parent1First}, I’m Jerami Singleton, college football scout with Prospect ID. How are you today?`,
+        `Hi ${parent1First}, I’m Jerami Singleton, ${collegeSport} scout with Prospect ID. How are you today?`,
         `The reason I’m calling is ${athleteFirst} created a profile for connecting with college coaches and is showing an interest in playing in college. Did he happen to mention that to you?`,
       ]),
     ].join('\n'),
@@ -362,7 +368,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       blockQuote([
         'Let me take a step back and explain.',
         'It looks like your son filled out some information with us online about playing in college.',
-        `Do you support ${athleteFirst} taking this step? Is ${athleteFirst} looking to play college football?`,
+        `Do you support ${athleteFirst} taking this step? Is ${athleteFirst} looking to play ${collegeSport}?`,
         'My job is to follow up with you and learn a little bit more about him as a student and as an athlete.',
         'We help families understand where they’re at in the recruiting process and what needs to happen next.',
         'I just want to make sure you understand who we are and why I’m calling before we move forward.',
@@ -370,7 +376,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '',
       '**If Aware, Proceed Here:**',
       blockQuote([
-        `What we do is help athletes connect directly to college coaches, and because we only work with 500 athletes per grad year for football, we’re pretty selective on who we bring on board. So I’ve got a few questions for you about ${athleteFirst}.`,
+        `What we do is help athletes connect directly to college coaches, and because we only work with 500 athletes per grad year for ${sport.toLowerCase()}, we’re pretty selective on who we bring on board. So I’ve got a few questions for you about ${athleteFirst}.`,
       ]),
     ].join('\n'),
     [
@@ -381,7 +387,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '',
       '**Athlete intent / parent support**',
       `- Do you support ${athleteFirst} taking this step?`,
-      `- Is ${athleteFirst} looking to play college football?`,
+      `- Is ${athleteFirst} looking to play ${collegeSport}?`,
       '',
       '**Academics**',
       `- ${buildGpaToneLine(values, context)}`,

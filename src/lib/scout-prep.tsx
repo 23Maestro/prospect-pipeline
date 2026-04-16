@@ -122,6 +122,85 @@ export async function fetchAthleteTasks(
   return tasks;
 }
 
+function formatLegacyTaskDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}/${day}/${date.getFullYear()}`;
+}
+
+function formatLegacyTaskTime(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+export async function completeScoutPrepTaskAfterVoicemail(args: {
+  athleteId: string;
+  athleteMainId: string;
+  taskTitle?: string | null;
+  assignedOwner?: string | null;
+  description?: string | null;
+}): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
+  const now = new Date();
+  const completedDate = formatLegacyTaskDate(now);
+  const completedTime = formatLegacyTaskTime(now);
+
+  logInfo('SCOUT_PREP_TASK_COMPLETE', 'request', 'start', {
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    taskTitle: args.taskTitle || 'Call Attempt 1',
+    assignedOwner: args.assignedOwner || 'Jerami Singleton',
+    completedDate,
+    completedTime,
+  });
+
+  const response = await apiFetch('/tasks/complete', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      athlete_id: args.athleteId,
+      athlete_main_id: args.athleteMainId,
+      task_title: args.taskTitle || 'Call Attempt 1',
+      assigned_owner: args.assignedOwner || 'Jerami Singleton',
+      description: args.description || args.taskTitle || 'Call Attempt 1',
+      completed_date: completedDate,
+      completed_time: completedTime,
+      is_completed: true,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let detail = '';
+    try {
+      const parsed = JSON.parse(errorText) as { detail?: string };
+      detail = parsed.detail || '';
+    } catch {
+      detail = '';
+    }
+    const message = detail || errorText.slice(0, 200) || `HTTP ${response.status}`;
+    logFailure('SCOUT_PREP_TASK_COMPLETE', 'request', message, {
+      athleteId: args.athleteId,
+      athleteMainId: args.athleteMainId,
+      statusCode: response.status,
+    });
+    throw new Error(message);
+  }
+
+  const result = (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    task_id?: string | null;
+    message?: string | null;
+  };
+  logInfo('SCOUT_PREP_TASK_COMPLETE', 'request', 'success', {
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    taskId: result.task_id || null,
+    message: result.message || null,
+  });
+  return result;
+}
+
 export function resolveGradeLabel(gradYear?: string | null): ScoutPrepGrade {
   const parsed = parseInt(String(gradYear || '').trim(), 10);
   if (Number.isNaN(parsed)) {

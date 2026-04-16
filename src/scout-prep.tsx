@@ -33,9 +33,11 @@ import {
   buildScoutPrepDetailMarkdown,
   buildScoutPrepMetadata,
   buildScoutPrepValues,
+  completeScoutPrepTaskAfterVoicemail,
   fetchScoutPortalTasks,
   loadScoutPrepContext,
 } from './lib/scout-prep';
+import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { generateScoutPrepLocalEnrichment } from './lib/scout-prep-ai';
 import {
   fetchCuratedSalesStageOptions,
@@ -46,6 +48,7 @@ import { searchLogger } from './lib/logger';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
+const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 
 const RATING_OPTIONS = [
@@ -304,36 +307,35 @@ function ScoutPrepContactDetail({
       isLoading={isLoading}
       actions={
         <ActionPanel>
-          <ActionPanel.Section title="Student Athlete">
-            {contactInfo?.studentAthlete.phone ? (
-              <Action.CopyToClipboard
-                title="Copy Student Athlete Phone"
-                content={contactInfo.studentAthlete.phone}
-                icon={Icon.Phone}
-                shortcut={{ modifiers: ['cmd'], key: 't' }}
-              />
-            ) : null}
-          </ActionPanel.Section>
           {contactInfo?.parent1 ? (
             <ActionPanel.Section title={`Parent 1 (${contactInfo.parent1.relationship})`}>
               {contactInfo.parent1.phone ? (
                 <Action.CopyToClipboard
                   title="Copy Parent 1 Phone"
                   content={contactInfo.parent1.phone}
-                  icon={Icon.Phone}
-                  shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                  icon="📲"
                 />
               ) : null}
             </ActionPanel.Section>
           ) : null}
+          <ActionPanel.Section title="Student Athlete">
+            {contactInfo?.studentAthlete.phone ? (
+              <Action.CopyToClipboard
+                title="Copy Student Athlete Phone"
+                content={contactInfo.studentAthlete.phone}
+                icon="☎️"
+                shortcut={{ modifiers: ['cmd'], key: 'enter' }}
+              />
+            ) : null}
+          </ActionPanel.Section>
           {contactInfo?.parent2 ? (
             <ActionPanel.Section title={`Parent 2 (${contactInfo.parent2.relationship})`}>
               {contactInfo.parent2.phone ? (
                 <Action.CopyToClipboard
                   title="Copy Parent 2 Phone"
                   content={contactInfo.parent2.phone}
-                  icon={Icon.Phone}
-                  shortcut={{ modifiers: ['cmd', 'opt'], key: 't' }}
+                  icon="📳"
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
                 />
               ) : null}
             </ActionPanel.Section>
@@ -381,6 +383,49 @@ function buildLeavingVoicemailMarkdown(body: string): string {
   return ['# Leaving a Voice Mail', '', '```text', body, '```'].join('\n');
 }
 
+function formatScoutPrepMarkdownForClipboard(markdown: string): string {
+  let inCodeFence = false;
+  const lines = markdown
+    .replace(/\r\n?/g, '\n')
+    .replace(/[\u2028\u2029]/g, '\n')
+    .split('\n')
+    .map((rawLine) => {
+      const trimmed = rawLine.trim();
+
+      if (/^```/.test(trimmed)) {
+        inCodeFence = !inCodeFence;
+        return '';
+      }
+
+      if (inCodeFence) {
+        return rawLine.trimEnd();
+      }
+
+      return trimmed
+        .replace(/^#{1,6}\s+/, '')
+        .replace(/^>\s?/, '')
+        .replace(/^[-*+]\s+/, '- ')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/__([^_]+)__/g, '$1')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
+        .replace(/`([^`]+)`/g, '$1')
+        .trimEnd();
+    });
+
+  const compacted: string[] = [];
+  for (const line of lines) {
+    if (!line) {
+      if (compacted.length && compacted[compacted.length - 1]) {
+        compacted.push('');
+      }
+      continue;
+    }
+    compacted.push(line);
+  }
+
+  return compacted.join('\n').trim();
+}
+
 function LeavingVoicemailDetail({
   task,
   context,
@@ -393,7 +438,28 @@ function LeavingVoicemailDetail({
   const body = buildScoutPrepLeavingVoicemailBody({
     parentName,
     athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
+    sport: context.resolved.sport,
   });
+
+  async function handleSyncVoicemailToNotion() {
+    try {
+      const result = await syncCallScriptToggleToNotion({
+        target: 'voicemail',
+        markdown: body,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Notion voicemail updated',
+        message: `Replaced ${result.toggleTitle}.`,
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Notion sync failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   return (
     <Detail
@@ -406,6 +472,12 @@ function LeavingVoicemailDetail({
             icon={Icon.Clipboard}
             content={body}
             shortcut={{ modifiers: ['cmd'], key: 'c' }}
+          />
+          <Action
+            title="Sync Notion Voice Mail"
+            icon={Icon.Upload}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
+            onAction={() => void handleSyncVoicemailToNotion()}
           />
           <Action.Push
             title="Contact Info"
@@ -687,10 +759,24 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         stage: stageLabel,
       });
 
+      let taskCompletionMessage: string | null = null;
+      if (stageLabel === LEFT_VOICE_MAIL_1_LABEL) {
+        const result = await completeScoutPrepTaskAfterVoicemail({
+          athleteId,
+          athleteMainId,
+          taskTitle: task.title,
+          assignedOwner: task.assigned_owner,
+          description: task.description,
+        });
+        taskCompletionMessage = result.task_id
+          ? `Task ${result.task_id} completed.`
+          : 'Task completed.';
+      }
+
       await showToast({
         style: Toast.Style.Success,
-        title: 'Sales stage saved',
-        message: stageLabel,
+        title: taskCompletionMessage ? 'Sales stage saved, task completed' : 'Sales stage saved',
+        message: taskCompletionMessage || stageLabel,
       });
 
       push(
@@ -927,6 +1013,64 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
     );
   }
 
+  async function handleCopyMarkdownData() {
+    await Clipboard.copy(formatScoutPrepMarkdownForClipboard(markdown));
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Copied scout prep',
+      message: 'Clean text copied to clipboard.',
+    });
+  }
+
+  async function handleSyncCallPrepToNotion() {
+    if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Scout Prep still loading',
+        message: 'Wait for the script before syncing Notion.',
+      });
+      return;
+    }
+
+    try {
+      let activeContext = context;
+      if (!activeContext) {
+        activeContext = await loadScoutPrepContext(task);
+        setContext(activeContext);
+      }
+
+      const parentName = getScoutPrepParentOptions(activeContext)[0]?.name || 'Parent';
+      const voicemail = buildScoutPrepLeavingVoicemailBody({
+        parentName,
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        sport: activeContext.resolved.sport,
+      });
+
+      const [scriptResult, voicemailResult] = await Promise.all([
+        syncCallScriptToggleToNotion({
+          target: 'script',
+          markdown,
+        }),
+        syncCallScriptToggleToNotion({
+          target: 'voicemail',
+          markdown: voicemail,
+        }),
+      ]);
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Notion call prep updated',
+        message: `Replaced ${scriptResult.toggleTitle} and ${voicemailResult.toggleTitle}.`,
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Notion sync failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function resolveNotesContext(): Promise<ScoutPrepContext | null> {
     if (context) {
       return context;
@@ -1070,6 +1214,18 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             icon={Icon.Phone}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
             onAction={() => void handleLeavingVoicemail()}
+          />
+          <Action
+            title="Copy Scout Prep Data"
+            icon={Icon.Clipboard}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
+            onAction={() => void handleCopyMarkdownData()}
+          />
+          <Action
+            title="Sync Notion Call Prep"
+            icon={Icon.Upload}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
+            onAction={() => void handleSyncCallPrepToNotion()}
           />
           <Action.Push
             title="Contact Info"
@@ -1314,9 +1470,12 @@ export default function ScoutPrepCommand() {
       try {
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'start');
         const data = await fetchScoutPortalTasks();
-        setTasks(data);
+        const bottomUpTasks = [...data].reverse();
+        setTasks(bottomUpTasks);
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'success', {
-          count: data.length,
+          count: bottomUpTasks.length,
+          firstAthlete: bottomUpTasks[0]?.athlete_name || null,
+          lastAthlete: bottomUpTasks[bottomUpTasks.length - 1]?.athlete_name || null,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

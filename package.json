@@ -143,6 +143,36 @@
       "description": "Optional override for dropbox-folder reminders. Paste block ID or craftdocs://open?blockId=... link.",
       "type": "textfield",
       "required": false
+    },
+    {
+      "name": "notionToken",
+      "title": "Notion API Token",
+      "description": "Internal integration token with access to the Current Call Scripts page.",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "notionCurrentCallScriptsPageId",
+      "title": "Notion Current Call Scripts Page ID",
+      "description": "Page ID or Notion page URL containing the Script and Voicemail toggles.",
+      "type": "textfield",
+      "required": false
+    },
+    {
+      "name": "notionScriptToggleTitle",
+      "title": "Notion Script Toggle Title",
+      "description": "Exact toggle title to replace with the current scout prep script.",
+      "type": "textfield",
+      "placeholder": "Script",
+      "required": false
+    },
+    {
+      "name": "notionVoicemailToggleTitle",
+      "title": "Notion Voicemail Toggle Title",
+      "description": "Exact toggle title to replace with the current voicemail text.",
+      "type": "textfield",
+      "placeholder": "Voice Mail",
+      "required": false
     }
   ],
   "scripts": {

@@ -44,6 +44,11 @@ function firstName(value?: string | null): string | null {
   return trimmed.split(/\s+/)[0] || null;
 }
 
+function sportLabel(value?: string | null): string {
+  const cleaned = String(value || '').trim();
+  return cleaned || 'their sport';
+}
+
 export function normalizePhoneForMessages(raw?: string | null): string | null {
   const trimmed = String(raw || '').trim();
   if (!trimmed) {
@@ -140,18 +145,20 @@ export function buildVoicemailFollowUpBody(context: ScoutPrepContext): string {
 export function buildScoutPrepLeavingVoicemailBody(args: {
   parentName: string;
   athleteName: string;
+  sport?: string | null;
   relationship?: 'son' | 'daughter';
 }): string {
   const parentFirstName = firstName(args.parentName) || args.parentName || 'Parent';
   const athleteFirstName = firstName(args.athleteName) || args.athleteName || 'your athlete';
+  const sport = sportLabel(args.sport).toLowerCase();
   const relationship = args.relationship || 'son';
 
   return [
-    `Hi ${parentFirstName}, this is Jerami Singleton, college football scout with National Prospect ID.`,
+    `Hi ${parentFirstName}, this is Jerami Singleton, college ${sport} scout with National Prospect ID.`,
     '',
     `The reason why I’m calling is because I had some information come across my desk today about your ${relationship} ${athleteFirstName}.`,
     '',
-    `I had some questions I wanted to ask you about his desire to play college football, and I wanted to learn more about his academics and football talent.`,
+    `I had some questions I wanted to ask you about his desire to play college ${sport}, and I wanted to learn more about his academics and ${sport} talent.`,
     '',
     'Please give me a call back today, my number here is 407-473-3637.',
     '',
