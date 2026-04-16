@@ -12,6 +12,8 @@ from app.models.schemas import (
     TaskListResponse,
     TaskPopupRequest,
     TaskPopupResponse,
+    TaskUpdateRequest,
+    TaskUpdateResponse,
     TaskCompleteRequest,
     TaskCompleteResponse
 )
@@ -197,6 +199,78 @@ async def task_popup(request: Request, payload: TaskPopupRequest):
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.post("/update", response_model=TaskUpdateResponse)
+async def update_task(request: Request, payload: TaskUpdateRequest):
+    """
+    Update an exact legacy task via popup -> addtask roundtrip.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "📝 Updating task contact_task=%s athlete_main_id=%s task_id=%s due_date=%s due_time=%s task_title=%s",
+        payload.contact_task,
+        payload.athlete_main_id,
+        payload.task_id,
+        payload.due_date,
+        payload.due_time,
+        payload.task_title,
+    )
+
+    try:
+        endpoint, params = translator.task_popup_to_legacy(payload.task_id)
+        popup_response = await session.get(endpoint, params=params)
+        popup_result = translator.parse_task_popup_response(popup_response.text)
+        form_data = popup_result.get("form_data", {})
+
+        updated_form_data = translator.apply_task_update(
+            form_data=form_data,
+            athlete_id=payload.contact_task,
+            athlete_main_id=payload.athlete_main_id,
+            task_title=payload.task_title,
+            description=payload.description,
+            due_date=payload.due_date,
+            due_time=payload.due_time,
+        )
+
+        required_fields = ["existingtask", "tasktitle", "taskdescription", "contact_task", "athlete_main_id"]
+        missing_fields = [field for field in required_fields if field not in updated_form_data]
+        changed_fields = _diff_form_data(form_data, updated_form_data)
+
+        if "existingtask" in missing_fields:
+            raise HTTPException(status_code=400, detail="Missing existingtask in task form")
+
+        logger.info(
+            "🧾 Task update form summary=%s",
+            _sanitize_form_data(updated_form_data),
+        )
+        logger.info("🧾 Task update changed fields=%s", _sanitize_form_data(changed_fields))
+
+        endpoint, final_form_data = translator.task_update_to_legacy(updated_form_data)
+        update_response = await session.post(endpoint, data=final_form_data)
+        logger.info(
+            "📥 Task update response status=%s content_type=%s",
+            update_response.status_code,
+            update_response.headers.get("content-type"),
+        )
+        update_result = translator.parse_task_update_response(update_response.text)
+
+        if update_result.get("success"):
+            return TaskUpdateResponse(
+                success=True,
+                task_id=payload.task_id,
+                message=update_result.get("message", "Task updated"),
+                raw_response=update_result.get("raw"),
+            )
+
+        raise HTTPException(status_code=400, detail=update_result.get("message", "Task update failed"))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"❌ Task update error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.post("/complete", response_model=TaskCompleteResponse)
 async def complete_task(request: Request, payload: TaskCompleteRequest):
     """
@@ -206,9 +280,10 @@ async def complete_task(request: Request, payload: TaskCompleteRequest):
     translator = LegacyTranslator()
 
     logger.info(
-        "✅ Completing task athlete_id=%s athlete_main_id=%s task_id=%s task_title=%s assigned_owner=%s completed_date=%s completed_time=%s is_completed=%s",
+        "✅ Completing task athlete_id=%s athlete_main_id=%s contact_task=%s task_id=%s task_title=%s assigned_owner=%s completed_date=%s completed_time=%s is_completed=%s",
         payload.athlete_id,
         payload.athlete_main_id,
+        payload.contact_task,
         payload.task_id,
         payload.task_title,
         payload.assigned_owner,

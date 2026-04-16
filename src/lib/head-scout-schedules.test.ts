@@ -1,0 +1,49 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import {
+  buildHeadScoutWeekWindow,
+  filterVisibleHeadScoutSlots,
+  formatHeadScoutSlotDate,
+  formatHeadScoutSlotTimeRange,
+  getCurrentEasternSlotStamp,
+  type HeadScoutSlot,
+} from './head-scout-schedules';
+
+test('buildHeadScoutWeekWindow anchors to Monday in EST', () => {
+  const now = new Date('2026-04-16T16:30:00Z');
+  const current = buildHeadScoutWeekWindow(0, now);
+  const next = buildHeadScoutWeekWindow(1, now);
+
+  assert.deepEqual(current, { start: '2026-04-13', end: '2026-04-20' });
+  assert.deepEqual(next, { start: '2026-04-20', end: '2026-04-27' });
+});
+
+test('filterVisibleHeadScoutSlots hides past slots only in current week', () => {
+  const now = new Date('2026-04-16T20:30:00Z');
+  const slots: HeadScoutSlot[] = [
+    { id: '1', start: '2026-04-16T15:00', end: '2026-04-16T16:00', scout_name: 'Jeffrey Stein' },
+    { id: '2', start: '2026-04-16T17:00', end: '2026-04-16T18:00', scout_name: 'Jeffrey Stein' },
+  ];
+
+  assert.equal(getCurrentEasternSlotStamp(now), '2026-04-16T16:30');
+  assert.deepEqual(
+    filterVisibleHeadScoutSlots(slots, 0, now).map((slot) => slot.id),
+    ['2'],
+  );
+  assert.deepEqual(
+    filterVisibleHeadScoutSlots(slots, 1, now).map((slot) => slot.id),
+    ['1', '2'],
+  );
+});
+
+test('formatHeadScoutSlotTimeRange renders EST 12-hour labels', () => {
+  assert.equal(
+    formatHeadScoutSlotTimeRange('2026-04-16T17:00', '2026-04-16T18:00'),
+    '5:00 PM - 6:00 PM EST',
+  );
+});
+
+test('formatHeadScoutSlotDate guards malformed slot values', () => {
+  assert.equal(formatHeadScoutSlotDate('16:00'), 'Unknown Date');
+});

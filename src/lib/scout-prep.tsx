@@ -5,6 +5,7 @@ import { buildScoutPrepCard } from '../features/scout-prep/content';
 import { buildScoutPrepFallbackOutput } from './scout-prep-ai';
 import type {
   ScoutPrepAIOutput,
+  ScoutAthleteTask,
   ScoutPrepFormValues,
   ScoutPrepGrade,
   ScoutPortalTask,
@@ -122,6 +123,124 @@ export async function fetchAthleteTasks(
   return tasks;
 }
 
+type AthleteResolveResponse = {
+  athlete_id?: string;
+  athlete_main_id?: string | null;
+  grad_year?: string | null;
+  high_school?: string | null;
+  city?: string | null;
+  state?: string | null;
+  positions?: string | null;
+  sport?: string | null;
+  gpa?: string | null;
+};
+
+export async function fetchScoutPrepAthleteDetails(
+  athleteId: string,
+): Promise<AthleteResolveResponse | null> {
+  logInfo('SCOUT_PREP_ATHLETE_DETAILS', 'request', 'start', {
+    athleteId,
+  });
+  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`);
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    logFailure(
+      'SCOUT_PREP_ATHLETE_DETAILS',
+      'request',
+      errorText.slice(0, 200) || `Athlete resolve HTTP ${response.status}`,
+      {
+        athleteId,
+        statusCode: response.status,
+      },
+    );
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as AthleteResolveResponse;
+  logInfo('SCOUT_PREP_ATHLETE_DETAILS', 'parse', 'success', {
+    athleteId,
+    athleteMainId: payload.athlete_main_id || null,
+    hasCity: Boolean(String(payload.city || '').trim()),
+    hasState: Boolean(String(payload.state || '').trim()),
+    hasSport: Boolean(String(payload.sport || '').trim()),
+  });
+  return payload;
+}
+
+export function isFollowUpScoutTask(task?: Partial<ScoutAthleteTask> | null): boolean {
+  const title = String(task?.title || '')
+    .trim()
+    .toLowerCase();
+  const description = String(task?.description || '')
+    .trim()
+    .toLowerCase();
+  const owner = String(task?.assigned_owner || '')
+    .trim()
+    .toLowerCase();
+  const completionDate = String(task?.completion_date || '').trim();
+  return (
+    !completionDate &&
+    owner.includes('jerami') &&
+    (title.startsWith('call attempt') || description.includes('call the family'))
+  );
+}
+
+export function findNewestIncompleteFollowUpTask(
+  tasks: Array<Partial<ScoutAthleteTask>>,
+): ScoutAthleteTask | null {
+  const candidates = tasks.filter(isFollowUpScoutTask);
+  if (!candidates.length) return null;
+
+  const sorted = [...candidates].sort((left, right) => {
+    const leftId = String(left.task_id || '').trim();
+    const rightId = String(right.task_id || '').trim();
+    const leftNum = /^\d+$/.test(leftId) ? Number.parseInt(leftId, 10) : -1;
+    const rightNum = /^\d+$/.test(rightId) ? Number.parseInt(rightId, 10) : -1;
+    return rightNum - leftNum || rightId.localeCompare(leftId);
+  });
+
+  return sorted[0] as ScoutAthleteTask;
+}
+
+export function isConfirmationCallTask(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): boolean {
+  const title = String(task?.title || '')
+    .trim()
+    .toLowerCase();
+  const description = String(task?.description || '')
+    .trim()
+    .toLowerCase();
+  return title.includes('confirmation call') || description.includes('confirm the meeting set');
+}
+
+export function findNewestIncompleteConfirmationTask(
+  tasks: Array<Partial<ScoutAthleteTask>>,
+): ScoutAthleteTask | null {
+  const candidates = tasks.filter((task) => {
+    const completionDate = String(task.completion_date || '').trim();
+    return !completionDate && isConfirmationCallTask(task);
+  });
+  if (!candidates.length) return null;
+
+  const sorted = [...candidates].sort((left, right) => {
+    const leftId = String(left.task_id || '').trim();
+    const rightId = String(right.task_id || '').trim();
+    const leftNum = /^\d+$/.test(leftId) ? Number.parseInt(leftId, 10) : -1;
+    const rightNum = /^\d+$/.test(rightId) ? Number.parseInt(rightId, 10) : -1;
+    return rightNum - leftNum || rightId.localeCompare(leftId);
+  });
+
+  return sorted[0] as ScoutAthleteTask;
+}
+
+export function stripMoveThisTaskPrefix(taskTitle?: string | null): string | null {
+  const trimmed = String(taskTitle || '').trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/^\(SC Move This Task\)\s*/i, '').trim();
+  return cleaned || trimmed;
+}
+
 function formatLegacyTaskDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -137,6 +256,8 @@ function formatLegacyTaskTime(date: Date): string {
 export async function completeScoutPrepTaskAfterVoicemail(args: {
   athleteId: string;
   athleteMainId: string;
+  contactTask?: string | null;
+  taskId?: string | null;
   taskTitle?: string | null;
   assignedOwner?: string | null;
   description?: string | null;
@@ -148,6 +269,8 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
   logInfo('SCOUT_PREP_TASK_COMPLETE', 'request', 'start', {
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
+    contactTask: args.contactTask || null,
+    taskId: args.taskId || null,
     taskTitle: args.taskTitle || 'Call Attempt 1',
     assignedOwner: args.assignedOwner || 'Jerami Singleton',
     completedDate,
@@ -160,6 +283,8 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     body: JSON.stringify({
       athlete_id: args.athleteId,
       athlete_main_id: args.athleteMainId,
+      contact_task: args.contactTask || args.athleteId,
+      task_id: args.taskId || null,
       task_title: args.taskTitle || 'Call Attempt 1',
       assigned_owner: args.assignedOwner || 'Jerami Singleton',
       description: args.description || args.taskTitle || 'Call Attempt 1',
@@ -182,6 +307,8 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     logFailure('SCOUT_PREP_TASK_COMPLETE', 'request', message, {
       athleteId: args.athleteId,
       athleteMainId: args.athleteMainId,
+      contactTask: args.contactTask || null,
+      taskId: args.taskId || null,
       statusCode: response.status,
     });
     throw new Error(message);
@@ -195,10 +322,71 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
   logInfo('SCOUT_PREP_TASK_COMPLETE', 'request', 'success', {
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
+    contactTask: args.contactTask || null,
     taskId: result.task_id || null,
     message: result.message || null,
   });
   return result;
+}
+
+export async function fetchScoutTaskPopup(taskId: string): Promise<{
+  success: boolean;
+  form_data: Record<string, string>;
+  checkbox_fields: string[];
+}> {
+  const response = await apiFetch('/tasks/popup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      task_id: taskId,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText.slice(0, 200) || `Task popup HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as {
+    success: boolean;
+    form_data: Record<string, string>;
+    checkbox_fields: string[];
+  };
+}
+
+export async function updateScoutPrepTask(args: {
+  taskId: string;
+  contactTask: string;
+  athleteMainId: string;
+  taskTitle?: string | null;
+  description?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+}): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
+  const response = await apiFetch('/tasks/update', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      task_id: args.taskId,
+      contact_task: args.contactTask,
+      athlete_main_id: args.athleteMainId,
+      task_title: args.taskTitle ?? null,
+      description: args.description ?? null,
+      due_date: args.dueDate ?? null,
+      due_time: args.dueTime ?? null,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText.slice(0, 200) || `Task update HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as {
+    success?: boolean;
+    task_id?: string | null;
+    message?: string | null;
+  };
 }
 
 export function resolveGradeLabel(gradYear?: string | null): ScoutPrepGrade {
@@ -234,41 +422,34 @@ export function buildScoutPrepValues(args: {
 }
 
 export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<ScoutPrepContext> {
-  const athleteId = String(task.athlete_id || task.contact_id);
+  const athleteId = String(task.athlete_id || task.contact_id || '').trim();
+  const athleteMainIdHint = String(task.athlete_main_id || '').trim();
+
   logInfo('SCOUT_PREP_CONTEXT_LOAD', 'resolve-athlete', 'start', {
     contactId: task.contact_id,
     athleteId,
-    athleteMainIdHint: task.athlete_main_id || null,
+    athleteMainIdHint: athleteMainIdHint || null,
   });
-  const resolvedResponse = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`);
-  if (!resolvedResponse.ok) {
-    const errorText = await resolvedResponse.text();
-    const message = errorText.slice(0, 200) || `Resolve HTTP ${resolvedResponse.status}`;
+
+  if (!athleteId) {
+    const message = 'Missing athlete_id for scout prep task';
     logFailure('SCOUT_PREP_CONTEXT_LOAD', 'resolve-athlete', message, {
       contactId: task.contact_id,
       athleteId,
-      statusCode: resolvedResponse.status,
-      responsePreview: errorText.slice(0, 120),
+      athleteMainIdHint: athleteMainIdHint || null,
     });
     throw new Error(message);
   }
 
-  const resolved = (await resolvedResponse.json().catch(() => ({}))) as {
-    athlete_main_id?: string;
-    sport?: string | null;
-    high_school?: string | null;
-    city?: string | null;
-    state?: string | null;
-    positions?: string | null;
-    gpa?: string | null;
-  };
-  const athleteMainId = String(task.athlete_main_id || resolved.athlete_main_id || '').trim();
+  const athleteDetails = await fetchScoutPrepAthleteDetails(athleteId);
+  const athleteMainId = String(athleteMainIdHint || athleteDetails?.athlete_main_id || '').trim();
 
   if (!athleteMainId) {
     const message = 'Missing athlete_main_id for scout prep task';
     logFailure('SCOUT_PREP_CONTEXT_LOAD', 'resolve-athlete', message, {
       contactId: task.contact_id,
       athleteId,
+      athleteMainIdHint: athleteMainIdHint || null,
     });
     throw new Error(message);
   }
@@ -277,28 +458,7 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
     contactId: task.contact_id,
     athleteId,
     athleteMainId,
-    resolverFields: {
-      hasSport: Boolean(String(resolved.sport || '').trim()),
-      hasHighSchool: Boolean(String(resolved.high_school || '').trim()),
-      hasCity: Boolean(String(resolved.city || '').trim()),
-      hasState: Boolean(String(resolved.state || '').trim()),
-      hasPositions: Boolean(String(resolved.positions || '').trim()),
-      hasGpa: Boolean(String(resolved.gpa || '').trim()),
-    },
   });
-
-  if (!resolved.state && !resolved.city && !resolved.high_school) {
-    logFailure(
-      'SCOUT_PREP_CONTEXT_LOAD',
-      'resolve-athlete',
-      'Resolver missing state, city, and high_school for rapport context',
-      {
-        contactId: task.contact_id,
-        athleteId,
-        athleteMainId,
-      },
-    );
-  }
 
   logInfo('SCOUT_PREP_CONTEXT_LOAD', 'hydrate-context', 'start', {
     contactId: task.contact_id,
@@ -347,7 +507,14 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
   return {
     task,
     resolved: {
-      ...resolved,
+      athlete_id: athleteDetails?.athlete_id || athleteId,
+      athlete_main_id: athleteDetails?.athlete_main_id || athleteMainId,
+      sport: athleteDetails?.sport || null,
+      high_school: athleteDetails?.high_school || null,
+      city: athleteDetails?.city || null,
+      state: athleteDetails?.state || null,
+      positions: athleteDetails?.positions || null,
+      gpa: athleteDetails?.gpa || null,
       height: measurables.height || null,
       weight: measurables.weight || null,
     },

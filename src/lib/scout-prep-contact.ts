@@ -8,6 +8,13 @@ type ContactCandidate = {
   normalizedPhone: string | null;
 };
 
+export type ProspectContactShortcutCandidate = {
+  id: ContactCandidate['role'];
+  label: string;
+  name: string;
+  phone: string;
+};
+
 export type ScoutPrepContactSelection = {
   primaryNumber: string | null;
   backupNumber: string | null;
@@ -54,23 +61,30 @@ export function normalizePhoneForMessages(raw?: string | null): string | null {
   if (!trimmed) {
     return null;
   }
-
-  const hasLeadingPlus = trimmed.startsWith('+');
   const digits = trimmed.replace(/\D/g, '');
-  if (!digits) {
+  if (digits.length === 10) {
+    return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return null;
+}
+
+function splitShortcutContactName(name: string): { firstName: string; lastName: string } | null {
+  const parts = name
+    .split(/\s+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (parts.length < 2) {
     return null;
   }
 
-  if (hasLeadingPlus) {
-    return digits.length >= 10 ? `+${digits}` : null;
-  }
-  if (digits.length === 10) {
-    return `+1${digits}`;
-  }
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return `+${digits}`;
-  }
-  return null;
+  return {
+    firstName: parts[0],
+    lastName: parts.slice(1).join(' '),
+  };
 }
 
 function buildContactCandidates(context: ScoutPrepContext): ContactCandidate[] {
@@ -132,6 +146,27 @@ export function selectScoutPrepContactNumbers(
   };
 }
 
+export function getProspectContactShortcutCandidates(
+  context: ScoutPrepContext,
+): ProspectContactShortcutCandidate[] {
+  return buildContactCandidates(context)
+    .filter(
+      (candidate): candidate is ContactCandidate & { name: string; normalizedPhone: string } =>
+        Boolean(candidate.name && candidate.normalizedPhone),
+    )
+    .map((candidate) => ({
+      id: candidate.role,
+      label:
+        candidate.role === 'parent1'
+          ? 'Parent 1'
+          : candidate.role === 'parent2'
+            ? 'Parent 2'
+            : 'Student Athlete',
+      name: candidate.name,
+      phone: candidate.normalizedPhone,
+    }));
+}
+
 export function buildVoicemailFollowUpBody(context: ScoutPrepContext): string {
   const greetingName =
     firstName(context.contactInfo.parent1?.name) ||
@@ -168,6 +203,46 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
 
 export function buildMessagesComposeUrl(phone: string, body: string): string {
   return `sms:${phone}?body=${encodeURIComponent(body)}`;
+}
+
+export function buildProspectContactShortcutPayload(args: {
+  firstName: string;
+  lastName: string;
+  phone: string;
+}): string {
+  const firstName = args.firstName.trim();
+  const lastName = args.lastName.trim();
+  const phone = normalizePhoneForMessages(args.phone);
+
+  if (!firstName || !lastName || !phone) {
+    throw new Error('First name, last name, and phone number are required');
+  }
+
+  return [firstName, lastName, phone].join('\n');
+}
+
+export function buildProspectContactShortcutPayloadFromName(args: {
+  fullName: string;
+  phone: string;
+}): string {
+  const parsedName = splitShortcutContactName(args.fullName.trim());
+  if (!parsedName) {
+    throw new Error('Selected contact must include first and last name');
+  }
+
+  return buildProspectContactShortcutPayload({
+    firstName: parsedName.firstName,
+    lastName: parsedName.lastName,
+    phone: args.phone,
+  });
+}
+
+export function buildProspectContactShortcutUrl(payload: string): string {
+  if (!payload.trim()) {
+    throw new Error('Shortcut payload is required');
+  }
+
+  return `shortcuts://run-shortcut?name=Create%20Prospect%20Contact&input=text&text=${encodeURIComponent(payload)}`;
 }
 
 export function mapTimezoneToLegacyRecruitZone(timezone?: string | null): string | null {

@@ -14,19 +14,25 @@ import {
 } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
+import { HeadScoutSchedulesRoot } from './head-scout-schedules';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
   MeetingSetTemplateResponse,
   SalesStageOption,
+  ScoutAthleteTask,
   ScoutPortalTask,
   ScoutPrepContext,
   ScoutPrepFormValues,
 } from './features/scout-prep/types';
 import {
   buildMeetingTemplateDefaults,
+  buildProspectContactShortcutPayloadFromName,
+  buildProspectContactShortcutUrl,
   buildMessagesComposeUrl,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
+  getProspectContactShortcutCandidates,
+  type ProspectContactShortcutCandidate,
   selectScoutPrepContactNumbers,
 } from './lib/scout-prep-contact';
 import {
@@ -34,11 +40,14 @@ import {
   buildScoutPrepMetadata,
   buildScoutPrepValues,
   completeScoutPrepTaskAfterVoicemail,
+  fetchScoutTaskPopup,
   fetchScoutPortalTasks,
+  findNewestIncompleteConfirmationTask,
   loadScoutPrepContext,
+  stripMoveThisTaskPrefix,
+  updateScoutPrepTask,
 } from './lib/scout-prep';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
-import { generateScoutPrepLocalEnrichment } from './lib/scout-prep-ai';
 import {
   fetchCuratedSalesStageOptions,
   fetchMeetingSetTemplate,
@@ -239,25 +248,25 @@ function buildScoutPrepContactMarkdown(context: ScoutPrepContext | null): string
   }
 
   const { contactInfo } = context;
-  const lines = [
-    '# Contact Information',
-    '',
-    `## ${contactInfo.studentAthlete.name || context.task.athlete_name}`,
-    `Phone: ${contactInfo.studentAthlete.phone || 'N/A'}`,
-    '',
-  ];
+  const lines = ['# Contact Information', ''];
 
   if (contactInfo.parent1) {
     lines.push(
-      `## ${contactInfo.parent1.name} (${contactInfo.parent1.relationship})`,
+      `## 📲 ${contactInfo.parent1.name} (${contactInfo.parent1.relationship})`,
       `Phone: ${contactInfo.parent1.phone || 'N/A'}`,
       '',
     );
   }
 
+  lines.push(
+    `## ☎️ ${contactInfo.studentAthlete.name || context.task.athlete_name}`,
+    `Phone: ${contactInfo.studentAthlete.phone || 'N/A'}`,
+    '',
+  );
+
   if (contactInfo.parent2) {
     lines.push(
-      `## ${contactInfo.parent2.name} (${contactInfo.parent2.relationship})`,
+      `## 📳 ${contactInfo.parent2.name} (${contactInfo.parent2.relationship})`,
       `Phone: ${contactInfo.parent2.phone || 'N/A'}`,
       '',
     );
@@ -324,7 +333,6 @@ function ScoutPrepContactDetail({
                 title="Copy Student Athlete Phone"
                 content={contactInfo.studentAthlete.phone}
                 icon="☎️"
-                shortcut={{ modifiers: ['cmd'], key: 'enter' }}
               />
             ) : null}
           </ActionPanel.Section>
@@ -335,7 +343,6 @@ function ScoutPrepContactDetail({
                   title="Copy Parent 2 Phone"
                   content={contactInfo.parent2.phone}
                   icon="📳"
-                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
                 />
               ) : null}
             </ActionPanel.Section>
@@ -535,6 +542,7 @@ function LeavingVoicemailParentForm({
 function buildPostCallPreviewMarkdown(
   task: ScoutPortalTask,
   values: Record<string, string | undefined>,
+  createdTask?: ScoutAthleteTask | null,
 ): string {
   const lines = [
     `# Post-Call Update`,
@@ -562,6 +570,17 @@ function buildPostCallPreviewMarkdown(
     );
   }
 
+  if (createdTask) {
+    lines.push(
+      '',
+      '## Next Task Created',
+      '',
+      `- **Task:** ${createdTask.title || 'Unknown task'}`,
+      `- **Due Date:** ${createdTask.due_date || 'Not provided'}`,
+      `- **Description:** ${createdTask.description || 'Not provided'}`,
+    );
+  }
+
   lines.push(
     '',
     '> Official sales stage saved. Meeting Set detail save is still separate until that legacy POST is captured.',
@@ -573,15 +592,241 @@ function buildPostCallPreviewMarkdown(
 function PostCallUpdatePreview({
   task,
   values,
+  createdTask,
 }: {
   task: ScoutPortalTask;
   values: Record<string, string | undefined>;
+  createdTask?: ScoutAthleteTask | null;
 }) {
   return (
     <Detail
       navigationTitle={`Post-Call Update • ${task.athlete_name}`}
-      markdown={buildPostCallPreviewMarkdown(task, values)}
+      markdown={buildPostCallPreviewMarkdown(task, values, createdTask)}
+      actions={
+        <ActionPanel>
+          <Action.OpenInBrowser
+            title="Open Athlete Task Tab"
+            icon={Icon.Globe}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+            url={buildScoutPrepTaskUrl(task, task.athlete_main_id)}
+          />
+          {createdTask ? (
+            <Action.Push
+              title="Build Scout Prep for Follow-Up"
+              icon={Icon.Wand}
+              target={
+                <ScoutPrepDetail
+                  task={{
+                    ...task,
+                    due_date: createdTask.due_date || task.due_date,
+                    title: createdTask.title || task.title,
+                    description: createdTask.description || task.description,
+                  }}
+                />
+              }
+            />
+          ) : null}
+        </ActionPanel>
+      }
     />
+  );
+}
+
+function formatDateForLegacyInput(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}/${day}/${date.getFullYear()}`;
+}
+
+function buildDefaultConfirmationDate(value?: string | null): Date | undefined {
+  const raw = String(value || '').trim();
+  const match = raw.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (!match) return undefined;
+  const month = Number.parseInt(match[1], 10) - 1;
+  const day = Number.parseInt(match[2], 10);
+  const year = Number.parseInt(match[3], 10);
+  const date = new Date(year, month, day);
+  return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function RescheduleConfirmationCallForm({
+  task,
+  confirmationTask,
+}: {
+  task: ScoutPortalTask;
+  confirmationTask: ScoutAthleteTask;
+}) {
+  const [popupData, setPopupData] = useState<Record<string, string> | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const load = async () => {
+      setIsLoading(true);
+      try {
+        const popup = await fetchScoutTaskPopup(confirmationTask.task_id);
+        if (!active) return;
+        setPopupData(popup.form_data || {});
+      } catch (error) {
+        if (!active) return;
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to load confirmation task',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        if (active) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    void load();
+    return () => {
+      active = false;
+    };
+  }, [confirmationTask.task_id]);
+
+  async function handleSubmit(values: { dueDate?: Date; dueTime?: string; taskTitle?: string }) {
+    if (isSaving) return;
+
+    const athleteMainId = String(task.athlete_main_id || '').trim();
+    const contactTask = String(task.contact_id || '').trim();
+    if (!athleteMainId || !contactTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing task identifiers',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await updateScoutPrepTask({
+        taskId: confirmationTask.task_id,
+        contactTask,
+        athleteMainId,
+        taskTitle:
+          String(values.taskTitle || '').trim() || stripMoveThisTaskPrefix(popupData?.tasktitle),
+        description: popupData?.taskdescription || confirmationTask.description || '',
+        dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : popupData?.duedate,
+        dueTime: String(values.dueTime || '').trim() || popupData?.duetime,
+      });
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Confirmation call updated',
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to update confirmation call',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Form
+      isLoading={isLoading}
+      navigationTitle={`Reschedule Confirmation Call • ${task.athlete_name}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title={isSaving ? 'Saving…' : 'Save Confirmation Call'}
+            onSubmit={(values) =>
+              void handleSubmit(values as { dueDate?: Date; dueTime?: string; taskTitle?: string })
+            }
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField
+        id="taskTitle"
+        title="Task Title"
+        defaultValue={stripMoveThisTaskPrefix(popupData?.tasktitle) || 'Confirmation Call'}
+      />
+      <Form.DatePicker
+        id="dueDate"
+        title="Task Due Date"
+        defaultValue={buildDefaultConfirmationDate(popupData?.duedate)}
+      />
+      <Form.TextField
+        id="dueTime"
+        title="Time"
+        defaultValue={popupData?.duetime || '13:00'}
+        placeholder="13:00"
+      />
+    </Form>
+  );
+}
+
+function CreateProspectContactForm({
+  task,
+  candidates,
+}: {
+  task: ScoutPortalTask;
+  candidates: ProspectContactShortcutCandidate[];
+}) {
+  async function handleSubmit(values: { contactId?: string }) {
+    const selectedId = String(values.contactId || '');
+    const candidate = candidates.find((item) => item.id === selectedId) || candidates[0];
+
+    if (!candidate) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No eligible contact selected',
+      });
+      return;
+    }
+
+    try {
+      const payload = buildProspectContactShortcutPayloadFromName({
+        fullName: candidate.name,
+        phone: candidate.phone,
+      });
+      const shortcutUrl = buildProspectContactShortcutUrl(payload);
+      await open(shortcutUrl);
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Shortcut launched',
+        message: `${candidate.label}: ${candidate.name}`,
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to create prospect contact',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return (
+    <Form
+      navigationTitle={`Create Prospect Contact • ${task.athlete_name}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Run Create Prospect Contact"
+            onSubmit={(values) => void handleSubmit(values as { contactId?: string })}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Description text="Select the contact to send into the existing macOS Shortcut." />
+      <Form.Dropdown id="contactId" title="Contact" defaultValue={candidates[0]?.id}>
+        {candidates.map((candidate) => (
+          <Form.Dropdown.Item
+            key={candidate.id}
+            value={candidate.id}
+            title={`${candidate.label}: ${candidate.name} (${candidate.phone})`}
+          />
+        ))}
+      </Form.Dropdown>
+    </Form>
   );
 }
 
@@ -725,6 +970,30 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   const canRenderStageFields =
     !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
 
+  async function handleCreateProspectContact() {
+    try {
+      const context = await loadScoutPrepContext(task);
+      const candidates = getProspectContactShortcutCandidates(context);
+
+      if (candidates.length === 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'No eligible contact found',
+          message: 'A first name, last name, and phone number are required.',
+        });
+        return;
+      }
+
+      push(<CreateProspectContactForm task={task} candidates={candidates} />);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to load contact data',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function handleSubmit(values: Record<string, string | undefined>) {
     if (isSaving) {
       return;
@@ -747,13 +1016,19 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       const athleteMainId = String(
         task.athlete_main_id || context?.resolved.athlete_main_id || '',
       ).trim();
-      const athleteId = String(task.contact_id || context?.task.contact_id || '').trim();
+      const athleteId = String(
+        task.athlete_id ||
+          task.contact_id ||
+          context?.task.athlete_id ||
+          context?.task.contact_id ||
+          '',
+      ).trim();
 
       if (!athleteMainId || !athleteId) {
         throw new Error('Missing athlete_main_id or athlete_id for sales stage update');
       }
 
-      await updateSalesStage({
+      const salesStageResult = await updateSalesStage({
         athleteMainId,
         athleteId,
         stage: stageLabel,
@@ -764,6 +1039,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         const result = await completeScoutPrepTaskAfterVoicemail({
           athleteId,
           athleteMainId,
+          contactTask: task.contact_id,
+          taskId: task.task_id,
           taskTitle: task.title,
           assignedOwner: task.assigned_owner,
           description: task.description,
@@ -786,6 +1063,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             ...values,
             officialStage: stageLabel,
           }}
+          createdTask={salesStageResult.created_task || null}
         />,
       );
     } catch (error) {
@@ -809,6 +1087,12 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           <Action.SubmitForm
             title={isSaving ? 'Saving Sales Stage…' : 'Save Sales Stage'}
             onSubmit={(values) => void handleSubmit(values as Record<string, string | undefined>)}
+          />
+          <Action
+            title="Create Prospect Contact"
+            icon={Icon.Person}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
+            onAction={() => void handleCreateProspectContact()}
           />
         </ActionPanel>
       }
@@ -1013,15 +1297,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
     );
   }
 
-  async function handleCopyMarkdownData() {
-    await Clipboard.copy(formatScoutPrepMarkdownForClipboard(markdown));
-    await showToast({
-      style: Toast.Style.Success,
-      title: 'Copied scout prep',
-      message: 'Clean text copied to clipboard.',
-    });
-  }
-
   async function handleSyncCallPrepToNotion() {
     if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
       await showToast({
@@ -1123,6 +1398,83 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
     );
   }
 
+  async function resolveConfirmationTask(): Promise<ScoutAthleteTask | null> {
+    let activeContext = context;
+    if (!activeContext) {
+      try {
+        activeContext = await loadScoutPrepContext(task);
+        setContext(activeContext);
+      } catch (error) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Missing task context',
+          message: error instanceof Error ? error.message : 'Could not load athlete tasks',
+        });
+        return null;
+      }
+    }
+
+    return findNewestIncompleteConfirmationTask(activeContext.tasks);
+  }
+
+  async function handleRescheduleConfirmationTask() {
+    const confirmationTask = await resolveConfirmationTask();
+    if (!confirmationTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No confirmation call task found',
+      });
+      return;
+    }
+
+    push(<RescheduleConfirmationCallForm task={task} confirmationTask={confirmationTask} />);
+  }
+
+  async function handleCompleteConfirmationTask() {
+    const confirmationTask = await resolveConfirmationTask();
+    if (!confirmationTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No confirmation call task found',
+      });
+      return;
+    }
+
+    const athleteMainId = String(
+      task.athlete_main_id || context?.resolved.athlete_main_id || '',
+    ).trim();
+    const contactTask = String(task.contact_id || '').trim();
+    if (!athleteMainId || !contactTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing task identifiers',
+      });
+      return;
+    }
+
+    try {
+      await completeScoutPrepTaskAfterVoicemail({
+        athleteId: contactTask,
+        athleteMainId,
+        contactTask,
+        taskTitle: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+        assignedOwner: confirmationTask.assigned_owner,
+        description: confirmationTask.description || 'Confirmation Call',
+        taskId: confirmationTask.task_id,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Confirmation call completed',
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to complete confirmation call',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -1158,17 +1510,8 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
           athleteName: values.athleteName,
         });
 
-        void generateScoutPrepLocalEnrichment(values, context).then((enrichment) => {
-          if (!active || !enrichment) {
-            return;
-          }
-          setMarkdown(buildScoutPrepDetailMarkdown(values, context, enrichment));
-          logInfo('SCOUT_PREP_DETAIL_LOAD', 'apply-local-enrichment', 'success', {
-            contactId: task.contact_id,
-            athleteMainId: task.athlete_main_id || null,
-            athleteName: values.athleteName,
-          });
-        });
+        // Local transformer-based enrichment is intentionally disabled for now.
+        // Scout Prep should stay deterministic until the optional model path is restored.
       } catch (error) {
         if (!active) {
           return;
@@ -1206,7 +1549,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
           <Action
             title="Voicemail Follow-Up"
             icon={Icon.Message}
-            shortcut={{ modifiers: ['cmd'], key: 'enter' }}
             onAction={() => void handleVoicemailFollowUp()}
           />
           <Action
@@ -1214,12 +1556,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             icon={Icon.Phone}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
             onAction={() => void handleLeavingVoicemail()}
-          />
-          <Action
-            title="Copy Scout Prep Data"
-            icon={Icon.Clipboard}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
-            onAction={() => void handleCopyMarkdownData()}
           />
           <Action
             title="Sync Notion Call Prep"
@@ -1234,9 +1570,22 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             target={<ScoutPrepContactDetail task={task} initialContext={context} />}
           />
           <Action.Push
-            title="Manual Scout Prep"
-            icon={Icon.Wand}
-            target={<ManualScoutPrepForm />}
+            title="Head Scout Schedules"
+            icon={Icon.Calendar}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
+            target={
+              context ? (
+                <HeadScoutSchedulesRoot
+                  syncContext={{
+                    task,
+                    context,
+                    markdown,
+                  }}
+                />
+              ) : (
+                <HeadScoutSchedulesRoot />
+              )
+            }
           />
           <Action.OpenInBrowser
             title="Open Athlete Admin Page"
@@ -1258,6 +1607,18 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             title="Open Player ID"
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             url={buildScoutPrepPlayerIdUrl(task, context?.resolved.athlete_id)}
+          />
+          <Action
+            title="Reschedule Confirmation Call"
+            icon={Icon.Calendar}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+            onAction={() => void handleRescheduleConfirmationTask()}
+          />
+          <Action
+            title="Complete Confirmation Call"
+            icon={Icon.CheckCircle}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
+            onAction={() => void handleCompleteConfirmationTask()}
           />
           <ActionPanel.Section title="Athlete Note">
             <Action
@@ -1359,6 +1720,69 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
     );
   }
 
+  async function resolveConfirmationTask(): Promise<ScoutAthleteTask | null> {
+    const context = await loadTaskNotesContext();
+    if (!context) {
+      return null;
+    }
+    return findNewestIncompleteConfirmationTask(context.tasks);
+  }
+
+  async function handleRescheduleConfirmationTask() {
+    const confirmationTask = await resolveConfirmationTask();
+    if (!confirmationTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No confirmation call task found',
+      });
+      return;
+    }
+    push(<RescheduleConfirmationCallForm task={task} confirmationTask={confirmationTask} />);
+  }
+
+  async function handleCompleteConfirmationTask() {
+    const confirmationTask = await resolveConfirmationTask();
+    if (!confirmationTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No confirmation call task found',
+      });
+      return;
+    }
+
+    const athleteMainId = String(task.athlete_main_id || '').trim();
+    const contactTask = String(task.contact_id || '').trim();
+    if (!athleteMainId || !contactTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing task identifiers',
+      });
+      return;
+    }
+
+    try {
+      await completeScoutPrepTaskAfterVoicemail({
+        athleteId: contactTask,
+        athleteMainId,
+        contactTask,
+        taskTitle: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+        assignedOwner: confirmationTask.assigned_owner,
+        description: confirmationTask.description || 'Confirmation Call',
+        taskId: confirmationTask.task_id,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Confirmation call completed',
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to complete confirmation call',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return (
     <List.Item
       key={`${task.contact_id}-${task.title || 'task'}`}
@@ -1413,6 +1837,11 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             target={<ScoutPrepContactDetail task={task} />}
           />
           <Action.Push
+            title="Head Scout Schedules"
+            icon={Icon.Calendar}
+            target={<HeadScoutSchedulesRoot />}
+          />
+          <Action.Push
             title="Manual Scout Prep"
             icon={Icon.Pencil}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
@@ -1432,6 +1861,18 @@ function ScoutPrepTaskItem({ task }: { task: ScoutPortalTask }) {
             title="Open Player ID"
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             url={buildScoutPrepPlayerIdUrl(task)}
+          />
+          <Action
+            title="Reschedule Confirmation Call"
+            icon={Icon.Calendar}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+            onAction={() => void handleRescheduleConfirmationTask()}
+          />
+          <Action
+            title="Complete Confirmation Call"
+            icon={Icon.CheckCircle}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
+            onAction={() => void handleCompleteConfirmationTask()}
           />
           <ActionPanel.Section title="Athlete Note">
             <Action

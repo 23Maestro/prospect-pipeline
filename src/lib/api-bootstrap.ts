@@ -14,8 +14,13 @@ const REQUIRED_SERVER_PATHS = [
   '/api/v1/tasks/list',
   '/api/v1/contacts/{contact_id}/enriched',
   '/api/v1/scout/tasks',
+  '/api/v1/sales/stage',
   '/api/v1/sales/stages/{athlete_id}',
   '/api/v1/sales/meeting-set-template',
+  '/api/v1/tasks/popup',
+  '/api/v1/tasks/update',
+  '/api/v1/tasks/complete',
+  '/api/v1/calendar/head-scout-slots',
 ];
 const FEATURE = 'api-bootstrap';
 

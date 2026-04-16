@@ -24,6 +24,7 @@ export type ScoutPrepMicroEnrichment = {
 };
 
 export type ScoutPortalTask = {
+  task_id?: string | null;
   contact_id: string;
   athlete_main_id?: string | null;
   athlete_id?: string | null;
@@ -42,6 +43,7 @@ export type ScoutPortalTask = {
 export type ScoutPrepContext = {
   task: ScoutPortalTask;
   resolved: {
+    athlete_id?: string | null;
     athlete_main_id?: string | null;
     sport?: string | null;
     high_school?: string | null;
@@ -90,6 +92,16 @@ export type ScoutPrepContext = {
   }>;
 };
 
+export type ScoutAthleteTask = {
+  task_id: string;
+  title?: string | null;
+  assigned_owner?: string | null;
+  due_date?: string | null;
+  completion_date?: string | null;
+  description?: string | null;
+  row_text?: string | null;
+};
+
 export type SalesStageOption = {
   value: string;
   label: string;
@@ -110,6 +122,8 @@ export type SalesStageUpdateResponse = {
   athlete_id: string;
   athlete_main_id: string;
   status_code: number;
+  tasks_count: number;
+  created_task?: ScoutAthleteTask | null;
 };
 
 export type MeetingSetTemplateResponse = {

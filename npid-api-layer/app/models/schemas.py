@@ -319,9 +319,27 @@ class TaskPopupResponse(BaseModel):
     checkbox_fields: List[str]
 
 
+class TaskUpdateRequest(BaseModel):
+    task_id: str
+    contact_task: str
+    athlete_main_id: str
+    task_title: Optional[str] = None
+    description: Optional[str] = None
+    due_date: Optional[str] = None
+    due_time: Optional[str] = None
+
+
+class TaskUpdateResponse(BaseModel):
+    success: bool
+    task_id: Optional[str] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None
+
+
 class TaskCompleteRequest(BaseModel):
     athlete_id: str
     athlete_main_id: str
+    contact_task: Optional[str] = None
     task_id: Optional[str] = None
     task_title: str = Field(default="Video Editing")
     assigned_owner: str = Field(default="Jerami Singleton")
@@ -464,6 +482,7 @@ class ContactInfoResponse(BaseModel):
 
 class ScoutPortalTask(BaseModel):
     """Single task row from the admin portal task list."""
+    task_id: Optional[str] = None
     contact_id: str
     athlete_main_id: Optional[str] = None
     athlete_id: Optional[str] = None
@@ -516,6 +535,8 @@ class SalesStageUpdateResponse(BaseModel):
     athlete_id: str
     athlete_main_id: str
     status_code: int
+    tasks_count: int = 0
+    created_task: Optional[AthleteTask] = None
 
 
 class MeetingSetTemplateResponse(BaseModel):
@@ -525,3 +546,29 @@ class MeetingSetTemplateResponse(BaseModel):
     selected_recruit_timezone: Optional[str] = None
     recruit_timezone_options: List[SalesStageOption]
     details_template: Optional[str] = None
+
+
+class HeadScoutSlot(BaseModel):
+    """Single open slot for a head scout."""
+    id: str
+    start: str
+    end: str
+    scout_name: str
+
+
+class HeadScoutSchedule(BaseModel):
+    """Normalized open schedule for one head scout."""
+    scout_name: str
+    city: str
+    state: str
+    slot_count: int
+    slots: List[HeadScoutSlot]
+
+
+class HeadScoutSlotsResponse(BaseModel):
+    """Open slots for the configured head scouts in an EST week window."""
+    success: bool
+    week_start: str
+    week_end: str
+    timezone_label: str
+    scouts: List[HeadScoutSchedule]

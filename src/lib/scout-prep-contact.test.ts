@@ -4,9 +4,13 @@ import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/s
 import { buildScoutPrepCard } from '../features/scout-prep/content.js';
 import {
   buildMeetingTemplateDefaults,
+  buildProspectContactShortcutPayload,
+  buildProspectContactShortcutPayloadFromName,
+  buildProspectContactShortcutUrl,
   buildMessagesComposeUrl,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
+  getProspectContactShortcutCandidates,
   mapTimezoneToLegacyRecruitZone,
   mergeMeetingDetailsTemplate,
   normalizePhoneForMessages,
@@ -58,19 +62,41 @@ function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
 }
 
 test('normalizePhoneForMessages: normalizes common US inputs', () => {
-  assert.equal(normalizePhoneForMessages('(651) 555-1212'), '+16515551212');
-  assert.equal(normalizePhoneForMessages('1-651-555-1212'), '+16515551212');
-  assert.equal(normalizePhoneForMessages('+1 (651) 555-1212'), '+16515551212');
+  assert.equal(normalizePhoneForMessages('(651) 555-1212'), '651-555-1212');
+  assert.equal(normalizePhoneForMessages('1-651-555-1212'), '651-555-1212');
+  assert.equal(normalizePhoneForMessages('+1 (651) 555-1212'), '651-555-1212');
   assert.equal(normalizePhoneForMessages('abc'), null);
 });
 
 test('selectScoutPrepContactNumbers: prefers parent1, then parent2, then student', () => {
   const selected = selectScoutPrepContactNumbers(buildContext());
-  assert.equal(selected.primaryNumber, '+16515551212');
-  assert.equal(selected.backupNumber, '+16515559898');
+  assert.equal(selected.primaryNumber, '651-555-1212');
+  assert.equal(selected.backupNumber, '651-555-9898');
   assert.equal(selected.spokeTo, 'Jamie Smith');
   assert.equal(selected.otherParent, 'Chris Smith');
   assert.equal(selected.recipientName, 'Jamie Smith');
+});
+
+test('getProspectContactShortcutCandidates: returns available contacts in fixed order', () => {
+  const candidates = getProspectContactShortcutCandidates(buildContext());
+  assert.deepEqual(
+    candidates.map((candidate) => ({
+      id: candidate.id,
+      label: candidate.label,
+      name: candidate.name,
+      phone: candidate.phone,
+    })),
+    [
+      { id: 'parent1', label: 'Parent 1', name: 'Jamie Smith', phone: '651-555-1212' },
+      { id: 'parent2', label: 'Parent 2', name: 'Chris Smith', phone: '651-555-9898' },
+      {
+        id: 'studentAthlete',
+        label: 'Student Athlete',
+        name: 'Bryson Smith',
+        phone: '651-555-3000',
+      },
+    ],
+  );
 });
 
 test('mapTimezoneToLegacyRecruitZone: maps common IANA zones', () => {
@@ -86,8 +112,8 @@ test('mergeMeetingDetailsTemplate: injects contact fields into labeled lines', (
     template,
     selectScoutPrepContactNumbers(buildContext()),
   );
-  assert.match(merged, /Main Number: \+16515551212/);
-  assert.match(merged, /Backup Number: \+16515559898/);
+  assert.match(merged, /Main Number: 651-555-1212/);
+  assert.match(merged, /Backup Number: 651-555-9898/);
   assert.match(merged, /Spoke To: Jamie Smith/);
   assert.match(merged, /Other Parent: Chris Smith/);
 });
@@ -106,7 +132,7 @@ test('buildMeetingTemplateDefaults: prefers computed timezone when option exists
 
   const defaults = buildMeetingTemplateDefaults(template, buildContext());
   assert.equal(defaults.selected_recruit_timezone, 'CST');
-  assert.match(defaults.details_template || '', /Main Number: \+16515551212/);
+  assert.match(defaults.details_template || '', /Main Number: 651-555-1212/);
 });
 
 test('buildMeetingTemplateDefaults: keeps backend timezone when computed option missing', () => {
@@ -127,10 +153,47 @@ test('buildMeetingTemplateDefaults: keeps backend timezone when computed option 
 
 test('buildVoicemailFollowUpBody/buildMessagesComposeUrl: builds prefilled message compose handoff', () => {
   const body = buildVoicemailFollowUpBody(buildContext());
-  const url = buildMessagesComposeUrl('+16515551212', body);
+  const url = buildMessagesComposeUrl('651-555-1212', body);
   assert.match(body, /^Hi Jamie, this is Jerami with Prospect ID\./);
-  assert.match(url, /^sms:\+16515551212\?body=/);
+  assert.match(url, /^sms:651-555-1212\?body=/);
   assert.match(url, /Bryson%20Smith/);
+});
+
+test('buildProspectContactShortcutPayload: preserves newline-delimited shortcut format', () => {
+  assert.equal(
+    buildProspectContactShortcutPayload({
+      firstName: 'Joe',
+      lastName: 'Wright',
+      phone: '4075555555',
+    }),
+    'Joe\nWright\n407-555-5555',
+  );
+});
+
+test('buildProspectContactShortcutPayloadFromName/buildProspectContactShortcutUrl: encodes payload safely', () => {
+  const payload = buildProspectContactShortcutPayloadFromName({
+    fullName: 'Mary Ann Wright',
+    phone: '(407) 555-5555',
+  });
+  assert.equal(payload, 'Mary\nAnn Wright\n407-555-5555');
+
+  const url = buildProspectContactShortcutUrl(payload);
+  assert.match(
+    url,
+    /^shortcuts:\/\/run-shortcut\?name=Create%20Prospect%20Contact&input=text&text=/,
+  );
+  assert.match(url, /Mary%0AAnn%20Wright%0A407-555-5555/);
+});
+
+test('buildProspectContactShortcutPayloadFromName: rejects missing required fields', () => {
+  assert.throws(
+    () => buildProspectContactShortcutPayloadFromName({ fullName: 'Prince', phone: '4075555555' }),
+    /first and last name/i,
+  );
+  assert.throws(
+    () => buildProspectContactShortcutPayload({ firstName: 'Joe', lastName: 'Wright', phone: 'x' }),
+    /required/i,
+  );
 });
 
 test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and athlete first names', () => {

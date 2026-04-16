@@ -5,8 +5,10 @@ FastAPI endpoints for official sales-stage workflows in scout-prep.
 
 from fastapi import APIRouter, HTTPException, Request
 import logging
+from typing import Any, Dict, List, Optional
 
 from app.models.schemas import (
+    AthleteTask,
     MeetingSetTemplateResponse,
     SalesStageOptionsResponse,
     SalesStageUpdateRequest,
@@ -24,6 +26,36 @@ def get_session(request: Request) -> NPIDSession:
     """Get session from app state."""
     from main import session_manager
     return session_manager
+
+
+def _normalize_text(value: Any) -> str:
+    return str(value or "").strip().lower()
+
+
+def _is_incomplete(task: Dict[str, Any]) -> bool:
+    return not _normalize_text(task.get("completion_date"))
+
+
+def _is_follow_up_call_task(task: Dict[str, Any]) -> bool:
+    title = _normalize_text(task.get("title"))
+    description = _normalize_text(task.get("description"))
+    owner = _normalize_text(task.get("assigned_owner"))
+    owner_ok = "jerami" in owner
+    content_ok = title.startswith("call attempt") or "call the family" in description
+    return owner_ok and content_ok and _is_incomplete(task)
+
+
+def _pick_created_follow_up_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    candidates = [task for task in tasks if _is_follow_up_call_task(task)]
+    if not candidates:
+        return None
+
+    def sort_key(task: Dict[str, Any]) -> tuple[int, str]:
+        task_id = str(task.get("task_id") or "").strip()
+        numeric = int(task_id) if task_id.isdigit() else -1
+        return (numeric, task_id)
+
+    return sorted(candidates, key=sort_key, reverse=True)[0]
 
 
 @router.get("/stages/{athlete_id}", response_model=SalesStageOptionsResponse)
@@ -268,12 +300,20 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
                 },
             },
         )
+        tasks_endpoint, tasks_params = translator.tasks_list_to_legacy(athlete_id, athlete_main_id)
+        tasks_response = await session.get(tasks_endpoint, params=tasks_params)
+        tasks_result = translator.parse_tasks_list_response(tasks_response.text)
+        tasks = tasks_result.get("tasks", [])
+        created_task_payload = _pick_created_follow_up_task(tasks)
+
         return SalesStageUpdateResponse(
             success=True,
             stage=stage,
             athlete_id=athlete_id,
             athlete_main_id=athlete_main_id,
             status_code=response.status_code,
+            tasks_count=len(tasks),
+            created_task=AthleteTask(**created_task_payload) if created_task_payload else None,
         )
     except HTTPException:
         raise

@@ -7,6 +7,7 @@ This is the core abstraction that isolates you from Laravel's quirks.
 import re
 import json
 import logging
+import datetime
 from typing import Dict, Any, Optional, Tuple, List
 from urllib.parse import parse_qs, urlparse
 from bs4 import BeautifulSoup
@@ -61,8 +62,156 @@ class LegacyTranslator:
         "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/youtube_sign.png' "
         "alt='youtube' width='24' height='24' border='0'></a></td></tr></tbody></table><br>"
     )
+    HEAD_SCOUT_LOGIN_USER = "avdhyXjQ8bFweEf"
+    HEAD_SCOUT_SELECTED_OWNERS = [
+        "OrJsV8nhBouEzKY",
+        "bMBrA26OElRUwPs",
+        "nhVvYOz8bAaL57c",
+        "avdhyXjQ8bFweEf",
+    ]
+    HEAD_SCOUT_CONFIG = [
+        {"scout_name": "Jeffrey Stein", "city": "Wexford", "state": "PA"},
+        {"scout_name": "Luther Winfield", "city": "Columbia", "state": "SC"},
+        {"scout_name": "Ryan Lietz", "city": "Gilbert", "state": "AZ"},
+    ]
+
+    @staticmethod
+    def _parse_weekday_list(value: Any) -> List[int]:
+        text = str(value or "").strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, list):
+                return [int(item) for item in parsed if str(item).strip().isdigit()]
+        except (json.JSONDecodeError, TypeError, ValueError):
+            pass
+        return []
+
+    @staticmethod
+    def _is_iso_local_datetime(value: str) -> bool:
+        return bool(re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$", value))
+
+    @staticmethod
+    def _is_time_only(value: str) -> bool:
+        return bool(re.match(r"^\d{2}:\d{2}$", value))
     
     # ============== Request Translation ==============
+
+    @staticmethod
+    def head_scout_slots_to_legacy(start: str, end: str) -> Tuple[str, List[Tuple[str, str]]]:
+        """
+        Build request for head scout calendar slots.
+        GET /template/calendarevents
+        """
+        endpoint = "/template/calendarevents"
+        params: List[Tuple[str, str]] = [
+            ("loginuser", LegacyTranslator.HEAD_SCOUT_LOGIN_USER),
+            ("load_from_tasks_backup", ""),
+        ]
+        for owner_id in LegacyTranslator.HEAD_SCOUT_SELECTED_OWNERS:
+            params.append(("selectedowner[]", owner_id))
+        params.extend([
+            ("start", start),
+            ("end", end),
+        ])
+        return endpoint, params
+
+    @staticmethod
+    def parse_head_scout_slots_response(
+        raw_response: str,
+        week_start: str,
+        week_end: str,
+    ) -> Dict[str, Any]:
+        """
+        Parse legacy calendar events and keep only explicit OPEN rows for configured head scouts.
+        """
+        text = (raw_response or "").strip()
+        events: List[Dict[str, Any]] = []
+
+        if text.startswith("[") or text.startswith("{"):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    events = [row for row in parsed if isinstance(row, dict)]
+                elif isinstance(parsed, dict):
+                    nested = parsed.get("events") if isinstance(parsed.get("events"), list) else []
+                    events = [row for row in nested if isinstance(row, dict)]
+            except json.JSONDecodeError:
+                events = []
+
+        scout_names = {config["scout_name"] for config in LegacyTranslator.HEAD_SCOUT_CONFIG}
+        slots_by_scout: Dict[str, Dict[Tuple[str, str], Dict[str, str]]] = {
+            name: {} for name in scout_names
+        }
+        week_start_date = datetime.date.fromisoformat(week_start)
+        week_end_date = datetime.date.fromisoformat(week_end)
+
+        for event in events:
+            scout_name = str(event.get("user") or "").strip()
+            title = str(event.get("title") or "").strip()
+            open_slot = str(event.get("openslot") or "").strip().lower()
+            start = str(event.get("start") or "").strip()
+            end = str(event.get("end") or "").strip()
+            event_id = str(event.get("id") or "").strip()
+
+            if scout_name not in scout_names:
+                continue
+            if open_slot != "openslot" or title.upper() != "OPEN":
+                continue
+            if not start or not end or not event_id:
+                continue
+
+            slot_rows: List[Dict[str, str]] = []
+            if LegacyTranslator._is_iso_local_datetime(start) and LegacyTranslator._is_iso_local_datetime(end):
+                slot_rows.append({
+                    "id": event_id,
+                    "start": start,
+                    "end": end,
+                    "scout_name": scout_name,
+                })
+            elif LegacyTranslator._is_time_only(start) and LegacyTranslator._is_time_only(end):
+                weekdays = LegacyTranslator._parse_weekday_list(
+                    event.get("dow") or event.get("repeating")
+                )
+                if weekdays:
+                    current_date = week_start_date
+                    while current_date < week_end_date:
+                        python_weekday = current_date.weekday()
+                        legacy_weekday = (python_weekday + 1) % 7
+                        if legacy_weekday in weekdays:
+                            date_prefix = current_date.isoformat()
+                            slot_rows.append({
+                                "id": f"{event_id}-{date_prefix}",
+                                "start": f"{date_prefix}T{start}",
+                                "end": f"{date_prefix}T{end}",
+                                "scout_name": scout_name,
+                            })
+                        current_date += datetime.timedelta(days=1)
+
+            for slot in slot_rows:
+                dedupe_key = (slot["start"], slot["end"])
+                slots_by_scout[scout_name][dedupe_key] = slot
+
+        scouts: List[Dict[str, Any]] = []
+        for config in LegacyTranslator.HEAD_SCOUT_CONFIG:
+            scout_name = config["scout_name"]
+            slots = sorted(slots_by_scout.get(scout_name, {}).values(), key=lambda slot: slot["start"])
+            scouts.append({
+                "scout_name": scout_name,
+                "city": config["city"],
+                "state": config["state"],
+                "slot_count": len(slots),
+                "slots": slots,
+            })
+
+        return {
+            "success": True,
+            "week_start": week_start,
+            "week_end": week_end,
+            "timezone_label": "EST",
+            "scouts": scouts,
+        }
     
     @staticmethod
     def video_submit_to_legacy(request: VideoSubmitRequest) -> Tuple[str, Dict[str, Any]]:
@@ -3411,6 +3560,7 @@ class LegacyTranslator:
                         continue
 
                     contact_id = str(item.get("contactid") or "").strip()
+                    task_id = str(item.get("taskid") or item.get("id") or "").strip() or None
                     athlete_main_id = str(item.get("athlete_main_id") or "").strip() or None
                     athlete_name = str(item.get("contact") or "").strip()
 
@@ -3425,6 +3575,7 @@ class LegacyTranslator:
                     athlete_task_url = f"{athlete_admin_url}&tasktab=1"
 
                     tasks.append({
+                        "task_id": task_id,
                         "contact_id": contact_id,
                         "athlete_main_id": athlete_main_id,
                         "athlete_id": contact_id,
@@ -3488,6 +3639,17 @@ class LegacyTranslator:
             if len(cells) < 8:
                 continue
 
+            row_html = str(row)
+            task_id = None
+            for attr_name in ("data-taskid", "data-task-id", "data-id"):
+                if row.has_attr(attr_name):
+                    task_id = row.get(attr_name)
+                    break
+            if not task_id:
+                match = re.search(r"edittaskid=(\d+)", row_html)
+                if match:
+                    task_id = match.group(1)
+
             contact_cell = cells[4]
             contact_link = contact_cell.find("a", href=re.compile(r"/admin/athletes\?contactid="))
             profile_link = contact_cell.find("a", href=re.compile(r"/athlete/profile/\d+"))
@@ -3515,6 +3677,7 @@ class LegacyTranslator:
                 continue
 
             tasks.append({
+                "task_id": task_id or None,
                 "contact_id": contact_id,
                 "athlete_main_id": athlete_main_id,
                 "athlete_id": athlete_id or contact_id,
@@ -3675,6 +3838,8 @@ class LegacyTranslator:
 
         if request.athlete_main_id:
             updated["athlete_main_id"] = request.athlete_main_id
+        if request.contact_task:
+            updated["contact_task"] = request.contact_task
         if request.athlete_id and "contact_task" not in updated:
             updated["contact_task"] = request.athlete_id
 
@@ -3685,6 +3850,37 @@ class LegacyTranslator:
             for field_name in checkbox_fields:
                 if field_name in updated:
                     del updated[field_name]
+
+        return updated
+
+    @staticmethod
+    def apply_task_update(
+        form_data: Dict[str, Any],
+        athlete_id: str,
+        athlete_main_id: str,
+        task_title: Optional[str] = None,
+        description: Optional[str] = None,
+        due_date: Optional[str] = None,
+        due_time: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Apply non-completion task updates to task form data.
+        """
+        updated = dict(form_data)
+
+        if task_title is not None:
+            updated["tasktitle"] = task_title
+        if description is not None:
+            updated["taskdescription"] = description
+        if due_date is not None:
+            updated["duedate"] = due_date
+        if due_time is not None:
+            updated["duetime"] = due_time
+
+        if athlete_main_id:
+            updated["athlete_main_id"] = athlete_main_id
+        if athlete_id and "contact_task" not in updated:
+            updated["contact_task"] = athlete_id
 
         return updated
 
