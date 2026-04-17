@@ -1,6 +1,6 @@
 import { execSync, spawn } from 'child_process';
 import fetch from 'node-fetch';
-import { API_LAYER_ROOT, WORKSPACE_ROOT } from './python-env';
+import { WORKSPACE_ROOT } from './python-env';
 import * as fs from 'fs';
 import * as path from 'path';
 import { searchLogger } from './logger';
@@ -8,7 +8,9 @@ import { searchLogger } from './logger';
 const API_HEALTH_URL = 'http://127.0.0.1:8000/health';
 const API_OPENAPI_URL = 'http://127.0.0.1:8000/openapi.json';
 const STARTUP_POLL_INTERVAL_MS = 250;
-const STARTUP_MAX_WAIT_MS = 10000;
+const STARTUP_MAX_WAIT_MS = Number.parseInt(process.env.API_BOOTSTRAP_MAX_WAIT_MS || '25000', 10);
+const OPENAPI_CHECK_INTERVAL_ATTEMPTS = 4;
+const DEV_PROCESS_SCRIPT = path.join(WORKSPACE_ROOT, 'scripts', 'dev-processes.sh');
 const REQUIRED_SERVER_PATHS = [
   '/api/v1/athlete/{contact_id}/admin/payments',
   '/api/v1/tasks/list',
@@ -17,10 +19,12 @@ const REQUIRED_SERVER_PATHS = [
   '/api/v1/sales/stage',
   '/api/v1/sales/stages/{athlete_id}',
   '/api/v1/sales/meeting-set-template',
+  '/api/v1/sales/meeting-set',
   '/api/v1/tasks/popup',
   '/api/v1/tasks/update',
   '/api/v1/tasks/complete',
   '/api/v1/calendar/head-scout-slots',
+  '/api/v1/calendar/open-meetings',
 ];
 const FEATURE = 'api-bootstrap';
 
@@ -107,30 +111,19 @@ async function ensureServerRunningInner(): Promise<void> {
     reason: serverState.ok ? 'stale-routes' : 'server-unavailable',
   });
 
-  // Prefer API-layer venv (actual runtime), fallback to workspace venv.
-  const venvPythonCandidates = [
-    path.join(API_LAYER_ROOT, 'venv', 'bin', 'python'),
-    path.join(WORKSPACE_ROOT, '.venv', 'bin', 'python'),
-  ];
-  const venvPython = venvPythonCandidates.find((candidate) => fs.existsSync(candidate));
-
-  if (!venvPython) {
-    const message = `Venv Python not found. Checked: ${venvPythonCandidates.join(', ')}. Run: cd npid-api-layer && python3 -m venv venv && source venv/bin/activate && pip install -r requirements.txt`;
-    logFailure('API_BOOTSTRAP', 'resolve-python', message, {
-      candidates: venvPythonCandidates,
+  if (!fs.existsSync(DEV_PROCESS_SCRIPT)) {
+    const message = `Dev process helper not found at ${DEV_PROCESS_SCRIPT}`;
+    logFailure('API_BOOTSTRAP', 'resolve-dev-helper', message, {
+      helperPath: DEV_PROCESS_SCRIPT,
     });
     throw new Error(message);
   }
 
-  const child = spawn(
-    venvPython,
-    ['-m', 'uvicorn', 'main:app', '--host', '127.0.0.1', '--port', '8000'],
-    {
-      cwd: API_LAYER_ROOT,
-      detached: true,
-      stdio: 'ignore',
-    },
-  );
+  const child = spawn('bash', [DEV_PROCESS_SCRIPT, 'restart', 'api'], {
+    cwd: WORKSPACE_ROOT,
+    detached: true,
+    stdio: 'ignore',
+  });
 
   child.unref();
 
@@ -138,7 +131,10 @@ async function ensureServerRunningInner(): Promise<void> {
 
   for (let i = 0; i < maxPollAttempts; i++) {
     await new Promise((r) => setTimeout(r, STARTUP_POLL_INTERVAL_MS));
-    const state = await getServerState();
+    const state =
+      i % OPENAPI_CHECK_INTERVAL_ATTEMPTS === 0
+        ? await getServerState()
+        : await getServerHealthState();
     if (state.ok && state.hasRequiredPaths) {
       console.log('NPID API Server Started Successfully.');
       logInfo('API_BOOTSTRAP', 'spawn-server', 'success', {
@@ -215,11 +211,20 @@ async function getServerState(): Promise<{
   missingPaths: string[];
 }> {
   try {
-    const health = await fetch(API_HEALTH_URL);
-    if (!health.ok) {
-      return { ok: false, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
-    }
+    const healthState = await getServerHealthState();
+    if (!healthState.ok) return healthState;
+    return await getServerRoutesState();
+  } catch {
+    return { ok: false, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
+  }
+}
 
+async function getServerRoutesState(): Promise<{
+  ok: boolean;
+  hasRequiredPaths: boolean;
+  missingPaths: string[];
+}> {
+  try {
     const openapi = await fetch(API_OPENAPI_URL);
     if (!openapi.ok) {
       return { ok: true, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
@@ -227,8 +232,23 @@ async function getServerState(): Promise<{
     const spec = (await openapi.json()) as { paths?: Record<string, unknown> };
     const knownPaths = Object.keys(spec.paths || {});
     const missingPaths = REQUIRED_SERVER_PATHS.filter((pathKey) => !knownPaths.includes(pathKey));
-    const hasRequiredPaths = missingPaths.length === 0;
-    return { ok: true, hasRequiredPaths, missingPaths };
+    return { ok: true, hasRequiredPaths: missingPaths.length === 0, missingPaths };
+  } catch {
+    return { ok: true, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
+  }
+}
+
+async function getServerHealthState(): Promise<{
+  ok: boolean;
+  hasRequiredPaths: boolean;
+  missingPaths: string[];
+}> {
+  try {
+    const health = await fetch(API_HEALTH_URL);
+    if (!health.ok) {
+      return { ok: false, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
+    }
+    return { ok: true, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
   } catch {
     return { ok: false, hasRequiredPaths: false, missingPaths: REQUIRED_SERVER_PATHS };
   }

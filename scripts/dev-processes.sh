@@ -51,10 +51,12 @@ EOF
 }
 
 restart_api_without_overmind() {
-  local pid
-  pid="$(lsof -nP -iTCP:${API_PORT} -sTCP:LISTEN -t || true)"
-  if [[ -n "${pid}" ]]; then
-    kill -9 "${pid}"
+  local pids
+  pids="$(lsof -nP -iTCP:${API_PORT} -sTCP:LISTEN -t || true)"
+  if [[ -n "${pids}" ]]; then
+    while IFS= read -r pid; do
+      [[ -n "${pid}" ]] && kill -9 "${pid}"
+    done <<< "${pids}"
   fi
 
   cd "${PROJECT_ROOT}/npid-api-layer"

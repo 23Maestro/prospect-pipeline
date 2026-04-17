@@ -17,6 +17,7 @@ import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
+  MeetingSetSubmitResponse,
   MeetingSetTemplateResponse,
   SalesStageOption,
   ScoutAthleteTask,
@@ -65,9 +66,15 @@ import { ensureProspectDetails, runProspectRawSearch, type ProspectResult } from
 import {
   fetchCuratedSalesStageOptions,
   fetchMeetingSetTemplate,
+  submitMeetingSet,
   updateSalesStage,
 } from './lib/sales-stage';
 import { searchLogger } from './lib/logger';
+import {
+  fetchOpenMeetings,
+  HEAD_SCOUT_ORDER,
+  type OpenMeetingSlot,
+} from './lib/head-scout-schedules';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
@@ -558,6 +565,7 @@ function buildPostCallPreviewMarkdown(
   task: ScoutPortalTask,
   values: Record<string, string | undefined>,
   createdTask?: ScoutAthleteTask | null,
+  meetingSetResult?: MeetingSetSubmitResponse | null,
 ): string {
   const lines = [
     `# Post-Call Update`,
@@ -596,10 +604,14 @@ function buildPostCallPreviewMarkdown(
     );
   }
 
-  lines.push(
-    '',
-    '> Official sales stage saved. Meeting Set detail save is still separate until that legacy POST is captured.',
-  );
+  lines.push('');
+  if ((values.officialStage || '') === MEETING_SET_LABEL) {
+    lines.push(
+      `> Meeting Set legacy flow submitted.${meetingSetResult?.email_sent ? ' Notification email sent.' : ' Notification email not confirmed.'}`,
+    );
+  } else {
+    lines.push('> Official sales stage saved.');
+  }
 
   return lines.join('\n');
 }
@@ -608,15 +620,17 @@ function PostCallUpdatePreview({
   task,
   values,
   createdTask,
+  meetingSetResult,
 }: {
   task: ScoutPortalTask;
   values: Record<string, string | undefined>;
   createdTask?: ScoutAthleteTask | null;
+  meetingSetResult?: MeetingSetSubmitResponse | null;
 }) {
   return (
     <Detail
       navigationTitle={`Post-Call Update • ${task.athlete_name}`}
-      markdown={buildPostCallPreviewMarkdown(task, values, createdTask)}
+      markdown={buildPostCallPreviewMarkdown(task, values, createdTask, meetingSetResult)}
       actions={
         <ActionPanel>
           <Action.OpenInBrowser
@@ -884,8 +898,12 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   const [stageOptions, setStageOptions] = useState<SalesStageOption[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>('');
   const [meetingTemplate, setMeetingTemplate] = useState<MeetingSetTemplateResponse | null>(null);
+  const [selectedMeetingFor, setSelectedMeetingFor] = useState<string>(HEAD_SCOUT_ORDER[0]?.meeting_for || '');
+  const [openMeetingSlots, setOpenMeetingSlots] = useState<OpenMeetingSlot[]>([]);
+  const [selectedOpenMeetingId, setSelectedOpenMeetingId] = useState<string>('');
   const [isLoadingStages, setIsLoadingStages] = useState(true);
   const [isLoadingMeetingTemplate, setIsLoadingMeetingTemplate] = useState(false);
+  const [isLoadingOpenMeetings, setIsLoadingOpenMeetings] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -1016,8 +1034,53 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   }, [selectedStage, selectedStageLabel, task]);
 
   const meetingTemplateKey = `${selectedStage}-${meetingTemplate?.meeting_name || 'meeting'}`;
+  const openMeetingsKey = `${selectedStage}-${selectedMeetingFor}-${selectedOpenMeetingId || 'open'}`;
   const canRenderStageFields =
     !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
+
+  useEffect(() => {
+    let active = true;
+    if (selectedStageLabel !== MEETING_SET_LABEL || !selectedMeetingFor) {
+      setOpenMeetingSlots([]);
+      setSelectedOpenMeetingId('');
+      setIsLoadingOpenMeetings(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    const loadOpenMeetings = async () => {
+      setIsLoadingOpenMeetings(true);
+      try {
+        const response = await fetchOpenMeetings(selectedMeetingFor);
+        if (!active) {
+          return;
+        }
+        setOpenMeetingSlots(response.slots);
+        setSelectedOpenMeetingId(response.slots[0]?.open_event_id || '');
+      } catch (error) {
+        if (!active) {
+          return;
+        }
+        setOpenMeetingSlots([]);
+        setSelectedOpenMeetingId('');
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to load open meetings',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        if (active) {
+          setIsLoadingOpenMeetings(false);
+        }
+      }
+    };
+
+    void loadOpenMeetings();
+    return () => {
+      active = false;
+    };
+  }, [selectedMeetingFor, selectedStageLabel]);
 
   async function handleCreateProspectContact() {
     try {
@@ -1077,6 +1140,38 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         throw new Error('Missing athlete_main_id or athlete_id for sales stage update');
       }
 
+      let meetingSetResult: MeetingSetSubmitResponse | null = null;
+      if (stageLabel === MEETING_SET_LABEL) {
+        const assignedTo = String(values.meetingFor || values.legacyAssignedTo || '').trim();
+        const openEventId = String(values.openMeetingId || '').trim();
+        const meetingLength = String(values.legacyMeetingLength || '01:00').trim() || '01:00';
+        const meetingName = String(values.meetingName || '').trim();
+        const meetingTimezone = String(values.recruitTimeZone || '').trim();
+        const taskDescription = String(values.meetingDetails || '').trim();
+        const selectedOpenMeeting =
+          openMeetingSlots.find((slot) => slot.open_event_id === openEventId) || null;
+        const startTime = selectedOpenMeeting?.start_time || '';
+
+        if (!meetingName || !meetingTimezone || !taskDescription) {
+          throw new Error('Meeting Set requires meeting name, timezone, and details');
+        }
+        if (!assignedTo || !openEventId || !startTime) {
+          throw new Error('Meeting Set requires scout and open meeting selection');
+        }
+
+        meetingSetResult = await submitMeetingSet({
+          athlete_id: athleteId,
+          athlete_main_id: athleteMainId,
+          meeting_name: meetingName,
+          meeting_timezone: meetingTimezone,
+          assigned_to: assignedTo,
+          open_event_id: openEventId,
+          task_description: taskDescription,
+          start_time: startTime,
+          meeting_length: meetingLength,
+        });
+      }
+
       const salesStageResult = await updateSalesStage({
         athleteMainId,
         athleteId,
@@ -1101,8 +1196,18 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
       await showToast({
         style: Toast.Style.Success,
-        title: taskCompletionMessage ? 'Sales stage saved, task completed' : 'Sales stage saved',
-        message: taskCompletionMessage || stageLabel,
+        title: taskCompletionMessage
+          ? 'Sales stage saved, task completed'
+          : stageLabel === MEETING_SET_LABEL
+            ? 'Meeting Set + sales stage saved'
+            : 'Sales stage saved',
+        message:
+          taskCompletionMessage ||
+          (stageLabel === MEETING_SET_LABEL
+            ? meetingSetResult?.email_sent
+              ? 'Meeting Set email sent'
+              : 'Meeting Set saved'
+            : stageLabel),
       });
 
       if (salesStageResult.created_task) {
@@ -1121,7 +1226,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             ...values,
             officialStage: stageLabel,
           }}
-          createdTask={salesStageResult.created_task || null}
+          createdTask={meetingSetResult?.created_task || salesStageResult.created_task || null}
+          meetingSetResult={meetingSetResult}
         />,
       );
     } catch (error) {
@@ -1237,6 +1343,46 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
                 id="meetingDetails"
                 title="Meeting Set Details"
                 defaultValue={meetingTemplate?.details_template || buildFallbackMeetingDetails()}
+              />
+              <Form.Dropdown
+                id="meetingFor"
+                title="Head Scout"
+                defaultValue={HEAD_SCOUT_ORDER[0]?.meeting_for}
+                onChange={setSelectedMeetingFor}
+              >
+                {HEAD_SCOUT_ORDER.map((scout) => (
+                  <Form.Dropdown.Item
+                    key={scout.meeting_for}
+                    value={scout.meeting_for}
+                    title={`${scout.scout_name} • ${scout.city}, ${scout.state}`}
+                  />
+                ))}
+              </Form.Dropdown>
+              <Form.Dropdown
+                key={openMeetingsKey}
+                id="openMeetingId"
+                title="Open Meeting"
+                defaultValue={selectedOpenMeetingId}
+                onChange={setSelectedOpenMeetingId}
+              >
+                {openMeetingSlots.map((slot) => (
+                  <Form.Dropdown.Item
+                    key={slot.open_event_id}
+                    value={slot.open_event_id}
+                    title={`${slot.date_time_label} • ${slot.assigned_owner}`}
+                  />
+                ))}
+              </Form.Dropdown>
+              {isLoadingOpenMeetings ? (
+                <Form.Description text="Loading open meetings…" />
+              ) : null}
+              {!isLoadingOpenMeetings && !openMeetingSlots.length ? (
+                <Form.Description text="No open meetings found for selected scout." />
+              ) : null}
+              <Form.TextField
+                id="legacyMeetingLength"
+                title="Meeting Length"
+                defaultValue="01:00"
               />
             </>
           )}

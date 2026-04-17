@@ -145,3 +145,33 @@ export type MeetingSetTemplateResponse = {
   recruit_timezone_options: SalesStageOption[];
   details_template?: string | null;
 };
+
+export type MeetingSetSubmitRequest = {
+  athlete_id: string;
+  athlete_main_id: string;
+  meeting_name: string;
+  meeting_timezone: string;
+  assigned_to: string;
+  open_event_id: string;
+  task_description: string;
+  start_time: string;
+  meeting_length?: string;
+  due_date?: string;
+  existing_task?: string;
+  contact?: string;
+  openmeetings_list_length?: string;
+  template_id?: string;
+};
+
+export type MeetingSetSubmitResponse = {
+  success: boolean;
+  athlete_id: string;
+  athlete_main_id: string;
+  assigned_to: string;
+  open_event_id: string;
+  meeting_name: string;
+  template_id: string;
+  status_code: number;
+  email_sent: boolean;
+  created_task?: ScoutAthleteTask | null;
+};

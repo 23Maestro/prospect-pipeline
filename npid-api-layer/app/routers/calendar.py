@@ -6,7 +6,7 @@ FastAPI endpoints for head scout schedule availability.
 from fastapi import APIRouter, HTTPException, Request
 import logging
 
-from app.models.schemas import HeadScoutSlotsResponse
+from app.models.schemas import HeadScoutSlotsResponse, OpenMeetingsResponse
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 
@@ -103,6 +103,84 @@ async def get_head_scout_slots(
                 "context": {
                     "start": start,
                     "end": end,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/open-meetings", response_model=OpenMeetingsResponse)
+async def get_open_meetings(
+    request: Request,
+    meeting_for: str,
+):
+    """
+    Fetch open meetings for a selected Meeting Set owner.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "OPEN_MEETINGS_FETCH %s",
+        {
+            "event": "OPEN_MEETINGS_FETCH",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "meetingFor": meeting_for,
+            },
+        },
+    )
+
+    try:
+        endpoint, params = translator.open_meetings_to_legacy(meeting_for=meeting_for)
+        response = await session.get(endpoint, params=params)
+        logger.info(
+            "OPEN_MEETINGS_FETCH %s",
+            {
+                "event": "OPEN_MEETINGS_FETCH",
+                "step": "response",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "meetingFor": meeting_for,
+                    "endpoint": endpoint,
+                    "statusCode": response.status_code,
+                    "contentType": response.headers.get("content-type"),
+                    "bodyLength": len(response.text or ""),
+                    "bodyPreview": (response.text or "")[:120],
+                },
+            },
+        )
+        result = translator.parse_open_meetings_response(response.text)
+        logger.info(
+            "OPEN_MEETINGS_FETCH %s",
+            {
+                "event": "OPEN_MEETINGS_FETCH",
+                "step": "parse",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "meetingFor": meeting_for,
+                    "count": len(result.get("slots", [])),
+                },
+            },
+        )
+        return OpenMeetingsResponse(meeting_for=meeting_for, **result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "OPEN_MEETINGS_FETCH %s",
+            {
+                "event": "OPEN_MEETINGS_FETCH",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "meetingFor": meeting_for,
                 },
             },
         )

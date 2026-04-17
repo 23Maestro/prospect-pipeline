@@ -9,7 +9,10 @@ from typing import Any, Dict, List, Optional
 
 from app.models.schemas import (
     AthleteTask,
+    MeetingSetSubmitRequest,
+    MeetingSetSubmitResponse,
     MeetingSetTemplateResponse,
+    SendEmailRequest,
     SalesStageOptionsResponse,
     SalesStageUpdateRequest,
     SalesStageUpdateResponse,
@@ -47,6 +50,27 @@ def _is_follow_up_call_task(task: Dict[str, Any]) -> bool:
 
 def _pick_created_follow_up_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     candidates = [task for task in tasks if _is_follow_up_call_task(task)]
+    if not candidates:
+        return None
+
+    def sort_key(task: Dict[str, Any]) -> tuple[int, str]:
+        task_id = str(task.get("task_id") or "").strip()
+        numeric = int(task_id) if task_id.isdigit() else -1
+        return (numeric, task_id)
+
+    return sorted(candidates, key=sort_key, reverse=True)[0]
+
+
+def _is_confirmation_call_task(task: Dict[str, Any]) -> bool:
+    title = _normalize_text(task.get("title"))
+    description = _normalize_text(task.get("description"))
+    return "confirmation call" in title or "confirm the meeting set" in description
+
+
+def _pick_created_confirmation_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    candidates = [
+        task for task in tasks if _is_confirmation_call_task(task) and _is_incomplete(task)
+    ]
     if not candidates:
         return None
 
@@ -330,6 +354,202 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
                     "athleteId": athlete_id,
                     "athleteMainId": athlete_main_id,
                     "stage": stage,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/meeting-set", response_model=MeetingSetSubmitResponse)
+async def submit_meeting_set(request: Request, payload: MeetingSetSubmitRequest):
+    """
+    Submit legacy Meeting Set form, then send default Meeting Set email.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    athlete_id = payload.athlete_id.strip()
+    athlete_main_id = payload.athlete_main_id.strip()
+    assigned_to = payload.assigned_to.strip()
+    open_event_id = payload.open_event_id.strip()
+    meeting_name = payload.meeting_name.strip()
+    template_id = payload.template_id.strip() or "210"
+
+    if not athlete_id or not athlete_main_id:
+        raise HTTPException(status_code=400, detail="athlete_id and athlete_main_id are required")
+    if not assigned_to or not open_event_id:
+        raise HTTPException(status_code=400, detail="assigned_to and open_event_id are required")
+    if not meeting_name:
+        raise HTTPException(status_code=400, detail="meeting_name is required")
+
+    logger.info(
+        "MEETING_SET_SUBMIT %s",
+        {
+            "event": "MEETING_SET_SUBMIT",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "athleteId": athlete_id,
+                "athleteMainId": athlete_main_id,
+                "assignedTo": assigned_to,
+                "openEventId": open_event_id,
+                "templateId": template_id,
+            },
+        },
+    )
+
+    try:
+        endpoint, form_data = translator.meeting_set_submit_to_legacy(payload)
+        response = await session.post(endpoint, data=form_data)
+        body_preview = (response.text or "")[:200]
+        if response.status_code >= 400:
+            logger.error(
+                "MEETING_SET_SUBMIT %s",
+                {
+                    "event": "MEETING_SET_SUBMIT",
+                    "step": "response",
+                    "status": "failure",
+                    "feature": FEATURE,
+                    "error": body_preview or f"HTTP {response.status_code}",
+                    "context": {
+                        "athleteId": athlete_id,
+                        "athleteMainId": athlete_main_id,
+                        "assignedTo": assigned_to,
+                        "openEventId": open_event_id,
+                        "statusCode": response.status_code,
+                    },
+                },
+            )
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=body_preview or f"Meeting Set HTTP {response.status_code}",
+            )
+
+        logger.info(
+            "MEETING_SET_SUBMIT %s",
+            {
+                "event": "MEETING_SET_SUBMIT",
+                "step": "response",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
+                    "assignedTo": assigned_to,
+                    "openEventId": open_event_id,
+                    "statusCode": response.status_code,
+                    "bodyPreview": body_preview,
+                },
+            },
+        )
+
+        tasks_endpoint, tasks_params = translator.tasks_list_to_legacy(athlete_id, athlete_main_id)
+        tasks_response = await session.get(tasks_endpoint, params=tasks_params)
+        tasks_result = translator.parse_tasks_list_response(tasks_response.text)
+        tasks = tasks_result.get("tasks", [])
+        created_task_payload = _pick_created_confirmation_task(tasks)
+
+        logger.info(
+            "MEETING_SET_EMAIL %s",
+            {
+                "event": "MEETING_SET_EMAIL",
+                "step": "request",
+                "status": "start",
+                "feature": FEATURE,
+                "context": {
+                    "athleteId": athlete_id,
+                    "templateId": template_id,
+                },
+            },
+        )
+
+        template_endpoint, template_form_data = translator.template_data_to_legacy(template_id, athlete_id)
+        template_response = await session.post(template_endpoint, data=template_form_data)
+        template_data = translator.parse_template_data_response(template_response.text)
+        if not template_data:
+            raise HTTPException(status_code=500, detail="Failed to parse meeting-set email template data")
+
+        recipients_response = await session.get(f"/rulestemplates/template/sendingtodetails?id={athlete_id}")
+        recipients = translator.parse_email_recipients(recipients_response.text)
+        parent_ids = [
+            str(parent.get("id") or "").strip()
+            for parent in recipients.get("parents", [])
+            if parent.get("checked") and str(parent.get("id") or "").strip()
+        ]
+        include_athlete = bool(recipients.get("athlete", {}).get("checked"))
+        other_email = str(recipients.get("other_email") or "").strip() or None
+
+        email_request = SendEmailRequest(
+            athlete_id=athlete_id,
+            template_id=template_id,
+            notification_from=str(template_data.get("sender_name") or "Video Team"),
+            notification_from_email=str(
+                template_data.get("sender_email") or "videoteam@prospectid.com"
+            ),
+            notification_subject=str(template_data.get("templatesubject") or ""),
+            notification_message=str(template_data.get("templatedescription") or ""),
+            include_athlete=include_athlete,
+            parent_ids=parent_ids or None,
+            other_email=other_email,
+        )
+        email_endpoint, email_form_data = translator.send_email_to_legacy(email_request)
+        email_response = await session.post(email_endpoint, data=email_form_data)
+        email_sent = email_response.status_code == 200 and "failed" not in (
+            email_response.text or ""
+        ).lower()
+
+        logger.info(
+            "MEETING_SET_EMAIL %s",
+            {
+                "event": "MEETING_SET_EMAIL",
+                "step": "response",
+                "status": "success" if email_sent else "failure",
+                "feature": FEATURE,
+                **(
+                    {"error": (email_response.text or "")[:200]}
+                    if not email_sent
+                    else {}
+                ),
+                "context": {
+                    "athleteId": athlete_id,
+                    "templateId": template_id,
+                    "includeAthlete": include_athlete,
+                    "parentCount": len(parent_ids),
+                    "statusCode": email_response.status_code,
+                },
+            },
+        )
+
+        return MeetingSetSubmitResponse(
+            success=True,
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+            assigned_to=assigned_to,
+            open_event_id=open_event_id,
+            meeting_name=meeting_name,
+            template_id=template_id,
+            status_code=response.status_code,
+            email_sent=email_sent,
+            created_task=AthleteTask(**created_task_payload) if created_task_payload else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "MEETING_SET_SUBMIT %s",
+            {
+                "event": "MEETING_SET_SUBMIT",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
+                    "assignedTo": assigned_to,
+                    "openEventId": open_event_id,
+                    "templateId": template_id,
                 },
             },
         )

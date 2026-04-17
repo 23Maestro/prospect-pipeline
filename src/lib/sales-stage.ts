@@ -1,6 +1,8 @@
 import { apiFetch } from './fastapi-client';
 import { searchLogger } from './logger';
 import type {
+  MeetingSetSubmitRequest,
+  MeetingSetSubmitResponse,
   MeetingSetTemplateResponse,
   SalesStageOption,
   SalesStageOptionsResponse,
@@ -172,4 +174,49 @@ export async function updateSalesStage(args: {
     statusCode: payload.status_code,
   });
   return payload;
+}
+
+export async function submitMeetingSet(
+  payload: MeetingSetSubmitRequest,
+): Promise<MeetingSetSubmitResponse> {
+  logInfo('MEETING_SET_SUBMIT', 'request', 'start', {
+    athleteId: payload.athlete_id,
+    athleteMainId: payload.athlete_main_id,
+    assignedTo: payload.assigned_to,
+    openEventId: payload.open_event_id,
+    templateId: payload.template_id || '210',
+  });
+
+  const response = await apiFetch('/sales/meeting-set', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Meeting Set submit HTTP ${response.status}`;
+    logFailure('MEETING_SET_SUBMIT', 'request', message, {
+      athleteId: payload.athlete_id,
+      athleteMainId: payload.athlete_main_id,
+      assignedTo: payload.assigned_to,
+      openEventId: payload.open_event_id,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const result = (await response.json()) as MeetingSetSubmitResponse;
+  logInfo('MEETING_SET_SUBMIT', 'parse', 'success', {
+    athleteId: result.athlete_id,
+    athleteMainId: result.athlete_main_id,
+    assignedTo: result.assigned_to,
+    openEventId: result.open_event_id,
+    emailSent: result.email_sent,
+    hasCreatedTask: Boolean(result.created_task),
+  });
+  return result;
 }

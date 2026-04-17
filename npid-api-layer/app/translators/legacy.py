@@ -20,7 +20,8 @@ from app.models.schemas import (
     VideoSource,
     SendEmailRequest,
     AddNoteRequest,
-    TaskCompleteRequest
+    TaskCompleteRequest,
+    MeetingSetSubmitRequest,
 )
 from app.invariants import Invariant, log_check, hard_fail
 
@@ -67,12 +68,39 @@ class LegacyTranslator:
         "OrJsV8nhBouEzKY",
         "bMBrA26OElRUwPs",
         "nhVvYOz8bAaL57c",
+        "56",
         "avdhyXjQ8bFweEf",
     ]
     HEAD_SCOUT_CONFIG = [
-        {"scout_name": "Jeffrey Stein", "city": "Wexford", "state": "PA"},
-        {"scout_name": "Luther Winfield", "city": "Columbia", "state": "SC"},
-        {"scout_name": "Ryan Lietz", "city": "Gilbert", "state": "AZ"},
+        {
+            "scout_name": "Jeffrey Stein",
+            "city": "Wexford",
+            "state": "PA",
+            "calendar_owner_id": "OrJsV8nhBouEzKY",
+            "meeting_for": "1418529",
+        },
+        {
+            "scout_name": "Luther Winfield",
+            "city": "Columbia",
+            "state": "SC",
+            "calendar_owner_id": "bMBrA26OElRUwPs",
+            "meeting_for": "370959",
+        },
+        {
+            "scout_name": "Ryan Lietz",
+            "city": "Gilbert",
+            "state": "AZ",
+            "calendar_owner_id": "nhVvYOz8bAaL57c",
+            "meeting_for": "1354049",
+        },
+        {
+            # James/Logan geo metadata is unreliable in legacy data. Hardcode James to AZ for now.
+            "scout_name": "James Holcomb",
+            "city": "Phoenix",
+            "state": "AZ",
+            "calendar_owner_id": "56",
+            "meeting_for": "56",
+        },
     ]
 
     @staticmethod
@@ -116,6 +144,64 @@ class LegacyTranslator:
             ("end", end),
         ])
         return endpoint, params
+
+    @staticmethod
+    def open_meetings_to_legacy(meeting_for: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for open meetings list used by Meeting Set modal.
+        GET /template/template/openmeetings?meetingfor=...
+        """
+        endpoint = "/template/template/openmeetings"
+        params = {
+            "meetingfor": meeting_for,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_open_meetings_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse HTML table returned by /template/template/openmeetings.
+        """
+        soup = BeautifulSoup(raw_response or "", "html.parser")
+        slots: List[Dict[str, str]] = []
+
+        for row in soup.select("table tr"):
+            cells = row.select("td")
+            if len(cells) < 4:
+                continue
+
+            radio_input = row.select_one('input[name="openeventid"]')
+            open_event_id = str(radio_input.get("value") or "").strip() if radio_input else ""
+            date_time_label = cells[1].get_text(" ", strip=True)
+            title = cells[2].get_text(" ", strip=True)
+            assigned_owner = cells[3].get_text(" ", strip=True)
+            start_time = ""
+
+            if date_time_label:
+                try:
+                    parsed = datetime.datetime.strptime(date_time_label, "%a %m/%d/%y %I:%M %p")
+                    start_time = parsed.strftime("%H:%M")
+                except ValueError:
+                    start_time = ""
+
+            if not open_event_id or not date_time_label:
+                continue
+
+            slots.append(
+                {
+                    "open_event_id": open_event_id,
+                    "date_time_label": date_time_label,
+                    "title": title,
+                    "assigned_owner": assigned_owner,
+                    "start_time": start_time,
+                }
+            )
+
+        return {
+            "success": True,
+            "count": len(slots),
+            "slots": slots,
+        }
 
     @staticmethod
     def parse_head_scout_slots_response(
@@ -201,6 +287,8 @@ class LegacyTranslator:
                 "scout_name": scout_name,
                 "city": config["city"],
                 "state": config["state"],
+                "calendar_owner_id": config["calendar_owner_id"],
+                "meeting_for": config["meeting_for"],
                 "slot_count": len(slots),
                 "slots": slots,
             })
@@ -1230,6 +1318,26 @@ class LegacyTranslator:
         return endpoint, form_data
 
     @staticmethod
+    def parse_template_data_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse /admin/templatedata response.
+        Laravel may claim HTML while body is actual JSON.
+        """
+        text = (raw_response or "").strip()
+        if not text:
+            return {}
+
+        if text.startswith("{") or text.startswith("["):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+        return {}
+
+    @staticmethod
     def parse_email_recipients(html_response: str) -> Dict[str, Any]:
         """
         Parse recipients (athlete/parents/other) from sendingtodetails HTML.
@@ -1696,6 +1804,30 @@ class LegacyTranslator:
             form_data["mail_to_other"] = "Other"
             form_data["notification_to_other"] = request.other_email
 
+        return endpoint, form_data
+
+    @staticmethod
+    def meeting_set_submit_to_legacy(request: MeetingSetSubmitRequest) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert Meeting Set submit request to legacy form data.
+        POST /tasks/addmeetingset
+        """
+        endpoint = "/tasks/addmeetingset"
+        form_data = {
+            "contact_task_main": request.athlete_main_id,
+            "contact_task": request.athlete_id,
+            "existingtask": request.existing_task,
+            "tasktitle": request.meeting_name,
+            "contact": request.contact,
+            "meetingtimezone": request.meeting_timezone,
+            "assignedto": request.assigned_to,
+            "openmeetings_list_length": request.openmeetings_list_length,
+            "openeventid": request.open_event_id,
+            "duedate": request.due_date,
+            "starttime": request.start_time,
+            "meetinglength": request.meeting_length,
+            "taskdescription": request.task_description,
+        }
         return endpoint, form_data
 
     # ============== Inbox Translators ==============

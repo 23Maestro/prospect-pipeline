@@ -16,6 +16,8 @@ export type HeadScoutSchedule = {
   scout_name: string;
   city: string;
   state: string;
+  calendar_owner_id: string;
+  meeting_for: string;
   slot_count: number;
   slots: HeadScoutSlot[];
 };
@@ -28,6 +30,21 @@ export type HeadScoutSlotsResponse = {
   scouts: HeadScoutSchedule[];
 };
 
+export type OpenMeetingSlot = {
+  open_event_id: string;
+  date_time_label: string;
+  title: string;
+  assigned_owner: string;
+  start_time: string;
+};
+
+export type OpenMeetingsResponse = {
+  success: boolean;
+  meeting_for: string;
+  count: number;
+  slots: OpenMeetingSlot[];
+};
+
 type TimezoneDisplay = {
   dateLabel: string;
   timeRangeLabel: string;
@@ -35,9 +52,34 @@ type TimezoneDisplay = {
 };
 
 export const HEAD_SCOUT_ORDER = [
-  { scout_name: 'Jeffrey Stein', city: 'Wexford', state: 'PA' },
-  { scout_name: 'Luther Winfield', city: 'Columbia', state: 'SC' },
-  { scout_name: 'Ryan Lietz', city: 'Gilbert', state: 'AZ' },
+  {
+    scout_name: 'Jeffrey Stein',
+    city: 'Wexford',
+    state: 'PA',
+    calendar_owner_id: 'OrJsV8nhBouEzKY',
+    meeting_for: '1418529',
+  },
+  {
+    scout_name: 'Luther Winfield',
+    city: 'Columbia',
+    state: 'SC',
+    calendar_owner_id: 'bMBrA26OElRUwPs',
+    meeting_for: '370959',
+  },
+  {
+    scout_name: 'Ryan Lietz',
+    city: 'Gilbert',
+    state: 'AZ',
+    calendar_owner_id: 'nhVvYOz8bAaL57c',
+    meeting_for: '1354049',
+  },
+  {
+    scout_name: 'James Holcomb',
+    city: 'Phoenix',
+    state: 'AZ',
+    calendar_owner_id: '56',
+    meeting_for: '56',
+  },
 ] as const;
 
 function logInfo(
@@ -331,6 +373,33 @@ export async function fetchHeadScoutSlots(
     end: payload.week_end,
     scoutCount: payload.scouts?.length || 0,
     slotCount: (payload.scouts || []).reduce((sum, scout) => sum + scout.slot_count, 0),
+  });
+  return payload;
+}
+
+export async function fetchOpenMeetings(meetingFor: string): Promise<OpenMeetingsResponse> {
+  logInfo('OPEN_MEETINGS_FETCH', 'request', 'start', {
+    meetingFor,
+  });
+  const response = await apiFetch(
+    `/calendar/open-meetings?meeting_for=${encodeURIComponent(meetingFor)}`,
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Open meetings HTTP ${response.status}`;
+    logFailure('OPEN_MEETINGS_FETCH', 'request', message, {
+      meetingFor,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as OpenMeetingsResponse;
+  logInfo('OPEN_MEETINGS_FETCH', 'parse', 'success', {
+    meetingFor: payload.meeting_for,
+    count: payload.count,
   });
   return payload;
 }

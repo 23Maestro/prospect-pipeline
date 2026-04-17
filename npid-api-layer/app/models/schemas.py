@@ -564,6 +564,38 @@ class MeetingSetTemplateResponse(BaseModel):
     details_template: Optional[str] = None
 
 
+class MeetingSetSubmitRequest(BaseModel):
+    """Create meeting-set task and send legacy notification email."""
+    athlete_id: str
+    athlete_main_id: str
+    meeting_name: str
+    meeting_timezone: str
+    assigned_to: str
+    open_event_id: str
+    task_description: str
+    start_time: str
+    meeting_length: str = "01:00"
+    due_date: str = ""
+    existing_task: str = ""
+    contact: str = ""
+    openmeetings_list_length: str = "-1"
+    template_id: str = "210"
+
+
+class MeetingSetSubmitResponse(BaseModel):
+    """Result from legacy /tasks/addmeetingset + notification flow."""
+    success: bool
+    athlete_id: str
+    athlete_main_id: str
+    assigned_to: str
+    open_event_id: str
+    meeting_name: str
+    template_id: str
+    status_code: int
+    email_sent: bool = False
+    created_task: Optional[AthleteTask] = None
+
+
 class HeadScoutSlot(BaseModel):
     """Single open slot for a head scout."""
     id: str
@@ -577,6 +609,8 @@ class HeadScoutSchedule(BaseModel):
     scout_name: str
     city: str
     state: str
+    calendar_owner_id: str
+    meeting_for: str
     slot_count: int
     slots: List[HeadScoutSlot]
 
@@ -588,3 +622,20 @@ class HeadScoutSlotsResponse(BaseModel):
     week_end: str
     timezone_label: str
     scouts: List[HeadScoutSchedule]
+
+
+class OpenMeetingSlot(BaseModel):
+    """Single open meeting option for a scout Meeting Set flow."""
+    open_event_id: str
+    date_time_label: str
+    title: str
+    assigned_owner: str
+    start_time: str
+
+
+class OpenMeetingsResponse(BaseModel):
+    """Open meeting options for a selected scout Meeting Set owner."""
+    success: bool
+    meeting_for: str
+    count: int
+    slots: List[OpenMeetingSlot]

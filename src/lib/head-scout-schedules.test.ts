@@ -7,6 +7,7 @@ import {
   formatHeadScoutSlotDate,
   formatHeadScoutSlotTimeRange,
   getCurrentEasternSlotStamp,
+  HEAD_SCOUT_ORDER,
   type HeadScoutSlot,
 } from './head-scout-schedules';
 
@@ -34,6 +35,49 @@ test('filterVisibleHeadScoutSlots hides past slots only in current week', () => 
   assert.deepEqual(
     filterVisibleHeadScoutSlots(slots, 1, now).map((slot) => slot.id),
     ['1', '2'],
+  );
+});
+
+test('head scout order includes canonical calendar owner and meeting-for ids', () => {
+  const jeffrey = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Jeffrey Stein');
+  const luther = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Luther Winfield');
+  const ryan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Ryan Lietz');
+  const james = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'James Holcomb');
+
+  assert.deepEqual(
+    {
+      calendar_owner_id: jeffrey?.calendar_owner_id,
+      meeting_for: jeffrey?.meeting_for,
+    },
+    { calendar_owner_id: 'OrJsV8nhBouEzKY', meeting_for: '1418529' },
+  );
+  assert.deepEqual(
+    {
+      calendar_owner_id: luther?.calendar_owner_id,
+      meeting_for: luther?.meeting_for,
+    },
+    { calendar_owner_id: 'bMBrA26OElRUwPs', meeting_for: '370959' },
+  );
+  assert.deepEqual(
+    {
+      calendar_owner_id: ryan?.calendar_owner_id,
+      meeting_for: ryan?.meeting_for,
+    },
+    { calendar_owner_id: 'nhVvYOz8bAaL57c', meeting_for: '1354049' },
+  );
+  assert.deepEqual(
+    {
+      city: james?.city,
+      state: james?.state,
+      calendar_owner_id: james?.calendar_owner_id,
+      meeting_for: james?.meeting_for,
+    },
+    {
+      city: 'Phoenix',
+      state: 'AZ',
+      calendar_owner_id: '56',
+      meeting_for: '56',
+    },
   );
 });
 
