@@ -206,13 +206,12 @@ function buildCraftMarker(messageType: FollowUpMessageType, athleteName: string,
 
 function buildCraftReminderMarkdown(args: {
   title: string;
-  notionUrl: string;
+  marker: string;
   filledMessage: string;
 }): string {
   return [
-    `- [ ] ${args.title}`,
-    '',
-    `Notion: ${args.notionUrl}`,
+    args.title,
+    `<!-- ${args.marker} -->`,
     '',
     args.filledMessage,
   ].join('\n');
@@ -393,7 +392,7 @@ export async function upsertCraftFollowUpReminder(args: {
   const marker = buildCraftMarker(args.messageType, args.athleteName, reminderDate);
   const markdown = buildCraftReminderMarkdown({
     title: args.title,
-    notionUrl: args.notionUrl,
+    marker,
     filledMessage: args.filledMessage,
   });
 

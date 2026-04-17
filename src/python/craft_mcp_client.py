@@ -82,7 +82,9 @@ def _find_existing_block_by_athlete_and_schedule(
         if existing_schedule != schedule_date:
             continue
         normalized_markdown = _normalize_task_markdown(markdown).lower()
-        if normalized_markdown == normalized_athlete:
+        if normalized_markdown == normalized_athlete or normalized_markdown.startswith(
+            f"{normalized_athlete} |"
+        ):
             block_id = block.get("id")
             if block_id:
                 return str(block_id)
@@ -97,7 +99,9 @@ def _find_existing_block_by_athlete_name(payload: Any, athlete_name: str) -> Opt
     for block in _iter_blocks(payload):
         markdown = str(block.get("markdown") or "")
         normalized_markdown = _normalize_task_markdown(markdown).lower()
-        if normalized_markdown == normalized_athlete:
+        if normalized_markdown == normalized_athlete or normalized_markdown.startswith(
+            f"{normalized_athlete} |"
+        ):
             block_id = block.get("id")
             if block_id:
                 return str(block_id)

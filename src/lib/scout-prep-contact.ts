@@ -1,5 +1,5 @@
 import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types';
-import { resolveTimezone } from './scout-prep-ai';
+import { formatCurrentLocalTime, resolveTimezone } from './scout-prep-ai';
 
 type ContactCandidate = {
   role: 'parent1' | 'parent2' | 'studentAthlete';
@@ -13,6 +13,13 @@ export type ProspectContactShortcutCandidate = {
   label: string;
   name: string;
   phone: string;
+};
+
+export type VoicemailFollowUpRecipient = {
+  id: ProspectContactShortcutCandidate['id'] | 'groupAll';
+  label: string;
+  name: string;
+  phones: string[];
 };
 
 export type ScoutPrepContactSelection = {
@@ -51,9 +58,111 @@ function firstName(value?: string | null): string | null {
   return trimmed.split(/\s+/)[0] || null;
 }
 
+function lastName(value?: string | null): string | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  const parts = trimmed.split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? parts[parts.length - 1] : parts[0] || null;
+}
+
 function sportLabel(value?: string | null): string {
   const cleaned = String(value || '').trim();
   return cleaned || 'their sport';
+}
+
+function lowerFirst(value: string): string {
+  if (!value) {
+    return value;
+  }
+  return value.charAt(0).toLowerCase() + value.slice(1);
+}
+
+function parentHonorific(
+  context: ScoutPrepContext,
+  recipientId?: ContactCandidate['role'],
+): string {
+  const relationship =
+    recipientId === 'parent2'
+      ? context.contactInfo.parent2?.relationship
+      : context.contactInfo.parent1?.relationship;
+  return String(relationship || '')
+    .trim()
+    .toLowerCase() === 'mother'
+    ? 'Ms.'
+    : 'Mr.';
+}
+
+function recipientGreeting(
+  context: ScoutPrepContext,
+  recipientId?: ContactCandidate['role'],
+): string {
+  const selectedName =
+    recipientId === 'parent2'
+      ? context.contactInfo.parent2?.name
+      : context.contactInfo.parent1?.name || context.contactInfo.parent2?.name;
+  const selectedLastName = lastName(selectedName);
+  return selectedLastName
+    ? `${parentHonorific(context, recipientId)} ${selectedLastName}`
+    : 'there';
+}
+
+function buildGradYearSentence(gradYear?: string | null): string {
+  const normalized = String(gradYear || '')
+    .trim()
+    .toLowerCase();
+
+  switch (normalized) {
+    case 'freshman':
+      return 'As a freshman, this is a good time to learn more about his goals early in the recruiting process.';
+    case 'sophomore':
+      return 'As a sophomore, this is a good time to learn more about his goals as recruiting starts to take shape.';
+    case 'junior':
+      return `As a junior, this is a key stretch with recruiting picking up.`;
+    case 'senior':
+      return `As a senior, this is an important stage with recruiting decisions getting closer.`;
+    default:
+      return 'This is a good time to learn more about goals going forward.';
+  }
+}
+
+function buildWeekClosing(now: Date): string {
+  const day = now.getDay();
+  if (day === 5 || day === 6 || day === 0) {
+    return 'Enjoy the rest of your weekend.';
+  }
+  return 'Enjoy the rest of your week.';
+}
+
+function buildTimeOfDayGreeting(context: ScoutPrepContext, now: Date = new Date()): string {
+  const timezone = resolveTimezone(context.resolved.city, context.resolved.state);
+  if (!timezone) {
+    return 'Good morning';
+  }
+
+  const formattedHour = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    hour: 'numeric',
+    hour12: false,
+  }).format(now);
+  const hour = Number.parseInt(formattedHour, 10);
+
+  if (Number.isNaN(hour)) {
+    const fallbackTime = formatCurrentLocalTime(timezone, now).toLowerCase();
+    if (fallbackTime.includes('pm')) {
+      return 'Good afternoon';
+    }
+    return 'Good morning';
+  }
+
+  if (hour < 12) {
+    return 'Good morning';
+  }
+  if (hour < 17) {
+    return 'Good afternoon';
+  }
+  return 'Good evening';
 }
 
 export function normalizePhoneForMessages(raw?: string | null): string | null {
@@ -182,14 +291,84 @@ export function getProspectContactShortcutCandidates(
     }));
 }
 
-export function buildVoicemailFollowUpBody(context: ScoutPrepContext): string {
-  const greetingName =
-    firstName(context.contactInfo.parent1?.name) ||
-    firstName(context.contactInfo.parent2?.name) ||
-    'Peter';
-  const athleteName = context.contactInfo.studentAthlete.name || context.task.athlete_name;
+export function getVoicemailFollowUpRecipients(
+  context: ScoutPrepContext,
+): VoicemailFollowUpRecipient[] {
+  const candidates = getProspectContactShortcutCandidates(context);
+  const parentRecipients = candidates.filter(
+    (candidate) => candidate.id === 'parent1' || candidate.id === 'parent2',
+  );
+  const uniqueParentRecipients = new Map<string, VoicemailFollowUpRecipient>();
+  for (const candidate of parentRecipients) {
+    if (uniqueParentRecipients.has(candidate.phone)) {
+      continue;
+    }
+    uniqueParentRecipients.set(candidate.phone, {
+      id: candidate.id,
+      label: candidate.label,
+      name: candidate.name,
+      phones: [candidate.phone],
+    });
+  }
 
-  return `Hi ${greetingName}, this is Jerami with Prospect ID. I just left you a voicemail regarding ${athleteName}'s recruiting process. When you have a minute, call me back here and I can help you with next steps.`;
+  const recipients = Array.from(uniqueParentRecipients.values());
+
+  const allPhones = Array.from(new Set(candidates.map((candidate) => candidate.phone)));
+  if (allPhones.length > 1) {
+    recipients.push({
+      id: 'groupAll',
+      label: 'Group Text',
+      name: 'All Associated Contacts',
+      phones: allPhones,
+    });
+  }
+
+  if (!recipients.length && candidates[0]) {
+    recipients.push({
+      id: candidates[0].id,
+      label: candidates[0].label,
+      name: candidates[0].name,
+      phones: [candidates[0].phone],
+    });
+  }
+
+  return recipients;
+}
+
+export function buildVoicemailFollowUpBody(
+  context: ScoutPrepContext,
+  recipientId?: ContactCandidate['role'] | 'groupAll',
+  now: Date = new Date(),
+): string {
+  const recipients = getVoicemailFollowUpRecipients(context);
+  const recipient =
+    recipients.find((candidate) => candidate.id === recipientId) || recipients[0] || null;
+  const athleteName = context.contactInfo.studentAthlete.name || context.task.athlete_name;
+  const athleteFirstName = firstName(athleteName) || athleteName || 'your athlete';
+  const sport = lowerFirst(sportLabel(context.resolved.sport));
+  const gradYear = String(context.task.grad_year || '').trim();
+  const greetingName = recipientGreeting(
+    context,
+    recipient?.id === 'parent2' ? 'parent2' : 'parent1',
+  );
+  const signOffTitle = `${sportLabel(context.resolved.sport)} Scouting Coordinator`;
+  const dayGreeting = buildTimeOfDayGreeting(context, now);
+
+  return [
+    `${dayGreeting} ${greetingName}, this is Jerami with Prospect ID. I'm the college ${sport} scout here.`,
+    '',
+    `We received ${athleteFirstName}'s recruiting profile, and I wanted to learn a little more about him on the academic and athletic side. ${buildGradYearSentence(gradYear)}`,
+    '',
+    'I wanted to follow up by text so you can get back to me when you get a few minutes. This is my direct cell, so feel free to text or call me here anytime.',
+    '',
+    'When do you have a quick 10-minute window today or over the next few days? I can be flexible on time.',
+    '',
+    `${buildWeekClosing(now)}`,
+    '',
+    'Jerami Singleton',
+    signOffTitle,
+    'Prospect ID',
+  ].join('\n');
 }
 
 export function buildScoutPrepLeavingVoicemailBody(args: {
@@ -218,6 +397,22 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
 
 export function buildMessagesComposeUrl(phone: string, body: string): string {
   return `sms:${phone}?body=${encodeURIComponent(body)}`;
+}
+
+export function buildMessagesComposeUrlForRecipients(phones: string[], body: string): string {
+  const uniquePhones = Array.from(
+    new Set(
+      phones
+        .map((phone) => normalizePhoneForMessages(phone))
+        .filter((phone): phone is string => Boolean(phone)),
+    ),
+  );
+
+  if (!uniquePhones.length) {
+    throw new Error('At least one valid phone number is required');
+  }
+
+  return `sms:${uniquePhones.join(',')}?body=${encodeURIComponent(body)}`;
 }
 
 export function buildProspectContactShortcutPayload(args: {

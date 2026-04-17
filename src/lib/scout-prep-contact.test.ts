@@ -4,12 +4,13 @@ import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/s
 import { buildScoutPrepCard } from '../features/scout-prep/content.js';
 import {
   buildMeetingTemplateDefaults,
+  buildMessagesComposeUrlForRecipients,
   buildProspectContactShortcutPayload,
   buildProspectContactShortcutPayloadFromName,
   buildProspectContactShortcutUrl,
-  buildMessagesComposeUrl,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
+  getVoicemailFollowUpRecipients,
   getProspectContactShortcutCandidates,
   mapTimezoneToLegacyRecruitZone,
   mergeMeetingDetailsTemplate,
@@ -151,12 +152,152 @@ test('buildMeetingTemplateDefaults: keeps backend timezone when computed option 
   assert.equal(defaults.selected_recruit_timezone, 'EST');
 });
 
-test('buildVoicemailFollowUpBody/buildMessagesComposeUrl: builds prefilled message compose handoff', () => {
-  const body = buildVoicemailFollowUpBody(buildContext());
-  const url = buildMessagesComposeUrl('651-555-1212', body);
-  assert.match(body, /^Hi Jamie, this is Jerami with Prospect ID\./);
+test('getVoicemailFollowUpRecipients: returns parents plus group text option', () => {
+  const recipients = getVoicemailFollowUpRecipients(buildContext());
+
+  assert.deepEqual(recipients, [
+    {
+      id: 'parent1',
+      label: 'Parent 1',
+      name: 'Jamie Smith',
+      phones: ['651-555-1212'],
+    },
+    {
+      id: 'parent2',
+      label: 'Parent 2',
+      name: 'Chris Smith',
+      phones: ['651-555-9898'],
+    },
+    {
+      id: 'groupAll',
+      label: 'Group Text',
+      name: 'All Associated Contacts',
+      phones: ['651-555-1212', '651-555-9898', '651-555-3000'],
+    },
+  ]);
+});
+
+test('getVoicemailFollowUpRecipients: collapses duplicate phone paths into one recipient', () => {
+  const recipients = getVoicemailFollowUpRecipients(
+    buildContext({
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jaylin Bailey',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+  );
+
+  assert.deepEqual(recipients, [
+    {
+      id: 'parent1',
+      label: 'Parent 1',
+      name: 'Robert Bailey',
+      phones: ['310-555-1111'],
+    },
+  ]);
+});
+
+test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds formal parent handoff', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Bryson Smith',
+        grad_year: 'Sophomore',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'South St. Paul',
+        state: 'MN',
+      },
+    }),
+    'parent1',
+    new Date('2026-04-17T09:00:00Z'),
+  );
+  const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
+  assert.match(body, /^Good morning Ms\. Smith, this is Jerami with Prospect ID\./);
+  assert.match(body, /college football scout/i);
+  assert.match(body, /We received Bryson's recruiting profile/i);
+  assert.match(body, /As a sophomore, this is a good time to learn more about his goals/i);
+  assert.match(body, /Enjoy the rest of your weekend\./);
   assert.match(url, /^sms:651-555-1212\?body=/);
-  assert.match(url, /Bryson%20Smith/);
+  assert.match(url, /Bryson's%20recruiting%20profile/);
+});
+
+test('buildVoicemailFollowUpBody: group text still uses parent template and weekday closing', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      resolved: {
+        sport: 'Football',
+        city: 'South St. Paul',
+        state: 'MN',
+      },
+    }),
+    'groupAll',
+    new Date('2026-04-15T09:00:00Z'),
+  );
+
+  assert.match(body, /^Good morning Ms\. Smith, this is Jerami with Prospect ID\./);
+  assert.match(body, /This is a good time to learn more about goals going forward\./);
+  assert.match(body, /Enjoy the rest of your week\./);
+});
+
+test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Jaylin Bailey',
+        grad_year: 'Sophomore',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'Los Angeles',
+        state: 'CA',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jaylin Bailey',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'parent1',
+    new Date('2026-04-17T19:28:00Z'),
+  );
+
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami with Prospect ID\./);
+});
+
+test('buildMessagesComposeUrlForRecipients: supports group threads with deduped phone list', () => {
+  const url = buildMessagesComposeUrlForRecipients(
+    ['651-555-1212', '(651) 555-1212', '651-555-9898'],
+    'Hello',
+  );
+
+  assert.equal(url, 'sms:651-555-1212,651-555-9898?body=Hello');
 });
 
 test('buildProspectContactShortcutPayload: preserves newline-delimited shortcut format', () => {
