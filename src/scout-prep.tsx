@@ -20,6 +20,8 @@ import type {
   MeetingSetTemplateResponse,
   SalesStageOption,
   ScoutAthleteTask,
+  ScoutRecentProfile,
+  ScoutRecentProfileCheckStatus,
   ScoutPortalTask,
   ScoutPrepContext,
   ScoutPrepFormValues,
@@ -41,6 +43,7 @@ import {
   buildScoutPrepValues,
   completeScoutPrepTaskAfterVoicemail,
   fetchAthleteTasks,
+  fetchScoutRecentProfiles,
   fetchScoutTaskPopup,
   fetchScoutPortalTasks,
   findNewestIncompleteFollowUpTask,
@@ -648,6 +651,16 @@ type TrackedFollowUpItem = {
   pointer: ScoutPrepFollowUpPointer;
   task: ScoutPortalTask;
   createdTask: ScoutAthleteTask;
+};
+
+type SearchWorkspaceMode = 'prospect' | 'recent';
+
+type RecentProfileRow = {
+  profile: ScoutRecentProfile;
+  task: ScoutPortalTask;
+  status: ScoutRecentProfileCheckStatus;
+  followUpTask?: ScoutAthleteTask | null;
+  error?: string | null;
 };
 
 function buildScoutPrepTaskFromProspect(result: ProspectResult): ScoutPortalTask | null {
@@ -2025,10 +2038,12 @@ function ProspectSearchListItem({
   result,
   onToggleProspectSearchMode,
   isProspectSearchMode,
+  onShowRecentProfiles,
 }: {
   result: ProspectResult;
   onToggleProspectSearchMode: () => void;
   isProspectSearchMode: boolean;
+  onShowRecentProfiles: () => void;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
   const location = [result.city, result.state].filter(Boolean).join(', ');
@@ -2075,6 +2090,69 @@ function ProspectSearchListItem({
             shortcut={{ modifiers: ['cmd'], key: 'f' }}
             onAction={onToggleProspectSearchMode}
           />
+          <Action title="Show Recent Profiles" icon={Icon.Clock} onAction={onShowRecentProfiles} />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function RecentProfileListItem({
+  item,
+  onShowProspectSearch,
+  onToggleProspectSearchMode,
+}: {
+  item: RecentProfileRow;
+  onShowProspectSearch: () => void;
+  onToggleProspectSearchMode: () => void;
+}) {
+  const { task, followUpTask, profile, status, error } = item;
+  const statusLabel =
+    status === 'matched'
+      ? followUpTask?.title || 'Follow-Up Found'
+      : status === 'not_found'
+        ? 'No Follow-Up Task'
+        : status === 'error'
+          ? 'Task Check Failed'
+          : 'Checking Tasks';
+  const markdown = [
+    `# ${task.athlete_name}`,
+    '',
+    `- Status: ${statusLabel}`,
+    `- Task: ${followUpTask?.title || 'N/A'}`,
+    `- Due Date: ${followUpTask?.due_date || 'N/A'}`,
+    `- Description: ${followUpTask?.description || 'N/A'}`,
+    `- Sport: ${profile.sport || 'N/A'}`,
+    `- State: ${profile.state || 'N/A'}`,
+    `- Grad Year: ${profile.grad_year || 'N/A'}`,
+    `- Parents: ${profile.parent_names?.join(', ') || 'N/A'}`,
+    ...(error ? ['', `- Error: ${error}`] : []),
+  ].join('\n');
+
+  return (
+    <List.Item
+      key={`recent-follow-up:${task.contact_id}:${task.athlete_main_id || 'missing-main-id'}`}
+      icon={Icon.Clock}
+      title={task.athlete_name}
+      subtitle={statusLabel}
+      detail={<List.Item.Detail markdown={markdown} />}
+      actions={
+        <ActionPanel>
+          <Action.Push title="Build Scout Prep" icon={Icon.Wand} target={<ScoutPrepDetail task={task} />} />
+          {followUpTask ? (
+            <Action.OpenInBrowser
+              title="Open Athlete Task Tab"
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+              url={buildScoutPrepTaskUrl(task)}
+            />
+          ) : null}
+          <Action
+            title="Exit Prospect Search"
+            icon={Icon.MagnifyingGlass}
+            shortcut={{ modifiers: ['cmd'], key: 'f' }}
+            onAction={onToggleProspectSearchMode}
+          />
+          <Action title="Show Prospect Search" icon={Icon.List} onAction={onShowProspectSearch} />
         </ActionPanel>
       }
     />
@@ -2086,16 +2164,20 @@ export default function ScoutPrepCommand() {
   const [trackedFollowUps, setTrackedFollowUps] = useState<TrackedFollowUpItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isProspectSearchMode, setIsProspectSearchMode] = useState(false);
+  const [searchWorkspaceMode, setSearchWorkspaceMode] = useState<SearchWorkspaceMode>('prospect');
   const [taskSearchText, setTaskSearchText] = useState('');
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
+  const [recentProfiles, setRecentProfiles] = useState<RecentProfileRow[]>([]);
+  const [isRecentFollowUpsLoading, setIsRecentFollowUpsLoading] = useState(false);
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
 
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
   const isSearchModeActive = isProspectSearchMode;
+  const isRecentViewMode = isSearchModeActive && searchWorkspaceMode === 'recent';
 
   const loadTasks = async (options?: { forceRefreshFollowUps?: boolean }) => {
     if (loadTasksPromiseRef.current) {
@@ -2267,6 +2349,123 @@ export default function ScoutPrepCommand() {
     return () => clearTimeout(timer);
   }, [isProspectSearchMode, prospectSearchText]);
 
+  useEffect(() => {
+    if (!isProspectSearchMode || searchWorkspaceMode !== 'recent') {
+      return;
+    }
+
+    let active = true;
+    setIsRecentFollowUpsLoading(true);
+
+    void (async () => {
+      try {
+        const profiles = await fetchScoutRecentProfiles();
+        logInfo('SCOUT_PREP_RECENT_PROFILES_ENRICH', 'profiles-loaded', 'success', {
+          rawRecentCount: profiles.length,
+        });
+
+        const rows = profiles.map((profile) => ({
+          profile,
+          task: {
+            contact_id: profile.athlete_id,
+            athlete_id: profile.athlete_id,
+            athlete_main_id: profile.athlete_main_id,
+            athlete_name: profile.athlete_name,
+            grad_year: profile.grad_year || null,
+            title: null,
+            description: null,
+          } satisfies ScoutPortalTask,
+          status: 'loading' as ScoutRecentProfileCheckStatus,
+          followUpTask: null,
+          error: null,
+        }));
+
+        if (!active) return;
+        setRecentProfiles(rows);
+        setIsRecentFollowUpsLoading(false);
+
+        let matched = 0;
+        let notFound = 0;
+        let failures = 0;
+
+        await Promise.all(
+          rows.map(async (row) => {
+            try {
+              const athleteTasks = await fetchAthleteTasks(row.profile.athlete_id, row.profile.athlete_main_id);
+              const followUpTask = findNewestIncompleteFollowUpTask(athleteTasks);
+              if (!active) return;
+
+              if (followUpTask) {
+                matched += 1;
+                setRecentProfiles((current) =>
+                  current.map((item) =>
+                    item.profile.athlete_id === row.profile.athlete_id &&
+                    item.profile.athlete_main_id === row.profile.athlete_main_id
+                      ? {
+                          ...item,
+                          status: 'matched',
+                          followUpTask,
+                          task: {
+                            ...item.task,
+                            task_id: followUpTask.task_id,
+                            due_date: followUpTask.due_date || null,
+                            completion_date: followUpTask.completion_date || null,
+                            assigned_owner: followUpTask.assigned_owner || null,
+                            title: followUpTask.title || null,
+                            description: followUpTask.description || null,
+                          },
+                        }
+                      : item,
+                  ),
+                );
+              } else {
+                notFound += 1;
+                setRecentProfiles((current) =>
+                  current.map((item) =>
+                    item.profile.athlete_id === row.profile.athlete_id &&
+                    item.profile.athlete_main_id === row.profile.athlete_main_id
+                      ? { ...item, status: 'not_found', followUpTask: null, error: null }
+                      : item,
+                  ),
+                );
+              }
+            } catch (error) {
+              failures += 1;
+              if (!active) return;
+              setRecentProfiles((current) =>
+                current.map((item) =>
+                  item.profile.athlete_id === row.profile.athlete_id &&
+                  item.profile.athlete_main_id === row.profile.athlete_main_id
+                    ? {
+                        ...item,
+                        status: 'error',
+                        followUpTask: null,
+                        error: error instanceof Error ? error.message : String(error),
+                      }
+                    : item,
+                ),
+              );
+            }
+          }),
+        );
+
+        logInfo('SCOUT_PREP_RECENT_PROFILES_ENRICH', 'task-checks', 'success', {
+          rawRecentCount: rows.length,
+          taskChecksAttempted: rows.length,
+          matchedCount: matched,
+          notFoundCount: notFound,
+          failedCount: failures,
+        });
+      } finally {
+        if (active) setIsRecentFollowUpsLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [isProspectSearchMode, searchWorkspaceMode]);
+
   async function handleRemoveTrackedFollowUp(item: TrackedFollowUpItem) {
     await removeScoutPrepFollowUpPointer(item.pointer.athleteId, item.pointer.athleteMainId);
     setTrackedFollowUps((current) =>
@@ -2290,10 +2489,13 @@ export default function ScoutPrepCommand() {
       const next = !current;
       if (next) {
         setTaskSearchText('');
+        setSearchWorkspaceMode('prospect');
       } else {
         setProspectSearchText('');
         setProspectResults([]);
         setIsProspectSearching(false);
+        setRecentProfiles([]);
+        setIsRecentFollowUpsLoading(false);
       }
       return next;
     });
@@ -2301,20 +2503,57 @@ export default function ScoutPrepCommand() {
 
   return (
     <List
-      isLoading={isLoading || isProspectSearching}
+      isLoading={isLoading || isProspectSearching || isRecentFollowUpsLoading}
       isShowingDetail={!isSearchModeActive}
       navigationTitle={isSearchModeActive ? 'Scout Prep Search' : 'Scout Prep'}
       filtering={isSearchModeActive ? false : true}
       throttle
       searchBarPlaceholder={
         isSearchModeActive
-          ? 'Prospect Search'
+          ? isRecentViewMode
+            ? 'Recent Profiles'
+            : 'Prospect Search'
           : 'Search Task List'
       }
-      searchText={isSearchModeActive ? prospectSearchText : taskSearchText}
-      onSearchTextChange={isSearchModeActive ? setProspectSearchText : setTaskSearchText}
+      searchText={isSearchModeActive ? (isRecentViewMode ? '' : prospectSearchText) : taskSearchText}
+      onSearchTextChange={isSearchModeActive ? (isRecentViewMode ? () => {} : setProspectSearchText) : setTaskSearchText}
     >
       {isSearchModeActive ? (
+        isRecentViewMode ? (
+          <List.Section title="Recent Profiles" subtitle={String(recentProfiles.length)}>
+            {recentProfiles.length > 0 ? (
+              recentProfiles.map((item) => (
+                <RecentProfileListItem
+                  key={`recent:${item.profile.athlete_id}:${item.profile.athlete_main_id}`}
+                  item={item}
+                  onShowProspectSearch={() => setSearchWorkspaceMode('prospect')}
+                  onToggleProspectSearchMode={toggleProspectSearchMode}
+                />
+              ))
+            ) : (
+              <List.Item
+                icon={Icon.Clock}
+                title={isRecentFollowUpsLoading ? 'Loading Recent Profiles' : 'No Recent Profiles'}
+                subtitle={isRecentFollowUpsLoading ? 'Checking recent profiles for follow-up tasks' : 'No recent profiles found'}
+                actions={
+                  <ActionPanel>
+                    <Action
+                      title="Exit Prospect Search"
+                      icon={Icon.MagnifyingGlass}
+                      shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                      onAction={toggleProspectSearchMode}
+                    />
+                    <Action
+                      title="Show Prospect Search"
+                      icon={Icon.List}
+                      onAction={() => setSearchWorkspaceMode('prospect')}
+                    />
+                  </ActionPanel>
+                }
+              />
+            )}
+          </List.Section>
+        ) : (
         <List.Section title={`Prospect Search`} subtitle={String(prospectResults.length)}>
           {prospectResults.length > 0 ? (
             prospectResults.map((result) => (
@@ -2323,6 +2562,7 @@ export default function ScoutPrepCommand() {
                 result={result}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
                 isProspectSearchMode={isSearchModeActive}
+                onShowRecentProfiles={() => setSearchWorkspaceMode('recent')}
               />
             ))
           ) : (
@@ -2350,11 +2590,13 @@ export default function ScoutPrepCommand() {
                     shortcut={{ modifiers: ['cmd'], key: 'f' }}
                     onAction={toggleProspectSearchMode}
                   />
+                  <Action title="Show Recent Profiles" icon={Icon.Clock} onAction={() => setSearchWorkspaceMode('recent')} />
                 </ActionPanel>
               }
             />
           )}
         </List.Section>
+        )
       ) : trackedFollowUps.length > 0 ? (
         <List.Section title="Follow-Up List" subtitle={String(trackedFollowUps.length)}>
           {trackedFollowUps.map((item) => (

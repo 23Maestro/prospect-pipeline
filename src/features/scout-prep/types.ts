@@ -40,6 +40,18 @@ export type ScoutPortalTask = {
   athlete_task_url?: string | null;
 };
 
+export type ScoutRecentProfile = {
+  athlete_id: string;
+  athlete_main_id: string;
+  athlete_name: string;
+  grad_year?: string | null;
+  sport?: string | null;
+  state?: string | null;
+  parent_names?: string[] | null;
+};
+
+export type ScoutRecentProfileCheckStatus = 'loading' | 'matched' | 'not_found' | 'error';
+
 export type ScoutPrepContext = {
   task: ScoutPortalTask;
   resolved: {

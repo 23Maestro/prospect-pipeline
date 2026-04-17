@@ -56,6 +56,27 @@ Start both together:
 npm run dev:all
 ```
 
+Recommended supervised workflow:
+
+```bash
+npm run dev:stack:install
+npm run dev:stack
+```
+
+This keeps the Raycast dev process and the FastAPI bridge under one supervisor so stale ports are much less likely to block local work. To restart only FastAPI after a router change:
+
+```bash
+npm run dev:api:restart
+```
+
+Fallback if Overmind is not installed:
+
+```bash
+npm run dev:all
+```
+
+For the full command set, see [`references/dev-processes.md`](/Users/singleton23/Raycast/prospect-pipeline/references/dev-processes.md).
+
 ## Auth Model
 
 This repo relies on a local saved session file at `~/.npid_session.pkl`.

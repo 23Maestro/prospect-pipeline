@@ -8,6 +8,7 @@ import type {
   ScoutAthleteTask,
   ScoutPrepFormValues,
   ScoutPrepGrade,
+  ScoutRecentProfile,
   ScoutPortalTask,
   ScoutPrepContext,
 } from '../features/scout-prep/types';
@@ -82,6 +83,26 @@ export async function fetchScoutPortalTasks(): Promise<ScoutPortalTask[]> {
     count: tasks.length,
   });
   return tasks;
+}
+
+export async function fetchScoutRecentProfiles(): Promise<ScoutRecentProfile[]> {
+  logInfo('SCOUT_PREP_RECENT_PROFILES_FETCH', 'request', 'start');
+  const response = await apiFetch('/scout/recent-profiles');
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Recent profiles HTTP ${response.status}`;
+    logFailure('SCOUT_PREP_RECENT_PROFILES_FETCH', 'request', message, {
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+  const data = (await response.json()) as { profiles?: ScoutRecentProfile[] };
+  const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+  logInfo('SCOUT_PREP_RECENT_PROFILES_FETCH', 'parse', 'success', {
+    count: profiles.length,
+  });
+  return profiles;
 }
 
 export async function fetchAthleteTasks(

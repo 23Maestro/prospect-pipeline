@@ -1,0 +1,2 @@
+raycast: npm run dev
+api: bash scripts/run-api-dev.sh

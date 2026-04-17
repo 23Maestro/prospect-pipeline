@@ -3763,6 +3763,71 @@ class LegacyTranslator:
         return {"success": True, "tasks": tasks}
 
     @staticmethod
+    def scout_topviews_to_legacy(scout_id: str) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for scout recent profile views.
+        GET /template/template/topviews
+        """
+        endpoint = "/template/template/topviews"
+        params = {"scout_id": scout_id}
+        return endpoint, params
+
+    @staticmethod
+    def parse_scout_topviews_response(html_response: str) -> Dict[str, Any]:
+        """
+        Parse scout recent profile views HTML into normalized entries.
+        """
+        soup = BeautifulSoup(html_response or "", "html.parser")
+        profiles: List[Dict[str, Any]] = []
+
+        for row in soup.select(".toptenlist"):
+            link = row.find("a", href=re.compile(r"/admin/athletes\?contactid=\d+"))
+            if not link or not link.get("href"):
+                continue
+
+            href = link.get("href", "")
+            parsed = urlparse(href)
+            query = parse_qs(parsed.query)
+            athlete_id = str((query.get("contactid") or [""])[0]).strip()
+            athlete_main_id = str((query.get("athlete_main_id") or [""])[0]).strip()
+            athlete_name = link.get_text(" ", strip=True)
+
+            info_columns = row.select(".col-md-8")
+            info_column = info_columns[0] if info_columns else None
+            info_lines = []
+            if info_column:
+                info_lines = [
+                    line.strip()
+                    for line in info_column.get_text("\n", strip=True).split("\n")
+                    if line.strip()
+                ]
+
+            summary_line = info_lines[0] if info_lines else ""
+            parent_names = info_lines[1:] if len(info_lines) > 1 else []
+            summary_parts = [part.strip() for part in re.split(r"\xa0+|\s{2,}", summary_line) if part.strip()]
+
+            state = summary_parts[0] if len(summary_parts) > 0 else None
+            grad_year = summary_parts[1] if len(summary_parts) > 1 else None
+            sport = summary_parts[2] if len(summary_parts) > 2 else None
+
+            if not athlete_id or not athlete_main_id or not athlete_name:
+                continue
+
+            profiles.append(
+                {
+                    "athlete_id": athlete_id,
+                    "athlete_main_id": athlete_main_id,
+                    "athlete_name": athlete_name,
+                    "grad_year": grad_year or None,
+                    "sport": sport or None,
+                    "state": state or None,
+                    "parent_names": parent_names or [],
+                }
+            )
+
+        return {"success": True, "profiles": profiles}
+
+    @staticmethod
     def task_popup_to_legacy(task_id: str) -> Tuple[str, Dict[str, Any]]:
         """
         Build request for task popup form.

@@ -6,7 +6,7 @@ FastAPI endpoints for scout-prep task list functionality.
 from fastapi import APIRouter, HTTPException, Request
 import logging
 
-from app.models.schemas import ScoutPortalTasksResponse
+from app.models.schemas import ScoutPortalTasksResponse, ScoutRecentProfilesResponse
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 
@@ -97,6 +97,87 @@ async def get_scout_portal_tasks(
                 "context": {
                     "assignedto": assignedto,
                     "range": range,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/recent-profiles", response_model=ScoutRecentProfilesResponse)
+async def get_scout_recent_profiles(
+    request: Request,
+    scout_id: str = "1408164",
+):
+    """
+    Fetch recently viewed athlete profiles from the scout topviews widget.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "SCOUT_RECENT_PROFILES_FETCH %s",
+        {
+            "event": "SCOUT_RECENT_PROFILES_FETCH",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "scoutId": scout_id,
+            },
+        },
+    )
+
+    try:
+        endpoint, params = translator.scout_topviews_to_legacy(scout_id=scout_id)
+        response = await session.get(endpoint, params=params)
+        body_preview = (response.text or "")[:200]
+        logger.info(
+            "SCOUT_RECENT_PROFILES_FETCH %s",
+            {
+                "event": "SCOUT_RECENT_PROFILES_FETCH",
+                "step": "response",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "scoutId": scout_id,
+                    "endpoint": endpoint,
+                    "statusCode": response.status_code,
+                    "contentType": response.headers.get("content-type"),
+                    "bodyLength": len(response.text or ""),
+                    "bodyPreview": body_preview,
+                },
+            },
+        )
+        result = translator.parse_scout_topviews_response(response.text)
+        profiles = result.get("profiles", [])
+        logger.info(
+            "SCOUT_RECENT_PROFILES_FETCH %s",
+            {
+                "event": "SCOUT_RECENT_PROFILES_FETCH",
+                "step": "parse",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "scoutId": scout_id,
+                    "count": len(profiles),
+                    "firstAthlete": profiles[0].get("athlete_name") if profiles else None,
+                },
+            },
+        )
+        return ScoutRecentProfilesResponse(success=True, count=len(profiles), profiles=profiles)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "SCOUT_RECENT_PROFILES_FETCH %s",
+            {
+                "event": "SCOUT_RECENT_PROFILES_FETCH",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "scoutId": scout_id,
                 },
             },
         )

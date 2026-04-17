@@ -262,6 +262,22 @@ class RawAthleteSearchResponse(BaseModel):
     sources: Optional[List[Dict[str, Any]]] = None
 
 
+class ScoutRecentProfile(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+    athlete_name: str
+    grad_year: Optional[str] = None
+    sport: Optional[str] = None
+    state: Optional[str] = None
+    parent_names: Optional[List[str]] = None
+
+
+class ScoutRecentProfilesResponse(BaseModel):
+    success: bool
+    count: int
+    profiles: List[ScoutRecentProfile]
+
+
 class Assignment(BaseModel):
     """Video assignment from progress page."""
     video_msg_id: str
