@@ -22,7 +22,7 @@ type RichText = {
   };
 };
 
-type NotionBlock = {
+export type NotionBlock = {
   object?: 'block';
   id?: string;
   type: string;
@@ -70,7 +70,7 @@ function logFailure(event: string, step: string, error: string, context?: Record
   });
 }
 
-function normalizeNotionId(value: string): string {
+export function normalizeNotionId(value: string): string {
   const trimmed = value.trim();
   const hyphenated = trimmed.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
   if (hyphenated) {
@@ -106,7 +106,7 @@ function getConfig(target: SyncTarget): NotionCallScriptConfig {
   return { token, pageId, toggleTitle };
 }
 
-async function notionRequest<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+export async function notionRequest<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`https://api.notion.com/v1${path}`, {
     ...init,
     headers: {
@@ -130,7 +130,7 @@ async function notionRequest<T>(token: string, path: string, init: RequestInit =
   return (await response.json()) as T;
 }
 
-async function listChildren(token: string, blockId: string): Promise<NotionBlock[]> {
+export async function listChildren(token: string, blockId: string): Promise<NotionBlock[]> {
   const children: NotionBlock[] = [];
   let cursor: string | null = null;
 
@@ -179,14 +179,14 @@ async function findToggleBlockId(
   return null;
 }
 
-async function archiveBlock(token: string, blockId: string): Promise<void> {
+export async function archiveBlock(token: string, blockId: string): Promise<void> {
   await notionRequest<NotionBlock>(token, `/blocks/${blockId}`, {
     method: 'PATCH',
     body: JSON.stringify({ archived: true }),
   });
 }
 
-async function appendChildren(token: string, blockId: string, blocks: NotionBlock[]) {
+export async function appendChildren(token: string, blockId: string, blocks: NotionBlock[]) {
   for (let index = 0; index < blocks.length; index += MAX_APPEND_BLOCKS) {
     const chunk = blocks.slice(index, index + MAX_APPEND_BLOCKS);
     await notionRequest(token, `/blocks/${blockId}/children`, {

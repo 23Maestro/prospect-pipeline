@@ -71,6 +71,21 @@ export function normalizePhoneForMessages(raw?: string | null): string | null {
   return null;
 }
 
+function formatPhoneForMeetingDetails(raw?: string | null): string | null {
+  const trimmed = String(raw || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  const digits = trimmed.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return null;
+}
+
 function splitShortcutContactName(name: string): { firstName: string; lastName: string } | null {
   const parts = name
     .split(/\s+/)
@@ -264,8 +279,16 @@ export function mergeMeetingDetailsTemplate(
   contactSelection: ScoutPrepContactSelection,
 ): string {
   let merged = template;
-  merged = setTemplateValue(merged, 'Main Number', contactSelection.primaryNumber);
-  merged = setTemplateValue(merged, 'Backup Number', contactSelection.backupNumber);
+  merged = setTemplateValue(
+    merged,
+    'Main Number',
+    formatPhoneForMeetingDetails(contactSelection.primaryNumber),
+  );
+  merged = setTemplateValue(
+    merged,
+    'Backup Number',
+    formatPhoneForMeetingDetails(contactSelection.backupNumber),
+  );
   merged = setTemplateValue(merged, 'Spoke To', contactSelection.spokeTo);
   merged = setTemplateValue(merged, 'Other Parent', contactSelection.otherParent);
   return merged;

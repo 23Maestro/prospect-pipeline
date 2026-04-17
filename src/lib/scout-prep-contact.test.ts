@@ -112,8 +112,8 @@ test('mergeMeetingDetailsTemplate: injects contact fields into labeled lines', (
     template,
     selectScoutPrepContactNumbers(buildContext()),
   );
-  assert.match(merged, /Main Number: 651-555-1212/);
-  assert.match(merged, /Backup Number: 651-555-9898/);
+  assert.match(merged, /Main Number: \(651\) 555-1212/);
+  assert.match(merged, /Backup Number: \(651\) 555-9898/);
   assert.match(merged, /Spoke To: Jamie Smith/);
   assert.match(merged, /Other Parent: Chris Smith/);
 });
@@ -132,7 +132,7 @@ test('buildMeetingTemplateDefaults: prefers computed timezone when option exists
 
   const defaults = buildMeetingTemplateDefaults(template, buildContext());
   assert.equal(defaults.selected_recruit_timezone, 'CST');
-  assert.match(defaults.details_template || '', /Main Number: 651-555-1212/);
+  assert.match(defaults.details_template || '', /Main Number: \(651\) 555-1212/);
 });
 
 test('buildMeetingTemplateDefaults: keeps backend timezone when computed option missing', () => {

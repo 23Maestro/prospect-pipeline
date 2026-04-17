@@ -75,6 +75,11 @@ import {
   HEAD_SCOUT_ORDER,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
+import {
+  cacheMeetingSetQueueContext,
+  inferHeadScoutNameFromText,
+  queueConfirmationFollowUp,
+} from './lib/scout-follow-up-queue';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
@@ -766,20 +771,47 @@ function RescheduleConfirmationCallForm({
 
     setIsSaving(true);
     try {
+      const nextTaskTitle =
+        String(values.taskTitle || '').trim() || stripMoveThisTaskPrefix(popupData?.tasktitle);
+      const nextDueDate = values.dueDate ? formatDateForLegacyInput(values.dueDate) : popupData?.duedate;
+      const nextDueTime = String(values.dueTime || '').trim() || popupData?.duetime;
+
       await updateScoutPrepTask({
         taskId: confirmationTask.task_id,
         contactTask,
         athleteMainId,
-        taskTitle:
-          String(values.taskTitle || '').trim() || stripMoveThisTaskPrefix(popupData?.tasktitle),
+        taskTitle: nextTaskTitle,
         description: popupData?.taskdescription || confirmationTask.description || '',
-        dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : popupData?.duedate,
-        dueTime: String(values.dueTime || '').trim() || popupData?.duetime,
+        dueDate: nextDueDate,
+        dueTime: nextDueTime,
       });
 
+      let queueError: string | null = null;
+      try {
+        const liveContext = await loadScoutPrepContext(task);
+        await queueConfirmationFollowUp({
+          athleteId: String(task.contact_id || '').trim(),
+          athleteMainId,
+          athleteName: liveContext.contactInfo.studentAthlete.name || task.athlete_name,
+          parent1Name: liveContext.contactInfo.parent1?.name || null,
+          parent2Name: liveContext.contactInfo.parent2?.name || null,
+          taskId: confirmationTask.task_id,
+          currentTask: nextTaskTitle || 'Confirmation Call',
+          dueDate: nextDueDate,
+          dueTime: nextDueTime,
+          fallbackText:
+            inferHeadScoutNameFromText(popupData?.taskdescription) ||
+            inferHeadScoutNameFromText(confirmationTask.description) ||
+            '',
+        });
+      } catch (error) {
+        queueError = error instanceof Error ? error.message : String(error);
+      }
+
       await showToast({
-        style: Toast.Style.Success,
-        title: 'Confirmation call updated',
+        style: queueError ? Toast.Style.Failure : Toast.Style.Success,
+        title: queueError ? 'Confirmation updated, queue failed' : 'Confirmation call updated + queued',
+        message: queueError || undefined,
       });
     } catch (error) {
       await showToast({
@@ -1169,6 +1201,19 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           task_description: taskDescription,
           start_time: startTime,
           meeting_length: meetingLength,
+        });
+
+        const selectedScout =
+          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === assignedTo) || null;
+        await cacheMeetingSetQueueContext({
+          athleteId,
+          athleteMainId,
+          athleteName: task.athlete_name,
+          headScoutName: selectedOpenMeeting?.assigned_owner || selectedScout?.scout_name || '',
+          meetingTimezone,
+          assignedTo,
+          openEventId,
+          meetingName,
         });
       }
 
