@@ -13,6 +13,16 @@ type TrackerPage = {
   url?: string;
 };
 
+type DatabaseProperty = {
+  id?: string;
+  name?: string;
+  type?: string;
+  select?: { options?: Array<{ name?: string }> };
+  status?: { options?: Array<{ name?: string }> };
+};
+
+type DatabaseSchema = Record<string, DatabaseProperty>;
+
 export type LightweightFollowUpTrackerEntry = {
   athleteId: string;
   athleteMainId: string;
@@ -101,17 +111,90 @@ function buildStage(entry: LightweightFollowUpTrackerEntry): string {
   return stripMoveThisTaskPrefix(entry.stage) || String(entry.stage || '').trim() || 'Pending follow-up';
 }
 
-function buildProperties(entry: LightweightFollowUpTrackerEntry) {
-  return {
-    Name: titleProperty(entry.athleteName),
-    Status: selectProperty('Open'),
-    'Parent 1': richTextProperty(entry.parent1Name),
-    'Parent 2': richTextProperty(entry.parent2Name),
-    Stage: richTextProperty(buildStage(entry)),
-    'Due At': dateProperty(entry.dueDate),
-    'Admin URL': urlProperty(entry.adminUrl),
-    'Raycast Key': richTextProperty(buildRaycastKey(entry)),
-  };
+function getProperty(schema: DatabaseSchema, name: string): DatabaseProperty | null {
+  return schema[name] || null;
+}
+
+function getPropertyOptions(property: DatabaseProperty | null): string[] {
+  if (!property) return [];
+  const raw =
+    property.type === 'status'
+      ? property.status?.options || []
+      : property.type === 'select'
+        ? property.select?.options || []
+        : [];
+  return raw.map((option) => String(option?.name || '').trim()).filter(Boolean);
+}
+
+function assignSelectLikeProperty(
+  properties: Record<string, unknown>,
+  schema: DatabaseSchema,
+  name: string,
+  candidates: Array<string | null | undefined>,
+) {
+  const property = getProperty(schema, name);
+  if (!property?.type) return;
+
+  const normalizedCandidates = candidates.map((value) => String(value || '').trim()).filter(Boolean);
+  if (!normalizedCandidates.length) return;
+
+  if (property.type === 'select' || property.type === 'status') {
+    const options = getPropertyOptions(property);
+    const match = normalizedCandidates.find((candidate) => options.includes(candidate));
+    if (!match) return;
+    properties[name] = property.type === 'status' ? { status: { name: match } } : selectProperty(match);
+    return;
+  }
+
+  if (property.type === 'text' || property.type === 'rich_text') {
+    properties[name] = richTextProperty(normalizedCandidates[0]);
+  }
+}
+
+async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
+  const payload = await notionRequest<{ properties?: DatabaseSchema }>(
+    token,
+    `/databases/${normalizeNotionId(NOTION_FOLLOW_UP_DATABASE_ID)}`,
+  );
+  return payload.properties || {};
+}
+
+function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: DatabaseSchema) {
+  const properties: Record<string, unknown> = {};
+  const stage = buildStage(entry);
+
+  if (getProperty(schema, 'Name')) {
+    properties.Name = titleProperty(entry.athleteName);
+  }
+  if (getProperty(schema, 'Parent 1')) {
+    properties['Parent 1'] = richTextProperty(entry.parent1Name);
+  }
+  if (getProperty(schema, 'Parent 2')) {
+    properties['Parent 2'] = richTextProperty(entry.parent2Name);
+  }
+  if (getProperty(schema, 'Due At')) {
+    properties['Due At'] = dateProperty(entry.dueDate);
+  }
+  if (getProperty(schema, 'Admin URL')) {
+    properties['Admin URL'] = urlProperty(entry.adminUrl);
+  }
+  if (getProperty(schema, 'Raycast Key')) {
+    properties['Raycast Key'] = richTextProperty(buildRaycastKey(entry));
+  }
+
+  assignSelectLikeProperty(properties, schema, 'Stage', [
+    stage,
+    /confirmation/i.test(stage) ? 'Confirmation Call' : null,
+  ]);
+
+  assignSelectLikeProperty(properties, schema, 'Status', [
+    'Open',
+    /call attempt 2/i.test(stage) ? 'Call Attempt 2' : null,
+    /call attempt 1/i.test(stage) ? 'Call Attempt 1' : null,
+    /confirmation/i.test(stage) ? 'Meeting Set' : null,
+  ]);
+
+  return properties;
 }
 
 async function findExistingPage(token: string, raycastKey: string): Promise<TrackerPage | null> {
@@ -138,9 +221,10 @@ export async function upsertScoutFollowUpTrackerEntry(
   entry: LightweightFollowUpTrackerEntry,
 ): Promise<{ pageId: string; pageUrl: string }> {
   const token = getNotionToken();
+  const schema = await fetchDatabaseSchema(token);
   const raycastKey = buildRaycastKey(entry);
   const existing = await findExistingPage(token, raycastKey);
-  const properties = buildProperties(entry);
+  const properties = buildProperties(entry, schema);
 
   if (existing?.id) {
     const updated = await notionRequest<TrackerPage>(token, `/pages/${existing.id}`, {

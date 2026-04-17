@@ -367,6 +367,29 @@ function ScoutPrepContactDetail({
     }
   }, [task.contact_id]);
 
+  async function handleCreateProspectContact() {
+    const activeContext = context;
+    if (!activeContext) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Contact info still loading',
+      });
+      return;
+    }
+
+    const candidates = getProspectContactShortcutCandidates(activeContext);
+    if (candidates.length === 0) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No eligible contact found',
+        message: 'A first name, last name, and phone number are required.',
+      });
+      return;
+    }
+
+    push(<CreateProspectContactForm task={task} candidates={candidates} />);
+  }
+
   const contactInfo = context?.contactInfo;
 
   return (
@@ -408,6 +431,12 @@ function ScoutPrepContactDetail({
             </ActionPanel.Section>
           ) : null}
           <ActionPanel.Section>
+            <Action
+              title="Create Prospect Contact"
+              icon={Icon.Person}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
+              onAction={() => void handleCreateProspectContact()}
+            />
             <Action
               title="Refresh Contact Info"
               icon={Icon.ArrowClockwise}
@@ -694,7 +723,7 @@ type TrackedFollowUpItem = {
   createdTask: ScoutAthleteTask;
 };
 
-type SearchWorkspaceMode = 'prospect' | 'recent';
+type ViewMode = 'tasks' | 'recent' | 'prospect';
 
 type RecentProfileRow = {
   profile: ScoutRecentProfile;
@@ -900,11 +929,10 @@ function CreateProspectContactForm({
   task: ScoutPortalTask;
   candidates: ProspectContactShortcutCandidate[];
 }) {
-  async function handleSubmit(values: { contactId?: string }) {
-    const selectedId = String(values.contactId || '');
-    const candidate = candidates.find((item) => item.id === selectedId) || candidates[0];
+  async function launchCandidate(candidate?: ProspectContactShortcutCandidate | null) {
+    const activeCandidate = candidate || candidates[0];
 
-    if (!candidate) {
+    if (!activeCandidate) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'No eligible contact selected',
@@ -914,15 +942,15 @@ function CreateProspectContactForm({
 
     try {
       const payload = buildProspectContactShortcutPayloadFromName({
-        fullName: candidate.name,
-        phone: candidate.phone,
+        fullName: activeCandidate.name,
+        phone: activeCandidate.phone,
       });
       const shortcutUrl = buildProspectContactShortcutUrl(payload);
       await open(shortcutUrl);
       await showToast({
         style: Toast.Style.Success,
         title: 'Shortcut launched',
-        message: `${candidate.label}: ${candidate.name}`,
+        message: `${activeCandidate.label}: ${activeCandidate.name}`,
       });
     } catch (error) {
       await showToast({
@@ -933,15 +961,36 @@ function CreateProspectContactForm({
     }
   }
 
+  async function handleSubmit(values: { contactId?: string }) {
+    const selectedId = String(values.contactId || '');
+    const candidate = candidates.find((item) => item.id === selectedId) || candidates[0];
+    await launchCandidate(candidate);
+  }
+
   return (
     <Form
       navigationTitle={`Create Prospect Contact • ${task.athlete_name}`}
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Run Create Prospect Contact"
+            title={candidates[0] ? `Create ${candidates[0].label}` : 'Run Create Prospect Contact'}
             onSubmit={(values) => void handleSubmit(values as { contactId?: string })}
+            shortcut={{ modifiers: [], key: 'return' }}
           />
+          {candidates[1] ? (
+            <Action
+              title={`Create ${candidates[1].label}`}
+              onAction={() => void launchCandidate(candidates[1])}
+              shortcut={{ modifiers: ['cmd'], key: 'return' }}
+            />
+          ) : null}
+          {candidates[2] ? (
+            <Action
+              title={`Create ${candidates[2].label}`}
+              onAction={() => void launchCandidate(candidates[2])}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+            />
+          ) : null}
         </ActionPanel>
       }
     >
@@ -1150,30 +1199,6 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     };
   }, [selectedMeetingFor, selectedStageLabel]);
 
-  async function handleCreateProspectContact() {
-    try {
-      const context = await loadScoutPrepContext(task);
-      const candidates = getProspectContactShortcutCandidates(context);
-
-      if (candidates.length === 0) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'No eligible contact found',
-          message: 'A first name, last name, and phone number are required.',
-        });
-        return;
-      }
-
-      push(<CreateProspectContactForm task={task} candidates={candidates} />);
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to load contact data',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
   async function handleSubmit(values: Record<string, string | undefined>) {
     if (isSaving) {
       return;
@@ -1332,12 +1357,6 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           <Action.SubmitForm
             title={isSaving ? 'Saving Sales Stage…' : 'Save Sales Stage'}
             onSubmit={(values) => void handleSubmit(values as Record<string, string | undefined>)}
-          />
-          <Action
-            title="Create Prospect Contact"
-            icon={Icon.Person}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
-            onAction={() => void handleCreateProspectContact()}
           />
         </ActionPanel>
       }
@@ -1892,10 +1911,12 @@ function ScoutPrepTaskItem({
   task,
   onToggleProspectSearchMode,
   isProspectSearchMode,
+  onToggleRecentMode,
 }: {
   task: ScoutPortalTask;
   onToggleProspectSearchMode: () => void;
   isProspectSearchMode: boolean;
+  onToggleRecentMode: () => void;
 }) {
   const { push, pop } = useNavigation();
 
@@ -2099,13 +2120,6 @@ function ScoutPrepTaskItem({
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             url={buildScoutPrepPlayerIdUrl(task)}
           />
-          <BackSyncFollowUpsAction />
-          <Action
-            title={isProspectSearchMode ? 'Exit Prospect Search' : 'Prospect Search Mode'}
-            icon={Icon.MagnifyingGlass}
-            shortcut={{ modifiers: ['cmd'], key: 'f' }}
-            onAction={onToggleProspectSearchMode}
-          />
           <Action
             title="Reschedule Confirmation Call"
             icon={Icon.Calendar}
@@ -2132,6 +2146,21 @@ function ScoutPrepTaskItem({
               onAction={() => void handleAddNote()}
             />
           </ActionPanel.Section>
+          <ActionPanel.Section title="Navigation">
+            <Action
+              title="Show Recent Items"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ['cmd'], key: 'f' }}
+              onAction={onToggleRecentMode}
+            />
+            <Action
+              title="Prospect Search"
+              icon={Icon.MagnifyingGlass}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+              onAction={onToggleProspectSearchMode}
+            />
+            <BackSyncFollowUpsAction />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
@@ -2143,11 +2172,13 @@ function TrackedFollowUpListItem({
   onRemove,
   onToggleProspectSearchMode,
   isProspectSearchMode,
+  onToggleRecentMode,
 }: {
   item: TrackedFollowUpItem;
   onRemove: (item: TrackedFollowUpItem) => Promise<void>;
   onToggleProspectSearchMode: () => void;
   isProspectSearchMode: boolean;
+  onToggleRecentMode: () => void;
 }) {
   const { task, createdTask } = item;
 
@@ -2194,7 +2225,6 @@ function TrackedFollowUpListItem({
       }
       actions={
         <ActionPanel>
-          <BackSyncFollowUpsAction />
           <Action.Push
             title="Build Scout Prep"
             icon={Icon.Wand}
@@ -2211,12 +2241,21 @@ function TrackedFollowUpListItem({
             shortcut={{ modifiers: ['cmd'], key: 'backspace' }}
             onAction={() => void onRemove(item)}
           />
-          <Action
-            title={isProspectSearchMode ? 'Exit Prospect Search' : 'Prospect Search Mode'}
-            icon={Icon.MagnifyingGlass}
-            shortcut={{ modifiers: ['cmd'], key: 'f' }}
-            onAction={onToggleProspectSearchMode}
-          />
+          <ActionPanel.Section title="Navigation">
+            <Action
+              title="Show Recent Items"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ['cmd'], key: 'f' }}
+              onAction={onToggleRecentMode}
+            />
+            <Action
+              title="Prospect Search"
+              icon={Icon.MagnifyingGlass}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+              onAction={onToggleProspectSearchMode}
+            />
+            <BackSyncFollowUpsAction />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
@@ -2226,8 +2265,6 @@ function TrackedFollowUpListItem({
 function ProspectSearchListItem({
   result,
   onToggleProspectSearchMode,
-  isProspectSearchMode,
-  onShowRecentProfiles,
 }: {
   result: ProspectResult;
   onToggleProspectSearchMode: () => void;
@@ -2261,7 +2298,6 @@ function ProspectSearchListItem({
       detail={<List.Item.Detail markdown={markdown} />}
       actions={
         <ActionPanel>
-          <BackSyncFollowUpsAction />
           {scoutPrepTask ? (
             <Action.Push
               title="Build Scout Prep"
@@ -2274,13 +2310,15 @@ function ProspectSearchListItem({
             icon={Icon.Globe}
             url={`https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`}
           />
-          <Action
-            title={isProspectSearchMode ? 'Exit Prospect Search' : 'Prospect Search Mode'}
-            icon={Icon.MagnifyingGlass}
-            shortcut={{ modifiers: ['cmd'], key: 'f' }}
-            onAction={onToggleProspectSearchMode}
-          />
-          <Action title="Show Recent Profiles" icon={Icon.Clock} onAction={onShowRecentProfiles} />
+          <ActionPanel.Section title="Navigation">
+            <Action
+              title="Exit Prospect Search"
+              icon={Icon.MagnifyingGlass}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+              onAction={onToggleProspectSearchMode}
+            />
+            <BackSyncFollowUpsAction />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
@@ -2289,12 +2327,12 @@ function ProspectSearchListItem({
 
 function RecentProfileListItem({
   item,
-  onShowProspectSearch,
-  onToggleProspectSearchMode,
+  onToggleRecentMode,
 }: {
   item: RecentProfileRow;
   onShowProspectSearch: () => void;
   onToggleProspectSearchMode: () => void;
+  onToggleRecentMode: () => void;
 }) {
   const { task, followUpTask, profile, status, error } = item;
   const statusLabel =
@@ -2328,7 +2366,6 @@ function RecentProfileListItem({
       detail={<List.Item.Detail markdown={markdown} />}
       actions={
         <ActionPanel>
-          <BackSyncFollowUpsAction />
           <Action.Push
             title="Build Scout Prep"
             icon={Icon.Wand}
@@ -2341,13 +2378,15 @@ function RecentProfileListItem({
               url={buildScoutPrepTaskUrl(task)}
             />
           ) : null}
-          <Action
-            title="Exit Prospect Search"
-            icon={Icon.MagnifyingGlass}
-            shortcut={{ modifiers: ['cmd'], key: 'f' }}
-            onAction={onToggleProspectSearchMode}
-          />
-          <Action title="Show Prospect Search" icon={Icon.List} onAction={onShowProspectSearch} />
+          <ActionPanel.Section title="Navigation">
+            <Action
+              title="Exit Recent Items"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ['cmd'], key: 'f' }}
+              onAction={onToggleRecentMode}
+            />
+            <BackSyncFollowUpsAction />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
@@ -2358,8 +2397,7 @@ export default function ScoutPrepCommand() {
   const [tasks, setTasks] = useState<ScoutPortalTask[]>([]);
   const [trackedFollowUps, setTrackedFollowUps] = useState<TrackedFollowUpItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isProspectSearchMode, setIsProspectSearchMode] = useState(false);
-  const [searchWorkspaceMode, setSearchWorkspaceMode] = useState<SearchWorkspaceMode>('prospect');
+  const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskSearchText, setTaskSearchText] = useState('');
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
@@ -2370,9 +2408,10 @@ export default function ScoutPrepCommand() {
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
 
+  const isProspectSearchMode = viewMode === 'prospect';
+  const isRecentViewMode = viewMode === 'recent';
+  const isSearchModeActive = viewMode === 'prospect' || viewMode === 'recent';
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
-  const isSearchModeActive = isProspectSearchMode;
-  const isRecentViewMode = isSearchModeActive && searchWorkspaceMode === 'recent';
 
   const loadTasks = async (options?: { forceRefreshFollowUps?: boolean }) => {
     if (loadTasksPromiseRef.current) {
@@ -2497,7 +2536,7 @@ export default function ScoutPrepCommand() {
   }, []);
 
   useEffect(() => {
-    if (!isProspectSearchMode) {
+    if (viewMode !== 'prospect') {
       setProspectResults([]);
       setIsProspectSearching(false);
       return;
@@ -2545,10 +2584,10 @@ export default function ScoutPrepCommand() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [isProspectSearchMode, prospectSearchText]);
+  }, [viewMode, prospectSearchText]);
 
   useEffect(() => {
-    if (!isProspectSearchMode || searchWorkspaceMode !== 'recent') {
+    if (viewMode !== 'recent') {
       return;
     }
 
@@ -2665,7 +2704,7 @@ export default function ScoutPrepCommand() {
     return () => {
       active = false;
     };
-  }, [isProspectSearchMode, searchWorkspaceMode]);
+  }, [viewMode]);
 
   async function handleRemoveTrackedFollowUp(item: TrackedFollowUpItem) {
     await removeScoutPrepFollowUpPointer(item.pointer.athleteId, item.pointer.athleteMainId);
@@ -2685,58 +2724,77 @@ export default function ScoutPrepCommand() {
     });
   }
 
+  function toggleRecentMode() {
+    setViewMode((current) => {
+      if (current === 'recent') {
+        // Exit recent → back to tasks
+        setRecentProfiles([]);
+        setIsRecentFollowUpsLoading(false);
+        return 'tasks';
+      }
+      // Enter recent from anywhere
+      setTaskSearchText('');
+      setProspectSearchText('');
+      setProspectResults([]);
+      setIsProspectSearching(false);
+      return 'recent';
+    });
+  }
+
   function toggleProspectSearchMode() {
-    setIsProspectSearchMode((current) => {
-      const next = !current;
-      if (next) {
-        setTaskSearchText('');
-        setSearchWorkspaceMode('prospect');
-      } else {
+    setViewMode((current) => {
+      if (current === 'prospect') {
+        // Exit prospect → back to tasks
         setProspectSearchText('');
         setProspectResults([]);
         setIsProspectSearching(false);
-        setRecentProfiles([]);
-        setIsRecentFollowUpsLoading(false);
+        return 'tasks';
       }
-      return next;
+      // Enter prospect from anywhere
+      setTaskSearchText('');
+      setRecentProfiles([]);
+      setIsRecentFollowUpsLoading(false);
+      return 'prospect';
     });
   }
 
   return (
     <List
       isLoading={isLoading || isProspectSearching || isRecentFollowUpsLoading}
-      isShowingDetail={!isSearchModeActive}
-      navigationTitle={isSearchModeActive ? 'Scout Prep Search' : 'Scout Prep'}
-      filtering={isSearchModeActive ? false : true}
+      isShowingDetail={viewMode === 'tasks'}
+      navigationTitle={
+        viewMode === 'recent'
+          ? 'Scout Prep — Recent Items'
+          : viewMode === 'prospect'
+            ? 'Scout Prep Search'
+            : 'Scout Prep'
+      }
+      filtering={viewMode === 'tasks'}
       throttle
       searchBarPlaceholder={
-        isSearchModeActive
-          ? isRecentViewMode
-            ? 'Recent Profiles'
-            : 'Prospect Search'
-          : 'Search Task List'
+        viewMode === 'recent'
+          ? 'Recent Profiles'
+          : viewMode === 'prospect'
+            ? 'Prospect Search — Enter athlete name or email'
+            : 'Search Task List'
       }
       searchText={
-        isSearchModeActive ? (isRecentViewMode ? '' : prospectSearchText) : taskSearchText
+        viewMode === 'recent' ? '' : viewMode === 'prospect' ? prospectSearchText : taskSearchText
       }
       onSearchTextChange={
-        isSearchModeActive
-          ? isRecentViewMode
-            ? () => {}
-            : setProspectSearchText
-          : setTaskSearchText
+        viewMode === 'recent' ? () => {} : viewMode === 'prospect' ? setProspectSearchText : setTaskSearchText
       }
     >
-      {isSearchModeActive ? (
-        isRecentViewMode ? (
+      {viewMode === 'recent' ? (
           <List.Section title="Recent Profiles" subtitle={String(recentProfiles.length)}>
             {recentProfiles.length > 0 ? (
               recentProfiles.map((item) => (
                 <RecentProfileListItem
                   key={`recent:${item.profile.athlete_id}:${item.profile.athlete_main_id}`}
                   item={item}
-                  onShowProspectSearch={() => setSearchWorkspaceMode('prospect')}
+                  onShowProspectSearch={toggleProspectSearchMode}
                   onToggleProspectSearchMode={toggleProspectSearchMode}
+                  onToggleRecentMode={toggleRecentMode}
                 />
               ))
             ) : (
@@ -2750,24 +2808,19 @@ export default function ScoutPrepCommand() {
                 }
                 actions={
                   <ActionPanel>
-                    <BackSyncFollowUpsAction />
                     <Action
-                      title="Exit Prospect Search"
-                      icon={Icon.MagnifyingGlass}
+                      title="Exit Recent Items"
+                      icon={Icon.Clock}
                       shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                      onAction={toggleProspectSearchMode}
+                      onAction={toggleRecentMode}
                     />
-                    <Action
-                      title="Show Prospect Search"
-                      icon={Icon.List}
-                      onAction={() => setSearchWorkspaceMode('prospect')}
-                    />
+                    <BackSyncFollowUpsAction />
                   </ActionPanel>
                 }
               />
             )}
           </List.Section>
-        ) : (
+        ) : viewMode === 'prospect' ? (
           <List.Section title={`Prospect Search`} subtitle={String(prospectResults.length)}>
             {prospectResults.length > 0 ? (
               prospectResults.map((result) => (
@@ -2775,8 +2828,8 @@ export default function ScoutPrepCommand() {
                   key={`search:${result.athlete_id}:${result.athlete_main_id || result.name || 'result'}`}
                   result={result}
                   onToggleProspectSearchMode={toggleProspectSearchMode}
-                  isProspectSearchMode={isSearchModeActive}
-                  onShowRecentProfiles={() => setSearchWorkspaceMode('recent')}
+                  isProspectSearchMode={isProspectSearchMode}
+                  onShowRecentProfiles={toggleRecentMode}
                 />
               ))
             ) : (
@@ -2798,24 +2851,19 @@ export default function ScoutPrepCommand() {
                 }
                 actions={
                   <ActionPanel>
-                    <BackSyncFollowUpsAction />
                     <Action
-                      title={isSearchModeActive ? 'Exit Prospect Search' : 'Prospect Search Mode'}
+                      title="Exit Prospect Search"
                       icon={Icon.MagnifyingGlass}
-                      shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                      shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                       onAction={toggleProspectSearchMode}
                     />
-                    <Action
-                      title="Show Recent Profiles"
-                      icon={Icon.Clock}
-                      onAction={() => setSearchWorkspaceMode('recent')}
-                    />
+                    <BackSyncFollowUpsAction />
                   </ActionPanel>
                 }
               />
             )}
           </List.Section>
-        )
+        
       ) : trackedFollowUps.length > 0 ? (
         <List.Section title="Follow-Up List" subtitle={String(trackedFollowUps.length)}>
           {trackedFollowUps.map((item) => (
@@ -2825,6 +2873,7 @@ export default function ScoutPrepCommand() {
               onRemove={handleRemoveTrackedFollowUp}
               onToggleProspectSearchMode={toggleProspectSearchMode}
               isProspectSearchMode={isSearchModeActive}
+              onToggleRecentMode={toggleRecentMode}
             />
           ))}
         </List.Section>
@@ -2834,18 +2883,26 @@ export default function ScoutPrepCommand() {
           description="The landing-page task list is empty."
           actions={
             <ActionPanel>
-              <BackSyncFollowUpsAction />
-              <Action
-                title={isSearchModeActive ? 'Exit Prospect Search' : 'Prospect Search Mode'}
-                icon={Icon.MagnifyingGlass}
-                shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                onAction={toggleProspectSearchMode}
-              />
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
               <Action
                 title="Refresh Follow-Up List"
                 onAction={() => void loadTasks({ forceRefreshFollowUps: true })}
               />
+              <ActionPanel.Section title="Navigation">
+                <Action
+                  title="Show Recent Items"
+                  icon={Icon.Clock}
+                  shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                  onAction={toggleRecentMode}
+                />
+                <Action
+                  title="Prospect Search"
+                  icon={Icon.MagnifyingGlass}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                  onAction={toggleProspectSearchMode}
+                />
+                <BackSyncFollowUpsAction />
+              </ActionPanel.Section>
             </ActionPanel>
           }
         />
@@ -2857,6 +2914,7 @@ export default function ScoutPrepCommand() {
               task={task}
               onToggleProspectSearchMode={toggleProspectSearchMode}
               isProspectSearchMode={isSearchModeActive}
+              onToggleRecentMode={toggleRecentMode}
             />
           ))}
         </List.Section>

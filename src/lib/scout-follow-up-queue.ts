@@ -54,6 +54,16 @@ type FollowUpNotionPage = {
   properties?: Record<string, unknown>;
 };
 
+type DatabaseProperty = {
+  id?: string;
+  name?: string;
+  type?: string;
+  select?: { options?: Array<{ name?: string }> };
+  status?: { options?: Array<{ name?: string }> };
+};
+
+type DatabaseSchema = Record<string, DatabaseProperty>;
+
 type CraftMcpUpsertResponse = {
   success?: boolean;
   operation?: 'create' | 'update';
@@ -119,10 +129,6 @@ function titleProperty(value: string) {
   };
 }
 
-function statusProperty(value: 'Open' | 'Sent' | 'Canceled') {
-  return { select: { name: value } };
-}
-
 function selectProperty(value: string) {
   return { select: { name: value } };
 }
@@ -131,18 +137,91 @@ function dateProperty(value: string) {
   return { date: { start: value } };
 }
 
-function buildQueueProperties(record: MinimalFollowUpQueueRecord) {
-  return {
-    Name: titleProperty(record.title),
-    Status: statusProperty(record.status),
-    'Message Type': selectProperty(record.messageType),
-    'Due At': dateProperty(record.dueAt),
-    Athlete: richTextProperty(record.athlete),
-    'Parent 1': richTextProperty(record.parent1),
-    'Parent 2': richTextProperty(record.parent2),
-    'Current Task': richTextProperty(record.currentTask),
-    'Raycast Key': richTextProperty(record.raycastKey),
-  };
+function getProperty(schema: DatabaseSchema, name: string): DatabaseProperty | null {
+  return schema[name] || null;
+}
+
+function getPropertyOptions(property: DatabaseProperty | null): string[] {
+  if (!property) return [];
+  const raw =
+    property.type === 'status'
+      ? property.status?.options || []
+      : property.type === 'select'
+        ? property.select?.options || []
+        : [];
+  return raw.map((option) => String(option?.name || '').trim()).filter(Boolean);
+}
+
+function assignSelectLikeProperty(
+  properties: Record<string, unknown>,
+  schema: DatabaseSchema,
+  name: string,
+  candidates: Array<string | null | undefined>,
+) {
+  const property = getProperty(schema, name);
+  if (!property?.type) return;
+
+  const normalizedCandidates = candidates.map((value) => String(value || '').trim()).filter(Boolean);
+  if (!normalizedCandidates.length) return;
+
+  if (property.type === 'select' || property.type === 'status') {
+    const options = getPropertyOptions(property);
+    const match = normalizedCandidates.find((candidate) => options.includes(candidate));
+    if (!match) return;
+    properties[name] = property.type === 'status' ? { status: { name: match } } : selectProperty(match);
+    return;
+  }
+
+  if (property.type === 'text' || property.type === 'rich_text') {
+    properties[name] = richTextProperty(normalizedCandidates[0]);
+  }
+}
+
+async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
+  const payload = await notionRequest<{ properties?: DatabaseSchema }>(
+    token,
+    `/databases/${normalizeNotionId(NOTION_FOLLOW_UP_DATABASE_ID)}`,
+  );
+  return payload.properties || {};
+}
+
+function buildQueueProperties(record: MinimalFollowUpQueueRecord, schema: DatabaseSchema) {
+  const properties: Record<string, unknown> = {};
+  const stageLabel = record.messageType === 'confirmation' ? 'Confirmation Call' : 'Call Attempt 2';
+
+  if (getProperty(schema, 'Name')) {
+    properties.Name = titleProperty(record.title);
+  }
+  if (getProperty(schema, 'Due At')) {
+    properties['Due At'] = dateProperty(record.dueAt);
+  }
+  if (getProperty(schema, 'Athlete')) {
+    properties.Athlete = richTextProperty(record.athlete);
+  }
+  if (getProperty(schema, 'Parent 1')) {
+    properties['Parent 1'] = richTextProperty(record.parent1);
+  }
+  if (getProperty(schema, 'Parent 2')) {
+    properties['Parent 2'] = richTextProperty(record.parent2);
+  }
+  if (getProperty(schema, 'Current Task')) {
+    properties['Current Task'] = richTextProperty(record.currentTask);
+  }
+  if (getProperty(schema, 'Raycast Key')) {
+    properties['Raycast Key'] = richTextProperty(record.raycastKey);
+  }
+
+  assignSelectLikeProperty(properties, schema, 'Message Type', [
+    record.messageType === 'confirmation' ? 'Confirmation' : 'Call Attempt 2',
+  ]);
+  assignSelectLikeProperty(properties, schema, 'Stage', [stageLabel, record.currentTask]);
+  assignSelectLikeProperty(properties, schema, 'Status', [
+    record.status,
+    record.messageType === 'call_attempt_2' ? 'Call Attempt 2' : null,
+    record.messageType === 'confirmation' ? 'Meeting Set' : null,
+  ]);
+
+  return properties;
 }
 
 function normalizeCraftBaseUrl(rawBaseUrl: string): string {
@@ -319,8 +398,9 @@ export async function upsertFollowUpQueuePage(args: {
   filledMessage: string;
 }): Promise<{ pageId: string; pageUrl: string }> {
   const token = getNotionToken();
+  const schema = await fetchDatabaseSchema(token);
   const blocks = buildFollowUpQueueContent(args.record, args.filledMessage);
-  const properties = buildQueueProperties(args.record);
+  const properties = buildQueueProperties(args.record, schema);
   const existingPage = await findQueuePageByRaycastKey(token, args.record.raycastKey);
 
   logInfo('SCOUT_FOLLOW_UP_NOTION_UPSERT', 'request', 'start', {
