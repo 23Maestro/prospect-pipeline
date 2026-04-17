@@ -342,6 +342,7 @@ function ScoutPrepContactDetail({
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
 }) {
+  const { push } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext || null);
   const [isLoading, setIsLoading] = useState(!initialContext);
 
