@@ -12,6 +12,7 @@ import {
   showToast,
   useNavigation,
 } from '@raycast/api';
+import { spawn } from 'child_process';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import BackSyncScoutFollowUpsCommand from './back-sync-scout-follow-ups';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
@@ -37,6 +38,7 @@ import {
   buildVoicemailFollowUpBody,
   getVoicemailFollowUpRecipients,
   getProspectContactShortcutCandidates,
+  normalizePhoneForMessages,
   type ProspectContactShortcutCandidate,
   selectScoutPrepContactNumbers,
 } from './lib/scout-prep-contact';
@@ -335,6 +337,110 @@ function buildScoutPrepContactMarkdown(context: ScoutPrepContext | null): string
   return lines.join('\n');
 }
 
+async function launchProspectContactShortcut(candidate?: ProspectContactShortcutCandidate | null) {
+  const activeCandidate = candidate || null;
+  if (!activeCandidate) {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: 'No eligible contact found',
+    });
+    return;
+  }
+
+  try {
+    const payload = buildProspectContactShortcutPayloadFromName({
+      fullName: activeCandidate.name,
+      phone: activeCandidate.phone,
+    });
+    const shortcutUrl = buildProspectContactShortcutUrl(payload);
+    await open(shortcutUrl);
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Shortcut launched',
+      message: `${activeCandidate.label}: ${activeCandidate.name}`,
+    });
+  } catch (error) {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: 'Failed to create prospect contact',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function runOsaScript(lines: string[], args: string[] = []) {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('osascript', [...lines.flatMap((line) => ['-e', line]), ...args], {
+      shell: false,
+    });
+
+    let stderr = '';
+    child.stderr.on('data', (data) => {
+      stderr += data.toString();
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || `osascript exited with code ${code}`));
+    });
+
+    child.on('error', (error) => {
+      reject(error);
+    });
+  });
+}
+
+async function openMessagesDraftForRecipients(phones: string[], body: string): Promise<'url' | 'applescript'> {
+  const uniquePhones = Array.from(
+    new Set(
+      phones
+        .map((phone) => normalizePhoneForMessages(phone))
+        .filter((phone): phone is string => Boolean(phone)),
+    ),
+  );
+
+  if (!uniquePhones.length) {
+    throw new Error('At least one valid phone number is required');
+  }
+
+  if (uniquePhones.length === 1) {
+    await open(buildMessagesComposeUrlForRecipients(uniquePhones, body));
+    return 'url';
+  }
+
+  await Clipboard.copy(body);
+  await runOsaScript(
+    [
+      'on run argv',
+      'set recipientList to items 1 thru -2 of argv',
+      'set bodyText to item -1 of argv',
+      'tell application "Messages" to activate',
+      'delay 0.4',
+      'tell application "System Events"',
+      'tell process "Messages"',
+      'keystroke "n" using command down',
+      'delay 0.6',
+      'repeat with recipientValue in recipientList',
+      'keystroke contents of recipientValue',
+      'delay 0.2',
+      'key code 36',
+      'delay 0.2',
+      'end repeat',
+      'key code 48',
+      'delay 0.2',
+      'keystroke "v" using command down',
+      'end tell',
+      'end tell',
+      'end run',
+    ],
+    [...uniquePhones, body],
+  );
+  return 'applescript';
+}
+
 function ScoutPrepContactDetail({
   task,
   initialContext,
@@ -342,7 +448,6 @@ function ScoutPrepContactDetail({
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
 }) {
-  const { push } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext || null);
   const [isLoading, setIsLoading] = useState(!initialContext);
 
@@ -368,7 +473,7 @@ function ScoutPrepContactDetail({
     }
   }, [task.contact_id]);
 
-  async function handleCreateProspectContact() {
+  async function handleCreateProspectContact(candidate?: ProspectContactShortcutCandidate | null) {
     const activeContext = context;
     if (!activeContext) {
       await showToast({
@@ -379,7 +484,8 @@ function ScoutPrepContactDetail({
     }
 
     const candidates = getProspectContactShortcutCandidates(activeContext);
-    if (candidates.length === 0) {
+    const activeCandidate = candidate || candidates[0] || null;
+    if (!activeCandidate) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'No eligible contact found',
@@ -388,10 +494,11 @@ function ScoutPrepContactDetail({
       return;
     }
 
-    push(<CreateProspectContactForm task={task} candidates={candidates} />);
+    await launchProspectContactShortcut(activeCandidate);
   }
 
   const contactInfo = context?.contactInfo;
+  const contactCandidates = context ? getProspectContactShortcutCandidates(context) : [];
 
   return (
     <Detail
@@ -432,12 +539,30 @@ function ScoutPrepContactDetail({
             </ActionPanel.Section>
           ) : null}
           <ActionPanel.Section>
-            <Action
-              title="Create Prospect Contact"
-              icon={Icon.Person}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
-              onAction={() => void handleCreateProspectContact()}
-            />
+            {contactCandidates[0] ? (
+              <Action
+                title={`Create ${contactCandidates[0].label} Contact`}
+                icon={Icon.Person}
+                shortcut={{ modifiers: [], key: 'return' }}
+                onAction={() => void handleCreateProspectContact(contactCandidates[0])}
+              />
+            ) : null}
+            {contactCandidates[1] ? (
+              <Action
+                title={`Create ${contactCandidates[1].label} Contact`}
+                icon={Icon.Person}
+                shortcut={{ modifiers: ['cmd'], key: 'return' }}
+                onAction={() => void handleCreateProspectContact(contactCandidates[1])}
+              />
+            ) : null}
+            {contactCandidates[2] ? (
+              <Action
+                title={`Create ${contactCandidates[2].label} Contact`}
+                icon={Icon.Person}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                onAction={() => void handleCreateProspectContact(contactCandidates[2])}
+              />
+            ) : null}
             <Action
               title="Refresh Contact Info"
               icon={Icon.ArrowClockwise}
@@ -544,7 +669,6 @@ function VoicemailFollowUpRecipientForm({
     }
 
     const body = buildVoicemailFollowUpBody(context, recipient.id);
-    const url = buildMessagesComposeUrlForRecipients(recipient.phones, body);
 
     logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
       contactId: context.task.contact_id,
@@ -554,13 +678,13 @@ function VoicemailFollowUpRecipientForm({
     });
 
     try {
-      await open(url);
+      const mode = await openMessagesDraftForRecipients(recipient.phones, body);
       logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
         contactId: context.task.contact_id,
         recipientId: recipient.id,
         recipientName: recipient.name,
         recipientCount: recipient.phones.length,
-        mode: 'prefilled',
+        mode,
       });
       pop();
     } catch (error) {
@@ -919,92 +1043,6 @@ function RescheduleConfirmationCallForm({
         title="Task Due Date"
         defaultValue={buildDefaultConfirmationDate(popupData?.duedate, popupData?.duetime)}
       />
-    </Form>
-  );
-}
-
-function CreateProspectContactForm({
-  task,
-  candidates,
-}: {
-  task: ScoutPortalTask;
-  candidates: ProspectContactShortcutCandidate[];
-}) {
-  async function launchCandidate(candidate?: ProspectContactShortcutCandidate | null) {
-    const activeCandidate = candidate || candidates[0];
-
-    if (!activeCandidate) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'No eligible contact selected',
-      });
-      return;
-    }
-
-    try {
-      const payload = buildProspectContactShortcutPayloadFromName({
-        fullName: activeCandidate.name,
-        phone: activeCandidate.phone,
-      });
-      const shortcutUrl = buildProspectContactShortcutUrl(payload);
-      await open(shortcutUrl);
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Shortcut launched',
-        message: `${activeCandidate.label}: ${activeCandidate.name}`,
-      });
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to create prospect contact',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  async function handleSubmit(values: { contactId?: string }) {
-    const selectedId = String(values.contactId || '');
-    const candidate = candidates.find((item) => item.id === selectedId) || candidates[0];
-    await launchCandidate(candidate);
-  }
-
-  return (
-    <Form
-      navigationTitle={`Create Prospect Contact • ${task.athlete_name}`}
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm
-            title={candidates[0] ? `Create ${candidates[0].label}` : 'Run Create Prospect Contact'}
-            onSubmit={(values) => void handleSubmit(values as { contactId?: string })}
-            shortcut={{ modifiers: [], key: 'return' }}
-          />
-          {candidates[1] ? (
-            <Action
-              title={`Create ${candidates[1].label}`}
-              onAction={() => void launchCandidate(candidates[1])}
-              shortcut={{ modifiers: ['cmd'], key: 'return' }}
-            />
-          ) : null}
-          {candidates[2] ? (
-            <Action
-              title={`Create ${candidates[2].label}`}
-              onAction={() => void launchCandidate(candidates[2])}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-            />
-          ) : null}
-        </ActionPanel>
-      }
-    >
-      <Form.Description text="Select the contact to send into the existing macOS Shortcut." />
-      <Form.Dropdown id="contactId" title="Contact" defaultValue={candidates[0]?.id}>
-        {candidates.map((candidate) => (
-          <Form.Dropdown.Item
-            key={candidate.id}
-            value={candidate.id}
-            title={`${candidate.label}: ${candidate.name} (${candidate.phone})`}
-          />
-        ))}
-      </Form.Dropdown>
     </Form>
   );
 }
@@ -1526,7 +1564,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       }
 
       const body = buildVoicemailFollowUpBody(context, recipient.id);
-      const url = buildMessagesComposeUrlForRecipients(recipient.phones, body);
 
       logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
         contactId: context.task.contact_id,
@@ -1537,13 +1574,13 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       });
 
       try {
-        await open(url);
+        const mode = await openMessagesDraftForRecipients(recipient.phones, body);
         logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
           contactId: context.task.contact_id,
           recipientId: recipient.id,
           recipientName: recipient.name,
           recipientCount: recipient.phones.length,
-          mode: 'auto-direct',
+          mode,
         });
       } catch (error) {
         await Clipboard.copy(body);
