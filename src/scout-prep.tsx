@@ -1015,6 +1015,9 @@ function RescheduleConfirmationCallForm({
           athleteId: String(task.contact_id || '').trim(),
           athleteMainId,
           athleteName: liveContext.contactInfo.studentAthlete.name || task.athlete_name,
+          sport: liveContext.resolved.sport || null,
+          gradYear: task.grad_year || null,
+          state: liveContext.resolved.state || null,
           parent1Name: liveContext.contactInfo.parent1?.name || null,
           parent2Name: liveContext.contactInfo.parent2?.name || null,
           taskId: confirmationTask.task_id,
@@ -2199,6 +2202,10 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
     const prepared = await prepareConfirmationFollowUp({
       athleteId: String(task.contact_id || '').trim(),
       athleteMainId,
+      athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+      sport: activeContext.resolved.sport || null,
+      gradYear: task.grad_year || null,
+      state: activeContext.resolved.state || null,
       dueDate: confirmationTask.due_date || task.due_date || null,
       dueTime: null,
       headScoutName: activeContext.resolved.head_scout || null,
@@ -2212,6 +2219,9 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
         athleteId: String(task.contact_id || '').trim(),
         athleteMainId,
         athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        sport: activeContext.resolved.sport || null,
+        gradYear: task.grad_year || null,
+        state: activeContext.resolved.state || null,
         parent1Name: activeContext.contactInfo.parent1?.name || null,
         parent2Name: activeContext.contactInfo.parent2?.name || null,
         taskId: confirmationTask.task_id,
@@ -2598,6 +2608,10 @@ function ScoutPrepTaskItem({
     const prepared = await prepareConfirmationFollowUp({
       athleteId: String(task.contact_id || '').trim(),
       athleteMainId,
+      athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+      sport: activeContext.resolved.sport || null,
+      gradYear: task.grad_year || null,
+      state: activeContext.resolved.state || null,
       dueDate: confirmationTask.due_date || task.due_date || null,
       dueTime: null,
       headScoutName: activeContext.resolved.head_scout || null,
@@ -2611,6 +2625,9 @@ function ScoutPrepTaskItem({
         athleteId: String(task.contact_id || '').trim(),
         athleteMainId,
         athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        sport: activeContext.resolved.sport || null,
+        gradYear: task.grad_year || null,
+        state: activeContext.resolved.state || null,
         parent1Name: activeContext.contactInfo.parent1?.name || null,
         parent2Name: activeContext.contactInfo.parent2?.name || null,
         taskId: confirmationTask.task_id,
@@ -2960,7 +2977,7 @@ function RecentProfileListItem({
     status === 'matched'
       ? followUpTask?.title || 'Follow-Up Found'
       : status === 'not_found'
-        ? 'No Follow-Up Task'
+        ? 'Confirmation Call'
         : status === 'error'
           ? 'Task Check Failed'
           : 'Checking Tasks';
@@ -2968,7 +2985,7 @@ function RecentProfileListItem({
     `# ${task.athlete_name}`,
     '',
     `- Status: ${statusLabel}`,
-    `- Task: ${followUpTask?.title || 'N/A'}`,
+    `- Task: ${followUpTask?.title || (status === 'not_found' ? 'Confirmation Call' : 'N/A')}`,
     `- Due Date: ${followUpTask?.due_date || 'N/A'}`,
     `- Description: ${followUpTask?.description || 'N/A'}`,
     `- Sport: ${profile.sport || 'N/A'}`,

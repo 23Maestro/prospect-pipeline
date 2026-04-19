@@ -31,6 +31,58 @@ const LEGACY_MEETING_TIMEZONE_TO_IANA: Record<string, string> = {
   HST: 'Pacific/Honolulu',
   AST: 'America/Halifax',
 };
+const STATE_ABBREVIATIONS: Record<string, string> = {
+  ALABAMA: 'AL',
+  ALASKA: 'AK',
+  ARIZONA: 'AZ',
+  ARKANSAS: 'AR',
+  CALIFORNIA: 'CA',
+  COLORADO: 'CO',
+  CONNECTICUT: 'CT',
+  DELAWARE: 'DE',
+  FLORIDA: 'FL',
+  GEORGIA: 'GA',
+  HAWAII: 'HI',
+  IDAHO: 'ID',
+  ILLINOIS: 'IL',
+  INDIANA: 'IN',
+  IOWA: 'IA',
+  KANSAS: 'KS',
+  KENTUCKY: 'KY',
+  LOUISIANA: 'LA',
+  MAINE: 'ME',
+  MARYLAND: 'MD',
+  MASSACHUSETTS: 'MA',
+  MICHIGAN: 'MI',
+  MINNESOTA: 'MN',
+  MISSISSIPPI: 'MS',
+  MISSOURI: 'MO',
+  MONTANA: 'MT',
+  NEBRASKA: 'NE',
+  NEVADA: 'NV',
+  'NEW HAMPSHIRE': 'NH',
+  'NEW JERSEY': 'NJ',
+  'NEW MEXICO': 'NM',
+  'NEW YORK': 'NY',
+  'NORTH CAROLINA': 'NC',
+  'NORTH DAKOTA': 'ND',
+  OHIO: 'OH',
+  OKLAHOMA: 'OK',
+  OREGON: 'OR',
+  PENNSYLVANIA: 'PA',
+  'RHODE ISLAND': 'RI',
+  'SOUTH CAROLINA': 'SC',
+  'SOUTH DAKOTA': 'SD',
+  TENNESSEE: 'TN',
+  TEXAS: 'TX',
+  UTAH: 'UT',
+  VERMONT: 'VT',
+  VIRGINIA: 'VA',
+  WASHINGTON: 'WA',
+  'WEST VIRGINIA': 'WV',
+  WISCONSIN: 'WI',
+  WYOMING: 'WY',
+};
 
 type Preferences = {
   notionToken?: string;
@@ -119,6 +171,23 @@ function getNotionToken(): string {
 
 function buildMeetingContextKey(athleteId: string, athleteMainId: string): string {
   return `${MEETING_CONTEXT_CACHE_PREFIX}${athleteId.trim()}:${athleteMainId.trim()}`;
+}
+
+function buildBookedMeetingTitle(args: {
+  athleteName?: string | null;
+  sport?: string | null;
+  gradYear?: string | null;
+  state?: string | null;
+}): string {
+  const athleteName = String(args.athleteName || '').trim();
+  const sport = String(args.sport || '').trim();
+  const gradYear = String(args.gradYear || '').trim();
+  const rawState = String(args.state || '').trim();
+  const upperState = rawState.toUpperCase();
+  const state =
+    STATE_ABBREVIATIONS[upperState] ||
+    (upperState.length === 2 ? upperState : rawState);
+  return [athleteName, sport, gradYear, state].filter(Boolean).join(' ').trim();
 }
 
 function convertEasternEventToMeetingTimezoneDate(
@@ -317,20 +386,33 @@ function getPagePropertyText(page: FollowUpNotionPage, propertyName: string): st
 }
 
 function parseLegacyDateAndTime(dueDate?: string | null, dueTime?: string | null): Date | null {
-  const dateMatch = String(dueDate || '')
-    .trim()
-    .match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  const timeMatch = String(dueTime || '')
-    .trim()
-    .match(/^(\d{1,2}):(\d{2})$/);
-  if (!dateMatch || !timeMatch) {
+  const rawDate = String(dueDate || '').trim();
+  const rawTime = String(dueTime || '').trim();
+  const dateMatch = rawDate.match(
+    /^(?:[A-Za-z]{3}\s+)?(\d{2})\/(\d{2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})(?:\s*(AM|PM))?)?$/i,
+  );
+  if (!dateMatch) {
     return null;
   }
   const month = Number.parseInt(dateMatch[1], 10) - 1;
   const day = Number.parseInt(dateMatch[2], 10);
-  const year = Number.parseInt(dateMatch[3], 10);
-  const hour = Number.parseInt(timeMatch[1], 10);
-  const minute = Number.parseInt(timeMatch[2], 10);
+  const yearValue = Number.parseInt(dateMatch[3], 10);
+  const year = dateMatch[3].length === 2 ? 2000 + yearValue : yearValue;
+
+  let hour = 0;
+  let minute = 0;
+  const explicitTimeMatch = rawTime.match(/^(\d{1,2}):(\d{2})$/);
+  if (explicitTimeMatch) {
+    hour = Number.parseInt(explicitTimeMatch[1], 10);
+    minute = Number.parseInt(explicitTimeMatch[2], 10);
+  } else if (dateMatch[4] && dateMatch[5]) {
+    hour = Number.parseInt(dateMatch[4], 10);
+    minute = Number.parseInt(dateMatch[5], 10);
+    const meridiem = String(dateMatch[6] || '').toUpperCase();
+    if (meridiem === 'PM' && hour < 12) hour += 12;
+    if (meridiem === 'AM' && hour === 12) hour = 0;
+  }
+
   const date = new Date(year, month, day, hour, minute);
   return Number.isNaN(date.getTime()) ? null : date;
 }
@@ -494,6 +576,10 @@ export async function queueConfirmationFollowUp(args: {
   headScoutName?: string | null;
   recipientNames?: string[] | null;
   greetingOverride?: string | null;
+  athleteName?: string | null;
+  sport?: string | null;
+  gradYear?: string | null;
+  state?: string | null;
 }): Promise<{ pageId: string; pageUrl: string; craftSkipped: boolean }> {
   const prepared = await prepareConfirmationFollowUp({
     athleteId: args.athleteId,
@@ -504,6 +590,10 @@ export async function queueConfirmationFollowUp(args: {
     headScoutName: args.headScoutName,
     recipientNames: args.recipientNames,
     greetingOverride: args.greetingOverride,
+    athleteName: args.athleteName,
+    sport: args.sport,
+    gradYear: args.gradYear,
+    state: args.state,
   });
   const raycastKey = buildFollowUpRaycastKey({
     messageType: 'confirmation',
@@ -542,6 +632,10 @@ export async function prepareConfirmationFollowUp(args: {
   headScoutName?: string | null;
   recipientNames?: string[] | null;
   greetingOverride?: string | null;
+  athleteName?: string | null;
+  sport?: string | null;
+  gradYear?: string | null;
+  state?: string | null;
 }): Promise<PreparedConfirmationFollowUp> {
   const reminderDueAt = parseLegacyDateAndTime(args.dueDate, args.dueTime);
   if (!reminderDueAt) {
@@ -562,30 +656,39 @@ export async function prepareConfirmationFollowUp(args: {
     HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === String(cachedMeeting?.assignedTo || '').trim()) ||
     HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === headScoutName) ||
     null;
-  const meetingName = String(cachedMeeting?.meetingName || '').trim();
-  if (selectedScout && meetingName) {
-    try {
-      const window = buildCalendarMonthWindow(reminderDueAt);
-      const booked = await fetchBookedMeeting({
-        calendarOwnerId: selectedScout.calendar_owner_id,
-        title: meetingName,
-        start: window.start,
-        end: window.end,
-      });
-      const bookedStart = String(booked.event?.start || '').trim();
-      if (bookedStart) {
-        const convertedDate = convertEasternEventToMeetingTimezoneDate(
-          bookedStart,
-          cachedMeeting?.meetingTimezone || 'EST',
-        );
-        if (convertedDate && !Number.isNaN(convertedDate.getTime())) {
-          dueAt = convertedDate;
-        }
-      }
-    } catch {
-      // Keep reminder time fallback when booked meeting lookup fails.
-    }
+  const meetingName = buildBookedMeetingTitle({
+    athleteName: args.athleteName,
+    sport: args.sport,
+    gradYear: args.gradYear,
+    state: args.state,
+  });
+  if (!selectedScout) {
+    throw new Error('Confirmation follow-up requires resolved head scout calendar owner');
   }
+  if (!meetingName) {
+    throw new Error('Confirmation follow-up requires booked meeting title');
+  }
+
+  const window = buildCalendarMonthWindow(reminderDueAt);
+  const booked = await fetchBookedMeeting({
+    calendarOwnerId: selectedScout.calendar_owner_id,
+    title: meetingName,
+    start: window.start,
+    end: window.end,
+  });
+  const bookedStart = String(booked.event?.start || '').trim();
+  if (!bookedStart) {
+    throw new Error(`Booked meeting not found for "${meetingName}"`);
+  }
+
+  const convertedDate = convertEasternEventToMeetingTimezoneDate(
+    bookedStart,
+    cachedMeeting?.meetingTimezone || 'EST',
+  );
+  if (!convertedDate || Number.isNaN(convertedDate.getTime())) {
+    throw new Error(`Booked meeting time invalid for "${meetingName}"`);
+  }
+  dueAt = convertedDate;
 
   const message = buildConfirmationMessage({
     headScoutName,
