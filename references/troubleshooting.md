@@ -28,3 +28,9 @@
   - Using `selectedowner[]=56` in `calendarevents` broadens the feed instead of acting like the tokenized head-scout filters.
   - This is still usable because parser-side filtering by configured scout names preserves James open slots.
 - Hardcode James Holcomb to Arizona metadata for now. Legacy location data around James/Logan is unreliable; treat James as AZ and two hours behind Eastern until proven otherwise.
+
+## 2026-04-19 Session + Video Progress
+- `remember me` cookies existing in `~/.npid_session.pkl` do not prove route validity. Check `/auth-status`, not `/health`, when a legacy surface looks partially broken.
+- Scout Prep and Video Progress share the same saved cookie file but run through different local session-manager paths, so a backend role change can break one or both until the saved session is fully rewritten.
+- If recent views go empty while the site still shows rows, reconnect with `bash scripts/npid-session-recover.sh` and retest `/admin/portal`, `/template/template/topviews?scout_id=1408164`, and `/api/v1/scout/recent-profiles`.
+- If a video task exists upstream but is missing locally, inspect cache merge rules before blaming auth. A stale `date_completed` can pin a reassigned task to `Done` even when the live server stage is back to `In Queue`.

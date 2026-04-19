@@ -17,7 +17,10 @@ import {
   buildMinimalFollowUpQueueRecord,
   type MinimalFollowUpQueueRecord,
 } from './scout-follow-up-templates';
+import { apiFetch } from './fastapi-client';
 import { buildCalendarMonthWindow, easternLocalIsoToDate, fetchBookedMeeting, HEAD_SCOUT_ORDER } from './head-scout-schedules';
+import { mapTimezoneToLegacyRecruitZone } from './scout-prep-contact';
+import { resolveTimezone } from './scout-prep-ai';
 
 const FEATURE = 'scout-follow-up-queue';
 const NOTION_FOLLOW_UP_DATABASE_ID = '3434c8bd-6c26-8022-a875-e8c99007628e';
@@ -98,6 +101,16 @@ type MeetingSetQueueContext = {
   assignedTo: string;
   openEventId: string;
   meetingName: string;
+};
+
+type LiveAthleteResolve = {
+  athlete_id?: string;
+  athlete_main_id?: string | null;
+  grad_year?: string | null;
+  city?: string | null;
+  state?: string | null;
+  sport?: string | null;
+  head_scout?: string | null;
 };
 
 export type PreparedConfirmationFollowUp = {
@@ -188,6 +201,23 @@ function buildBookedMeetingTitle(args: {
     STATE_ABBREVIATIONS[upperState] ||
     (upperState.length === 2 ? upperState : rawState);
   return [athleteName, sport, gradYear, state].filter(Boolean).join(' ').trim();
+}
+
+async function fetchLiveAthleteResolve(athleteId: string): Promise<LiveAthleteResolve | null> {
+  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve?force_refresh=true`);
+  if (!response.ok) {
+    return null;
+  }
+  const payload = (await response.json().catch(() => ({}))) as LiveAthleteResolve;
+  return payload && typeof payload === 'object' ? payload : null;
+}
+
+function findHeadScoutSchedule(headScoutName?: string | null) {
+  const normalized = String(headScoutName || '').trim().toLowerCase();
+  if (!normalized) return null;
+  return (
+    HEAD_SCOUT_ORDER.find((scout) => scout.scout_name.trim().toLowerCase() === normalized) || null
+  );
 }
 
 function convertEasternEventToMeetingTimezoneDate(
@@ -642,31 +672,34 @@ export async function prepareConfirmationFollowUp(args: {
     throw new Error('Confirmation queue requires a valid due date and time');
   }
 
-  const cachedMeeting = await getCachedMeetingSetQueueContext({
-    athleteId: args.athleteId,
-    athleteMainId: args.athleteMainId,
-  });
+  const liveResolve = await fetchLiveAthleteResolve(args.athleteId);
+  const resolvedCity = String(liveResolve?.city || '').trim();
+  const resolvedState = String(liveResolve?.state || args.state || '').trim();
+  const resolvedSport = String(liveResolve?.sport || args.sport || '').trim();
+  const resolvedGradYear = String(liveResolve?.grad_year || args.gradYear || '').trim();
   const headScoutName =
+    String(liveResolve?.head_scout || '').trim() ||
     String(args.headScoutName || '').trim() ||
-    String(cachedMeeting?.headScoutName || '').trim() ||
     inferHeadScoutNameFromText(args.fallbackText) ||
     '';
+  const resolvedTimezone =
+    mapTimezoneToLegacyRecruitZone(resolveTimezone(resolvedCity, resolvedState)) || null;
   let dueAt = reminderDueAt;
-  const selectedScout =
-    HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === String(cachedMeeting?.assignedTo || '').trim()) ||
-    HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === headScoutName) ||
-    null;
+  const selectedScout = findHeadScoutSchedule(headScoutName);
   const meetingName = buildBookedMeetingTitle({
     athleteName: args.athleteName,
-    sport: args.sport,
-    gradYear: args.gradYear,
-    state: args.state,
+    sport: resolvedSport,
+    gradYear: resolvedGradYear,
+    state: resolvedState,
   });
   if (!selectedScout) {
     throw new Error('Confirmation follow-up requires resolved head scout calendar owner');
   }
   if (!meetingName) {
     throw new Error('Confirmation follow-up requires booked meeting title');
+  }
+  if (!resolvedTimezone) {
+    throw new Error('Confirmation follow-up requires resolved athlete timezone');
   }
 
   const window = buildCalendarMonthWindow(reminderDueAt);
@@ -683,7 +716,7 @@ export async function prepareConfirmationFollowUp(args: {
 
   const convertedDate = convertEasternEventToMeetingTimezoneDate(
     bookedStart,
-    cachedMeeting?.meetingTimezone || 'EST',
+    resolvedTimezone,
   );
   if (!convertedDate || Number.isNaN(convertedDate.getTime())) {
     throw new Error(`Booked meeting time invalid for "${meetingName}"`);
@@ -693,7 +726,7 @@ export async function prepareConfirmationFollowUp(args: {
   const message = buildConfirmationMessage({
     headScoutName,
     dueAt,
-    meetingTimezone: cachedMeeting?.meetingTimezone || 'EST',
+    meetingTimezone: resolvedTimezone,
     recipientNames: args.recipientNames,
     greetingOverride: args.greetingOverride,
   });

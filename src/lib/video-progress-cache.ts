@@ -277,9 +277,10 @@ export async function upsertTasks(tasks: Partial<CachedVideoTask>[]) {
 
       -- DYNAMIC FIELDS (always update from server)
       video_progress_status=excluded.video_progress_status,
-      stage=CASE
-        WHEN video_tasks.date_completed IS NOT NULL THEN 'Done'
-        ELSE excluded.stage
+      stage=excluded.stage,
+      date_completed=CASE
+        WHEN lower(COALESCE(excluded.stage, '')) = 'done' THEN video_tasks.date_completed
+        ELSE NULL
       END,
       video_due_date=excluded.video_due_date,
       assignedvideoeditor=COALESCE(video_tasks.assigned_editor_override, excluded.assignedvideoeditor),
