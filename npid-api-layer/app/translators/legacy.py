@@ -158,6 +158,27 @@ class LegacyTranslator:
         return endpoint, params
 
     @staticmethod
+    def booked_meeting_to_legacy(
+        calendar_owner_id: str,
+        start: str,
+        end: str,
+    ) -> Tuple[str, List[Tuple[str, str]]]:
+        """
+        Build request for booked meeting lookup from full calendar feed.
+        GET /template/calendarevents
+        """
+        endpoint = "/template/calendarevents"
+        params: List[Tuple[str, str]] = [
+            ("loginuser", LegacyTranslator.HEAD_SCOUT_LOGIN_USER),
+            ("load_from_tasks_backup", ""),
+            ("selectedowner[]", calendar_owner_id),
+            ("selectedowner[]", LegacyTranslator.HEAD_SCOUT_LOGIN_USER),
+            ("start", start),
+            ("end", end),
+        ]
+        return endpoint, params
+
+    @staticmethod
     def parse_open_meetings_response(raw_response: str) -> Dict[str, Any]:
         """
         Parse HTML table returned by /template/template/openmeetings.
@@ -201,6 +222,83 @@ class LegacyTranslator:
             "success": True,
             "count": len(slots),
             "slots": slots,
+        }
+
+    @staticmethod
+    def parse_booked_meeting_response(
+        raw_response: str,
+        title_query: str,
+        scout_name: str,
+    ) -> Dict[str, Any]:
+        """
+        Parse /template/calendarevents JSON and return best booked event match.
+        """
+        text = (raw_response or "").strip()
+        events: List[Dict[str, Any]] = []
+        if text.startswith("[") or text.startswith("{"):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    events = [row for row in parsed if isinstance(row, dict)]
+                elif isinstance(parsed, dict):
+                    nested = parsed.get("events") if isinstance(parsed.get("events"), list) else []
+                    events = [row for row in nested if isinstance(row, dict)]
+            except json.JSONDecodeError:
+                events = []
+
+        normalized_query = re.sub(r"\s+", " ", str(title_query or "").strip()).lower()
+        normalized_scout = re.sub(r"\s+", " ", str(scout_name or "").strip()).lower()
+        matches: List[Dict[str, str]] = []
+
+        for event in events:
+            title = re.sub(r"\s+", " ", str(event.get("title") or "").strip())
+            if not title or title.upper() == "OPEN":
+                continue
+
+            owner = re.sub(r"\s+", " ", str(event.get("user") or "").strip())
+            if normalized_scout and owner.lower() != normalized_scout:
+                continue
+
+            normalized_title = title.lower()
+            if normalized_query and normalized_query not in normalized_title:
+                continue
+
+            start = str(event.get("start") or "").strip()
+            end = str(event.get("end") or "").strip()
+            event_id = str(event.get("id") or "").strip()
+            if not start or not end or not event_id:
+                continue
+
+            date_time_label = ""
+            if LegacyTranslator._is_iso_local_datetime(start):
+                try:
+                    parsed_start = datetime.datetime.strptime(start, "%Y-%m-%dT%H:%M")
+                    parsed_end = datetime.datetime.strptime(end, "%Y-%m-%dT%H:%M")
+                    weekday = parsed_start.strftime("%a")
+                    date_text = parsed_start.strftime("%m/%d/%y")
+                    start_text = parsed_start.strftime("%I:%M %p").lstrip("0")
+                    end_text = parsed_end.strftime("%I:%M %p").lstrip("0")
+                    date_time_label = f"{weekday} {date_text} {start_text} - {end_text}"
+                except ValueError:
+                    date_time_label = start
+
+            matches.append(
+                {
+                    "event_id": event_id,
+                    "title": title,
+                    "assigned_owner": owner,
+                    "start": start,
+                    "end": end,
+                    "date_time_label": date_time_label or start,
+                }
+            )
+
+        matches.sort(key=lambda item: item["start"])
+        event = matches[0] if matches else None
+        return {
+            "success": True,
+            "count": len(matches),
+            "event": event,
         }
 
     @staticmethod
@@ -1007,6 +1105,16 @@ class LegacyTranslator:
                     _input_value("positions"),
                     _label_value("Positions"),
                 ])
+            if not data.get("head_scout"):
+                data["head_scout"] = _first_non_empty([
+                    _select_value("head_scout"),
+                    _label_value("Head Scout"),
+                ])
+            if not data.get("scouting_coordinator"):
+                data["scouting_coordinator"] = _first_non_empty([
+                    _select_value("scouting_coordinator"),
+                    _label_value("Scouting Coordinator"),
+                ])
             # Location fallback: "City, ST"
             if not data.get("city") or not data.get("state"):
                 location_text = _label_value("Location") or _label_value("City")
@@ -1647,6 +1755,16 @@ class LegacyTranslator:
         if state_option and not state:
             state = state_option.text(strip=True) or None
 
+        head_scout = None
+        head_scout_option = get_select_selected_option("scout[headscout]")
+        if head_scout_option:
+            head_scout = head_scout_option.text(strip=True) or None
+
+        scouting_coordinator = None
+        scouting_coordinator_option = get_select_selected_option("scout[scoutcoordinator]")
+        if scouting_coordinator_option:
+            scouting_coordinator = scouting_coordinator_option.text(strip=True) or None
+
         gpa = get_input_value("gpa") or get_input_value_contains(["gpa"])
         height = get_input_value("height") or get_input_value_contains(["height"])
         weight = get_input_value("weight") or get_input_value_contains(["weight"])
@@ -1668,6 +1786,8 @@ class LegacyTranslator:
             "gpa": gpa,
             "height": height,
             "weight": weight,
+            "head_scout": head_scout,
+            "scouting_coordinator": scouting_coordinator,
         }
 
         logger.info(
@@ -3682,6 +3802,13 @@ class LegacyTranslator:
         raw_response = (html_response or "").strip()
         tasks: List[Dict[str, Any]] = []
 
+        def clean_portal_task_title(value: Any) -> Optional[str]:
+            trimmed = str(value or "").strip()
+            if not trimmed:
+                return None
+            cleaned = re.sub(r"^\(?sc move this task\)?\s*", "", trimmed, flags=re.IGNORECASE).strip()
+            return cleaned or trimmed
+
         # Newer dashboard responses come back as a JSON array string rather than table HTML.
         if raw_response.startswith("[") or raw_response.startswith("{"):
             try:
@@ -3716,7 +3843,7 @@ class LegacyTranslator:
                         "completion_date": item.get("completiondate_usa"),
                         "assigned_owner": item.get("user"),
                         "grad_year": str(item.get("grad_year") or "").strip() or None,
-                        "title": str(item.get("title") or "").strip() or None,
+                        "title": clean_portal_task_title(item.get("title")),
                         "description": str(item.get("description") or "").strip() or None,
                         "athlete_admin_url": athlete_admin_url,
                         "athlete_profile_url": None,
@@ -3818,7 +3945,7 @@ class LegacyTranslator:
                 "completion_date": cells[2].get_text(" ", strip=True) or None,
                 "assigned_owner": cells[3].get_text(" ", strip=True) or None,
                 "grad_year": cells[5].get_text(" ", strip=True) or None,
-                "title": title or None,
+                "title": clean_portal_task_title(title),
                 "description": cells[7].get_text(" ", strip=True) or None,
                 "athlete_admin_url": contact_link.get("href") if contact_link else None,
                 "athlete_profile_url": profile_link.get("href") if profile_link else None,
@@ -3842,6 +3969,35 @@ class LegacyTranslator:
         """
         Parse athlete tasks HTML table into normalized entries.
         """
+        def extract_task_id(row: Any, row_html: str) -> Optional[str]:
+            for attr_name in ("data-taskid", "data-task-id", "data-id"):
+                if row.has_attr(attr_name):
+                    value = str(row.get(attr_name) or "").strip()
+                    if value:
+                        return value
+
+            patterns = [
+                r"edittaskid=(\d+)",
+                r"edittaskid['\"=:,\s]+(\d+)",
+                r"taskpopup[^\\d]*(\d+)",
+                r"editTask[^\\d]*(\d+)",
+                r"existingtask['\"=:,\s]+(\d+)",
+                r"taskid['\"=:,\s]+(\d+)",
+            ]
+            for pattern in patterns:
+                match = re.search(pattern, row_html, re.IGNORECASE)
+                if match:
+                    return match.group(1)
+
+            for element in row.find_all(attrs=True):
+                for attr_name, attr_value in element.attrs.items():
+                    attr_text = " ".join(attr_value) if isinstance(attr_value, list) else str(attr_value or "")
+                    for pattern in patterns:
+                        match = re.search(pattern, attr_text, re.IGNORECASE)
+                        if match:
+                            return match.group(1)
+            return None
+
         soup = BeautifulSoup(html_response, 'html.parser')
         tasks: List[Dict[str, Any]] = []
 
@@ -3854,24 +4010,7 @@ class LegacyTranslator:
                 continue
 
             row_html = str(row)
-            task_id = None
-
-            for attr_name in ("data-taskid", "data-task-id", "data-id"):
-                if row.has_attr(attr_name):
-                    task_id = row.get(attr_name)
-                    break
-
-            if not task_id:
-                match = re.search(r"edittaskid=(\d+)", row_html)
-                if match:
-                    task_id = match.group(1)
-
-            if not task_id:
-                link = row.find('a', href=re.compile(r"edittaskid=\d+"))
-                if link and link.get('href'):
-                    match = re.search(r"edittaskid=(\d+)", link.get('href', ''))
-                    if match:
-                        task_id = match.group(1)
+            task_id = extract_task_id(row, row_html)
 
             text_cells = [cell.get_text(" ", strip=True) for cell in cells]
             row_text = " | ".join([cell for cell in text_cells if cell])
@@ -4076,8 +4215,10 @@ class LegacyTranslator:
 
         if athlete_main_id:
             updated["athlete_main_id"] = athlete_main_id
-        if athlete_id and "contact_task" not in updated:
+        if athlete_id and not str(updated.get("contact_task") or "").strip():
             updated["contact_task"] = athlete_id
+        if not str(updated.get("existingtask") or "").strip():
+            updated["existingtask"] = str(form_data.get("existingtask") or "").strip()
 
         return updated
 

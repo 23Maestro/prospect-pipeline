@@ -154,6 +154,8 @@ type AthleteResolveResponse = {
   positions?: string | null;
   sport?: string | null;
   gpa?: string | null;
+  head_scout?: string | null;
+  scouting_coordinator?: string | null;
 };
 
 export async function fetchScoutPrepAthleteDetails(
@@ -536,6 +538,8 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
       state: athleteDetails?.state || null,
       positions: athleteDetails?.positions || null,
       gpa: athleteDetails?.gpa || null,
+      head_scout: athleteDetails?.head_scout || null,
+      scouting_coordinator: athleteDetails?.scouting_coordinator || null,
       height: measurables.height || null,
       weight: measurables.weight || null,
     },

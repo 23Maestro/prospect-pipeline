@@ -1,8 +1,5 @@
 import { getPreferenceValues, LocalStorage } from '@raycast/api';
-import path from 'path';
-import { craftLogger, searchLogger } from './logger';
-import { executePythonScript } from './python-executor';
-import { getPythonScriptPath, WORKSPACE_ROOT } from './python-env';
+import { searchLogger } from './logger';
 import {
   appendChildren,
   archiveBlock,
@@ -18,22 +15,25 @@ import {
   buildFollowUpQueuePageMarkdown,
   buildFollowUpRaycastKey,
   buildMinimalFollowUpQueueRecord,
-  type FollowUpMessageType,
   type MinimalFollowUpQueueRecord,
 } from './scout-follow-up-templates';
+import { buildCalendarMonthWindow, easternLocalIsoToDate, fetchBookedMeeting, HEAD_SCOUT_ORDER } from './head-scout-schedules';
 
 const FEATURE = 'scout-follow-up-queue';
 const NOTION_FOLLOW_UP_DATABASE_ID = '3434c8bd-6c26-8022-a875-e8c99007628e';
 const MEETING_CONTEXT_CACHE_PREFIX = 'scout-prep:meeting-set-context:';
-const CRAFT_MCP_CLIENT_SCRIPT = getPythonScriptPath('craft_mcp_client.py');
-const CRAFT_MCP_PYTHON_PATH = path.join(WORKSPACE_ROOT, 'src', 'python', 'venv', 'bin', 'python');
-const CRAFT_FOLLOW_UP_BLOCK_ID = 'BBD4A1F5-E02D-41B6-9AC7-699E488FD8D1';
+const LEGACY_MEETING_TIMEZONE_TO_IANA: Record<string, string> = {
+  EST: 'America/New_York',
+  CST: 'America/Chicago',
+  MST: 'America/Denver',
+  PST: 'America/Los_Angeles',
+  AKST: 'America/Anchorage',
+  HST: 'Pacific/Honolulu',
+  AST: 'America/Halifax',
+};
 
 type Preferences = {
   notionToken?: string;
-  craftBaseUrl?: string;
-  craftApiToken?: string;
-  craftEmailFollowUpBlockId?: string;
   followUpSenderName?: string;
 };
 
@@ -46,6 +46,12 @@ type MeetingSetQueueContext = {
   assignedTo: string;
   openEventId: string;
   meetingName: string;
+};
+
+export type PreparedConfirmationFollowUp = {
+  dueAt: Date;
+  message: string;
+  headScoutName: string;
 };
 
 type FollowUpNotionPage = {
@@ -64,15 +70,12 @@ type DatabaseProperty = {
 
 type DatabaseSchema = Record<string, DatabaseProperty>;
 
-type CraftMcpUpsertResponse = {
-  success?: boolean;
-  operation?: 'create' | 'update';
-  error?: string | null;
-  matched_block_id?: string | null;
-  created_block_id?: string | null;
-};
-
-function logInfo(event: string, step: string, status: 'start' | 'success', context?: Record<string, unknown>) {
+function logInfo(
+  event: string,
+  step: string,
+  status: 'start' | 'success',
+  context?: Record<string, unknown>,
+) {
   searchLogger.info(event, {
     event,
     step,
@@ -118,9 +121,51 @@ function buildMeetingContextKey(athleteId: string, athleteMainId: string): strin
   return `${MEETING_CONTEXT_CACHE_PREFIX}${athleteId.trim()}:${athleteMainId.trim()}`;
 }
 
+function convertEasternEventToMeetingTimezoneDate(
+  easternIsoStart: string,
+  legacyMeetingTimezone?: string | null,
+): Date | null {
+  const easternDate = easternLocalIsoToDate(easternIsoStart);
+  if (!easternDate) return null;
+
+  const timezone = LEGACY_MEETING_TIMEZONE_TO_IANA[String(legacyMeetingTimezone || '').trim().toUpperCase()];
+  if (!timezone || timezone === 'America/New_York') {
+    return easternDate;
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(easternDate);
+  const lookup: Record<string, string> = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') {
+      lookup[part.type] = part.value;
+    }
+  }
+
+  const year = Number.parseInt(lookup.year || '', 10);
+  const month = Number.parseInt(lookup.month || '', 10);
+  const day = Number.parseInt(lookup.day || '', 10);
+  const hour = Number.parseInt(lookup.hour || '', 10);
+  const minute = Number.parseInt(lookup.minute || '', 10);
+  if ([year, month, day, hour, minute].some((value) => Number.isNaN(value))) {
+    return easternDate;
+  }
+  return new Date(year, month - 1, day, hour, minute);
+}
+
 function richTextProperty(value?: string | null) {
   const content = String(value || '').trim();
-  return { rich_text: content ? [{ type: 'text', text: { content: content.slice(0, 2000) } }] : [] };
+  return {
+    rich_text: content ? [{ type: 'text', text: { content: content.slice(0, 2000) } }] : [],
+  };
 }
 
 function titleProperty(value: string) {
@@ -157,24 +202,30 @@ function assignSelectLikeProperty(
   schema: DatabaseSchema,
   name: string,
   candidates: Array<string | null | undefined>,
-) {
+): boolean {
   const property = getProperty(schema, name);
-  if (!property?.type) return;
+  if (!property?.type) return false;
 
-  const normalizedCandidates = candidates.map((value) => String(value || '').trim()).filter(Boolean);
-  if (!normalizedCandidates.length) return;
+  const normalizedCandidates = candidates
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  if (!normalizedCandidates.length) return false;
 
   if (property.type === 'select' || property.type === 'status') {
     const options = getPropertyOptions(property);
     const match = normalizedCandidates.find((candidate) => options.includes(candidate));
-    if (!match) return;
-    properties[name] = property.type === 'status' ? { status: { name: match } } : selectProperty(match);
-    return;
+    if (!match) return false;
+    properties[name] =
+      property.type === 'status' ? { status: { name: match } } : selectProperty(match);
+    return true;
   }
 
   if (property.type === 'text' || property.type === 'rich_text') {
     properties[name] = richTextProperty(normalizedCandidates[0]);
+    return true;
   }
+
+  return false;
 }
 
 async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
@@ -188,6 +239,13 @@ async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
 function buildQueueProperties(record: MinimalFollowUpQueueRecord, schema: DatabaseSchema) {
   const properties: Record<string, unknown> = {};
   const stageLabel = record.messageType === 'confirmation' ? 'Confirmation Call' : 'Call Attempt 2';
+  const stageCandidates = [
+    stageLabel,
+    record.currentTask,
+    record.status,
+    record.messageType === 'confirmation' ? 'Meeting Set' : null,
+    record.messageType === 'call_attempt_2' ? 'Call Attempt 2' : null,
+  ];
 
   if (getProperty(schema, 'Name')) {
     properties.Name = titleProperty(record.title);
@@ -210,93 +268,30 @@ function buildQueueProperties(record: MinimalFollowUpQueueRecord, schema: Databa
   if (getProperty(schema, 'Raycast Key')) {
     properties['Raycast Key'] = richTextProperty(record.raycastKey);
   }
+  if (getProperty(schema, 'Admin URL')) {
+    properties['Admin URL'] = {
+      url:
+        String(
+          (record as MinimalFollowUpQueueRecord & { adminUrl?: string | null }).adminUrl || '',
+        ).trim() || null,
+    };
+  }
 
   assignSelectLikeProperty(properties, schema, 'Message Type', [
     record.messageType === 'confirmation' ? 'Confirmation' : 'Call Attempt 2',
   ]);
-  assignSelectLikeProperty(properties, schema, 'Stage', [stageLabel, record.currentTask]);
-  assignSelectLikeProperty(properties, schema, 'Status', [
-    record.status,
-    record.messageType === 'call_attempt_2' ? 'Call Attempt 2' : null,
-    record.messageType === 'confirmation' ? 'Meeting Set' : null,
-  ]);
+  const wroteStage = assignSelectLikeProperty(properties, schema, 'Stage', stageCandidates);
+  if (!wroteStage) {
+    assignSelectLikeProperty(properties, schema, 'Status', stageCandidates);
+  }
 
   return properties;
 }
 
-function normalizeCraftBaseUrl(rawBaseUrl: string): string {
-  const trimmed = (rawBaseUrl || '').trim().replace(/\/+$/, '');
-  if (!trimmed) return '';
-  try {
-    const url = new URL(trimmed);
-    const isMcpUrl = url.hostname === 'mcp.craft.do' && /^\/links\/[^/]+\/mcp\/?$/i.test(url.pathname);
-    return isMcpUrl ? trimmed : '';
-  } catch {
-    return '';
-  }
-}
-
-function extractCraftPassword(rawValue?: string): string | undefined {
-  const raw = (rawValue || '').trim();
-  if (!raw) return undefined;
-  const match = raw.match(/^password\s*(?::|is)?\s*(.+)$/i);
-  let value = (match?.[1] || raw).trim();
-  value = value.replace(/^:+\s*/, '');
-  if (/^bearer\s+/i.test(value) || /^authorization\s*:/i.test(raw)) {
-    throw new Error('MCP mode expects a Craft password value, not an Authorization/Bearer token');
-  }
-  return value;
-}
-
-function extractCraftBlockId(rawValue?: string): string | undefined {
-  const raw = (rawValue || '').trim();
-  if (!raw) return undefined;
-  if (/^[A-Za-z0-9-]{8,}$/.test(raw)) return raw;
-  try {
-    const parsed = new URL(raw);
-    const blockId = parsed.searchParams.get('blockId')?.trim();
-    if (blockId && /^[A-Za-z0-9-]{8,}$/.test(blockId)) {
-      return blockId;
-    }
-  } catch {
-    // ignore parse failures
-  }
-  return undefined;
-}
-
-function slugify(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-function formatCraftScheduleDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function buildCraftMarker(messageType: FollowUpMessageType, athleteName: string, reminderDate: string): string {
-  return `npid-scout-follow-up-${messageType}-${slugify(athleteName)}-${reminderDate}`;
-}
-
-function buildCraftReminderMarkdown(args: {
-  title: string;
-  marker: string;
-  filledMessage: string;
-}): string {
-  return [
-    args.title,
-    `<!-- ${args.marker} -->`,
-    '',
-    args.filledMessage,
-  ].join('\n');
-}
-
-function buildFollowUpQueueContent(record: MinimalFollowUpQueueRecord, filledMessage: string): NotionBlock[] {
+function buildFollowUpQueueContent(
+  record: MinimalFollowUpQueueRecord,
+  filledMessage: string,
+): NotionBlock[] {
   return scoutPrepMarkdownToNotionBlocks(
     buildFollowUpQueuePageMarkdown({
       record,
@@ -309,15 +304,25 @@ function getPagePropertyText(page: FollowUpNotionPage, propertyName: string): st
   const property = page.properties?.[propertyName] as
     | { rich_text?: Array<{ plain_text?: string }>; title?: Array<{ plain_text?: string }> }
     | undefined;
-  const richText = property?.rich_text?.map((item) => item.plain_text || '').join('').trim();
+  const richText = property?.rich_text
+    ?.map((item) => item.plain_text || '')
+    .join('')
+    .trim();
   if (richText) return richText;
-  const title = property?.title?.map((item) => item.plain_text || '').join('').trim();
+  const title = property?.title
+    ?.map((item) => item.plain_text || '')
+    .join('')
+    .trim();
   return title || null;
 }
 
 function parseLegacyDateAndTime(dueDate?: string | null, dueTime?: string | null): Date | null {
-  const dateMatch = String(dueDate || '').trim().match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-  const timeMatch = String(dueTime || '').trim().match(/^(\d{1,2}):(\d{2})$/);
+  const dateMatch = String(dueDate || '')
+    .trim()
+    .match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+  const timeMatch = String(dueTime || '')
+    .trim()
+    .match(/^(\d{1,2}):(\d{2})$/);
   if (!dateMatch || !timeMatch) {
     return null;
   }
@@ -355,7 +360,10 @@ export async function getCachedMeetingSetQueueContext(args: {
   }
 }
 
-async function findQueuePageByRaycastKey(token: string, raycastKey: string): Promise<FollowUpNotionPage | null> {
+async function findQueuePageByRaycastKey(
+  token: string,
+  raycastKey: string,
+): Promise<FollowUpNotionPage | null> {
   logInfo('SCOUT_FOLLOW_UP_NOTION_QUERY', 'request', 'start', {
     raycastKey: safePreview(raycastKey),
   });
@@ -383,7 +391,24 @@ async function findQueuePageByRaycastKey(token: string, raycastKey: string): Pro
   return page;
 }
 
-async function replacePageContent(token: string, pageId: string, blocks: NotionBlock[]): Promise<void> {
+async function findQueuePageByAnyRaycastKey(
+  token: string,
+  raycastKeys: Array<string | null | undefined>,
+): Promise<FollowUpNotionPage | null> {
+  for (const raycastKey of raycastKeys) {
+    const normalized = String(raycastKey || '').trim();
+    if (!normalized) continue;
+    const page = await findQueuePageByRaycastKey(token, normalized);
+    if (page) return page;
+  }
+  return null;
+}
+
+async function replacePageContent(
+  token: string,
+  pageId: string,
+  blocks: NotionBlock[],
+): Promise<void> {
   const existingChildren = await listChildren(token, pageId);
   for (const child of existingChildren) {
     if (child.id) {
@@ -394,14 +419,18 @@ async function replacePageContent(token: string, pageId: string, blocks: NotionB
 }
 
 export async function upsertFollowUpQueuePage(args: {
-  record: MinimalFollowUpQueueRecord;
+  record: MinimalFollowUpQueueRecord & { adminUrl?: string | null };
   filledMessage: string;
+  fallbackRaycastKeys?: string[];
 }): Promise<{ pageId: string; pageUrl: string }> {
   const token = getNotionToken();
   const schema = await fetchDatabaseSchema(token);
   const blocks = buildFollowUpQueueContent(args.record, args.filledMessage);
   const properties = buildQueueProperties(args.record, schema);
-  const existingPage = await findQueuePageByRaycastKey(token, args.record.raycastKey);
+  const existingPage = await findQueuePageByAnyRaycastKey(token, [
+    args.record.raycastKey,
+    ...(args.fallbackRaycastKeys || []),
+  ]);
 
   logInfo('SCOUT_FOLLOW_UP_NOTION_UPSERT', 'request', 'start', {
     raycastKey: safePreview(args.record.raycastKey),
@@ -421,7 +450,10 @@ export async function upsertFollowUpQueuePage(args: {
         operation: 'update',
         pageId: existingPage.id,
       });
-      return { pageId: existingPage.id, pageUrl: String(updated.url || existingPage.url || '').trim() };
+      return {
+        pageId: existingPage.id,
+        pageUrl: String(updated.url || existingPage.url || '').trim(),
+      };
     }
 
     const created = await notionRequest<FollowUpNotionPage>(token, '/pages', {
@@ -448,101 +480,6 @@ export async function upsertFollowUpQueuePage(args: {
   }
 }
 
-export async function upsertCraftFollowUpReminder(args: {
-  title: string;
-  athleteName: string;
-  messageType: FollowUpMessageType;
-  dueAt: Date;
-  filledMessage: string;
-  notionUrl: string;
-}): Promise<{ skipped: boolean; reason?: string | null; operation?: string | null }> {
-  const prefs = getPrefs();
-  const baseUrl = normalizeCraftBaseUrl(prefs.craftBaseUrl || '');
-  const password = extractCraftPassword(prefs.craftApiToken);
-  const documentId = extractCraftBlockId(prefs.craftEmailFollowUpBlockId) || CRAFT_FOLLOW_UP_BLOCK_ID;
-
-  if (!baseUrl) {
-    return { skipped: true, reason: 'craft_base_url_missing' };
-  }
-  if (!documentId) {
-    return { skipped: true, reason: 'craft_document_missing' };
-  }
-
-  const reminderDate = formatCraftScheduleDate(args.dueAt);
-  const marker = buildCraftMarker(args.messageType, args.athleteName, reminderDate);
-  const markdown = buildCraftReminderMarkdown({
-    title: args.title,
-    marker,
-    filledMessage: args.filledMessage,
-  });
-
-  craftLogger.info('SCOUT_FOLLOW_UP_CRAFT_UPSERT', {
-    event: 'SCOUT_FOLLOW_UP_CRAFT_UPSERT',
-    step: 'request',
-    status: 'start',
-    feature: FEATURE,
-    context: {
-      messageType: args.messageType,
-      athleteName: safePreview(args.athleteName),
-      reminderDate,
-      documentId,
-      hasPassword: Boolean(password),
-    },
-  });
-
-  try {
-    const result = await executePythonScript<CraftMcpUpsertResponse>(
-      CRAFT_MCP_CLIENT_SCRIPT,
-      'upsert_reminder',
-      {
-        mcp_url: baseUrl,
-        password: password || '',
-        document_id: documentId,
-        markdown,
-        schedule_date: reminderDate,
-        athlete_name: args.athleteName,
-        markers: [marker],
-      },
-      {
-        contextName: 'Craft MCP Client',
-        pythonPath: CRAFT_MCP_PYTHON_PATH,
-        timeout: 45000,
-      },
-    );
-    if (!result?.success) {
-      throw new Error(result?.error || 'Craft MCP upsert failed');
-    }
-    craftLogger.info('SCOUT_FOLLOW_UP_CRAFT_UPSERT', {
-      event: 'SCOUT_FOLLOW_UP_CRAFT_UPSERT',
-      step: 'request',
-      status: 'success',
-      feature: FEATURE,
-      context: {
-        messageType: args.messageType,
-        athleteName: safePreview(args.athleteName),
-        reminderDate,
-        operation: result.operation || 'create',
-      },
-    });
-    return { skipped: false, operation: result.operation || 'create' };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    craftLogger.error('SCOUT_FOLLOW_UP_CRAFT_UPSERT', {
-      event: 'SCOUT_FOLLOW_UP_CRAFT_UPSERT',
-      step: 'request',
-      status: 'failure',
-      feature: FEATURE,
-      error: message,
-      context: {
-        messageType: args.messageType,
-        athleteName: safePreview(args.athleteName),
-        reminderDate,
-      },
-    });
-    throw error;
-  }
-}
-
 export async function queueConfirmationFollowUp(args: {
   athleteId: string;
   athleteMainId: string;
@@ -554,24 +491,26 @@ export async function queueConfirmationFollowUp(args: {
   dueDate?: string | null;
   dueTime?: string | null;
   fallbackText?: string | null;
+  headScoutName?: string | null;
+  recipientNames?: string[] | null;
+  greetingOverride?: string | null;
 }): Promise<{ pageId: string; pageUrl: string; craftSkipped: boolean }> {
-  const dueAt = parseLegacyDateAndTime(args.dueDate, args.dueTime);
-  if (!dueAt) {
-    throw new Error('Confirmation queue requires a valid due date and time');
-  }
-
-  const cachedMeeting = await getCachedMeetingSetQueueContext({
+  const prepared = await prepareConfirmationFollowUp({
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
-  });
-  const headScoutName =
-    String(cachedMeeting?.headScoutName || '').trim() || inferHeadScoutNameFromText(args.fallbackText) || '';
-  const message = buildConfirmationMessage({
-    headScoutName,
-    dueAt,
-    meetingTimezone: cachedMeeting?.meetingTimezone || 'EST',
+    dueDate: args.dueDate,
+    dueTime: args.dueTime,
+    fallbackText: args.fallbackText,
+    headScoutName: args.headScoutName,
+    recipientNames: args.recipientNames,
+    greetingOverride: args.greetingOverride,
   });
   const raycastKey = buildFollowUpRaycastKey({
+    messageType: 'confirmation',
+    athleteId: args.athleteId,
+    taskId: args.athleteMainId,
+  });
+  const legacyBrokenTaskKey = buildFollowUpRaycastKey({
     messageType: 'confirmation',
     athleteId: args.athleteId,
     taskId: args.taskId,
@@ -582,22 +521,81 @@ export async function queueConfirmationFollowUp(args: {
     parent1Name: args.parent1Name,
     parent2Name: args.parent2Name,
     currentTask: args.currentTask,
-    dueAt,
+    dueAt: prepared.dueAt,
     raycastKey,
   });
+  const adminUrl = `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(args.athleteId.trim())}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`;
   const notionPage = await upsertFollowUpQueuePage({
-    record,
-    filledMessage: message,
+    record: { ...record, adminUrl },
+    filledMessage: prepared.message,
+    fallbackRaycastKeys: [legacyBrokenTaskKey, `confirmation:${args.athleteId.trim()}:`],
   });
-  const craftResult = await upsertCraftFollowUpReminder({
-    title: record.title,
-    athleteName: args.athleteName,
-    messageType: 'confirmation',
+  return { pageId: notionPage.pageId, pageUrl: notionPage.pageUrl, craftSkipped: true };
+}
+
+export async function prepareConfirmationFollowUp(args: {
+  athleteId: string;
+  athleteMainId: string;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  fallbackText?: string | null;
+  headScoutName?: string | null;
+  recipientNames?: string[] | null;
+  greetingOverride?: string | null;
+}): Promise<PreparedConfirmationFollowUp> {
+  const reminderDueAt = parseLegacyDateAndTime(args.dueDate, args.dueTime);
+  if (!reminderDueAt) {
+    throw new Error('Confirmation queue requires a valid due date and time');
+  }
+
+  const cachedMeeting = await getCachedMeetingSetQueueContext({
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+  });
+  const headScoutName =
+    String(args.headScoutName || '').trim() ||
+    String(cachedMeeting?.headScoutName || '').trim() ||
+    inferHeadScoutNameFromText(args.fallbackText) ||
+    '';
+  let dueAt = reminderDueAt;
+  const selectedScout =
+    HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === String(cachedMeeting?.assignedTo || '').trim()) ||
+    HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === headScoutName) ||
+    null;
+  const meetingName = String(cachedMeeting?.meetingName || '').trim();
+  if (selectedScout && meetingName) {
+    try {
+      const window = buildCalendarMonthWindow(reminderDueAt);
+      const booked = await fetchBookedMeeting({
+        calendarOwnerId: selectedScout.calendar_owner_id,
+        title: meetingName,
+        start: window.start,
+        end: window.end,
+      });
+      const bookedStart = String(booked.event?.start || '').trim();
+      if (bookedStart) {
+        const convertedDate = convertEasternEventToMeetingTimezoneDate(
+          bookedStart,
+          cachedMeeting?.meetingTimezone || 'EST',
+        );
+        if (convertedDate && !Number.isNaN(convertedDate.getTime())) {
+          dueAt = convertedDate;
+        }
+      }
+    } catch {
+      // Keep reminder time fallback when booked meeting lookup fails.
+    }
+  }
+
+  const message = buildConfirmationMessage({
+    headScoutName,
     dueAt,
-    filledMessage: message,
-    notionUrl: notionPage.pageUrl,
+    meetingTimezone: cachedMeeting?.meetingTimezone || 'EST',
+    recipientNames: args.recipientNames,
+    greetingOverride: args.greetingOverride,
   });
-  return { pageId: notionPage.pageId, pageUrl: notionPage.pageUrl, craftSkipped: craftResult.skipped };
+
+  return { dueAt, message, headScoutName };
 }
 
 export function buildCallAttempt2QueueDraft(args: {

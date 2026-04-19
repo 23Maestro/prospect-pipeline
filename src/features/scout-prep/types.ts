@@ -63,6 +63,8 @@ export type ScoutPrepContext = {
     state?: string | null;
     positions?: string | null;
     gpa?: string | null;
+    head_scout?: string | null;
+    scouting_coordinator?: string | null;
     height?: string | null;
     weight?: string | null;
   };

@@ -105,6 +105,8 @@ class AthleteIdentifiers(BaseModel):
     sport: Optional[str] = None
     jersey_number: Optional[str] = None
     gpa: Optional[str] = None
+    head_scout: Optional[str] = None
+    scouting_coordinator: Optional[str] = None
 
 
 class AthleteMeasurables(BaseModel):
@@ -639,3 +641,24 @@ class OpenMeetingsResponse(BaseModel):
     meeting_for: str
     count: int
     slots: List[OpenMeetingSlot]
+
+
+class BookedMeetingEvent(BaseModel):
+    """Single booked calendar event for confirmation-message lookup."""
+    event_id: str
+    title: str
+    assigned_owner: str
+    start: str
+    end: str
+    date_time_label: str
+
+
+class BookedMeetingLookupResponse(BaseModel):
+    """Booked meeting match from legacy calendar events feed."""
+    success: bool
+    calendar_owner_id: str
+    title_query: str
+    start: str
+    end: str
+    count: int
+    event: Optional[BookedMeetingEvent] = None

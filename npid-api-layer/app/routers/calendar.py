@@ -6,7 +6,11 @@ FastAPI endpoints for head scout schedule availability.
 from fastapi import APIRouter, HTTPException, Request
 import logging
 
-from app.models.schemas import HeadScoutSlotsResponse, OpenMeetingsResponse
+from app.models.schemas import (
+    BookedMeetingLookupResponse,
+    HeadScoutSlotsResponse,
+    OpenMeetingsResponse,
+)
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
 
@@ -181,6 +185,104 @@ async def get_open_meetings(
                 "error": str(exc),
                 "context": {
                     "meetingFor": meeting_for,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/booked-meeting", response_model=BookedMeetingLookupResponse)
+async def get_booked_meeting(
+    request: Request,
+    calendar_owner_id: str,
+    title: str,
+    start: str,
+    end: str,
+):
+    """
+    Fetch booked calendar event for a scout owner and meeting title.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+    scout_config = next(
+        (
+            config
+            for config in translator.HEAD_SCOUT_CONFIG
+            if str(config.get("calendar_owner_id") or "").strip() == calendar_owner_id.strip()
+        ),
+        None,
+    )
+    scout_name = str((scout_config or {}).get("scout_name") or "").strip()
+
+    logger.info(
+        "BOOKED_MEETING_FETCH %s",
+        {
+            "event": "BOOKED_MEETING_FETCH",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "calendarOwnerId": calendar_owner_id,
+                "title": title,
+                "start": start,
+                "end": end,
+                "scoutName": scout_name,
+            },
+        },
+    )
+
+    try:
+        endpoint, params = translator.booked_meeting_to_legacy(
+            calendar_owner_id=calendar_owner_id,
+            start=start,
+            end=end,
+        )
+        response = await session.get(endpoint, params=params)
+        result = translator.parse_booked_meeting_response(
+            response.text,
+            title_query=title,
+            scout_name=scout_name,
+        )
+        logger.info(
+            "BOOKED_MEETING_FETCH %s",
+            {
+                "event": "BOOKED_MEETING_FETCH",
+                "step": "parse",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "calendarOwnerId": calendar_owner_id,
+                    "title": title,
+                    "start": start,
+                    "end": end,
+                    "count": result.get("count", 0),
+                    "found": bool(result.get("event")),
+                },
+            },
+        )
+        return BookedMeetingLookupResponse(
+            calendar_owner_id=calendar_owner_id,
+            title_query=title,
+            start=start,
+            end=end,
+            **result,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "BOOKED_MEETING_FETCH %s",
+            {
+                "event": "BOOKED_MEETING_FETCH",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "calendarOwnerId": calendar_owner_id,
+                    "title": title,
+                    "start": start,
+                    "end": end,
                 },
             },
         )

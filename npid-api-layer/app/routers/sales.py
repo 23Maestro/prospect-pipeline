@@ -5,6 +5,7 @@ FastAPI endpoints for official sales-stage workflows in scout-prep.
 
 from fastapi import APIRouter, HTTPException, Request
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from app.models.schemas import (
@@ -33,6 +34,22 @@ def get_session(request: Request) -> NPIDSession:
 
 def _normalize_text(value: Any) -> str:
     return str(value or "").strip().lower()
+
+
+def _strip_move_this_task_prefix(value: Any) -> Optional[str]:
+    trimmed = str(value or "").strip()
+    if not trimmed:
+        return None
+    cleaned = trimmed
+    cleaned = re.sub(r"^\(?sc move this task\)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.strip()
+    return cleaned or trimmed
+
+
+def _normalize_task_for_response(task: Dict[str, Any]) -> Dict[str, Any]:
+    normalized = dict(task)
+    normalized["title"] = _strip_move_this_task_prefix(task.get("title"))
+    return normalized
 
 
 def _is_incomplete(task: Dict[str, Any]) -> bool:
@@ -67,10 +84,19 @@ def _is_confirmation_call_task(task: Dict[str, Any]) -> bool:
     return "confirmation call" in title or "confirm the meeting set" in description
 
 
+def _is_move_this_task(task: Dict[str, Any]) -> bool:
+    title = _normalize_text(task.get("title"))
+    return "sc move this task" in title
+
+
 def _pick_created_confirmation_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     candidates = [
-        task for task in tasks if _is_confirmation_call_task(task) and _is_incomplete(task)
+        task for task in tasks if _is_move_this_task(task) and _is_incomplete(task)
     ]
+    if not candidates:
+        candidates = [
+            task for task in tasks if _is_confirmation_call_task(task) and _is_incomplete(task)
+        ]
     if not candidates:
         return None
 
@@ -79,7 +105,7 @@ def _pick_created_confirmation_task(tasks: List[Dict[str, Any]]) -> Optional[Dic
         numeric = int(task_id) if task_id.isdigit() else -1
         return (numeric, task_id)
 
-    return sorted(candidates, key=sort_key, reverse=True)[0]
+    return _normalize_task_for_response(sorted(candidates, key=sort_key, reverse=True)[0])
 
 
 @router.get("/stages/{athlete_id}", response_model=SalesStageOptionsResponse)

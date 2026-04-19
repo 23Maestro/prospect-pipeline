@@ -45,6 +45,25 @@ export type OpenMeetingsResponse = {
   slots: OpenMeetingSlot[];
 };
 
+export type BookedMeetingEvent = {
+  event_id: string;
+  title: string;
+  assigned_owner: string;
+  start: string;
+  end: string;
+  date_time_label: string;
+};
+
+export type BookedMeetingLookupResponse = {
+  success: boolean;
+  calendar_owner_id: string;
+  title_query: string;
+  start: string;
+  end: string;
+  count: number;
+  event?: BookedMeetingEvent | null;
+};
+
 type TimezoneDisplay = {
   dateLabel: string;
   timeRangeLabel: string;
@@ -229,6 +248,55 @@ export function formatHeadScoutWeekLabel(start: string, end: string): string {
   return `${startLabel} - ${endLabel}`;
 }
 
+export function buildCalendarMonthWindow(date: Date): { start: string; end: string } {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month + 1, 1);
+  const toIsoDate = (value: Date) =>
+    `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  return { start: toIsoDate(start), end: toIsoDate(end) };
+}
+
+export async function fetchBookedMeeting(args: {
+  calendarOwnerId: string;
+  title: string;
+  start: string;
+  end: string;
+}): Promise<BookedMeetingLookupResponse> {
+  logInfo('BOOKED_MEETING_LOOKUP', 'request', 'start', {
+    calendarOwnerId: args.calendarOwnerId,
+    title: args.title,
+    start: args.start,
+    end: args.end,
+  });
+
+  const response = await apiFetch(
+    `/calendar/booked-meeting?calendar_owner_id=${encodeURIComponent(args.calendarOwnerId)}&title=${encodeURIComponent(args.title)}&start=${encodeURIComponent(args.start)}&end=${encodeURIComponent(args.end)}`,
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Booked meeting HTTP ${response.status}`;
+    logFailure('BOOKED_MEETING_LOOKUP', 'request', message, {
+      calendarOwnerId: args.calendarOwnerId,
+      title: args.title,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as BookedMeetingLookupResponse;
+  logInfo('BOOKED_MEETING_LOOKUP', 'parse', 'success', {
+    calendarOwnerId: args.calendarOwnerId,
+    title: args.title,
+    count: payload.count,
+    found: Boolean(payload.event),
+  });
+  return payload;
+}
+
 function getOffsetMinutesForZone(date: Date, timeZone: string): number {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -268,7 +336,7 @@ function getPartsForZone(date: Date, timeZone: string): Record<string, string> {
   return output;
 }
 
-function easternLocalIsoToDate(isoDateTime: string): Date | null {
+export function easternLocalIsoToDate(isoDateTime: string): Date | null {
   const match = isoDateTime.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/);
   if (!match) {
     return null;

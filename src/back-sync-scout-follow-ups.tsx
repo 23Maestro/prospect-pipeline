@@ -12,16 +12,8 @@ import {
   listScoutPrepFollowUpPointers,
   type ScoutPrepFollowUpPointer,
 } from './lib/scout-prep-follow-up-index';
-import { buildConfirmationMessage } from './lib/scout-follow-up-templates';
-import {
-  upsertScoutFollowUpTrackerEntry,
-  type LightweightFollowUpTrackerEntry,
-} from './lib/scout-follow-up-tracker';
-import {
-  getCachedMeetingSetQueueContext,
-  inferHeadScoutNameFromText,
-  upsertCraftFollowUpReminder,
-} from './lib/scout-follow-up-queue';
+import { fetchCuratedSalesStageOptions } from './lib/sales-stage';
+import { syncScoutOutcomeToNotion } from './lib/scout-outcome-sync';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 
@@ -38,6 +30,7 @@ type SyncCandidate = {
   taskUrl: string;
   taskId: string;
   source: 'tracked' | 'recent';
+  websiteStage?: string | null;
 };
 
 function buildAdminUrl(athleteId: string, athleteMainId: string): string {
@@ -54,7 +47,10 @@ function buildTaskUrl(athleteId: string, athleteMainId: string): string {
   return url.toString();
 }
 
-function parseParentNames(profile?: ScoutRecentProfile | null): { parent1Name?: string | null; parent2Name?: string | null } {
+function parseParentNames(profile?: ScoutRecentProfile | null): {
+  parent1Name?: string | null;
+  parent2Name?: string | null;
+} {
   return {
     parent1Name: profile?.parent_names?.[0] || null,
     parent2Name: profile?.parent_names?.[1] || null,
@@ -82,11 +78,31 @@ function buildStage(task: ScoutAthleteTask): string {
   );
 }
 
+function isMeaningfulWebsiteStage(stage?: string | null): boolean {
+  const normalized = String(stage || '').trim().toLowerCase();
+  if (!normalized) return false;
+  return [
+    'meeting set',
+    'left voice mail 1',
+    'left voice mail 2',
+    'called - unable to leave vm',
+    'spoke to - not interested',
+  ].includes(normalized);
+}
+
+function chooseSyncStage(websiteStage: string | null, nextTaskStage: string): string {
+  if (isMeaningfulWebsiteStage(websiteStage)) {
+    return String(websiteStage || '').trim();
+  }
+  return nextTaskStage;
+}
+
 function buildDetailMarkdown(candidate: SyncCandidate): string {
   return [
     `# ${candidate.athleteName}`,
     '',
     `- Source: ${candidate.source === 'tracked' ? 'Follow-Up List' : 'Recent Profiles'}`,
+    `- Website Stage: ${candidate.websiteStage || 'N/A'}`,
     `- Stage: ${candidate.stage}`,
     `- Due Date: ${candidate.dueDate || 'N/A'}`,
     `- Parent 1: ${candidate.parent1Name || 'N/A'}`,
@@ -99,52 +115,8 @@ function buildDetailMarkdown(candidate: SyncCandidate): string {
   ].join('\n');
 }
 
-function parseLegacyTaskDueAt(value?: string | null): Date | null {
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  const match = raw.match(/^(?:[A-Za-z]{3}\s+)?(\d{2})\/(\d{2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})\s*([AP]M))?$/i);
-  if (!match) return null;
-
-  const month = Number.parseInt(match[1], 10) - 1;
-  const day = Number.parseInt(match[2], 10);
-  const yearValue = Number.parseInt(match[3], 10);
-  const year = match[3].length === 2 ? 2000 + yearValue : yearValue;
-  let hour = Number.parseInt(match[4] || '0', 10);
-  const minute = Number.parseInt(match[5] || '0', 10);
-  const meridiem = String(match[6] || '').toUpperCase();
-
-  if (meridiem === 'PM' && hour < 12) hour += 12;
-  if (meridiem === 'AM' && hour === 12) hour = 0;
-
-  const date = new Date(year, month, day, hour, minute);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-async function buildCraftMessage(candidate: SyncCandidate): Promise<string> {
-  if (candidate.stage.toLowerCase().includes('confirmation')) {
-    const dueAt = parseLegacyTaskDueAt(candidate.dueDate);
-    const cachedMeeting = await getCachedMeetingSetQueueContext({
-      athleteId: candidate.athleteId,
-      athleteMainId: candidate.athleteMainId,
-    });
-
-    if (dueAt) {
-      return buildConfirmationMessage({
-        headScoutName:
-          String(cachedMeeting?.headScoutName || '').trim() ||
-          inferHeadScoutNameFromText(candidate.stage) ||
-          '',
-        dueAt,
-        meetingTimezone: cachedMeeting?.meetingTimezone || 'EST',
-      });
-    }
-  }
-
-  return candidate.stage;
-}
-
 async function syncCandidateToTracker(candidate: SyncCandidate) {
-  const entry: LightweightFollowUpTrackerEntry = {
+  return syncScoutOutcomeToNotion({
     athleteId: candidate.athleteId,
     athleteMainId: candidate.athleteMainId,
     athleteName: candidate.athleteName,
@@ -153,25 +125,8 @@ async function syncCandidateToTracker(candidate: SyncCandidate) {
     stage: candidate.stage,
     dueDate: candidate.dueDate,
     adminUrl: candidate.adminUrl,
-  };
-  const notionResult = await upsertScoutFollowUpTrackerEntry(entry);
-  const dueAt = parseLegacyTaskDueAt(candidate.dueDate);
-
-  if (dueAt) {
-    const craftMessage = await buildCraftMessage(candidate);
-    await upsertCraftFollowUpReminder({
-      title: `${candidate.athleteName} | ${candidate.stage}`,
-      athleteName: candidate.athleteName,
-      messageType: candidate.stage.toLowerCase().includes('confirmation')
-        ? 'confirmation'
-        : 'call_attempt_2',
-      dueAt,
-      filledMessage: craftMessage,
-      notionUrl: notionResult.pageUrl,
-    });
-  }
-
-  return notionResult;
+    taskId: candidate.taskId,
+  });
 }
 
 async function buildCandidates(): Promise<SyncCandidate[]> {
@@ -228,13 +183,23 @@ async function buildCandidates(): Promise<SyncCandidate[]> {
 
   const candidates = await Promise.all(
     Array.from(baseEntries.values()).map(async (entry) => {
-      const tasks = (await fetchAthleteTasks(entry.athleteId, entry.athleteMainId)) as ScoutAthleteTask[];
+      const tasks = (await fetchAthleteTasks(
+        entry.athleteId,
+        entry.athleteMainId,
+      )) as ScoutAthleteTask[];
+      const stageOptions = await fetchCuratedSalesStageOptions(entry.athleteId).catch(() => []);
+      const websiteStage =
+        stageOptions.find((option) => option.selected)?.label ||
+        stageOptions.find((option) => option.selected)?.value ||
+        null;
       const nextTask = pickNextTask(tasks);
       if (!nextTask) {
         return null;
       }
 
       const parents = parseParentNames(entry.profile);
+      const nextTaskStage = buildStage(nextTask);
+      const syncStage = chooseSyncStage(websiteStage, nextTaskStage);
       return {
         key: `${entry.athleteId}:${entry.athleteMainId}`,
         athleteId: entry.athleteId,
@@ -243,11 +208,12 @@ async function buildCandidates(): Promise<SyncCandidate[]> {
         parent1Name: parents.parent1Name,
         parent2Name: parents.parent2Name,
         dueDate: nextTask.due_date || null,
-        stage: buildStage(nextTask),
+        stage: syncStage,
         adminUrl: buildAdminUrl(entry.athleteId, entry.athleteMainId),
         taskUrl: buildTaskUrl(entry.athleteId, entry.athleteMainId),
         taskId: String(nextTask.task_id || '').trim(),
         source: entry.source,
+        websiteStage,
       } satisfies SyncCandidate;
     }),
   );
@@ -362,7 +328,9 @@ export default function BackSyncScoutFollowUpsCommand() {
               actions={
                 <ActionPanel>
                   <Action
-                    title={syncingKey === candidate.key ? 'Syncing…' : 'Sync to Coordination Tracker'}
+                    title={
+                      syncingKey === candidate.key ? 'Syncing…' : 'Sync to Coordination Tracker'
+                    }
                     icon={Icon.ArrowClockwise}
                     shortcut={{ modifiers: ['cmd'], key: 's' }}
                     onAction={() => void handleSync(candidate)}

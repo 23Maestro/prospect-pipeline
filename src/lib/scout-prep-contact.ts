@@ -135,7 +135,7 @@ function buildWeekClosing(now: Date): string {
   return 'Enjoy the rest of your week.';
 }
 
-function buildTimeOfDayGreeting(context: ScoutPrepContext, now: Date = new Date()): string {
+export function buildTimeOfDayGreeting(context: ScoutPrepContext, now: Date = new Date()): string {
   const timezone = resolveTimezone(context.resolved.city, context.resolved.state);
   if (!timezone) {
     return 'Good morning';
@@ -333,6 +333,39 @@ export function getVoicemailFollowUpRecipients(
   }
 
   return recipients;
+}
+
+export function getMeetingReminderRecipient(
+  context: ScoutPrepContext,
+): { phones: string[]; recipientNames: string[] } | null {
+  const parent1Phone = normalizePhoneForMessages(context.contactInfo.parent1?.phone);
+  const parent2Phone = normalizePhoneForMessages(context.contactInfo.parent2?.phone);
+  const parent1Name = context.contactInfo.parent1?.name || null;
+  const parent2Name = context.contactInfo.parent2?.name || null;
+
+  if (parent1Phone) {
+    return {
+      phones: [parent1Phone],
+      recipientNames: [parent1Name, parent2Name].filter((value): value is string => Boolean(String(value || '').trim())),
+    };
+  }
+
+  if (parent2Phone) {
+    return {
+      phones: [parent2Phone],
+      recipientNames: [parent2Name].filter((value): value is string => Boolean(String(value || '').trim())),
+    };
+  }
+
+  const fallback = getProspectContactShortcutCandidates(context)[0];
+  if (!fallback) {
+    return null;
+  }
+
+  return {
+    phones: [fallback.phone],
+    recipientNames: [],
+  };
 }
 
 export function buildVoicemailFollowUpBody(

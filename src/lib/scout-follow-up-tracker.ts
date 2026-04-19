@@ -111,6 +111,23 @@ function buildStage(entry: LightweightFollowUpTrackerEntry): string {
   return stripMoveThisTaskPrefix(entry.stage) || String(entry.stage || '').trim() || 'Pending follow-up';
 }
 
+function buildStageCandidates(stage: string): string[] {
+  const normalized = String(stage || '').trim();
+  if (!normalized) return [];
+
+  const candidates = [
+    normalized,
+    /confirmation/i.test(normalized) ? 'Confirmation Call' : null,
+    /meeting set/i.test(normalized) ? 'Meeting Set' : null,
+    /call attempt 2/i.test(normalized) ? 'Call Attempt 2' : null,
+    /call attempt 1/i.test(normalized) ? 'Call Attempt 1' : null,
+    /spoke/i.test(normalized) ? 'Spoke To - Follow Up' : null,
+    /unable to leave vm/i.test(normalized) ? 'Unable to leave VM' : null,
+  ];
+
+  return [...new Set(candidates.map((value) => String(value || '').trim()).filter(Boolean))];
+}
+
 function getProperty(schema: DatabaseSchema, name: string): DatabaseProperty | null {
   return schema[name] || null;
 }
@@ -131,24 +148,27 @@ function assignSelectLikeProperty(
   schema: DatabaseSchema,
   name: string,
   candidates: Array<string | null | undefined>,
-) {
+): boolean {
   const property = getProperty(schema, name);
-  if (!property?.type) return;
+  if (!property?.type) return false;
 
   const normalizedCandidates = candidates.map((value) => String(value || '').trim()).filter(Boolean);
-  if (!normalizedCandidates.length) return;
+  if (!normalizedCandidates.length) return false;
 
   if (property.type === 'select' || property.type === 'status') {
     const options = getPropertyOptions(property);
     const match = normalizedCandidates.find((candidate) => options.includes(candidate));
-    if (!match) return;
+    if (!match) return false;
     properties[name] = property.type === 'status' ? { status: { name: match } } : selectProperty(match);
-    return;
+    return true;
   }
 
   if (property.type === 'text' || property.type === 'rich_text') {
     properties[name] = richTextProperty(normalizedCandidates[0]);
+    return true;
   }
+
+  return false;
 }
 
 async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
@@ -162,6 +182,7 @@ async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
 function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: DatabaseSchema) {
   const properties: Record<string, unknown> = {};
   const stage = buildStage(entry);
+  const stageCandidates = buildStageCandidates(stage);
 
   if (getProperty(schema, 'Name')) {
     properties.Name = titleProperty(entry.athleteName);
@@ -182,17 +203,10 @@ function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: Databas
     properties['Raycast Key'] = richTextProperty(buildRaycastKey(entry));
   }
 
-  assignSelectLikeProperty(properties, schema, 'Stage', [
-    stage,
-    /confirmation/i.test(stage) ? 'Confirmation Call' : null,
-  ]);
-
-  assignSelectLikeProperty(properties, schema, 'Status', [
-    'Open',
-    /call attempt 2/i.test(stage) ? 'Call Attempt 2' : null,
-    /call attempt 1/i.test(stage) ? 'Call Attempt 1' : null,
-    /confirmation/i.test(stage) ? 'Meeting Set' : null,
-  ]);
+  const wroteStage = assignSelectLikeProperty(properties, schema, 'Stage', stageCandidates);
+  if (!wroteStage) {
+    assignSelectLikeProperty(properties, schema, 'Status', stageCandidates);
+  }
 
   return properties;
 }

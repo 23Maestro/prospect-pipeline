@@ -70,7 +70,7 @@ test('buildMinimalFollowUpQueueRecord stays lightweight', () => {
   });
 
   assert.deepEqual(record, {
-    title: 'Text: Confirmation | Victor Williams',
+    title: 'Victor Williams',
     status: 'Open',
     messageType: 'confirmation',
     dueAt: '2026-04-17T19:00:00.000Z',

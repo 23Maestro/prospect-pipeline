@@ -194,7 +194,17 @@ async def resolve_athlete(
 
                 if student.get("firstName") or student.get("lastName"):
                     profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
-                for key in ["grad_year", "sport", "high_school", "city", "state", "positions", "gpa"]:
+                for key in [
+                    "grad_year",
+                    "sport",
+                    "high_school",
+                    "city",
+                    "state",
+                    "positions",
+                    "gpa",
+                    "head_scout",
+                    "scouting_coordinator",
+                ]:
                     if profile.get(key):
                         profile_data[key] = profile.get(key)
         except Exception as e:
@@ -308,6 +318,8 @@ async def resolve_athlete(
         sport=profile_data.get("sport"),
         jersey_number=profile_data.get("jersey_number"),
         gpa=profile_data.get("gpa"),
+        head_scout=profile_data.get("head_scout"),
+        scouting_coordinator=profile_data.get("scouting_coordinator"),
     )
 
     logger.info(
@@ -814,6 +826,9 @@ async def get_athlete_details(request: Request, athlete_id: str):
             positions=profile_data.get("positions"),
             sport=profile_data.get("sport"),
             jersey_number=profile_data.get("jersey_number")
+            ,
+            head_scout=profile_data.get("head_scout"),
+            scouting_coordinator=profile_data.get("scouting_coordinator")
         )
         
     except HTTPException:

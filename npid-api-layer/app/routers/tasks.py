@@ -233,6 +233,13 @@ async def update_task(request: Request, payload: TaskUpdateRequest):
             due_time=payload.due_time,
         )
 
+        if not str(updated_form_data.get("existingtask") or "").strip():
+            updated_form_data["existingtask"] = payload.task_id
+        if not str(updated_form_data.get("contact_task") or "").strip():
+            updated_form_data["contact_task"] = payload.contact_task
+        if not str(updated_form_data.get("athlete_main_id") or "").strip():
+            updated_form_data["athlete_main_id"] = payload.athlete_main_id
+
         required_fields = ["existingtask", "tasktitle", "taskdescription", "contact_task", "athlete_main_id"]
         missing_fields = [field for field in required_fields if field not in updated_form_data]
         changed_fields = _diff_form_data(form_data, updated_form_data)
