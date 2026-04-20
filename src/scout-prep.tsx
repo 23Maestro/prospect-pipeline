@@ -1110,6 +1110,15 @@ function buildDefaultTaskDate(dueDate?: string | null): Date | undefined {
   return Number.isNaN(parsed.getTime()) ? undefined : parsed;
 }
 
+const SHORT_DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+function formatShortDueDate(dueDate?: string | null): string | null {
+  const parsed = buildDefaultTaskDate(dueDate);
+  if (!parsed) return null;
+  const day = SHORT_DAYS[parsed.getDay()];
+  return `${day} ${parsed.getMonth() + 1}/${parsed.getDate()}`;
+}
+
 function UpdateAthleteTaskForm({
   task,
   selectedTask,
@@ -2562,35 +2571,41 @@ function ScoutPrepTaskItem({
     }
   }
 
+  const shortDate = formatShortDueDate(task.due_date);
+  const taskTitle = stripMoveThisTaskPrefix(task.title);
+
+  const taskColor = (() => {
+    const t = (taskTitle || '').toLowerCase();
+    if (t.startsWith('call attempt')) return Color.Blue;
+    if (t.includes('confirmation')) return Color.Green;
+    if (t.includes('meeting set')) return Color.Orange;
+    if (t.includes('follow up') || t.includes('follow-up')) return Color.Yellow;
+    if (t.includes('voicemail') || t.includes('voice mail')) return Color.Magenta;
+    return Color.SecondaryText;
+  })();
+
+  const gradYearColor = (() => {
+    switch (task.grad_year) {
+      case '2026': return Color.Red;
+      case '2027': return Color.Purple;
+      case '2028': return Color.Blue;
+      case '2029': return Color.Green;
+      case '2030': return Color.Magenta;
+      default: return Color.SecondaryText;
+    }
+  })();
+
   return (
     <List.Item
       key={`${task.contact_id}-${task.title || 'task'}`}
       icon={Icon.List}
       title={task.athlete_name}
       keywords={buildTaskSearchKeywords(task)}
-      detail={
-        <List.Item.Detail
-          markdown={[
-            `# ${task.athlete_name}`,
-            '',
-            `- Task: ${task.title || 'N/A'}`,
-            `- Description: ${task.description || 'N/A'}`,
-            `- Due Date: ${task.due_date || 'N/A'}`,
-          ].join('\n')}
-          metadata={
-            task.grad_year ? (
-              <List.Item.Detail.Metadata>
-                <List.Item.Detail.Metadata.TagList title="Grad Year">
-                  <List.Item.Detail.Metadata.TagList.Item
-                    text={task.grad_year}
-                    color={Color.Purple}
-                  />
-                </List.Item.Detail.Metadata.TagList>
-              </List.Item.Detail.Metadata>
-            ) : undefined
-          }
-        />
-      }
+      accessories={[
+        ...(shortDate ? [{ text: shortDate }] : []),
+        ...(taskTitle ? [{ tag: { value: taskTitle, color: taskColor } }] : []),
+        ...(task.grad_year ? [{ tag: { value: task.grad_year, color: gradYearColor } }] : []),
+      ]}
       actions={
         <ActionPanel>
           <Action.Push
@@ -3283,7 +3298,7 @@ export default function ScoutPrepCommand() {
   return (
     <List
       isLoading={isLoading || isProspectSearching || isRecentFollowUpsLoading}
-      isShowingDetail={viewMode === 'tasks'}
+
       navigationTitle={
         viewMode === 'recent'
           ? 'Scout Prep — Recent Items'
@@ -3291,8 +3306,7 @@ export default function ScoutPrepCommand() {
             ? 'Scout Prep Search'
             : 'Scout Prep'
       }
-      filtering={viewMode === 'tasks'}
-      throttle
+      filtering={true}
       searchBarPlaceholder={
         viewMode === 'recent'
           ? 'Recent Profiles'
@@ -3300,15 +3314,13 @@ export default function ScoutPrepCommand() {
             ? 'Prospect Search — Enter athlete name or email'
             : 'Search Task List'
       }
-      searchText={
-        viewMode === 'recent' ? '' : viewMode === 'prospect' ? prospectSearchText : taskSearchText
-      }
+      searchText={viewMode !== 'tasks' ? (viewMode === 'recent' ? '' : prospectSearchText) : undefined}
       onSearchTextChange={
         viewMode === 'recent'
-          ? () => {}
+          ? undefined
           : viewMode === 'prospect'
             ? setProspectSearchText
-            : setTaskSearchText
+            : undefined
       }
     >
       {viewMode === 'recent' ? (
