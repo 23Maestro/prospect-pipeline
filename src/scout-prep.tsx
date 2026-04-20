@@ -1123,6 +1123,7 @@ function UpdateAthleteTaskForm({
 }) {
   const { pop } = useNavigation();
   const [isSaving, setIsSaving] = useState(false);
+  const [isCompleting, setIsCompleting] = useState(false);
 
   async function handleUpdate(values: { dueDate?: Date }) {
     if (isSaving) return;
@@ -1154,6 +1155,36 @@ function UpdateAthleteTaskForm({
     }
   }
 
+  async function handleCompleteTask() {
+    if (isCompleting) return;
+    setIsCompleting(true);
+    try {
+      await completeScoutPrepTaskAfterVoicemail({
+        athleteId: contactTask,
+        athleteMainId,
+        contactTask,
+        taskTitle: getTaskDisplayTitle(selectedTask),
+        assignedOwner: selectedTask.assigned_owner,
+        description: selectedTask.description || getTaskDisplayTitle(selectedTask),
+        taskId: selectedTask.task_id,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Task completed',
+        message: getTaskDisplayTitle(selectedTask),
+      });
+      pop();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to complete task',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsCompleting(false);
+    }
+  }
+
   return (
     <Form
       navigationTitle={`Update Task • ${task.athlete_name}`}
@@ -1163,6 +1194,11 @@ function UpdateAthleteTaskForm({
             title={isSaving ? 'Saving…' : 'Save Task Update'}
             icon={Icon.Calendar}
             onSubmit={(values) => void handleUpdate(values as { dueDate?: Date })}
+          />
+          <Action
+            title={isCompleting ? 'Completing…' : 'Complete Task'}
+            icon={Icon.CheckCircle}
+            onAction={() => void handleCompleteTask()}
           />
         </ActionPanel>
       }
@@ -1300,140 +1336,7 @@ function UpdateAthleteTaskPicker({
   );
 }
 
-function CompleteAthleteTaskPicker({
-  task,
-  initialContext = null,
-}: {
-  task: ScoutPortalTask;
-  initialContext?: ScoutPrepContext | null;
-}) {
-  const { pop } = useNavigation();
-  const [context, setContext] = useState<ScoutPrepContext | null>(initialContext);
-  const [isLoading, setIsLoading] = useState(!initialContext);
-  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (initialContext) {
-      setContext(initialContext);
-      setIsLoading(false);
-      return;
-    }
-
-    let active = true;
-    const load = async () => {
-      setIsLoading(true);
-      try {
-        const loadedContext = await loadScoutPrepContext(task);
-        if (active) {
-          setContext(loadedContext);
-        }
-      } catch (error) {
-        if (active) {
-          await showToast({
-            style: Toast.Style.Failure,
-            title: 'Failed to load athlete tasks',
-            message: error instanceof Error ? error.message : String(error),
-          });
-        }
-      } finally {
-        if (active) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    void load();
-    return () => {
-      active = false;
-    };
-  }, [initialContext, task]);
-
-  const incompleteTasks = context ? getIncompleteAthleteTasks(context.tasks) : [];
-
-  async function handleCompleteTask(selectedTask: ScoutAthleteTask) {
-    const athleteMainId = String(context?.resolved.athlete_main_id || task.athlete_main_id || '').trim();
-    const contactTask = String(task.contact_id || '').trim();
-    if (!athleteMainId || !contactTask) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Missing task identifiers',
-      });
-      return;
-    }
-
-    setCompletingTaskId(selectedTask.task_id);
-    try {
-      await completeScoutPrepTaskAfterVoicemail({
-        athleteId: contactTask,
-        athleteMainId,
-        contactTask,
-        taskTitle: getTaskDisplayTitle(selectedTask),
-        assignedOwner: selectedTask.assigned_owner,
-        description: selectedTask.description || getTaskDisplayTitle(selectedTask),
-        taskId: selectedTask.task_id,
-      });
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Task completed',
-        message: getTaskDisplayTitle(selectedTask),
-      });
-      pop();
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to complete task',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setCompletingTaskId(null);
-    }
-  }
-
-  return (
-    <List
-      isLoading={isLoading}
-      navigationTitle={`Complete Task • ${task.athlete_name}`}
-      searchBarPlaceholder="Filter incomplete athlete tasks"
-    >
-      {incompleteTasks.length > 0 ? (
-        <List.Section title="Incomplete Tasks" subtitle={String(incompleteTasks.length)}>
-          {incompleteTasks.map((candidate) => (
-            <List.Item
-              key={candidate.task_id}
-              icon={Icon.CheckCircle}
-              title={getTaskDisplayTitle(candidate)}
-              subtitle={candidate.assigned_owner || 'No owner'}
-              accessories={[
-                ...(candidate.due_date ? [{ text: candidate.due_date }] : []),
-                { text: `#${candidate.task_id}` },
-              ]}
-              actions={
-                <ActionPanel>
-                  <Action
-                    title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
-                    icon={Icon.CheckCircle}
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
-                    onAction={() => void handleCompleteTask(candidate)}
-                  />
-                </ActionPanel>
-              }
-            />
-          ))}
-        </List.Section>
-      ) : (
-        <List.Item
-          icon={Icon.CheckCircle}
-          title={isLoading ? 'Loading tasks' : 'No incomplete tasks found'}
-          subtitle={
-            isLoading
-              ? 'Loading athlete task list'
-              : 'This athlete has no incomplete tasks available to complete'
-          }
-        />
-      )}
-    </List>
-  );
-}
 
 function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   const { push } = useNavigation();
@@ -1643,6 +1546,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     }
 
     setIsSaving(true);
+    const toast = await showLoadingToast('Saving sales stage', 'Updating website and Notion');
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -2435,12 +2339,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
             target={<UpdateAthleteTaskPicker task={task} initialContext={context} />}
           />
-          <Action.Push
-            title="Complete Task"
-            icon={Icon.CheckCircle}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
-            target={<CompleteAthleteTaskPicker task={task} initialContext={context} />}
-          />
           <ActionPanel.Section title="Athlete Note">
             <Action
               title="View Notes"
@@ -2755,12 +2653,6 @@ function ScoutPrepTaskItem({
             icon={Icon.Pencil}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
             target={<UpdateAthleteTaskPicker task={task} />}
-          />
-          <Action.Push
-            title="Complete Task"
-            icon={Icon.CheckCircle}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
-            target={<CompleteAthleteTaskPicker task={task} />}
           />
           <ActionPanel.Section title="Athlete Note">
             <Action
