@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, showToast, Toast } from '@raycast/api';
+import { Action, ActionPanel, Clipboard, Icon, List, open, showToast, Toast } from '@raycast/api';
 import { useEffect, useMemo, useState } from 'react';
 import {
   enrichHeadScoutFollowUpCandidate,
@@ -7,16 +7,29 @@ import {
 } from './lib/head-scout-follow-ups';
 import {
   buildHeadScoutScriptMarkdown,
+  easternLocalIsoToDate,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
   formatHeadScoutSlotForTimezone,
   formatHeadScoutWeekLabel,
   resolveAthleteTimezone,
+  updateBookedMeetingTitlePrefix,
   type HeadScoutSchedule,
   type HeadScoutSlot,
   type HeadScoutSlotsResponse,
 } from './lib/head-scout-schedules';
+import {
+  APPOINTMENT_TITLE_PREFIXES,
+  type AppointmentTitlePrefix,
+} from './lib/head-scout-event-prefix';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
+import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
+import {
+  buildMessagesComposeUrlForRecipients,
+  buildTimeOfDayGreeting,
+  getMeetingReminderRecipient,
+} from './lib/scout-prep-contact';
+import { loadScoutPrepContext } from './lib/scout-prep';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
 type HeadScoutSchedulesRootProps = {
@@ -69,27 +82,55 @@ function buildMeetingDayLabel(candidate: HeadScoutFollowUpCandidate): string {
 }
 
 function getMeetingSortValue(candidate: HeadScoutFollowUpCandidate): number {
-  const bookedStart = String(candidate.bookedMeeting?.start || '').trim();
-  const bookedValue = bookedStart ? Date.parse(bookedStart) : Number.NaN;
-  if (!Number.isNaN(bookedValue)) {
-    return bookedValue;
+  const currentMeeting = candidate.bookedMeeting
+    ? easternLocalIsoToDate(candidate.bookedMeeting.start)
+    : null;
+  if (currentMeeting && !Number.isNaN(currentMeeting.getTime())) {
+    return currentMeeting.getTime();
   }
-
   const dueValue = Date.parse(String(candidate.dueDate || '').trim());
-  if (!Number.isNaN(dueValue)) {
-    return dueValue;
-  }
+  return Number.isNaN(dueValue) ? Number.POSITIVE_INFINITY : dueValue;
+}
 
-  return Number.POSITIVE_INFINITY;
+function getMeetingSortBucket(candidate: HeadScoutFollowUpCandidate, now = new Date()): number {
+  const currentMeeting = candidate.bookedMeeting
+    ? easternLocalIsoToDate(candidate.bookedMeeting.start)
+    : null;
+  const meetingTs = currentMeeting?.getTime() || Number.NaN;
+  const soonCutoff = now.getTime() + 72 * 60 * 60 * 1000;
+
+  if (!Number.isNaN(meetingTs) && meetingTs >= now.getTime() && meetingTs <= soonCutoff) {
+    return 0;
+  }
+  if (candidate.lifecycleState === 'rescheduled' && candidate.needsConfirmationText) {
+    return 1;
+  }
+  if (candidate.needsManualReview || candidate.oldFollowUpDateDetected || candidate.lifecycleState === 'missed') {
+    return 2;
+  }
+  if (!Number.isNaN(meetingTs) && meetingTs >= now.getTime()) {
+    return 3;
+  }
+  return 4;
 }
 
 function buildFollowUpDetailMarkdown(candidate: HeadScoutFollowUpCandidate): string {
   const lines = [
     `# ${candidate.athleteName}`,
     '',
+    `CRM Stage: ${candidate.crmSalesStage || 'Not resolved'}`,
+    '',
+    `Lifecycle: ${candidate.lifecycleState || 'Not resolved'}`,
+    '',
     `Head Scout: ${candidate.headScoutName || 'Not resolved'}`,
     '',
-    `Booked Meeting: ${candidate.bookedMeeting?.date_time_label || 'Not found'}`,
+    `Current Booked Meeting: ${candidate.bookedMeeting?.date_time_label || 'Not found'}`,
+    '',
+    `Previous Meeting: ${candidate.previousMeeting?.date_time_label || 'Not found'}`,
+    '',
+    `Operator Status: ${candidate.operatorStatus || 'N/A'}`,
+    '',
+    `Reason: ${candidate.reason || 'N/A'}`,
     '',
     `Parent 1: ${candidate.parent1Name || 'N/A'}`,
   ];
@@ -107,9 +148,27 @@ function buildFollowUpDetailMarkdown(candidate: HeadScoutFollowUpCandidate): str
   return lines.join('\n');
 }
 
+function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalTask {
+  return {
+    contact_id: candidate.athleteId,
+    athlete_id: candidate.athleteId,
+    athlete_main_id: candidate.athleteMainId,
+    athlete_name: candidate.athleteName,
+    due_date: candidate.dueDate || null,
+    task_id: candidate.taskId,
+    title: candidate.currentTask,
+    description: candidate.currentTask,
+    athlete_admin_url: candidate.adminUrl,
+    athlete_task_url: candidate.taskUrl,
+  };
+}
+
 function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
   const [candidates, setCandidates] = useState<HeadScoutFollowUpCandidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [sendingTextKey, setSendingTextKey] = useState<string | null>(null);
+  const [updatingMeetingKey, setUpdatingMeetingKey] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -134,6 +193,10 @@ function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
               )
             : enriched
           ).sort((left, right) => {
+            const bucketDiff = getMeetingSortBucket(left) - getMeetingSortBucket(right);
+            if (bucketDiff !== 0) {
+              return bucketDiff;
+            }
             const timeDiff = getMeetingSortValue(left) - getMeetingSortValue(right);
             if (timeDiff !== 0) {
               return timeDiff;
@@ -160,11 +223,104 @@ function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
     return () => {
       cancelled = true;
     };
-  }, [scoutName]);
+  }, [refreshTick, scoutName]);
+
+  async function handleSendConfirmationText(candidate: HeadScoutFollowUpCandidate) {
+    setSendingTextKey(candidate.key);
+    try {
+      const task = buildCandidateTask(candidate);
+      const context = await loadScoutPrepContext(task);
+      const reminderRecipient = getMeetingReminderRecipient(context);
+      if (!reminderRecipient) {
+        throw new Error('No reminder phone found');
+      }
+
+      const prepared = await prepareConfirmationFollowUp({
+        athleteId: candidate.athleteId,
+        athleteMainId: candidate.athleteMainId,
+        athleteName: candidate.athleteName,
+        dueDate: candidate.dueDate || null,
+        dueTime: null,
+        headScoutName: candidate.headScoutName || context.resolved.head_scout || null,
+        recipientNames: reminderRecipient.recipientNames,
+        greetingOverride: buildTimeOfDayGreeting(context),
+        sport: context.resolved.sport || null,
+        gradYear: task.grad_year || null,
+        state: context.resolved.state || null,
+      });
+      if (!prepared.canDraft) {
+        throw new Error(prepared.resolvedAppointment.reason);
+      }
+
+      try {
+        await open(buildMessagesComposeUrlForRecipients(reminderRecipient.phones, prepared.message));
+        await showToast({
+          style: Toast.Style.Success,
+          title: 'Messages opened',
+          message: 'Confirmation text draft ready.',
+        });
+      } catch {
+        await Clipboard.copy(prepared.message);
+        await open(`sms:${reminderRecipient.phones[0]}`);
+        await showToast({
+          style: Toast.Style.Success,
+          title: 'Messages opened',
+          message: 'Confirmation text copied to clipboard.',
+        });
+      }
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to build confirmation text',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setSendingTextKey((current) => (current === candidate.key ? null : current));
+    }
+  }
+
+  async function handleMarkMeeting(
+    candidate: HeadScoutFollowUpCandidate,
+    prefix: AppointmentTitlePrefix,
+  ) {
+    const meeting = candidate.bookedMeeting;
+    const eventDate = String(meeting?.start || '').split('T')[0] || '';
+    if (!meeting?.event_id || !eventDate) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No editable booked meeting',
+        message: 'Current booked meeting event id was not resolved.',
+      });
+      return;
+    }
+
+    setUpdatingMeetingKey(candidate.key);
+    try {
+      const result = await updateBookedMeetingTitlePrefix({
+        eventId: meeting.event_id,
+        eventDate,
+        prefix,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: `${prefix} saved`,
+        message: result.updated_title,
+      });
+      setRefreshTick((current) => current + 1);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to update meeting title',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setUpdatingMeetingKey((current) => (current === candidate.key ? null : current));
+    }
+  }
 
   return (
     <List
-      isLoading={isLoading}
+      isLoading={isLoading || Boolean(sendingTextKey) || Boolean(updatingMeetingKey)}
       navigationTitle={scoutName ? `${scoutName} Bookings` : 'Meeting Set Bookings'}
       searchBarPlaceholder="Search athlete, parents, stage, or scout"
       isShowingDetail
@@ -174,17 +330,42 @@ function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
           {candidates.map((candidate) => (
             <List.Item
               key={candidate.key}
-              icon={candidate.bookedMeeting ? Icon.CheckCircle : Icon.Circle}
-              title={`${candidate.athleteName} - ${buildMeetingDayLabel(candidate)}`}
+              icon={candidate.needsManualReview ? Icon.ExclamationMark : candidate.bookedMeeting ? Icon.CheckCircle : Icon.Circle}
+              title={candidate.athleteName}
+              subtitle={
+                candidate.currentMeetingLabel ||
+                (candidate.needsManualReview
+                  ? 'Rescheduled stage, no current booked meeting found.'
+                  : buildMeetingDayLabel(candidate))
+              }
               keywords={[
                 candidate.athleteName,
                 candidate.parent1Name || '',
                 candidate.parent2Name || '',
                 candidate.headScoutName || '',
               ]}
+              accessories={candidate.badges.map((badge) => ({ tag: badge.label }))}
               detail={<List.Item.Detail markdown={buildFollowUpDetailMarkdown(candidate)} />}
               actions={
                 <ActionPanel>
+                  <Action
+                    title="Send Confirmation Text"
+                    icon={Icon.Message}
+                    shortcut={{ modifiers: ['cmd'], key: 'm' }}
+                    onAction={() => void handleSendConfirmationText(candidate)}
+                  />
+                  {candidate.bookedMeeting?.event_id ? (
+                    <>
+                      {APPOINTMENT_TITLE_PREFIXES.map((prefix) => (
+                        <Action
+                          key={prefix}
+                          title={`Mark ${prefix}`}
+                          icon={Icon.Pencil}
+                          onAction={() => void handleMarkMeeting(candidate, prefix)}
+                        />
+                      ))}
+                    </>
+                  ) : null}
                   <Action.OpenInBrowser
                     title="Open Athlete Admin"
                     shortcut={{ modifiers: ['cmd'], key: 'o' }}

@@ -19,6 +19,7 @@ const CURATED_STAGE_LABELS = new Set([
   'Called - Unable to Leave VM',
   'Spoke to - Not Interested',
   'Meeting Set',
+  'Rescheduled',
 ]);
 
 const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = Array.from(CURATED_STAGE_LABELS).map(

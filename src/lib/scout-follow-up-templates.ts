@@ -10,6 +10,10 @@ export type MinimalFollowUpQueueRecord = {
   parent2: string | null;
   currentTask: string;
   raycastKey: string;
+  crmStage?: string | null;
+  workflowStatus?: string | null;
+  lifecycleState?: string | null;
+  reason?: string | null;
 };
 
 const TIMEZONE_LABEL_TO_WORD: Record<string, string> = {
@@ -123,7 +127,7 @@ export function buildConfirmationMessage(args: {
         : `${currentGreeting},`;
 
   return [
-    `${greeting} we have our zoom interview with Coach ${coachName} ${timePhrase} at ${meetingTimeLabel}. Coach will call your cell at ${callTimeLabel}, throw him on speakerphone so he can give you three the zoom code to login.`,
+    `${greeting} we have our zoom interview with Coach ${coachName} ${timePhrase} at ${meetingTimeLabel}. Coach will call your cell at ${callTimeLabel}, throw him on speakerphone so he can give you all the zoom code to login.`,
     '',
     'Make sure you are in front of a laptop or tablet so he can share his screen.',
     '',
@@ -139,6 +143,10 @@ export function buildMinimalFollowUpQueueRecord(args: {
   currentTask?: string | null;
   dueAt: Date;
   raycastKey: string;
+  crmStage?: string | null;
+  workflowStatus?: string | null;
+  lifecycleState?: string | null;
+  reason?: string | null;
 }): MinimalFollowUpQueueRecord {
   return {
     title: buildFollowUpTitle(args.messageType, args.athleteName),
@@ -150,6 +158,10 @@ export function buildMinimalFollowUpQueueRecord(args: {
     parent2: String(args.parent2Name || '').trim() || null,
     currentTask: normalizeCurrentTask(args.currentTask),
     raycastKey: args.raycastKey.trim(),
+    crmStage: String(args.crmStage || '').trim() || null,
+    workflowStatus: String(args.workflowStatus || '').trim() || null,
+    lifecycleState: String(args.lifecycleState || '').trim() || null,
+    reason: String(args.reason || '').trim() || null,
   };
 }
 
@@ -157,5 +169,24 @@ export function buildFollowUpQueuePageMarkdown(args: {
   record: MinimalFollowUpQueueRecord;
   filledMessage: string;
 }): string {
-  return [args.filledMessage].join('\n');
+  const lines: string[] = [];
+  if (args.record.crmStage) {
+    lines.push(`CRM Stage: ${args.record.crmStage}`);
+  }
+  if (args.record.workflowStatus) {
+    lines.push(`Status: ${args.record.workflowStatus}`);
+  }
+  if (args.record.lifecycleState) {
+    lines.push(`Lifecycle: ${args.record.lifecycleState}`);
+  }
+  if (args.record.reason) {
+    lines.push(`Reason: ${args.record.reason}`);
+  }
+  if (args.filledMessage.trim()) {
+    if (lines.length) {
+      lines.push('');
+    }
+    lines.push(args.filledMessage);
+  }
+  return lines.join('\n');
 }

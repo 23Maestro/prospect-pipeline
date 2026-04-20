@@ -1,9 +1,12 @@
 import { apiFetch } from './fastapi-client';
 import { searchLogger } from './logger';
 import { getNaturalZoneLabel, resolveTimezone } from './scout-prep-ai';
+import type { AppointmentTitlePrefix } from './head-scout-event-prefix';
 
 const FEATURE = 'head-scout-schedules';
 export const HEAD_SCOUT_TIMEZONE = 'EST';
+export const BOOKED_MEETING_LOOKBACK_DAYS = 45;
+export const BOOKED_MEETING_LOOKAHEAD_DAYS = 120;
 
 export type HeadScoutSlot = {
   id: string;
@@ -62,6 +65,16 @@ export type BookedMeetingLookupResponse = {
   end: string;
   count: number;
   event?: BookedMeetingEvent | null;
+  events?: BookedMeetingEvent[];
+};
+
+export type BookedMeetingTitleUpdateResponse = {
+  success: boolean;
+  event_id: string;
+  prefix: AppointmentTitlePrefix;
+  original_title: string;
+  updated_title: string;
+  message: string;
 };
 
 type TimezoneDisplay = {
@@ -258,6 +271,23 @@ export function buildCalendarMonthWindow(date: Date): { start: string; end: stri
   return { start: toIsoDate(start), end: toIsoDate(end) };
 }
 
+export function buildBookedMeetingLookupWindow(
+  anchorDate?: Date | null,
+  now: Date = new Date(),
+): { start: string; end: string } {
+  const safeAnchor =
+    anchorDate && !Number.isNaN(anchorDate.getTime()) ? anchorDate : now;
+  const earliest = safeAnchor.getTime() < now.getTime() ? safeAnchor : now;
+  const latest = safeAnchor.getTime() > now.getTime() ? safeAnchor : now;
+  const start = new Date(earliest);
+  start.setDate(start.getDate() - BOOKED_MEETING_LOOKBACK_DAYS);
+  const end = new Date(latest);
+  end.setDate(end.getDate() + BOOKED_MEETING_LOOKAHEAD_DAYS);
+  const toIsoDate = (value: Date) =>
+    `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
+  return { start: toIsoDate(start), end: toIsoDate(end) };
+}
+
 export async function fetchBookedMeeting(args: {
   calendarOwnerId: string;
   title: string;
@@ -293,6 +323,50 @@ export async function fetchBookedMeeting(args: {
     title: args.title,
     count: payload.count,
     found: Boolean(payload.event),
+  });
+  return payload;
+}
+
+export async function updateBookedMeetingTitlePrefix(args: {
+  eventId: string;
+  eventDate: string;
+  prefix: AppointmentTitlePrefix;
+}): Promise<BookedMeetingTitleUpdateResponse> {
+  logInfo('BOOKED_MEETING_TITLE_UPDATE', 'request', 'start', {
+    eventId: args.eventId,
+    eventDate: args.eventDate,
+    prefix: args.prefix,
+  });
+
+  const response = await apiFetch('/calendar/booked-meeting/title', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_id: args.eventId,
+      event_date: args.eventDate,
+      prefix: args.prefix,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Booked meeting title update HTTP ${response.status}`;
+    logFailure('BOOKED_MEETING_TITLE_UPDATE', 'request', message, {
+      eventId: args.eventId,
+      eventDate: args.eventDate,
+      prefix: args.prefix,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as BookedMeetingTitleUpdateResponse;
+  logInfo('BOOKED_MEETING_TITLE_UPDATE', 'response', 'success', {
+    eventId: args.eventId,
+    prefix: args.prefix,
+    originalTitle: payload.original_title,
+    updatedTitle: payload.updated_title,
   });
   return payload;
 }

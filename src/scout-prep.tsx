@@ -125,6 +125,14 @@ function logFailure(event: string, step: string, error: string, context?: Record
   });
 }
 
+async function showLoadingToast(title: string, message?: string) {
+  return showToast({
+    style: Toast.Style.Animated,
+    title,
+    message,
+  });
+}
+
 function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {
   const params = new URLSearchParams({ contactid: String(athleteId || '').trim() });
   const mainId = String(athleteMainId || '').trim();
@@ -988,6 +996,10 @@ function RescheduleConfirmationCallForm({
     }
 
     setIsSaving(true);
+    const toast = await showLoadingToast(
+      'Saving confirmation call',
+      'Updating task and follow-up queue',
+    );
     try {
       const nextTaskTitle =
         String(values.taskTitle || '').trim() || stripMoveThisTaskPrefix(popupData?.tasktitle);
@@ -1035,19 +1047,15 @@ function RescheduleConfirmationCallForm({
         queueError = error instanceof Error ? error.message : String(error);
       }
 
-      await showToast({
-        style: queueError ? Toast.Style.Failure : Toast.Style.Success,
-        title: queueError
-          ? 'Confirmation updated, queue failed'
-          : 'Confirmation call updated + queued',
-        message: queueError || undefined,
-      });
+      toast.style = queueError ? Toast.Style.Failure : Toast.Style.Success;
+      toast.title = queueError
+        ? 'Confirmation updated, queue failed'
+        : 'Confirmation call updated + queued';
+      toast.message = queueError || '';
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to update confirmation call',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Failed to update confirmation call';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setIsSaving(false);
     }
@@ -1115,10 +1123,9 @@ function UpdateAthleteTaskForm({
 }) {
   const { pop } = useNavigation();
   const [isSaving, setIsSaving] = useState(false);
-  const [isCompleting, setIsCompleting] = useState(false);
 
   async function handleUpdate(values: { dueDate?: Date }) {
-    if (isSaving || isCompleting) return;
+    if (isSaving) return;
     setIsSaving(true);
     try {
       await updateScoutPrepTask({
@@ -1147,36 +1154,6 @@ function UpdateAthleteTaskForm({
     }
   }
 
-  async function handleComplete() {
-    if (isSaving || isCompleting) return;
-    setIsCompleting(true);
-    try {
-      await completeScoutPrepTaskAfterVoicemail({
-        athleteId: contactTask,
-        athleteMainId,
-        contactTask,
-        taskId: selectedTask.task_id,
-        taskTitle: getTaskDisplayTitle(selectedTask),
-        assignedOwner: selectedTask.assigned_owner,
-        description: selectedTask.description || getTaskDisplayTitle(selectedTask),
-      });
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Task completed',
-        message: getTaskDisplayTitle(selectedTask),
-      });
-      pop();
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to complete task',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setIsCompleting(false);
-    }
-  }
-
   return (
     <Form
       navigationTitle={`Update Task • ${task.athlete_name}`}
@@ -1186,12 +1163,6 @@ function UpdateAthleteTaskForm({
             title={isSaving ? 'Saving…' : 'Save Task Update'}
             icon={Icon.Calendar}
             onSubmit={(values) => void handleUpdate(values as { dueDate?: Date })}
-          />
-          <Action
-            title={isCompleting ? 'Completing…' : 'Complete Task'}
-            icon={Icon.CheckCircle}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
-            onAction={() => void handleComplete()}
           />
         </ActionPanel>
       }
@@ -1257,8 +1228,6 @@ function UpdateAthleteTaskPicker({
   }, [initialContext, task]);
 
   const incompleteTasks = context ? getIncompleteAthleteTasks(context.tasks) : [];
-  const athleteMainId = String(context?.resolved.athlete_main_id || task.athlete_main_id || '').trim();
-  const contactTask = String(task.contact_id || '').trim();
 
   async function handleOpenTaskUpdate(selectedTask: ScoutAthleteTask) {
     const athleteMainId = String(context?.resolved.athlete_main_id || task.athlete_main_id || '').trim();
@@ -1303,7 +1272,6 @@ function UpdateAthleteTaskPicker({
                   <Action
                     title="Update Task"
                     icon={Icon.Pencil}
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'k' }}
                     onAction={() => void handleOpenTaskUpdate(candidate)}
                   />
                   {candidate.description ? (
@@ -1797,24 +1765,22 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         notionSyncError = error instanceof Error ? error.message : String(error);
       }
 
-      await showToast({
-        style: notionSyncError ? Toast.Style.Failure : Toast.Style.Success,
-        title: notionSyncError
-          ? 'Website saved, Notion sync failed'
-          : taskCompletionMessage
-            ? 'Sales stage saved, task completed'
-            : stageLabel === MEETING_SET_LABEL
-              ? 'Meeting Set + sales stage saved'
-              : 'Sales stage saved',
-        message:
-          notionSyncError ||
-          taskCompletionMessage ||
-          (stageLabel === MEETING_SET_LABEL
-            ? meetingSetResult?.email_sent
-              ? 'Meeting Set email sent'
-              : 'Meeting Set saved'
-            : stageLabel),
-      });
+      toast.style = notionSyncError ? Toast.Style.Failure : Toast.Style.Success;
+      toast.title = notionSyncError
+        ? 'Website saved, Notion sync failed'
+        : taskCompletionMessage
+          ? 'Sales stage saved, task completed'
+          : stageLabel === MEETING_SET_LABEL
+            ? 'Meeting Set + sales stage saved'
+            : 'Sales stage saved';
+      toast.message =
+        notionSyncError ||
+        taskCompletionMessage ||
+        (stageLabel === MEETING_SET_LABEL
+          ? meetingSetResult?.email_sent
+            ? 'Meeting Set email sent'
+            : 'Meeting Set saved'
+          : stageLabel);
 
       if (salesStageResult.created_task) {
         await addScoutPrepFollowUpPointer({
@@ -1838,11 +1804,9 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to save sales stage',
-        message,
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Failed to save sales stage';
+      toast.message = message;
     } finally {
       setIsSaving(false);
     }
@@ -2047,6 +2011,11 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       return;
     }
 
+    const toast = await showLoadingToast(
+      'Syncing Notion call prep',
+      'Updating script and voicemail toggles',
+    );
+
     try {
       let activeContext = context;
       if (!activeContext) {
@@ -2072,17 +2041,13 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
         }),
       ]);
 
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Notion call prep updated',
-        message: `Replaced ${scriptResult.toggleTitle} and ${voicemailResult.toggleTitle}.`,
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Notion call prep updated';
+      toast.message = `Replaced ${scriptResult.toggleTitle} and ${voicemailResult.toggleTitle}.`;
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Notion sync failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Notion sync failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     }
   }
 
@@ -2171,6 +2136,11 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
   }
 
   async function handleTextMeetingReminder() {
+    const toast = await showLoadingToast(
+      'Preparing meeting reminder',
+      'Resolving confirmation task and current meeting',
+    );
+
     let activeContext = context;
     if (!activeContext) {
       activeContext = await loadScoutPrepContext(task);
@@ -2179,6 +2149,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
     const reminderRecipient = getMeetingReminderRecipient(activeContext);
     if (!reminderRecipient?.phones.length) {
+      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No usable contact number',
@@ -2189,6 +2160,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
     const confirmationTask = findNewestIncompleteConfirmationTask(activeContext.tasks);
     if (!confirmationTask) {
+      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No confirmation call task found',
@@ -2213,6 +2185,15 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       recipientNames: reminderRecipient.recipientNames,
       fallbackText: confirmationTask.description || '',
     });
+    if (!prepared.canDraft) {
+      toast.hide();
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Manual reconciliation needed',
+        message: prepared.resolvedAppointment.reason,
+      });
+      return;
+    }
 
     try {
       await queueConfirmationFollowUp({
@@ -2239,19 +2220,15 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
     try {
       await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Messages opened',
-        message: 'Meeting reminder draft ready.',
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Messages opened';
+      toast.message = 'Meeting reminder draft ready.';
     } catch (error) {
       await Clipboard.copy(prepared.message);
       await open(`sms:${reminderRecipient.phones[0]}`);
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Messages opened',
-        message: 'Meeting reminder copied to clipboard.',
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Messages opened';
+      toast.message = 'Meeting reminder copied to clipboard.';
       logFailure(
         'SCOUT_PREP_MEETING_REMINDER',
         'open-compose',
@@ -2288,6 +2265,11 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       return;
     }
 
+    const toast = await showLoadingToast(
+      'Completing confirmation call',
+      'Saving task completion',
+    );
+
     try {
       await completeScoutPrepTaskAfterVoicemail({
         athleteId: contactTask,
@@ -2298,16 +2280,13 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
         description: confirmationTask.description || 'Confirmation Call',
         taskId: confirmationTask.task_id,
       });
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Confirmation call completed',
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Confirmation call completed';
+      toast.message = '';
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to complete confirmation call',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Failed to complete confirmation call';
+      toast.message = error instanceof Error ? error.message : String(error);
     }
   }
 
@@ -2579,13 +2558,20 @@ function ScoutPrepTaskItem({
   }
 
   async function handleTextMeetingReminder() {
+    const toast = await showLoadingToast(
+      'Preparing meeting reminder',
+      'Resolving confirmation task and current meeting',
+    );
+
     const activeContext = await loadTaskNotesContext();
     if (!activeContext) {
+      toast.hide();
       return;
     }
 
     const reminderRecipient = getMeetingReminderRecipient(activeContext);
     if (!reminderRecipient?.phones.length) {
+      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No usable contact number',
@@ -2595,6 +2581,7 @@ function ScoutPrepTaskItem({
 
     const confirmationTask = findNewestIncompleteConfirmationTask(activeContext.tasks);
     if (!confirmationTask) {
+      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No confirmation call task found',
@@ -2619,6 +2606,15 @@ function ScoutPrepTaskItem({
       recipientNames: reminderRecipient.recipientNames,
       fallbackText: confirmationTask.description || '',
     });
+    if (!prepared.canDraft) {
+      toast.hide();
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Manual reconciliation needed',
+        message: prepared.resolvedAppointment.reason,
+      });
+      return;
+    }
 
     try {
       await queueConfirmationFollowUp({
@@ -2645,19 +2641,15 @@ function ScoutPrepTaskItem({
 
     try {
       await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Messages opened',
-        message: 'Meeting reminder draft ready.',
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Messages opened';
+      toast.message = 'Meeting reminder draft ready.';
     } catch (error) {
       await Clipboard.copy(prepared.message);
       await open(`sms:${reminderRecipient.phones[0]}`);
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Messages opened',
-        message: 'Meeting reminder copied to clipboard.',
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Messages opened';
+      toast.message = 'Meeting reminder copied to clipboard.';
       logFailure(
         'SCOUT_PREP_MEETING_REMINDER',
         'open-compose',

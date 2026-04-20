@@ -102,6 +102,7 @@ class LegacyTranslator:
             "meeting_for": "56",
         },
     ]
+    APPOINTMENT_TITLE_PREFIXES = ["(ACF)", "(CF)", "(RSP)", "(CAN)", "(ACF*2)"]
 
     @staticmethod
     def _parse_weekday_list(value: Any) -> List[int]:
@@ -293,13 +294,120 @@ class LegacyTranslator:
                 }
             )
 
-        matches.sort(key=lambda item: item["start"])
+        matches.sort(key=lambda item: item["start"], reverse=True)
         event = matches[0] if matches else None
         return {
             "success": True,
             "count": len(matches),
             "event": event,
+            "events": matches,
         }
+
+    @staticmethod
+    def apply_booked_meeting_title_prefix(title: str, prefix: str) -> str:
+        trimmed_title = str(title or "").strip()
+        safe_prefix = str(prefix or "").strip()
+        if not safe_prefix:
+            return trimmed_title
+        if not trimmed_title:
+            return safe_prefix
+        if trimmed_title == safe_prefix or trimmed_title.startswith(f"{safe_prefix} "):
+            return trimmed_title
+
+        escaped_prefixes = "|".join(re.escape(value) for value in LegacyTranslator.APPOINTMENT_TITLE_PREFIXES)
+        known_prefix_pattern = re.compile(rf"^\s*(?:{escaped_prefixes})\s*")
+        if known_prefix_pattern.match(trimmed_title):
+            return known_prefix_pattern.sub(f"{safe_prefix} ", trimmed_title).strip()
+
+        return f"{safe_prefix} {trimmed_title}".strip()
+
+    @staticmethod
+    def booked_meeting_popup_to_legacy(
+        event_id: str,
+        event_date: str,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for booked Meeting Set popup form.
+        GET /template/calendaraccess/meetingset
+        """
+        endpoint = "/template/calendaraccess/meetingset"
+        params = {
+            "edittaskid": event_id,
+            "accesscode": LegacyTranslator.HEAD_SCOUT_LOGIN_USER,
+            "evedate": event_date,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_booked_meeting_popup_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse booked Meeting Set popup HTML into form data.
+        """
+        soup = BeautifulSoup(raw_response or "", "html.parser")
+        form = soup.find("form", id="editmeetingset") or soup.find("form")
+        if not form:
+            raise ValueError("Booked meeting edit form not found")
+
+        form_data: Dict[str, Any] = {}
+        checkbox_fields: List[str] = []
+
+        for input_elem in form.find_all("input"):
+            name = input_elem.get("name")
+            if not name:
+                continue
+            input_type = (input_elem.get("type") or "text").lower()
+            if input_type in ("submit", "button", "reset", "file"):
+                continue
+            if input_type in ("checkbox", "radio"):
+                checkbox_fields.append(name)
+                if input_elem.has_attr("checked"):
+                    form_data[name] = input_elem.get("value") or "1"
+                continue
+            form_data[name] = input_elem.get("value") or ""
+
+        for select in form.find_all("select"):
+            name = select.get("name")
+            if not name:
+                continue
+            selected = select.find("option", selected=True) or select.find("option")
+            if selected:
+                form_data[name] = selected.get("value") or selected.get_text(strip=True)
+
+        for textarea in form.find_all("textarea"):
+            name = textarea.get("name")
+            if not name:
+                continue
+            form_data[name] = textarea.get_text() or ""
+
+        return {
+            "success": True,
+            "form_data": form_data,
+            "checkbox_fields": sorted(set(checkbox_fields)),
+        }
+
+    @staticmethod
+    def apply_booked_meeting_title_update(
+        form_data: Dict[str, Any],
+        event_id: str,
+        title: str,
+    ) -> Dict[str, Any]:
+        """
+        Apply title-only update to Meeting Set event form data.
+        """
+        updated = dict(form_data)
+        updated["tasktitle"] = title
+        if not str(updated.get("existingtask") or "").strip():
+            updated["existingtask"] = str(event_id or "").strip()
+        return updated
+
+    @staticmethod
+    def booked_meeting_title_update_to_legacy(form_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert updated Meeting Set form data to legacy request.
+        POST /tasks/addmeetingset
+        """
+        endpoint = "/tasks/addmeetingset"
+        return endpoint, form_data
 
     @staticmethod
     def parse_head_scout_slots_response(

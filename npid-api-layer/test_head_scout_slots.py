@@ -92,7 +92,75 @@ def test_parse_open_meetings_response_extracts_openeventid_and_start_time():
     assert result["slots"][1]["start_time"] == "11:00"
 
 
+def test_parse_booked_meeting_response_returns_newest_match():
+    payload = """
+    [
+      {"id": "100", "start": "2026-04-16T18:00", "end": "2026-04-16T19:00", "user": "Ryan Lietz", "title": "Victor Williams Football 2027 FL"},
+      {"id": "200", "start": "2026-04-23T18:00", "end": "2026-04-23T19:00", "user": "Ryan Lietz", "title": "Victor Williams Football 2027 FL"},
+      {"id": "300", "start": "2026-04-24T18:00", "end": "2026-04-24T19:00", "user": "Jeffrey Stein", "title": "Victor Williams Football 2027 FL"}
+    ]
+    """
+
+    result = LegacyTranslator.parse_booked_meeting_response(
+        raw_response=payload,
+        title_query="Victor Williams Football 2027 FL",
+        scout_name="Ryan Lietz",
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 2
+    assert result["event"]["event_id"] == "200"
+    assert result["event"]["start"] == "2026-04-23T18:00"
+    assert [event["event_id"] for event in result["events"]] == ["200", "100"]
+
+
+def test_apply_booked_meeting_title_prefix_replaces_known_prefix():
+    result = LegacyTranslator.apply_booked_meeting_title_prefix(
+        "(RSP) Victor Williams Football 2027 FL",
+        "(CF)",
+    )
+
+    assert result == "(CF) Victor Williams Football 2027 FL"
+
+
+def test_apply_booked_meeting_title_prefix_preserves_unknown_prefix():
+    result = LegacyTranslator.apply_booked_meeting_title_prefix(
+        "(FU) Donzi Ojeikere Football 2028 TX",
+        "(ACF)",
+    )
+
+    assert result == "(ACF) (FU) Donzi Ojeikere Football 2028 TX"
+
+
+def test_parse_booked_meeting_popup_response_extracts_title_and_existingtask():
+    payload = """
+    <form method="post" id="editmeetingset">
+      <input type="hidden" name="_token" value="token123">
+      <input type="hidden" name="existingtask" value="586540">
+      <input type="hidden" name="contact_task" value="1486258">
+      <input type="text" name="tasktitle" value="(FU) Donzi Ojeikere Football 2028 TX">
+      <select name="assignedto">
+        <option value="nhVvYOz8bAaL57c" selected>Ryan Lietz</option>
+      </select>
+      <textarea name="taskdescription">Notes</textarea>
+      <input type="submit" name="submit" value="Save">
+    </form>
+    """
+
+    result = LegacyTranslator.parse_booked_meeting_popup_response(payload)
+
+    assert result["success"] is True
+    assert result["form_data"]["existingtask"] == "586540"
+    assert result["form_data"]["tasktitle"] == "(FU) Donzi Ojeikere Football 2028 TX"
+    assert result["form_data"]["assignedto"] == "nhVvYOz8bAaL57c"
+    assert result["form_data"]["taskdescription"] == "Notes"
+
+
 if __name__ == "__main__":
     test_parse_head_scout_slots_response_filters_and_orders_slots()
     test_parse_open_meetings_response_extracts_openeventid_and_start_time()
+    test_parse_booked_meeting_response_returns_newest_match()
+    test_apply_booked_meeting_title_prefix_replaces_known_prefix()
+    test_apply_booked_meeting_title_prefix_preserves_unknown_prefix()
+    test_parse_booked_meeting_popup_response_extracts_title_and_existingtask()
     print("✅ Head scout slot parser test passed")

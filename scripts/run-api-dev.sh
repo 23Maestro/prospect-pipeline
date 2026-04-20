@@ -34,4 +34,10 @@ load_env_file "${PROJECT_ROOT}/.env"
 load_env_file "${API_DIR}/.env"
 
 source venv/bin/activate
-exec python -m uvicorn main:app --host "${API_HOST}" --port "${API_PORT}" --reload
+
+uvicorn_args=(main:app --host "${API_HOST}" --port "${API_PORT}")
+if [[ "${API_RELOAD:-1}" != "0" ]]; then
+  uvicorn_args+=(--reload)
+fi
+
+exec python -m uvicorn "${uvicorn_args[@]}"

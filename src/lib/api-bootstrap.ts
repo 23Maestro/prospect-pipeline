@@ -11,6 +11,7 @@ const STARTUP_POLL_INTERVAL_MS = 250;
 const STARTUP_MAX_WAIT_MS = Number.parseInt(process.env.API_BOOTSTRAP_MAX_WAIT_MS || '25000', 10);
 const OPENAPI_CHECK_INTERVAL_ATTEMPTS = 4;
 const DEV_PROCESS_SCRIPT = path.join(WORKSPACE_ROOT, 'scripts', 'dev-processes.sh');
+const OVERMIND_MANAGED_API = process.env.OVERMIND_MANAGED_API === '1';
 const REQUIRED_SERVER_PATHS = [
   '/api/v1/athlete/{contact_id}/admin/payments',
   '/api/v1/tasks/list',
@@ -25,10 +26,38 @@ const REQUIRED_SERVER_PATHS = [
   '/api/v1/tasks/complete',
   '/api/v1/calendar/head-scout-slots',
   '/api/v1/calendar/open-meetings',
+  '/api/v1/calendar/booked-meeting/title',
 ];
 const FEATURE = 'api-bootstrap';
 
 let startupPromise: Promise<void> | null = null;
+
+async function waitForManagedServer(): Promise<void> {
+  const deadline = Date.now() + STARTUP_MAX_WAIT_MS;
+
+  while (Date.now() < deadline) {
+    const serverState = await getServerState();
+    if (serverState.ok && serverState.hasRequiredPaths) {
+      logInfo('API_BOOTSTRAP', 'await-managed-server', 'success', {
+        serverReady: true,
+      });
+      return;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, STARTUP_POLL_INTERVAL_MS));
+  }
+
+  const finalState = await getServerState();
+  const detail =
+    finalState.ok && !finalState.hasRequiredPaths
+      ? `Managed Overmind API is stale; missing routes: ${finalState.missingPaths.join(', ')}`
+      : 'Managed Overmind API did not become ready in time';
+  logFailure('API_BOOTSTRAP', 'await-managed-server', detail, {
+    missingPaths: finalState.missingPaths,
+    serverReady: finalState.ok,
+  });
+  throw new Error(detail);
+}
 
 function logInfo(
   event: string,
@@ -91,6 +120,14 @@ async function ensureServerRunningInner(): Promise<void> {
     logInfo('API_BOOTSTRAP', 'check-server-state', 'success', {
       serverReady: true,
     });
+    return;
+  }
+  if (OVERMIND_MANAGED_API) {
+    logInfo('API_BOOTSTRAP', 'await-managed-server', 'start', {
+      missingPaths: serverState.missingPaths,
+      serverReady: serverState.ok,
+    });
+    await waitForManagedServer();
     return;
   }
   if (serverState.ok && !serverState.hasRequiredPaths) {

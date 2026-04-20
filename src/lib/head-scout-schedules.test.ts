@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildBookedMeetingLookupWindow,
   buildHeadScoutWeekWindow,
   filterVisibleHeadScoutSlots,
   formatHeadScoutSlotDate,
@@ -35,6 +36,16 @@ test('filterVisibleHeadScoutSlots hides past slots only in current week', () => 
   assert.deepEqual(
     filterVisibleHeadScoutSlots(slots, 1, now).map((slot) => slot.id),
     ['1', '2'],
+  );
+});
+
+test('booked meeting lookup window is wider than the due-date month', () => {
+  assert.deepEqual(
+    buildBookedMeetingLookupWindow(
+      new Date('2026-04-19T18:00:00Z'),
+      new Date('2026-04-20T12:00:00Z'),
+    ),
+    { start: '2026-03-05', end: '2026-08-18' },
   );
 });
 

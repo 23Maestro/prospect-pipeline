@@ -1,2 +1,2 @@
-raycast: npm run dev
-api: bash scripts/run-api-dev.sh
+api: OVERMIND_MANAGED_API=1 API_RELOAD=0 bash scripts/run-api-dev.sh
+raycast: OVERMIND_MANAGED_API=1 npm run dev

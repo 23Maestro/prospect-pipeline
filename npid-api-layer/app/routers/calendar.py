@@ -8,6 +8,8 @@ import logging
 
 from app.models.schemas import (
     BookedMeetingLookupResponse,
+    BookedMeetingTitleUpdateRequest,
+    BookedMeetingTitleUpdateResponse,
     HeadScoutSlotsResponse,
     OpenMeetingsResponse,
 )
@@ -283,6 +285,106 @@ async def get_booked_meeting(
                     "title": title,
                     "start": start,
                     "end": end,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/booked-meeting/title", response_model=BookedMeetingTitleUpdateResponse)
+async def update_booked_meeting_title(
+    request: Request,
+    payload: BookedMeetingTitleUpdateRequest,
+):
+    """
+    Update a booked Meeting Set title prefix by exact event id.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "BOOKED_MEETING_TITLE_UPDATE %s",
+        {
+            "event": "BOOKED_MEETING_TITLE_UPDATE",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "eventId": payload.event_id,
+                "eventDate": payload.event_date,
+                "prefix": payload.prefix,
+            },
+        },
+    )
+
+    try:
+        popup_endpoint, popup_params = translator.booked_meeting_popup_to_legacy(
+            event_id=payload.event_id,
+            event_date=payload.event_date,
+        )
+        popup_response = await session.get(popup_endpoint, params=popup_params)
+        popup_result = translator.parse_booked_meeting_popup_response(popup_response.text)
+        form_data = popup_result.get("form_data", {})
+
+        original_title = str(form_data.get("tasktitle") or "").strip()
+        if not original_title:
+            raise HTTPException(status_code=400, detail="Booked meeting title not found in popup form")
+
+        updated_title = translator.apply_booked_meeting_title_prefix(original_title, payload.prefix)
+        logger.info(
+            "BOOKED_MEETING_TITLE_UPDATE %s",
+            {
+                "event": "BOOKED_MEETING_TITLE_UPDATE",
+                "step": "prepare",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "eventId": payload.event_id,
+                    "prefix": payload.prefix,
+                    "beforeTitle": original_title,
+                    "afterTitle": updated_title,
+                },
+            },
+        )
+
+        if updated_title != original_title:
+            updated_form_data = translator.apply_booked_meeting_title_update(
+                form_data=form_data,
+                event_id=payload.event_id,
+                title=updated_title,
+            )
+            endpoint, final_form_data = translator.booked_meeting_title_update_to_legacy(updated_form_data)
+            update_response = await session.post(endpoint, data=final_form_data)
+            update_result = translator.parse_task_update_response(update_response.text)
+            if not update_result.get("success"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=update_result.get("message", "Booked meeting title update failed"),
+                )
+
+        return BookedMeetingTitleUpdateResponse(
+            success=True,
+            event_id=payload.event_id,
+            prefix=payload.prefix,
+            original_title=original_title,
+            updated_title=updated_title,
+            message="Booked meeting title updated",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "BOOKED_MEETING_TITLE_UPDATE %s",
+            {
+                "event": "BOOKED_MEETING_TITLE_UPDATE",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "eventId": payload.event_id,
+                    "eventDate": payload.event_date,
+                    "prefix": payload.prefix,
                 },
             },
         )

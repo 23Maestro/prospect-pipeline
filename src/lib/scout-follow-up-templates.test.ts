@@ -48,9 +48,10 @@ test('buildConfirmationMessage fills coach and meeting time', () => {
     meetingTimezone: 'CST',
   });
 
-  assert.match(message, /Coach Lietz/);
+  assert.match(message, /Coach Ryan Lietz/);
   assert.match(message, /this evening at 7:00pm central/);
   assert.match(message, /call your cell at 7:00pm/);
+  assert.match(message, /give you all the zoom code to login/);
 });
 
 test('getReminderTimeLabel maps timezone labels to words', () => {
@@ -79,5 +80,9 @@ test('buildMinimalFollowUpQueueRecord stays lightweight', () => {
     parent2: null,
     currentTask: 'Confirmation Call',
     raycastKey: 'confirmation:1489227:991',
+    crmStage: null,
+    workflowStatus: null,
+    lifecycleState: null,
+    reason: null,
   });
 });

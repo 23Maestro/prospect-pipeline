@@ -662,3 +662,21 @@ class BookedMeetingLookupResponse(BaseModel):
     end: str
     count: int
     event: Optional[BookedMeetingEvent] = None
+    events: List[BookedMeetingEvent] = []
+
+
+class BookedMeetingTitleUpdateRequest(BaseModel):
+    """Update a booked meeting title prefix by specific event id."""
+    event_id: str
+    event_date: str
+    prefix: Literal["(ACF)", "(CF)", "(RSP)", "(CAN)", "(ACF*2)"]
+
+
+class BookedMeetingTitleUpdateResponse(BaseModel):
+    """Booked meeting title prefix update result."""
+    success: bool
+    event_id: str
+    prefix: Literal["(ACF)", "(CF)", "(RSP)", "(CAN)", "(ACF*2)"]
+    original_title: str
+    updated_title: str
+    message: str

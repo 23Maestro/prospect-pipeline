@@ -17,75 +17,16 @@ import {
   buildMinimalFollowUpQueueRecord,
   type MinimalFollowUpQueueRecord,
 } from './scout-follow-up-templates';
-import { apiFetch } from './fastapi-client';
-import { buildCalendarMonthWindow, easternLocalIsoToDate, fetchBookedMeeting, HEAD_SCOUT_ORDER } from './head-scout-schedules';
-import { mapTimezoneToLegacyRecruitZone } from './scout-prep-contact';
-import { resolveTimezone } from './scout-prep-ai';
+import { fetchCuratedSalesStageOptions } from './sales-stage';
+import {
+  hydrateResolvedAppointment,
+  type AppointmentTaskSnapshot,
+  type ResolvedAppointment,
+} from './head-scout-appointment-lifecycle';
 
 const FEATURE = 'scout-follow-up-queue';
 const NOTION_FOLLOW_UP_DATABASE_ID = '3434c8bd-6c26-8022-a875-e8c99007628e';
 const MEETING_CONTEXT_CACHE_PREFIX = 'scout-prep:meeting-set-context:';
-const LEGACY_MEETING_TIMEZONE_TO_IANA: Record<string, string> = {
-  EST: 'America/New_York',
-  CST: 'America/Chicago',
-  MST: 'America/Denver',
-  PST: 'America/Los_Angeles',
-  AKST: 'America/Anchorage',
-  HST: 'Pacific/Honolulu',
-  AST: 'America/Halifax',
-};
-const STATE_ABBREVIATIONS: Record<string, string> = {
-  ALABAMA: 'AL',
-  ALASKA: 'AK',
-  ARIZONA: 'AZ',
-  ARKANSAS: 'AR',
-  CALIFORNIA: 'CA',
-  COLORADO: 'CO',
-  CONNECTICUT: 'CT',
-  DELAWARE: 'DE',
-  FLORIDA: 'FL',
-  GEORGIA: 'GA',
-  HAWAII: 'HI',
-  IDAHO: 'ID',
-  ILLINOIS: 'IL',
-  INDIANA: 'IN',
-  IOWA: 'IA',
-  KANSAS: 'KS',
-  KENTUCKY: 'KY',
-  LOUISIANA: 'LA',
-  MAINE: 'ME',
-  MARYLAND: 'MD',
-  MASSACHUSETTS: 'MA',
-  MICHIGAN: 'MI',
-  MINNESOTA: 'MN',
-  MISSISSIPPI: 'MS',
-  MISSOURI: 'MO',
-  MONTANA: 'MT',
-  NEBRASKA: 'NE',
-  NEVADA: 'NV',
-  'NEW HAMPSHIRE': 'NH',
-  'NEW JERSEY': 'NJ',
-  'NEW MEXICO': 'NM',
-  'NEW YORK': 'NY',
-  'NORTH CAROLINA': 'NC',
-  'NORTH DAKOTA': 'ND',
-  OHIO: 'OH',
-  OKLAHOMA: 'OK',
-  OREGON: 'OR',
-  PENNSYLVANIA: 'PA',
-  'RHODE ISLAND': 'RI',
-  'SOUTH CAROLINA': 'SC',
-  'SOUTH DAKOTA': 'SD',
-  TENNESSEE: 'TN',
-  TEXAS: 'TX',
-  UTAH: 'UT',
-  VERMONT: 'VT',
-  VIRGINIA: 'VA',
-  WASHINGTON: 'WA',
-  'WEST VIRGINIA': 'WV',
-  WISCONSIN: 'WI',
-  WYOMING: 'WY',
-};
 
 type Preferences = {
   notionToken?: string;
@@ -103,20 +44,12 @@ type MeetingSetQueueContext = {
   meetingName: string;
 };
 
-type LiveAthleteResolve = {
-  athlete_id?: string;
-  athlete_main_id?: string | null;
-  grad_year?: string | null;
-  city?: string | null;
-  state?: string | null;
-  sport?: string | null;
-  head_scout?: string | null;
-};
-
 export type PreparedConfirmationFollowUp = {
   dueAt: Date;
   message: string;
   headScoutName: string;
+  canDraft: boolean;
+  resolvedAppointment: ResolvedAppointment;
 };
 
 type FollowUpNotionPage = {
@@ -184,80 +117,6 @@ function getNotionToken(): string {
 
 function buildMeetingContextKey(athleteId: string, athleteMainId: string): string {
   return `${MEETING_CONTEXT_CACHE_PREFIX}${athleteId.trim()}:${athleteMainId.trim()}`;
-}
-
-function buildBookedMeetingTitle(args: {
-  athleteName?: string | null;
-  sport?: string | null;
-  gradYear?: string | null;
-  state?: string | null;
-}): string {
-  const athleteName = String(args.athleteName || '').trim();
-  const sport = String(args.sport || '').trim();
-  const gradYear = String(args.gradYear || '').trim();
-  const rawState = String(args.state || '').trim();
-  const upperState = rawState.toUpperCase();
-  const state =
-    STATE_ABBREVIATIONS[upperState] ||
-    (upperState.length === 2 ? upperState : rawState);
-  return [athleteName, sport, gradYear, state].filter(Boolean).join(' ').trim();
-}
-
-async function fetchLiveAthleteResolve(athleteId: string): Promise<LiveAthleteResolve | null> {
-  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve?force_refresh=true`);
-  if (!response.ok) {
-    return null;
-  }
-  const payload = (await response.json().catch(() => ({}))) as LiveAthleteResolve;
-  return payload && typeof payload === 'object' ? payload : null;
-}
-
-function findHeadScoutSchedule(headScoutName?: string | null) {
-  const normalized = String(headScoutName || '').trim().toLowerCase();
-  if (!normalized) return null;
-  return (
-    HEAD_SCOUT_ORDER.find((scout) => scout.scout_name.trim().toLowerCase() === normalized) || null
-  );
-}
-
-function convertEasternEventToMeetingTimezoneDate(
-  easternIsoStart: string,
-  legacyMeetingTimezone?: string | null,
-): Date | null {
-  const easternDate = easternLocalIsoToDate(easternIsoStart);
-  if (!easternDate) return null;
-
-  const timezone = LEGACY_MEETING_TIMEZONE_TO_IANA[String(legacyMeetingTimezone || '').trim().toUpperCase()];
-  if (!timezone || timezone === 'America/New_York') {
-    return easternDate;
-  }
-
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(easternDate);
-  const lookup: Record<string, string> = {};
-  for (const part of parts) {
-    if (part.type !== 'literal') {
-      lookup[part.type] = part.value;
-    }
-  }
-
-  const year = Number.parseInt(lookup.year || '', 10);
-  const month = Number.parseInt(lookup.month || '', 10);
-  const day = Number.parseInt(lookup.day || '', 10);
-  const hour = Number.parseInt(lookup.hour || '', 10);
-  const minute = Number.parseInt(lookup.minute || '', 10);
-  if ([year, month, day, hour, minute].some((value) => Number.isNaN(value))) {
-    return easternDate;
-  }
-  return new Date(year, month - 1, day, hour, minute);
 }
 
 function richTextProperty(value?: string | null) {
@@ -337,13 +196,15 @@ async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
 
 function buildQueueProperties(record: MinimalFollowUpQueueRecord, schema: DatabaseSchema) {
   const properties: Record<string, unknown> = {};
-  const stageLabel = record.messageType === 'confirmation' ? 'Confirmation Call' : 'Call Attempt 2';
-  const stageCandidates = [
-    stageLabel,
-    record.currentTask,
-    record.status,
+  const crmStageCandidates = [
+    record.crmStage,
     record.messageType === 'confirmation' ? 'Meeting Set' : null,
-    record.messageType === 'call_attempt_2' ? 'Call Attempt 2' : null,
+    record.currentTask,
+  ];
+  const workflowStatusCandidates = [
+    record.workflowStatus,
+    record.status,
+    record.messageType === 'confirmation' ? 'Confirm' : 'Call Attempt 2',
   ];
 
   if (getProperty(schema, 'Name')) {
@@ -379,9 +240,15 @@ function buildQueueProperties(record: MinimalFollowUpQueueRecord, schema: Databa
   assignSelectLikeProperty(properties, schema, 'Message Type', [
     record.messageType === 'confirmation' ? 'Confirmation' : 'Call Attempt 2',
   ]);
-  const wroteStage = assignSelectLikeProperty(properties, schema, 'Stage', stageCandidates);
-  if (!wroteStage) {
-    assignSelectLikeProperty(properties, schema, 'Status', stageCandidates);
+  const wroteStage = assignSelectLikeProperty(properties, schema, 'Stage', crmStageCandidates);
+  const wroteStatus = assignSelectLikeProperty(
+    properties,
+    schema,
+    'Status',
+    workflowStatusCandidates,
+  );
+  if (!wroteStage && !wroteStatus) {
+    assignSelectLikeProperty(properties, schema, 'Stage', workflowStatusCandidates);
   }
 
   return properties;
@@ -606,7 +473,6 @@ export async function queueConfirmationFollowUp(args: {
   headScoutName?: string | null;
   recipientNames?: string[] | null;
   greetingOverride?: string | null;
-  athleteName?: string | null;
   sport?: string | null;
   gradYear?: string | null;
   state?: string | null;
@@ -643,11 +509,15 @@ export async function queueConfirmationFollowUp(args: {
     currentTask: args.currentTask,
     dueAt: prepared.dueAt,
     raycastKey,
+    crmStage: prepared.resolvedAppointment.crmSalesStage,
+    workflowStatus: prepared.resolvedAppointment.operatorStatus,
+    lifecycleState: prepared.resolvedAppointment.lifecycleState,
+    reason: prepared.resolvedAppointment.reason,
   });
   const adminUrl = `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(args.athleteId.trim())}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`;
   const notionPage = await upsertFollowUpQueuePage({
     record: { ...record, adminUrl },
-    filledMessage: prepared.message,
+    filledMessage: prepared.canDraft ? prepared.message : prepared.resolvedAppointment.reason,
     fallbackRaycastKeys: [legacyBrokenTaskKey, `confirmation:${args.athleteId.trim()}:`],
   });
   return { pageId: notionPage.pageId, pageUrl: notionPage.pageUrl, craftSkipped: true };
@@ -667,71 +537,65 @@ export async function prepareConfirmationFollowUp(args: {
   gradYear?: string | null;
   state?: string | null;
 }): Promise<PreparedConfirmationFollowUp> {
-  const reminderDueAt = parseLegacyDateAndTime(args.dueDate, args.dueTime);
-  if (!reminderDueAt) {
-    throw new Error('Confirmation queue requires a valid due date and time');
-  }
-
-  const liveResolve = await fetchLiveAthleteResolve(args.athleteId);
-  const resolvedCity = String(liveResolve?.city || '').trim();
-  const resolvedState = String(liveResolve?.state || args.state || '').trim();
-  const resolvedSport = String(liveResolve?.sport || args.sport || '').trim();
-  const resolvedGradYear = String(liveResolve?.grad_year || args.gradYear || '').trim();
+  const reminderDueAt = parseLegacyDateAndTime(args.dueDate, args.dueTime) || new Date();
+  const followUpTask: AppointmentTaskSnapshot = {
+    dueDate: args.dueDate,
+    dueTime: args.dueTime,
+    description: args.fallbackText || null,
+    title: 'Confirmation Call',
+  };
+  const stageOptions = await fetchCuratedSalesStageOptions(args.athleteId).catch(() => []);
+  const crmSalesStage =
+    stageOptions.find((option) => option.selected)?.label ||
+    stageOptions.find((option) => option.selected)?.value ||
+    null;
+  const resolvedAppointment = await hydrateResolvedAppointment({
+    athleteId: args.athleteId,
+    athleteName: String(args.athleteName || '').trim() || args.athleteId,
+    crmSalesStage,
+    followUpTask,
+    headScoutName:
+      String(args.headScoutName || '').trim() || inferHeadScoutNameFromText(args.fallbackText) || '',
+    sport: args.sport,
+    gradYear: args.gradYear,
+    state: args.state,
+  });
+  const currentMeetingDate = resolvedAppointment.currentMeetingDate;
+  const dueAt =
+    currentMeetingDate && !Number.isNaN(currentMeetingDate.getTime())
+      ? currentMeetingDate
+      : reminderDueAt;
   const headScoutName =
-    String(liveResolve?.head_scout || '').trim() ||
+    resolvedAppointment.assignedScout ||
     String(args.headScoutName || '').trim() ||
     inferHeadScoutNameFromText(args.fallbackText) ||
     '';
-  const resolvedTimezone =
-    mapTimezoneToLegacyRecruitZone(resolveTimezone(resolvedCity, resolvedState)) || null;
-  let dueAt = reminderDueAt;
-  const selectedScout = findHeadScoutSchedule(headScoutName);
-  const meetingName = buildBookedMeetingTitle({
-    athleteName: args.athleteName,
-    sport: resolvedSport,
-    gradYear: resolvedGradYear,
-    state: resolvedState,
-  });
-  if (!selectedScout) {
-    throw new Error('Confirmation follow-up requires resolved head scout calendar owner');
-  }
-  if (!meetingName) {
-    throw new Error('Confirmation follow-up requires booked meeting title');
-  }
-  if (!resolvedTimezone) {
-    throw new Error('Confirmation follow-up requires resolved athlete timezone');
-  }
 
-  const window = buildCalendarMonthWindow(reminderDueAt);
-  const booked = await fetchBookedMeeting({
-    calendarOwnerId: selectedScout.calendar_owner_id,
-    title: meetingName,
-    start: window.start,
-    end: window.end,
-  });
-  const bookedStart = String(booked.event?.start || '').trim();
-  if (!bookedStart) {
-    throw new Error(`Booked meeting not found for "${meetingName}"`);
+  if (!resolvedAppointment.currentMeeting || resolvedAppointment.needsManualReview) {
+    return {
+      dueAt,
+      message: resolvedAppointment.reason,
+      headScoutName,
+      canDraft: false,
+      resolvedAppointment,
+    };
   }
-
-  const convertedDate = convertEasternEventToMeetingTimezoneDate(
-    bookedStart,
-    resolvedTimezone,
-  );
-  if (!convertedDate || Number.isNaN(convertedDate.getTime())) {
-    throw new Error(`Booked meeting time invalid for "${meetingName}"`);
-  }
-  dueAt = convertedDate;
 
   const message = buildConfirmationMessage({
     headScoutName,
     dueAt,
-    meetingTimezone: resolvedTimezone,
+    meetingTimezone: resolvedAppointment.meetingTimezone,
     recipientNames: args.recipientNames,
     greetingOverride: args.greetingOverride,
   });
 
-  return { dueAt, message, headScoutName };
+  return {
+    dueAt,
+    message,
+    headScoutName,
+    canDraft: true,
+    resolvedAppointment,
+  };
 }
 
 export function buildCallAttempt2QueueDraft(args: {
