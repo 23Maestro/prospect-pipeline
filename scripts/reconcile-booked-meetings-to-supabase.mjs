@@ -1,19 +1,16 @@
 #!/usr/bin/env node
 
 import fetch from 'node-fetch';
-import { execFileSync } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
-const SUPABASE_URL =
-  String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '') ||
-  readLinkedSupabaseUrl();
-const SUPABASE_SERVICE_ROLE_KEY =
-  String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim() ||
-  readLinkedServiceRoleKey();
-const SUPABASE_SCHEMA = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
+const {
+  projectRef,
+  url: SUPABASE_URL,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  schema: SUPABASE_SCHEMA,
+} = resolveSupabaseCredentials();
 const RUN_ID = randomUUID();
 const STATE_ABBREVIATIONS = {
   ALABAMA: 'AL',
@@ -70,49 +67,20 @@ const STATE_ABBREVIATIONS = {
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
-    'Missing Supabase credentials. Set SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY or keep the linked Supabase CLI project authenticated.',
+    [
+      'Missing Supabase credentials.',
+      'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or authenticate the Supabase CLI so the linked project can provide them.',
+      `Linked project ref: ${projectRef || 'missing'}`,
+    ].join(' '),
   );
   process.exit(1);
 }
 
-function readLinkedProjectRef() {
-  const refPath = path.join(process.cwd(), 'supabase/.temp/project-ref');
-  try {
-    return fs.readFileSync(refPath, 'utf8').trim();
-  } catch {
-    return '';
-  }
-}
-
-function readLinkedSupabaseUrl() {
-  const ref = readLinkedProjectRef();
-  return ref ? `https://${ref}.supabase.co` : '';
-}
-
-function readLinkedServiceRoleKey() {
-  const ref = readLinkedProjectRef();
-  if (!ref) {
-    return '';
-  }
-
-  try {
-    const output = execFileSync(
-      'supabase',
-      ['projects', 'api-keys', '--project-ref', ref, '-o', 'json'],
-      {
-        cwd: process.cwd(),
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'pipe'],
-      },
-    );
-    const keys = JSON.parse(output);
-    const serviceRole = Array.isArray(keys)
-      ? keys.find((entry) => entry?.id === 'service_role' || entry?.name === 'service_role')
-      : null;
-    return String(serviceRole?.api_key || '').trim();
-  } catch {
-    return '';
-  }
+if (projectRef && !SUPABASE_URL.includes(projectRef)) {
+  console.error(
+    `Supabase URL ${SUPABASE_URL} does not match linked project ref ${projectRef}. Refusing to write to the wrong project.`,
+  );
+  process.exit(1);
 }
 
 function buildAthleteKey(athleteId, athleteMainId) {

@@ -2,16 +2,31 @@
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
+import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
-const SUPABASE_URL = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
-const SUPABASE_SERVICE_ROLE_KEY = String(process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
-const SUPABASE_SCHEMA = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
+const {
+  projectRef,
+  url: SUPABASE_URL,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  schema: SUPABASE_SCHEMA,
+} = resolveSupabaseCredentials();
 const RUN_ID = randomUUID();
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
-    'Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Export both before running this script.',
+    [
+      'Missing Supabase credentials.',
+      'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or authenticate the Supabase CLI so the linked project can provide them.',
+      `Linked project ref: ${projectRef || 'missing'}`,
+    ].join(' '),
+  );
+  process.exit(1);
+}
+
+if (projectRef && !SUPABASE_URL.includes(projectRef)) {
+  console.error(
+    `Supabase URL ${SUPABASE_URL} does not match linked project ref ${projectRef}. Refusing to write to the wrong project.`,
   );
   process.exit(1);
 }
@@ -100,6 +115,14 @@ function mapPipelineTask(rawTitle, rawDescription) {
       crmStage: 'No Show',
       taskStatus: 'no_show',
       taskPriority: 450,
+    };
+  }
+
+  if (normalizedTitle.includes('call attempt 3')) {
+    return {
+      crmStage: 'Spoke to - Follow Up',
+      taskStatus: 'call_attempt_3',
+      taskPriority: 300,
     };
   }
 

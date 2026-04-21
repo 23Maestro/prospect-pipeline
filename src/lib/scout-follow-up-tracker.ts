@@ -142,6 +142,7 @@ function buildSelectCandidates(value: string, mode: 'stage' | 'status'): string[
       : null,
     mode === 'status' && /call attempt 1/i.test(normalized) ? 'Call Attempt 1' : null,
     mode === 'status' && /call attempt 2/i.test(normalized) ? 'Call Attempt 2' : null,
+    mode === 'status' && /call attempt 3/i.test(normalized) ? 'Call Attempt 3' : null,
     mode === 'status' && /confirmation/i.test(normalized) ? 'Confirmation Call' : null,
     mode === 'status' && /follow up/i.test(normalized) ? 'Follow Up' : null,
   ];
@@ -207,14 +208,10 @@ function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: Databas
   const stageCandidates = buildSelectCandidates(stage, 'stage');
   const statusCandidates = buildSelectCandidates(currentTask, 'status');
 
-  if (getProperty(schema, 'Name')) {
+  if (getProperty(schema, 'Student Athlete')) {
+    properties['Student Athlete'] = titleProperty(entry.athleteName);
+  } else if (getProperty(schema, 'Name')) {
     properties.Name = titleProperty(entry.athleteName);
-  }
-  if (getProperty(schema, 'Parent 1')) {
-    properties['Parent 1'] = richTextProperty(entry.parent1Name);
-  }
-  if (getProperty(schema, 'Parent 2')) {
-    properties['Parent 2'] = richTextProperty(entry.parent2Name);
   }
   if (getProperty(schema, 'Current Task')) {
     properties['Current Task'] = richTextProperty(currentTask);

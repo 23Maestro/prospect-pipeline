@@ -149,6 +149,29 @@ async function showLoadingToast(title: string, message?: string) {
   });
 }
 
+function buildMeetingSetStartsAt(selectedOpenMeeting?: {
+  start_time?: string | null;
+  date_time_label?: string | null;
+} | null): string | null {
+  const rawStartTime = String(selectedOpenMeeting?.start_time || '').trim();
+  if (!rawStartTime) {
+    return null;
+  }
+
+  if (/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(rawStartTime)) {
+    return rawStartTime;
+  }
+
+  const dateLabel = String(selectedOpenMeeting?.date_time_label || '').trim();
+  const match = dateLabel.match(/^[A-Za-z]{3}\s+(\d{2})\/(\d{2})\/(\d{2})/);
+  if (!match) {
+    return rawStartTime;
+  }
+
+  const [, month, day, year] = match;
+  return `20${year}-${month}-${day}T${rawStartTime}`;
+}
+
 function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {
   const params = new URLSearchParams({ contactid: String(athleteId || '').trim() });
   const mainId = String(athleteMainId || '').trim();
@@ -1747,6 +1770,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         const selectedOpenMeeting =
           openMeetingSlots.find((slot) => slot.open_event_id === openEventId) || null;
         const startTime = selectedOpenMeeting?.start_time || '';
+        const startsAt = buildMeetingSetStartsAt(selectedOpenMeeting);
 
         if (!meetingName || !meetingTimezone || !taskDescription) {
           throw new Error('Meeting Set requires meeting name, timezone, and details');
@@ -1770,7 +1794,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         meetingSetOpenEventId = openEventId;
         meetingSetName = meetingName;
         meetingSetTimezone = meetingTimezone;
-        meetingSetStartTime = startTime;
+        meetingSetStartTime = startsAt || startTime;
         meetingSetAssignedOwner = selectedOpenMeeting?.assigned_owner || null;
 
         const selectedScout =
