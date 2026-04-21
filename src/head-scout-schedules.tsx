@@ -21,6 +21,7 @@ import {
   buildHeadScoutWeekWindow,
   buildHeadScoutScriptMarkdown,
   easternLocalIsoToDate,
+  fetchHeadScoutBookedMeetings,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
   formatHeadScoutSlotForTimezone,
@@ -47,7 +48,7 @@ import {
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
-import { loadScoutPrepContext } from './lib/scout-prep';
+import { loadScoutPrepContext, stripMoveThisTaskPrefix } from './lib/scout-prep';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
 type HeadScoutSchedulesRootProps = {
@@ -191,6 +192,160 @@ function isActualSetMeetingEvent(event?: Pick<BookedMeetingEvent, 'title'> | nul
   return true;
 }
 
+function cleanMeetingResolveTitle(title?: string | null): string {
+  return String(title || '')
+    .trim()
+    .replace(/^Follow Up -\s*/i, '')
+    .replace(/^\((?:ACF\*?2?|CF|RSP|CAN|FU|CL|\*)\)\s*/i, '')
+    .trim();
+}
+
+function normalizeAthleteMatchKey(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function resolveAthleteDisplayName(taskName: string, eventTitle: string): string {
+  const cleanedTitle = cleanMeetingResolveTitle(eventTitle);
+  const normalizedTitle = cleanedTitle.toLowerCase();
+  const normalizedTaskName = String(taskName || '').trim().toLowerCase();
+  const startIndex = normalizedTitle.indexOf(normalizedTaskName);
+  if (startIndex >= 0) {
+    return cleanedTitle.slice(startIndex, startIndex + normalizedTaskName.length).trim();
+  }
+  return String(taskName || '').trim();
+}
+
+function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<string, unknown>>) {
+  const matches = tasks.filter((task) => {
+    const title = String(task.title || '').trim().toLowerCase();
+    const description = String(task.description || '').trim().toLowerCase();
+    const assignedOwner = String(task.assigned_owner || task.assignedOwner || '').trim().toLowerCase();
+    const isConfirmation =
+      title.includes('confirmation call') || description.includes('confirm the meeting set');
+    return isConfirmation && assignedOwner === 'jerami singleton';
+  });
+
+  if (!matches.length) {
+    return null;
+  }
+
+  return [...matches].sort((left, right) => {
+    const leftCompleted = String(left.completion_date || left.completionDate || '').trim();
+    const rightCompleted = String(right.completion_date || right.completionDate || '').trim();
+    if (!leftCompleted && rightCompleted) return -1;
+    if (leftCompleted && !rightCompleted) return 1;
+    const leftDate = Date.parse(String(left.due_date || left.dueDate || '').trim());
+    const rightDate = Date.parse(String(right.due_date || right.dueDate || '').trim());
+    if (!Number.isNaN(leftDate) && !Number.isNaN(rightDate) && leftDate !== rightDate) {
+      return rightDate - leftDate;
+    }
+    return String(right.task_id || right.taskId || '').localeCompare(String(left.task_id || left.taskId || ''));
+  })[0];
+}
+
+async function loadWeeklyJeramiMeetingCandidates(
+  weekOffset: number,
+): Promise<HeadScoutFollowUpCandidate[]> {
+  const [weekly, taskResponse] = await Promise.all([
+    fetchHeadScoutBookedMeetings(weekOffset),
+    fetch(
+      `http://127.0.0.1:8000/api/v1/scout/tasks?assignedto=1408164&range=${
+        weekOffset > 0 ? 'nextWeek' : 'thisWeek'
+      }`,
+    ),
+  ]);
+  if (!taskResponse.ok) {
+    throw new Error(`Jerami weekly tasks failed (${taskResponse.status})`);
+  }
+
+  const taskPayload = (await taskResponse.json().catch(() => ({}))) as {
+    tasks?: ScoutPortalTask[];
+  };
+
+  const actualMeetings = (weekly.events || []).filter((event) => isActualSetMeetingEvent(event));
+  const jeramiTasks = (taskPayload.tasks || []).filter((task) => {
+    const title = String(task.title || '').trim().toLowerCase();
+    const assignedOwner = String(task.assigned_owner || '').trim().toLowerCase();
+    return assignedOwner === 'jerami singleton' && title.includes('confirmation call');
+  });
+
+  const tasksByAthlete = new Map<string, ScoutPortalTask[]>();
+  for (const task of jeramiTasks) {
+    const key = normalizeAthleteMatchKey(task.athlete_name);
+    if (!key) continue;
+    const existing = tasksByAthlete.get(key) || [];
+    existing.push(task);
+    tasksByAthlete.set(key, existing);
+  }
+
+  const resolved = actualMeetings.map((event) => {
+    const cleanedTitleKey = normalizeAthleteMatchKey(cleanMeetingResolveTitle(event.title));
+    const matchingTaskEntry = Array.from(tasksByAthlete.entries()).find(([athleteKey]) =>
+      cleanedTitleKey.includes(athleteKey),
+    );
+    if (!matchingTaskEntry) {
+      return null;
+    }
+
+    const [athleteKey, matchingTasks] = matchingTaskEntry;
+    const confirmationTask = pickJeramiConfirmationTask(matchingTasks);
+    if (!confirmationTask) {
+      return null;
+    }
+
+    tasksByAthlete.delete(athleteKey);
+
+    const athleteId = String(confirmationTask.athlete_id || confirmationTask.contact_id || '').trim();
+    const athleteMainId = String(confirmationTask.athlete_main_id || '').trim();
+    if (!athleteId || !athleteMainId) {
+      return null;
+    }
+
+    return {
+      key: `${athleteId}:${athleteMainId}`,
+      athleteId,
+      athleteMainId,
+      athleteName: resolveAthleteDisplayName(String(confirmationTask.athlete_name || '').trim(), event.title),
+      dueDate: String(confirmationTask.due_date || '').trim() || event.start,
+      stage: 'Meeting Set',
+      currentTask: stripMoveThisTaskPrefix(String(confirmationTask.title || '').trim()) || 'Confirmation Call',
+      taskId: String(confirmationTask.task_id || '').trim(),
+      adminUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}`,
+      taskUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&tasktab=1`,
+      source: 'tracked' as const,
+      crmSalesStage: 'Meeting Set',
+      headScoutName: event.assigned_owner || null,
+      bookedMeetingTitle: event.title,
+      bookedMeeting: event,
+      previousMeeting: null,
+      followUpTask: {
+        taskId: String(confirmationTask.task_id || '').trim(),
+        title: String(confirmationTask.title || '').trim() || null,
+        description: String(confirmationTask.description || '').trim() || null,
+        dueDate: String(confirmationTask.due_date || '').trim() || null,
+        completionDate: String(confirmationTask.completion_date || '').trim() || null,
+        assignedOwner: String(confirmationTask.assigned_owner || '').trim() || null,
+      },
+      lifecycleState: 'scheduled',
+      needsConfirmationText: true,
+      needsManualReview: false,
+      reason: 'Weekly booked meeting assigned to Jerami confirmation queue.',
+      operatorStatus: 'active_meeting_queue',
+      badges: [],
+      currentMeetingLabel: event.date_time_label,
+      oldFollowUpDateDetected: false,
+      meetingTimezone: null,
+    } satisfies HeadScoutFollowUpCandidate;
+  });
+
+  return resolved
+    .filter((candidate): candidate is HeadScoutFollowUpCandidate => Boolean(candidate))
+    .sort((left, right) => getMeetingSortValue(left) - getMeetingSortValue(right));
+}
+
 export function HeadScoutBookingsList({
   scoutName,
   weekOffset = 0,
@@ -213,24 +368,21 @@ export function HeadScoutBookingsList({
     async function load() {
       setIsLoading(true);
       try {
-        const [genericCandidates, weeklySupabaseCandidates] = await Promise.all([
-          loadHeadScoutFollowUpCandidates(),
-          weeklyMeetingsOnly
-            ? loadHeadScoutWeeklyMeetingCandidates({
-                weekStart: weekWindow.start,
-                weekEnd: weekWindow.end,
-              })
-            : Promise.resolve([]),
-        ]);
-        const baseCandidates = Array.from(
-          new Map(
-            [...weeklySupabaseCandidates, ...genericCandidates].map((candidate) => [candidate.key, candidate]),
-          ).values(),
-        );
-        if (cancelled) return;
-        const enriched = await Promise.all(
-          baseCandidates.map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
-        );
+        const enriched = weeklyMeetingsOnly
+          ? await loadWeeklyJeramiMeetingCandidates(weekOffset)
+          : await Promise.all(
+              Array.from(
+                new Map(
+                  [
+                    ...await loadHeadScoutWeeklyMeetingCandidates({
+                      weekStart: weekWindow.start,
+                      weekEnd: weekWindow.end,
+                    }),
+                    ...await loadHeadScoutFollowUpCandidates(),
+                  ].map((candidate) => [candidate.key, candidate]),
+                ).values(),
+              ).map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
+            );
         if (cancelled) return;
         const filteredCandidates = enriched.filter((candidate) => {
           if (
