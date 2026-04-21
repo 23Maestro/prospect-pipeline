@@ -14,6 +14,7 @@ import { ConfirmationReminderMessageForm } from './components/follow-up-message-
 import {
   enrichHeadScoutFollowUpCandidate,
   loadHeadScoutFollowUpCandidates,
+  loadHeadScoutWeeklyMeetingCandidates,
   type HeadScoutFollowUpCandidate,
 } from './lib/head-scout-follow-ups';
 import {
@@ -212,7 +213,20 @@ export function HeadScoutBookingsList({
     async function load() {
       setIsLoading(true);
       try {
-        const baseCandidates = await loadHeadScoutFollowUpCandidates();
+        const [genericCandidates, weeklySupabaseCandidates] = await Promise.all([
+          loadHeadScoutFollowUpCandidates(),
+          weeklyMeetingsOnly
+            ? loadHeadScoutWeeklyMeetingCandidates({
+                weekStart: weekWindow.start,
+                weekEnd: weekWindow.end,
+              })
+            : Promise.resolve([]),
+        ]);
+        const baseCandidates = Array.from(
+          new Map(
+            [...weeklySupabaseCandidates, ...genericCandidates].map((candidate) => [candidate.key, candidate]),
+          ).values(),
+        );
         if (cancelled) return;
         const enriched = await Promise.all(
           baseCandidates.map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
@@ -237,11 +251,11 @@ export function HeadScoutBookingsList({
           if (!currentMeeting || Number.isNaN(currentMeeting.getTime())) {
             return false;
           }
-          if (!isActualSetMeetingEvent(candidate.bookedMeeting)) {
+          if (candidate.bookedMeeting && !isActualSetMeetingEvent(candidate.bookedMeeting)) {
             return false;
           }
 
-          const meetingDate = String(candidate.bookedMeeting?.start || '').slice(0, 10);
+          const meetingDate = currentMeeting.toISOString().slice(0, 10);
           return meetingDate >= weekWindow.start && meetingDate < weekWindow.end;
         });
 
@@ -452,12 +466,14 @@ export function HeadScoutBookingsList({
               ]}
               actions={
                 <ActionPanel>
-                  <Action.Push
-                    title="Send Confirmation Text"
-                    icon={Icon.Message}
-                    shortcut={{ modifiers: ['cmd'], key: 'm' }}
-                    target={buildConfirmationTextForm(candidate)}
-                  />
+                  {candidate.athleteId && candidate.athleteMainId ? (
+                    <Action.Push
+                      title="Send Confirmation Text"
+                      icon={Icon.Message}
+                      shortcut={{ modifiers: ['cmd'], key: 'm' }}
+                      target={buildConfirmationTextForm(candidate)}
+                    />
+                  ) : null}
                   {candidate.bookedMeeting?.event_id ? (
                     <>
                       {APPOINTMENT_TITLE_PREFIXES.map((prefix, index) => (
@@ -489,16 +505,20 @@ export function HeadScoutBookingsList({
                       }
                     />
                   ) : null}
-                  <Action.OpenInBrowser
-                    title="Open Athlete Admin"
-                    shortcut={{ modifiers: ['cmd'], key: 'o' }}
-                    url={candidate.adminUrl}
-                  />
-                  <Action.OpenInBrowser
-                    title="Open Athlete Task Tab"
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-                    url={candidate.taskUrl}
-                  />
+                  {candidate.adminUrl ? (
+                    <Action.OpenInBrowser
+                      title="Open Athlete Admin"
+                      shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                      url={candidate.adminUrl}
+                    />
+                  ) : null}
+                  {candidate.taskUrl ? (
+                    <Action.OpenInBrowser
+                      title="Open Athlete Task Tab"
+                      shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                      url={candidate.taskUrl}
+                    />
+                  ) : null}
                   {candidate.bookedMeeting ? (
                     <Action.CopyToClipboard
                       title="Copy Booked Meeting"

@@ -23,6 +23,7 @@ import {
 } from './sales-lifecycle';
 import { getActiveMeetingFallbackRows, type ActiveMeetingFallbackRow } from './supabase-lifecycle';
 import {
+  fetchAthleteBookedMeetings,
   type BookedMeetingEvent,
 } from './head-scout-schedules';
 
@@ -59,6 +60,7 @@ export type HeadScoutFollowUpCandidate = {
   currentMeetingLabel?: string | null;
   oldFollowUpDateDetected: boolean;
   meetingTimezone?: string | null;
+  supabaseState?: ActiveMeetingFallbackRow | null;
 };
 
 function buildAdminUrl(athleteId: string, athleteMainId: string): string {
@@ -108,6 +110,95 @@ function buildTaskLabelFromStatus(taskStatus?: string | null): string {
     default:
       return 'Confirmation Call';
   }
+}
+
+function isMeetingLikeEvent(event?: Pick<BookedMeetingEvent, 'title'> | null): boolean {
+  const normalized = String(event?.title || '').trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return !(
+    normalized.startsWith('follow up -') ||
+    normalized.startsWith('(fu)') ||
+    normalized.startsWith('(cl)') ||
+    normalized.startsWith('(*)')
+  );
+}
+
+function buildSupabaseBookedMeetingEvent(
+  row?: ActiveMeetingFallbackRow | null,
+  athleteName?: string | null,
+): BookedMeetingEvent | null {
+  const eventId = String(row?.currentAppointmentId || '').trim();
+  const start = String(row?.appointmentStartsAt || '').trim();
+  if (!eventId || !start) {
+    return null;
+  }
+
+  const startDate = new Date(start);
+  if (Number.isNaN(startDate.getTime())) {
+    return null;
+  }
+
+  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
+
+  return {
+    event_id: eventId,
+    title: String(athleteName || row?.athleteName || '').trim() || 'Booked Meeting',
+    assigned_owner: String(row?.headScout || '').trim(),
+    start,
+    end: endDate.toISOString(),
+    date_time_label: new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: '2-digit',
+      day: '2-digit',
+      year: '2-digit',
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(startDate),
+  };
+}
+
+function normalizeIsoMinute(value?: string | null): string {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return '';
+  }
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return '';
+  }
+  return parsed.toISOString().slice(0, 16);
+}
+
+function selectPreferredBookedMeeting(args: {
+  supabaseState?: ActiveMeetingFallbackRow | null;
+  athleteEvents: BookedMeetingEvent[];
+  athleteName: string;
+}): BookedMeetingEvent | null {
+  const appointmentId = String(args.supabaseState?.currentAppointmentId || '').trim();
+  const appointmentStart = normalizeIsoMinute(args.supabaseState?.appointmentStartsAt);
+  const filteredEvents = args.athleteEvents.filter((event) => isMeetingLikeEvent(event));
+
+  if (appointmentId) {
+    const idMatch = filteredEvents.find(
+      (event) => String(event.event_id || '').trim() === appointmentId,
+    );
+    if (idMatch) {
+      return idMatch;
+    }
+  }
+
+  if (appointmentStart) {
+    const startMatch = filteredEvents.find(
+      (event) => normalizeIsoMinute(event.start) === appointmentStart,
+    );
+    if (startMatch) {
+      return startMatch;
+    }
+  }
+
+  return buildSupabaseBookedMeetingEvent(args.supabaseState, args.athleteName);
 }
 
 function selectRelevantTask(tasks: ScoutAthleteTask[]): ScoutAthleteTask | null {
@@ -266,6 +357,7 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
         reason: '',
         badges: [],
         oldFollowUpDateDetected: false,
+        supabaseState: entry.supabaseState || null,
       } satisfies HeadScoutFollowUpCandidate;
     }),
   );
@@ -284,15 +376,84 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
     });
 }
 
+export async function loadHeadScoutWeeklyMeetingCandidates(args: {
+  weekStart: string;
+  weekEnd: string;
+}): Promise<HeadScoutFollowUpCandidate[]> {
+  const supabaseRows = await getActiveMeetingFallbackRows().catch(() => []);
+
+  return supabaseRows
+    .filter((row) => {
+      const startsAt = String(row.appointmentStartsAt || '').trim();
+      if (!startsAt) {
+        return false;
+      }
+      const parsed = new Date(startsAt);
+      if (Number.isNaN(parsed.getTime())) {
+        return false;
+      }
+      const meetingDate = parsed.toISOString().slice(0, 10);
+      return meetingDate >= args.weekStart && meetingDate < args.weekEnd;
+    })
+    .map((row) => ({
+      key: `${row.athleteId}:${row.athleteMainId}`,
+      athleteId: row.athleteId,
+      athleteMainId: row.athleteMainId,
+      athleteName: row.athleteName,
+      dueDate: row.appointmentStartsAt || null,
+      stage: String(row.crmStage || '').trim() || buildTaskLabelFromStatus(row.taskStatus),
+      currentTask:
+        String(row.currentTaskTitle || '').trim() || buildTaskLabelFromStatus(row.taskStatus),
+      taskId: String(row.currentTaskId || '').trim(),
+      adminUrl: buildAdminUrl(row.athleteId, row.athleteMainId),
+      taskUrl: buildTaskUrl(row.athleteId, row.athleteMainId),
+      source: 'supabase',
+      crmSalesStage: row.crmStage || null,
+      headScoutName: row.headScout || null,
+      needsConfirmationText: false,
+      needsManualReview: false,
+      reason: '',
+      badges: [],
+      oldFollowUpDateDetected: false,
+      supabaseState: row,
+    }))
+    .sort((left, right) => {
+      const leftDate = Date.parse(left.dueDate || '');
+      const rightDate = Date.parse(right.dueDate || '');
+      if (Number.isNaN(leftDate) && Number.isNaN(rightDate)) {
+        return left.athleteName.localeCompare(right.athleteName);
+      }
+      if (Number.isNaN(leftDate)) return 1;
+      if (Number.isNaN(rightDate)) return -1;
+      return leftDate - rightDate || left.athleteName.localeCompare(right.athleteName);
+    });
+}
+
 export async function enrichHeadScoutFollowUpCandidate(
   candidate: HeadScoutFollowUpCandidate,
 ): Promise<HeadScoutFollowUpCandidate> {
+  const athleteEvents =
+    String(candidate.athleteMainId || '').trim()
+      ? await fetchAthleteBookedMeetings({
+          athleteId: candidate.athleteId,
+          athleteMainId: candidate.athleteMainId,
+        })
+          .then((payload) => payload.events || [])
+          .catch(() => [])
+      : [];
+  const preferredBookedMeeting = selectPreferredBookedMeeting({
+    supabaseState: candidate.supabaseState || null,
+    athleteEvents,
+    athleteName: candidate.athleteName,
+  });
   const resolved = await hydrateResolvedAppointment({
     athleteId: candidate.athleteId,
     athleteMainId: candidate.athleteMainId,
     athleteName: candidate.athleteName,
     crmSalesStage: candidate.crmSalesStage,
     followUpTask: candidate.followUpTask,
+    headScoutName: candidate.headScoutName || candidate.supabaseState?.headScout || null,
+    bookedMeetings: preferredBookedMeeting ? [preferredBookedMeeting] : null,
   });
   return {
     ...candidate,
