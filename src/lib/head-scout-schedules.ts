@@ -76,6 +76,14 @@ export type AthleteBookedMeetingsResponse = {
   events: BookedMeetingEvent[];
 };
 
+export type HeadScoutBookedMeetingsResponse = {
+  success: boolean;
+  week_start: string;
+  week_end: string;
+  count: number;
+  events: BookedMeetingEvent[];
+};
+
 export type BookedMeetingTitleUpdateResponse = {
   success: boolean;
   event_id: string;
@@ -364,6 +372,43 @@ export async function fetchAthleteBookedMeetings(args: {
   logInfo('ATHLETE_BOOKED_MEETINGS_LOOKUP', 'parse', 'success', {
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
+    count: payload.count,
+  });
+  return payload;
+}
+
+export async function fetchHeadScoutBookedMeetings(
+  weekOffset = 0,
+  now = new Date(),
+): Promise<HeadScoutBookedMeetingsResponse> {
+  const week = buildHeadScoutWeekWindow(weekOffset, now);
+  logInfo('HEAD_SCOUT_BOOKED_MEETINGS_LOOKUP', 'request', 'start', {
+    start: week.start,
+    end: week.end,
+    weekOffset,
+  });
+
+  const response = await apiFetch(
+    `/calendar/booked-meetings?start=${encodeURIComponent(week.start)}&end=${encodeURIComponent(week.end)}`,
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Head scout booked meetings HTTP ${response.status}`;
+    logFailure('HEAD_SCOUT_BOOKED_MEETINGS_LOOKUP', 'request', message, {
+      start: week.start,
+      end: week.end,
+      weekOffset,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as HeadScoutBookedMeetingsResponse;
+  logInfo('HEAD_SCOUT_BOOKED_MEETINGS_LOOKUP', 'parse', 'success', {
+    start: payload.week_start,
+    end: payload.week_end,
     count: payload.count,
   });
   return payload;

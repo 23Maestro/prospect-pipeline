@@ -1,0 +1,76 @@
+create extension if not exists pgcrypto;
+
+create table if not exists athletes (
+  athlete_key text primary key,
+  athlete_id text not null,
+  athlete_main_id text not null,
+  athlete_name text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists athletes_athlete_identity_idx
+  on athletes (athlete_id, athlete_main_id);
+
+create table if not exists athlete_pipeline_state (
+  athlete_key text primary key references athletes (athlete_key) on delete cascade,
+  athlete_id text not null,
+  athlete_main_id text not null,
+  crm_stage text,
+  task_status text,
+  head_scout text,
+  current_task_id text,
+  current_task_title text,
+  current_appointment_id text,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists appointments (
+  id text primary key,
+  athlete_key text not null references athletes (athlete_key) on delete cascade,
+  athlete_id text not null,
+  athlete_main_id text not null,
+  head_scout text,
+  starts_at timestamptz,
+  status text,
+  source_event_id text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists appointments_source_event_id_idx
+  on appointments (source_event_id)
+  where source_event_id is not null;
+
+create index if not exists appointments_athlete_key_idx
+  on appointments (athlete_key, starts_at desc);
+
+create table if not exists lifecycle_events (
+  id uuid primary key default gen_random_uuid(),
+  athlete_key text not null references athletes (athlete_key) on delete cascade,
+  athlete_id text not null,
+  athlete_main_id text not null,
+  event_type text not null,
+  crm_stage text,
+  task_status text,
+  payload_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists lifecycle_events_athlete_key_idx
+  on lifecycle_events (athlete_key, created_at desc);
+
+create table if not exists reminders (
+  id text primary key,
+  appointment_id text not null references appointments (id) on delete cascade,
+  kind text not null,
+  send_at timestamptz,
+  sent_at timestamptz,
+  status text not null,
+  dedupe_key text not null unique,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists reminders_status_send_at_idx
+  on reminders (status, send_at);

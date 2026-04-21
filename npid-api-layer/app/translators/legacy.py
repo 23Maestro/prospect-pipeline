@@ -124,6 +124,24 @@ class LegacyTranslator:
     @staticmethod
     def _is_time_only(value: str) -> bool:
         return bool(re.match(r"^\d{2}:\d{2}$", value))
+
+    @staticmethod
+    def _build_calendar_date_time_label(start: str, end: str) -> str:
+        if not (
+            LegacyTranslator._is_iso_local_datetime(start)
+            and LegacyTranslator._is_iso_local_datetime(end)
+        ):
+            return start
+        try:
+            parsed_start = datetime.datetime.strptime(start, "%Y-%m-%dT%H:%M")
+            parsed_end = datetime.datetime.strptime(end, "%Y-%m-%dT%H:%M")
+            weekday = parsed_start.strftime("%a")
+            date_text = parsed_start.strftime("%m/%d/%y")
+            start_text = parsed_start.strftime("%I:%M %p").lstrip("0")
+            end_text = parsed_end.strftime("%I:%M %p").lstrip("0")
+            return f"{weekday} {date_text} {start_text} - {end_text}"
+        except ValueError:
+            return start
     
     # ============== Request Translation ==============
 
@@ -270,19 +288,6 @@ class LegacyTranslator:
             if not start or not end or not event_id:
                 continue
 
-            date_time_label = ""
-            if LegacyTranslator._is_iso_local_datetime(start):
-                try:
-                    parsed_start = datetime.datetime.strptime(start, "%Y-%m-%dT%H:%M")
-                    parsed_end = datetime.datetime.strptime(end, "%Y-%m-%dT%H:%M")
-                    weekday = parsed_start.strftime("%a")
-                    date_text = parsed_start.strftime("%m/%d/%y")
-                    start_text = parsed_start.strftime("%I:%M %p").lstrip("0")
-                    end_text = parsed_end.strftime("%I:%M %p").lstrip("0")
-                    date_time_label = f"{weekday} {date_text} {start_text} - {end_text}"
-                except ValueError:
-                    date_time_label = start
-
             matches.append(
                 {
                     "event_id": event_id,
@@ -290,7 +295,7 @@ class LegacyTranslator:
                     "assigned_owner": owner,
                     "start": start,
                     "end": end,
-                    "date_time_label": date_time_label or start,
+                    "date_time_label": LegacyTranslator._build_calendar_date_time_label(start, end),
                 }
             )
 
@@ -577,6 +582,77 @@ class LegacyTranslator:
             "week_end": week_end,
             "timezone_label": "EST",
             "scouts": scouts,
+        }
+
+    @staticmethod
+    def parse_head_scout_booked_meetings_response(
+        raw_response: str,
+        week_start: str,
+        week_end: str,
+    ) -> Dict[str, Any]:
+        """
+        Parse legacy calendar events and keep only booked meeting rows for configured head scouts.
+        """
+        text = (raw_response or "").strip()
+        events: List[Dict[str, Any]] = []
+
+        if text.startswith("[") or text.startswith("{"):
+            try:
+                parsed = json.loads(text)
+                if isinstance(parsed, list):
+                    events = [row for row in parsed if isinstance(row, dict)]
+                elif isinstance(parsed, dict):
+                    nested = parsed.get("events") if isinstance(parsed.get("events"), list) else []
+                    events = [row for row in nested if isinstance(row, dict)]
+            except json.JSONDecodeError:
+                events = []
+
+        scout_names = {config["scout_name"] for config in LegacyTranslator.HEAD_SCOUT_CONFIG}
+        week_start_floor = f"{week_start}T00:00"
+        week_end_floor = f"{week_end}T00:00"
+        booked_events: List[Dict[str, str]] = []
+
+        for event in events:
+            scout_name = str(event.get("user") or "").strip()
+            title = str(event.get("title") or "").strip()
+            open_slot = str(event.get("openslot") or "").strip().lower()
+            start = str(event.get("start") or "").strip()
+            end = str(event.get("end") or "").strip()
+            event_id = str(event.get("id") or "").strip()
+
+            if scout_name not in scout_names:
+                continue
+            if not title or title.upper() == "OPEN" or open_slot == "openslot":
+                continue
+            if not start or not end or not event_id:
+                continue
+            if not (
+                LegacyTranslator._is_iso_local_datetime(start)
+                and LegacyTranslator._is_iso_local_datetime(end)
+            ):
+                continue
+            if start < week_start_floor or start >= week_end_floor:
+                continue
+
+            booked_events.append(
+                {
+                    "event_id": event_id,
+                    "title": title,
+                    "assigned_owner": scout_name,
+                    "start": start,
+                    "end": end,
+                    "date_time_label": LegacyTranslator._build_calendar_date_time_label(start, end),
+                }
+            )
+
+        booked_events.sort(key=lambda event: (event["start"], event["assigned_owner"], event["title"]))
+
+        return {
+            "success": True,
+            "week_start": week_start,
+            "week_end": week_end,
+            "count": len(booked_events),
+            "events": booked_events,
         }
     
     @staticmethod

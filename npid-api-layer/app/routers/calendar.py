@@ -11,6 +11,7 @@ from app.models.schemas import (
     BookedMeetingLookupResponse,
     BookedMeetingTitleUpdateRequest,
     BookedMeetingTitleUpdateResponse,
+    HeadScoutBookedMeetingsResponse,
     HeadScoutSlotsResponse,
     OpenMeetingsResponse,
 )
@@ -188,6 +189,75 @@ async def get_open_meetings(
                 "error": str(exc),
                 "context": {
                     "meetingFor": meeting_for,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/booked-meetings", response_model=HeadScoutBookedMeetingsResponse)
+async def get_head_scout_booked_meetings(
+    request: Request,
+    start: str,
+    end: str,
+):
+    """
+    Fetch booked calendar meetings for configured head scouts in a strict Monday-Sunday week window.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "HEAD_SCOUT_BOOKED_MEETINGS_FETCH %s",
+        {
+            "event": "HEAD_SCOUT_BOOKED_MEETINGS_FETCH",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "start": start,
+                "end": end,
+            },
+        },
+    )
+
+    try:
+        endpoint, params = translator.head_scout_slots_to_legacy(start=start, end=end)
+        response = await session.get(endpoint, params=params)
+        result = translator.parse_head_scout_booked_meetings_response(
+            raw_response=response.text,
+            week_start=start,
+            week_end=end,
+        )
+        logger.info(
+            "HEAD_SCOUT_BOOKED_MEETINGS_FETCH %s",
+            {
+                "event": "HEAD_SCOUT_BOOKED_MEETINGS_FETCH",
+                "step": "parse",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "start": start,
+                    "end": end,
+                    "count": result.get("count", 0),
+                },
+            },
+        )
+        return HeadScoutBookedMeetingsResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "HEAD_SCOUT_BOOKED_MEETINGS_FETCH %s",
+            {
+                "event": "HEAD_SCOUT_BOOKED_MEETINGS_FETCH",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "start": start,
+                    "end": end,
                 },
             },
         )

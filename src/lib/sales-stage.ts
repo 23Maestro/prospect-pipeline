@@ -75,13 +75,37 @@ export async function fetchCuratedSalesStageOptions(
 
   const payload = (await response.json()) as SalesStageOptionsResponse;
   const options = Array.isArray(payload.options) ? payload.options : [];
+  const selected = options.find((option) => option.selected) || null;
   const curated = options.filter((option) => CURATED_STAGE_LABELS.has(option.label));
-  const finalOptions = curated.length > 0 ? curated : FALLBACK_CURATED_OPTIONS;
+  const selectedAlreadyIncluded = selected
+    ? curated.some(
+        (option) =>
+          option.label === selected.label &&
+          option.value === selected.value &&
+          option.selected === selected.selected,
+      )
+    : false;
+  const fallbackOptions = selected
+    ? [
+        selected,
+        ...FALLBACK_CURATED_OPTIONS.filter(
+          (option) => option.label !== selected.label || option.value !== selected.value,
+        ),
+      ]
+    : FALLBACK_CURATED_OPTIONS;
+  const finalOptions =
+    curated.length > 0
+      ? selected && !selectedAlreadyIncluded
+        ? [selected, ...curated]
+        : curated
+      : fallbackOptions;
 
   logInfo('SALES_STAGE_OPTIONS_LOAD', 'parse', 'success', {
     athleteId,
     officialCount: options.length,
     curatedCount: curated.length,
+    selectedStage: selected?.label || selected?.value || null,
+    selectedOutsideCurated: Boolean(selected) && !selectedAlreadyIncluded,
     fallbackUsed: curated.length === 0,
   });
 

@@ -674,6 +674,15 @@ class AthleteBookedMeetingsResponse(BaseModel):
     events: List[BookedMeetingEvent] = []
 
 
+class HeadScoutBookedMeetingsResponse(BaseModel):
+    """Booked meetings for configured head scouts in an EST week window."""
+    success: bool
+    week_start: str
+    week_end: str
+    count: int
+    events: List[BookedMeetingEvent] = []
+
+
 class BookedMeetingTitleUpdateRequest(BaseModel):
     """Update a booked meeting title prefix by specific event id."""
     event_id: str

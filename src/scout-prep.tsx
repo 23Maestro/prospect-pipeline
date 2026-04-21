@@ -92,6 +92,11 @@ import {
   queueConfirmationFollowUp,
 } from './lib/scout-follow-up-queue';
 import { syncScoutOutcomeToNotion } from './lib/scout-outcome-sync';
+import {
+  recordConfirmationSent,
+  recordMeetingSet,
+  recordRescheduled,
+} from './lib/supabase-lifecycle';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
@@ -194,6 +199,84 @@ function buildTaskSearchKeywords(
     task.athlete_main_id,
     ...extraValues,
   ].filter((value): value is string => Boolean(value && value.trim()));
+}
+
+async function recordConfirmationSentBestEffort(args: {
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  taskId: string;
+  currentTask: string;
+  prepared: Awaited<ReturnType<typeof prepareConfirmationFollowUp>>;
+}) {
+  try {
+    await recordConfirmationSent({
+      athleteId: args.athleteId,
+      athleteMainId: args.athleteMainId,
+      athleteName: args.athleteName,
+      crmStage: args.prepared.resolvedAppointment.crmSalesStage,
+      taskStatus: args.currentTask,
+      headScout:
+        args.prepared.headScoutName || args.prepared.resolvedAppointment.assignedScout || null,
+      currentTaskId: args.taskId,
+      currentTaskTitle: args.currentTask,
+      appointmentId: args.prepared.resolvedAppointment.currentMeeting?.event_id || null,
+      dueAt: args.prepared.dueAt.toISOString(),
+      sentAt: new Date().toISOString(),
+      messagePreview: args.prepared.canDraft
+        ? args.prepared.message
+        : args.prepared.resolvedAppointment.reason,
+    });
+  } catch (error) {
+    logFailure(
+      'SCOUT_PREP_CONFIRMATION_SENT_SYNC',
+      'supabase-write',
+      error instanceof Error ? error.message : String(error),
+      {
+        contactId: args.athleteId,
+        athleteMainId: args.athleteMainId,
+        taskId: args.taskId,
+      },
+    );
+  }
+}
+
+async function recordRescheduledBestEffort(args: {
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  taskId: string;
+  currentTask: string;
+  prepared: Awaited<ReturnType<typeof prepareConfirmationFollowUp>>;
+}) {
+  try {
+    await recordRescheduled({
+      athleteId: args.athleteId,
+      athleteMainId: args.athleteMainId,
+      athleteName: args.athleteName,
+      crmStage: args.prepared.resolvedAppointment.crmSalesStage || 'Rescheduled',
+      taskStatus: args.currentTask,
+      headScout:
+        args.prepared.headScoutName || args.prepared.resolvedAppointment.assignedScout || null,
+      currentTaskId: args.taskId,
+      currentTaskTitle: args.currentTask,
+      previousAppointmentId: args.prepared.resolvedAppointment.previousMeeting?.event_id || null,
+      appointmentId: args.prepared.resolvedAppointment.currentMeeting?.event_id || null,
+      startsAt: args.prepared.resolvedAppointment.currentMeeting?.start || null,
+      dueAt: args.prepared.dueAt.toISOString(),
+    });
+  } catch (error) {
+    logFailure(
+      'SCOUT_PREP_RESCHEDULED_SYNC',
+      'supabase-write',
+      error instanceof Error ? error.message : String(error),
+      {
+        contactId: args.athleteId,
+        athleteMainId: args.athleteMainId,
+        taskId: args.taskId,
+      },
+    );
+  }
 }
 
 function ManualScoutPrepResult({ values }: { values: ScoutPrepFormValues }) {
@@ -1023,17 +1106,16 @@ function RescheduleConfirmationCallForm({
       let queueError: string | null = null;
       try {
         const liveContext = await loadScoutPrepContext(task);
-        await queueConfirmationFollowUp({
-          athleteId: String(task.contact_id || '').trim(),
+        const athleteId = String(task.contact_id || '').trim();
+        const athleteName = liveContext.contactInfo.studentAthlete.name || task.athlete_name;
+        const currentTask = nextTaskTitle || 'Confirmation Call';
+        const prepared = await prepareConfirmationFollowUp({
+          athleteId,
           athleteMainId,
-          athleteName: liveContext.contactInfo.studentAthlete.name || task.athlete_name,
+          athleteName,
           sport: liveContext.resolved.sport || null,
           gradYear: task.grad_year || null,
           state: liveContext.resolved.state || null,
-          parent1Name: liveContext.contactInfo.parent1?.name || null,
-          parent2Name: liveContext.contactInfo.parent2?.name || null,
-          taskId: confirmationTask.task_id,
-          currentTask: nextTaskTitle || 'Confirmation Call',
           dueDate: nextDueDate,
           dueTime: nextDueTime,
           headScoutName: liveContext.resolved.head_scout || null,
@@ -1042,6 +1124,34 @@ function RescheduleConfirmationCallForm({
             inferHeadScoutNameFromText(popupData?.taskdescription) ||
             inferHeadScoutNameFromText(confirmationTask.description) ||
             '',
+        });
+        await queueConfirmationFollowUp({
+          athleteId,
+          athleteMainId,
+          athleteName,
+          sport: liveContext.resolved.sport || null,
+          gradYear: task.grad_year || null,
+          state: liveContext.resolved.state || null,
+          parent1Name: liveContext.contactInfo.parent1?.name || null,
+          parent2Name: liveContext.contactInfo.parent2?.name || null,
+          taskId: confirmationTask.task_id,
+          currentTask,
+          dueDate: nextDueDate,
+          dueTime: nextDueTime,
+          headScoutName: liveContext.resolved.head_scout || null,
+          greetingOverride: buildTimeOfDayGreeting(liveContext),
+          fallbackText:
+            inferHeadScoutNameFromText(popupData?.taskdescription) ||
+            inferHeadScoutNameFromText(confirmationTask.description) ||
+            '',
+        });
+        await recordRescheduledBestEffort({
+          athleteId,
+          athleteMainId,
+          athleteName,
+          taskId: confirmationTask.task_id,
+          currentTask,
+          prepared,
         });
       } catch (error) {
         queueError = error instanceof Error ? error.message : String(error);
@@ -1555,7 +1665,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     }
 
     setIsSaving(true);
-    const toast = await showLoadingToast('Saving sales stage', 'Updating website and Notion');
+    const toast = await showLoadingToast('Saving sales stage', 'Updating website, Supabase, and Notion');
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -1574,6 +1684,12 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
 
       let meetingSetResult: MeetingSetSubmitResponse | null = null;
+      let meetingSetAssignedTo: string | null = null;
+      let meetingSetOpenEventId: string | null = null;
+      let meetingSetName: string | null = null;
+      let meetingSetTimezone: string | null = null;
+      let meetingSetStartTime: string | null = null;
+      let meetingSetAssignedOwner: string | null = null;
       if (stageLabel === MEETING_SET_LABEL) {
         const assignedTo = String(values.meetingFor || values.legacyAssignedTo || '').trim();
         const openEventId = String(values.openMeetingId || '').trim();
@@ -1603,6 +1719,12 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           start_time: startTime,
           meeting_length: meetingLength,
         });
+        meetingSetAssignedTo = assignedTo;
+        meetingSetOpenEventId = openEventId;
+        meetingSetName = meetingName;
+        meetingSetTimezone = meetingTimezone;
+        meetingSetStartTime = startTime;
+        meetingSetAssignedOwner = selectedOpenMeeting?.assigned_owner || null;
 
         const selectedScout =
           HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === assignedTo) || null;
@@ -1613,7 +1735,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           athleteName: task.athlete_name,
           headScoutName:
             String(contextForCoach.resolved.head_scout || '').trim() ||
-            selectedOpenMeeting?.assigned_owner ||
+            meetingSetAssignedOwner ||
             selectedScout?.scout_name ||
             '',
           meetingTimezone,
@@ -1628,6 +1750,47 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         athleteId,
         stage: stageLabel,
       });
+
+      const syncContext = context || (await loadScoutPrepContext(task));
+      if (stageLabel === MEETING_SET_LABEL && meetingSetResult) {
+        const selectedScout =
+          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === meetingSetResult.assigned_to) || null;
+        const currentTask =
+          stripMoveThisTaskPrefix(
+            meetingSetResult.created_task?.title || salesStageResult.created_task?.title || '',
+          ) || 'Confirmation Call';
+        await recordMeetingSet({
+          athleteId,
+          athleteMainId,
+          athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
+          crmStage: stageLabel,
+          taskStatus: currentTask,
+          headScout:
+            String(syncContext.resolved.head_scout || '').trim() ||
+            meetingSetAssignedOwner ||
+            selectedScout?.scout_name ||
+            null,
+          currentTaskId:
+            String(
+              meetingSetResult.created_task?.task_id ||
+                salesStageResult.created_task?.task_id ||
+                '',
+            ).trim() || null,
+          currentTaskTitle: currentTask,
+          appointmentId: meetingSetResult.open_event_id || meetingSetOpenEventId,
+          sourceEventId: meetingSetResult.open_event_id || meetingSetOpenEventId,
+          startsAt: meetingSetStartTime,
+          meetingTimezone: meetingSetTimezone,
+          legacyAssignedTo: meetingSetResult.assigned_to || meetingSetAssignedTo,
+          meetingName: meetingSetResult.meeting_name || meetingSetName,
+          taskDueDate:
+            String(
+              meetingSetResult.created_task?.due_date ||
+                salesStageResult.created_task?.due_date ||
+                '',
+            ).trim() || null,
+        });
+      }
 
       let taskCompletionMessage: string | null = null;
       if (stageLabel === LEFT_VOICE_MAIL_1_LABEL) {
@@ -1647,7 +1810,6 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
       let notionSyncError: string | null = null;
       try {
-        const syncContext = context || (await loadScoutPrepContext(task));
         const notionTaskId =
           String(
             meetingSetResult?.created_task?.task_id ||
@@ -2142,12 +2304,28 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
     try {
       await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
+      await recordConfirmationSentBestEffort({
+        athleteId: String(task.contact_id || '').trim(),
+        athleteMainId,
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        taskId: confirmationTask.task_id,
+        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+        prepared,
+      });
       toast.style = Toast.Style.Success;
       toast.title = 'Messages opened';
       toast.message = 'Meeting reminder draft ready.';
     } catch (error) {
       await Clipboard.copy(prepared.message);
       await open(`sms:${reminderRecipient.phones[0]}`);
+      await recordConfirmationSentBestEffort({
+        athleteId: String(task.contact_id || '').trim(),
+        athleteMainId,
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        taskId: confirmationTask.task_id,
+        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+        prepared,
+      });
       toast.style = Toast.Style.Success;
       toast.title = 'Messages opened';
       toast.message = 'Meeting reminder copied to clipboard.';
@@ -2557,12 +2735,28 @@ function ScoutPrepTaskItem({
 
     try {
       await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
+      await recordConfirmationSentBestEffort({
+        athleteId: String(task.contact_id || '').trim(),
+        athleteMainId,
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        taskId: confirmationTask.task_id,
+        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+        prepared,
+      });
       toast.style = Toast.Style.Success;
       toast.title = 'Messages opened';
       toast.message = 'Meeting reminder draft ready.';
     } catch (error) {
       await Clipboard.copy(prepared.message);
       await open(`sms:${reminderRecipient.phones[0]}`);
+      await recordConfirmationSentBestEffort({
+        athleteId: String(task.contact_id || '').trim(),
+        athleteMainId,
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        taskId: confirmationTask.task_id,
+        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+        prepared,
+      });
       toast.style = Toast.Style.Success;
       toast.title = 'Messages opened';
       toast.message = 'Meeting reminder copied to clipboard.';

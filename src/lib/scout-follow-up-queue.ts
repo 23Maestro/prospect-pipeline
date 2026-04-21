@@ -23,6 +23,7 @@ import {
   type AppointmentTaskSnapshot,
   type ResolvedAppointment,
 } from './head-scout-appointment-lifecycle';
+import { recordConfirmationQueued } from './supabase-lifecycle';
 
 const FEATURE = 'scout-follow-up-queue';
 const NOTION_FOLLOW_UP_DATABASE_ID = '3434c8bd-6c26-8022-a875-e8c99007628e';
@@ -515,6 +516,22 @@ export async function queueConfirmationFollowUp(args: {
     reason: prepared.resolvedAppointment.reason,
   });
   const adminUrl = `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(args.athleteId.trim())}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`;
+  await recordConfirmationQueued({
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    athleteName: args.athleteName,
+    crmStage: prepared.resolvedAppointment.crmSalesStage,
+    taskStatus: args.currentTask,
+    headScout: prepared.headScoutName || prepared.resolvedAppointment.assignedScout || null,
+    currentTaskId: args.taskId,
+    currentTaskTitle: args.currentTask,
+    appointmentId: prepared.resolvedAppointment.currentMeeting?.event_id || null,
+    startsAt: prepared.resolvedAppointment.currentMeeting?.start || null,
+    dueAt: prepared.dueAt.toISOString(),
+    messagePreview: prepared.canDraft ? prepared.message : prepared.resolvedAppointment.reason,
+    lifecycleState: prepared.resolvedAppointment.lifecycleState,
+    reminderKind: 'confirmation',
+  });
   const notionPage = await upsertFollowUpQueuePage({
     record: { ...record, adminUrl },
     filledMessage: prepared.canDraft ? prepared.message : prepared.resolvedAppointment.reason,
@@ -551,6 +568,7 @@ export async function prepareConfirmationFollowUp(args: {
     null;
   const resolvedAppointment = await hydrateResolvedAppointment({
     athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
     athleteName: String(args.athleteName || '').trim() || args.athleteId,
     crmSalesStage,
     followUpTask,

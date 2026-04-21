@@ -144,6 +144,31 @@ def test_parse_booked_meeting_response_returns_newest_match():
     assert [event["event_id"] for event in result["events"]] == ["200", "100"]
 
 
+def test_parse_head_scout_booked_meetings_response_keeps_real_meetings_in_week():
+    payload = """
+    [
+      {"id": "100", "start": "2026-04-21T18:00", "end": "2026-04-21T19:00", "user": "Ryan Lietz", "title": "Victor Williams Football 2028 TX", "openslot": "meetingset"},
+      {"id": "101", "start": "2026-04-27T15:00", "end": "2026-04-27T16:00", "user": "Ryan Lietz", "title": "Outside Week Football 2027 MN", "openslot": "meetingset"},
+      {"id": "102", "start": "2026-04-26T15:00", "end": "2026-04-26T16:00", "user": "Ryan Lietz", "title": "August Nyakeoga Football 2027 MN", "openslot": "meetingset"},
+      {"id": "103", "start": "2026-04-24T18:00", "end": "2026-04-24T19:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
+      {"id": "104", "start": "2026-04-24T18:00", "end": "2026-04-24T19:00", "user": "Logan Lord", "title": "Ignore Me Football 2027 FL", "openslot": "meetingset"}
+    ]
+    """
+
+    result = LegacyTranslator.parse_head_scout_booked_meetings_response(
+        raw_response=payload,
+        week_start="2026-04-20",
+        week_end="2026-04-27",
+    )
+
+    assert result["success"] is True
+    assert result["count"] == 2
+    assert [event["title"] for event in result["events"]] == [
+        "Victor Williams Football 2028 TX",
+        "August Nyakeoga Football 2027 MN",
+    ]
+
+
 def test_apply_booked_meeting_title_prefix_replaces_known_prefix():
     result = LegacyTranslator.apply_booked_meeting_title_prefix(
         "(RSP) Victor Williams Football 2027 FL",
@@ -191,6 +216,7 @@ if __name__ == "__main__":
     test_parse_head_scout_slots_response_uses_strict_monday_sunday_week_bounds()
     test_parse_open_meetings_response_extracts_openeventid_and_start_time()
     test_parse_booked_meeting_response_returns_newest_match()
+    test_parse_head_scout_booked_meetings_response_keeps_real_meetings_in_week()
     test_apply_booked_meeting_title_prefix_replaces_known_prefix()
     test_apply_booked_meeting_title_prefix_preserves_unknown_prefix()
     test_parse_booked_meeting_popup_response_extracts_title_and_existingtask()
