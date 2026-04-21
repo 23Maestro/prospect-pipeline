@@ -522,8 +522,8 @@ class LegacyTranslator:
         slots_by_scout: Dict[str, Dict[Tuple[str, str], Dict[str, str]]] = {
             name: {} for name in scout_names
         }
-        week_start_date = datetime.date.fromisoformat(week_start)
-        week_end_date = datetime.date.fromisoformat(week_end)
+        week_start_floor = f"{week_start}T00:00"
+        week_end_floor = f"{week_end}T00:00"
 
         for event in events:
             scout_name = str(event.get("user") or "").strip()
@@ -540,36 +540,22 @@ class LegacyTranslator:
             if not start or not end or not event_id:
                 continue
 
-            slot_rows: List[Dict[str, str]] = []
-            if LegacyTranslator._is_iso_local_datetime(start) and LegacyTranslator._is_iso_local_datetime(end):
-                slot_rows.append({
-                    "id": event_id,
-                    "start": start,
-                    "end": end,
-                    "scout_name": scout_name,
-                })
-            elif LegacyTranslator._is_time_only(start) and LegacyTranslator._is_time_only(end):
-                weekdays = LegacyTranslator._parse_weekday_list(
-                    event.get("dow") or event.get("repeating")
-                )
-                if weekdays:
-                    current_date = week_start_date
-                    while current_date < week_end_date:
-                        python_weekday = current_date.weekday()
-                        legacy_weekday = (python_weekday + 1) % 7
-                        if legacy_weekday in weekdays:
-                            date_prefix = current_date.isoformat()
-                            slot_rows.append({
-                                "id": f"{event_id}-{date_prefix}",
-                                "start": f"{date_prefix}T{start}",
-                                "end": f"{date_prefix}T{end}",
-                                "scout_name": scout_name,
-                            })
-                        current_date += datetime.timedelta(days=1)
+            if not (
+                LegacyTranslator._is_iso_local_datetime(start)
+                and LegacyTranslator._is_iso_local_datetime(end)
+            ):
+                continue
+            if start < week_start_floor or start >= week_end_floor:
+                continue
 
-            for slot in slot_rows:
-                dedupe_key = (slot["start"], slot["end"])
-                slots_by_scout[scout_name][dedupe_key] = slot
+            slot = {
+                "id": event_id,
+                "start": start,
+                "end": end,
+                "scout_name": scout_name,
+            }
+            dedupe_key = (slot["start"], slot["end"])
+            slots_by_scout[scout_name][dedupe_key] = slot
 
         scouts: List[Dict[str, Any]] = []
         for config in LegacyTranslator.HEAD_SCOUT_CONFIG:

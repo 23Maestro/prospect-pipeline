@@ -1,6 +1,7 @@
 import { getPreferenceValues } from '@raycast/api';
 import { normalizeNotionId, notionRequest } from './notion-call-scripts';
 import { stripMoveThisTaskPrefix } from './scout-prep';
+import { resolveSalesLifecycle } from './sales-lifecycle';
 
 const NOTION_FOLLOW_UP_DATABASE_ID = '3434c8bd-6c26-8022-a875-e8c99007628e';
 
@@ -123,6 +124,7 @@ function buildTaskStatus(entry: LightweightFollowUpTrackerEntry): string {
 function buildSelectCandidates(value: string, mode: 'stage' | 'status'): string[] {
   const normalized = String(value || '').trim();
   if (!normalized) return [];
+  const lifecycle = resolveSalesLifecycle(normalized);
 
   const candidates = [
     normalized,
@@ -131,11 +133,11 @@ function buildSelectCandidates(value: string, mode: 'stage' | 'status'): string[
     mode === 'stage' && /called\s*-\s*unable to leave vm/i.test(normalized)
       ? 'Unable to leave VM'
       : null,
-    mode === 'stage' && /meeting set/i.test(normalized) ? 'Meeting Set' : null,
-    mode === 'stage' && /spoke to\s*-\s*follow up/i.test(normalized)
+    mode === 'stage' && lifecycle.normalizedStage === 'meeting_set' ? 'Meeting Set' : null,
+    mode === 'stage' && lifecycle.normalizedStage === 'meeting_follow_up'
       ? 'Spoke To - Follow Up'
       : null,
-    mode === 'stage' && /spoke to\s*-\s*not interested/i.test(normalized)
+    mode === 'stage' && lifecycle.normalizedStage === 'closed_lost'
       ? 'Not Interested'
       : null,
     mode === 'status' && /call attempt 1/i.test(normalized) ? 'Call Attempt 1' : null,

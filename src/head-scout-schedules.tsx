@@ -1,4 +1,14 @@
-import { Action, ActionPanel, Clipboard, Icon, List, open, showToast, Toast } from '@raycast/api';
+import {
+  Action,
+  ActionPanel,
+  Clipboard,
+  Color,
+  Icon,
+  List,
+  open,
+  showToast,
+  Toast,
+} from '@raycast/api';
 import { useEffect, useMemo, useState } from 'react';
 import {
   enrichHeadScoutFollowUpCandidate,
@@ -50,9 +60,24 @@ type HeadScoutScheduleListProps = {
   syncContext?: HeadScoutSchedulesRootProps['syncContext'];
 };
 
-type HeadScoutBookingsListProps = {
+export type HeadScoutBookingsListProps = {
   scoutName?: string;
 };
+
+function getHeadScoutCountColor(scoutName: string): string | Color {
+  switch (scoutName) {
+    case 'Jeffrey Stein':
+      return '#6E2242';
+    case 'Luther Winfield':
+      return '#C76E00';
+    case 'Ryan Lietz':
+      return '#1F9FA7';
+    case 'James Holcomb':
+      return '#070708';
+    default:
+      return Color.SecondaryText;
+  }
+}
 
 function buildMeetingDayLabel(candidate: HeadScoutFollowUpCandidate): string {
   const raw = candidate.bookedMeeting?.start || '';
@@ -105,7 +130,11 @@ function getMeetingSortBucket(candidate: HeadScoutFollowUpCandidate, now = new D
   if (candidate.lifecycleState === 'rescheduled' && candidate.needsConfirmationText) {
     return 1;
   }
-  if (candidate.needsManualReview || candidate.oldFollowUpDateDetected || candidate.lifecycleState === 'missed') {
+  if (
+    candidate.needsManualReview ||
+    candidate.oldFollowUpDateDetected ||
+    candidate.lifecycleState === 'follow_up_due'
+  ) {
     return 2;
   }
   if (!Number.isNaN(meetingTs) && meetingTs >= now.getTime()) {
@@ -163,7 +192,7 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
   };
 }
 
-function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
+export function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
   const [candidates, setCandidates] = useState<HeadScoutFollowUpCandidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sendingTextKey, setSendingTextKey] = useState<string | null>(null);
@@ -253,7 +282,9 @@ function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
       }
 
       try {
-        await open(buildMessagesComposeUrlForRecipients(reminderRecipient.phones, prepared.message));
+        await open(
+          buildMessagesComposeUrlForRecipients(reminderRecipient.phones, prepared.message),
+        );
         await showToast({
           style: Toast.Style.Success,
           title: 'Messages opened',
@@ -330,7 +361,13 @@ function HeadScoutBookingsList({ scoutName }: HeadScoutBookingsListProps) {
           {candidates.map((candidate) => (
             <List.Item
               key={candidate.key}
-              icon={candidate.needsManualReview ? Icon.ExclamationMark : candidate.bookedMeeting ? Icon.CheckCircle : Icon.Circle}
+              icon={
+                candidate.needsManualReview
+                  ? Icon.ExclamationMark
+                  : candidate.bookedMeeting
+                    ? Icon.CheckCircle
+                    : Icon.Circle
+              }
               title={candidate.athleteName}
               subtitle={
                 candidate.currentMeetingLabel ||
@@ -523,11 +560,6 @@ function HeadScoutScheduleList({
                     />
                   )}
                   <Action.Push
-                    title="View Bookings"
-                    icon={Icon.List}
-                    target={<HeadScoutBookingsList scoutName={scout.scout_name} />}
-                  />
-                  <Action.Push
                     title="Next Week"
                     icon={Icon.ArrowRight}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
@@ -619,27 +651,10 @@ export function HeadScoutSchedulesRoot({
 
   return (
     <List
-      navigationTitle={`Head Scout Schedules • ${weekLabel}`}
+      navigationTitle={`Scout Openings • ${weekLabel}`}
       isLoading={isLoading}
       searchBarPlaceholder="Filter head scouts"
     >
-      <List.Section title="Bookings">
-        <List.Item
-          key="meeting-set-bookings"
-          icon={Icon.List}
-          title="My Meeting Set Bookings"
-          accessories={[{ text: 'Search athletes fast' }]}
-          actions={
-            <ActionPanel>
-              <Action.Push
-                title="View Bookings"
-                icon={Icon.List}
-                target={<HeadScoutBookingsList />}
-              />
-            </ActionPanel>
-          }
-        />
-      </List.Section>
       <List.Section title="Open Schedules">
         {payload?.scouts?.map((scout) => {
           const visibleSlots = filterVisibleHeadScoutSlots(scout.slots, initialWeekOffset);
@@ -650,7 +665,12 @@ export function HeadScoutSchedulesRoot({
               title={scout.scout_name}
               subtitle={`${scout.city}, ${scout.state}`}
               accessories={[
-                { text: `${visibleSlots.length} open` },
+                {
+                  tag: {
+                    value: `${visibleSlots.length} open`,
+                    color: getHeadScoutCountColor(scout.scout_name),
+                  },
+                },
                 ...(syncContext ? [{ text: 'Scout Prep' }] : []),
               ]}
               actions={
@@ -668,11 +688,6 @@ export function HeadScoutSchedulesRoot({
                         syncContext={syncContext}
                       />
                     }
-                  />
-                  <Action.Push
-                    title="View Bookings"
-                    icon={Icon.List}
-                    target={<HeadScoutBookingsList scoutName={scout.scout_name} />}
                   />
                   <Action.Push
                     title="Next Week"

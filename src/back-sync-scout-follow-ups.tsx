@@ -13,6 +13,7 @@ import {
   type ScoutPrepFollowUpPointer,
 } from './lib/scout-prep-follow-up-index';
 import { fetchCuratedSalesStageOptions } from './lib/sales-stage';
+import { resolveSalesLifecycle } from './lib/sales-lifecycle';
 import { syncScoutOutcomeToNotion } from './lib/scout-outcome-sync';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
@@ -80,15 +81,8 @@ function buildStage(task: ScoutAthleteTask): string {
 }
 
 function isMeaningfulWebsiteStage(stage?: string | null): boolean {
-  const normalized = String(stage || '').trim().toLowerCase();
-  if (!normalized) return false;
-  return [
-    'meeting set',
-    'left voice mail 1',
-    'left voice mail 2',
-    'called - unable to leave vm',
-    'spoke to - not interested',
-  ].includes(normalized);
+  const lifecycle = resolveSalesLifecycle(stage);
+  return lifecycle.rawCrmStage !== null && lifecycle.normalizedStage !== 'unknown';
 }
 
 function chooseSyncStage(websiteStage: string | null, nextTaskStage: string): string {

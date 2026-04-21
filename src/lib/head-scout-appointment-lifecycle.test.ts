@@ -84,7 +84,7 @@ test('crm rescheduled without booked meeting becomes manual reconciliation', () 
     now: new Date('2026-04-20T12:00:00Z'),
   });
 
-  assert.equal(result.lifecycleState, 'needs_manual_reconciliation');
+  assert.equal(result.lifecycleState, 'needs_manual_review');
   assert.equal(result.needsManualReview, true);
   assert.match(result.reason, /no current booked meeting found/i);
 });
@@ -168,11 +168,11 @@ test('queue record preserves crm stage and operator status separately', () => {
     dueAt: new Date('2026-04-23T18:00:00.000Z'),
     raycastKey: 'confirmation:1489227:991',
     crmStage: 'Rescheduled',
-    workflowStatus: 'Confirm',
+    workflowStatus: 'active_meeting_queue',
     lifecycleState: 'rescheduled',
     reason: 'CRM stage is Rescheduled and the latest booked meeting is active.',
   });
 
   assert.equal(record.crmStage, 'Rescheduled');
-  assert.equal(record.workflowStatus, 'Confirm');
+  assert.equal(record.workflowStatus, 'active_meeting_queue');
 });

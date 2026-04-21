@@ -4,6 +4,7 @@ import {
   upsertScoutFollowUpTrackerEntry,
   type LightweightFollowUpTrackerEntry,
 } from './scout-follow-up-tracker';
+import { resolveSalesLifecycle } from './sales-lifecycle';
 
 const NOTION_CALL_LOG_DATABASE_ID = '11c30e2c-0e8f-40a5-b5a2-48b42fa0820a';
 
@@ -83,21 +84,24 @@ function normalizeStage(value?: string | null): string {
 function normalizeTrackerStage(stage: string): string {
   const normalized = normalizeStage(stage);
   if (!normalized) return 'Pending follow-up';
+  const lifecycle = resolveSalesLifecycle(normalized);
 
   if (/^left voice mail 1$/i.test(normalized)) return 'Call Attempt 1';
   if (/^left voice mail 2$/i.test(normalized)) return 'Call Attempt 2';
   if (/called\s*-\s*unable to leave vm/i.test(normalized)) return 'Unable to leave VM';
-  if (/meeting set/i.test(normalized)) return 'Meeting Set';
   if (/confirmation call/i.test(normalized)) return 'Confirmation Call';
-  if (/spoke to\s*-\s*follow up/i.test(normalized)) return 'Spoke To - Follow Up';
+  if (lifecycle.normalizedStage === 'meeting_set') return 'Meeting Set';
+  if (lifecycle.normalizedStage === 'meeting_follow_up') return 'Spoke To - Follow Up';
+  if (lifecycle.normalizedStage === 'closed_lost') return 'Not Interested';
   return normalized;
 }
 
 function mapStageToCallLogOutcome(stage: string): CallLogOutcome | null {
   const normalized = normalizeStage(stage);
   if (!normalized) return null;
+  const lifecycle = resolveSalesLifecycle(normalized);
 
-  if (/meeting set/i.test(normalized)) {
+  if (lifecycle.normalizedStage === 'meeting_set') {
     return {
       callResult: 'Meeting Set',
       spoke: true,
@@ -133,7 +137,7 @@ function mapStageToCallLogOutcome(stage: string): CallLogOutcome | null {
     };
   }
 
-  if (/spoke to\s*-\s*follow up/i.test(normalized)) {
+  if (lifecycle.normalizedStage === 'meeting_follow_up') {
     return {
       callResult: 'Follow Up',
       spoke: true,
@@ -142,7 +146,7 @@ function mapStageToCallLogOutcome(stage: string): CallLogOutcome | null {
     };
   }
 
-  if (/spoke to\s*-\s*not interested/i.test(normalized) || /not interested/i.test(normalized)) {
+  if (lifecycle.normalizedStage === 'closed_lost') {
     return {
       callResult: 'Not Interested',
       spoke: true,

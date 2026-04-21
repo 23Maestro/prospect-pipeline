@@ -12,11 +12,15 @@ import { fetchCuratedSalesStageOptions } from './sales-stage';
 import {
   getSelectedSalesStageLabel,
   hydrateResolvedAppointment,
-  isAppointmentLifecycleCrmStage,
   type AppointmentLifecycleBadge,
   type AppointmentLifecycleState,
   type AppointmentTaskSnapshot,
 } from './head-scout-appointment-lifecycle';
+import {
+  isActiveMeetingQueueItem,
+  resolveSalesLifecycle,
+  type OperatorWorkflowStatus,
+} from './sales-lifecycle';
 import {
   type BookedMeetingEvent,
 } from './head-scout-schedules';
@@ -49,7 +53,7 @@ export type HeadScoutFollowUpCandidate = {
   needsConfirmationText: boolean;
   needsManualReview: boolean;
   reason: string;
-  operatorStatus?: string | null;
+  operatorStatus?: OperatorWorkflowStatus | null;
   badges: AppointmentLifecycleBadge[];
   currentMeetingLabel?: string | null;
   oldFollowUpDateDetected: boolean;
@@ -104,7 +108,8 @@ function shouldIncludeCandidate(args: {
   crmSalesStage?: string | null;
   selectedTask: ScoutAthleteTask | null;
 }): boolean {
-  if (isAppointmentLifecycleCrmStage(args.crmSalesStage)) {
+  const lifecycle = resolveSalesLifecycle(args.crmSalesStage);
+  if (isActiveMeetingQueueItem(lifecycle) || lifecycle.operatorStatus === 'needs_manual_review') {
     return true;
   }
   return isConfirmationCallTask(args.selectedTask);

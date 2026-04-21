@@ -10,6 +10,13 @@ import {
 } from './head-scout-schedules';
 import { mapTimezoneToLegacyRecruitZone } from './scout-prep-contact';
 import { resolveTimezone } from './scout-prep-ai';
+import {
+  isActiveMeetingQueueItem,
+  resolveSalesLifecycle,
+  type MeetingLifecycleState,
+  type OperatorWorkflowStatus,
+  type SalesRecordLifecycle,
+} from './sales-lifecycle';
 
 const STATE_ABBREVIATIONS: Record<string, string> = {
   ALABAMA: 'AL',
@@ -74,15 +81,7 @@ type LiveAthleteResolve = {
   head_scout?: string | null;
 };
 
-export type AppointmentLifecycleState =
-  | 'ready_to_call'
-  | 'scheduled'
-  | 'rescheduled'
-  | 'confirmation_due'
-  | 'confirmed'
-  | 'completed'
-  | 'missed'
-  | 'needs_manual_reconciliation';
+export type AppointmentLifecycleState = MeetingLifecycleState;
 
 export type AppointmentLifecycleBadge = {
   label: string;
@@ -102,6 +101,7 @@ export type ResolvedAppointment = {
   athleteId?: string;
   athleteName: string;
   crmSalesStage?: string;
+  salesLifecycle: SalesRecordLifecycle;
   lifecycleState: AppointmentLifecycleState;
   assignedScout?: string;
   calendarOwnerId?: string;
@@ -116,7 +116,7 @@ export type ResolvedAppointment = {
   currentMeetingDate?: Date | null;
   currentMeetingLabel?: string | null;
   oldFollowUpDateDetected: boolean;
-  operatorStatus: string;
+  operatorStatus: OperatorWorkflowStatus;
   badges: AppointmentLifecycleBadge[];
 };
 
@@ -135,17 +135,9 @@ export type HydrateResolvedAppointmentArgs = {
   now?: Date;
 };
 
-function normalizeStage(value?: string | null): string {
-  return String(value || '').trim().toLowerCase();
-}
-
-function isRescheduledStage(value?: string | null): boolean {
-  return normalizeStage(value) === 'rescheduled';
-}
-
 export function isAppointmentLifecycleCrmStage(value?: string | null): boolean {
-  const normalized = normalizeStage(value);
-  return normalized === 'meeting set' || normalized === 'rescheduled';
+  const lifecycle = resolveSalesLifecycle(value);
+  return isActiveMeetingQueueItem(lifecycle);
 }
 
 export function getSelectedSalesStageLabel(options: SalesStageOption[]): string | null {
@@ -285,14 +277,14 @@ export async function fetchLiveAppointmentResolve(
 }
 
 function buildBadges(result: {
-  crmSalesStage?: string | null;
+  salesLifecycle: SalesRecordLifecycle;
   currentMeetingLabel?: string | null;
   oldFollowUpDateDetected: boolean;
   needsConfirmationText: boolean;
   needsManualReview: boolean;
 }): AppointmentLifecycleBadge[] {
   const badges: AppointmentLifecycleBadge[] = [];
-  if (isRescheduledStage(result.crmSalesStage)) {
+  if (result.salesLifecycle.normalizedStage === 'rescheduled') {
     badges.push({ label: 'Rescheduled' });
   }
   if (result.currentMeetingLabel) {
@@ -329,23 +321,25 @@ export function resolveAppointmentLifecycle(args: {
   });
   const currentMeetingDate = currentMeeting ? easternLocalIsoToDate(currentMeeting.start) : null;
   const crmSalesStage = String(args.crmSalesStage || '').trim() || null;
+  const salesLifecycle = resolveSalesLifecycle(crmSalesStage);
   const oldFollowUpDateDetected = hasOldFollowUpDate({
     followUpTask: args.followUpTask,
     currentMeeting,
   });
   const taskCompleted = Boolean(String(args.followUpTask?.completionDate || '').trim());
   const meetingIsPast =
-    Boolean(currentMeetingDate) && Boolean(currentMeetingDate && currentMeetingDate.getTime() < now.getTime());
+    Boolean(currentMeetingDate) &&
+    Boolean(currentMeetingDate && currentMeetingDate.getTime() < now.getTime());
 
-  let lifecycleState: AppointmentLifecycleState = 'ready_to_call';
+  let lifecycleState: AppointmentLifecycleState = salesLifecycle.meetingLifecycle;
   let needsManualReview = false;
   let needsConfirmationText = false;
-  let reason = 'Warm lead with no current booked meeting.';
+  let reason = salesLifecycle.reason;
 
   if (taskCompleted && currentMeeting) {
-    lifecycleState = 'completed';
+    lifecycleState = 'resolved';
     reason = 'Follow-up task is completed for the resolved appointment.';
-  } else if (isRescheduledStage(crmSalesStage)) {
+  } else if (salesLifecycle.normalizedStage === 'rescheduled') {
     if (currentMeeting) {
       lifecycleState = 'rescheduled';
       needsConfirmationText = !meetingIsPast;
@@ -353,42 +347,47 @@ export function resolveAppointmentLifecycle(args: {
         ? 'CRM stage is Rescheduled and a newer booked meeting replaced the old follow-up date.'
         : 'CRM stage is Rescheduled and the latest booked meeting is active.';
     } else {
-      lifecycleState = 'needs_manual_reconciliation';
+      lifecycleState = 'needs_manual_review';
       needsManualReview = true;
       reason = 'Rescheduled stage, no current booked meeting found.';
     }
-  } else if (currentMeeting) {
+  } else if (salesLifecycle.normalizedStage === 'meeting_set' && currentMeeting) {
     if (meetingIsPast) {
-      lifecycleState = 'missed';
+      lifecycleState = 'follow_up_due';
       reason = 'Current booked meeting is in the past and still needs resolution.';
     } else {
-      lifecycleState = 'confirmation_due';
+      lifecycleState = 'scheduled';
       needsConfirmationText = true;
       reason = oldFollowUpDateDetected
         ? 'Booked meeting is current, but the follow-up task still points to the old date.'
         : 'Current booked meeting is active and needs confirmation.';
     }
-  } else if (isAppointmentLifecycleCrmStage(crmSalesStage)) {
-    lifecycleState = 'needs_manual_reconciliation';
+  } else if (isActiveMeetingQueueItem(salesLifecycle)) {
+    lifecycleState = 'needs_manual_review';
     needsManualReview = true;
     reason = `CRM stage is ${crmSalesStage}, but no current booked meeting was found.`;
   }
 
-  const operatorStatus = needsManualReview
-    ? 'Manual Review'
-    : needsConfirmationText
-      ? 'Confirm'
-      : lifecycleState === 'missed'
-        ? 'Follow Up'
-        : lifecycleState === 'completed'
-          ? 'Done'
-          : getTaskTypeLabel(args.followUpTask);
+  let operatorStatus: OperatorWorkflowStatus = salesLifecycle.operatorStatus;
+  if (needsManualReview) {
+    operatorStatus = 'needs_manual_review';
+  } else if (needsConfirmationText) {
+    operatorStatus = 'active_meeting_queue';
+  } else if (lifecycleState === 'follow_up_due') {
+    operatorStatus = 'awaiting_follow_up';
+  } else if (lifecycleState === 'resolved') {
+    operatorStatus =
+      getTaskTypeLabel(args.followUpTask) === 'Confirm'
+        ? 'awaiting_follow_up'
+        : salesLifecycle.operatorStatus;
+  }
   const currentMeetingLabel = formatCurrentMeetingLabel(currentMeeting);
 
   return {
     athleteId: args.athleteId,
     athleteName: args.athleteName,
     crmSalesStage: crmSalesStage || undefined,
+    salesLifecycle,
     lifecycleState,
     assignedScout: String(args.assignedScout || '').trim() || undefined,
     calendarOwnerId: String(args.calendarOwnerId || '').trim() || undefined,
@@ -405,7 +404,7 @@ export function resolveAppointmentLifecycle(args: {
     oldFollowUpDateDetected,
     operatorStatus,
     badges: buildBadges({
-      crmSalesStage,
+      salesLifecycle,
       currentMeetingLabel,
       oldFollowUpDateDetected,
       needsConfirmationText,
