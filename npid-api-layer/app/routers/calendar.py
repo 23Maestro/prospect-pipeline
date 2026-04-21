@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Request
 import logging
 
 from app.models.schemas import (
+    AthleteBookedMeetingsResponse,
     BookedMeetingLookupResponse,
     BookedMeetingTitleUpdateRequest,
     BookedMeetingTitleUpdateResponse,
@@ -187,6 +188,80 @@ async def get_open_meetings(
                 "error": str(exc),
                 "context": {
                     "meetingFor": meeting_for,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/athlete-booked-meetings", response_model=AthleteBookedMeetingsResponse)
+async def get_athlete_booked_meetings(
+    request: Request,
+    athlete_id: str,
+    athlete_main_id: str,
+):
+    """
+    Fetch booked meetings from athlete admin event section.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "ATHLETE_BOOKED_MEETINGS_FETCH %s",
+        {
+            "event": "ATHLETE_BOOKED_MEETINGS_FETCH",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "athleteId": athlete_id,
+                "athleteMainId": athlete_main_id,
+            },
+        },
+    )
+
+    try:
+        endpoint, params = translator.athlete_events_to_legacy(
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+        )
+        response = await session.get(endpoint, params=params)
+        result = translator.parse_athlete_events_response(response.text)
+        logger.info(
+            "ATHLETE_BOOKED_MEETINGS_FETCH %s",
+            {
+                "event": "ATHLETE_BOOKED_MEETINGS_FETCH",
+                "step": "parse",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
+                    "count": result.get("count", 0),
+                },
+            },
+        )
+        return AthleteBookedMeetingsResponse(
+            success=True,
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+            count=result.get("count", 0),
+            events=result.get("events", []),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "ATHLETE_BOOKED_MEETINGS_FETCH %s",
+            {
+                "event": "ATHLETE_BOOKED_MEETINGS_FETCH",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
                 },
             },
         )

@@ -1662,6 +1662,14 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
               task.due_date ||
               '',
           ).trim() || null;
+        const notionCurrentTask =
+          stripMoveThisTaskPrefix(
+            meetingSetResult?.created_task?.title ||
+              salesStageResult.created_task?.title ||
+              task.title ||
+              '',
+          ) ||
+          (stageLabel === MEETING_SET_LABEL ? 'Confirmation Call' : 'Follow Up');
 
         await syncScoutOutcomeToNotion({
           athleteId,
@@ -1670,6 +1678,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           parent1Name: syncContext.contactInfo.parent1?.name || null,
           parent2Name: syncContext.contactInfo.parent2?.name || null,
           stage: stageLabel,
+          currentTask: notionCurrentTask,
           dueDate: notionDueDate,
           adminUrl: buildAthleteAdminUrl(athleteId, athleteMainId),
           taskId: notionTaskId,

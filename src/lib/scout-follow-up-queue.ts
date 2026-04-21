@@ -202,8 +202,8 @@ function buildQueueProperties(record: MinimalFollowUpQueueRecord, schema: Databa
     record.currentTask,
   ];
   const workflowStatusCandidates = [
+    record.currentTask,
     record.workflowStatus,
-    record.status,
     record.messageType === 'confirmation' ? 'Confirm' : 'Call Attempt 2',
   ];
 

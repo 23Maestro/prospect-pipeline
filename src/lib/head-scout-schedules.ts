@@ -68,6 +68,14 @@ export type BookedMeetingLookupResponse = {
   events?: BookedMeetingEvent[];
 };
 
+export type AthleteBookedMeetingsResponse = {
+  success: boolean;
+  athlete_id: string;
+  athlete_main_id: string;
+  count: number;
+  events: BookedMeetingEvent[];
+};
+
 export type BookedMeetingTitleUpdateResponse = {
   success: boolean;
   event_id: string;
@@ -323,6 +331,40 @@ export async function fetchBookedMeeting(args: {
     title: args.title,
     count: payload.count,
     found: Boolean(payload.event),
+  });
+  return payload;
+}
+
+export async function fetchAthleteBookedMeetings(args: {
+  athleteId: string;
+  athleteMainId: string;
+}): Promise<AthleteBookedMeetingsResponse> {
+  logInfo('ATHLETE_BOOKED_MEETINGS_LOOKUP', 'request', 'start', {
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+  });
+
+  const response = await apiFetch(
+    `/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(args.athleteId)}&athlete_main_id=${encodeURIComponent(args.athleteMainId)}`,
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Athlete booked meetings HTTP ${response.status}`;
+    logFailure('ATHLETE_BOOKED_MEETINGS_LOOKUP', 'request', message, {
+      athleteId: args.athleteId,
+      athleteMainId: args.athleteMainId,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as AthleteBookedMeetingsResponse;
+  logInfo('ATHLETE_BOOKED_MEETINGS_LOOKUP', 'parse', 'success', {
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    count: payload.count,
   });
   return payload;
 }

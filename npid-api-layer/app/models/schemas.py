@@ -665,6 +665,15 @@ class BookedMeetingLookupResponse(BaseModel):
     events: List[BookedMeetingEvent] = []
 
 
+class AthleteBookedMeetingsResponse(BaseModel):
+    """Booked meeting rows from athlete admin event section."""
+    success: bool
+    athlete_id: str
+    athlete_main_id: str
+    count: int
+    events: List[BookedMeetingEvent] = []
+
+
 class BookedMeetingTitleUpdateRequest(BaseModel):
     """Update a booked meeting title prefix by specific event id."""
     event_id: str

@@ -304,6 +304,92 @@ class LegacyTranslator:
         }
 
     @staticmethod
+    def athlete_events_to_legacy(
+        athlete_id: str,
+        athlete_main_id: str,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for athlete admin event section.
+        GET /template/template/athlete_eventslist
+        """
+        endpoint = "/template/template/athlete_eventslist"
+        params = {
+            "id": athlete_id,
+            "athlete_main_id": athlete_main_id,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def parse_athlete_events_response(raw_response: str) -> Dict[str, Any]:
+        """
+        Parse athlete admin event section into booked meeting rows.
+        """
+        soup = BeautifulSoup(raw_response or "", "html.parser")
+        events: List[Dict[str, str]] = []
+
+        def parse_label_to_iso(value: str) -> str:
+            trimmed = str(value or "").strip()
+            if not trimmed:
+                return ""
+            try:
+                parsed = datetime.datetime.strptime(trimmed, "%a %m/%d/%y %I:%M %p")
+                return parsed.strftime("%Y-%m-%dT%H:%M")
+            except ValueError:
+                return ""
+
+        for row in soup.select("tr"):
+            cells = row.find_all("td")
+            if len(cells) < 4:
+                continue
+
+            row_html = str(row)
+            event_id = ""
+            class_names = row.get("class") or []
+            for class_name in class_names:
+                match = re.search(r"event(\d+)", str(class_name), re.IGNORECASE)
+                if match:
+                    event_id = match.group(1)
+                    break
+            if not event_id:
+                for pattern in (
+                    r"event(\d+)",
+                    r"edittaskid=(\d+)",
+                    r"editcalendarevent\((\d+)\)",
+                ):
+                    match = re.search(pattern, row_html, re.IGNORECASE)
+                    if match:
+                        event_id = match.group(1)
+                        break
+
+            start_label = cells[0].get_text(" ", strip=True)
+            end_label = cells[1].get_text(" ", strip=True) if len(cells) > 1 else ""
+            assigned_owner = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
+            title = cells[3].get_text(" ", strip=True) if len(cells) > 3 else ""
+
+            start = parse_label_to_iso(start_label)
+            end = parse_label_to_iso(end_label)
+            if not event_id or not start or not end or not title:
+                continue
+
+            events.append(
+                {
+                    "event_id": event_id,
+                    "title": title,
+                    "assigned_owner": assigned_owner,
+                    "start": start,
+                    "end": end,
+                    "date_time_label": start_label if start_label and end_label else start,
+                }
+            )
+
+        events.sort(key=lambda item: item["start"], reverse=True)
+        return {
+            "success": True,
+            "count": len(events),
+            "events": events,
+        }
+
+    @staticmethod
     def apply_booked_meeting_title_prefix(title: str, prefix: str) -> str:
         trimmed_title = str(title or "").strip()
         safe_prefix = str(prefix or "").strip()

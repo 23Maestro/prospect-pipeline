@@ -231,6 +231,7 @@ export async function enrichHeadScoutFollowUpCandidate(
 ): Promise<HeadScoutFollowUpCandidate> {
   const resolved = await hydrateResolvedAppointment({
     athleteId: candidate.athleteId,
+    athleteMainId: candidate.athleteMainId,
     athleteName: candidate.athleteName,
     crmSalesStage: candidate.crmSalesStage,
     followUpTask: candidate.followUpTask,

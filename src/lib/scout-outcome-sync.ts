@@ -30,6 +30,7 @@ type SyncScoutOutcomeArgs = {
   parent1Name?: string | null;
   parent2Name?: string | null;
   stage: string;
+  currentTask?: string | null;
   dueDate?: string | null;
   adminUrl: string;
   taskId?: string | null;
@@ -277,6 +278,7 @@ export async function syncScoutOutcomeToNotion(
     parent1Name: args.parent1Name,
     parent2Name: args.parent2Name,
     stage: trackerStage,
+    currentTask: args.currentTask,
     dueDate: args.dueDate,
     adminUrl: args.adminUrl,
   };

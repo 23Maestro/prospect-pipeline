@@ -1,9 +1,8 @@
 import type { SalesStageOption } from '../features/scout-prep/types';
 import { apiFetch } from './fastapi-client';
 import {
-  buildBookedMeetingLookupWindow,
   easternLocalIsoToDate,
-  fetchBookedMeeting,
+  fetchAthleteBookedMeetings,
   formatHeadScoutSlotDate,
   formatHeadScoutSlotTimeRange,
   HEAD_SCOUT_ORDER,
@@ -123,6 +122,7 @@ export type ResolvedAppointment = {
 
 export type HydrateResolvedAppointmentArgs = {
   athleteId: string;
+  athleteMainId?: string | null;
   athleteName: string;
   crmSalesStage?: string | null;
   followUpTask?: AppointmentTaskSnapshot | null;
@@ -433,22 +433,22 @@ export async function hydrateResolvedAppointment(
   });
   let bookedMeetings = args.bookedMeetings || null;
 
-  if (!bookedMeetings && headScout && bookedMeetingTitle) {
-    const anchorDate = parseTaskDueDate(args.followUpTask?.dueDate);
-    const window = buildBookedMeetingLookupWindow(anchorDate, args.now);
+  if (!bookedMeetings && headScout) {
     try {
-      const booked = await fetchBookedMeeting({
-        calendarOwnerId: headScout.calendar_owner_id,
-        title: bookedMeetingTitle,
-        start: window.start,
-        end: window.end,
-      });
-      bookedMeetings =
-        booked.events && booked.events.length
-          ? booked.events
-          : booked.event
-            ? [booked.event]
-            : [];
+      if (String(args.athleteMainId || '').trim()) {
+        const booked = await fetchAthleteBookedMeetings({
+          athleteId: args.athleteId,
+          athleteMainId: String(args.athleteMainId || '').trim(),
+        });
+        const ownerMatches = (booked.events || []).filter(
+          (event) =>
+            String(event.assigned_owner || '').trim().toLowerCase() ===
+            headScout.scout_name.trim().toLowerCase(),
+        );
+        bookedMeetings = ownerMatches.length ? ownerMatches : booked.events || [];
+      } else {
+        bookedMeetings = [];
+      }
     } catch {
       bookedMeetings = [];
     }
@@ -470,4 +470,3 @@ export async function hydrateResolvedAppointment(
     now: args.now,
   });
 }
-

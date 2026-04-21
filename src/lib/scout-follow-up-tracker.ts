@@ -30,6 +30,7 @@ export type LightweightFollowUpTrackerEntry = {
   parent1Name?: string | null;
   parent2Name?: string | null;
   stage?: string | null;
+  currentTask?: string | null;
   dueDate?: string | null;
   adminUrl: string;
 };
@@ -111,18 +112,36 @@ function buildStage(entry: LightweightFollowUpTrackerEntry): string {
   return stripMoveThisTaskPrefix(entry.stage) || String(entry.stage || '').trim() || 'Pending follow-up';
 }
 
-function buildStageCandidates(stage: string): string[] {
-  const normalized = String(stage || '').trim();
+function buildTaskStatus(entry: LightweightFollowUpTrackerEntry): string {
+  return (
+    stripMoveThisTaskPrefix(entry.currentTask) ||
+    String(entry.currentTask || '').trim() ||
+    'Follow Up'
+  );
+}
+
+function buildSelectCandidates(value: string, mode: 'stage' | 'status'): string[] {
+  const normalized = String(value || '').trim();
   if (!normalized) return [];
 
   const candidates = [
     normalized,
-    /confirmation/i.test(normalized) ? 'Confirmation Call' : null,
-    /meeting set/i.test(normalized) ? 'Meeting Set' : null,
-    /call attempt 2/i.test(normalized) ? 'Call Attempt 2' : null,
-    /call attempt 1/i.test(normalized) ? 'Call Attempt 1' : null,
-    /spoke/i.test(normalized) ? 'Spoke To - Follow Up' : null,
-    /unable to leave vm/i.test(normalized) ? 'Unable to leave VM' : null,
+    mode === 'stage' && /^left voice mail 1$/i.test(normalized) ? 'Call Attempt 1' : null,
+    mode === 'stage' && /^left voice mail 2$/i.test(normalized) ? 'Call Attempt 2' : null,
+    mode === 'stage' && /called\s*-\s*unable to leave vm/i.test(normalized)
+      ? 'Unable to leave VM'
+      : null,
+    mode === 'stage' && /meeting set/i.test(normalized) ? 'Meeting Set' : null,
+    mode === 'stage' && /spoke to\s*-\s*follow up/i.test(normalized)
+      ? 'Spoke To - Follow Up'
+      : null,
+    mode === 'stage' && /spoke to\s*-\s*not interested/i.test(normalized)
+      ? 'Not Interested'
+      : null,
+    mode === 'status' && /call attempt 1/i.test(normalized) ? 'Call Attempt 1' : null,
+    mode === 'status' && /call attempt 2/i.test(normalized) ? 'Call Attempt 2' : null,
+    mode === 'status' && /confirmation/i.test(normalized) ? 'Confirmation Call' : null,
+    mode === 'status' && /follow up/i.test(normalized) ? 'Follow Up' : null,
   ];
 
   return [...new Set(candidates.map((value) => String(value || '').trim()).filter(Boolean))];
@@ -182,7 +201,9 @@ async function fetchDatabaseSchema(token: string): Promise<DatabaseSchema> {
 function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: DatabaseSchema) {
   const properties: Record<string, unknown> = {};
   const stage = buildStage(entry);
-  const stageCandidates = buildStageCandidates(stage);
+  const currentTask = buildTaskStatus(entry);
+  const stageCandidates = buildSelectCandidates(stage, 'stage');
+  const statusCandidates = buildSelectCandidates(currentTask, 'status');
 
   if (getProperty(schema, 'Name')) {
     properties.Name = titleProperty(entry.athleteName);
@@ -192,6 +213,9 @@ function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: Databas
   }
   if (getProperty(schema, 'Parent 2')) {
     properties['Parent 2'] = richTextProperty(entry.parent2Name);
+  }
+  if (getProperty(schema, 'Current Task')) {
+    properties['Current Task'] = richTextProperty(currentTask);
   }
   if (getProperty(schema, 'Due At')) {
     properties['Due At'] = dateProperty(entry.dueDate);
@@ -203,10 +227,8 @@ function buildProperties(entry: LightweightFollowUpTrackerEntry, schema: Databas
     properties['Raycast Key'] = richTextProperty(buildRaycastKey(entry));
   }
 
-  const wroteStage = assignSelectLikeProperty(properties, schema, 'Stage', stageCandidates);
-  if (!wroteStage) {
-    assignSelectLikeProperty(properties, schema, 'Status', stageCandidates);
-  }
+  assignSelectLikeProperty(properties, schema, 'Stage', stageCandidates);
+  assignSelectLikeProperty(properties, schema, 'Status', statusCandidates);
 
   return properties;
 }

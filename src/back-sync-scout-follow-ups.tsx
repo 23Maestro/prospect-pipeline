@@ -26,6 +26,7 @@ type SyncCandidate = {
   parent2Name?: string | null;
   dueDate?: string | null;
   stage: string;
+  currentTask: string;
   adminUrl: string;
   taskUrl: string;
   taskId: string;
@@ -103,7 +104,8 @@ function buildDetailMarkdown(candidate: SyncCandidate): string {
     '',
     `- Source: ${candidate.source === 'tracked' ? 'Follow-Up List' : 'Recent Profiles'}`,
     `- Website Stage: ${candidate.websiteStage || 'N/A'}`,
-    `- Stage: ${candidate.stage}`,
+    `- Stage: ${candidate.stage || 'N/A'}`,
+    `- Status: ${candidate.currentTask}`,
     `- Due Date: ${candidate.dueDate || 'N/A'}`,
     `- Parent 1: ${candidate.parent1Name || 'N/A'}`,
     `- Parent 2: ${candidate.parent2Name || 'N/A'}`,
@@ -123,6 +125,7 @@ async function syncCandidateToTracker(candidate: SyncCandidate) {
     parent1Name: candidate.parent1Name,
     parent2Name: candidate.parent2Name,
     stage: candidate.stage,
+    currentTask: candidate.currentTask,
     dueDate: candidate.dueDate,
     adminUrl: candidate.adminUrl,
     taskId: candidate.taskId,
@@ -209,6 +212,7 @@ async function buildCandidates(): Promise<SyncCandidate[]> {
         parent2Name: parents.parent2Name,
         dueDate: nextTask.due_date || null,
         stage: syncStage,
+        currentTask: nextTaskStage,
         adminUrl: buildAdminUrl(entry.athleteId, entry.athleteMainId),
         taskUrl: buildTaskUrl(entry.athleteId, entry.athleteMainId),
         taskId: String(nextTask.task_id || '').trim(),
