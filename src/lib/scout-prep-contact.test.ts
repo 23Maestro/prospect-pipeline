@@ -224,16 +224,19 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
       },
     }),
     'parent1',
+    'call_attempt_1',
+    'Left Voice Mail 1',
+    'Call Attempt 1',
     new Date('2026-04-17T09:00:00Z'),
   );
   const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
-  assert.match(body, /^Good morning Ms\. Smith, this is Jerami with Prospect ID\./);
-  assert.match(body, /college football scout/i);
-  assert.match(body, /We received Bryson's recruiting profile/i);
-  assert.match(body, /As a sophomore, this is a good time to learn more about his goals/i);
+  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./);
+  assert.match(body, /Following up about Bryson's recruiting plan\./i);
+  assert.match(body, /football background, and college goals/i);
+  assert.match(body, /When would you have a 10 min gap today or tomorrow/i);
   assert.match(body, /Enjoy the rest of your weekend\./);
   assert.match(url, /^sms:651-555-1212\?body=/);
-  assert.match(url, /Bryson's%20recruiting%20profile/);
+  assert.match(url, /Bryson's%20recruiting%20plan/);
 });
 
 test('buildVoicemailFollowUpBody: group text still uses parent template and weekday closing', () => {
@@ -246,11 +249,14 @@ test('buildVoicemailFollowUpBody: group text still uses parent template and week
       },
     }),
     'groupAll',
+    undefined,
+    null,
+    null,
     new Date('2026-04-15T09:00:00Z'),
   );
 
-  assert.match(body, /^Good morning Ms\. Smith, this is Jerami with Prospect ID\./);
-  assert.match(body, /This is a good time to learn more about goals going forward\./);
+  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./);
+  assert.match(body, /When would you have a 10 min gap today or tomorrow\?/);
   assert.match(body, /Enjoy the rest of your week\./);
 });
 
@@ -285,10 +291,96 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
       },
     }),
     'parent1',
+    'call_attempt_1',
+    'Left Voice Mail 1',
+    'Call Attempt 1',
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami with Prospect ID\./);
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton, football scout with Prospect ID\./);
+});
+
+test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Jaylin Bailey',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'Los Angeles',
+        state: 'CA',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jaylin Bailey',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'parent1',
+    'call_attempt_2',
+    'Left Voice Mail 2',
+    'Call Attempt 2',
+    new Date('2026-04-17T19:28:00Z'),
+  );
+
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /I left you another voicemail about Jaylin's recruiting profile\./);
+  assert.match(body, /With him being a 2027, timing matters in the recruiting process/);
+});
+
+test('buildVoicemailFollowUpBody: no show uses first name only', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Aiden Reed',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'Los Angeles',
+        state: 'CA',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Aiden Reed',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Jamie Reed',
+          relationship: 'Mother',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'parent1',
+    'no_show',
+    'Meeting Result No Show',
+    'No Show',
+    new Date('2026-04-24T13:00:00Z'),
+  );
+
+  assert.match(body, /^Hi Jamie, looks like we missed you for Aiden’s meeting with our Head Scout\./);
+  assert.doesNotMatch(body, /^Hi Ms\./);
 });
 
 test('buildMessagesComposeUrlForRecipients: supports group threads with deduped phone list', () => {

@@ -21,13 +21,14 @@ import {
   resolveSalesLifecycle,
   type OperatorWorkflowStatus,
 } from './sales-lifecycle';
+import { getActiveMeetingFallbackRows, type ActiveMeetingFallbackRow } from './supabase-lifecycle';
 import {
   type BookedMeetingEvent,
 } from './head-scout-schedules';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 
-type CandidateSource = 'tracked' | 'recent';
+type CandidateSource = 'tracked' | 'recent' | 'supabase';
 
 export type HeadScoutFollowUpCandidate = {
   key: string;
@@ -92,6 +93,23 @@ function buildTaskStage(task: ScoutAthleteTask): string {
   );
 }
 
+function buildTaskLabelFromStatus(taskStatus?: string | null): string {
+  switch (String(taskStatus || '').trim().toLowerCase()) {
+    case 'confirmation_call':
+      return 'Confirmation Call';
+    case 'spoke_to_follow_up':
+      return 'Spoke To - Follow Up';
+    case 'call_attempt_2':
+      return 'Call Attempt 2';
+    case 'call_attempt_1':
+      return 'Call Attempt 1';
+    case 'no_show':
+      return 'No Show';
+    default:
+      return 'Confirmation Call';
+  }
+}
+
 function selectRelevantTask(tasks: ScoutAthleteTask[]): ScoutAthleteTask | null {
   const confirmation = findNewestIncompleteConfirmationTask(tasks);
   if (confirmation) {
@@ -116,9 +134,10 @@ function shouldIncludeCandidate(args: {
 }
 
 export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollowUpCandidate[]> {
-  const [pointers, recentProfiles] = await Promise.all([
+  const [pointers, recentProfiles, supabaseRows] = await Promise.all([
     listScoutPrepFollowUpPointers(),
     fetchScoutRecentProfiles(),
+    getActiveMeetingFallbackRows().catch(() => []),
   ]);
 
   const recentByKey = new Map(
@@ -136,6 +155,7 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
       athleteName: string;
       source: CandidateSource;
       profile?: ScoutRecentProfile | null;
+      supabaseState?: ActiveMeetingFallbackRow | null;
     }
   >();
 
@@ -165,13 +185,41 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
     }
   }
 
+  for (const row of supabaseRows) {
+    const athleteId = row.athleteId.trim();
+    const athleteMainId = row.athleteMainId.trim();
+    if (!athleteId || !athleteMainId) {
+      continue;
+    }
+    const key = `${athleteId}:${athleteMainId}`;
+    if (!baseEntries.has(key)) {
+      baseEntries.set(key, {
+        athleteId,
+        athleteMainId,
+        athleteName: row.athleteName.trim(),
+        source: 'supabase',
+        profile: recentByKey.get(key) || null,
+        supabaseState: row,
+      });
+      continue;
+    }
+
+    const existing = baseEntries.get(key);
+    if (existing && existing.source !== 'supabase') {
+      existing.supabaseState = row;
+      if (!existing.athleteName.trim()) {
+        existing.athleteName = row.athleteName.trim();
+      }
+    }
+  }
+
   const candidates = await Promise.all(
     Array.from(baseEntries.values()).map(async (entry) => {
       const [tasks, stageOptions] = await Promise.all([
         fetchAthleteTasks(entry.athleteId, entry.athleteMainId) as Promise<ScoutAthleteTask[]>,
         fetchCuratedSalesStageOptions(entry.athleteId).catch(() => []),
       ]);
-      const crmSalesStage = getSelectedSalesStageLabel(stageOptions);
+      const crmSalesStage = getSelectedSalesStageLabel(stageOptions) || entry.supabaseState?.crmStage || null;
       const selectedTask = selectRelevantTask(tasks);
       if (!selectedTask && !shouldIncludeCandidate({ crmSalesStage, selectedTask })) {
         return null;
@@ -181,7 +229,10 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
       }
 
       const parents = parseParentNames(entry.profile);
-      const currentTask = selectedTask ? buildTaskStage(selectedTask) : 'Confirmation Call';
+      const currentTask =
+        (selectedTask ? buildTaskStage(selectedTask) : null) ||
+        entry.supabaseState?.currentTaskTitle ||
+        buildTaskLabelFromStatus(entry.supabaseState?.taskStatus);
       const followUpTask = selectedTask
         ? {
             taskId: String(selectedTask.task_id || '').trim(),
@@ -199,10 +250,12 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
         athleteName: entry.athleteName,
         parent1Name: parents.parent1Name,
         parent2Name: parents.parent2Name,
-        dueDate: selectedTask?.due_date || null,
+        dueDate: selectedTask?.due_date || entry.supabaseState?.appointmentStartsAt || null,
         stage: String(crmSalesStage || currentTask).trim() || currentTask,
         currentTask,
-        taskId: String(selectedTask?.task_id || '').trim(),
+        taskId:
+          String(selectedTask?.task_id || '').trim() ||
+          String(entry.supabaseState?.currentTaskId || '').trim(),
         adminUrl: buildAdminUrl(entry.athleteId, entry.athleteMainId),
         taskUrl: buildTaskUrl(entry.athleteId, entry.athleteMainId),
         source: entry.source,

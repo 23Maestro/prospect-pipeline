@@ -10,6 +10,7 @@ import {
   Toast,
 } from '@raycast/api';
 import { useEffect, useMemo, useState } from 'react';
+import { ConfirmationReminderMessageForm } from './components/follow-up-message-forms';
 import {
   enrichHeadScoutFollowUpCandidate,
   loadHeadScoutFollowUpCandidates,
@@ -19,7 +20,6 @@ import {
   buildHeadScoutWeekWindow,
   buildHeadScoutScriptMarkdown,
   easternLocalIsoToDate,
-  fetchHeadScoutBookedMeetings,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
   formatHeadScoutSlotForTimezone,
@@ -38,15 +38,16 @@ import {
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
 import {
+  resolveConfirmationFollowUpVariant,
+  type ConfirmationFollowUpVariant,
+} from './lib/scout-follow-up-templates';
+import {
   buildMessagesComposeUrlForRecipients,
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
 import { loadScoutPrepContext } from './lib/scout-prep';
-import { ensureProspectDetails, runProspectRawSearch } from './lib/prospect-search';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
-import type { OperatorWorkflowStatus } from './lib/sales-lifecycle';
-import type { AppointmentLifecycleState } from './lib/head-scout-appointment-lifecycle';
 
 type HeadScoutSchedulesRootProps = {
   initialWeekOffset?: number;
@@ -166,139 +167,27 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
   };
 }
 
-function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {
-  const params = new URLSearchParams({ contactid: athleteId.trim() });
-  const normalizedMainId = String(athleteMainId || '').trim();
-  if (normalizedMainId) {
-    params.set('athlete_main_id', normalizedMainId);
-  }
-  return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
-}
-
-function buildAthleteTaskUrl(athleteId: string, athleteMainId?: string | null): string {
-  const url = new URL(buildAthleteAdminUrl(athleteId, athleteMainId));
-  url.searchParams.set('tasktab', '1');
-  return url.toString();
-}
-
-function cleanBookedMeetingTitle(title?: string | null): string {
-  const normalized = String(title || '').trim();
-  if (!normalized) {
-    return '';
-  }
-  const prefixPattern = new RegExp(
-    `^\\s*(?:${APPOINTMENT_TITLE_PREFIXES.map((prefix) =>
-      prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
-    ).join('|')})\\s*`,
-  );
-  return normalized.replace(prefixPattern, '').trim();
-}
-
-function parseBookedMeetingSearchParts(title?: string | null): {
-  searchTerm: string;
-  athleteName: string;
-  sport?: string | null;
-  gradYear?: string | null;
-  state?: string | null;
-} {
-  const cleaned = cleanBookedMeetingTitle(title);
-  const match = cleaned.match(/^(.*?)\s+([A-Za-z]+)\s+(20\d{2})\s+([A-Z]{2})$/);
-  if (!match) {
-    return {
-      searchTerm: cleaned,
-      athleteName: cleaned,
-      sport: null,
-      gradYear: null,
-      state: null,
-    };
-  }
-  return {
-    searchTerm: cleaned,
-    athleteName: match[1].trim(),
-    sport: match[2].trim(),
-    gradYear: match[3].trim(),
-    state: match[4].trim(),
-  };
-}
-
-function buildBookedMeetingKey(event: Pick<BookedMeetingEvent, 'assigned_owner' | 'start' | 'title'>): string {
-  return [
-    String(event.assigned_owner || '').trim().toLowerCase(),
-    String(event.start || '').trim(),
-    cleanBookedMeetingTitle(event.title).toLowerCase(),
-  ].join('|');
-}
-
-async function buildBookedMeetingCandidate(
-  event: BookedMeetingEvent,
-): Promise<HeadScoutFollowUpCandidate | null> {
-  const parsed = parseBookedMeetingSearchParts(event.title);
-  if (!parsed.searchTerm) {
-    return null;
+function isActualSetMeetingEvent(event?: Pick<BookedMeetingEvent, 'title'> | null): boolean {
+  const title = String(event?.title || '').trim();
+  if (!title) {
+    return false;
   }
 
-  const searchResults = await runProspectRawSearch(parsed.searchTerm).catch(() => []);
-  const bestMatch =
-    searchResults.find(
-      (result) =>
-        (!parsed.gradYear || String(result.grad_year || '').trim() === parsed.gradYear) &&
-        (!parsed.state || String(result.state || '').trim().toUpperCase() === parsed.state) &&
-        (!parsed.sport ||
-          String(result.sport || '').trim().toLowerCase() === parsed.sport.toLowerCase()) &&
-        (!parsed.athleteName ||
-          String(result.name || '').trim().toLowerCase() === parsed.athleteName.toLowerCase()),
-    ) ||
-    searchResults.find(
-      (result) =>
-        !parsed.athleteName ||
-        String(result.name || '').trim().toLowerCase() === parsed.athleteName.toLowerCase(),
-    ) ||
-    searchResults[0];
-
-  if (!bestMatch) {
-    return null;
+  const normalized = title.toLowerCase();
+  if (normalized.startsWith('follow up -')) {
+    return false;
+  }
+  if (normalized.startsWith('(fu)')) {
+    return false;
+  }
+  if (normalized.startsWith('(cl)')) {
+    return false;
+  }
+  if (normalized.startsWith('(*)')) {
+    return false;
   }
 
-  const resolved = await ensureProspectDetails(bestMatch).catch(() => bestMatch);
-  const athleteId = String(resolved.athlete_id || '').trim();
-  const athleteMainId = String(resolved.athlete_main_id || '').trim();
-  if (!athleteId) {
-    return null;
-  }
-
-  const lifecycleState: AppointmentLifecycleState = 'scheduled';
-  const operatorStatus: OperatorWorkflowStatus = 'active_meeting_queue';
-
-  return {
-    key: athleteMainId ? `${athleteId}:${athleteMainId}` : `calendar:${event.event_id}`,
-    athleteId,
-    athleteMainId,
-    athleteName: String(resolved.name || parsed.athleteName || cleanBookedMeetingTitle(event.title)).trim(),
-    parent1Name: null,
-    parent2Name: null,
-    dueDate: null,
-    stage: 'Meeting Set',
-    currentTask: 'Confirmation Call',
-    taskId: '',
-    adminUrl: buildAthleteAdminUrl(athleteId, athleteMainId),
-    taskUrl: buildAthleteTaskUrl(athleteId, athleteMainId),
-    source: 'recent',
-    crmSalesStage: 'Meeting Set',
-    headScoutName: event.assigned_owner,
-    bookedMeetingTitle: event.title,
-    bookedMeeting: event,
-    previousMeeting: null,
-    followUpTask: null,
-    lifecycleState,
-    needsConfirmationText: true,
-    needsManualReview: false,
-    reason: 'Current booked meeting is active and needs confirmation.',
-    operatorStatus,
-    badges: [],
-    currentMeetingLabel: `Current: ${event.date_time_label}`,
-    oldFollowUpDateDetected: false,
-    meetingTimezone: 'EST',
-  };
+  return true;
 }
 
 export function HeadScoutBookingsList({
@@ -348,51 +237,16 @@ export function HeadScoutBookingsList({
           if (!currentMeeting || Number.isNaN(currentMeeting.getTime())) {
             return false;
           }
+          if (!isActualSetMeetingEvent(candidate.bookedMeeting)) {
+            return false;
+          }
 
           const meetingDate = String(candidate.bookedMeeting?.start || '').slice(0, 10);
           return meetingDate >= weekWindow.start && meetingDate < weekWindow.end;
         });
 
-        if (!weeklyMeetingsOnly) {
-          setCandidates(
-            filteredCandidates.sort((left, right) => {
-              const bucketDiff = getMeetingSortBucket(left) - getMeetingSortBucket(right);
-              if (bucketDiff !== 0) {
-                return bucketDiff;
-              }
-              const timeDiff = getMeetingSortValue(left) - getMeetingSortValue(right);
-              if (timeDiff !== 0) {
-                return timeDiff;
-              }
-              return left.athleteName.localeCompare(right.athleteName);
-            }),
-          );
-          return;
-        }
-
-        const bookedMeetings = await fetchHeadScoutBookedMeetings(weekOffset).catch(() => null);
-        if (cancelled) return;
-
-        const bookedEvents = (bookedMeetings?.events || []).filter((event) =>
-          scoutName
-            ? String(event.assigned_owner || '').trim().toLowerCase() === scoutName.trim().toLowerCase()
-            : true,
-        );
-        const existingKeys = new Set(
-          filteredCandidates
-            .filter((candidate) => candidate.bookedMeeting)
-            .map((candidate) => buildBookedMeetingKey(candidate.bookedMeeting as BookedMeetingEvent)),
-        );
-        const missingBookedEvents = bookedEvents.filter(
-          (event) => !existingKeys.has(buildBookedMeetingKey(event)),
-        );
-        const syntheticCandidates = (
-          await Promise.all(missingBookedEvents.map((event) => buildBookedMeetingCandidate(event)))
-        ).filter((candidate): candidate is HeadScoutFollowUpCandidate => Boolean(candidate));
-        if (cancelled) return;
-
         setCandidates(
-          [...filteredCandidates, ...syntheticCandidates].sort((left, right) => {
+          filteredCandidates.sort((left, right) => {
             const bucketDiff = getMeetingSortBucket(left) - getMeetingSortBucket(right);
             if (bucketDiff !== 0) {
               return bucketDiff;
@@ -425,7 +279,10 @@ export function HeadScoutBookingsList({
     };
   }, [refreshTick, scoutName, weekOffset, weekWindow.end, weekWindow.start, weeklyMeetingsOnly]);
 
-  async function handleSendConfirmationText(candidate: HeadScoutFollowUpCandidate) {
+  async function sendConfirmationText(
+    candidate: HeadScoutFollowUpCandidate,
+    variant: ConfirmationFollowUpVariant,
+  ) {
     setSendingTextKey(candidate.key);
     try {
       const task = buildCandidateTask(candidate);
@@ -447,6 +304,7 @@ export function HeadScoutBookingsList({
         sport: context.resolved.sport || null,
         gradYear: task.grad_year || null,
         state: context.resolved.state || null,
+        reminderVariant: variant,
       });
       if (!prepared.canDraft) {
         throw new Error(prepared.resolvedAppointment.reason);
@@ -470,15 +328,25 @@ export function HeadScoutBookingsList({
           message: 'Confirmation text copied to clipboard.',
         });
       }
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to build confirmation text',
-        message: error instanceof Error ? error.message : String(error),
-      });
     } finally {
       setSendingTextKey((current) => (current === candidate.key ? null : current));
     }
+  }
+
+  function buildConfirmationTextForm(candidate: HeadScoutFollowUpCandidate) {
+    const defaultVariant = resolveConfirmationFollowUpVariant({
+      crmStage: candidate.crmSalesStage,
+      currentTask: candidate.currentTask,
+      lifecycleState: candidate.lifecycleState,
+    });
+
+    return (
+      <ConfirmationReminderMessageForm
+        navigationTitle={`Confirmation Text • ${candidate.athleteName}`}
+        defaultVariant={defaultVariant}
+        onSubmit={(values) => sendConfirmationText(candidate, values.variant)}
+      />
+    );
   }
 
   async function handleMarkMeeting(
@@ -584,11 +452,11 @@ export function HeadScoutBookingsList({
               ]}
               actions={
                 <ActionPanel>
-                  <Action
+                  <Action.Push
                     title="Send Confirmation Text"
                     icon={Icon.Message}
                     shortcut={{ modifiers: ['cmd'], key: 'm' }}
-                    onAction={() => void handleSendConfirmationText(candidate)}
+                    target={buildConfirmationTextForm(candidate)}
                   />
                   {candidate.bookedMeeting?.event_id ? (
                     <>

@@ -15,6 +15,41 @@ has_active_overmind_session() {
   has_command overmind && overmind status >/dev/null 2>&1
 }
 
+ensure_overmind_session() {
+  clear_stale_overmind_socket
+
+  if has_active_overmind_session; then
+    return 0
+  fi
+
+  cd "${PROJECT_ROOT}"
+  overmind start -D -f "${PROCFILE_PATH}" >/dev/null
+
+  local attempts=0
+  until has_active_overmind_session; do
+    attempts=$((attempts + 1))
+    if [[ "${attempts}" -ge 10 ]]; then
+      echo "Failed to start Overmind session"
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
+kill_process_tree() {
+  local pid="$1"
+  local child_pids
+  child_pids="$(pgrep -P "${pid}" 2>/dev/null || true)"
+
+  if [[ -n "${child_pids}" ]]; then
+    while IFS= read -r child_pid; do
+      [[ -n "${child_pid}" ]] && kill_process_tree "${child_pid}"
+    done <<< "${child_pids}"
+  fi
+
+  kill -9 "${pid}" 2>/dev/null || true
+}
+
 wait_for_api() {
   if [[ -x "${WAIT_SCRIPT}" ]]; then
     "${WAIT_SCRIPT}"
@@ -55,7 +90,7 @@ restart_api_without_overmind() {
   pids="$(lsof -nP -iTCP:${API_PORT} -sTCP:LISTEN -t || true)"
   if [[ -n "${pids}" ]]; then
     while IFS= read -r pid; do
-      [[ -n "${pid}" ]] && kill -9 "${pid}"
+      [[ -n "${pid}" ]] && kill_process_tree "${pid}"
     done <<< "${pids}"
   fi
 
@@ -65,7 +100,7 @@ restart_api_without_overmind() {
     exit 1
   fi
 
-  exec "${PROJECT_ROOT}/scripts/run-api-dev.sh"
+  exec env API_RELOAD=0 "${PROJECT_ROOT}/scripts/run-api-dev.sh"
 }
 
 stop_api_without_overmind() {
@@ -77,7 +112,7 @@ stop_api_without_overmind() {
   fi
 
   while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill "${pid}"
+    [[ -n "${pid}" ]] && kill_process_tree "${pid}"
   done <<< "${pids}"
 }
 
@@ -91,7 +126,7 @@ kill_without_overmind() {
   fi
 
   while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill -9 "${pid}"
+    [[ -n "${pid}" ]] && kill_process_tree "${pid}"
   done <<< "${pids}"
 }
 
@@ -103,7 +138,7 @@ clear_api_port() {
   fi
 
   while IFS= read -r pid; do
-    [[ -n "${pid}" ]] && kill -9 "${pid}"
+    [[ -n "${pid}" ]] && kill_process_tree "${pid}"
   done <<< "${pids}"
 }
 
@@ -130,7 +165,8 @@ start_stack() {
 
 restart_process() {
   local process="${1:-api}"
-  if has_active_overmind_session; then
+  if has_command overmind; then
+    ensure_overmind_session
     overmind restart "${process}"
     if [[ "${process}" == "api" ]]; then
       wait_for_api
@@ -148,7 +184,11 @@ restart_process() {
 
 stop_process() {
   local process="${1:-api}"
-  if has_active_overmind_session; then
+  if has_command overmind; then
+    if ! has_active_overmind_session; then
+      echo "No active Overmind session"
+      return 0
+    fi
     exec overmind stop "${process}"
   fi
 
@@ -161,7 +201,7 @@ stop_process() {
 }
 
 kill_processes() {
-  if has_active_overmind_session; then
+  if has_command overmind && has_active_overmind_session; then
     exec overmind kill
   fi
 

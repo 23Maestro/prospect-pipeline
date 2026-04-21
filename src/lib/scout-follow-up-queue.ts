@@ -15,6 +15,7 @@ import {
   buildFollowUpQueuePageMarkdown,
   buildFollowUpRaycastKey,
   buildMinimalFollowUpQueueRecord,
+  type ConfirmationFollowUpVariant,
   type MinimalFollowUpQueueRecord,
 } from './scout-follow-up-templates';
 import { fetchCuratedSalesStageOptions } from './sales-stage';
@@ -477,6 +478,7 @@ export async function queueConfirmationFollowUp(args: {
   sport?: string | null;
   gradYear?: string | null;
   state?: string | null;
+  reminderVariant?: ConfirmationFollowUpVariant;
 }): Promise<{ pageId: string; pageUrl: string; craftSkipped: boolean }> {
   const prepared = await prepareConfirmationFollowUp({
     athleteId: args.athleteId,
@@ -491,6 +493,7 @@ export async function queueConfirmationFollowUp(args: {
     sport: args.sport,
     gradYear: args.gradYear,
     state: args.state,
+    reminderVariant: args.reminderVariant,
   });
   const raycastKey = buildFollowUpRaycastKey({
     messageType: 'confirmation',
@@ -514,6 +517,7 @@ export async function queueConfirmationFollowUp(args: {
     workflowStatus: prepared.resolvedAppointment.operatorStatus,
     lifecycleState: prepared.resolvedAppointment.lifecycleState,
     reason: prepared.resolvedAppointment.reason,
+    messageVariant: args.reminderVariant || 'confirmation_1',
   });
   const adminUrl = `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(args.athleteId.trim())}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`;
   await recordConfirmationQueued({
@@ -530,7 +534,8 @@ export async function queueConfirmationFollowUp(args: {
     dueAt: prepared.dueAt.toISOString(),
     messagePreview: prepared.canDraft ? prepared.message : prepared.resolvedAppointment.reason,
     lifecycleState: prepared.resolvedAppointment.lifecycleState,
-    reminderKind: 'confirmation',
+    reminderKind: args.reminderVariant || 'confirmation',
+    messageVariant: args.reminderVariant || 'confirmation_1',
   });
   const notionPage = await upsertFollowUpQueuePage({
     record: { ...record, adminUrl },
@@ -553,6 +558,7 @@ export async function prepareConfirmationFollowUp(args: {
   sport?: string | null;
   gradYear?: string | null;
   state?: string | null;
+  reminderVariant?: ConfirmationFollowUpVariant;
 }): Promise<PreparedConfirmationFollowUp> {
   const reminderDueAt = parseLegacyDateAndTime(args.dueDate, args.dueTime) || new Date();
   const followUpTask: AppointmentTaskSnapshot = {
@@ -600,6 +606,7 @@ export async function prepareConfirmationFollowUp(args: {
   }
 
   const message = buildConfirmationMessage({
+    variant: args.reminderVariant || 'confirmation_1',
     headScoutName,
     dueAt,
     meetingTimezone: resolvedAppointment.meetingTimezone,
@@ -649,6 +656,8 @@ export function buildCallAttempt2QueueDraft(args: {
       recipientName: args.recipientName,
       athleteName: args.athleteName,
       senderName: getFollowUpSenderName(),
+      sport: null,
+      gradYear: null,
     }),
   };
 }

@@ -1,5 +1,10 @@
 import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types';
 import { formatCurrentLocalTime, resolveTimezone } from './scout-prep-ai';
+import {
+  buildVoicemailFollowUpMessage,
+  resolveVoicemailFollowUpVariant,
+  type VoicemailFollowUpVariant,
+} from './scout-follow-up-templates';
 
 type ContactCandidate = {
   role: 'parent1' | 'parent2' | 'studentAthlete';
@@ -106,25 +111,6 @@ function recipientGreeting(
   return selectedLastName
     ? `${parentHonorific(context, recipientId)} ${selectedLastName}`
     : 'there';
-}
-
-function buildGradYearSentence(gradYear?: string | null): string {
-  const normalized = String(gradYear || '')
-    .trim()
-    .toLowerCase();
-
-  switch (normalized) {
-    case 'freshman':
-      return 'As a freshman, this is a good time to learn more about his goals early in the recruiting process.';
-    case 'sophomore':
-      return 'As a sophomore, this is a good time to learn more about his goals as recruiting starts to take shape.';
-    case 'junior':
-      return `As a junior, this is a key stretch with recruiting picking up.`;
-    case 'senior':
-      return `As a senior, this is an important stage with recruiting decisions getting closer.`;
-    default:
-      return 'This is a good time to learn more about goals going forward.';
-  }
 }
 
 function buildWeekClosing(now: Date): string {
@@ -371,6 +357,9 @@ export function getMeetingReminderRecipient(
 export function buildVoicemailFollowUpBody(
   context: ScoutPrepContext,
   recipientId?: ContactCandidate['role'] | 'groupAll',
+  variant?: VoicemailFollowUpVariant,
+  crmStage?: string | null,
+  currentTask?: string | null,
   now: Date = new Date(),
 ): string {
   const recipients = getVoicemailFollowUpRecipients(context);
@@ -386,22 +375,32 @@ export function buildVoicemailFollowUpBody(
   );
   const signOffTitle = `${sportLabel(context.resolved.sport)} Scouting Coordinator`;
   const dayGreeting = buildTimeOfDayGreeting(context, now);
+  const selectedVariant =
+    variant ||
+    resolveVoicemailFollowUpVariant({
+      crmStage,
+      currentTask: currentTask || context.task.title || null,
+    });
+  const noShowFirstName =
+    firstName(
+      recipient?.id === 'parent2'
+        ? context.contactInfo.parent2?.name
+        : context.contactInfo.parent1?.name || context.contactInfo.parent2?.name,
+    ) || 'there';
+  const greeting =
+    selectedVariant === 'no_show'
+      ? `Hi ${noShowFirstName},`
+      : `${dayGreeting} ${greetingName},`;
 
-  return [
-    `${dayGreeting} ${greetingName}, this is Jerami with Prospect ID. I'm the college ${sport} scout here.`,
-    '',
-    `We received ${athleteFirstName}'s recruiting profile, and I wanted to learn a little more about him on the academic and athletic side. ${buildGradYearSentence(gradYear)}`,
-    '',
-    'I wanted to follow up by text so you can get back to me when you get a few minutes. This is my direct cell, so feel free to text or call me here anytime.',
-    '',
-    'When do you have a quick 10-minute window today or over the next few days? I can be flexible on time.',
-    '',
-    `${buildWeekClosing(now)}`,
-    '',
-    'Jerami Singleton',
+  return buildVoicemailFollowUpMessage({
+    variant: selectedVariant,
+    greeting,
+    athleteName: athleteFirstName || athleteName || 'your athlete',
+    sport,
+    gradYear,
     signOffTitle,
-    'Prospect ID',
-  ].join('\n');
+    closingLine: buildWeekClosing(now),
+  });
 }
 
 export function buildScoutPrepLeavingVoicemailBody(args: {

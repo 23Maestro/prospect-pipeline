@@ -23,13 +23,16 @@ from app.routers.scout import router as scout_router
 from app.routers.sales import router as sales_router
 from app.routers.calendar import router as calendar_router
 
-LOG_DIR = Path("/Users/singleton23/raycast_logs")
+LOG_DIR = Path(os.getenv("RAYCAST_LOG_DIR", "/Users/singleton23/raycast_logs"))
 LOG_FILE = LOG_DIR / "npid-api-layer.log"
 
 try:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 except Exception as exc:
-    print("Failed to create log directory:", exc)
+    LOG_DIR = Path("/tmp/raycast_logs")
+    LOG_FILE = LOG_DIR / "npid-api-layer.log"
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    print("Failed to create log directory, using fallback:", exc)
 
 logging.basicConfig(
     level=logging.INFO,

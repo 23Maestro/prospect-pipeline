@@ -85,6 +85,7 @@ type ConfirmationQueuedWriteArgs = PipelineActor & {
   messagePreview?: string | null;
   lifecycleState?: string | null;
   reminderKind?: string | null;
+  messageVariant?: string | null;
 };
 
 type ConfirmationSentWriteArgs = PipelineActor & {
@@ -97,6 +98,8 @@ type ConfirmationSentWriteArgs = PipelineActor & {
   sentAt?: string | null;
   dueAt?: string | null;
   messagePreview?: string | null;
+  reminderKind?: string | null;
+  messageVariant?: string | null;
 };
 
 type RescheduledWriteArgs = PipelineActor & {
@@ -175,6 +178,7 @@ export type LifecycleHealthSnapshot = {
     schema: string;
   };
   stateRows: Array<{
+    athlete_key: string;
     athlete_name: string;
     crm_stage: string | null;
     task_status: string | null;
@@ -197,6 +201,22 @@ export type LifecycleHealthSnapshot = {
     sent_at: string | null;
     updated_at: string;
   }>;
+};
+
+export type ActiveMeetingFallbackRow = {
+  athleteKey: string;
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  crmStage: string | null;
+  taskStatus: string | null;
+  headScout: string | null;
+  currentTaskId: string | null;
+  currentTaskTitle: string | null;
+  currentAppointmentId: string | null;
+  appointmentStartsAt: string | null;
+  appointmentStatus: string | null;
+  updatedAt: string;
 };
 
 function logInfo(event: string, step: string, status: 'start' | 'success', context?: Record<string, unknown>) {
@@ -536,6 +556,7 @@ export async function recordConfirmationQueued(
     payload: {
       lifecycle_state: normalizeValue(args.lifecycleState),
       message_preview: normalizeValue(args.messagePreview)?.slice(0, 240) || null,
+      message_variant: normalizeValue(args.messageVariant),
     },
     appointment: {
       appointmentId,
@@ -571,6 +592,7 @@ export async function recordConfirmationSent(
     eventType: 'confirmation_sent',
     payload: {
       message_preview: normalizeValue(args.messagePreview)?.slice(0, 240) || null,
+      message_variant: normalizeValue(args.messageVariant),
     },
     appointment: {
       appointmentId,
@@ -580,7 +602,7 @@ export async function recordConfirmationSent(
     },
     reminder: {
       appointmentId,
-      kind: 'confirmation',
+      kind: normalizeValue(args.reminderKind) || 'confirmation',
       sendAt: args.dueAt,
       sentAt: args.sentAt || new Date().toISOString(),
       status: 'sent',
@@ -649,7 +671,7 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
     queryTable<LifecycleHealthSnapshot['stateRows'][number]>(
       config,
       'athlete_pipeline_state',
-      'select=athlete_name,crm_stage,task_status,current_appointment_id,updated_at&order=updated_at.desc&limit=10',
+      'select=athlete_key,crm_stage,task_status,current_appointment_id,updated_at&order=updated_at.desc&limit=10',
     ),
     queryTable<LifecycleHealthSnapshot['eventRows'][number]>(
       config,
@@ -663,14 +685,96 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
     ),
   ]);
 
+  const athleteKeys = Array.from(new Set(stateRows.map((row) => row.athlete_key).filter(Boolean)));
+  const athleteRows = athleteKeys.length
+    ? await queryTable<Pick<AthletesRow, 'athlete_key' | 'athlete_name'>>(
+        config,
+        'athletes',
+        `select=athlete_key,athlete_name&athlete_key=in.(${athleteKeys.map((key) => `"${key}"`).join(',')})`,
+      )
+    : [];
+  const athleteNameByKey = new Map(athleteRows.map((row) => [row.athlete_key, row.athlete_name]));
+
   return {
     enabled: true,
     config: {
       url: config.url,
       schema: config.schema,
     },
-    stateRows,
+    stateRows: stateRows.map((row) => ({
+      ...row,
+      athlete_name: athleteNameByKey.get(row.athlete_key) || '',
+    })),
     eventRows,
     reminderRows,
   };
+}
+
+export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallbackRow[]> {
+  const config = getConfig();
+  if (!config) {
+    return [];
+  }
+
+  const [stateRows, athleteRows, appointmentRows] = await Promise.all([
+    queryTable<{
+      athlete_key: string;
+      athlete_id: string;
+      athlete_main_id: string;
+      crm_stage: string | null;
+      task_status: string | null;
+      head_scout: string | null;
+      current_task_id: string | null;
+      current_task_title: string | null;
+      current_appointment_id: string | null;
+      updated_at: string;
+    }>(
+      config,
+      'athlete_pipeline_state',
+      [
+        'select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,head_scout,current_task_id,current_task_title,current_appointment_id,updated_at',
+        'not.current_appointment_id=is.null',
+        'order=updated_at.desc',
+        'limit=200',
+      ].join('&'),
+    ),
+    queryTable<{ athlete_key: string; athlete_name: string }>(
+      config,
+      'athletes',
+      'select=athlete_key,athlete_name&limit=500',
+    ),
+    queryTable<{ id: string; starts_at: string | null; status: string | null }>(
+      config,
+      'appointments',
+      'select=id,starts_at,status&limit=500',
+    ),
+  ]);
+
+  const athleteNamesByKey = new Map(
+    athleteRows.map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()]),
+  );
+  const appointmentsById = new Map(
+    appointmentRows.map((row) => [String(row.id || '').trim(), row]),
+  );
+
+  return stateRows.map((row) => {
+    const appointmentId = String(row.current_appointment_id || '').trim();
+    const appointment = appointmentId ? appointmentsById.get(appointmentId) : null;
+    const athleteKey = String(row.athlete_key || '').trim();
+    return {
+      athleteKey,
+      athleteId: String(row.athlete_id || '').trim(),
+      athleteMainId: String(row.athlete_main_id || '').trim(),
+      athleteName: athleteNamesByKey.get(athleteKey) || athleteKey,
+      crmStage: normalizeValue(row.crm_stage),
+      taskStatus: normalizeValue(row.task_status),
+      headScout: normalizeValue(row.head_scout),
+      currentTaskId: normalizeValue(row.current_task_id),
+      currentTaskTitle: normalizeValue(row.current_task_title),
+      currentAppointmentId: normalizeValue(row.current_appointment_id),
+      appointmentStartsAt: normalizeIsoValue(appointment?.starts_at),
+      appointmentStatus: normalizeValue(appointment?.status),
+      updatedAt: normalizeIsoValue(row.updated_at) || row.updated_at,
+    };
+  });
 }

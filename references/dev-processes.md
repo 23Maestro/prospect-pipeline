@@ -63,13 +63,15 @@ This repo ships `.overmind.env`, so plain `overmind start` resolves to `Procfile
 
 ## Fallback
 
-If Overmind is unavailable, the repo helper falls back automatically where it can.
+Overmind is the source of truth on this repo when it is installed.
 
-- `npm run dev:stack` falls back to `npm run dev:all`
-- `npm run dev:api:restart` falls back to a direct `uvicorn --reload` restart on port `8000`
-- `npm run dev:api:stop` falls back to killing the current listener on port `8000`
+- `npm run dev:stack` starts the Procfile under Overmind
+- `npm run dev:api:restart` makes sure an Overmind session exists, then restarts only `api`
+- `npm run dev:api:stop` stops only `api` inside the active Overmind session
 - repo `.env` and `npid-api-layer/.env` are loaded before FastAPI starts
 - stale `.overmind.sock` is removed automatically when it points to a dead session
+
+The helper only falls back to direct process handling when Overmind is not installed at all. That avoids the split-brain case where Overmind exists but a stray direct `uvicorn` child still owns port `8000`.
 
 If you want the old unsupervised path explicitly:
 

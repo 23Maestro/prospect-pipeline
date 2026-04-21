@@ -15,7 +15,12 @@ import {
 import { spawn } from 'child_process';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import BackSyncScoutFollowUpsCommand from './back-sync-scout-follow-ups';
+import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
+import {
+  ConfirmationReminderMessageForm,
+  VoicemailFollowUpMessageForm,
+} from './components/follow-up-message-forms';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
@@ -91,6 +96,12 @@ import {
   prepareConfirmationFollowUp,
   queueConfirmationFollowUp,
 } from './lib/scout-follow-up-queue';
+import {
+  resolveConfirmationFollowUpVariant,
+  resolveVoicemailFollowUpVariant,
+  type ConfirmationFollowUpVariant,
+  type VoicemailFollowUpVariant,
+} from './lib/scout-follow-up-templates';
 import { syncScoutOutcomeToNotion } from './lib/scout-outcome-sync';
 import {
   recordConfirmationSent,
@@ -185,6 +196,17 @@ function BackSyncFollowUpsAction() {
   );
 }
 
+function SupabaseLifecycleStatusAction() {
+  return (
+    <Action.Push
+      title="Supabase Lifecycle Status"
+      icon={Icon.Database}
+      shortcut={{ modifiers: ['cmd', 'opt'], key: 's' }}
+      target={<SupabaseLifecycleStatusCommand />}
+    />
+  );
+}
+
 function buildTaskSearchKeywords(
   task: ScoutPortalTask,
   extraValues: Array<string | null | undefined> = [],
@@ -208,6 +230,7 @@ async function recordConfirmationSentBestEffort(args: {
   taskId: string;
   currentTask: string;
   prepared: Awaited<ReturnType<typeof prepareConfirmationFollowUp>>;
+  reminderVariant?: ConfirmationFollowUpVariant;
 }) {
   try {
     await recordConfirmationSent({
@@ -226,6 +249,8 @@ async function recordConfirmationSentBestEffort(args: {
       messagePreview: args.prepared.canDraft
         ? args.prepared.message
         : args.prepared.resolvedAppointment.reason,
+      reminderKind: args.reminderVariant || 'confirmation',
+      messageVariant: args.reminderVariant || 'confirmation_1',
     });
   } catch (error) {
     logFailure(
@@ -712,6 +737,7 @@ function ScoutPrepContactDetail({
 
 type VoicemailFollowUpFormValues = {
   recipientId?: string;
+  variant?: VoicemailFollowUpVariant;
 };
 
 type ScoutPrepParentOption = {
@@ -728,6 +754,19 @@ function getScoutPrepParentOptions(context: ScoutPrepContext) {
       ? { id: 'parent2' as const, name: context.contactInfo.parent2.name }
       : null,
   ].filter(Boolean) as ScoutPrepParentOption[];
+}
+
+async function getSelectedCrmStageLabel(athleteId?: string | null): Promise<string | null> {
+  const normalizedAthleteId = String(athleteId || '').trim();
+  if (!normalizedAthleteId) {
+    return null;
+  }
+  const stageOptions = await fetchCuratedSalesStageOptions(normalizedAthleteId).catch(() => []);
+  return (
+    stageOptions.find((option) => option.selected)?.label ||
+    stageOptions.find((option) => option.selected)?.value ||
+    null
+  );
 }
 
 function formatScoutPrepMarkdownForClipboard(markdown: string): string {
@@ -776,14 +815,24 @@ function formatScoutPrepMarkdownForClipboard(markdown: string): string {
 function VoicemailFollowUpRecipientForm({
   task,
   context,
+  crmStage,
+  currentTask,
 }: {
   task: ScoutPortalTask;
   context: ScoutPrepContext;
+  crmStage?: string | null;
+  currentTask?: string | null;
 }) {
   const recipients = getVoicemailFollowUpRecipients(context);
-  const { pop } = useNavigation();
+  const defaultVariant = resolveVoicemailFollowUpVariant({
+    crmStage,
+    currentTask: currentTask || task.title || null,
+  });
 
-  async function openMessagesForRecipient(recipient?: (typeof recipients)[number]) {
+  async function openMessagesForRecipient(
+    recipient?: (typeof recipients)[number],
+    variant?: VoicemailFollowUpVariant,
+  ) {
     if (!recipient || !recipient.phones.length) {
       await showToast({
         style: Toast.Style.Failure,
@@ -793,13 +842,20 @@ function VoicemailFollowUpRecipientForm({
       return;
     }
 
-    const body = buildVoicemailFollowUpBody(context, recipient.id);
+    const body = buildVoicemailFollowUpBody(
+      context,
+      recipient.id,
+      variant,
+      crmStage,
+      currentTask || task.title || null,
+    );
 
     logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
       contactId: context.task.contact_id,
       recipientId: recipient.id,
       recipientName: recipient.name,
       recipientCount: recipient.phones.length,
+      variant: variant || defaultVariant,
     });
 
     try {
@@ -810,8 +866,8 @@ function VoicemailFollowUpRecipientForm({
         recipientName: recipient.name,
         recipientCount: recipient.phones.length,
         mode,
+        variant: variant || defaultVariant,
       });
-      pop();
     } catch (error) {
       await Clipboard.copy(body);
       await open(`sms:${recipient.phones[0]}`);
@@ -825,6 +881,7 @@ function VoicemailFollowUpRecipientForm({
           recipientName: recipient.name,
           recipientCount: recipient.phones.length,
           mode: 'clipboard-fallback',
+          variant: variant || defaultVariant,
         },
       );
       await showToast({
@@ -832,38 +889,28 @@ function VoicemailFollowUpRecipientForm({
         title: 'Messages opened',
         message: 'Voicemail text copied to clipboard.',
       });
-      pop();
     }
   }
 
   async function handleSubmit(values: VoicemailFollowUpFormValues) {
     const recipient =
       recipients.find((candidate) => candidate.id === values.recipientId) || recipients[0];
-    await openMessagesForRecipient(recipient);
+    await openMessagesForRecipient(recipient, values.variant || defaultVariant);
   }
 
   return (
-    <Form
+    <VoicemailFollowUpMessageForm
       navigationTitle={`Voicemail Follow-Up • ${task.athlete_name}`}
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm
-            title="Open in Messages"
-            onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
-          />
-        </ActionPanel>
+      recipients={recipients}
+      defaultRecipientId={recipients[0]?.id}
+      defaultVariant={defaultVariant}
+      onSubmit={async (values) =>
+        handleSubmit({
+          recipientId: values.recipientId,
+          variant: values.variant,
+        })
       }
-    >
-      <Form.Dropdown id="recipientId" title="Who Did You Call?" defaultValue={recipients[0]?.id}>
-        {recipients.map((recipient) => (
-          <Form.Dropdown.Item
-            key={recipient.id}
-            value={recipient.id}
-            title={`${recipient.label}: ${recipient.name}`}
-          />
-        ))}
-      </Form.Dropdown>
-    </Form>
+    />
   );
 }
 
@@ -2034,55 +2081,15 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       });
       return;
     }
-    if (recipients.length === 1) {
-      const recipient = recipients[0];
-      if (!recipient) {
-        return;
-      }
-
-      const body = buildVoicemailFollowUpBody(context, recipient.id);
-
-      logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
-        contactId: context.task.contact_id,
-        recipientId: recipient.id,
-        recipientName: recipient.name,
-        recipientCount: recipient.phones.length,
-        mode: 'auto-direct',
-      });
-
-      try {
-        const mode = await openMessagesDraftForRecipients(recipient.phones, body);
-        logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
-          contactId: context.task.contact_id,
-          recipientId: recipient.id,
-          recipientName: recipient.name,
-          recipientCount: recipient.phones.length,
-          mode,
-        });
-      } catch (error) {
-        await Clipboard.copy(body);
-        await open(`sms:${recipient.phones[0]}`);
-        logFailure(
-          'SCOUT_PREP_MESSAGES_HANDOFF',
-          'open-compose',
-          error instanceof Error ? error.message : String(error),
-          {
-            contactId: context.task.contact_id,
-            recipientId: recipient.id,
-            recipientName: recipient.name,
-            recipientCount: recipient.phones.length,
-            mode: 'auto-direct-clipboard-fallback',
-          },
-        );
-        await showToast({
-          style: Toast.Style.Success,
-          title: 'Messages opened',
-          message: 'Voicemail text copied to clipboard.',
-        });
-      }
-      return;
-    }
-    push(<VoicemailFollowUpRecipientForm task={task} context={context} />);
+    const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+    push(
+      <VoicemailFollowUpRecipientForm
+        task={task}
+        context={context}
+        crmStage={crmStage}
+        currentTask={task.title || null}
+      />,
+    );
   }
 
   async function handleSyncCallPrepToNotion() {
@@ -2220,11 +2227,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
   }
 
   async function handleTextMeetingReminder() {
-    const toast = await showLoadingToast(
-      'Preparing meeting reminder',
-      'Resolving confirmation task and current meeting',
-    );
-
     let activeContext = context;
     if (!activeContext) {
       activeContext = await loadScoutPrepContext(task);
@@ -2233,7 +2235,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
     const reminderRecipient = getMeetingReminderRecipient(activeContext);
     if (!reminderRecipient?.phones.length) {
-      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No usable contact number',
@@ -2244,7 +2245,6 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
     const confirmationTask = findNewestIncompleteConfirmationTask(activeContext.tasks);
     if (!confirmationTask) {
-      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No confirmation call task found',
@@ -2255,92 +2255,110 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
     const athleteMainId = String(
       activeContext.resolved.athlete_main_id || activeContext.task.athlete_main_id || '',
     ).trim();
-    const prepared = await prepareConfirmationFollowUp({
-      athleteId: String(task.contact_id || '').trim(),
-      athleteMainId,
-      athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-      sport: activeContext.resolved.sport || null,
-      gradYear: task.grad_year || null,
-      state: activeContext.resolved.state || null,
-      dueDate: confirmationTask.due_date || task.due_date || null,
-      dueTime: null,
-      headScoutName: activeContext.resolved.head_scout || null,
-      greetingOverride: buildTimeOfDayGreeting(activeContext),
-      recipientNames: reminderRecipient.recipientNames,
-      fallbackText: confirmationTask.description || '',
+    const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+    const defaultVariant = resolveConfirmationFollowUpVariant({
+      crmStage,
+      currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
     });
-    if (!prepared.canDraft) {
-      toast.hide();
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Manual reconciliation needed',
-        message: prepared.resolvedAppointment.reason,
-      });
-      return;
-    }
 
-    try {
-      await queueConfirmationFollowUp({
-        athleteId: String(task.contact_id || '').trim(),
-        athleteMainId,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        sport: activeContext.resolved.sport || null,
-        gradYear: task.grad_year || null,
-        state: activeContext.resolved.state || null,
-        parent1Name: activeContext.contactInfo.parent1?.name || null,
-        parent2Name: activeContext.contactInfo.parent2?.name || null,
-        taskId: confirmationTask.task_id,
-        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        dueDate: confirmationTask.due_date || task.due_date || null,
-        dueTime: null,
-        headScoutName: activeContext.resolved.head_scout || null,
-        greetingOverride: buildTimeOfDayGreeting(activeContext),
-        recipientNames: reminderRecipient.recipientNames,
-        fallbackText: confirmationTask.description || '',
-      });
-    } catch {
-      // Notion failure should not block message draft.
-    }
+    push(
+      <ConfirmationReminderMessageForm
+        navigationTitle={`Meeting Reminder • ${task.athlete_name}`}
+        defaultVariant={defaultVariant}
+        onSubmit={async (values) => {
+          const toast = await showLoadingToast(
+            'Preparing meeting reminder',
+            'Resolving confirmation task and current meeting',
+          );
+          const prepared = await prepareConfirmationFollowUp({
+            athleteId: String(task.contact_id || '').trim(),
+            athleteMainId,
+            athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+            sport: activeContext.resolved.sport || null,
+            gradYear: task.grad_year || null,
+            state: activeContext.resolved.state || null,
+            dueDate: confirmationTask.due_date || task.due_date || null,
+            dueTime: null,
+            headScoutName: activeContext.resolved.head_scout || null,
+            greetingOverride: buildTimeOfDayGreeting(activeContext),
+            recipientNames: reminderRecipient.recipientNames,
+            fallbackText: confirmationTask.description || '',
+            reminderVariant: values.variant,
+          });
+          if (!prepared.canDraft) {
+            toast.hide();
+            throw new Error(prepared.resolvedAppointment.reason);
+          }
 
-    try {
-      await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
-      await recordConfirmationSentBestEffort({
-        athleteId: String(task.contact_id || '').trim(),
-        athleteMainId,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        taskId: confirmationTask.task_id,
-        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        prepared,
-      });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Messages opened';
-      toast.message = 'Meeting reminder draft ready.';
-    } catch (error) {
-      await Clipboard.copy(prepared.message);
-      await open(`sms:${reminderRecipient.phones[0]}`);
-      await recordConfirmationSentBestEffort({
-        athleteId: String(task.contact_id || '').trim(),
-        athleteMainId,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        taskId: confirmationTask.task_id,
-        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        prepared,
-      });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Messages opened';
-      toast.message = 'Meeting reminder copied to clipboard.';
-      logFailure(
-        'SCOUT_PREP_MEETING_REMINDER',
-        'open-compose',
-        error instanceof Error ? error.message : String(error),
-        {
-          contactId: activeContext.task.contact_id,
-          athleteMainId,
-          recipientCount: reminderRecipient.phones.length,
-          mode: 'clipboard-fallback',
-        },
-      );
-    }
+          try {
+            await queueConfirmationFollowUp({
+              athleteId: String(task.contact_id || '').trim(),
+              athleteMainId,
+              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+              sport: activeContext.resolved.sport || null,
+              gradYear: task.grad_year || null,
+              state: activeContext.resolved.state || null,
+              parent1Name: activeContext.contactInfo.parent1?.name || null,
+              parent2Name: activeContext.contactInfo.parent2?.name || null,
+              taskId: confirmationTask.task_id,
+              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+              dueDate: confirmationTask.due_date || task.due_date || null,
+              dueTime: null,
+              headScoutName: activeContext.resolved.head_scout || null,
+              greetingOverride: buildTimeOfDayGreeting(activeContext),
+              recipientNames: reminderRecipient.recipientNames,
+              fallbackText: confirmationTask.description || '',
+              reminderVariant: values.variant,
+            });
+          } catch {
+            // Notion failure should not block message draft.
+          }
+
+          try {
+            await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
+            await recordConfirmationSentBestEffort({
+              athleteId: String(task.contact_id || '').trim(),
+              athleteMainId,
+              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+              taskId: confirmationTask.task_id,
+              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+              prepared,
+              reminderVariant: values.variant,
+            });
+            toast.style = Toast.Style.Success;
+            toast.title = 'Messages opened';
+            toast.message = 'Meeting reminder draft ready.';
+          } catch (error) {
+            await Clipboard.copy(prepared.message);
+            await open(`sms:${reminderRecipient.phones[0]}`);
+            await recordConfirmationSentBestEffort({
+              athleteId: String(task.contact_id || '').trim(),
+              athleteMainId,
+              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+              taskId: confirmationTask.task_id,
+              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+              prepared,
+              reminderVariant: values.variant,
+            });
+            toast.style = Toast.Style.Success;
+            toast.title = 'Messages opened';
+            toast.message = 'Meeting reminder copied to clipboard.';
+            logFailure(
+              'SCOUT_PREP_MEETING_REMINDER',
+              'open-compose',
+              error instanceof Error ? error.message : String(error),
+              {
+                contactId: activeContext.task.contact_id,
+                athleteMainId,
+                recipientCount: reminderRecipient.phones.length,
+                mode: 'clipboard-fallback',
+                variant: values.variant,
+              },
+            );
+          }
+        }}
+      />,
+    );
   }
 
   async function handleCompleteConfirmationTask() {
@@ -2579,7 +2597,15 @@ function ScoutPrepTaskItem({
         });
         return;
       }
-      push(<ScoutPrepDetail task={task} />);
+      const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+      push(
+        <VoicemailFollowUpRecipientForm
+          task={task}
+          context={context}
+          crmStage={crmStage}
+          currentTask={task.title || null}
+        />,
+      );
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -2652,20 +2678,13 @@ function ScoutPrepTaskItem({
   }
 
   async function handleTextMeetingReminder() {
-    const toast = await showLoadingToast(
-      'Preparing meeting reminder',
-      'Resolving confirmation task and current meeting',
-    );
-
     const activeContext = await loadTaskNotesContext();
     if (!activeContext) {
-      toast.hide();
       return;
     }
 
     const reminderRecipient = getMeetingReminderRecipient(activeContext);
     if (!reminderRecipient?.phones.length) {
-      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No usable contact number',
@@ -2675,7 +2694,6 @@ function ScoutPrepTaskItem({
 
     const confirmationTask = findNewestIncompleteConfirmationTask(activeContext.tasks);
     if (!confirmationTask) {
-      toast.hide();
       await showToast({
         style: Toast.Style.Failure,
         title: 'No confirmation call task found',
@@ -2686,92 +2704,110 @@ function ScoutPrepTaskItem({
     const athleteMainId = String(
       activeContext.resolved.athlete_main_id || activeContext.task.athlete_main_id || '',
     ).trim();
-    const prepared = await prepareConfirmationFollowUp({
-      athleteId: String(task.contact_id || '').trim(),
-      athleteMainId,
-      athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-      sport: activeContext.resolved.sport || null,
-      gradYear: task.grad_year || null,
-      state: activeContext.resolved.state || null,
-      dueDate: confirmationTask.due_date || task.due_date || null,
-      dueTime: null,
-      headScoutName: activeContext.resolved.head_scout || null,
-      greetingOverride: buildTimeOfDayGreeting(activeContext),
-      recipientNames: reminderRecipient.recipientNames,
-      fallbackText: confirmationTask.description || '',
+    const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+    const defaultVariant = resolveConfirmationFollowUpVariant({
+      crmStage,
+      currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
     });
-    if (!prepared.canDraft) {
-      toast.hide();
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Manual reconciliation needed',
-        message: prepared.resolvedAppointment.reason,
-      });
-      return;
-    }
 
-    try {
-      await queueConfirmationFollowUp({
-        athleteId: String(task.contact_id || '').trim(),
-        athleteMainId,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        sport: activeContext.resolved.sport || null,
-        gradYear: task.grad_year || null,
-        state: activeContext.resolved.state || null,
-        parent1Name: activeContext.contactInfo.parent1?.name || null,
-        parent2Name: activeContext.contactInfo.parent2?.name || null,
-        taskId: confirmationTask.task_id,
-        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        dueDate: confirmationTask.due_date || task.due_date || null,
-        dueTime: null,
-        headScoutName: activeContext.resolved.head_scout || null,
-        greetingOverride: buildTimeOfDayGreeting(activeContext),
-        recipientNames: reminderRecipient.recipientNames,
-        fallbackText: confirmationTask.description || '',
-      });
-    } catch {
-      // Notion failure should not block message draft.
-    }
+    push(
+      <ConfirmationReminderMessageForm
+        navigationTitle={`Meeting Reminder • ${task.athlete_name}`}
+        defaultVariant={defaultVariant}
+        onSubmit={async (values) => {
+          const toast = await showLoadingToast(
+            'Preparing meeting reminder',
+            'Resolving confirmation task and current meeting',
+          );
+          const prepared = await prepareConfirmationFollowUp({
+            athleteId: String(task.contact_id || '').trim(),
+            athleteMainId,
+            athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+            sport: activeContext.resolved.sport || null,
+            gradYear: task.grad_year || null,
+            state: activeContext.resolved.state || null,
+            dueDate: confirmationTask.due_date || task.due_date || null,
+            dueTime: null,
+            headScoutName: activeContext.resolved.head_scout || null,
+            greetingOverride: buildTimeOfDayGreeting(activeContext),
+            recipientNames: reminderRecipient.recipientNames,
+            fallbackText: confirmationTask.description || '',
+            reminderVariant: values.variant,
+          });
+          if (!prepared.canDraft) {
+            toast.hide();
+            throw new Error(prepared.resolvedAppointment.reason);
+          }
 
-    try {
-      await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
-      await recordConfirmationSentBestEffort({
-        athleteId: String(task.contact_id || '').trim(),
-        athleteMainId,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        taskId: confirmationTask.task_id,
-        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        prepared,
-      });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Messages opened';
-      toast.message = 'Meeting reminder draft ready.';
-    } catch (error) {
-      await Clipboard.copy(prepared.message);
-      await open(`sms:${reminderRecipient.phones[0]}`);
-      await recordConfirmationSentBestEffort({
-        athleteId: String(task.contact_id || '').trim(),
-        athleteMainId,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        taskId: confirmationTask.task_id,
-        currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        prepared,
-      });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Messages opened';
-      toast.message = 'Meeting reminder copied to clipboard.';
-      logFailure(
-        'SCOUT_PREP_MEETING_REMINDER',
-        'open-compose',
-        error instanceof Error ? error.message : String(error),
-        {
-          contactId: activeContext.task.contact_id,
-          athleteMainId,
-          recipientCount: reminderRecipient.phones.length,
-          mode: 'clipboard-fallback',
-        },
-      );
-    }
+          try {
+            await queueConfirmationFollowUp({
+              athleteId: String(task.contact_id || '').trim(),
+              athleteMainId,
+              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+              sport: activeContext.resolved.sport || null,
+              gradYear: task.grad_year || null,
+              state: activeContext.resolved.state || null,
+              parent1Name: activeContext.contactInfo.parent1?.name || null,
+              parent2Name: activeContext.contactInfo.parent2?.name || null,
+              taskId: confirmationTask.task_id,
+              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+              dueDate: confirmationTask.due_date || task.due_date || null,
+              dueTime: null,
+              headScoutName: activeContext.resolved.head_scout || null,
+              greetingOverride: buildTimeOfDayGreeting(activeContext),
+              recipientNames: reminderRecipient.recipientNames,
+              fallbackText: confirmationTask.description || '',
+              reminderVariant: values.variant,
+            });
+          } catch {
+            // Notion failure should not block message draft.
+          }
+
+          try {
+            await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
+            await recordConfirmationSentBestEffort({
+              athleteId: String(task.contact_id || '').trim(),
+              athleteMainId,
+              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+              taskId: confirmationTask.task_id,
+              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+              prepared,
+              reminderVariant: values.variant,
+            });
+            toast.style = Toast.Style.Success;
+            toast.title = 'Messages opened';
+            toast.message = 'Meeting reminder draft ready.';
+          } catch (error) {
+            await Clipboard.copy(prepared.message);
+            await open(`sms:${reminderRecipient.phones[0]}`);
+            await recordConfirmationSentBestEffort({
+              athleteId: String(task.contact_id || '').trim(),
+              athleteMainId,
+              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+              taskId: confirmationTask.task_id,
+              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
+              prepared,
+              reminderVariant: values.variant,
+            });
+            toast.style = Toast.Style.Success;
+            toast.title = 'Messages opened';
+            toast.message = 'Meeting reminder copied to clipboard.';
+            logFailure(
+              'SCOUT_PREP_MEETING_REMINDER',
+              'open-compose',
+              error instanceof Error ? error.message : String(error),
+              {
+                contactId: activeContext.task.contact_id,
+                athleteMainId,
+                recipientCount: reminderRecipient.phones.length,
+                mode: 'clipboard-fallback',
+                variant: values.variant,
+              },
+            );
+          }
+        }}
+      />,
+    );
   }
 
   const shortDate = formatShortDueDate(task.due_date);
@@ -2900,6 +2936,7 @@ function ScoutPrepTaskItem({
               onAction={onToggleProspectSearchMode}
             />
             <BackSyncFollowUpsAction />
+            <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -2995,6 +3032,7 @@ function TrackedFollowUpListItem({
               onAction={onToggleProspectSearchMode}
             />
             <BackSyncFollowUpsAction />
+            <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -3058,6 +3096,7 @@ function ProspectSearchListItem({
               onAction={onToggleProspectSearchMode}
             />
             <BackSyncFollowUpsAction />
+            <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -3126,6 +3165,7 @@ function RecentProfileListItem({
               onAction={onToggleRecentMode}
             />
             <BackSyncFollowUpsAction />
+            <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -3549,16 +3589,17 @@ export default function ScoutPrepCommand() {
               }
               actions={
                 <ActionPanel>
-                  <Action
-                    title="Exit Recent Items"
-                    icon={Icon.Clock}
-                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                    onAction={toggleRecentMode}
-                  />
-                  <BackSyncFollowUpsAction />
-                </ActionPanel>
-              }
-            />
+                <Action
+                  title="Exit Recent Items"
+                  icon={Icon.Clock}
+                  shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                  onAction={toggleRecentMode}
+                />
+                <BackSyncFollowUpsAction />
+                <SupabaseLifecycleStatusAction />
+              </ActionPanel>
+            }
+          />
           )}
         </List.Section>
       ) : viewMode === 'prospect' ? (
@@ -3592,16 +3633,17 @@ export default function ScoutPrepCommand() {
               }
               actions={
                 <ActionPanel>
-                  <Action
-                    title="Exit Prospect Search"
-                    icon={Icon.MagnifyingGlass}
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-                    onAction={toggleProspectSearchMode}
-                  />
-                  <BackSyncFollowUpsAction />
-                </ActionPanel>
-              }
-            />
+                <Action
+                  title="Exit Prospect Search"
+                  icon={Icon.MagnifyingGlass}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                  onAction={toggleProspectSearchMode}
+                />
+                <BackSyncFollowUpsAction />
+                <SupabaseLifecycleStatusAction />
+              </ActionPanel>
+            }
+          />
           )}
         </List.Section>
       ) : trackedFollowUps.length > 0 ? (
@@ -3642,6 +3684,7 @@ export default function ScoutPrepCommand() {
                   onAction={toggleProspectSearchMode}
                 />
                 <BackSyncFollowUpsAction />
+                <SupabaseLifecycleStatusAction />
               </ActionPanel.Section>
             </ActionPanel>
           }
