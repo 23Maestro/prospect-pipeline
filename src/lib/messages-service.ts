@@ -36,11 +36,11 @@ export async function openMessagesServiceClientInbox(context: MessagesClientInbo
 
   if (context.openThread && normalizedPhone) {
     await open(
-      `${getRaycastProtocol()}extensions/thomaslombart/messages/my-messages?launchContext=${encodeURIComponent(
+      `${getRaycastProtocol()}extensions/thomaslombart/messages/open-chat?launchContext=${encodeURIComponent(
         JSON.stringify({
           normalizedPhone,
           clientOnly: true,
-          searchText: normalizedPhone,
+          autoOpen: true,
         }),
       )}`,
     );

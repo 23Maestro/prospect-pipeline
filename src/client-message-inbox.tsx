@@ -1,13 +1,135 @@
-import { Action, ActionPanel, Icon, List, useNavigation } from '@raycast/api';
+import { Action, ActionPanel, Form, Icon, List, showToast, useNavigation } from '@raycast/api';
+import { useForm, usePromise } from '@raycast/utils';
 import { format } from 'date-fns';
 import { useState } from 'react';
 
-import { ClientComposeForm, ClientThreadView } from './components/client-message-ui';
 import ExportClientMessageInboxCommand from './export-client-message-inbox';
 import {
   type ClientInboxChat,
+  type ClientThreadMessage,
+  getClientThreadMessages,
+  sendClientMessage,
   useClientInboxChats,
 } from './lib/client-message-sandbox';
+import { openMessagesServiceClientInbox } from './lib/messages-service';
+
+function getMessagesUrl(chat: { chat_identifier: string }, body?: string): string {
+  const encodedBody = body ? `&body=${encodeURIComponent(body)}` : '';
+  return `sms://open?addresses=${chat.chat_identifier}${encodedBody}`;
+}
+
+function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
+  const { pop } = useNavigation();
+  const { itemProps, handleSubmit } = useForm<{ message: string }>({
+    initialValues: {
+      message: '',
+    },
+    async onSubmit(values) {
+      await openMessagesServiceClientInbox({
+        chatIdentifier: chat.chat_identifier,
+        draftMessage: values.message,
+        openThread: false,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Opened in Messages service',
+        message: `Draft ready for ${chat.displayName}`,
+      });
+      pop();
+    },
+  });
+
+  return (
+    <Form
+      navigationTitle={`Send Follow-Up • ${chat.displayName}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Open in Messages Service" icon={Icon.Message} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description
+        title="Client"
+        text={[chat.clientMatch.athleteName, chat.clientMatch.associateLabel].filter(Boolean).join(' • ')}
+      />
+      <Form.TextArea
+        {...itemProps.message}
+        title="Follow-Up"
+        placeholder="Write the follow-up, then continue in the Messages service UI."
+      />
+    </Form>
+  );
+}
+
+function ReplyForm({ message, onSent }: { message: ClientThreadMessage; onSent: () => void }) {
+  const { pop } = useNavigation();
+  const { itemProps, handleSubmit } = useForm<{ reply: string }>({
+    initialValues: {
+      reply: '',
+    },
+    async onSubmit(values) {
+      const result = await sendClientMessage({
+        address: message.sender,
+        text: values.reply,
+        serviceName: message.service,
+      });
+      if (result !== 'Success') {
+        throw new Error(result);
+      }
+      onSent();
+      pop();
+    },
+  });
+
+  return (
+    <Form
+      navigationTitle={`Replying to ${message.senderName}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Send Reply" icon={Icon.Reply} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description title="Message" text={message.body} />
+      <Form.TextArea {...itemProps.reply} title="Reply" />
+    </Form>
+  );
+}
+
+function ClientThread({ chat }: { chat: ClientInboxChat }) {
+  const [searchText, setSearchText] = useState('');
+  const { push } = useNavigation();
+  const { data: messages, isLoading, revalidate } = usePromise(
+    getClientThreadMessages,
+    [chat.chat_identifier, chat.displayName, searchText],
+  );
+
+  return (
+    <List
+      navigationTitle={chat.displayName}
+      isLoading={isLoading}
+      onSearchTextChange={setSearchText}
+      throttle
+      searchBarPlaceholder="Search this thread..."
+    >
+      {(messages || []).map((message) => (
+        <List.Item
+          key={message.guid}
+          title={message.senderName}
+          subtitle={message.body}
+          accessories={[{ date: new Date(message.date), tooltip: format(new Date(message.date), 'PPpp') }]}
+          actions={
+            <ActionPanel>
+              <Action title="Reply" icon={Icon.Reply} onAction={() => push(<ReplyForm message={message} onSent={revalidate} />)} />
+              <Action.Open title="Open in Messages" icon={Icon.Message} target={getMessagesUrl(chat)} />
+              <Action title="Refresh Thread" icon={Icon.ArrowClockwise} onAction={revalidate} />
+            </ActionPanel>
+          }
+        />
+      ))}
+    </List>
+  );
+}
 
 export default function ClientMessageInboxCommand() {
   const [searchText, setSearchText] = useState('');
@@ -45,17 +167,16 @@ export default function ClientMessageInboxCommand() {
           ]}
           actions={
             <ActionPanel>
-              <Action title="Open Client Thread" icon={Icon.Message} onAction={() => push(<ClientThreadView chat={chat} />)} />
+              <Action title="Open Client Thread" icon={Icon.Message} onAction={() => push(<ClientThread chat={chat} />)} />
+              <Action title="Send Follow-Up" icon={Icon.PaperPlane} onAction={() => push(<FollowUpDraftForm chat={chat} />)} />
               <Action
-                title="Send Follow-Up"
-                icon={Icon.Message}
+                title="Open in Messages Service"
+                icon={Icon.Bubble}
                 onAction={() =>
-                  push(
-                    <ClientComposeForm
-                      initialNormalizedPhone={chat.clientMatch.normalizedPhone}
-                      navigationTitle={`Send Follow-Up • ${chat.displayName}`}
-                    />,
-                  )
+                  openMessagesServiceClientInbox({
+                    chatIdentifier: chat.chat_identifier,
+                    openThread: true,
+                  })
                 }
               />
               <ActionPanel.Section>

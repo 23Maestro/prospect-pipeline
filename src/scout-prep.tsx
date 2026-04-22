@@ -22,7 +22,6 @@ import {
   VoicemailFollowUpMessageForm,
 } from './components/follow-up-message-forms';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
-import { ClientComposeForm } from './components/client-message-ui';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
   MeetingSetSubmitResponse,
@@ -899,12 +898,7 @@ async function handleBatchCreateProspectContacts(tasks: ScoutPortalTask[]) {
   }
 }
 
-async function openMessagesDraftForRecipients(
-  push: ReturnType<typeof useNavigation>['push'],
-  phones: string[],
-  body: string,
-  navigationTitle = 'Send Message',
-): Promise<'local-compose' | 'url'> {
+async function openMessagesDraftForRecipients(phones: string[], body: string): Promise<'url'> {
   const uniquePhones = Array.from(
     new Set(
       phones
@@ -915,17 +909,6 @@ async function openMessagesDraftForRecipients(
 
   if (!uniquePhones.length) {
     throw new Error('At least one valid phone number is required');
-  }
-
-  if (uniquePhones.length === 1) {
-    push(
-      <ClientComposeForm
-        initialNormalizedPhone={uniquePhones[0]}
-        initialMessage={body}
-        navigationTitle={navigationTitle}
-      />,
-    );
-    return 'local-compose';
   }
 
   await open(buildMessagesComposeUrlForRecipients(uniquePhones, body));
@@ -1196,7 +1179,6 @@ function VoicemailFollowUpRecipientForm({
   crmStage?: string | null;
   currentTask?: string | null;
 }) {
-  const { push } = useNavigation();
   const recipients = getVoicemailFollowUpRecipients(context);
   const defaultVariant = resolveVoicemailFollowUpVariant({
     crmStage,
@@ -1233,12 +1215,7 @@ function VoicemailFollowUpRecipientForm({
     });
 
     try {
-      const mode = await openMessagesDraftForRecipients(
-        push,
-        recipient.phones,
-        body,
-        `Voicemail Follow-Up • ${recipient.name}`,
-      );
+      const mode = await openMessagesDraftForRecipients(recipient.phones, body);
       logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
         contactId: context.task.contact_id,
         recipientId: recipient.id,
@@ -2730,12 +2707,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
           }
 
           try {
-            await openMessagesDraftForRecipients(
-              push,
-              reminderRecipient.phones,
-              prepared.message,
-              `Meeting Reminder • ${task.athlete_name}`,
-            );
+            await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
             await recordConfirmationSentBestEffort({
               athleteId: String(task.contact_id || '').trim(),
               athleteMainId,
@@ -3183,12 +3155,7 @@ function ScoutPrepTaskItem({
           }
 
           try {
-            await openMessagesDraftForRecipients(
-              push,
-              reminderRecipient.phones,
-              prepared.message,
-              `Meeting Reminder • ${task.athlete_name}`,
-            );
+            await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
             await recordConfirmationSentBestEffort({
               athleteId: String(task.contact_id || '').trim(),
               athleteMainId,
