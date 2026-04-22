@@ -7,7 +7,6 @@ import {
   buildMessagesComposeUrlForRecipients,
   buildProspectContactShortcutPayload,
   buildProspectContactShortcutPayloadFromName,
-  buildProspectContactShortcutUrl,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
   getVoicemailFollowUpRecipients,
@@ -403,19 +402,12 @@ test('buildProspectContactShortcutPayload: preserves newline-delimited shortcut 
   );
 });
 
-test('buildProspectContactShortcutPayloadFromName/buildProspectContactShortcutUrl: encodes payload safely', () => {
+test('buildProspectContactShortcutPayloadFromName: normalizes full name and phone safely', () => {
   const payload = buildProspectContactShortcutPayloadFromName({
     fullName: 'Mary Ann Wright',
     phone: '(407) 555-5555',
   });
   assert.equal(payload, 'Mary\nAnn Wright\n407-555-5555');
-
-  const url = buildProspectContactShortcutUrl(payload);
-  assert.match(
-    url,
-    /^shortcuts:\/\/run-shortcut\?name=Create%20Prospect%20Contact&input=text&text=/,
-  );
-  assert.match(url, /Mary%0AAnn%20Wright%0A407-555-5555/);
 });
 
 test('buildProspectContactShortcutPayloadFromName: rejects missing required fields', () => {

@@ -156,7 +156,9 @@ start_stack() {
   if has_command overmind; then
     clear_stale_overmind_socket
     clear_api_port
-    exec overmind start -f "${PROCFILE_PATH}"
+    overmind start -D -f "${PROCFILE_PATH}" >/dev/null
+    wait_for_api
+    return 0
   fi
 
   echo "overmind not installed; falling back to npm run dev:all"

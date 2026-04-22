@@ -479,14 +479,6 @@ export function buildProspectContactShortcutPayloadFromName(args: {
   });
 }
 
-export function buildProspectContactShortcutUrl(payload: string): string {
-  if (!payload.trim()) {
-    throw new Error('Shortcut payload is required');
-  }
-
-  return `shortcuts://run-shortcut?name=Create%20Prospect%20Contact&input=text&text=${encodeURIComponent(payload)}`;
-}
-
 export function mapTimezoneToLegacyRecruitZone(timezone?: string | null): string | null {
   if (!timezone) {
     return null;

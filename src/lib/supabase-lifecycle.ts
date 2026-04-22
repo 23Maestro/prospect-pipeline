@@ -1,5 +1,7 @@
 import { getPreferenceValues } from '@raycast/api';
 import { randomUUID } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { searchLogger } from './logger';
 
 const FEATURE = 'supabase-lifecycle';
@@ -240,11 +242,54 @@ function logFailure(event: string, step: string, error: string, context?: Record
   });
 }
 
+function readEnvFile(filePath: string): Record<string, string> {
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    const values: Record<string, string> = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIndex = trimmed.indexOf('=');
+      if (eqIndex <= 0) continue;
+      const key = trimmed.slice(0, eqIndex).trim();
+      const value = trimmed.slice(eqIndex + 1).trim();
+      if (!key) continue;
+      values[key] = value;
+    }
+    return values;
+  } catch {
+    return {};
+  }
+}
+
+function readRepoEnv(): Record<string, string> {
+  const cwd = process.cwd();
+  return {
+    ...readEnvFile(path.join(cwd, 'npid-api-layer/.env')),
+    ...readEnvFile(path.join(cwd, '.env')),
+    ...readEnvFile(path.join(cwd, '.overmind.env')),
+  };
+}
+
 function getConfig(): SupabaseConfig | null {
   const prefs = getPreferenceValues<Preferences>();
-  const url = String(prefs.supabaseUrl || '').trim().replace(/\/+$/, '');
-  const key = String(prefs.supabaseServiceRoleKey || '').trim();
-  const schema = String(prefs.supabaseSchema || '').trim() || DEFAULT_SCHEMA;
+  const repoEnv = readRepoEnv();
+  const url = String(
+    process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '',
+  )
+    .trim()
+    .replace(/\/+$/, '');
+  const key = String(
+    process.env.SUPABASE_SECRET_KEY ||
+      repoEnv.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      repoEnv.SUPABASE_SERVICE_ROLE_KEY ||
+      prefs.supabaseServiceRoleKey ||
+      '',
+  ).trim();
+  const schema = String(
+    process.env.SUPABASE_SCHEMA || repoEnv.SUPABASE_SCHEMA || prefs.supabaseSchema || '',
+  ).trim() || DEFAULT_SCHEMA;
   if (!url || !key) {
     return null;
   }

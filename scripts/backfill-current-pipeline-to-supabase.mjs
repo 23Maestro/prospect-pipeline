@@ -17,7 +17,7 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
   console.error(
     [
       'Missing Supabase credentials.',
-      'Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or authenticate the Supabase CLI so the linked project can provide them.',
+      'Set SUPABASE_URL and SUPABASE_SECRET_KEY, or authenticate the Supabase CLI so the linked project can provide them.',
       `Linked project ref: ${projectRef || 'missing'}`,
     ].join(' '),
   );

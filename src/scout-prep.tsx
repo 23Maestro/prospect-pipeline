@@ -39,7 +39,6 @@ import {
   buildMessagesComposeUrlForRecipients,
   buildTimeOfDayGreeting,
   buildProspectContactShortcutPayloadFromName,
-  buildProspectContactShortcutUrl,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
   getMeetingReminderRecipient,
@@ -149,10 +148,12 @@ async function showLoadingToast(title: string, message?: string) {
   });
 }
 
-function buildMeetingSetStartsAt(selectedOpenMeeting?: {
-  start_time?: string | null;
-  date_time_label?: string | null;
-} | null): string | null {
+function buildMeetingSetStartsAt(
+  selectedOpenMeeting?: {
+    start_time?: string | null;
+    date_time_label?: string | null;
+  } | null,
+): string | null {
   const rawStartTime = String(selectedOpenMeeting?.start_time || '').trim();
   if (!rawStartTime) {
     return null;
@@ -181,7 +182,9 @@ function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null):
   return `${DASHBOARD_BASE_URL}/admin/athletes?${params.toString()}`;
 }
 
-function getTaskDisplayTitle(task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null): string {
+function getTaskDisplayTitle(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): string {
   return (
     stripMoveThisTaskPrefix(task?.title) ||
     String(task?.description || '').trim() ||
@@ -191,7 +194,9 @@ function getTaskDisplayTitle(task?: Partial<ScoutAthleteTask> | Partial<ScoutPor
 
 function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
   return tasks
-    .filter((task) => !String(task.completion_date || '').trim() && String(task.task_id || '').trim())
+    .filter(
+      (task) => !String(task.completion_date || '').trim() && String(task.task_id || '').trim(),
+    )
     .map((task) => ({
       task_id: String(task.task_id || '').trim(),
       title: task.title,
@@ -507,51 +512,115 @@ function buildScoutPrepContactMarkdown(context: ScoutPrepContext | null): string
   return lines.join('\n');
 }
 
-async function launchProspectContactShortcut(candidate?: ProspectContactShortcutCandidate | null) {
+type ProspectContactCreateResult = {
+  status: 'created' | 'updated' | 'exists';
+  groupName: string | null;
+};
+
+async function createProspectContact(
+  candidate?: ProspectContactShortcutCandidate | null,
+): Promise<ProspectContactCreateResult> {
   const activeCandidate = candidate || null;
   if (!activeCandidate) {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: 'No eligible contact found',
-    });
-    return;
+    throw new Error('No eligible contact found');
   }
 
-  try {
-    const payload = buildProspectContactShortcutPayloadFromName({
-      fullName: activeCandidate.name,
-      phone: activeCandidate.phone,
-    });
-    const shortcutUrl = buildProspectContactShortcutUrl(payload);
-    await open(shortcutUrl);
-    await showToast({
-      style: Toast.Style.Success,
-      title: 'Shortcut launched',
-      message: `${activeCandidate.label}: ${activeCandidate.name}`,
-    });
-  } catch (error) {
-    await showToast({
-      style: Toast.Style.Failure,
-      title: 'Failed to create prospect contact',
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
+  const payload = buildProspectContactShortcutPayloadFromName({
+    fullName: activeCandidate.name,
+    phone: activeCandidate.phone,
+  });
+  const [firstName, lastName, phone] = payload.split('\n');
+  const result = await runOsaScript(
+    [
+      'on run argv',
+      'set firstName to item 1 of argv',
+      'set lastName to item 2 of argv',
+      'set phoneValue to item 3 of argv',
+      'tell application "Contacts"',
+      'set matchingPeople to every person whose first name is firstName and last name is lastName',
+      'set targetPerson to missing value',
+      'set actionStatus to "created"',
+      'repeat with matchingPerson in matchingPeople',
+      'repeat with existingPhone in phones of matchingPerson',
+      'if value of existingPhone is phoneValue then',
+      'set targetPerson to matchingPerson',
+      'set actionStatus to "exists"',
+      'exit repeat',
+      'end if',
+      'end repeat',
+      'if targetPerson is not missing value then exit repeat',
+      'if targetPerson is missing value then set targetPerson to matchingPerson',
+      'set actionStatus to "updated"',
+      'end repeat',
+      'if targetPerson is missing value then',
+      'set targetPerson to make new person with properties {first name:firstName, last name:lastName}',
+      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
+      'else if actionStatus is "updated" then',
+      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
+      'end if',
+      'set preferredGroup to missing value',
+      'repeat with existingGroup in every group',
+      'if (name of existingGroup) is "ID Contacts" then',
+      'set preferredGroup to existingGroup',
+      'exit repeat',
+      'end if',
+      'end repeat',
+      'if preferredGroup is missing value then',
+      'repeat with existingGroup in every group',
+      'set groupNameText to name of existingGroup',
+      'ignoring case',
+      'if (groupNameText contains "prospect" and groupNameText contains "id") or groupNameText contains "id contacts" or (groupNameText contains "client" and groupNameText contains "id") then',
+      'set preferredGroup to existingGroup',
+      'exit repeat',
+      'end if',
+      'end ignoring',
+      'end repeat',
+      'end if',
+      'set matchedGroupName to ""',
+      'if preferredGroup is not missing value then',
+      'set matchedGroupName to name of preferredGroup',
+      'set targetPersonId to id of targetPerson',
+      'set memberIds to id of every person of preferredGroup',
+      'if memberIds does not contain targetPersonId then add targetPerson to preferredGroup',
+      'end if',
+      'save',
+      'return actionStatus & "|" & matchedGroupName',
+      'end tell',
+      'end run',
+    ],
+    [firstName || '', lastName || '', phone || ''],
+  );
+
+  const [statusValue, groupNameValue] = result.split('|');
+  const status =
+    statusValue === 'exists' || statusValue === 'updated' || statusValue === 'created'
+      ? statusValue
+      : 'created';
+
+  return {
+    status,
+    groupName: String(groupNameValue || '').trim() || null,
+  };
 }
 
 async function runOsaScript(lines: string[], args: string[] = []) {
-  await new Promise<void>((resolve, reject) => {
+  return await new Promise<string>((resolve, reject) => {
     const child = spawn('osascript', [...lines.flatMap((line) => ['-e', line]), ...args], {
       shell: false,
     });
 
     let stderr = '';
+    let stdout = '';
+    child.stdout.on('data', (data) => {
+      stdout += data.toString();
+    });
     child.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
     child.on('close', (code) => {
       if (code === 0) {
-        resolve();
+        resolve(stdout.trim());
         return;
       }
       reject(new Error(stderr.trim() || `osascript exited with code ${code}`));
@@ -623,6 +692,7 @@ function ScoutPrepContactDetail({
 }) {
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext || null);
   const [isLoading, setIsLoading] = useState(!initialContext);
+  const [isCreatingContact, setIsCreatingContact] = useState(false);
 
   async function loadContactInfo() {
     setIsLoading(true);
@@ -667,17 +737,46 @@ function ScoutPrepContactDetail({
       return;
     }
 
-    await launchProspectContactShortcut(activeCandidate);
+    setIsCreatingContact(true);
+    const toast = await showLoadingToast(
+      'Creating contact',
+      `${activeCandidate.name}${activeCandidate.phone ? ` • ${activeCandidate.phone}` : ''}`,
+    );
+    try {
+      const result = await createProspectContact(activeCandidate);
+      toast.style = Toast.Style.Success;
+      toast.title =
+        result.status === 'exists'
+          ? 'Contact already exists'
+          : result.status === 'updated'
+            ? 'Contact updated'
+            : 'Contact created';
+      toast.message = result.groupName
+        ? `${activeCandidate.label}: ${activeCandidate.name} • ${result.groupName}`
+        : `${activeCandidate.label}: ${activeCandidate.name}`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Failed to create prospect contact';
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      setIsCreatingContact(false);
+    }
   }
 
   const contactInfo = context?.contactInfo;
-  const contactCandidates = context ? getProspectContactShortcutCandidates(context) : [];
+  const contactCandidates = context
+    ? getProspectContactShortcutCandidates(context).sort(
+        (left, right) =>
+          ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
+          ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
+      )
+    : [];
 
   return (
     <Detail
       navigationTitle={`Contact Info • ${task.athlete_name}`}
       markdown={buildScoutPrepContactMarkdown(context)}
-      isLoading={isLoading}
+      isLoading={isLoading || isCreatingContact}
       actions={
         <ActionPanel>
           {contactInfo?.parent1 ? (
@@ -697,6 +796,7 @@ function ScoutPrepContactDetail({
                 title="Copy Student Athlete Phone"
                 content={contactInfo.studentAthlete.phone}
                 icon="☎️"
+                shortcut={{ modifiers: ['cmd'], key: 'return' }}
               />
             ) : null}
           </ActionPanel.Section>
@@ -707,6 +807,7 @@ function ScoutPrepContactDetail({
                   title="Copy Parent 2 Phone"
                   content={contactInfo.parent2.phone}
                   icon="📳"
+                  shortcut={{ modifiers: ['cmd'], key: 's' }}
                 />
               ) : null}
             </ActionPanel.Section>
@@ -716,7 +817,7 @@ function ScoutPrepContactDetail({
               <Action
                 title={`Create ${contactCandidates[0].label} Contact`}
                 icon={Icon.Person}
-                shortcut={{ modifiers: [], key: 'return' }}
+                shortcut={{ modifiers: ['cmd'], key: '1' }}
                 onAction={() => void handleCreateProspectContact(contactCandidates[0])}
               />
             ) : null}
@@ -724,7 +825,7 @@ function ScoutPrepContactDetail({
               <Action
                 title={`Create ${contactCandidates[1].label} Contact`}
                 icon={Icon.Person}
-                shortcut={{ modifiers: ['cmd'], key: 'return' }}
+                shortcut={{ modifiers: ['cmd'], key: '2' }}
                 onAction={() => void handleCreateProspectContact(contactCandidates[1])}
               />
             ) : null}
@@ -732,7 +833,7 @@ function ScoutPrepContactDetail({
               <Action
                 title={`Create ${contactCandidates[2].label} Contact`}
                 icon={Icon.Person}
-                shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                shortcut={{ modifiers: ['cmd'], key: '3' }}
                 onAction={() => void handleCreateProspectContact(contactCandidates[2])}
               />
             ) : null}
@@ -1037,6 +1138,7 @@ type TrackedFollowUpItem = {
 };
 
 type ViewMode = 'tasks' | 'recent' | 'prospect';
+type TaskListFilter = 'all' | 'tasks' | 'followups';
 
 type RecentProfileRow = {
   profile: ScoutRecentProfile;
@@ -1299,6 +1401,67 @@ function formatShortDueDate(dueDate?: string | null): string | null {
   return `${day} ${parsed.getMonth() + 1}/${parsed.getDate()}`;
 }
 
+function getTaskAccessoryMetadata(task: ScoutPortalTask) {
+  const shortDate = formatShortDueDate(task.due_date);
+  const taskTitle = stripMoveThisTaskPrefix(task.title);
+
+  const taskColor = (() => {
+    const t = (taskTitle || '').toLowerCase();
+    if (t.startsWith('call attempt 3')) return Color.Red;
+    if (t.startsWith('call attempt 2')) return Color.Orange;
+    if (t.startsWith('call attempt')) return Color.Blue;
+    if (t.includes('confirmation')) return Color.Green;
+    if (t.includes('meeting set')) return Color.Orange;
+    if (t.includes('follow up') || t.includes('follow-up')) return Color.Yellow;
+    if (t.includes('voicemail') || t.includes('voice mail')) return Color.Magenta;
+    return Color.SecondaryText;
+  })();
+
+  const gradYearColor = (() => {
+    switch (task.grad_year) {
+      case '2026':
+        return Color.Red;
+      case '2027':
+        return Color.Purple;
+      case '2028':
+        return Color.Blue;
+      case '2029':
+        return Color.Green;
+      case '2030':
+        return Color.Magenta;
+      default:
+        return Color.SecondaryText;
+    }
+  })();
+
+  return {
+    shortDate,
+    taskTitle,
+    taskColor,
+    gradYearColor,
+  };
+}
+
+function isTrackedFollowUpVisible(item: TrackedFollowUpItem): boolean {
+  const followUpTitle = stripMoveThisTaskPrefix(
+    item.createdTask.title || item.task.title,
+  ).toLowerCase();
+  const isCallAttemptFollowUp =
+    followUpTitle.startsWith('call attempt 2') || followUpTitle.startsWith('call attempt 3');
+  if (!isCallAttemptFollowUp) {
+    return false;
+  }
+
+  const parsedDueDate = buildDefaultTaskDate(item.createdTask.due_date || item.task.due_date);
+  if (!parsedDueDate) {
+    return false;
+  }
+
+  const now = new Date();
+  const endOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 0, 0, 0, 0);
+  return parsedDueDate < endOfTomorrow;
+}
+
 function UpdateAthleteTaskForm({
   task,
   selectedTask,
@@ -1455,7 +1618,9 @@ function UpdateAthleteTaskPicker({
   const incompleteTasks = context ? getIncompleteAthleteTasks(context.tasks) : [];
 
   async function handleOpenTaskUpdate(selectedTask: ScoutAthleteTask) {
-    const athleteMainId = String(context?.resolved.athlete_main_id || task.athlete_main_id || '').trim();
+    const athleteMainId = String(
+      context?.resolved.athlete_main_id || task.athlete_main_id || '',
+    ).trim();
     const contactTask = String(task.contact_id || '').trim();
     if (!athleteMainId || !contactTask) {
       await showToast({
@@ -1524,8 +1689,6 @@ function UpdateAthleteTaskPicker({
     </List>
   );
 }
-
-
 
 function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   const { push } = useNavigation();
@@ -1735,7 +1898,10 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     }
 
     setIsSaving(true);
-    const toast = await showLoadingToast('Saving sales stage', 'Updating website, Supabase, and Notion');
+    const toast = await showLoadingToast(
+      'Saving sales stage',
+      'Updating website, Supabase, and Notion',
+    );
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -1825,7 +1991,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       const syncContext = context || (await loadScoutPrepContext(task));
       if (stageLabel === MEETING_SET_LABEL && meetingSetResult) {
         const selectedScout =
-          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === meetingSetResult.assigned_to) || null;
+          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === meetingSetResult.assigned_to) ||
+          null;
         const currentTask =
           stripMoveThisTaskPrefix(
             meetingSetResult.created_task?.title || salesStageResult.created_task?.title || '',
@@ -1901,8 +2068,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
               salesStageResult.created_task?.title ||
               task.title ||
               '',
-          ) ||
-          (stageLabel === MEETING_SET_LABEL ? 'Confirmation Call' : 'Follow Up');
+          ) || (stageLabel === MEETING_SET_LABEL ? 'Confirmation Call' : 'Follow Up');
 
         await syncScoutOutcomeToNotion({
           athleteId,
@@ -2407,10 +2573,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       return;
     }
 
-    const toast = await showLoadingToast(
-      'Completing confirmation call',
-      'Saving task completion',
-    );
+    const toast = await showLoadingToast('Completing confirmation call', 'Saving task completion');
 
     try {
       await completeScoutPrepTaskAfterVoicemail({
@@ -2834,29 +2997,7 @@ function ScoutPrepTaskItem({
     );
   }
 
-  const shortDate = formatShortDueDate(task.due_date);
-  const taskTitle = stripMoveThisTaskPrefix(task.title);
-
-  const taskColor = (() => {
-    const t = (taskTitle || '').toLowerCase();
-    if (t.startsWith('call attempt')) return Color.Blue;
-    if (t.includes('confirmation')) return Color.Green;
-    if (t.includes('meeting set')) return Color.Orange;
-    if (t.includes('follow up') || t.includes('follow-up')) return Color.Yellow;
-    if (t.includes('voicemail') || t.includes('voice mail')) return Color.Magenta;
-    return Color.SecondaryText;
-  })();
-
-  const gradYearColor = (() => {
-    switch (task.grad_year) {
-      case '2026': return Color.Red;
-      case '2027': return Color.Purple;
-      case '2028': return Color.Blue;
-      case '2029': return Color.Green;
-      case '2030': return Color.Magenta;
-      default: return Color.SecondaryText;
-    }
-  })();
+  const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
 
   return (
     <List.Item
@@ -2982,18 +3123,23 @@ function TrackedFollowUpListItem({
   onToggleRecentMode: () => void;
 }) {
   const { task, createdTask } = item;
+  const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
 
   return (
     <List.Item
       key={`follow-up:${task.contact_id}:${task.athlete_main_id || 'missing-main-id'}`}
       icon={Icon.Repeat}
       title={task.athlete_name}
-      subtitle={createdTask.title || 'Follow-Up Task'}
       keywords={buildTaskSearchKeywords(task, [
         createdTask.title,
         createdTask.description,
         createdTask.due_date,
       ])}
+      accessories={[
+        ...(shortDate ? [{ text: shortDate }] : []),
+        ...(taskTitle ? [{ tag: { value: taskTitle, color: taskColor } }] : []),
+        ...(task.grad_year ? [{ tag: { value: task.grad_year, color: gradYearColor } }] : []),
+      ]}
       detail={
         <List.Item.Detail
           markdown={[
@@ -3202,6 +3348,7 @@ export default function ScoutPrepCommand() {
   const [trackedFollowUps, setTrackedFollowUps] = useState<TrackedFollowUpItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
+  const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('all');
   const [taskSearchText, setTaskSearchText] = useState('');
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
@@ -3216,6 +3363,15 @@ export default function ScoutPrepCommand() {
   const isRecentViewMode = viewMode === 'recent';
   const isSearchModeActive = viewMode === 'prospect' || viewMode === 'recent';
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
+  const visibleTrackedFollowUps = trackedFollowUps.filter(isTrackedFollowUpVisible);
+  const showAllTaskSections = taskListFilter === 'all';
+  const showTasksSection =
+    viewMode === 'tasks' && (showAllTaskSections || taskListFilter === 'tasks');
+  const showFollowUpsSection =
+    viewMode === 'tasks' && (showAllTaskSections || taskListFilter === 'followups');
+  const hasTaskModeResults =
+    (showTasksSection && tasks.length > 0) ||
+    (showFollowUpsSection && visibleTrackedFollowUps.length > 0);
 
   const loadTasks = async (options?: { forceRefreshFollowUps?: boolean }) => {
     if (loadTasksPromiseRef.current) {
@@ -3565,13 +3721,25 @@ export default function ScoutPrepCommand() {
   return (
     <List
       isLoading={isLoading || isProspectSearching || isRecentFollowUpsLoading}
-
       navigationTitle={
         viewMode === 'recent'
           ? 'Scout Prep — Recent Items'
           : viewMode === 'prospect'
             ? 'Scout Prep Search'
             : 'Scout Prep'
+      }
+      searchBarAccessory={
+        viewMode === 'tasks' ? (
+          <List.Dropdown
+            tooltip="Task List Filter"
+            value={taskListFilter}
+            onChange={(newValue) => setTaskListFilter(newValue as TaskListFilter)}
+          >
+            <List.Dropdown.Item title="All Items" value="all" />
+            <List.Dropdown.Item title="Tasks Only" value="tasks" />
+            <List.Dropdown.Item title="Follow-Ups Only" value="followups" />
+          </List.Dropdown>
+        ) : undefined
       }
       filtering={true}
       searchBarPlaceholder={
@@ -3581,7 +3749,9 @@ export default function ScoutPrepCommand() {
             ? 'Prospect Search — Enter athlete name or email'
             : 'Search Task List'
       }
-      searchText={viewMode !== 'tasks' ? (viewMode === 'recent' ? '' : prospectSearchText) : undefined}
+      searchText={
+        viewMode !== 'tasks' ? (viewMode === 'recent' ? '' : prospectSearchText) : undefined
+      }
       onSearchTextChange={
         viewMode === 'recent'
           ? undefined
@@ -3613,17 +3783,17 @@ export default function ScoutPrepCommand() {
               }
               actions={
                 <ActionPanel>
-                <Action
-                  title="Exit Recent Items"
-                  icon={Icon.Clock}
-                  shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                  onAction={toggleRecentMode}
-                />
-                <BackSyncFollowUpsAction />
-                <SupabaseLifecycleStatusAction />
-              </ActionPanel>
-            }
-          />
+                  <Action
+                    title="Exit Recent Items"
+                    icon={Icon.Clock}
+                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
+                    onAction={toggleRecentMode}
+                  />
+                  <BackSyncFollowUpsAction />
+                  <SupabaseLifecycleStatusAction />
+                </ActionPanel>
+              }
+            />
           )}
         </List.Section>
       ) : viewMode === 'prospect' ? (
@@ -3657,36 +3827,35 @@ export default function ScoutPrepCommand() {
               }
               actions={
                 <ActionPanel>
-                <Action
-                  title="Exit Prospect Search"
-                  icon={Icon.MagnifyingGlass}
-                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-                  onAction={toggleProspectSearchMode}
-                />
-                <BackSyncFollowUpsAction />
-                <SupabaseLifecycleStatusAction />
-              </ActionPanel>
-            }
-          />
+                  <Action
+                    title="Exit Prospect Search"
+                    icon={Icon.MagnifyingGlass}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                    onAction={toggleProspectSearchMode}
+                  />
+                  <BackSyncFollowUpsAction />
+                  <SupabaseLifecycleStatusAction />
+                </ActionPanel>
+              }
+            />
           )}
         </List.Section>
-      ) : trackedFollowUps.length > 0 ? (
-        <List.Section title="Follow-Up List" subtitle={String(trackedFollowUps.length)}>
-          {trackedFollowUps.map((item) => (
-            <TrackedFollowUpListItem
-              key={`tracked:${item.pointer.athleteId}:${item.pointer.athleteMainId}`}
-              item={item}
-              onRemove={handleRemoveTrackedFollowUp}
-              onToggleProspectSearchMode={toggleProspectSearchMode}
-              isProspectSearchMode={isSearchModeActive}
-              onToggleRecentMode={toggleRecentMode}
-            />
-          ))}
-        </List.Section>
-      ) : tasks.length === 0 && trackedFollowUps.length === 0 ? (
+      ) : !hasTaskModeResults ? (
         <List.EmptyView
-          title="No scout tasks found"
-          description="The landing-page task list is empty."
+          title={
+            taskListFilter === 'followups'
+              ? 'No follow-up items found'
+              : taskListFilter === 'tasks'
+                ? 'No scout tasks found'
+                : 'No scout items found'
+          }
+          description={
+            taskListFilter === 'followups'
+              ? 'There are no tracked follow-up items right now.'
+              : taskListFilter === 'tasks'
+                ? 'The landing-page task list is empty.'
+                : 'There are no tasks or tracked follow-ups right now.'
+          }
           actions={
             <ActionPanel>
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
@@ -3714,17 +3883,35 @@ export default function ScoutPrepCommand() {
           }
         />
       ) : (
-        <List.Section title="Today / Past Due" subtitle={String(tasks.length)}>
-          {tasks.map((task) => (
-            <ScoutPrepTaskItem
-              key={`${task.contact_id}-${task.title || 'task'}`}
-              task={task}
-              onToggleProspectSearchMode={toggleProspectSearchMode}
-              isProspectSearchMode={isSearchModeActive}
-              onToggleRecentMode={toggleRecentMode}
-            />
-          ))}
-        </List.Section>
+        <>
+          {showFollowUpsSection && visibleTrackedFollowUps.length > 0 ? (
+            <List.Section title="Follow-Up List" subtitle={String(visibleTrackedFollowUps.length)}>
+              {visibleTrackedFollowUps.map((item) => (
+                <TrackedFollowUpListItem
+                  key={`tracked:${item.pointer.athleteId}:${item.pointer.athleteMainId}`}
+                  item={item}
+                  onRemove={handleRemoveTrackedFollowUp}
+                  onToggleProspectSearchMode={toggleProspectSearchMode}
+                  isProspectSearchMode={isSearchModeActive}
+                  onToggleRecentMode={toggleRecentMode}
+                />
+              ))}
+            </List.Section>
+          ) : null}
+          {showTasksSection && tasks.length > 0 ? (
+            <List.Section title="Today / Past Due" subtitle={String(tasks.length)}>
+              {tasks.map((task) => (
+                <ScoutPrepTaskItem
+                  key={`${task.contact_id}-${task.title || 'task'}`}
+                  task={task}
+                  onToggleProspectSearchMode={toggleProspectSearchMode}
+                  isProspectSearchMode={isSearchModeActive}
+                  onToggleRecentMode={toggleRecentMode}
+                />
+              ))}
+            </List.Section>
+          ) : null}
+        </>
       )}
     </List>
   );

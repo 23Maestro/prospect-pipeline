@@ -34,6 +34,16 @@ const TIMEZONE_LABEL_TO_WORD: Record<string, string> = {
   AST: 'atlantic',
 };
 
+const TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
+  EST: 'America/New_York',
+  CST: 'America/Chicago',
+  MST: 'America/Denver',
+  PST: 'America/Los_Angeles',
+  AKST: 'America/Anchorage',
+  HST: 'Pacific/Honolulu',
+  AST: 'America/Puerto_Rico',
+};
+
 function firstName(value?: string | null): string {
   return (
     String(value || '')
@@ -42,12 +52,48 @@ function firstName(value?: string | null): string {
   );
 }
 
-function formatTimeLabel(date: Date): string {
-  const hours24 = date.getHours();
-  const hours12 = hours24 % 12 || 12;
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  const suffix = hours24 >= 12 ? 'pm' : 'am';
-  return `${hours12}:${minutes}${suffix}`;
+function resolveIanaTimeZone(timezoneLabel?: string | null): string | null {
+  return TIMEZONE_LABEL_TO_IANA[String(timezoneLabel || '').trim().toUpperCase()] || null;
+}
+
+function getHourForTimeZone(date: Date, timezoneLabel?: string | null): number {
+  const timeZone = resolveIanaTimeZone(timezoneLabel);
+  if (!timeZone) {
+    return date.getHours();
+  }
+
+  const hour = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    hour12: false,
+  })
+    .formatToParts(date)
+    .find((part) => part.type === 'hour')?.value;
+
+  const parsed = Number.parseInt(hour || '', 10);
+  return Number.isNaN(parsed) ? date.getHours() : parsed;
+}
+
+function formatTimeLabel(date: Date, timezoneLabel?: string | null): string {
+  const timeZone = resolveIanaTimeZone(timezoneLabel);
+  if (!timeZone) {
+    const hours24 = date.getHours();
+    const hours12 = hours24 % 12 || 12;
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const suffix = hours24 >= 12 ? 'pm' : 'am';
+    return `${hours12}:${minutes}${suffix}`;
+  }
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === 'hour')?.value || '12';
+  const minute = parts.find((part) => part.type === 'minute')?.value || '00';
+  const dayPeriod = (parts.find((part) => part.type === 'dayPeriod')?.value || 'AM').toLowerCase();
+  return `${hour}:${minute}${dayPeriod}`;
 }
 
 function normalizeCurrentTask(value?: string | null): string {
@@ -223,8 +269,11 @@ export function buildCallAttempt2Message(args: {
   });
 }
 
-export function getTimeOfDayPhrase(date: Date): 'this morning' | 'this afternoon' | 'this evening' {
-  const hour = date.getHours();
+export function getTimeOfDayPhrase(
+  date: Date,
+  meetingTimezone?: string | null,
+): 'this morning' | 'this afternoon' | 'this evening' {
+  const hour = getHourForTimeZone(date, meetingTimezone);
   if (hour < 12) return 'this morning';
   if (hour < 17) return 'this afternoon';
   return 'this evening';
@@ -239,7 +288,7 @@ export function getCoachReferenceName(headScoutName?: string | null): string {
 }
 
 export function getReminderTimeLabel(date: Date, meetingTimezone?: string | null): string {
-  const timeLabel = formatTimeLabel(date);
+  const timeLabel = formatTimeLabel(date, meetingTimezone);
   const zoneWord =
     TIMEZONE_LABEL_TO_WORD[
       String(meetingTimezone || '')
@@ -258,9 +307,9 @@ export function buildConfirmationMessage(args: {
   greetingOverride?: string | null;
 }): string {
   const coachName = getCoachReferenceName(args.headScoutName);
-  const timePhrase = getTimeOfDayPhrase(args.dueAt);
+  const timePhrase = getTimeOfDayPhrase(args.dueAt, args.meetingTimezone);
   const meetingTimeLabel = getReminderTimeLabel(args.dueAt, args.meetingTimezone);
-  const callTimeLabel = formatTimeLabel(args.dueAt);
+  const callTimeLabel = formatTimeLabel(args.dueAt, args.meetingTimezone);
   const currentGreeting = String(args.greetingOverride || '').trim() || 'Good morning';
   const names = Array.from(
     new Set(

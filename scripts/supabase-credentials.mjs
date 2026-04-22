@@ -79,7 +79,13 @@ export function resolveSupabaseCredentials(cwd = process.cwd()) {
     String(process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || '').trim().replace(/\/+$/, '') ||
     readLinkedSupabaseUrl(cwd);
   const serviceRoleKey =
-    String(process.env.SUPABASE_SERVICE_ROLE_KEY || repoEnv.SUPABASE_SERVICE_ROLE_KEY || '').trim() ||
+    String(
+      process.env.SUPABASE_SECRET_KEY ||
+        repoEnv.SUPABASE_SECRET_KEY ||
+        process.env.SUPABASE_SERVICE_ROLE_KEY ||
+        repoEnv.SUPABASE_SERVICE_ROLE_KEY ||
+        '',
+    ).trim() ||
     readLinkedServiceRoleKey(cwd);
 
   return {
