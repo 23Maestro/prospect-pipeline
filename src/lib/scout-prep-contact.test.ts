@@ -170,8 +170,8 @@ test('getVoicemailFollowUpRecipients: returns parents plus group text option', (
     {
       id: 'groupAll',
       label: 'Group Text',
-      name: 'All Associated Contacts',
-      phones: ['651-555-1212', '651-555-9898', '651-555-3000'],
+      name: 'All Parent Contacts',
+      phones: ['651-555-1212', '651-555-9898'],
     },
   ]);
 });
@@ -229,7 +229,10 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
     new Date('2026-04-17T09:00:00Z'),
   );
   const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
-  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./);
+  assert.match(
+    body,
+    /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./,
+  );
   assert.match(body, /Following up about Bryson's recruiting plan\./i);
   assert.match(body, /football background, and college goals/i);
   assert.match(body, /When would you have a 10 min gap today or tomorrow/i);
@@ -254,7 +257,10 @@ test('buildVoicemailFollowUpBody: group text still uses parent template and week
     new Date('2026-04-15T09:00:00Z'),
   );
 
-  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./);
+  assert.match(
+    body,
+    /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./,
+  );
   assert.match(body, /When would you have a 10 min gap today or tomorrow\?/);
   assert.match(body, /Enjoy the rest of your week\./);
 });
@@ -296,7 +302,10 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton, football scout with Prospect ID\./);
+  assert.match(
+    body,
+    /^Good afternoon Mr\. Bailey, this is Jerami Singleton, football scout with Prospect ID\./,
+  );
 });
 
 test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
@@ -378,7 +387,10 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
     new Date('2026-04-24T13:00:00Z'),
   );
 
-  assert.match(body, /^Hi Jamie, looks like we missed you for Aiden’s meeting with our Head Scout\./);
+  assert.match(
+    body,
+    /^Hi Jamie, looks like we missed you for Aiden’s meeting with our Head Scout\./,
+  );
   assert.doesNotMatch(body, /^Hi Ms\./);
 });
 

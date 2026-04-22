@@ -6,9 +6,11 @@ import { searchLogger } from './logger';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
+const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
 
 type Preferences = {
   supabaseUrl?: string;
+  supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
   supabaseSchema?: string;
 };
@@ -262,13 +264,44 @@ function readEnvFile(filePath: string): Record<string, string> {
   }
 }
 
+function findProjectRoot(): string {
+  const starts = [process.cwd(), path.resolve(__dirname, '..', '..'), __dirname];
+  const seen = new Set<string>();
+  for (const start of starts) {
+    let current = path.resolve(start);
+    while (!seen.has(current)) {
+      seen.add(current);
+      const packagePath = path.join(current, 'package.json');
+      try {
+        const raw = fs.readFileSync(packagePath, 'utf8');
+        const pkg = JSON.parse(raw) as { name?: string };
+        if (pkg?.name === 'prospect-pipeline') {
+          return current;
+        }
+      } catch {
+        // keep walking up
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  return process.cwd();
+}
+
 function readRepoEnv(): Record<string, string> {
-  const cwd = process.cwd();
-  return {
-    ...readEnvFile(path.join(cwd, 'npid-api-layer/.env')),
-    ...readEnvFile(path.join(cwd, '.env')),
-    ...readEnvFile(path.join(cwd, '.overmind.env')),
-  };
+  const roots = [findProjectRoot(), REPO_ROOT_FALLBACK]
+    .map((value) => path.resolve(value))
+    .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index);
+
+  return roots.reduce<Record<string, string>>((acc, root) => {
+    return {
+      ...acc,
+      ...readEnvFile(path.join(root, 'npid-api-layer/.env')),
+      ...readEnvFile(path.join(root, '.env')),
+      ...readEnvFile(path.join(root, '.overmind.env')),
+    };
+  }, {});
 }
 
 function getConfig(): SupabaseConfig | null {
@@ -282,6 +315,7 @@ function getConfig(): SupabaseConfig | null {
   const key = String(
     process.env.SUPABASE_SECRET_KEY ||
       repoEnv.SUPABASE_SECRET_KEY ||
+      prefs.supabaseSecretKey ||
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
       repoEnv.SUPABASE_SERVICE_ROLE_KEY ||
       prefs.supabaseServiceRoleKey ||

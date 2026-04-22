@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, Toast, showToast } from '@raycast/api';
+import { Action, ActionPanel, Icon, List, Toast, showToast, useNavigation } from '@raycast/api';
 import { useEffect, useMemo, useState } from 'react';
 import type { ScoutAthleteTask, ScoutRecentProfile } from './features/scout-prep/types';
 import {
@@ -15,6 +15,9 @@ import {
 import { fetchCuratedSalesStageOptions } from './lib/sales-stage';
 import { resolveSalesLifecycle } from './lib/sales-lifecycle';
 import { syncScoutOutcomeToNotion } from './lib/scout-outcome-sync';
+import ExportClientMessageInboxCommand from './export-client-message-inbox';
+import ClientMessageInboxCommand from './client-message-inbox';
+import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 
@@ -231,6 +234,7 @@ async function buildCandidates(): Promise<SyncCandidate[]> {
 }
 
 export default function BackSyncScoutFollowUpsCommand() {
+  const { push } = useNavigation();
   const [candidates, setCandidates] = useState<SyncCandidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [syncingKey, setSyncingKey] = useState<string | null>(null);
@@ -349,6 +353,24 @@ export default function BackSyncScoutFollowUpsCommand() {
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
                     url={candidate.taskUrl}
                   />
+                  <Action
+                    title="Open Client Message Inbox"
+                    icon={Icon.Message}
+                    shortcut={{ modifiers: ['ctrl'], key: 'i' }}
+                    onAction={() => push(<ClientMessageInboxCommand />)}
+                  />
+                  <Action
+                    title="Prep Client Inbox Export"
+                    icon={Icon.Upload}
+                    shortcut={{ modifiers: ['ctrl'], key: 'e' }}
+                    onAction={() => push(<ExportClientMessageInboxCommand />)}
+                  />
+                  <Action
+                    title="Supabase Lifecycle Status"
+                    icon={Icon.Database}
+                    shortcut={{ modifiers: ['ctrl'], key: 'l' }}
+                    onAction={() => push(<SupabaseLifecycleStatusCommand />)}
+                  />
                   <Action title="Reload" icon={Icon.ArrowClockwise} onAction={() => void load()} />
                 </ActionPanel>
               }
@@ -366,6 +388,24 @@ export default function BackSyncScoutFollowUpsCommand() {
                 icon={Icon.Upload}
                 shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
                 onAction={() => void handleSyncAll()}
+              />
+              <Action
+                title="Open Client Message Inbox"
+                icon={Icon.Message}
+                shortcut={{ modifiers: ['ctrl'], key: 'i' }}
+                onAction={() => push(<ClientMessageInboxCommand />)}
+              />
+              <Action
+                title="Prep Client Inbox Export"
+                icon={Icon.Upload}
+                shortcut={{ modifiers: ['ctrl'], key: 'e' }}
+                onAction={() => push(<ExportClientMessageInboxCommand />)}
+              />
+              <Action
+                title="Supabase Lifecycle Status"
+                icon={Icon.Database}
+                shortcut={{ modifiers: ['ctrl'], key: 'l' }}
+                onAction={() => push(<SupabaseLifecycleStatusCommand />)}
               />
               <Action title="Reload" icon={Icon.ArrowClockwise} onAction={() => void load()} />
             </ActionPanel>

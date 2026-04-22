@@ -4,6 +4,7 @@ import {
   Clipboard,
   Color,
   Icon,
+  type KeyEquivalent,
   List,
   open,
   showToast,
@@ -48,7 +49,7 @@ import {
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
-import { loadScoutPrepContext, stripMoveThisTaskPrefix } from './lib/scout-prep';
+import { fetchScoutPortalTasks, loadScoutPrepContext, stripMoveThisTaskPrefix } from './lib/scout-prep';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
 type HeadScoutSchedulesRootProps = {
@@ -74,6 +75,8 @@ export type HeadScoutBookingsListProps = {
   weekOffset?: number;
   weeklyMeetingsOnly?: boolean;
 };
+
+const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5'];
 
 function getHeadScoutCountColor(scoutName: string): string | Color {
   switch (scoutName) {
@@ -220,9 +223,10 @@ function resolveAthleteDisplayName(taskName: string, eventTitle: string): string
 
 function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<string, unknown>>) {
   const matches = tasks.filter((task) => {
+    const rawTask = task as Record<string, unknown>;
     const title = String(task.title || '').trim().toLowerCase();
     const description = String(task.description || '').trim().toLowerCase();
-    const assignedOwner = String(task.assigned_owner || task.assignedOwner || '').trim().toLowerCase();
+    const assignedOwner = String(rawTask.assigned_owner || rawTask.assignedOwner || '').trim().toLowerCase();
     const isConfirmation =
       title.includes('confirmation call') || description.includes('confirm the meeting set');
     return isConfirmation && assignedOwner === 'jerami singleton';
@@ -249,31 +253,20 @@ function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<stri
 async function loadWeeklyJeramiMeetingCandidates(
   weekOffset: number,
 ): Promise<HeadScoutFollowUpCandidate[]> {
-  const [weekly, taskResponse] = await Promise.all([
+  const [weekly, jeramiTasks] = await Promise.all([
     fetchHeadScoutBookedMeetings(weekOffset),
-    fetch(
-      `http://127.0.0.1:8000/api/v1/scout/tasks?assignedto=1408164&range=${
-        weekOffset > 0 ? 'nextWeek' : 'thisWeek'
-      }`,
-    ),
+    fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
-  if (!taskResponse.ok) {
-    throw new Error(`Jerami weekly tasks failed (${taskResponse.status})`);
-  }
-
-  const taskPayload = (await taskResponse.json().catch(() => ({}))) as {
-    tasks?: ScoutPortalTask[];
-  };
 
   const actualMeetings = (weekly.events || []).filter((event) => isActualSetMeetingEvent(event));
-  const jeramiTasks = (taskPayload.tasks || []).filter((task) => {
+  const filteredJeramiTasks = (jeramiTasks || []).filter((task) => {
     const title = String(task.title || '').trim().toLowerCase();
     const assignedOwner = String(task.assigned_owner || '').trim().toLowerCase();
     return assignedOwner === 'jerami singleton' && title.includes('confirmation call');
   });
 
   const tasksByAthlete = new Map<string, ScoutPortalTask[]>();
-  for (const task of jeramiTasks) {
+  for (const task of filteredJeramiTasks) {
     const key = normalizeAthleteMatchKey(task.athlete_name);
     if (!key) continue;
     const existing = tasksByAthlete.get(key) || [];
@@ -315,7 +308,7 @@ async function loadWeeklyJeramiMeetingCandidates(
       taskId: String(confirmationTask.task_id || '').trim(),
       adminUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}`,
       taskUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&tasktab=1`,
-      source: 'tracked' as const,
+      source: 'website' as const,
       crmSalesStage: 'Meeting Set',
       headScoutName: event.assigned_owner || null,
       bookedMeetingTitle: event.title,
@@ -342,7 +335,7 @@ async function loadWeeklyJeramiMeetingCandidates(
   });
 
   return resolved
-    .filter((candidate): candidate is HeadScoutFollowUpCandidate => Boolean(candidate))
+    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
     .sort((left, right) => getMeetingSortValue(left) - getMeetingSortValue(right));
 }
 
@@ -634,8 +627,8 @@ export function HeadScoutBookingsList({
                           title={`Mark ${prefix}`}
                           icon={Icon.Pencil}
                           shortcut={
-                            index < 9
-                              ? { modifiers: ['cmd'], key: String(index + 1) as `${number}` }
+                            index < APPOINTMENT_SHORTCUT_KEYS.length
+                              ? { modifiers: ['cmd'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
                               : undefined
                           }
                           onAction={() => void handleMarkMeeting(candidate, prefix)}

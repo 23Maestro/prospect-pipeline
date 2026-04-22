@@ -82,6 +82,9 @@ public
 .out
 .storybook-out
 
+# Raycast Swift build cache
+swift/contacts/.raycast-swift-build/
+
 # Temporary folders
 tmp/
 temp/

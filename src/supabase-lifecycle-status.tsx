@@ -32,7 +32,7 @@ function buildMarkdown(snapshot: LifecycleHealthSnapshot | null, error?: string 
       '',
       'Set:',
       '- Supabase URL',
-      '- Supabase Service Role Key',
+      '- Supabase Secret Key',
       '- Supabase Schema',
     ].join('\n');
   }

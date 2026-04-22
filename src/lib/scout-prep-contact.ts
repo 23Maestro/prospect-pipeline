@@ -299,13 +299,13 @@ export function getVoicemailFollowUpRecipients(
 
   const recipients = Array.from(uniqueParentRecipients.values());
 
-  const allPhones = Array.from(new Set(candidates.map((candidate) => candidate.phone)));
-  if (allPhones.length > 1) {
+  const parentPhones = Array.from(new Set(parentRecipients.map((candidate) => candidate.phone)));
+  if (parentPhones.length > 1) {
     recipients.push({
       id: 'groupAll',
       label: 'Group Text',
-      name: 'All Associated Contacts',
-      phones: allPhones,
+      name: 'All Parent Contacts',
+      phones: parentPhones,
     });
   }
 
@@ -332,14 +332,18 @@ export function getMeetingReminderRecipient(
   if (parent1Phone) {
     return {
       phones: [parent1Phone],
-      recipientNames: [parent1Name, parent2Name].filter((value): value is string => Boolean(String(value || '').trim())),
+      recipientNames: [parent1Name, parent2Name].filter((value): value is string =>
+        Boolean(String(value || '').trim()),
+      ),
     };
   }
 
   if (parent2Phone) {
     return {
       phones: [parent2Phone],
-      recipientNames: [parent2Name].filter((value): value is string => Boolean(String(value || '').trim())),
+      recipientNames: [parent2Name].filter((value): value is string =>
+        Boolean(String(value || '').trim()),
+      ),
     };
   }
 
@@ -388,9 +392,7 @@ export function buildVoicemailFollowUpBody(
         : context.contactInfo.parent1?.name || context.contactInfo.parent2?.name,
     ) || 'there';
   const greeting =
-    selectedVariant === 'no_show'
-      ? `Hi ${noShowFirstName},`
-      : `${dayGreeting} ${greetingName},`;
+    selectedVariant === 'no_show' ? `Hi ${noShowFirstName},` : `${dayGreeting} ${greetingName},`;
 
   return buildVoicemailFollowUpMessage({
     variant: selectedVariant,

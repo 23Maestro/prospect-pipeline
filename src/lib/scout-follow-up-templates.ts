@@ -228,14 +228,14 @@ export function buildVoicemailFollowUpMessage(args: {
         ]
       : args.variant === 'call_attempt_2'
       ? [
-          `${greeting} this is ${senderName} with Prospect ID. I left you another voicemail about ${athleteProfile}.`,
+          `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I left you another voicemail about ${athleteProfile}.`,
           '',
           `We received his info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
           '',
           'When would you have a 10 min gap today or in the next few days? I can be flexible on time.',
         ]
       : [
-          `${greeting} this is ${senderName}, ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
+          `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
           '',
           'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.',
         ];

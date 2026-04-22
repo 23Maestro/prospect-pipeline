@@ -72,7 +72,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
     closingLine: 'Enjoy the rest of your week.',
   });
 
-  assert.match(message, /^Good morning Mr\. Brown, this is Jerami Singleton, football scout with Prospect ID\./);
+  assert.match(message, /^Good morning Mr\. Brown, this is Jerami Singleton, college football scout with Prospect ID\./);
   assert.match(message, /Following up about Grayson Brown's recruiting plan\./);
   assert.match(message, /When would you have a 10 min gap today or tomorrow\?/);
 });
@@ -100,7 +100,7 @@ test('buildCallAttempt2Message fills athlete and recipient names', () => {
     gradYear: '2027',
   });
 
-  assert.match(message, /Good morning Mr\. Brown, this is Coach Risner with Prospect ID\./);
+  assert.match(message, /Good morning Mr\. Brown, this is Coach Risner, college football scout with Prospect ID\./);
   assert.match(message, /I left you another voicemail about Grayson Brown's recruiting profile\./);
   assert.match(message, /With him being a 2027, timing matters in the recruiting process/);
 });

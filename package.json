@@ -69,6 +69,13 @@
       "icon": "prospect-pipeline.png"
     },
     {
+      "name": "client-message-inbox",
+      "title": "Client Messages",
+      "description": "Latest messages for saved ID clients with workflow-aware actions.",
+      "mode": "view",
+      "icon": "prospect-pipeline.png"
+    },
+    {
       "name": "view-set-meetings",
       "title": "View Set Meetings",
       "description": "View current Meeting Set bookings",
@@ -116,9 +123,16 @@
       "required": false
     },
     {
+      "name": "supabaseSecretKey",
+      "title": "Supabase Secret Key",
+      "description": "Preferred sb_secret key for athlete lifecycle writes.",
+      "type": "password",
+      "required": false
+    },
+    {
       "name": "supabaseServiceRoleKey",
-      "title": "Supabase Service Role Key",
-      "description": "Service role key for athlete lifecycle writes.",
+      "title": "Supabase Service Role Key (Legacy)",
+      "description": "Deprecated legacy key. Use Supabase Secret Key instead.",
       "type": "password",
       "required": false
     },
@@ -226,6 +240,7 @@
     "test:craft-reminder-date": "rm -rf /tmp/craft-reminder-tests && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir /tmp/craft-reminder-tests src/lib/craft-reminder-date.ts src/lib/craft-reminder-date.test.ts && node --test /tmp/craft-reminder-tests/craft-reminder-date.test.js",
     "test:scout-prep-contact": "rm -rf /tmp/scout-prep-contact-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-contact-tests src/lib/scout-prep-contact.ts src/lib/scout-prep-contact.test.ts src/lib/scout-prep-ai.ts src/features/scout-prep/types.ts src/features/scout-prep/content.ts src/lib/logger.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-prep-contact-tests/lib/scout-prep-contact.test.js",
     "test:scout-prep-time": "rm -rf /tmp/scout-prep-time-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-time-tests src/lib/scout-prep-ai.ts src/lib/scout-prep-ai.test.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts src/lib/logger.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-prep-time-tests/lib/scout-prep-ai.test.js",
+    "test:scout-task-filters": "rm -rf /tmp/scout-task-filter-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-task-filter-tests src/lib/scout-task-filters.ts src/lib/scout-task-filters.test.ts src/features/scout-prep/types.ts src/lib/scout-prep-follow-up-index.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-task-filter-tests/lib/scout-task-filters.test.js",
     "test:scout-follow-up-templates": "rm -rf /tmp/scout-follow-up-template-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-follow-up-template-tests src/lib/scout-follow-up-templates.ts src/lib/scout-follow-up-templates.test.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-follow-up-template-tests/scout-follow-up-templates.test.js",
     "test:sales-lifecycle": "rm -rf /tmp/sales-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/sales-lifecycle-tests src/lib/sales-lifecycle.ts src/lib/sales-lifecycle.test.ts && NODE_PATH=$PWD/node_modules node --test /tmp/sales-lifecycle-tests/sales-lifecycle.test.js",
     "test:head-scout-lifecycle": "rm -rf /tmp/head-scout-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/head-scout-lifecycle-tests src/lib/head-scout-appointment-lifecycle.ts src/lib/head-scout-appointment-lifecycle.test.ts src/lib/head-scout-schedules.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/python-env.ts src/lib/logger.ts src/lib/scout-prep-ai.ts src/lib/scout-prep-contact.ts src/lib/scout-follow-up-templates.ts src/lib/sales-lifecycle.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts && NODE_PATH=$PWD/node_modules node --test /tmp/head-scout-lifecycle-tests/lib/head-scout-appointment-lifecycle.test.js",

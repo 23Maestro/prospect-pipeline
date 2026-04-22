@@ -22,6 +22,7 @@ import {
   VoicemailFollowUpMessageForm,
 } from './components/follow-up-message-forms';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
+import { ClientComposeForm } from './components/client-message-ui';
 import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
   MeetingSetSubmitResponse,
@@ -54,9 +55,9 @@ import {
   buildScoutPrepValues,
   completeScoutPrepTaskAfterVoicemail,
   fetchAthleteTasks,
+  fetchScoutPortalTaskBuckets,
   fetchScoutRecentProfiles,
   fetchScoutTaskPopup,
-  fetchScoutPortalTasks,
   findNewestIncompleteFollowUpTask,
   findNewestIncompleteConfirmationTask,
   loadScoutPrepContext,
@@ -64,13 +65,11 @@ import {
   updateScoutPrepTask,
 } from './lib/scout-prep';
 import {
-  addScoutPrepFollowUpPointer,
-  getCachedScoutPrepFollowUpTask,
-  listScoutPrepFollowUpPointers,
-  removeScoutPrepFollowUpPointer,
-  setCachedScoutPrepFollowUpTask,
-  type ScoutPrepFollowUpPointer,
-} from './lib/scout-prep-follow-up-index';
+  buildTaskBucketRows,
+  getTaskSectionTitle,
+  mapTaskListFilterToRange,
+  type TaskListFilter,
+} from './lib/scout-task-filters';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import {
   ensureProspectDetails,
@@ -107,12 +106,12 @@ import {
   recordMeetingSet,
   recordRescheduled,
 } from './lib/supabase-lifecycle';
+import { buildAssociatedClientsFromContactInfo } from './lib/client-message-export';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
 const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
-const FOLLOW_UP_AUTO_REFRESH_LIMIT = 12;
 
 function logInfo(
   event: string,
@@ -517,6 +516,18 @@ type ProspectContactCreateResult = {
   groupName: string | null;
 };
 
+type ProspectContactBatchSummary = {
+  results: Array<
+    ProspectContactCreateResult & {
+      candidate: ProspectContactShortcutCandidate;
+    }
+  >;
+  createdCount: number;
+  updatedCount: number;
+  existingCount: number;
+  groupNames: string[];
+};
+
 async function createProspectContact(
   candidate?: ProspectContactShortcutCandidate | null,
 ): Promise<ProspectContactCreateResult> {
@@ -603,6 +614,158 @@ async function createProspectContact(
   };
 }
 
+async function createProspectContactsBatch(
+  candidates: ProspectContactShortcutCandidate[],
+): Promise<ProspectContactBatchSummary> {
+  if (!candidates.length) {
+    throw new Error('No eligible contacts found');
+  }
+
+  const uniqueCandidates = Array.from(
+    new Map(
+      candidates.map((candidate) => [
+        `${candidate.phone}|${candidate.name.toLowerCase()}`,
+        candidate,
+      ]),
+    ).values(),
+  );
+  const args = uniqueCandidates.flatMap((candidate) => {
+    const payload = buildProspectContactShortcutPayloadFromName({
+      fullName: candidate.name,
+      phone: candidate.phone,
+    });
+    const [firstName, lastName, phone] = payload.split('\n');
+    return [firstName || '', lastName || '', phone || ''];
+  });
+
+  const output = await runOsaScript(
+    [
+      'on findPreferredGroup()',
+      'tell application "Contacts"',
+      'set preferredGroup to missing value',
+      'repeat with existingGroup in every group',
+      'if (name of existingGroup) is "ID Contacts" then',
+      'set preferredGroup to existingGroup',
+      'exit repeat',
+      'end if',
+      'end repeat',
+      'if preferredGroup is missing value then',
+      'repeat with existingGroup in every group',
+      'set groupNameText to name of existingGroup',
+      'ignoring case',
+      'if (groupNameText contains "prospect" and groupNameText contains "id") or groupNameText contains "id contacts" or (groupNameText contains "client" and groupNameText contains "id") then',
+      'set preferredGroup to existingGroup',
+      'exit repeat',
+      'end if',
+      'end ignoring',
+      'end repeat',
+      'end if',
+      'return preferredGroup',
+      'end tell',
+      'end findPreferredGroup',
+      '',
+      'on joinLines(values)',
+      'set previousDelimiters to AppleScript\'s text item delimiters',
+      'set AppleScript\'s text item delimiters to linefeed',
+      'set joinedText to values as text',
+      'set AppleScript\'s text item delimiters to previousDelimiters',
+      'return joinedText',
+      'end joinLines',
+      '',
+      'on run argv',
+      'set resultLines to {}',
+      'tell application "Contacts"',
+      'set preferredGroup to my findPreferredGroup()',
+      'repeat with index from 1 to (count of argv) by 3',
+      'if index + 2 is greater than (count of argv) then exit repeat',
+      'set firstName to item index of argv',
+      'set lastName to item (index + 1) of argv',
+      'set phoneValue to item (index + 2) of argv',
+      'set matchingPeople to every person whose first name is firstName and last name is lastName',
+      'set targetPerson to missing value',
+      'set actionStatus to "created"',
+      'repeat with matchingPerson in matchingPeople',
+      'repeat with existingPhone in phones of matchingPerson',
+      'if value of existingPhone is phoneValue then',
+      'set targetPerson to matchingPerson',
+      'set actionStatus to "exists"',
+      'exit repeat',
+      'end if',
+      'end repeat',
+      'if targetPerson is not missing value then exit repeat',
+      'if targetPerson is missing value then set targetPerson to matchingPerson',
+      'set actionStatus to "updated"',
+      'end repeat',
+      'if targetPerson is missing value then',
+      'set targetPerson to make new person with properties {first name:firstName, last name:lastName}',
+      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
+      'else if actionStatus is "updated" then',
+      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
+      'end if',
+      'set matchedGroupName to ""',
+      'if preferredGroup is not missing value then',
+      'set matchedGroupName to name of preferredGroup',
+      'set targetPersonId to id of targetPerson',
+      'set memberIds to id of every person of preferredGroup',
+      'if memberIds does not contain targetPersonId then add targetPerson to preferredGroup',
+      'end if',
+      'end if',
+      'set resultLine to actionStatus & "|" & matchedGroupName & "|" & firstName & " " & lastName & "|" & phoneValue',
+      'copy resultLine to end of resultLines',
+      'end repeat',
+      'save',
+      'return my joinLines(resultLines)',
+      'end tell',
+      'end run',
+    ],
+    args,
+  );
+
+  const candidateByKey = new Map(
+    uniqueCandidates.map((candidate) => [`${candidate.name}|${candidate.phone}`, candidate]),
+  );
+  const results = output
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [statusValue, groupNameValue, nameValue, phoneValue] = line.split('|');
+      const status =
+        statusValue === 'exists' || statusValue === 'updated' || statusValue === 'created'
+          ? statusValue
+          : 'created';
+      const candidate =
+        candidateByKey.get(`${String(nameValue || '').trim()}|${String(phoneValue || '').trim()}`) ||
+        uniqueCandidates.find((item) => item.phone === String(phoneValue || '').trim());
+      if (!candidate) {
+        return null;
+      }
+      return {
+        candidate,
+        status,
+        groupName: String(groupNameValue || '').trim() || null,
+      };
+    })
+    .filter(
+      (
+        value,
+      ): value is ProspectContactCreateResult & { candidate: ProspectContactShortcutCandidate } =>
+        Boolean(value),
+    );
+
+  const groupNames = Array.from(
+    new Set(results.map((result) => result.groupName).filter((value): value is string => Boolean(value))),
+  );
+
+  return {
+    results,
+    createdCount: results.filter((result) => result.status === 'created').length,
+    updatedCount: results.filter((result) => result.status === 'updated').length,
+    existingCount: results.filter((result) => result.status === 'exists').length,
+    groupNames,
+  };
+}
+
 async function runOsaScript(lines: string[], args: string[] = []) {
   return await new Promise<string>((resolve, reject) => {
     const child = spawn('osascript', [...lines.flatMap((line) => ['-e', line]), ...args], {
@@ -632,10 +795,116 @@ async function runOsaScript(lines: string[], args: string[] = []) {
   });
 }
 
+async function collectBatchProspectContactCandidates(tasks: ScoutPortalTask[]): Promise<{
+  candidates: ProspectContactShortcutCandidate[];
+  failedTasks: Array<{ task: ScoutPortalTask; message: string }>;
+}> {
+  const uniqueCandidates = new Map<string, ProspectContactShortcutCandidate>();
+  const failedTasks: Array<{ task: ScoutPortalTask; message: string }> = [];
+
+  for (const task of tasks) {
+    try {
+      const context = await loadScoutPrepContext(task);
+      const candidates = buildAssociatedClientsFromContactInfo({
+        athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
+        contactInfo: context.contactInfo,
+      })
+        .map((associate) => ({
+          id: associate.role,
+          label: associate.relationshipLabel,
+          name:
+            String(associate.name || '').trim() ||
+            (associate.role === 'studentAthlete' ? task.athlete_name : associate.relationshipLabel),
+          phone: associate.normalizedPhoneNumber.replace(
+            /(\d{3})(\d{3})(\d{4})/,
+            '$1-$2-$3',
+          ),
+        }))
+        .sort(
+        (left, right) =>
+          ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
+          ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
+      );
+      for (const candidate of candidates) {
+        const key = `${candidate.phone}|${candidate.name.toLowerCase()}`;
+        if (!uniqueCandidates.has(key)) {
+          uniqueCandidates.set(key, candidate);
+        }
+      }
+    } catch (error) {
+      failedTasks.push({
+        task,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return {
+    candidates: Array.from(uniqueCandidates.values()),
+    failedTasks,
+  };
+}
+
+async function handleBatchCreateProspectContacts(tasks: ScoutPortalTask[]) {
+  if (!tasks.length) {
+    await showToast({
+      style: Toast.Style.Failure,
+      title: 'No visible tasks found',
+    });
+    return;
+  }
+
+  const toast = await showLoadingToast(
+    'Preparing batch contact create',
+    `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`,
+  );
+
+  try {
+    const { candidates, failedTasks } = await collectBatchProspectContactCandidates(tasks);
+
+    if (!candidates.length) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'No eligible contacts found';
+      toast.message =
+        failedTasks.length > 0
+          ? `${failedTasks.length} ${failedTasks.length === 1 ? 'task failed to load' : 'tasks failed to load'}`
+          : 'No contacts had both a name and phone number.';
+      return;
+    }
+
+    toast.title = 'Creating contacts';
+    toast.message = `${candidates.length} unique contacts`;
+
+    const summary = await createProspectContactsBatch(candidates);
+    toast.style = Toast.Style.Success;
+    toast.title = 'Batch contact create complete';
+
+    const detailParts = [
+      summary.createdCount ? `${summary.createdCount} created` : null,
+      summary.updatedCount ? `${summary.updatedCount} updated` : null,
+      summary.existingCount ? `${summary.existingCount} existing` : null,
+      failedTasks.length
+        ? `${failedTasks.length} ${failedTasks.length === 1 ? 'task failed' : 'tasks failed'}`
+        : null,
+    ].filter(Boolean);
+
+    const groupLabel = summary.groupNames[0] || null;
+    toast.message = groupLabel
+      ? `${detailParts.join(' • ')} • ${groupLabel}`
+      : detailParts.join(' • ');
+  } catch (error) {
+    toast.style = Toast.Style.Failure;
+    toast.title = 'Batch contact create failed';
+    toast.message = error instanceof Error ? error.message : String(error);
+  }
+}
+
 async function openMessagesDraftForRecipients(
+  push: ReturnType<typeof useNavigation>['push'],
   phones: string[],
   body: string,
-): Promise<'url' | 'applescript'> {
+  navigationTitle = 'Send Message',
+): Promise<'local-compose' | 'url'> {
   const uniquePhones = Array.from(
     new Set(
       phones
@@ -649,38 +918,18 @@ async function openMessagesDraftForRecipients(
   }
 
   if (uniquePhones.length === 1) {
-    await open(buildMessagesComposeUrlForRecipients(uniquePhones, body));
-    return 'url';
+    push(
+      <ClientComposeForm
+        initialNormalizedPhone={uniquePhones[0]}
+        initialMessage={body}
+        navigationTitle={navigationTitle}
+      />,
+    );
+    return 'local-compose';
   }
 
-  await Clipboard.copy(body);
-  await runOsaScript(
-    [
-      'on run argv',
-      'set recipientList to items 1 thru -2 of argv',
-      'set bodyText to item -1 of argv',
-      'tell application "Messages" to activate',
-      'delay 0.4',
-      'tell application "System Events"',
-      'tell process "Messages"',
-      'keystroke "n" using command down',
-      'delay 0.6',
-      'repeat with recipientValue in recipientList',
-      'keystroke contents of recipientValue',
-      'delay 0.2',
-      'key code 36',
-      'delay 0.2',
-      'end repeat',
-      'key code 48',
-      'delay 0.2',
-      'keystroke "v" using command down',
-      'end tell',
-      'end tell',
-      'end run',
-    ],
-    [...uniquePhones, body],
-  );
-  return 'applescript';
+  await open(buildMessagesComposeUrlForRecipients(uniquePhones, body));
+  return 'url';
 }
 
 function ScoutPrepContactDetail({
@@ -947,6 +1196,7 @@ function VoicemailFollowUpRecipientForm({
   crmStage?: string | null;
   currentTask?: string | null;
 }) {
+  const { push } = useNavigation();
   const recipients = getVoicemailFollowUpRecipients(context);
   const defaultVariant = resolveVoicemailFollowUpVariant({
     crmStage,
@@ -983,7 +1233,12 @@ function VoicemailFollowUpRecipientForm({
     });
 
     try {
-      const mode = await openMessagesDraftForRecipients(recipient.phones, body);
+      const mode = await openMessagesDraftForRecipients(
+        push,
+        recipient.phones,
+        body,
+        `Voicemail Follow-Up • ${recipient.name}`,
+      );
       logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
         contactId: context.task.contact_id,
         recipientId: recipient.id,
@@ -1131,14 +1386,7 @@ function PostCallUpdatePreview({
   );
 }
 
-type TrackedFollowUpItem = {
-  pointer: ScoutPrepFollowUpPointer;
-  task: ScoutPortalTask;
-  createdTask: ScoutAthleteTask;
-};
-
 type ViewMode = 'tasks' | 'recent' | 'prospect';
-type TaskListFilter = 'all' | 'tasks' | 'followups';
 
 type RecentProfileRow = {
   profile: ScoutRecentProfile;
@@ -1440,26 +1688,6 @@ function getTaskAccessoryMetadata(task: ScoutPortalTask) {
     taskColor,
     gradYearColor,
   };
-}
-
-function isTrackedFollowUpVisible(item: TrackedFollowUpItem): boolean {
-  const followUpTitle = stripMoveThisTaskPrefix(
-    item.createdTask.title || item.task.title,
-  ).toLowerCase();
-  const isCallAttemptFollowUp =
-    followUpTitle.startsWith('call attempt 2') || followUpTitle.startsWith('call attempt 3');
-  if (!isCallAttemptFollowUp) {
-    return false;
-  }
-
-  const parsedDueDate = buildDefaultTaskDate(item.createdTask.due_date || item.task.due_date);
-  if (!parsedDueDate) {
-    return false;
-  }
-
-  const now = new Date();
-  const endOfTomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 2, 0, 0, 0, 0);
-  return parsedDueDate < endOfTomorrow;
 }
 
 function UpdateAthleteTaskForm({
@@ -2103,15 +2331,6 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             : 'Meeting Set saved'
           : stageLabel);
 
-      if (salesStageResult.created_task) {
-        await addScoutPrepFollowUpPointer({
-          athleteId,
-          athleteMainId,
-          athleteName: task.athlete_name,
-          gradYear: task.grad_year,
-        });
-      }
-
       push(
         <PostCallUpdatePreview
           task={task}
@@ -2253,16 +2472,22 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
   );
 
   async function handleVoicemailFollowUp() {
-    if (!context) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Scout Prep still loading',
-        message: 'Wait for contact data before opening Messages.',
-      });
-      return;
+    let activeContext = context;
+    if (!activeContext) {
+      try {
+        activeContext = await loadScoutPrepContext(task);
+        setContext(activeContext);
+      } catch (error) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to load contact data',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+        return;
+      }
     }
 
-    const recipients = getVoicemailFollowUpRecipients(context);
+    const recipients = getVoicemailFollowUpRecipients(activeContext);
     if (!recipients.length) {
       await showToast({
         style: Toast.Style.Failure,
@@ -2275,7 +2500,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
     push(
       <VoicemailFollowUpRecipientForm
         task={task}
-        context={context}
+        context={activeContext}
         crmStage={crmStage}
         currentTask={task.title || null}
       />,
@@ -2505,7 +2730,12 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
           }
 
           try {
-            await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
+            await openMessagesDraftForRecipients(
+              push,
+              reminderRecipient.phones,
+              prepared.message,
+              `Meeting Reminder • ${task.athlete_name}`,
+            );
             await recordConfirmationSentBestEffort({
               athleteId: String(task.contact_id || '').trim(),
               athleteMainId,
@@ -2762,11 +2992,13 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
 
 function ScoutPrepTaskItem({
   task,
+  visibleTasks,
   onToggleProspectSearchMode,
   isProspectSearchMode,
   onToggleRecentMode,
 }: {
   task: ScoutPortalTask;
+  visibleTasks: ScoutPortalTask[];
   onToggleProspectSearchMode: () => void;
   isProspectSearchMode: boolean;
   onToggleRecentMode: () => void;
@@ -2951,7 +3183,12 @@ function ScoutPrepTaskItem({
           }
 
           try {
-            await openMessagesDraftForRecipients(reminderRecipient.phones, prepared.message);
+            await openMessagesDraftForRecipients(
+              push,
+              reminderRecipient.phones,
+              prepared.message,
+              `Meeting Reminder • ${task.athlete_name}`,
+            );
             await recordConfirmationSentBestEffort({
               athleteId: String(task.contact_id || '').trim(),
               athleteMainId,
@@ -3040,6 +3277,11 @@ function ScoutPrepTaskItem({
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
             target={<ScoutPrepContactDetail task={task} />}
           />
+          <Action
+            title={`Batch Contact Create (${visibleTasks.length})`}
+            icon={Icon.PersonAdd}
+            onAction={() => void handleBatchCreateProspectContacts(visibleTasks)}
+          />
           <Action.Push
             title="Head Scout Schedules"
             icon={Icon.Calendar}
@@ -3087,107 +3329,6 @@ function ScoutPrepTaskItem({
               onAction={() => void handleAddNote()}
             />
           </ActionPanel.Section>
-          <ActionPanel.Section title="Navigation">
-            <Action
-              title="Show Recent Items"
-              icon={Icon.Clock}
-              shortcut={{ modifiers: ['cmd'], key: 'f' }}
-              onAction={onToggleRecentMode}
-            />
-            <Action
-              title="Prospect Search"
-              icon={Icon.MagnifyingGlass}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-              onAction={onToggleProspectSearchMode}
-            />
-            <BackSyncFollowUpsAction />
-            <SupabaseLifecycleStatusAction />
-          </ActionPanel.Section>
-        </ActionPanel>
-      }
-    />
-  );
-}
-
-function TrackedFollowUpListItem({
-  item,
-  onRemove,
-  onToggleProspectSearchMode,
-  isProspectSearchMode,
-  onToggleRecentMode,
-}: {
-  item: TrackedFollowUpItem;
-  onRemove: (item: TrackedFollowUpItem) => Promise<void>;
-  onToggleProspectSearchMode: () => void;
-  isProspectSearchMode: boolean;
-  onToggleRecentMode: () => void;
-}) {
-  const { task, createdTask } = item;
-  const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
-
-  return (
-    <List.Item
-      key={`follow-up:${task.contact_id}:${task.athlete_main_id || 'missing-main-id'}`}
-      icon={Icon.Repeat}
-      title={task.athlete_name}
-      keywords={buildTaskSearchKeywords(task, [
-        createdTask.title,
-        createdTask.description,
-        createdTask.due_date,
-      ])}
-      accessories={[
-        ...(shortDate ? [{ text: shortDate }] : []),
-        ...(taskTitle ? [{ tag: { value: taskTitle, color: taskColor } }] : []),
-        ...(task.grad_year ? [{ tag: { value: task.grad_year, color: gradYearColor } }] : []),
-      ]}
-      detail={
-        <List.Item.Detail
-          markdown={[
-            `# ${task.athlete_name}`,
-            '',
-            `- Task: ${createdTask.title || 'N/A'}`,
-            `- Due Date: ${createdTask.due_date || 'N/A'}`,
-            `- Description: ${createdTask.description || 'N/A'}`,
-          ].join('\n')}
-          metadata={
-            <List.Item.Detail.Metadata>
-              {task.grad_year ? (
-                <List.Item.Detail.Metadata.TagList title="Grad Year">
-                  <List.Item.Detail.Metadata.TagList.Item
-                    text={task.grad_year}
-                    color={Color.Purple}
-                  />
-                </List.Item.Detail.Metadata.TagList>
-              ) : null}
-              <List.Item.Detail.Metadata.Label title="Athlete ID" text={task.contact_id} />
-              {task.athlete_main_id ? (
-                <List.Item.Detail.Metadata.Label
-                  title="Athlete Main ID"
-                  text={task.athlete_main_id}
-                />
-              ) : null}
-            </List.Item.Detail.Metadata>
-          }
-        />
-      }
-      actions={
-        <ActionPanel>
-          <Action.Push
-            title="Build Scout Prep"
-            icon={Icon.Wand}
-            target={<ScoutPrepDetail task={task} />}
-          />
-          <Action.OpenInBrowser
-            title="Open Athlete Task Tab"
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-            url={buildScoutPrepTaskUrl(task)}
-          />
-          <Action
-            title="Remove From Follow-Up List"
-            icon={Icon.Trash}
-            shortcut={{ modifiers: ['cmd'], key: 'backspace' }}
-            onAction={() => void onRemove(item)}
-          />
           <ActionPanel.Section title="Navigation">
             <Action
               title="Show Recent Items"
@@ -3344,8 +3485,14 @@ function RecentProfileListItem({
 }
 
 export default function ScoutPrepCommand() {
-  const [tasks, setTasks] = useState<ScoutPortalTask[]>([]);
-  const [trackedFollowUps, setTrackedFollowUps] = useState<TrackedFollowUpItem[]>([]);
+  const [taskBuckets, setTaskBuckets] = useState<
+    Record<'todayPastDue' | 'today' | 'tomorrow' | 'future', ScoutPortalTask[]>
+  >({
+    todayPastDue: [],
+    today: [],
+    tomorrow: [],
+    future: [],
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('all');
@@ -3363,110 +3510,50 @@ export default function ScoutPrepCommand() {
   const isRecentViewMode = viewMode === 'recent';
   const isSearchModeActive = viewMode === 'prospect' || viewMode === 'recent';
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
-  const visibleTrackedFollowUps = trackedFollowUps.filter(isTrackedFollowUpVisible);
-  const showAllTaskSections = taskListFilter === 'all';
-  const showTasksSection =
-    viewMode === 'tasks' && (showAllTaskSections || taskListFilter === 'tasks');
-  const showFollowUpsSection =
-    viewMode === 'tasks' && (showAllTaskSections || taskListFilter === 'followups');
-  const hasTaskModeResults =
-    (showTasksSection && tasks.length > 0) ||
-    (showFollowUpsSection && visibleTrackedFollowUps.length > 0);
+  const selectedTaskRows =
+    viewMode === 'tasks'
+      ? buildTaskBucketRows({
+          filter: taskListFilter,
+          taskBuckets,
+        })
+      : [];
+  const hasTaskModeResults = selectedTaskRows.length > 0;
+  const selectedRange = mapTaskListFilterToRange(taskListFilter);
+  const selectedSectionTitle = getTaskSectionTitle(taskListFilter);
 
-  const loadTasks = async (options?: { forceRefreshFollowUps?: boolean }) => {
+  const loadTasks = async () => {
     if (loadTasksPromiseRef.current) {
       logInfo('SCOUT_PREP_TASK_LIST', 'reuse-inflight-load', 'start');
       return loadTasksPromiseRef.current;
     }
 
-    const forceRefreshFollowUps = Boolean(options?.forceRefreshFollowUps);
-
     const pendingLoad = (async () => {
       setIsLoading(true);
       try {
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'start');
-        const data = await fetchScoutPortalTasks();
-        const bottomUpTasks = [...data].reverse();
-        const pointers = await listScoutPrepFollowUpPointers();
-        const autoRefreshSet = new Set(
-          pointers
-            .slice(0, FOLLOW_UP_AUTO_REFRESH_LIMIT)
-            .map((pointer) => `${pointer.athleteId}:${pointer.athleteMainId}`),
-        );
-        const resolvedFollowUps = (
-          await Promise.all(
-            pointers.map(async (pointer) => {
-              try {
-                const pointerKey = `${pointer.athleteId}:${pointer.athleteMainId}`;
-                const shouldRefresh = forceRefreshFollowUps || autoRefreshSet.has(pointerKey);
-
-                let followUpTask = !shouldRefresh
-                  ? await getCachedScoutPrepFollowUpTask(pointer.athleteId, pointer.athleteMainId)
-                  : undefined;
-
-                if (followUpTask === undefined) {
-                  const athleteTasks = await fetchAthleteTasks(
-                    pointer.athleteId,
-                    pointer.athleteMainId,
-                  );
-                  followUpTask = findNewestIncompleteFollowUpTask(athleteTasks);
-                  await setCachedScoutPrepFollowUpTask(
-                    pointer.athleteId,
-                    pointer.athleteMainId,
-                    followUpTask,
-                  );
-                }
-
-                if (!followUpTask) {
-                  if (shouldRefresh) {
-                    await removeScoutPrepFollowUpPointer(pointer.athleteId, pointer.athleteMainId);
-                  }
-                  return null;
-                }
-
-                const matchingGlobalTask =
-                  bottomUpTasks.find(
-                    (candidate) =>
-                      String(candidate.contact_id) === pointer.athleteId &&
-                      String(candidate.athlete_main_id || '').trim() === pointer.athleteMainId,
-                  ) || null;
-
-                const task: ScoutPortalTask = {
-                  task_id: followUpTask.task_id,
-                  contact_id: pointer.athleteId,
-                  athlete_id: pointer.athleteId,
-                  athlete_main_id: pointer.athleteMainId,
-                  athlete_name: matchingGlobalTask?.athlete_name || pointer.athleteName,
-                  grad_year: matchingGlobalTask?.grad_year || pointer.gradYear || null,
-                  due_date: followUpTask.due_date || matchingGlobalTask?.due_date || null,
-                  completion_date: followUpTask.completion_date || null,
-                  assigned_owner:
-                    followUpTask.assigned_owner || matchingGlobalTask?.assigned_owner || null,
-                  title: followUpTask.title || matchingGlobalTask?.title || null,
-                  description: followUpTask.description || matchingGlobalTask?.description || null,
-                };
-
-                return {
-                  pointer,
-                  task,
-                  createdTask: followUpTask,
-                } satisfies TrackedFollowUpItem;
-              } catch {
-                return null;
-              }
-            }),
-          )
-        ).filter((item): item is TrackedFollowUpItem => Boolean(item));
-
-        setTasks(bottomUpTasks);
-        setTrackedFollowUps(resolvedFollowUps);
+        const taskBuckets = await fetchScoutPortalTaskBuckets([
+          'todayPastDue',
+          'today',
+          'tomorrow',
+          'future',
+        ] as const);
+        const nextTaskBuckets = {
+          todayPastDue: [...taskBuckets.todayPastDue].reverse(),
+          today: [...taskBuckets.today].reverse(),
+          tomorrow: [...taskBuckets.tomorrow].reverse(),
+          future: [...taskBuckets.future].reverse(),
+        };
+        setTaskBuckets(nextTaskBuckets);
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'success', {
-          count: bottomUpTasks.length,
-          followUpCount: resolvedFollowUps.length,
-          followUpForceRefresh: forceRefreshFollowUps,
-          followUpAutoRefreshLimit: FOLLOW_UP_AUTO_REFRESH_LIMIT,
-          firstAthlete: bottomUpTasks[0]?.athlete_name || null,
-          lastAthlete: bottomUpTasks[bottomUpTasks.length - 1]?.athlete_name || null,
+          selectedRange,
+          todayPastDueCount: nextTaskBuckets.todayPastDue.length,
+          todayCount: nextTaskBuckets.today.length,
+          tomorrowCount: nextTaskBuckets.tomorrow.length,
+          futureCount: nextTaskBuckets.future.length,
+          firstAthlete: nextTaskBuckets[selectedRange][0]?.athlete_name || null,
+          lastAthlete:
+            nextTaskBuckets[selectedRange][nextTaskBuckets[selectedRange].length - 1]?.athlete_name ||
+            null,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -3666,24 +3753,6 @@ export default function ScoutPrepCommand() {
     };
   }, [viewMode]);
 
-  async function handleRemoveTrackedFollowUp(item: TrackedFollowUpItem) {
-    await removeScoutPrepFollowUpPointer(item.pointer.athleteId, item.pointer.athleteMainId);
-    setTrackedFollowUps((current) =>
-      current.filter(
-        (entry) =>
-          !(
-            entry.pointer.athleteId === item.pointer.athleteId &&
-            entry.pointer.athleteMainId === item.pointer.athleteMainId
-          ),
-      ),
-    );
-    await showToast({
-      style: Toast.Style.Success,
-      title: 'Removed from follow-up list',
-      message: item.task.athlete_name,
-    });
-  }
-
   function toggleRecentMode() {
     setViewMode((current) => {
       if (current === 'recent') {
@@ -3736,8 +3805,9 @@ export default function ScoutPrepCommand() {
             onChange={(newValue) => setTaskListFilter(newValue as TaskListFilter)}
           >
             <List.Dropdown.Item title="All Items" value="all" />
-            <List.Dropdown.Item title="Tasks Only" value="tasks" />
-            <List.Dropdown.Item title="Follow-Ups Only" value="followups" />
+            <List.Dropdown.Item title="Today" value="today" />
+            <List.Dropdown.Item title="Tomorrow" value="tomorrow" />
+            <List.Dropdown.Item title="Future" value="future" />
           </List.Dropdown>
         ) : undefined
       }
@@ -3842,27 +3912,11 @@ export default function ScoutPrepCommand() {
         </List.Section>
       ) : !hasTaskModeResults ? (
         <List.EmptyView
-          title={
-            taskListFilter === 'followups'
-              ? 'No follow-up items found'
-              : taskListFilter === 'tasks'
-                ? 'No scout tasks found'
-                : 'No scout items found'
-          }
-          description={
-            taskListFilter === 'followups'
-              ? 'There are no tracked follow-up items right now.'
-              : taskListFilter === 'tasks'
-                ? 'The landing-page task list is empty.'
-                : 'There are no tasks or tracked follow-ups right now.'
-          }
+          title={`No ${selectedSectionTitle.toLowerCase()} items found`}
+          description={`The ${selectedSectionTitle.toLowerCase()} task bucket is empty.`}
           actions={
             <ActionPanel>
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
-              <Action
-                title="Refresh Follow-Up List"
-                onAction={() => void loadTasks({ forceRefreshFollowUps: true })}
-              />
               <ActionPanel.Section title="Navigation">
                 <Action
                   title="Show Recent Items"
@@ -3883,35 +3937,18 @@ export default function ScoutPrepCommand() {
           }
         />
       ) : (
-        <>
-          {showFollowUpsSection && visibleTrackedFollowUps.length > 0 ? (
-            <List.Section title="Follow-Up List" subtitle={String(visibleTrackedFollowUps.length)}>
-              {visibleTrackedFollowUps.map((item) => (
-                <TrackedFollowUpListItem
-                  key={`tracked:${item.pointer.athleteId}:${item.pointer.athleteMainId}`}
-                  item={item}
-                  onRemove={handleRemoveTrackedFollowUp}
-                  onToggleProspectSearchMode={toggleProspectSearchMode}
-                  isProspectSearchMode={isSearchModeActive}
-                  onToggleRecentMode={toggleRecentMode}
-                />
-              ))}
-            </List.Section>
-          ) : null}
-          {showTasksSection && tasks.length > 0 ? (
-            <List.Section title="Today / Past Due" subtitle={String(tasks.length)}>
-              {tasks.map((task) => (
-                <ScoutPrepTaskItem
-                  key={`${task.contact_id}-${task.title || 'task'}`}
-                  task={task}
-                  onToggleProspectSearchMode={toggleProspectSearchMode}
-                  isProspectSearchMode={isSearchModeActive}
-                  onToggleRecentMode={toggleRecentMode}
-                />
-              ))}
-            </List.Section>
-          ) : null}
-        </>
+        <List.Section title={selectedSectionTitle} subtitle={String(selectedTaskRows.length)}>
+          {selectedTaskRows.map((row) => (
+            <ScoutPrepTaskItem
+              key={`${row.task.contact_id}-${row.task.title || 'task'}-${row.task.due_date || 'due'}`}
+              task={row.task}
+              visibleTasks={selectedTaskRows.map((item) => item.task)}
+              onToggleProspectSearchMode={toggleProspectSearchMode}
+              isProspectSearchMode={isSearchModeActive}
+              onToggleRecentMode={toggleRecentMode}
+            />
+          ))}
+        </List.Section>
       )}
     </List>
   );

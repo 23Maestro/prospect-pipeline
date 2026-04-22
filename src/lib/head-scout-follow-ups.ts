@@ -1,13 +1,18 @@
-import type { ScoutAthleteTask, ScoutRecentProfile } from '../features/scout-prep/types';
+import type {
+  ScoutAthleteTask,
+  ScoutPortalTask,
+  ScoutRecentProfile,
+} from '../features/scout-prep/types';
 import {
   fetchAthleteTasks,
+  fetchScoutPortalTaskBuckets,
   fetchScoutRecentProfiles,
   findNewestIncompleteConfirmationTask,
   findNewestIncompleteFollowUpTask,
   isConfirmationCallTask,
+  type ScoutTaskRange,
   stripMoveThisTaskPrefix,
 } from './scout-prep';
-import { listScoutPrepFollowUpPointers } from './scout-prep-follow-up-index';
 import { fetchCuratedSalesStageOptions } from './sales-stage';
 import {
   getSelectedSalesStageLabel,
@@ -28,8 +33,9 @@ import {
 } from './head-scout-schedules';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const ACTIVE_TASK_RANGES = ['todayPastDue', 'today', 'tomorrow', 'future'] as const satisfies readonly ScoutTaskRange[];
 
-type CandidateSource = 'tracked' | 'recent' | 'supabase';
+type CandidateSource = 'website' | 'supabase';
 
 export type HeadScoutFollowUpCandidate = {
   key: string;
@@ -213,6 +219,58 @@ function selectRelevantTask(tasks: ScoutAthleteTask[]): ScoutAthleteTask | null 
   return null;
 }
 
+function selectRelevantPortalTask(tasks: ScoutPortalTask[]): ScoutPortalTask | null {
+  const confirmations = tasks.filter((task) => isConfirmationCallTask(task));
+  if (confirmations.length > 0) {
+    return [...confirmations].sort((left, right) =>
+      String(right.task_id || '').localeCompare(String(left.task_id || '')),
+    )[0];
+  }
+
+  const followUps = tasks.filter((task) => {
+    const title = stripMoveThisTaskPrefix(task.title).toLowerCase();
+    return (
+      title.includes('follow up') ||
+      title.includes('follow-up') ||
+      title.includes('call attempt')
+    );
+  });
+  if (followUps.length > 0) {
+    return [...followUps].sort((left, right) =>
+      String(right.task_id || '').localeCompare(String(left.task_id || '')),
+    )[0];
+  }
+
+  return null;
+}
+
+function buildPortalTaskSnapshot(task?: ScoutPortalTask | null): AppointmentTaskSnapshot | null {
+  if (!task) {
+    return null;
+  }
+
+  return {
+    taskId: String(task.task_id || '').trim() || null,
+    title: task.title || null,
+    description: task.description || null,
+    dueDate: task.due_date || null,
+    completionDate: task.completion_date || null,
+    assignedOwner: task.assigned_owner || null,
+  };
+}
+
+function buildPortalTaskStage(task?: ScoutPortalTask | null): string | null {
+  if (!task) {
+    return null;
+  }
+
+  return (
+    stripMoveThisTaskPrefix(task.title) ||
+    String(task.description || '').trim() ||
+    null
+  );
+}
+
 function shouldIncludeCandidate(args: {
   crmSalesStage?: string | null;
   selectedTask: ScoutAthleteTask | null;
@@ -225,10 +283,10 @@ function shouldIncludeCandidate(args: {
 }
 
 export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollowUpCandidate[]> {
-  const [pointers, recentProfiles, supabaseRows] = await Promise.all([
-    listScoutPrepFollowUpPointers(),
+  const [recentProfiles, supabaseRows, websiteTaskBuckets] = await Promise.all([
     fetchScoutRecentProfiles(),
     getActiveMeetingFallbackRows().catch(() => []),
+    fetchScoutPortalTaskBuckets(ACTIVE_TASK_RANGES),
   ]);
 
   const recentByKey = new Map(
@@ -237,6 +295,22 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
       profile,
     ]),
   );
+
+  const websiteTaskByKey = new Map<string, ScoutPortalTask>();
+  for (const task of Object.values(websiteTaskBuckets).flat()) {
+    const athleteId = String(task.athlete_id || task.contact_id || '').trim();
+    const athleteMainId = String(task.athlete_main_id || '').trim();
+    if (!athleteId || !athleteMainId) {
+      continue;
+    }
+    const key = `${athleteId}:${athleteMainId}`;
+    const selected = selectRelevantPortalTask(
+      [websiteTaskByKey.get(key), task].filter(Boolean) as ScoutPortalTask[],
+    );
+    if (selected) {
+      websiteTaskByKey.set(key, selected);
+    }
+  }
 
   const baseEntries = new Map<
     string,
@@ -247,34 +321,9 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
       source: CandidateSource;
       profile?: ScoutRecentProfile | null;
       supabaseState?: ActiveMeetingFallbackRow | null;
+      websiteTask?: ScoutPortalTask | null;
     }
   >();
-
-  for (const pointer of pointers) {
-    const key = `${pointer.athleteId.trim()}:${pointer.athleteMainId.trim()}`;
-    baseEntries.set(key, {
-      athleteId: pointer.athleteId.trim(),
-      athleteMainId: pointer.athleteMainId.trim(),
-      athleteName: pointer.athleteName.trim(),
-      source: 'tracked',
-      profile: recentByKey.get(key) || null,
-    });
-  }
-
-  for (const profile of recentProfiles) {
-    const athleteId = profile.athlete_id.trim();
-    const athleteMainId = profile.athlete_main_id.trim();
-    const key = `${athleteId}:${athleteMainId}`;
-    if (!baseEntries.has(key)) {
-      baseEntries.set(key, {
-        athleteId,
-        athleteMainId,
-        athleteName: profile.athlete_name.trim(),
-        source: 'recent',
-        profile,
-      });
-    }
-  }
 
   for (const row of supabaseRows) {
     const athleteId = row.athleteId.trim();
@@ -287,19 +336,30 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
       baseEntries.set(key, {
         athleteId,
         athleteMainId,
-        athleteName: row.athleteName.trim(),
+        athleteName:
+          row.athleteName.trim() ||
+          websiteTaskByKey.get(key)?.athlete_name ||
+          recentByKey.get(key)?.athlete_name?.trim() ||
+          '',
         source: 'supabase',
         profile: recentByKey.get(key) || null,
         supabaseState: row,
+        websiteTask: websiteTaskByKey.get(key) || null,
       });
       continue;
     }
 
     const existing = baseEntries.get(key);
-    if (existing && existing.source !== 'supabase') {
+    if (existing) {
       existing.supabaseState = row;
+      existing.profile = existing.profile || recentByKey.get(key) || null;
+      existing.websiteTask = existing.websiteTask || websiteTaskByKey.get(key) || null;
       if (!existing.athleteName.trim()) {
-        existing.athleteName = row.athleteName.trim();
+        existing.athleteName =
+          row.athleteName.trim() ||
+          existing.websiteTask?.athlete_name ||
+          existing.profile?.athlete_name?.trim() ||
+          '';
       }
     }
   }
@@ -320,8 +380,10 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
       }
 
       const parents = parseParentNames(entry.profile);
+      const websiteTask = entry.websiteTask || null;
       const currentTask =
         (selectedTask ? buildTaskStage(selectedTask) : null) ||
+        buildPortalTaskStage(websiteTask) ||
         entry.supabaseState?.currentTaskTitle ||
         buildTaskLabelFromStatus(entry.supabaseState?.taskStatus);
       const followUpTask = selectedTask
@@ -333,7 +395,7 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
             completionDate: selectedTask.completion_date || null,
             assignedOwner: selectedTask.assigned_owner || null,
           }
-        : null;
+        : buildPortalTaskSnapshot(websiteTask);
       return {
         key: `${entry.athleteId}:${entry.athleteMainId}`,
         athleteId: entry.athleteId,
@@ -341,11 +403,16 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
         athleteName: entry.athleteName,
         parent1Name: parents.parent1Name,
         parent2Name: parents.parent2Name,
-        dueDate: selectedTask?.due_date || entry.supabaseState?.appointmentStartsAt || null,
+        dueDate:
+          selectedTask?.due_date ||
+          websiteTask?.due_date ||
+          entry.supabaseState?.appointmentStartsAt ||
+          null,
         stage: String(crmSalesStage || currentTask).trim() || currentTask,
         currentTask,
         taskId:
           String(selectedTask?.task_id || '').trim() ||
+          String(websiteTask?.task_id || '').trim() ||
           String(entry.supabaseState?.currentTaskId || '').trim(),
         adminUrl: buildAdminUrl(entry.athleteId, entry.athleteMainId),
         taskUrl: buildTaskUrl(entry.athleteId, entry.athleteMainId),
@@ -395,28 +462,31 @@ export async function loadHeadScoutWeeklyMeetingCandidates(args: {
       const meetingDate = parsed.toISOString().slice(0, 10);
       return meetingDate >= args.weekStart && meetingDate < args.weekEnd;
     })
-    .map((row) => ({
-      key: `${row.athleteId}:${row.athleteMainId}`,
-      athleteId: row.athleteId,
-      athleteMainId: row.athleteMainId,
-      athleteName: row.athleteName,
-      dueDate: row.appointmentStartsAt || null,
-      stage: String(row.crmStage || '').trim() || buildTaskLabelFromStatus(row.taskStatus),
-      currentTask:
-        String(row.currentTaskTitle || '').trim() || buildTaskLabelFromStatus(row.taskStatus),
-      taskId: String(row.currentTaskId || '').trim(),
-      adminUrl: buildAdminUrl(row.athleteId, row.athleteMainId),
-      taskUrl: buildTaskUrl(row.athleteId, row.athleteMainId),
-      source: 'supabase',
-      crmSalesStage: row.crmStage || null,
-      headScoutName: row.headScout || null,
-      needsConfirmationText: false,
-      needsManualReview: false,
-      reason: '',
-      badges: [],
-      oldFollowUpDateDetected: false,
-      supabaseState: row,
-    }))
+    .map(
+      (row) =>
+        ({
+          key: `${row.athleteId}:${row.athleteMainId}`,
+          athleteId: row.athleteId,
+          athleteMainId: row.athleteMainId,
+          athleteName: row.athleteName,
+          dueDate: row.appointmentStartsAt || null,
+          stage: String(row.crmStage || '').trim() || buildTaskLabelFromStatus(row.taskStatus),
+          currentTask:
+            String(row.currentTaskTitle || '').trim() || buildTaskLabelFromStatus(row.taskStatus),
+          taskId: String(row.currentTaskId || '').trim(),
+          adminUrl: buildAdminUrl(row.athleteId, row.athleteMainId),
+          taskUrl: buildTaskUrl(row.athleteId, row.athleteMainId),
+          source: 'supabase',
+          crmSalesStage: row.crmStage || null,
+          headScoutName: row.headScout || null,
+          needsConfirmationText: false,
+          needsManualReview: false,
+          reason: '',
+          badges: [],
+          oldFollowUpDateDetected: false,
+          supabaseState: row,
+        }) satisfies HeadScoutFollowUpCandidate,
+    )
     .sort((left, right) => {
       const leftDate = Date.parse(left.dueDate || '');
       const rightDate = Date.parse(right.dueDate || '');
