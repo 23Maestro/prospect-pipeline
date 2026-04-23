@@ -1354,6 +1354,9 @@ class LegacyTranslator:
                 ])
             if not data.get("city"):
                 data["city"] = _input_value("city")
+            if data.get("high_school"):
+                school_name, school_city = LegacyTranslator._split_school_city(data.get("high_school"))
+                data["high_school"] = school_name
             if not data.get("state"):
                 data["state"] = _input_value("state")
             if not data.get("positions"):
@@ -1361,6 +1364,7 @@ class LegacyTranslator:
                     _input_value("positions"),
                     _label_value("Positions"),
                 ])
+            data["positions"] = LegacyTranslator._clean_positions(data.get("positions"))
             if not data.get("head_scout"):
                 data["head_scout"] = _first_non_empty([
                     _select_value("head_scout"),
@@ -1988,8 +1992,8 @@ class LegacyTranslator:
         sport = get_select_value_contains(["sport"]) or get_input_value_contains(["sport"])
         grad_year = get_select_value_contains(["grad_year", "graduation"]) or get_input_value_contains(["grad_year", "graduation"])
 
-        high_school = get_input_value_contains(["high_school", "school"])
-        city = get_input_value_contains(["city"])
+        high_school = get_input_value_contains(["high_school"])
+        city = get_input_value("city")
         state = get_input_value_contains(["state"])
 
         school_option = get_select_selected_option("high_school")
@@ -1997,15 +2001,13 @@ class LegacyTranslator:
             school_value = (school_option.attributes.get('value', '') if school_option.attributes else '').strip()
             school_text = school_option.text(strip=True)
             school_city = (school_option.attributes.get('cityval', '') if school_option.attributes else '').strip()
-            if not high_school:
-                if school_value:
-                    high_school = school_value
-                elif school_text:
-                    high_school = school_text.split(',', 1)[0].strip()
-            if not city and school_city:
-                city = school_city
-            elif not city and school_text and ',' in school_text:
-                city = school_text.split(',', 1)[1].strip()
+            school_label, label_city = LegacyTranslator._split_school_city(school_text)
+            if school_label:
+                high_school = school_label
+            elif not high_school and school_value and not school_value.isdigit():
+                high_school = school_value
+
+        high_school, parsed_city = LegacyTranslator._split_school_city(high_school)
 
         state_option = get_select_selected_option("high_school_state")
         if state_option and not state:
@@ -2031,6 +2033,7 @@ class LegacyTranslator:
         if not positions:
             position_parts = [primary_pos, secondary_pos, third_pos]
             positions = ", ".join([p for p in position_parts if p and p != "NA"])
+        positions = LegacyTranslator._clean_positions(positions)
 
         profile = {
             "sport": sport,
@@ -3308,6 +3311,28 @@ class LegacyTranslator:
         return parts[0] if parts else None, None
 
     @staticmethod
+    def _split_school_city(value: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+        text = str(value or "").strip()
+        if not text:
+            return None, None
+        school, city = LegacyTranslator._split_location(text)
+        return school, city
+
+    @staticmethod
+    def _clean_positions(value: Optional[str]) -> Optional[str]:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        without_prefix = re.sub(r"^positions?", "", text, flags=re.IGNORECASE).strip()
+        without_prefix = re.sub(r"^[:\-\s]+", "", without_prefix).strip()
+        tokens = [
+            re.sub(r"^positions?", "", token, flags=re.IGNORECASE).strip()
+            for token in re.split(r"\||,|/|•", without_prefix)
+        ]
+        cleaned_tokens = [token for token in tokens if token]
+        return ", ".join(cleaned_tokens) if cleaned_tokens else without_prefix or None
+
+    @staticmethod
     def _normalize_search_results_from_json(payload: Any, source: str) -> List[Dict[str, Any]]:
         def pick_value(data: Dict[str, Any], keys: List[str]) -> Optional[str]:
             for key in keys:
@@ -3345,6 +3370,7 @@ class LegacyTranslator:
             high_school = pick_value(item, ["high_school", "highSchool", "school", "school_name", "schoolName"])
             email = pick_value(item, ["email", "athlete_email", "player_email"])
             positions = pick_value(item, ["positions", "position", "pos"])
+            positions = LegacyTranslator._clean_positions(positions)
             athlete_main_id = pick_value(item, ["athlete_main_id", "athleteMainId", "main_id", "athlete_mainid"])
             location = pick_value(item, ["location", "city_state", "cityState", "citystate"])
 
@@ -3352,6 +3378,7 @@ class LegacyTranslator:
                 split_city, split_state = LegacyTranslator._split_location(location)
                 city = city or split_city
                 state = state or split_state
+            high_school, school_city = LegacyTranslator._split_school_city(high_school)
 
             results.append({
                 "athlete_id": athlete_id,
@@ -3604,6 +3631,8 @@ class LegacyTranslator:
 
                 if not athlete_id:
                     continue
+
+                high_school, school_city = LegacyTranslator._split_school_city(high_school)
 
                 if any(_has_suspicious_text(value) for value in [name, high_school, sport, city, state]):
                     logger.warning(
@@ -4078,6 +4107,9 @@ class LegacyTranslator:
                     task_id = str(item.get("taskid") or item.get("id") or "").strip() or None
                     athlete_main_id = str(item.get("athlete_main_id") or "").strip() or None
                     athlete_name = str(item.get("contact") or "").strip()
+                    high_school = str(item.get("high_school") or "").strip() or None
+                    city = str(item.get("high_school_city") or item.get("city") or "").strip() or None
+                    high_school, school_city = LegacyTranslator._split_school_city(high_school)
 
                     if not contact_id or not athlete_name:
                         continue
@@ -4095,6 +4127,10 @@ class LegacyTranslator:
                         "athlete_main_id": athlete_main_id,
                         "athlete_id": contact_id,
                         "athlete_name": athlete_name,
+                        "sport": str(item.get("sport_name") or item.get("sport") or "").strip() or None,
+                        "high_school": high_school,
+                        "city": city,
+                        "state": str(item.get("high_school_state") or item.get("state") or "").strip() or None,
                         "due_date": item.get("duedate_usa"),
                         "completion_date": item.get("completiondate_usa"),
                         "assigned_owner": item.get("user"),

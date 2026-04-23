@@ -390,7 +390,10 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
   );
 
   assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
-  assert.match(body, /I received Jaylin's info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college football\./);
+  assert.match(
+    body,
+    /I received Jaylin's info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college football\./,
+  );
   assert.match(body, /With him being a 2027, timing matters in the recruiting process/);
 });
 
@@ -435,7 +438,10 @@ test('buildVoicemailFollowUpBody: student athlete attempt 2 uses shorter action-
     body,
     /^Good afternoon Jayson, this is Jerami Singleton, college football scout with Prospect ID\./,
   );
-  assert.match(body, /I received your info and wanted to learn a little more about your goals for playing in college\./);
+  assert.match(
+    body,
+    /I received your info and wanted to learn a little more about your goals for playing in college\./,
+  );
   assert.match(
     body,
     /If that’s something you’re serious about, have one of your parents give me a quick call or text when they get a few minutes so we can set up a time to connect\./,

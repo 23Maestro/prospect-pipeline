@@ -672,10 +672,10 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
     resolved: {
       athlete_id: athleteDetails?.athlete_id || athleteId,
       athlete_main_id: athleteDetails?.athlete_main_id || athleteMainId,
-      sport: athleteDetails?.sport || null,
-      high_school: athleteDetails?.high_school || null,
-      city: athleteDetails?.city || null,
-      state: athleteDetails?.state || null,
+      sport: task.sport || athleteDetails?.sport || null,
+      high_school: task.high_school || athleteDetails?.high_school || null,
+      city: task.city || athleteDetails?.city || null,
+      state: task.state || athleteDetails?.state || null,
       positions: athleteDetails?.positions || null,
       gpa: athleteDetails?.gpa || null,
       head_scout: athleteDetails?.head_scout || null,
@@ -840,7 +840,7 @@ export function buildScoutPrepDetailMarkdown(
 }
 
 export function buildScoutPrepMetadata(values: ScoutPrepFormValues, context: ScoutPrepContext) {
-  const { task, resolved } = context;
+  const { resolved } = context;
 
   return (
     <Detail.Metadata>
@@ -866,10 +866,6 @@ export function buildScoutPrepMetadata(values: ScoutPrepFormValues, context: Sco
           <Detail.Metadata.TagList.Item text={resolved.high_school} color={Color.Red} />
         </Detail.Metadata.TagList>
       ) : null}
-      <Detail.Metadata.Separator />
-      <Detail.Metadata.Label title="Task" text={task.title || 'N/A'} />
-      <Detail.Metadata.Label title="Description" text={task.description || 'N/A'} />
-      <Detail.Metadata.Label title="Due Date" text={task.due_date || 'N/A'} />
     </Detail.Metadata>
   );
 }

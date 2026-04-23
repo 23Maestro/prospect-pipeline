@@ -452,6 +452,10 @@ async function selectAthlete(result) {
     const merged = {
       ...state.selected,
       ...resolved,
+      sport: state.selected.sport || resolved.sport || "",
+      high_school: state.selected.high_school || resolved.high_school || "",
+      city: state.selected.city || resolved.city || "",
+      state: state.selected.state || resolved.state || "",
       contact_id: state.selected.contact_id || resolved.contact_id || state.selected.athlete_id,
     };
     state.selected = merged;

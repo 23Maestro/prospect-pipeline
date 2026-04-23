@@ -20,6 +20,10 @@ export type ScoutPortalTask = {
   athlete_main_id?: string | null;
   athlete_id?: string | null;
   athlete_name: string;
+  sport?: string | null;
+  high_school?: string | null;
+  city?: string | null;
+  state?: string | null;
   due_date?: string | null;
   completion_date?: string | null;
   assigned_owner?: string | null;

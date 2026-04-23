@@ -547,6 +547,10 @@ class ScoutPortalTask(BaseModel):
     athlete_main_id: Optional[str] = None
     athlete_id: Optional[str] = None
     athlete_name: str
+    sport: Optional[str] = None
+    high_school: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
     due_date: Optional[str] = None
     completion_date: Optional[str] = None
     assigned_owner: Optional[str] = None

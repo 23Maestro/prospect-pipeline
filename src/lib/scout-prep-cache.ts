@@ -1,7 +1,7 @@
 import { LocalStorage } from '@raycast/api';
 import type { ContactInfo } from './npid-mcp-adapter';
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const MEASURABLES_TTL_MS = 24 * 60 * 60 * 1000;
 const CONTACT_INFO_TTL_MS = 24 * 60 * 60 * 1000;
 

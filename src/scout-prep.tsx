@@ -10,7 +10,6 @@ import {
   Clipboard,
   open,
   popToRoot,
-  showHUD,
   showToast,
   useNavigation,
 } from '@raycast/api';
@@ -24,7 +23,6 @@ import {
   VoicemailFollowUpMessageForm,
 } from './components/follow-up-message-forms';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
-import { buildScoutPrepMarkdown } from './features/scout-prep/content';
 import type {
   MeetingSetSubmitResponse,
   MeetingSetTemplateResponse,
@@ -34,7 +32,6 @@ import type {
   ScoutRecentProfileCheckStatus,
   ScoutPortalTask,
   ScoutPrepContext,
-  ScoutPrepFormValues,
 } from './features/scout-prep/types';
 import {
   buildMeetingTemplateDefaults,
@@ -150,14 +147,27 @@ function logFailure(event: string, step: string, error: string, context?: Record
 async function showLoadingToast(title: string, message?: string) {
   const compactTitle = String(title || '')
     .trim()
-    .slice(0, 28);
+    .slice(0, 24);
   const compactMessage = String(message || '')
     .trim()
-    .slice(0, 36);
+    .slice(0, 28);
   return showToast({
     style: Toast.Style.Animated,
     title: compactTitle,
     message: compactMessage || undefined,
+  });
+}
+
+function formatTaskIdLabel(taskId?: string | number | null): string {
+  const normalized = String(taskId || '').trim();
+  return normalized ? `#${normalized}` : '';
+}
+
+async function copyToClipboardWithToast(content: string, title: string) {
+  await Clipboard.copy(content);
+  await showToast({
+    style: Toast.Style.Success,
+    title,
   });
 }
 
@@ -196,7 +206,10 @@ function getTaskDisplayTitle(
   );
 }
 
-function shouldAutoCompletePostCallTask(stageLabel: string, task?: ScoutPortalTask | null): boolean {
+function shouldAutoCompletePostCallTask(
+  stageLabel: string,
+  task?: ScoutPortalTask | null,
+): boolean {
   const normalizedStage = String(stageLabel || '').trim();
   const taskTitle = stripMoveThisTaskPrefix(task?.title) || '';
 
@@ -240,16 +253,49 @@ function findNewestIncompleteTaskByTitle(
   tasks: ScoutPrepContext['tasks'],
   taskTitle: string,
 ): ScoutAthleteTask | null {
-  const normalizedTarget = String(taskTitle || '').trim().toLowerCase();
+  const normalizedTarget = String(taskTitle || '')
+    .trim()
+    .toLowerCase();
   if (!normalizedTarget) {
     return null;
   }
 
   return (
     getIncompleteAthleteTasks(tasks).find(
-      (candidate) => (stripMoveThisTaskPrefix(candidate.title) || '').trim().toLowerCase() === normalizedTarget,
+      (candidate) =>
+        (stripMoveThisTaskPrefix(candidate.title) || '').trim().toLowerCase() === normalizedTarget,
     ) || null
   );
+}
+
+function isVoicemailLifecycleTaskMatch(
+  task: Pick<ScoutAthleteTask, 'title' | 'description'>,
+  variant: VoicemailFollowUpVariant,
+): boolean {
+  const title = (stripMoveThisTaskPrefix(task.title) || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ');
+  const description = String(task.description || '')
+    .trim()
+    .toLowerCase();
+
+  if (variant === 'call_attempt_1') {
+    return title === 'call attempt 1' || description.includes('first time');
+  }
+  if (variant === 'call_attempt_2') {
+    return (
+      title === 'call attempt 2' ||
+      (title === 'scheduled follow up' && description.includes('second time')) ||
+      description.includes('second time')
+    );
+  }
+  if (variant === 'call_attempt_3') {
+    return title === 'call attempt 3' || description.includes('third time');
+  }
+
+  return false;
 }
 
 function SupabaseLifecycleStatusAction() {
@@ -358,100 +404,6 @@ async function recordRescheduledBestEffort(args: {
       },
     );
   }
-}
-
-function ManualScoutPrepResult({ values }: { values: ScoutPrepFormValues }) {
-  return (
-    <Detail
-      navigationTitle={`Scout Prep • ${values.athleteName}`}
-      markdown={buildScoutPrepMarkdown(values)}
-    />
-  );
-}
-
-function ManualScoutPrepForm() {
-  const { push } = useNavigation();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  async function handleSubmit(values: ScoutPrepFormValues) {
-    if (isSubmitting) {
-      return;
-    }
-
-    const athleteName = values.athleteName.trim();
-    const parent1Name = values.parent1Name.trim();
-    const parent2Name = (values.parent2Name || '').trim();
-    const sport = values.sport.trim();
-
-    if (!athleteName || !parent1Name || !values.gradYear || !sport) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Student athlete, parent 1, grad year, and sport are required',
-      });
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      logInfo('SCOUT_PREP_MANUAL_BUILD', 'submit', 'start', {
-        athleteNamePreview: athleteName.slice(0, 80),
-        hasParent2: Boolean(parent2Name),
-        gradYear: values.gradYear,
-        sportPreview: sport.slice(0, 80),
-      });
-      push(
-        <ManualScoutPrepResult
-          values={{
-            athleteName,
-            parent1Name,
-            parent2Name,
-            gradYear: values.gradYear,
-            sport,
-          }}
-        />,
-      );
-      logInfo('SCOUT_PREP_MANUAL_BUILD', 'submit', 'success', {
-        athleteNamePreview: athleteName.slice(0, 80),
-      });
-    } catch (error) {
-      logFailure(
-        'SCOUT_PREP_MANUAL_BUILD',
-        'submit',
-        error instanceof Error ? error.message : String(error),
-        {
-          athleteNamePreview: athleteName.slice(0, 80),
-        },
-      );
-      throw error;
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  return (
-    <Form
-      navigationTitle="Manual Scout Prep"
-      actions={
-        <ActionPanel>
-          <Action.SubmitForm
-            title={isSubmitting ? 'Building…' : 'Build Scout Prep'}
-            onSubmit={(values) => void handleSubmit(values as ScoutPrepFormValues)}
-          />
-        </ActionPanel>
-      }
-    >
-      <Form.TextField id="athleteName" title="Student Athlete" placeholder="Student Athlete" />
-      <Form.TextField id="parent1Name" title="Parent 1" placeholder="Parent 1" />
-      <Form.TextField id="parent2Name" title="Parent 2" placeholder="Parent 2" />
-      <Form.Dropdown id="gradYear" title="Grad Year" defaultValue="Junior">
-        <Form.Dropdown.Item value="Freshman" title="Freshman" />
-        <Form.Dropdown.Item value="Sophomore" title="Sophomore" />
-        <Form.Dropdown.Item value="Junior" title="Junior" />
-        <Form.Dropdown.Item value="Senior" title="Senior" />
-      </Form.Dropdown>
-      <Form.TextField id="sport" title="Sport" placeholder="Sport" />
-    </Form>
-  );
 }
 
 function buildFallbackMeetingDetails(): string {
@@ -878,7 +830,7 @@ async function handleBatchCreateProspectContacts(tasks: ScoutPortalTask[]) {
   }
 
   const toast = await showLoadingToast(
-    'Preparing batch contact create',
+    'Prep contacts',
     `${tasks.length} ${tasks.length === 1 ? 'task' : 'tasks'}`,
   );
 
@@ -887,7 +839,7 @@ async function handleBatchCreateProspectContacts(tasks: ScoutPortalTask[]) {
 
     if (!candidates.length) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'No eligible contacts found';
+      toast.title = 'No contacts ready';
       toast.message =
         failedTasks.length > 0
           ? `${failedTasks.length} ${failedTasks.length === 1 ? 'task failed to load' : 'tasks failed to load'}`
@@ -895,12 +847,12 @@ async function handleBatchCreateProspectContacts(tasks: ScoutPortalTask[]) {
       return;
     }
 
-    toast.title = 'Creating contacts';
+    toast.title = 'Creating';
     toast.message = `${candidates.length} unique contacts`;
 
     const summary = await createProspectContactsBatch(candidates);
     toast.style = Toast.Style.Success;
-    toast.title = 'Batch contact create complete';
+    toast.title = 'Contacts ready';
 
     const detailParts = [
       summary.createdCount ? `${summary.createdCount} created` : null,
@@ -917,7 +869,7 @@ async function handleBatchCreateProspectContacts(tasks: ScoutPortalTask[]) {
       : detailParts.join(' • ');
   } catch (error) {
     toast.style = Toast.Style.Failure;
-    toast.title = 'Batch contact create failed';
+    toast.title = 'Contact batch failed';
     toast.message = error instanceof Error ? error.message : String(error);
   }
 }
@@ -962,12 +914,12 @@ function ScoutPrepContactDetail({
     } catch (error) {
       if (refreshToast) {
         refreshToast.style = Toast.Style.Failure;
-        refreshToast.title = 'Failed to Load Contact Info';
+        refreshToast.title = 'Contact load failed';
         refreshToast.message = error instanceof Error ? error.message : 'Unknown error';
       } else {
         await showToast({
           style: Toast.Style.Failure,
-          title: 'Failed to Load Contact Info',
+          title: 'Contact load failed',
           message: error instanceof Error ? error.message : 'Unknown error',
         });
       }
@@ -987,7 +939,7 @@ function ScoutPrepContactDetail({
     if (!activeContext) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Contact info still loading',
+        title: 'Contact loading',
       });
       return;
     }
@@ -997,15 +949,15 @@ function ScoutPrepContactDetail({
     if (!activeCandidate) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No eligible contact found',
-        message: 'A first name, last name, and phone number are required.',
+        title: 'No contact ready',
+        message: 'Need full name + phone.',
       });
       return;
     }
 
     setIsCreatingContact(true);
     const toast = await showLoadingToast(
-      'Creating contact',
+      'Create contact',
       `${activeCandidate.name}${activeCandidate.phone ? ` • ${activeCandidate.phone}` : ''}`,
     );
     try {
@@ -1022,7 +974,7 @@ function ScoutPrepContactDetail({
         : `${activeCandidate.label}: ${activeCandidate.name}`;
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Failed to create prospect contact';
+      toast.title = 'Contact create failed';
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setIsCreatingContact(false);
@@ -1048,32 +1000,41 @@ function ScoutPrepContactDetail({
           {contactInfo?.parent1 ? (
             <ActionPanel.Section title={`Parent 1 (${contactInfo.parent1.relationship})`}>
               {contactInfo.parent1.phone ? (
-                <Action.CopyToClipboard
+                <Action
                   title="Copy Parent 1 Phone"
-                  content={contactInfo.parent1.phone}
                   icon="📲"
+                  onAction={() =>
+                    void copyToClipboardWithToast(contactInfo.parent1.phone || '', 'P1 # Copied')
+                  }
                 />
               ) : null}
             </ActionPanel.Section>
           ) : null}
           <ActionPanel.Section title="Student Athlete">
             {contactInfo?.studentAthlete.phone ? (
-              <Action.CopyToClipboard
+              <Action
                 title="Copy Student Athlete Phone"
-                content={contactInfo.studentAthlete.phone}
                 icon="☎️"
                 shortcut={{ modifiers: ['cmd'], key: 'return' }}
+                onAction={() =>
+                  void copyToClipboardWithToast(
+                    contactInfo.studentAthlete.phone || '',
+                    'SA # Copied',
+                  )
+                }
               />
             ) : null}
           </ActionPanel.Section>
           {contactInfo?.parent2 ? (
             <ActionPanel.Section title={`Parent 2 (${contactInfo.parent2.relationship})`}>
               {contactInfo.parent2.phone ? (
-                <Action.CopyToClipboard
+                <Action
                   title="Copy Parent 2 Phone"
-                  content={contactInfo.parent2.phone}
                   icon="📳"
                   shortcut={{ modifiers: ['cmd'], key: 's' }}
+                  onAction={() =>
+                    void copyToClipboardWithToast(contactInfo.parent2.phone || '', 'P2 # Copied')
+                  }
                 />
               ) : null}
             </ActionPanel.Section>
@@ -1165,7 +1126,7 @@ function SingleRecipientMessageForm({
           toast.hide();
         } catch (error) {
           toast.style = Toast.Style.Failure;
-          toast.title = 'Sent, update failed';
+          toast.title = 'Sent, save failed';
           toast.message = error instanceof Error ? error.message : String(error);
           return;
         }
@@ -1173,7 +1134,7 @@ function SingleRecipientMessageForm({
 
       await showToast({
         style: Toast.Style.Success,
-        title: 'Message sent',
+        title: 'Sent',
         message: recipientName,
       });
       await popToRoot({ clearSearchBar: true });
@@ -1278,49 +1239,6 @@ async function getSelectedCrmStageLabel(athleteId?: string | null): Promise<stri
   );
 }
 
-function formatScoutPrepMarkdownForClipboard(markdown: string): string {
-  let inCodeFence = false;
-  const lines = markdown
-    .replace(/\r\n?/g, '\n')
-    .replace(/[\u2028\u2029]/g, '\n')
-    .split('\n')
-    .map((rawLine) => {
-      const trimmed = rawLine.trim();
-
-      if (/^```/.test(trimmed)) {
-        inCodeFence = !inCodeFence;
-        return '';
-      }
-
-      if (inCodeFence) {
-        return rawLine.trimEnd();
-      }
-
-      return trimmed
-        .replace(/^#{1,6}\s+/, '')
-        .replace(/^>\s?/, '')
-        .replace(/^[-*+]\s+/, '- ')
-        .replace(/\*\*([^*]+)\*\*/g, '$1')
-        .replace(/__([^_]+)__/g, '$1')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1 ($2)')
-        .replace(/`([^`]+)`/g, '$1')
-        .trimEnd();
-    });
-
-  const compacted: string[] = [];
-  for (const line of lines) {
-    if (!line) {
-      if (compacted.length && compacted[compacted.length - 1]) {
-        compacted.push('');
-      }
-      continue;
-    }
-    compacted.push(line);
-  }
-
-  return compacted.join('\n').trim();
-}
-
 function VoicemailFollowUpRecipientForm({
   task,
   context,
@@ -1339,7 +1257,9 @@ function VoicemailFollowUpRecipientForm({
     currentTask: currentTask || task.title || null,
   });
 
-  function resolveLifecycleFollowUpTask(variant: VoicemailFollowUpVariant): ScoutAthleteTask | null {
+  function resolveLifecycleFollowUpTask(
+    variant: VoicemailFollowUpVariant,
+  ): ScoutAthleteTask | null {
     if (variant === 'no_show') {
       return null;
     }
@@ -1353,16 +1273,25 @@ function VoicemailFollowUpRecipientForm({
     const directTaskTitle = stripMoveThisTaskPrefix(task.title) || '';
     const directTaskId = String(task.task_id || '').trim();
 
-    if (directTaskId && directTaskTitle === expectedTaskTitle) {
+    if (directTaskId && isVoicemailLifecycleTaskMatch(task, variant)) {
       return {
         task_id: directTaskId,
-        title: directTaskTitle,
+        title: directTaskTitle || expectedTaskTitle,
         assigned_owner: task.assigned_owner || null,
         description: task.description || directTaskTitle,
       };
     }
 
-    return findNewestIncompleteTaskByTitle(context.tasks, expectedTaskTitle);
+    const exactTitleMatch = findNewestIncompleteTaskByTitle(context.tasks, expectedTaskTitle);
+    if (exactTitleMatch) {
+      return exactTitleMatch;
+    }
+
+    return (
+      getIncompleteAthleteTasks(context.tasks).find((candidate) =>
+        isVoicemailLifecycleTaskMatch(candidate, variant),
+      ) || null
+    );
   }
 
   async function openMessagesForRecipient(
@@ -1372,8 +1301,8 @@ function VoicemailFollowUpRecipientForm({
     if (!recipient || !recipient.phones.length) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No contact available',
-        message: 'This athlete does not have a Messages-safe contact option yet.',
+        title: 'No message contact',
+        message: 'No Messages-safe number yet.',
       });
       return;
     }
@@ -1472,7 +1401,7 @@ function VoicemailFollowUpRecipientForm({
       await showToast({
         style: Toast.Style.Success,
         title: 'Messages opened',
-        message: 'Voicemail text copied to clipboard.',
+        message: 'Copied to clipboard.',
       });
       await popToRoot({ clearSearchBar: true });
     }
@@ -1522,6 +1451,10 @@ function buildScoutPrepTaskFromProspect(result: ProspectResult): ScoutPortalTask
     athlete_id: athleteId,
     athlete_main_id: athleteMainId,
     athlete_name: result.name || `Athlete ${athleteId}`,
+    sport: result.sport || null,
+    high_school: result.high_school || null,
+    city: result.city || null,
+    state: result.state || null,
     grad_year: result.grad_year || null,
     title: 'Prospect Search Result',
     description:
@@ -1583,7 +1516,7 @@ function RescheduleConfirmationCallForm({
         if (!active) return;
         await showToast({
           style: Toast.Style.Failure,
-          title: 'Failed to load confirmation task',
+          title: 'Confirmation load failed',
           message: error instanceof Error ? error.message : String(error),
         });
       } finally {
@@ -1607,16 +1540,13 @@ function RescheduleConfirmationCallForm({
     if (!athleteMainId || !contactTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Missing task identifiers',
+        title: 'Missing task IDs',
       });
       return;
     }
 
     setIsSaving(true);
-    const toast = await showLoadingToast(
-      'Saving confirmation call',
-      'Updating task and lifecycle state',
-    );
+    const toast = await showLoadingToast('Saving confirm', 'Task + lifecycle');
     try {
       const nextTaskTitle =
         String(values.taskTitle || '').trim() || stripMoveThisTaskPrefix(popupData?.tasktitle);
@@ -1669,13 +1599,11 @@ function RescheduleConfirmationCallForm({
       }
 
       toast.style = syncError ? Toast.Style.Failure : Toast.Style.Success;
-      toast.title = syncError
-        ? 'Confirmation updated, lifecycle sync failed'
-        : 'Confirmation call updated';
+      toast.title = syncError ? 'Confirm saved, sync failed' : 'Confirmation saved';
       toast.message = syncError || '';
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Failed to update confirmation call';
+      toast.title = 'Confirmation save failed';
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setIsSaving(false);
@@ -1814,7 +1742,7 @@ function UpdateAthleteTaskForm({
       });
       await showToast({
         style: Toast.Style.Success,
-        title: 'Task updated',
+        title: 'Task saved',
         message: currentTaskTitle,
       });
       await onUpdated?.();
@@ -1822,7 +1750,7 @@ function UpdateAthleteTaskForm({
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Failed to update task',
+        title: 'Task save failed',
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -1845,14 +1773,14 @@ function UpdateAthleteTaskForm({
       });
       await showToast({
         style: Toast.Style.Success,
-        title: 'Task completed',
+        title: 'Completed',
         message: currentTaskTitle,
       });
       pop();
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Failed to complete task',
+        title: 'Complete failed',
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -1875,7 +1803,7 @@ function UpdateAthleteTaskForm({
       });
       await showToast({
         style: Toast.Style.Success,
-        title: 'Task updated',
+        title: 'Task saved',
         message: 'SCHEDULED FOLLOW-UP',
       });
       await onUpdated?.();
@@ -1883,7 +1811,7 @@ function UpdateAthleteTaskForm({
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Failed to update task title',
+        title: 'Title save failed',
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -1954,7 +1882,7 @@ function UpdateAthleteTaskPicker({
         if (active) {
           await showToast({
             style: Toast.Style.Failure,
-            title: 'Failed to load athlete tasks',
+            title: 'Task load failed',
             message: error instanceof Error ? error.message : String(error),
           });
         }
@@ -1981,7 +1909,7 @@ function UpdateAthleteTaskPicker({
     if (!athleteMainId || !contactTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Missing task identifiers',
+        title: 'Missing task IDs',
       });
       return;
     }
@@ -2009,7 +1937,7 @@ function UpdateAthleteTaskPicker({
     if (!athleteMainId || !contactTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Missing task identifiers',
+        title: 'Missing task IDs',
       });
       return;
     }
@@ -2039,13 +1967,13 @@ function UpdateAthleteTaskPicker({
 
       await showToast({
         style: Toast.Style.Success,
-        title: 'Task completed',
+        title: 'Completed',
         message: getTaskDisplayTitle(selectedTask),
       });
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Failed to complete task',
+        title: 'Complete failed',
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -2154,7 +2082,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         });
         await showToast({
           style: Toast.Style.Failure,
-          title: 'Failed to load sales stages',
+          title: 'Stage load failed',
           message,
         });
       } finally {
@@ -2284,7 +2212,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         setSelectedOpenMeetingId('');
         await showToast({
           style: Toast.Style.Failure,
-          title: 'Failed to load open meetings',
+          title: 'Meetings load failed',
           message: error instanceof Error ? error.message : String(error),
         });
       } finally {
@@ -2311,13 +2239,13 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     if (!stageLabel) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Select a sales stage',
+        title: 'Pick a stage',
       });
       return;
     }
 
     setIsSaving(true);
-    const toast = await showLoadingToast('Saving sales stage', 'Updating website and Supabase');
+    const toast = await showLoadingToast('Saving stage', 'Web + Supabase');
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -2439,22 +2367,20 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           assignedOwner: task.assigned_owner,
           description: task.description,
         });
-        taskCompletionMessage = result.task_id
-          ? `Task ${result.task_id} completed.`
-          : 'Task completed.';
+        taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
       }
 
       toast.style = Toast.Style.Success;
       toast.title = taskCompletionMessage
-        ? 'Sales stage saved, task completed'
+        ? 'Stage saved + done'
         : stageLabel === MEETING_SET_LABEL
-          ? 'Meeting Set + sales stage saved'
-          : 'Sales stage saved';
+          ? 'Meeting Set saved'
+          : 'Stage saved';
       toast.message =
         taskCompletionMessage ||
         (stageLabel === MEETING_SET_LABEL
           ? meetingSetResult?.email_sent
-            ? 'Meeting Set email sent'
+            ? 'Email sent'
             : 'Meeting Set saved'
           : stageLabel);
 
@@ -2462,7 +2388,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.style = Toast.Style.Failure;
-      toast.title = 'Failed to save sales stage';
+      toast.title = 'Stage save failed';
       toast.message = message;
     } finally {
       setIsSaving(false);
@@ -2635,14 +2561,14 @@ function ScoutPrepDetail({
     if (!options.length) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No reminder contact found',
+        title: 'No reminder contact',
       });
       return;
     }
 
     const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
       const toast = await showLoadingToast(
-        mode === 'call' ? 'Creating call' : 'Creating text',
+        mode === 'call' ? 'Call reminder' : 'Text reminder',
         option.name,
       );
       try {
@@ -2660,11 +2586,11 @@ function ScoutPrepDetail({
           }),
         );
         toast.hide();
-        await showHUD(
-          mode === 'call'
-            ? `Call reminder set for ${option.name}`
-            : `Text reminder set for ${option.name}`,
-        );
+        await showToast({
+          style: Toast.Style.Success,
+          title: mode === 'call' ? 'Call reminder set' : 'Text reminder set',
+          message: option.name,
+        });
         await popToRoot({ clearSearchBar: true });
       } catch (error) {
         toast.style = Toast.Style.Failure;
@@ -2704,8 +2630,8 @@ function ScoutPrepDetail({
     const recipients = getVoicemailFollowUpRecipients(activeContext);
     if (!recipients.length) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'No usable contact number';
-      toast.message = 'Hydrated contact data did not include a Messages-safe number.';
+      toast.title = 'No usable number';
+      toast.message = 'No Messages-safe number.';
       return;
     }
 
@@ -2731,7 +2657,7 @@ function ScoutPrepDetail({
       );
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Failed to load current stage';
+      toast.title = 'Stage load failed';
       toast.message = error instanceof Error ? error.message : 'Unknown error';
     }
   }
@@ -2790,7 +2716,7 @@ function ScoutPrepDetail({
     if (!confirmationTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No confirmation call task found',
+        title: 'No confirmation task',
       });
       return;
     }
@@ -2809,8 +2735,8 @@ function ScoutPrepDetail({
     if (!reminderRecipient?.phones.length) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No usable contact number',
-        message: 'No parent or fallback number available for reminder text.',
+        title: 'No usable number',
+        message: 'No parent or fallback number.',
       });
       return;
     }
@@ -2819,7 +2745,7 @@ function ScoutPrepDetail({
     if (!confirmationTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No confirmation call task found',
+        title: 'No confirmation task',
       });
       return;
     }
@@ -2838,7 +2764,7 @@ function ScoutPrepDetail({
         navigationTitle={`Meeting Reminder • ${task.athlete_name}`}
         defaultVariant={defaultVariant}
         onSubmit={async (values) => {
-          const toast = await showLoadingToast('Meeting reminder', 'Loading meeting');
+          const toast = await showLoadingToast('Reminder', 'Loading meeting');
           const prepared = await prepareConfirmationFollowUp({
             athleteId: String(task.contact_id || '').trim(),
             athleteMainId,
@@ -2872,7 +2798,7 @@ function ScoutPrepDetail({
             });
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
-            toast.message = 'Meeting reminder draft ready.';
+            toast.message = 'Draft ready.';
           } catch (error) {
             await Clipboard.copy(prepared.message);
             await open(`sms:${reminderRecipient.phones[0]}`);
@@ -2887,7 +2813,7 @@ function ScoutPrepDetail({
             });
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
-            toast.message = 'Meeting reminder copied to clipboard.';
+            toast.message = 'Copied to clipboard.';
             logFailure(
               'SCOUT_PREP_MEETING_REMINDER',
               'open-compose',
@@ -2910,13 +2836,13 @@ function ScoutPrepDetail({
     if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Scout Prep still loading',
-        message: 'Wait for the script before syncing Notion.',
+        title: 'Scout Prep loading',
+        message: 'Wait for script.',
       });
       return;
     }
 
-    const toast = await showLoadingToast('Syncing Notion', 'Updating toggles');
+    const toast = await showLoadingToast('Syncing Notion', 'Toggles');
 
     try {
       let activeContext = context;
@@ -2944,55 +2870,11 @@ function ScoutPrepDetail({
       ]);
 
       toast.style = Toast.Style.Success;
-      toast.title = 'Notion call prep updated';
-      toast.message = `Replaced ${scriptResult.toggleTitle} and ${voicemailResult.toggleTitle}.`;
+      toast.title = 'Notion synced';
+      toast.message = `${scriptResult.toggleTitle} + ${voicemailResult.toggleTitle}`;
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Notion sync failed';
-      toast.message = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  async function handleCompleteConfirmationTask() {
-    const confirmationTask = await resolveConfirmationTask();
-    if (!confirmationTask) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'No confirmation call task found',
-      });
-      return;
-    }
-
-    const athleteMainId = String(
-      task.athlete_main_id || context?.resolved.athlete_main_id || '',
-    ).trim();
-    const contactTask = String(task.contact_id || '').trim();
-    if (!athleteMainId || !contactTask) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Missing task identifiers',
-      });
-      return;
-    }
-
-    const toast = await showLoadingToast('Completing task', 'Saving');
-
-    try {
-      await completeScoutPrepTaskAfterVoicemail({
-        athleteId: contactTask,
-        athleteMainId,
-        contactTask,
-        taskTitle: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-        assignedOwner: confirmationTask.assigned_owner,
-        description: confirmationTask.description || 'Confirmation Call',
-        taskId: confirmationTask.task_id,
-      });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Confirmation call completed';
-      toast.message = '';
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Failed to complete confirmation call';
       toast.message = error instanceof Error ? error.message : String(error);
     }
   }
@@ -3101,11 +2983,6 @@ function ScoutPrepDetail({
             shortcut={{ modifiers: ['cmd'], key: '4' }}
             onAction={() => void handleCreateReminder('text')}
           />
-          <Action.CopyToClipboard
-            title="Copy Athlete Name"
-            content={context?.contactInfo.studentAthlete.name || task.athlete_name}
-            shortcut={{ modifiers: ['cmd'], key: 'c' }}
-          />
           <Action
             title="Sync Notion Call Prep"
             icon={Icon.Upload}
@@ -3193,7 +3070,6 @@ function ScoutPrepTaskItem({
   task,
   visibleTasks,
   onToggleProspectSearchMode,
-  isProspectSearchMode,
   onToggleRecentMode,
   onSelectTaskListFilter,
   onReturnToRootList,
@@ -3201,7 +3077,6 @@ function ScoutPrepTaskItem({
   task: ScoutPortalTask;
   visibleTasks: ScoutPortalTask[];
   onToggleProspectSearchMode: () => void;
-  isProspectSearchMode: boolean;
   onToggleRecentMode: () => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onReturnToRootList: () => void;
@@ -3226,7 +3101,7 @@ function ScoutPrepTaskItem({
   }
 
   async function handleVoicemailFollowUp() {
-    const context = await ensureTaskContext('Voicemail', 'Failed to load contact data');
+    const context = await ensureTaskContext('Voicemail', 'Contact load failed');
     if (!context) {
       return;
     }
@@ -3235,7 +3110,7 @@ function ScoutPrepTaskItem({
     const recipients = getVoicemailFollowUpRecipients(context);
     if (!recipients.length) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'No usable contact number';
+      toast.title = 'No usable number';
       return;
     }
 
@@ -3260,7 +3135,7 @@ function ScoutPrepTaskItem({
       );
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Failed to load current stage';
+      toast.title = 'Stage load failed';
       toast.message = error instanceof Error ? error.message : 'Unknown error';
     }
   }
@@ -3311,7 +3186,7 @@ function ScoutPrepTaskItem({
     if (!confirmationTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No confirmation call task found',
+        title: 'No confirmation task',
       });
       return;
     }
@@ -3328,7 +3203,7 @@ function ScoutPrepTaskItem({
     if (!reminderRecipient?.phones.length) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No usable contact number',
+        title: 'No usable number',
       });
       return;
     }
@@ -3337,7 +3212,7 @@ function ScoutPrepTaskItem({
     if (!confirmationTask) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No confirmation call task found',
+        title: 'No confirmation task',
       });
       return;
     }
@@ -3356,10 +3231,7 @@ function ScoutPrepTaskItem({
         navigationTitle={`Meeting Reminder • ${task.athlete_name}`}
         defaultVariant={defaultVariant}
         onSubmit={async (values) => {
-          const toast = await showLoadingToast(
-            'Preparing meeting reminder',
-            'Resolving confirmation task and current meeting',
-          );
+          const toast = await showLoadingToast('Reminder', 'Loading meeting');
           const prepared = await prepareConfirmationFollowUp({
             athleteId: String(task.contact_id || '').trim(),
             athleteMainId,
@@ -3393,7 +3265,7 @@ function ScoutPrepTaskItem({
             });
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
-            toast.message = 'Meeting reminder draft ready.';
+            toast.message = 'Draft ready.';
           } catch (error) {
             await Clipboard.copy(prepared.message);
             await open(`sms:${reminderRecipient.phones[0]}`);
@@ -3408,7 +3280,7 @@ function ScoutPrepTaskItem({
             });
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
-            toast.message = 'Meeting reminder copied to clipboard.';
+            toast.message = 'Copied to clipboard.';
             logFailure(
               'SCOUT_PREP_MEETING_REMINDER',
               'open-compose',
@@ -3473,10 +3345,10 @@ function ScoutPrepTaskItem({
               });
             }}
           />
-          <Action.CopyToClipboard
+          <Action
             title="Copy Athlete Name"
-            content={task.athlete_name}
             shortcut={{ modifiers: ['cmd'], key: 'c' }}
+            onAction={() => void copyToClipboardWithToast(task.athlete_name, 'Athlete Copied')}
           />
           <Action.Push
             title="Contact Info"
@@ -3584,8 +3456,6 @@ function ProspectSearchListItem({
 }: {
   result: ProspectResult;
   onToggleProspectSearchMode: () => void;
-  isProspectSearchMode: boolean;
-  onShowRecentProfiles: () => void;
   onReturnToRootList: () => void;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
@@ -3726,7 +3596,6 @@ export default function ScoutPrepCommand() {
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('all');
-  const [taskSearchText, setTaskSearchText] = useState('');
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
@@ -3736,9 +3605,6 @@ export default function ScoutPrepCommand() {
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
 
-  const isProspectSearchMode = viewMode === 'prospect';
-  const isRecentViewMode = viewMode === 'recent';
-  const isSearchModeActive = viewMode === 'prospect' || viewMode === 'recent';
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
   const selectedTaskRows =
     viewMode === 'tasks'
@@ -3790,7 +3656,7 @@ export default function ScoutPrepCommand() {
         logFailure('SCOUT_PREP_TASK_LIST', 'load-list', message);
         await showToast({
           style: Toast.Style.Failure,
-          title: 'Failed to load scout tasks',
+          title: 'Scout load failed',
           message,
         });
       } finally {
@@ -3849,7 +3715,7 @@ export default function ScoutPrepCommand() {
           setProspectResults([]);
           await showToast({
             style: Toast.Style.Failure,
-            title: 'Prospect Search Failed',
+            title: 'Search failed',
             message: error instanceof Error ? error.message : String(error),
           });
         } finally {
@@ -4104,8 +3970,6 @@ export default function ScoutPrepCommand() {
                 key={`search:${result.athlete_id}:${result.athlete_main_id || result.name || 'result'}`}
                 result={result}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
-                isProspectSearchMode={isProspectSearchMode}
-                onShowRecentProfiles={toggleRecentMode}
                 onReturnToRootList={() => undefined}
               />
             ))
@@ -4201,7 +4065,6 @@ export default function ScoutPrepCommand() {
               task={row.task}
               visibleTasks={selectedTaskRows.map((item) => item.task)}
               onToggleProspectSearchMode={toggleProspectSearchMode}
-              isProspectSearchMode={isSearchModeActive}
               onToggleRecentMode={toggleRecentMode}
               onSelectTaskListFilter={setTaskListFilter}
               onReturnToRootList={() => undefined}

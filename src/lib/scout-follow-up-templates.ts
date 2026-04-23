@@ -260,44 +260,44 @@ export function buildVoicemailFollowUpMessage(args: {
             'If this is something you still want to pursue, have one of your parents give me a quick call or text so we can connect.',
           ]
         : recipientType === 'student_athlete' && args.variant === 'call_attempt_2'
-        ? [
-            `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I received your info and wanted to learn a little more about your goals for playing in college.`,
-            '',
-            'If that’s something you’re serious about, have one of your parents give me a quick call or text.',
-          ]
-        : recipientType === 'student_athlete'
           ? [
               `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I received your info and wanted to learn a little more about your goals for playing in college.`,
               '',
               'If that’s something you’re serious about, have one of your parents give me a quick call or text.',
             ]
-    : args.variant === 'no_show'
-      ? [
-          `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout. No worries, things come up. If playing college ${scoutLabel} is still a real goal for him, I’d like to get you rescheduled so we can keep the process moving.`,
-          '',
-          `Would tomorrow or ${buildNoShowNextBestDayLabel(now)} work better?`,
-        ]
-      : args.variant === 'call_attempt_3'
-        ? [
-            `${greeting} this is ${senderName} with Prospect ID. Just checking one last time on ${args.athleteName.trim() || 'your athlete'}.`,
-            '',
-            `If playing college ${scoutLabel} is still a serious goal worth exploring, I’m happy to connect.`,
-            '',
-            'I can go ahead and mark this as no interest for now, and revisit later?',
-          ]
-        : args.variant === 'call_attempt_2'
-          ? [
-              `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID.`,
-              '',
-              `I received ${args.athleteName.trim() || 'your athlete'}'s info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
-              '',
-              'When would you have a 10 min gap today or in the next few days? I can be flexible on time.',
-            ]
-          : [
-              `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
-              '',
-              'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.',
-            ];
+          : recipientType === 'student_athlete'
+            ? [
+                `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I received your info and wanted to learn a little more about your goals for playing in college.`,
+                '',
+                'If that’s something you’re serious about, have one of your parents give me a quick call or text.',
+              ]
+            : args.variant === 'no_show'
+              ? [
+                  `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout. No worries, things come up. If playing college ${scoutLabel} is still a real goal for him, I’d like to get you rescheduled so we can keep the process moving.`,
+                  '',
+                  `Would tomorrow or ${buildNoShowNextBestDayLabel(now)} work better?`,
+                ]
+              : args.variant === 'call_attempt_3'
+                ? [
+                    `${greeting} this is ${senderName} with Prospect ID. Just checking one last time on ${args.athleteName.trim() || 'your athlete'}.`,
+                    '',
+                    `If playing college ${scoutLabel} is still a serious goal worth exploring, I’m happy to connect.`,
+                    '',
+                    'I can go ahead and mark this as no interest for now, and revisit later?',
+                  ]
+                : args.variant === 'call_attempt_2'
+                  ? [
+                      `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID.`,
+                      '',
+                      `I received ${args.athleteName.trim() || 'your athlete'}'s info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
+                      '',
+                      'When would you have a 10 min gap today or in the next few days? I can be flexible on time.',
+                    ]
+                  : [
+                      `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
+                      '',
+                      'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.',
+                    ];
 
   if (closingLine) {
     lines.push('', closingLine);
