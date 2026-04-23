@@ -36,6 +36,8 @@ export type ScoutPrepContactSelection = {
   recipientName: string | null;
 };
 
+export type ParentHonorific = 'Mr.' | 'Ms.';
+
 const LEGACY_RECRUIT_TIMEZONE_BY_IANA: Record<string, string> = {
   'America/New_York': 'EST',
   'America/Detroit': 'EST',
@@ -87,24 +89,55 @@ function lowerFirst(value: string): string {
   return value.charAt(0).toLowerCase() + value.slice(1);
 }
 
+export function resolveParentHonorificFromRelationship(
+  relationship?: string | null,
+): ParentHonorific | null {
+  const normalized = String(relationship || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (/\b(mother|mom|mum|mama|female|wife)\b/.test(normalized)) {
+    return 'Ms.';
+  }
+
+  if (/\b(father|dad|papa|male|husband)\b/.test(normalized)) {
+    return 'Mr.';
+  }
+
+  return null;
+}
+
+function getParentRelationship(
+  context: ScoutPrepContext,
+  recipientId?: ContactCandidate['role'],
+): string | null {
+  return recipientId === 'parent2'
+    ? context.contactInfo.parent2?.relationship || null
+    : context.contactInfo.parent1?.relationship || null;
+}
+
 function parentHonorific(
   context: ScoutPrepContext,
   recipientId?: ContactCandidate['role'],
-): string {
-  const relationship =
-    recipientId === 'parent2'
-      ? context.contactInfo.parent2?.relationship
-      : context.contactInfo.parent1?.relationship;
-  return String(relationship || '')
-    .trim()
-    .toLowerCase() === 'mother'
-    ? 'Ms.'
-    : 'Mr.';
+  honorificOverride?: ParentHonorific | null,
+): ParentHonorific {
+  return (
+    honorificOverride ||
+    resolveParentHonorificFromRelationship(getParentRelationship(context, recipientId)) ||
+    'Mr.'
+  );
 }
 
 function recipientGreeting(
   context: ScoutPrepContext,
   recipientId?: ContactCandidate['role'],
+  honorificOverride?: ParentHonorific | null,
 ): string {
   const selectedName =
     recipientId === 'parent2'
@@ -112,7 +145,7 @@ function recipientGreeting(
       : context.contactInfo.parent1?.name || context.contactInfo.parent2?.name;
   const selectedLastName = lastName(selectedName);
   return selectedLastName
-    ? `${parentHonorific(context, recipientId)} ${selectedLastName}`
+    ? `${parentHonorific(context, recipientId, honorificOverride)} ${selectedLastName}`
     : 'there';
 }
 
@@ -365,6 +398,7 @@ export function buildVoicemailFollowUpBody(
   crmStage?: string | null,
   currentTask?: string | null,
   now: Date = new Date(),
+  honorificOverride?: ParentHonorific | null,
 ): string {
   const recipients = getVoicemailFollowUpRecipients(context);
   const recipient =
@@ -376,6 +410,7 @@ export function buildVoicemailFollowUpBody(
   const greetingName = recipientGreeting(
     context,
     recipient?.id === 'parent2' ? 'parent2' : 'parent1',
+    honorificOverride,
   );
   const signOffTitle = `${sportLabel(context.resolved.sport)} Scouting Coordinator`;
   const dayGreeting = buildTimeOfDayGreeting(context, now);
@@ -404,6 +439,7 @@ export function buildVoicemailFollowUpBody(
     gradYear,
     signOffTitle,
     closingLine: buildWeekClosing(now),
+    now,
   });
 }
 

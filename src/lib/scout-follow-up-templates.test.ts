@@ -7,6 +7,7 @@ import {
   buildFollowUpRaycastKey,
   buildMinimalFollowUpQueueRecord,
   getReminderTimeLabel,
+  isPastTextTodayCutoff,
   resolveConfirmationFollowUpVariant,
   resolveVoicemailFollowUpVariant,
 } from './scout-follow-up-templates';
@@ -83,6 +84,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
     gradYear: '2028',
     signOffTitle: 'Football Scouting Coordinator',
     closingLine: 'Enjoy the rest of your week.',
+    now: new Date('2026-04-23T23:29:00Z'),
   });
 
   assert.match(
@@ -91,6 +93,35 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
   );
   assert.match(message, /Following up about Grayson Brown's recruiting plan\./);
   assert.match(message, /When would you have a 10 min gap today or tomorrow\?/);
+});
+
+test('buildVoicemailFollowUpMessage removes today after 7:30pm eastern cutoff', () => {
+  assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T23:29:00Z')), false);
+  assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T23:30:00Z')), true);
+
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_1',
+    greeting: 'Good evening Mr. Brown,',
+    athleteName: 'Grayson Brown',
+    sport: 'Football',
+    now: new Date('2026-04-23T23:30:00Z'),
+  });
+
+  assert.match(message, /When would you have a 10 min gap tomorrow\?/);
+  assert.doesNotMatch(message, /today or tomorrow/);
+});
+
+test('buildVoicemailFollowUpMessage removes today from attempt 2 after cutoff', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_2',
+    greeting: 'Good evening Mr. Brown,',
+    athleteName: 'Grayson Brown',
+    sport: 'Football',
+    now: new Date('2026-04-23T23:30:00Z'),
+  });
+
+  assert.match(message, /When would you have a 10 min gap tomorrow\?/);
+  assert.doesNotMatch(message, /today or in the next few days/);
 });
 
 test('buildVoicemailFollowUpMessage renders no show copy with simple next best day logic', () => {

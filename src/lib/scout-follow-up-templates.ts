@@ -148,6 +148,43 @@ function buildNoShowNextBestDayLabel(now: Date): string {
   return new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(candidate);
 }
 
+function getEasternTimeParts(date: Date): { hour: number; minute: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const hour = Number.parseInt(parts.find((part) => part.type === 'hour')?.value || '', 10);
+  const minute = Number.parseInt(parts.find((part) => part.type === 'minute')?.value || '', 10);
+
+  return {
+    hour: Number.isNaN(hour) ? date.getHours() : hour,
+    minute: Number.isNaN(minute) ? date.getMinutes() : minute,
+  };
+}
+
+export function isPastTextTodayCutoff(now: Date): boolean {
+  const { hour, minute } = getEasternTimeParts(now);
+  return hour > 19 || (hour === 19 && minute >= 30);
+}
+
+function buildAttempt1AvailabilityLine(now: Date): string {
+  if (isPastTextTodayCutoff(now)) {
+    return 'When would you have a 10 min gap tomorrow? This is my cell, so you can text me back here.';
+  }
+
+  return 'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.';
+}
+
+function buildAttempt2AvailabilityLine(now: Date): string {
+  if (isPastTextTodayCutoff(now)) {
+    return 'When would you have a 10 min gap tomorrow? I can be flexible on time.';
+  }
+
+  return 'When would you have a 10 min gap today or in the next few days? I can be flexible on time.';
+}
+
 export function buildFollowUpTitle(messageType: FollowUpMessageType, athleteName: string): string {
   return athleteName.trim();
 }
@@ -291,12 +328,12 @@ export function buildVoicemailFollowUpMessage(args: {
                       '',
                       `I received ${args.athleteName.trim() || 'your athlete'}'s info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
                       '',
-                      'When would you have a 10 min gap today or in the next few days? I can be flexible on time.',
+                      buildAttempt2AvailabilityLine(now),
                     ]
                   : [
                       `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
                       '',
-                      'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.',
+                      buildAttempt1AvailabilityLine(now),
                     ];
 
   if (closingLine) {

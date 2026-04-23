@@ -44,9 +44,11 @@ import {
   getVoicemailFollowUpRecipients,
   getProspectContactShortcutCandidates,
   normalizePhoneForMessages,
+  resolveParentHonorificFromRelationship,
   type ProspectContactShortcutCandidate,
   selectScoutPrepContactNumbers,
 } from './lib/scout-prep-contact';
+import { resolveParentHonorificWithRayAI } from './lib/raycast-ai';
 import {
   buildScoutPrepDetailMarkdown,
   buildScoutPrepMetadata,
@@ -206,26 +208,47 @@ function getTaskDisplayTitle(
   );
 }
 
-function shouldAutoCompletePostCallTask(
-  stageLabel: string,
-  task?: ScoutPortalTask | null,
-): boolean {
+function resolvePostCallVoicemailVariant(stageLabel: string): VoicemailFollowUpVariant | null {
   const normalizedStage = String(stageLabel || '').trim();
-  const taskTitle = stripMoveThisTaskPrefix(task?.title) || '';
 
   if (normalizedStage === LEFT_VOICE_MAIL_1_LABEL) {
-    return true;
+    return 'call_attempt_1';
   }
 
-  if (normalizedStage === LEFT_VOICE_MAIL_2_LABEL && taskTitle === 'Call Attempt 2') {
-    return true;
+  if (normalizedStage === LEFT_VOICE_MAIL_2_LABEL) {
+    return 'call_attempt_2';
   }
 
-  if (normalizedStage === NEVER_SPOKE_TO_LABEL && taskTitle === 'Call Attempt 3') {
-    return true;
+  if (normalizedStage === NEVER_SPOKE_TO_LABEL) {
+    return 'call_attempt_3';
   }
 
-  return false;
+  return null;
+}
+
+function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): string | null {
+  if (variant === 'call_attempt_1') return 'Call Attempt 1';
+  if (variant === 'call_attempt_2') return 'Call Attempt 2';
+  if (variant === 'call_attempt_3') return 'Call Attempt 3';
+  return null;
+}
+
+function resolveVoicemailLifecycleTaskFromList(
+  context: ScoutPrepContext,
+  variant: VoicemailFollowUpVariant,
+): ScoutAthleteTask | null {
+  const expectedTaskTitle = getVoicemailLifecycleTaskTitle(variant);
+  if (!expectedTaskTitle) {
+    return null;
+  }
+
+  return (
+    findNewestIncompleteTaskByTitle(context.tasks, expectedTaskTitle) ||
+    getIncompleteAthleteTasks(context.tasks).find((candidate) =>
+      isVoicemailLifecycleTaskMatch(candidate, variant),
+    ) ||
+    null
+  );
 }
 
 function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
@@ -1257,43 +1280,6 @@ function VoicemailFollowUpRecipientForm({
     currentTask: currentTask || task.title || null,
   });
 
-  function resolveLifecycleFollowUpTask(
-    variant: VoicemailFollowUpVariant,
-  ): ScoutAthleteTask | null {
-    if (variant === 'no_show') {
-      return null;
-    }
-
-    const expectedTaskTitle =
-      variant === 'call_attempt_1'
-        ? 'Call Attempt 1'
-        : variant === 'call_attempt_2'
-          ? 'Call Attempt 2'
-          : 'Call Attempt 3';
-    const directTaskTitle = stripMoveThisTaskPrefix(task.title) || '';
-    const directTaskId = String(task.task_id || '').trim();
-
-    if (directTaskId && isVoicemailLifecycleTaskMatch(task, variant)) {
-      return {
-        task_id: directTaskId,
-        title: directTaskTitle || expectedTaskTitle,
-        assigned_owner: task.assigned_owner || null,
-        description: task.description || directTaskTitle,
-      };
-    }
-
-    const exactTitleMatch = findNewestIncompleteTaskByTitle(context.tasks, expectedTaskTitle);
-    if (exactTitleMatch) {
-      return exactTitleMatch;
-    }
-
-    return (
-      getIncompleteAthleteTasks(context.tasks).find((candidate) =>
-        isVoicemailLifecycleTaskMatch(candidate, variant),
-      ) || null
-    );
-  }
-
   async function openMessagesForRecipient(
     recipient?: (typeof recipients)[number],
     variant?: VoicemailFollowUpVariant,
@@ -1307,12 +1293,27 @@ function VoicemailFollowUpRecipientForm({
       return;
     }
 
+    const selectedParent =
+      recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
+    const deterministicHonorific = resolveParentHonorificFromRelationship(
+      selectedParent?.relationship,
+    );
+    const aiHonorific =
+      !deterministicHonorific && recipient.id !== 'studentAthlete'
+        ? await resolveParentHonorificWithRayAI({
+            parentName: selectedParent?.name || recipient.name,
+            relationship: selectedParent?.relationship || null,
+          }).catch(() => null)
+        : null;
+
     const body = buildVoicemailFollowUpBody(
       context,
       recipient.id,
       variant,
       crmStage,
       currentTask || task.title || null,
+      undefined,
+      deterministicHonorific || aiHonorific,
     );
 
     logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
@@ -1336,7 +1337,10 @@ function VoicemailFollowUpRecipientForm({
             onMessageSent={
               selectedVariant !== 'no_show'
                 ? async () => {
-                    const followUpTask = resolveLifecycleFollowUpTask(selectedVariant);
+                    const followUpTask = resolveVoicemailLifecycleTaskFromList(
+                      context,
+                      selectedVariant,
+                    );
                     const athleteId = String(
                       task.contact_id || context.task.contact_id || '',
                     ).trim();
@@ -1344,8 +1348,14 @@ function VoicemailFollowUpRecipientForm({
                       context.resolved.athlete_main_id || task.athlete_main_id || '',
                     ).trim();
 
-                    if (!followUpTask?.task_id || !athleteId || !athleteMainId) {
-                      throw new Error('Missing voicemail follow-up identifiers');
+                    if (!followUpTask?.task_id) {
+                      throw new Error(
+                        `Missing task list item for ${getVoicemailLifecycleTaskTitle(selectedVariant) || selectedVariant}`,
+                      );
+                    }
+
+                    if (!athleteId || !athleteMainId) {
+                      throw new Error('Missing athlete identifiers for voicemail follow-up');
                     }
 
                     await recordVoicemailFollowUpMessageSent({
@@ -2357,15 +2367,25 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
 
       let taskCompletionMessage: string | null = null;
-      if (shouldAutoCompletePostCallTask(stageLabel, task)) {
+      const postCallVoicemailVariant = resolvePostCallVoicemailVariant(stageLabel);
+      if (postCallVoicemailVariant) {
+        const postCallTask = resolveVoicemailLifecycleTaskFromList(
+          syncContext,
+          postCallVoicemailVariant,
+        );
+        if (!postCallTask?.task_id) {
+          throw new Error(
+            `Missing task list item for ${getVoicemailLifecycleTaskTitle(postCallVoicemailVariant) || stageLabel}`,
+          );
+        }
         const result = await completeScoutPrepTaskAfterVoicemail({
           athleteId,
           athleteMainId,
           contactTask: task.contact_id,
-          taskId: task.task_id,
-          taskTitle: task.title,
-          assignedOwner: task.assigned_owner,
-          description: task.description,
+          taskId: postCallTask.task_id,
+          taskTitle: getTaskDisplayTitle(postCallTask),
+          assignedOwner: postCallTask.assigned_owner,
+          description: postCallTask.description || getTaskDisplayTitle(postCallTask),
         });
         taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
       }

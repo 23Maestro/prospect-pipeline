@@ -14,6 +14,7 @@ import {
   mapTimezoneToLegacyRecruitZone,
   mergeMeetingDetailsTemplate,
   normalizePhoneForMessages,
+  resolveParentHonorificFromRelationship,
   selectScoutPrepContactNumbers,
 } from './scout-prep-contact.js';
 
@@ -66,6 +67,14 @@ test('normalizePhoneForMessages: normalizes common US inputs', () => {
   assert.equal(normalizePhoneForMessages('1-651-555-1212'), '651-555-1212');
   assert.equal(normalizePhoneForMessages('+1 (651) 555-1212'), '651-555-1212');
   assert.equal(normalizePhoneForMessages('abc'), null);
+});
+
+test('resolveParentHonorificFromRelationship: maps backend mom and dad labels', () => {
+  assert.equal(resolveParentHonorificFromRelationship('Mother'), 'Ms.');
+  assert.equal(resolveParentHonorificFromRelationship('Mom'), 'Ms.');
+  assert.equal(resolveParentHonorificFromRelationship('Father'), 'Mr.');
+  assert.equal(resolveParentHonorificFromRelationship('Dad'), 'Mr.');
+  assert.equal(resolveParentHonorificFromRelationship('Guardian'), null);
 });
 
 test('selectScoutPrepContactNumbers: prefers parent1, then parent2, then student', () => {
