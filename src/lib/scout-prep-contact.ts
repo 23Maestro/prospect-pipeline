@@ -74,7 +74,9 @@ function lastName(value?: string | null): string | null {
 }
 
 function sportLabel(value?: string | null): string {
-  const cleaned = String(value || '').trim();
+  const cleaned = String(value || '')
+    .trim()
+    .replace(/^(men's|mens|women's|womens)\s+/i, '');
   return cleaned || 'their sport';
 }
 

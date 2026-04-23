@@ -31,17 +31,27 @@ test('buildFollowUpRaycastKey creates stable keys per task type', () => {
   );
 });
 
-test('resolveVoicemailFollowUpVariant prefers attempt 2 states and otherwise falls back to attempt 1', () => {
+test('resolveVoicemailFollowUpVariant prefers no-show and later attempt states before falling back to attempt 1', () => {
   assert.equal(
     resolveVoicemailFollowUpVariant({ crmStage: 'Meeting Result No Show', currentTask: 'No Show' }),
     'no_show',
   );
   assert.equal(
-    resolveVoicemailFollowUpVariant({ crmStage: 'Left Voice Mail 2', currentTask: 'Call Attempt 2' }),
+    resolveVoicemailFollowUpVariant({ crmStage: 'Meeting Set', currentTask: 'Call Attempt 3' }),
+    'call_attempt_3',
+  );
+  assert.equal(
+    resolveVoicemailFollowUpVariant({
+      crmStage: 'Left Voice Mail 2',
+      currentTask: 'Call Attempt 2',
+    }),
     'call_attempt_2',
   );
   assert.equal(
-    resolveVoicemailFollowUpVariant({ crmStage: 'Left Voice Mail 1', currentTask: 'Call Attempt 1' }),
+    resolveVoicemailFollowUpVariant({
+      crmStage: 'Left Voice Mail 1',
+      currentTask: 'Call Attempt 1',
+    }),
     'call_attempt_1',
   );
   assert.equal(
@@ -52,7 +62,10 @@ test('resolveVoicemailFollowUpVariant prefers attempt 2 states and otherwise fal
 
 test('resolveConfirmationFollowUpVariant stays conservative unless explicit second reminder signal exists', () => {
   assert.equal(
-    resolveConfirmationFollowUpVariant({ crmStage: 'Meeting Set', currentTask: 'Confirmation Call' }),
+    resolveConfirmationFollowUpVariant({
+      crmStage: 'Meeting Set',
+      currentTask: 'Confirmation Call',
+    }),
     'confirmation_1',
   );
   assert.equal(
@@ -72,7 +85,10 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
     closingLine: 'Enjoy the rest of your week.',
   });
 
-  assert.match(message, /^Good morning Mr\. Brown, this is Jerami Singleton, college football scout with Prospect ID\./);
+  assert.match(
+    message,
+    /^Good morning Mr\. Brown, this is Jerami Singleton, college football scout with Prospect ID\./,
+  );
   assert.match(message, /Following up about Grayson Brown's recruiting plan\./);
   assert.match(message, /When would you have a 10 min gap today or tomorrow\?/);
 });
@@ -86,9 +102,34 @@ test('buildVoicemailFollowUpMessage renders no show copy with simple next best d
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(message, /^Hi Jamie, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./);
+  assert.match(
+    message,
+    /^Hi Jamie, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
+  );
   assert.match(message, /If playing college football is still a real goal for him/);
   assert.match(message, /Would tomorrow or Monday work better\?/);
+});
+
+test('buildVoicemailFollowUpMessage renders attempt 3 copy', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_3',
+    greeting: 'Good afternoon Ms. Torres,',
+    athleteName: 'Jason',
+    senderName: 'Jerami Singleton',
+    sport: "Men's Basketball",
+    signOffTitle: 'Basketball Scouting Coordinator',
+    closingLine: 'Enjoy the rest of your week.',
+  });
+
+  assert.match(message, /^Good afternoon Ms\. Torres, this is Jerami Singleton with Prospect ID\./);
+  assert.match(message, /Just checking one last time on Jason\./);
+  assert.match(
+    message,
+    /If playing college basketball is still a serious goal worth exploring, I’m happy to connect\./,
+  );
+  assert.match(message, /I can go ahead and mark this as no interest for now, and revisit later\?/);
+  assert.match(message, /Enjoy the rest of your week\./);
+  assert.match(message, /Jerami Singleton\nBasketball Scouting Coordinator\nProspect ID/);
 });
 
 test('buildCallAttempt2Message fills athlete and recipient names', () => {
@@ -100,7 +141,10 @@ test('buildCallAttempt2Message fills athlete and recipient names', () => {
     gradYear: '2027',
   });
 
-  assert.match(message, /Good morning Mr\. Brown, this is Coach Risner, college football scout with Prospect ID\./);
+  assert.match(
+    message,
+    /Good morning Mr\. Brown, this is Coach Risner, college football scout with Prospect ID\./,
+  );
   assert.match(message, /I left you another voicemail about Grayson Brown's recruiting profile\./);
   assert.match(message, /With him being a 2027, timing matters in the recruiting process/);
 });
@@ -129,7 +173,10 @@ test('buildConfirmationMessage renders short second confirmation copy', () => {
     meetingTimezone: 'PST',
   });
 
-  assert.match(message, /Coach Luther Winfield still has you down for 4:00pm pacific this afternoon\./);
+  assert.match(
+    message,
+    /Coach Luther Winfield still has you down for 4:00pm pacific this afternoon\./,
+  );
   assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
   assert.doesNotMatch(message, /zoom code/);
 });

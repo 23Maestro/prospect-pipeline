@@ -374,6 +374,28 @@ class TaskCompleteResponse(BaseModel):
     raw_response: Optional[str] = None
 
 
+class TaskCallAttempt3SentRequest(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+    task_id: str
+    completed_date: str
+    completed_time: str
+    stage: str = Field(default="Never Spoke To")
+    task_title: str = Field(default="Call Attempt 3")
+    description: str = Field(
+        default="Call the family third time. Then If you do not get a hold of them, code as 'Did Not Speak To'"
+    )
+    assigned_to: Optional[str] = Field(default="1408164")
+
+
+class TaskCallAttempt3SentResponse(BaseModel):
+    success: bool
+    task_id: Optional[str] = None
+    stage: Optional[str] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None
+
+
 class APIError(BaseModel):
     """Standardized error response."""
     success: bool = False

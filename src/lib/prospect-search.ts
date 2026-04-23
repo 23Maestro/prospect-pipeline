@@ -40,7 +40,10 @@ export function cleanPositions(positions?: string): string | null {
   return cleaned || null;
 }
 
-export function normalizePositionsWithLogging(rawPositions?: string, athleteId?: string): string | null {
+export function normalizePositionsWithLogging(
+  rawPositions?: string,
+  athleteId?: string,
+): string | null {
   const feature = 'prospect-search.positions-normalization';
   searchLogger.info('PROSPECT_POSITIONS_NORMALIZE', {
     event: 'PROSPECT_POSITIONS_NORMALIZE',

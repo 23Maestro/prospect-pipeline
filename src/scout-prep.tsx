@@ -10,13 +10,13 @@ import {
   Clipboard,
   open,
   popToRoot,
+  showHUD,
   showToast,
   useNavigation,
 } from '@raycast/api';
 import { useForm } from '@raycast/utils';
 import { spawn } from 'child_process';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import BackSyncScoutFollowUpsCommand from './back-sync-scout-follow-ups';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import {
@@ -62,6 +62,7 @@ import {
   findNewestIncompleteFollowUpTask,
   findNewestIncompleteConfirmationTask,
   loadScoutPrepContext,
+  recordCallAttempt3MessageSent,
   stripMoveThisTaskPrefix,
   updateScoutPrepTask,
 } from './lib/scout-prep';
@@ -89,18 +90,22 @@ import {
   HEAD_SCOUT_ORDER,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
-import {
-  cacheMeetingSetQueueContext,
-  inferHeadScoutNameFromText,
-  prepareConfirmationFollowUp,
-  queueConfirmationFollowUp,
-} from './lib/scout-follow-up-queue';
+import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
 import {
   resolveConfirmationFollowUpVariant,
   resolveVoicemailFollowUpVariant,
   type ConfirmationFollowUpVariant,
   type VoicemailFollowUpVariant,
 } from './lib/scout-follow-up-templates';
+import {
+  buildDefaultReminderDate,
+  buildReminderAdminUrl,
+  buildReminderDraft,
+  createReminder,
+  mapAssociatedContactsToReminderOptions,
+  type ReminderContactOption,
+  type ReminderMode,
+} from './lib/reminders';
 import {
   recordConfirmationSent,
   recordMeetingSet,
@@ -141,10 +146,16 @@ function logFailure(event: string, step: string, error: string, context?: Record
 }
 
 async function showLoadingToast(title: string, message?: string) {
+  const compactTitle = String(title || '')
+    .trim()
+    .slice(0, 28);
+  const compactMessage = String(message || '')
+    .trim()
+    .slice(0, 36);
   return showToast({
     style: Toast.Style.Animated,
-    title,
-    message,
+    title: compactTitle,
+    message: compactMessage || undefined,
   });
 }
 
@@ -204,22 +215,11 @@ function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthle
     });
 }
 
-function BackSyncFollowUpsAction() {
-  return (
-    <Action.Push
-      title="Back Sync Follow-Ups"
-      icon={Icon.Upload}
-      shortcut={{ modifiers: ['cmd', 'opt'], key: 'b' }}
-      target={<BackSyncScoutFollowUpsCommand />}
-    />
-  );
-}
-
 function SupabaseLifecycleStatusAction() {
   return (
     <Action.Push
       title="Supabase Lifecycle Status"
-      icon={Icon.Database}
+      icon={Icon.HardDrive}
       shortcut={{ modifiers: ['cmd', 'opt'], key: 's' }}
       target={<SupabaseLifecycleStatusCommand />}
     />
@@ -449,14 +449,8 @@ function buildFallbackMeetingTemplate(
 }
 
 function buildScoutPrepAdminUrl(task: ScoutPortalTask, athleteMainId?: string | null): string {
-  const params = new URLSearchParams({
-    contactid: String(task.contact_id),
-  });
   const resolvedAthleteMainId = String(athleteMainId || task.athlete_main_id || '').trim();
-  if (resolvedAthleteMainId) {
-    params.set('athlete_main_id', resolvedAthleteMainId);
-  }
-  return `${DASHBOARD_BASE_URL}/admin/athletes?${params.toString()}`;
+  return buildReminderAdminUrl(String(task.contact_id || '').trim(), resolvedAthleteMainId);
 }
 
 function buildScoutPrepTaskUrl(task: ScoutPortalTask, athleteMainId?: string | null): string {
@@ -919,17 +913,27 @@ function ScoutPrepContactDetail({
   const [isLoading, setIsLoading] = useState(!initialContext);
   const [isCreatingContact, setIsCreatingContact] = useState(false);
 
-  async function loadContactInfo() {
+  async function loadContactInfo(options?: { showToast?: boolean }) {
+    const refreshToast = options?.showToast
+      ? await showLoadingToast('Refreshing', task.athlete_name)
+      : null;
     setIsLoading(true);
     try {
       const loadedContext = await loadScoutPrepContext(task);
       setContext(loadedContext);
+      refreshToast?.hide();
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to Load Contact Info',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      if (refreshToast) {
+        refreshToast.style = Toast.Style.Failure;
+        refreshToast.title = 'Failed to Load Contact Info';
+        refreshToast.message = error instanceof Error ? error.message : 'Unknown error';
+      } else {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Failed to Load Contact Info',
+          message: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -1066,7 +1070,7 @@ function ScoutPrepContactDetail({
               title="Refresh Contact Info"
               icon={Icon.ArrowClockwise}
               shortcut={{ modifiers: ['cmd'], key: 'r' }}
-              onAction={() => void loadContactInfo()}
+              onAction={() => void loadContactInfo({ showToast: true })}
             />
             <Action.OpenInBrowser
               title="Open Contact Info on Admin"
@@ -1094,11 +1098,13 @@ function SingleRecipientMessageForm({
   recipientName,
   phone,
   initialMessage,
+  onMessageSent,
 }: {
   title: string;
   recipientName: string;
   phone: string;
   initialMessage: string;
+  onMessageSent?: () => Promise<void>;
 }) {
   const { itemProps, handleSubmit } = useForm<{ message: string }>({
     initialValues: { message: initialMessage },
@@ -1111,6 +1117,19 @@ function SingleRecipientMessageForm({
 
       if (result !== 'Success') {
         throw new Error(result);
+      }
+
+      if (onMessageSent) {
+        const toast = await showLoadingToast('Saving', 'Call Attempt 3');
+        try {
+          await onMessageSent();
+          toast.hide();
+        } catch (error) {
+          toast.style = Toast.Style.Failure;
+          toast.title = 'Sent, update failed';
+          toast.message = error instanceof Error ? error.message : String(error);
+          return;
+        }
       }
 
       await showToast({
@@ -1151,6 +1170,60 @@ function getScoutPrepParentOptions(context: ScoutPrepContext) {
       ? { id: 'parent2' as const, name: context.contactInfo.parent2.name }
       : null,
   ].filter(Boolean) as ScoutPrepParentOption[];
+}
+
+type ReminderRecipientFormValues = {
+  recipientId?: string;
+};
+
+function ReminderRecipientForm({
+  navigationTitle,
+  options,
+  defaultRecipientId,
+  actionTitle,
+  mode,
+  onSubmit,
+}: {
+  navigationTitle: string;
+  options: ReminderContactOption[];
+  defaultRecipientId?: string;
+  actionTitle: string;
+  mode: ReminderMode;
+  onSubmit: (values: ReminderRecipientFormValues & { remindAt?: Date }) => Promise<void>;
+}) {
+  const { handleSubmit, itemProps } = useForm<ReminderRecipientFormValues & { remindAt?: Date }>({
+    initialValues: {
+      recipientId: defaultRecipientId || options[0]?.id,
+      remindAt: buildDefaultReminderDate(),
+    },
+    onSubmit,
+  });
+
+  return (
+    <Form
+      navigationTitle={navigationTitle}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title={actionTitle} icon={Icon.Bell} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Dropdown {...itemProps.recipientId} title="Contact">
+        {options.map((option) => (
+          <Form.Dropdown.Item
+            key={option.id}
+            value={option.id}
+            title={`${option.label}: ${option.name}`}
+          />
+        ))}
+      </Form.Dropdown>
+      <Form.DatePicker
+        {...itemProps.remindAt}
+        title={mode === 'call' ? 'Call Time' : 'Text Time'}
+        type={Form.DatePicker.Type.DateTime}
+      />
+    </Form>
+  );
 }
 
 async function getSelectedCrmStageLabel(athleteId?: string | null): Promise<string | null> {
@@ -1227,6 +1300,15 @@ function VoicemailFollowUpRecipientForm({
     currentTask: currentTask || task.title || null,
   });
 
+  function resolveCallAttempt3TaskId(): string | null {
+    const directTaskId = String(task.task_id || '').trim();
+    if (directTaskId) {
+      return directTaskId;
+    }
+
+    return String(findNewestIncompleteFollowUpTask(context.tasks)?.task_id || '').trim() || null;
+  }
+
   async function openMessagesForRecipient(
     recipient?: (typeof recipients)[number],
     variant?: VoicemailFollowUpVariant,
@@ -1264,6 +1346,29 @@ function VoicemailFollowUpRecipientForm({
             recipientName={recipient.name}
             phone={recipient.phones[0]}
             initialMessage={body}
+            onMessageSent={
+              (variant || defaultVariant) === 'call_attempt_3'
+                ? async () => {
+                    const taskId = resolveCallAttempt3TaskId();
+                    const athleteId = String(
+                      task.contact_id || context.task.contact_id || '',
+                    ).trim();
+                    const athleteMainId = String(
+                      context.resolved.athlete_main_id || task.athlete_main_id || '',
+                    ).trim();
+
+                    if (!taskId || !athleteId || !athleteMainId) {
+                      throw new Error('Missing Call Attempt 3 identifiers');
+                    }
+
+                    await recordCallAttempt3MessageSent({
+                      athleteId,
+                      athleteMainId,
+                      taskId,
+                    });
+                  }
+                : undefined
+            }
           />,
         );
         logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
@@ -1449,7 +1554,7 @@ function RescheduleConfirmationCallForm({
     setIsSaving(true);
     const toast = await showLoadingToast(
       'Saving confirmation call',
-      'Updating task and follow-up queue',
+      'Updating task and lifecycle state',
     );
     try {
       const nextTaskTitle =
@@ -1471,7 +1576,7 @@ function RescheduleConfirmationCallForm({
         dueTime: nextDueTime,
       });
 
-      let queueError: string | null = null;
+      let syncError: string | null = null;
       try {
         const liveContext = await loadScoutPrepContext(task);
         const athleteId = String(task.contact_id || '').trim();
@@ -1488,30 +1593,7 @@ function RescheduleConfirmationCallForm({
           dueTime: nextDueTime,
           headScoutName: liveContext.resolved.head_scout || null,
           greetingOverride: buildTimeOfDayGreeting(liveContext),
-          fallbackText:
-            inferHeadScoutNameFromText(popupData?.taskdescription) ||
-            inferHeadScoutNameFromText(confirmationTask.description) ||
-            '',
-        });
-        await queueConfirmationFollowUp({
-          athleteId,
-          athleteMainId,
-          athleteName,
-          sport: liveContext.resolved.sport || null,
-          gradYear: task.grad_year || null,
-          state: liveContext.resolved.state || null,
-          parent1Name: liveContext.contactInfo.parent1?.name || null,
-          parent2Name: liveContext.contactInfo.parent2?.name || null,
-          taskId: confirmationTask.task_id,
-          currentTask,
-          dueDate: nextDueDate,
-          dueTime: nextDueTime,
-          headScoutName: liveContext.resolved.head_scout || null,
-          greetingOverride: buildTimeOfDayGreeting(liveContext),
-          fallbackText:
-            inferHeadScoutNameFromText(popupData?.taskdescription) ||
-            inferHeadScoutNameFromText(confirmationTask.description) ||
-            '',
+          fallbackText: popupData?.taskdescription || confirmationTask.description || '',
         });
         await recordRescheduledBestEffort({
           athleteId,
@@ -1522,14 +1604,14 @@ function RescheduleConfirmationCallForm({
           prepared,
         });
       } catch (error) {
-        queueError = error instanceof Error ? error.message : String(error);
+        syncError = error instanceof Error ? error.message : String(error);
       }
 
-      toast.style = queueError ? Toast.Style.Failure : Toast.Style.Success;
-      toast.title = queueError
-        ? 'Confirmation updated, queue failed'
-        : 'Confirmation call updated + queued';
-      toast.message = queueError || '';
+      toast.style = syncError ? Toast.Style.Failure : Toast.Style.Success;
+      toast.title = syncError
+        ? 'Confirmation updated, lifecycle sync failed'
+        : 'Confirmation call updated';
+      toast.message = syncError || '';
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Failed to update confirmation call';
@@ -1754,6 +1836,7 @@ function UpdateAthleteTaskPicker({
   const { push } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext);
   const [isLoading, setIsLoading] = useState(!initialContext);
+  const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialContext) {
@@ -1815,6 +1898,60 @@ function UpdateAthleteTaskPicker({
     );
   }
 
+  async function handleCompleteTaskFromList(selectedTask: ScoutAthleteTask) {
+    if (completingTaskId) return;
+
+    const athleteMainId = String(
+      context?.resolved.athlete_main_id || task.athlete_main_id || '',
+    ).trim();
+    const contactTask = String(task.contact_id || '').trim();
+    if (!athleteMainId || !contactTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing task identifiers',
+      });
+      return;
+    }
+
+    setCompletingTaskId(selectedTask.task_id);
+    try {
+      await completeScoutPrepTaskAfterVoicemail({
+        athleteId: contactTask,
+        athleteMainId,
+        contactTask,
+        taskTitle: getTaskDisplayTitle(selectedTask),
+        assignedOwner: selectedTask.assigned_owner,
+        description: selectedTask.description || getTaskDisplayTitle(selectedTask),
+        taskId: selectedTask.task_id,
+      });
+
+      setContext((current) =>
+        current
+          ? {
+              ...current,
+              tasks: current.tasks.filter(
+                (candidate) => candidate.task_id !== selectedTask.task_id,
+              ),
+            }
+          : current,
+      );
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Task completed',
+        message: getTaskDisplayTitle(selectedTask),
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to complete task',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setCompletingTaskId(null);
+    }
+  }
+
   return (
     <List
       isLoading={isLoading}
@@ -1835,6 +1972,11 @@ function UpdateAthleteTaskPicker({
               ]}
               actions={
                 <ActionPanel>
+                  <Action
+                    title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
+                    icon={Icon.CheckCircle}
+                    onAction={() => void handleCompleteTaskFromList(candidate)}
+                  />
                   <Action
                     title="Update Task"
                     icon={Icon.Pencil}
@@ -2074,10 +2216,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
     }
 
     setIsSaving(true);
-    const toast = await showLoadingToast(
-      'Saving sales stage',
-      'Updating website, Supabase, and Notion',
-    );
+    const toast = await showLoadingToast('Saving sales stage', 'Updating website and Supabase');
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -2138,24 +2277,6 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         meetingSetTimezone = meetingTimezone;
         meetingSetStartTime = startsAt || startTime;
         meetingSetAssignedOwner = selectedOpenMeeting?.assigned_owner || null;
-
-        const selectedScout =
-          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === assignedTo) || null;
-        const contextForCoach = context || (await loadScoutPrepContext(task));
-        await cacheMeetingSetQueueContext({
-          athleteId,
-          athleteMainId,
-          athleteName: task.athlete_name,
-          headScoutName:
-            String(contextForCoach.resolved.head_scout || '').trim() ||
-            meetingSetAssignedOwner ||
-            selectedScout?.scout_name ||
-            '',
-          meetingTimezone,
-          assignedTo,
-          openEventId,
-          meetingName,
-        });
       }
 
       const salesStageResult = await updateSalesStage({
@@ -2372,122 +2493,156 @@ function ScoutPrepDetail({
     null,
   );
 
-  async function handleVoicemailFollowUp() {
-    let activeContext = context;
-    if (!activeContext) {
-      try {
-        activeContext = await loadScoutPrepContext(task);
-        setContext(activeContext);
-      } catch (error) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'Failed to load contact data',
-          message: error instanceof Error ? error.message : 'Unknown error',
-        });
-        return;
-      }
-    }
-
-    const recipients = getVoicemailFollowUpRecipients(activeContext);
-    if (!recipients.length) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'No usable contact number',
-        message: 'Hydrated contact data did not include a Messages-safe number.',
-      });
-      return;
-    }
-    const crmStage = await getSelectedCrmStageLabel(task.contact_id);
-    let shouldReturnToRootList = false;
-    push(
-      <VoicemailFollowUpRecipientForm
-        task={task}
-        context={activeContext}
-        crmStage={crmStage}
-        currentTask={task.title || null}
-      />,
-      () => {
-        if (!shouldReturnToRootList) {
-          return;
-        }
-        shouldReturnToRootList = false;
-        pop();
-        onReturnToRootList?.();
-      },
-    );
-  }
-
-  async function handleSyncCallPrepToNotion() {
-    if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Scout Prep still loading',
-        message: 'Wait for the script before syncing Notion.',
-      });
-      return;
-    }
-
-    const toast = await showLoadingToast(
-      'Syncing Notion call prep',
-      'Updating script and voicemail toggles',
-    );
-
-    try {
-      let activeContext = context;
-      if (!activeContext) {
-        activeContext = await loadScoutPrepContext(task);
-        setContext(activeContext);
-      }
-
-      const parentName = getScoutPrepParentOptions(activeContext)[0]?.name || 'Parent';
-      const voicemail = buildScoutPrepLeavingVoicemailBody({
-        parentName,
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        sport: activeContext.resolved.sport,
-      });
-
-      const [scriptResult, voicemailResult] = await Promise.all([
-        syncCallScriptToggleToNotion({
-          target: 'script',
-          markdown,
-        }),
-        syncCallScriptToggleToNotion({
-          target: 'voicemail',
-          markdown: voicemail,
-        }),
-      ]);
-
-      toast.style = Toast.Style.Success;
-      toast.title = 'Notion call prep updated';
-      toast.message = `Replaced ${scriptResult.toggleTitle} and ${voicemailResult.toggleTitle}.`;
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Notion sync failed';
-      toast.message = error instanceof Error ? error.message : String(error);
-    }
-  }
-
-  async function resolveNotesContext(): Promise<ScoutPrepContext | null> {
+  async function ensureContext(
+    loadingTitle: string,
+    loadingMessage: string,
+    failureTitle: string,
+  ): Promise<ScoutPrepContext | null> {
     if (context) {
       return context;
     }
 
+    const toast = await showLoadingToast(loadingTitle, loadingMessage);
     try {
       const loadedContext = await loadScoutPrepContext(task);
       setContext(loadedContext);
+      toast.hide();
       return loadedContext;
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Missing ID',
-        message: error instanceof Error ? error.message : 'Could not resolve athlete_main_id',
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = failureTitle;
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
       return null;
     }
   }
 
+  async function handleCreateReminder(mode: ReminderMode) {
+    const activeContext =
+      context ||
+      (await ensureContext(
+        mode === 'call' ? 'Call reminder' : 'Text reminder',
+        task.athlete_name,
+        'Failed to load contact data',
+      ));
+    if (!activeContext) {
+      return;
+    }
+
+    const options = mapAssociatedContactsToReminderOptions(
+      getProspectContactShortcutCandidates(activeContext),
+    );
+    if (!options.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No reminder contact found',
+      });
+      return;
+    }
+
+    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
+      const toast = await showLoadingToast(
+        mode === 'call' ? 'Creating call' : 'Creating text',
+        option.name,
+      );
+      try {
+        await createReminder(
+          buildReminderDraft({
+            mode,
+            athleteName: activeContext?.contactInfo.studentAthlete.name || task.athlete_name,
+            contactName: option.name,
+            phone: option.phone,
+            contactId: String(task.contact_id || '').trim(),
+            athleteMainId: String(
+              activeContext?.resolved.athlete_main_id || task.athlete_main_id || '',
+            ).trim(),
+            remindAt,
+          }),
+        );
+        toast.hide();
+        await showHUD(
+          mode === 'call'
+            ? `Call reminder set for ${option.name}`
+            : `Text reminder set for ${option.name}`,
+        );
+        await popToRoot({ clearSearchBar: true });
+      } catch (error) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Reminder failed';
+        toast.message = error instanceof Error ? error.message : String(error);
+      }
+    };
+
+    push(
+      <ReminderRecipientForm
+        navigationTitle={`${mode === 'call' ? 'Call' : 'Text'} Reminder • ${task.athlete_name}`}
+        options={options}
+        defaultRecipientId={options[0]?.id}
+        actionTitle={mode === 'call' ? 'Create Call Reminder' : 'Create Text Reminder'}
+        mode={mode}
+        onSubmit={async (values) => {
+          const selected =
+            options.find((option) => option.id === values.recipientId) || options[0] || null;
+          if (!selected) {
+            throw new Error('No reminder contact selected');
+          }
+          await createForOption(selected, values.remindAt);
+        }}
+      />,
+    );
+  }
+
+  async function handleVoicemailFollowUp() {
+    const activeContext =
+      context ||
+      (await ensureContext('Voicemail', task.athlete_name, 'Failed to load contact data'));
+    if (!activeContext) {
+      return;
+    }
+
+    const toast = await showLoadingToast('Voicemail', 'Loading stage');
+    const recipients = getVoicemailFollowUpRecipients(activeContext);
+    if (!recipients.length) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'No usable contact number';
+      toast.message = 'Hydrated contact data did not include a Messages-safe number.';
+      return;
+    }
+
+    try {
+      const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+      toast.hide();
+      let shouldReturnToRootList = false;
+      push(
+        <VoicemailFollowUpRecipientForm
+          task={task}
+          context={activeContext}
+          crmStage={crmStage}
+          currentTask={task.title || null}
+        />,
+        () => {
+          if (!shouldReturnToRootList) {
+            return;
+          }
+          shouldReturnToRootList = false;
+          pop();
+          onReturnToRootList?.();
+        },
+      );
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Failed to load current stage';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+    }
+  }
+
+  async function resolveNotesContext(options?: {
+    loadingTitle?: string;
+  }): Promise<ScoutPrepContext | null> {
+    return ensureContext(options?.loadingTitle || 'Loading notes', task.athlete_name, 'Missing ID');
+  }
+
   async function handleViewNotes() {
-    const notesContext = await resolveNotesContext();
+    const notesContext = await resolveNotesContext({ loadingTitle: 'Loading notes' });
     if (!notesContext) {
       return;
     }
@@ -2503,7 +2658,7 @@ function ScoutPrepDetail({
   }
 
   async function handleAddNote() {
-    const notesContext = await resolveNotesContext();
+    const notesContext = await resolveNotesContext({ loadingTitle: 'Add note' });
     if (!notesContext) {
       return;
     }
@@ -2520,19 +2675,10 @@ function ScoutPrepDetail({
   }
 
   async function resolveConfirmationTask(): Promise<ScoutAthleteTask | null> {
-    let activeContext = context;
+    const activeContext =
+      context || (await ensureContext('Loading task', task.athlete_name, 'Missing task context'));
     if (!activeContext) {
-      try {
-        activeContext = await loadScoutPrepContext(task);
-        setContext(activeContext);
-      } catch (error) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'Missing task context',
-          message: error instanceof Error ? error.message : 'Could not load athlete tasks',
-        });
-        return null;
-      }
+      return null;
     }
 
     return findNewestIncompleteConfirmationTask(activeContext.tasks);
@@ -2552,10 +2698,10 @@ function ScoutPrepDetail({
   }
 
   async function handleTextMeetingReminder() {
-    let activeContext = context;
+    const activeContext =
+      context || (await ensureContext('Meeting reminder', task.athlete_name, 'Missing ID'));
     if (!activeContext) {
-      activeContext = await loadScoutPrepContext(task);
-      setContext(activeContext);
+      return;
     }
 
     const reminderRecipient = getMeetingReminderRecipient(activeContext);
@@ -2591,10 +2737,7 @@ function ScoutPrepDetail({
         navigationTitle={`Meeting Reminder • ${task.athlete_name}`}
         defaultVariant={defaultVariant}
         onSubmit={async (values) => {
-          const toast = await showLoadingToast(
-            'Preparing meeting reminder',
-            'Resolving confirmation task and current meeting',
-          );
+          const toast = await showLoadingToast('Meeting reminder', 'Loading meeting');
           const prepared = await prepareConfirmationFollowUp({
             athleteId: String(task.contact_id || '').trim(),
             athleteMainId,
@@ -2613,30 +2756,6 @@ function ScoutPrepDetail({
           if (!prepared.canDraft) {
             toast.hide();
             throw new Error(prepared.resolvedAppointment.reason);
-          }
-
-          try {
-            await queueConfirmationFollowUp({
-              athleteId: String(task.contact_id || '').trim(),
-              athleteMainId,
-              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-              sport: activeContext.resolved.sport || null,
-              gradYear: task.grad_year || null,
-              state: activeContext.resolved.state || null,
-              parent1Name: activeContext.contactInfo.parent1?.name || null,
-              parent2Name: activeContext.contactInfo.parent2?.name || null,
-              taskId: confirmationTask.task_id,
-              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-              dueDate: confirmationTask.due_date || task.due_date || null,
-              dueTime: null,
-              headScoutName: activeContext.resolved.head_scout || null,
-              greetingOverride: buildTimeOfDayGreeting(activeContext),
-              recipientNames: reminderRecipient.recipientNames,
-              fallbackText: confirmationTask.description || '',
-              reminderVariant: values.variant,
-            });
-          } catch {
-            // Notion failure should not block message draft.
           }
 
           try {
@@ -2686,6 +2805,53 @@ function ScoutPrepDetail({
     );
   }
 
+  async function handleSyncCallPrepToNotion() {
+    if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Scout Prep still loading',
+        message: 'Wait for the script before syncing Notion.',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Syncing Notion', 'Updating toggles');
+
+    try {
+      let activeContext = context;
+      if (!activeContext) {
+        activeContext = await loadScoutPrepContext(task);
+        setContext(activeContext);
+      }
+
+      const parentName = getScoutPrepParentOptions(activeContext)[0]?.name || 'Parent';
+      const voicemail = buildScoutPrepLeavingVoicemailBody({
+        parentName,
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        sport: activeContext.resolved.sport,
+      });
+
+      const [scriptResult, voicemailResult] = await Promise.all([
+        syncCallScriptToggleToNotion({
+          target: 'script',
+          markdown,
+        }),
+        syncCallScriptToggleToNotion({
+          target: 'voicemail',
+          markdown: voicemail,
+        }),
+      ]);
+
+      toast.style = Toast.Style.Success;
+      toast.title = 'Notion call prep updated';
+      toast.message = `Replaced ${scriptResult.toggleTitle} and ${voicemailResult.toggleTitle}.`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Notion sync failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function handleCompleteConfirmationTask() {
     const confirmationTask = await resolveConfirmationTask();
     if (!confirmationTask) {
@@ -2708,7 +2874,7 @@ function ScoutPrepDetail({
       return;
     }
 
-    const toast = await showLoadingToast('Completing confirmation call', 'Saving task completion');
+    const toast = await showLoadingToast('Completing task', 'Saving');
 
     try {
       await completeScoutPrepTaskAfterVoicemail({
@@ -2823,6 +2989,18 @@ function ScoutPrepDetail({
             onAction={() => void handleTextMeetingReminder()}
           />
           <Action
+            title="Create Call Reminder"
+            icon={Icon.Phone}
+            shortcut={{ modifiers: ['cmd'], key: '3' }}
+            onAction={() => void handleCreateReminder('call')}
+          />
+          <Action
+            title="Create Text Reminder"
+            icon={Icon.Bell}
+            shortcut={{ modifiers: ['cmd'], key: '4' }}
+            onAction={() => void handleCreateReminder('text')}
+          />
+          <Action
             title="Sync Notion Call Prep"
             icon={Icon.Upload}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
@@ -2922,20 +3100,42 @@ function ScoutPrepTaskItem({
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onReturnToRootList: () => void;
 }) {
-  const { push } = useNavigation();
+  const { push, pop } = useNavigation();
 
-  async function handleVoicemailFollowUp() {
+  async function ensureTaskContext(
+    loadingTitle: string,
+    failureTitle: string,
+  ): Promise<ScoutPrepContext | null> {
+    const toast = await showLoadingToast(loadingTitle, task.athlete_name);
     try {
       const context = await loadScoutPrepContext(task);
-      const recipients = getVoicemailFollowUpRecipients(context);
-      if (!recipients.length) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'No usable contact number',
-        });
-        return;
-      }
+      toast.hide();
+      return context;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = failureTitle;
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+      return null;
+    }
+  }
+
+  async function handleVoicemailFollowUp() {
+    const context = await ensureTaskContext('Voicemail', 'Failed to load contact data');
+    if (!context) {
+      return;
+    }
+
+    const toast = await showLoadingToast('Voicemail', 'Loading stage');
+    const recipients = getVoicemailFollowUpRecipients(context);
+    if (!recipients.length) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'No usable contact number';
+      return;
+    }
+
+    try {
       const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+      toast.hide();
       let shouldResetRootList = false;
       push(
         <VoicemailFollowUpRecipientForm
@@ -2953,25 +3153,14 @@ function ScoutPrepTaskItem({
         },
       );
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to load contact data',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Failed to load current stage';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
     }
   }
 
   async function loadTaskNotesContext(): Promise<ScoutPrepContext | null> {
-    try {
-      return await loadScoutPrepContext(task);
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Missing ID',
-        message: error instanceof Error ? error.message : 'Could not resolve athlete_main_id',
-      });
-      return null;
-    }
+    return ensureTaskContext('Loading notes', 'Missing ID');
   }
 
   async function handleViewNotes() {
@@ -2989,7 +3178,7 @@ function ScoutPrepTaskItem({
   }
 
   async function handleAddNote() {
-    const context = await loadTaskNotesContext();
+    const context = await ensureTaskContext('Add note', 'Missing ID');
     if (!context) {
       return;
     }
@@ -3004,7 +3193,7 @@ function ScoutPrepTaskItem({
   }
 
   async function resolveConfirmationTask(): Promise<ScoutAthleteTask | null> {
-    const context = await loadTaskNotesContext();
+    const context = await ensureTaskContext('Loading task', 'Missing ID');
     if (!context) {
       return null;
     }
@@ -3083,30 +3272,6 @@ function ScoutPrepTaskItem({
           if (!prepared.canDraft) {
             toast.hide();
             throw new Error(prepared.resolvedAppointment.reason);
-          }
-
-          try {
-            await queueConfirmationFollowUp({
-              athleteId: String(task.contact_id || '').trim(),
-              athleteMainId,
-              athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-              sport: activeContext.resolved.sport || null,
-              gradYear: task.grad_year || null,
-              state: activeContext.resolved.state || null,
-              parent1Name: activeContext.contactInfo.parent1?.name || null,
-              parent2Name: activeContext.contactInfo.parent2?.name || null,
-              taskId: confirmationTask.task_id,
-              currentTask: stripMoveThisTaskPrefix(confirmationTask.title) || 'Confirmation Call',
-              dueDate: confirmationTask.due_date || task.due_date || null,
-              dueTime: null,
-              headScoutName: activeContext.resolved.head_scout || null,
-              greetingOverride: buildTimeOfDayGreeting(activeContext),
-              recipientNames: reminderRecipient.recipientNames,
-              fallbackText: confirmationTask.description || '',
-              reminderVariant: values.variant,
-            });
-          } catch {
-            // Notion failure should not block message draft.
           }
 
           try {
@@ -3210,7 +3375,7 @@ function ScoutPrepTaskItem({
           />
           <Action
             title={`Batch Contact Create (${visibleTasks.length})`}
-            icon={Icon.PersonAdd}
+            icon={Icon.Person}
             onAction={() => void handleBatchCreateProspectContacts(visibleTasks)}
           />
           <Action.Push
@@ -3293,7 +3458,6 @@ function ScoutPrepTaskItem({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
               onAction={onToggleProspectSearchMode}
             />
-            <BackSyncFollowUpsAction />
             <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
@@ -3361,7 +3525,6 @@ function ProspectSearchListItem({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
               onAction={onToggleProspectSearchMode}
             />
-            <BackSyncFollowUpsAction />
             <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
@@ -3432,7 +3595,6 @@ function RecentProfileListItem({
               shortcut={{ modifiers: ['cmd'], key: 'f' }}
               onAction={onToggleRecentMode}
             />
-            <BackSyncFollowUpsAction />
             <SupabaseLifecycleStatusAction />
           </ActionPanel.Section>
         </ActionPanel>
@@ -3817,7 +3979,6 @@ export default function ScoutPrepCommand() {
                     shortcut={{ modifiers: ['cmd'], key: 'f' }}
                     onAction={toggleRecentMode}
                   />
-                  <BackSyncFollowUpsAction />
                   <SupabaseLifecycleStatusAction />
                 </ActionPanel>
               }
@@ -3862,7 +4023,6 @@ export default function ScoutPrepCommand() {
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                     onAction={toggleProspectSearchMode}
                   />
-                  <BackSyncFollowUpsAction />
                   <SupabaseLifecycleStatusAction />
                 </ActionPanel>
               }
@@ -3917,7 +4077,6 @@ export default function ScoutPrepCommand() {
                   shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                   onAction={toggleProspectSearchMode}
                 />
-                <BackSyncFollowUpsAction />
                 <SupabaseLifecycleStatusAction />
               </ActionPanel.Section>
             </ActionPanel>

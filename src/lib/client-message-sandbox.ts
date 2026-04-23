@@ -38,6 +38,7 @@ export type ClientDirectoryMatch = {
   displayName: string;
   athleteName?: string | null;
   associateLabel?: string | null;
+  associatedClients?: PipelineClientAssociate[];
   segment: ClientSegment;
   crmStage?: string | null;
   taskStatus?: string | null;
@@ -225,6 +226,9 @@ function mergeMatch(
     displayName: existing.displayName || incoming.displayName,
     athleteName: existing.athleteName || incoming.athleteName,
     associateLabel: existing.associateLabel || incoming.associateLabel,
+    associatedClients: existing.associatedClients?.length
+      ? existing.associatedClients
+      : incoming.associatedClients || [],
     crmStage: existing.crmStage || incoming.crmStage,
     taskStatus: existing.taskStatus || incoming.taskStatus,
     currentTaskTitle: existing.currentTaskTitle || incoming.currentTaskTitle,
@@ -240,7 +244,10 @@ async function readPipelineExport(): Promise<PipelineClientExportPayload> {
   if (!fs.existsSync(PIPELINE_EXPORT_PATH)) {
     const payload = await buildClientMessageExportPayload().catch(() => null);
     if (!payload) {
-      return {};
+      return {
+        generatedAt: undefined,
+        rows: [],
+      };
     }
 
     await fs.promises.mkdir(dirname(PIPELINE_EXPORT_PATH), { recursive: true });
@@ -312,6 +319,7 @@ export async function loadClientDirectory() {
           displayName: associate.name || row.athleteName,
           athleteName: row.athleteName,
           associateLabel: associate.relationshipLabel,
+          associatedClients: associates,
           segment: row.segment,
           crmStage: row.crmStage,
           taskStatus: row.taskStatus,
@@ -382,21 +390,23 @@ export function useClientInboxChats(searchText = '') {
     revalidate: revalidateDirectory,
   } = usePromise(loadClientDirectory, []);
 
-  const chats = (rawData || [])
-    .map((chat) => {
-      const participantIdentifier = String(chat.participant_identifier || '').trim();
-      const resolvedMatch = resolveClientMatchForChat(chat, clientDirectory?.matchesByPhone);
-      if (!resolvedMatch) return null;
-      return {
-        ...chat,
-        participant_identifier: participantIdentifier,
-        displayName: resolveInboxDisplayName(chat, resolvedMatch.clientMatch),
-        matchedPhones: resolvedMatch.matchedPhones,
-        avatar: { source: Icon.PersonCircle, tintColor: Color.SecondaryText } as Image.ImageLike,
-        clientMatch: resolvedMatch.clientMatch,
-      } satisfies ClientInboxChat;
-    })
-    .filter((chat): chat is ClientInboxChat => Boolean(chat))
+  const chats = (
+    (rawData || [])
+      .map((chat) => {
+        const participantIdentifier = String(chat.participant_identifier || '').trim();
+        const resolvedMatch = resolveClientMatchForChat(chat, clientDirectory?.matchesByPhone);
+        if (!resolvedMatch) return null;
+        return {
+          ...chat,
+          participant_identifier: participantIdentifier,
+          displayName: resolveInboxDisplayName(chat, resolvedMatch.clientMatch),
+          matchedPhones: resolvedMatch.matchedPhones,
+          avatar: { source: Icon.PersonCircle, tintColor: Color.SecondaryText } as Image.ImageLike,
+          clientMatch: resolvedMatch.clientMatch,
+        } satisfies ClientInboxChat;
+      })
+      .filter(Boolean) as ClientInboxChat[]
+  )
     .filter((chat) => {
       const terms = searchText.toLowerCase().split(/\s+/).filter(Boolean);
       if (!terms.length) return true;

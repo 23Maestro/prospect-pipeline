@@ -5,6 +5,8 @@ import {
   Icon,
   List,
   Toast,
+  popToRoot,
+  showHUD,
   showToast,
   useNavigation,
 } from '@raycast/api';
@@ -13,6 +15,14 @@ import { format } from 'date-fns';
 import { useState } from 'react';
 
 import ExportClientMessageInboxCommand from './export-client-message-inbox';
+import {
+  buildDefaultReminderDate,
+  buildReminderDraft,
+  createReminder,
+  resolveClientReminderTarget,
+  type ReminderContactOption,
+  type ReminderMode,
+} from './lib/reminders';
 import {
   type ClientInboxChat,
   type ClientThreadMessage,
@@ -77,6 +87,54 @@ function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
         {...itemProps.message}
         title="Follow-Up"
         placeholder="Write the follow-up, then continue in the Messages service UI."
+      />
+    </Form>
+  );
+}
+
+function ReminderRecipientForm({
+  navigationTitle,
+  options,
+  actionTitle,
+  mode,
+  onSubmit,
+}: {
+  navigationTitle: string;
+  options: ReminderContactOption[];
+  actionTitle: string;
+  mode: ReminderMode;
+  onSubmit: (values: { recipientId?: string; remindAt?: Date }) => Promise<void>;
+}) {
+  const { handleSubmit, itemProps } = useForm<{ recipientId?: string; remindAt?: Date }>({
+    initialValues: {
+      recipientId: options[0]?.id,
+      remindAt: buildDefaultReminderDate(),
+    },
+    onSubmit,
+  });
+
+  return (
+    <Form
+      navigationTitle={navigationTitle}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title={actionTitle} icon={Icon.Bell} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Dropdown {...itemProps.recipientId} title="Contact">
+        {options.map((option) => (
+          <Form.Dropdown.Item
+            key={`${option.id}-${option.phone}`}
+            value={option.id}
+            title={`${option.label}: ${option.name}`}
+          />
+        ))}
+      </Form.Dropdown>
+      <Form.DatePicker
+        {...itemProps.remindAt}
+        title={mode === 'call' ? 'Call Time' : 'Text Time'}
+        type={Form.DatePicker.Type.DateTime}
       />
     </Form>
   );
@@ -182,6 +240,71 @@ export default function ClientMessageInboxCommand() {
     return permissionView;
   }
 
+  async function handleCreateReminder(chat: ClientInboxChat, mode: ReminderMode) {
+    const associatedClients = chat.clientMatch.associatedClients || [];
+    const { options, immediateOption } = resolveClientReminderTarget({
+      isGroup: chat.is_group,
+      matchedPhones: chat.matchedPhones,
+      associatedClients,
+    });
+
+    if (!options.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No reminder contact found',
+      });
+      return;
+    }
+
+    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
+      const toast = await showToast({
+        style: Toast.Style.Animated,
+        title: mode === 'call' ? 'Creating call reminder' : 'Creating text reminder',
+        message: `${option.name} • ${chat.clientMatch.athleteName || chat.displayName}`,
+      });
+      try {
+        await createReminder(
+          buildReminderDraft({
+            mode,
+            athleteName: chat.clientMatch.athleteName || chat.displayName,
+            contactName: option.name,
+            phone: option.phone,
+            contactId: String(chat.clientMatch.contactId || '').trim(),
+            athleteMainId: String(chat.clientMatch.athleteMainId || '').trim(),
+            remindAt,
+          }),
+        );
+        toast.hide();
+        await showHUD(
+          mode === 'call'
+            ? `Call reminder set for ${option.name}`
+            : `Text reminder set for ${option.name}`,
+        );
+        await popToRoot({ clearSearchBar: true });
+      } catch (error) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Reminder failed';
+        toast.message = error instanceof Error ? error.message : String(error);
+      }
+    };
+
+    push(
+      <ReminderRecipientForm
+        navigationTitle={`${mode === 'call' ? 'Call' : 'Text'} Reminder • ${chat.displayName}`}
+        options={immediateOption ? [immediateOption] : options}
+        actionTitle={mode === 'call' ? 'Create Call Reminder' : 'Create Text Reminder'}
+        mode={mode}
+        onSubmit={async (values) => {
+          const availableOptions = immediateOption ? [immediateOption] : options;
+          const selected =
+            availableOptions.find((option) => option.id === values.recipientId) ||
+            availableOptions[0];
+          await createForOption(selected, values.remindAt);
+        }}
+      />,
+    );
+  }
+
   return (
     <List
       navigationTitle="Client Message Inbox"
@@ -214,8 +337,20 @@ export default function ClientMessageInboxCommand() {
               />
               <Action
                 title="Send Follow-Up"
-                icon={Icon.PaperPlane}
+                icon={Icon.Airplane}
                 onAction={() => push(<FollowUpDraftForm chat={chat} />)}
+              />
+              <Action
+                title="Create Call Reminder"
+                icon={Icon.Phone}
+                shortcut={{ modifiers: ['cmd'], key: '3' }}
+                onAction={() => void handleCreateReminder(chat, 'call')}
+              />
+              <Action
+                title="Create Text Reminder"
+                icon={Icon.Bell}
+                shortcut={{ modifiers: ['cmd'], key: '4' }}
+                onAction={() => void handleCreateReminder(chat, 'text')}
               />
               {chat.is_group ? (
                 <Action.Open

@@ -180,10 +180,9 @@ function formatCurrentMeetingLabel(meeting?: BookedMeetingEvent | null): string 
   if (!meeting?.start || !meeting?.end) {
     return null;
   }
-  return `Current: ${formatHeadScoutSlotDate(meeting.start)} ${formatHeadScoutSlotTimeRange(
-    meeting.start,
-    meeting.end,
-  ).split(' - ')[0]}`;
+  return `Current: ${formatHeadScoutSlotDate(meeting.start)} ${
+    formatHeadScoutSlotTimeRange(meeting.start, meeting.end).split(' - ')[0]
+  }`;
 }
 
 function getTaskTypeLabel(task?: AppointmentTaskSnapshot | null): 'Call' | 'Follow Up' | 'Confirm' {
@@ -256,7 +255,9 @@ export function buildBookedMeetingTitle(args: {
 }
 
 export function findHeadScoutSchedule(headScoutName?: string | null) {
-  const normalized = String(headScoutName || '').trim().toLowerCase();
+  const normalized = String(headScoutName || '')
+    .trim()
+    .toLowerCase();
   if (!normalized) return null;
   return (
     HEAD_SCOUT_ORDER.find((scout) => scout.scout_name.trim().toLowerCase() === normalized) || null
@@ -421,8 +422,7 @@ export async function hydrateResolvedAppointment(
   const resolvedState = String(liveResolve?.state || args.state || '').trim();
   const resolvedSport = String(liveResolve?.sport || args.sport || '').trim();
   const resolvedGradYear = String(liveResolve?.grad_year || args.gradYear || '').trim();
-  const assignedScout =
-    String(liveResolve?.head_scout || args.headScoutName || '').trim() || null;
+  const assignedScout = String(liveResolve?.head_scout || args.headScoutName || '').trim() || null;
   const headScout = findHeadScoutSchedule(assignedScout);
   const bookedMeetingTitle = buildBookedMeetingTitle({
     athleteName: args.athleteName,
@@ -441,8 +441,9 @@ export async function hydrateResolvedAppointment(
         });
         const ownerMatches = (booked.events || []).filter(
           (event) =>
-            String(event.assigned_owner || '').trim().toLowerCase() ===
-            headScout.scout_name.trim().toLowerCase(),
+            String(event.assigned_owner || '')
+              .trim()
+              .toLowerCase() === headScout.scout_name.trim().toLowerCase(),
         );
         bookedMeetings = ownerMatches.length ? ownerMatches : booked.events || [];
       } else {

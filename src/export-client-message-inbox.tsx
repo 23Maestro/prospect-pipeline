@@ -5,7 +5,10 @@ import {
   type ClientMessageExportPayload,
 } from './lib/client-message-export';
 
-function buildMarkdown(payload?: ClientMessageExportPayload | null, exportPath?: string | null): string {
+function buildMarkdown(
+  payload?: ClientMessageExportPayload | null,
+  exportPath?: string | null,
+): string {
   if (!payload) {
     return [
       '# Client Message Inbox Export',

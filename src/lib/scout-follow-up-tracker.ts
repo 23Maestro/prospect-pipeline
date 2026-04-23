@@ -110,7 +110,9 @@ function buildRaycastKey(entry: LightweightFollowUpTrackerEntry): string {
 }
 
 function buildStage(entry: LightweightFollowUpTrackerEntry): string {
-  return stripMoveThisTaskPrefix(entry.stage) || String(entry.stage || '').trim() || 'Pending follow-up';
+  return (
+    stripMoveThisTaskPrefix(entry.stage) || String(entry.stage || '').trim() || 'Pending follow-up'
+  );
 }
 
 function buildTaskStatus(entry: LightweightFollowUpTrackerEntry): string {
@@ -137,9 +139,7 @@ function buildSelectCandidates(value: string, mode: 'stage' | 'status'): string[
     mode === 'stage' && lifecycle.normalizedStage === 'meeting_follow_up'
       ? 'Spoke To - Follow Up'
       : null,
-    mode === 'stage' && lifecycle.normalizedStage === 'closed_lost'
-      ? 'Not Interested'
-      : null,
+    mode === 'stage' && lifecycle.normalizedStage === 'closed_lost' ? 'Not Interested' : null,
     mode === 'status' && /call attempt 1/i.test(normalized) ? 'Call Attempt 1' : null,
     mode === 'status' && /call attempt 2/i.test(normalized) ? 'Call Attempt 2' : null,
     mode === 'status' && /call attempt 3/i.test(normalized) ? 'Call Attempt 3' : null,
@@ -174,14 +174,17 @@ function assignSelectLikeProperty(
   const property = getProperty(schema, name);
   if (!property?.type) return false;
 
-  const normalizedCandidates = candidates.map((value) => String(value || '').trim()).filter(Boolean);
+  const normalizedCandidates = candidates
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
   if (!normalizedCandidates.length) return false;
 
   if (property.type === 'select' || property.type === 'status') {
     const options = getPropertyOptions(property);
     const match = normalizedCandidates.find((candidate) => options.includes(candidate));
     if (!match) return false;
-    properties[name] = property.type === 'status' ? { status: { name: match } } : selectProperty(match);
+    properties[name] =
+      property.type === 'status' ? { status: { name: match } } : selectProperty(match);
     return true;
   }
 

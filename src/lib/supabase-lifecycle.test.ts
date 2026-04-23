@@ -1,10 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  buildAppointmentId,
-  buildAthleteKey,
-  buildReminderDedupeKey,
-} from './supabase-lifecycle';
+import { buildAppointmentId, buildAthleteKey, buildReminderDedupeKey } from './supabase-lifecycle';
 
 test('buildAthleteKey keeps athlete and main id together', () => {
   assert.equal(buildAthleteKey('123', '456'), '123:456');

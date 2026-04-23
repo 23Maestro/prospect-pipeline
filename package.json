@@ -92,26 +92,26 @@
     }
   ],
   "dependencies": {
-    "@huggingface/transformers": "^4.0.1",
-    "@raycast/api": "^1.102.7",
-    "@raycast/utils": "^2.2.1",
-    "cheerio": "^1.0.0",
+    "@huggingface/transformers": "^4.2.0",
+    "@raycast/api": "^1.104.12",
+    "@raycast/utils": "^2.2.4",
+    "cheerio": "^1.2.0",
     "city-timezones": "^1.3.3",
     "date-fns": "^4.1.0",
     "node-fetch": "^3.3.0",
     "pickleparser": "^0.2.1",
     "python-shell": "^5.0.0",
-    "sql.js": "^1.10.3"
+    "sql.js": "^1.14.1"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^2.1.1",
-    "@types/node": "^20.11.0",
-    "@types/react": "^19.0.10",
-    "@typescript-eslint/eslint-plugin": "^8.45.0",
-    "@typescript-eslint/parser": "^8.45.0",
+    "@types/node": "^20.19.39",
+    "@types/react": "^19.2.14",
+    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/parser": "^8.59.0",
     "concurrently": "^9.2.1",
-    "eslint": "^10.0.1",
-    "globals": "^16.4.0",
+    "eslint": "^10.2.1",
+    "globals": "^16.5.0",
     "typescript": "^4.9.5"
   },
   "preferences": [
@@ -242,6 +242,7 @@
     "test:scout-prep-time": "rm -rf /tmp/scout-prep-time-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-time-tests src/lib/scout-prep-ai.ts src/lib/scout-prep-ai.test.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts src/lib/logger.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-prep-time-tests/lib/scout-prep-ai.test.js",
     "test:scout-task-filters": "rm -rf /tmp/scout-task-filter-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-task-filter-tests src/lib/scout-task-filters.ts src/lib/scout-task-filters.test.ts src/features/scout-prep/types.ts src/lib/scout-prep-follow-up-index.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-task-filter-tests/lib/scout-task-filters.test.js",
     "test:scout-follow-up-templates": "rm -rf /tmp/scout-follow-up-template-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-follow-up-template-tests src/lib/scout-follow-up-templates.ts src/lib/scout-follow-up-templates.test.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-follow-up-template-tests/scout-follow-up-templates.test.js",
+    "test:reminders": "rm -rf /tmp/reminder-tests && tsc --skipLibCheck --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/reminder-tests src/lib/reminders.ts src/lib/reminders.test.ts && mkdir -p /tmp/reminder-tests/node_modules/@raycast/utils && printf \"exports.runAppleScript = async () => '';\\n\" > /tmp/reminder-tests/node_modules/@raycast/utils/index.js && NODE_PATH=/tmp/reminder-tests/node_modules:$PWD/node_modules node --test /tmp/reminder-tests/reminders.test.js",
     "test:sales-lifecycle": "rm -rf /tmp/sales-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/sales-lifecycle-tests src/lib/sales-lifecycle.ts src/lib/sales-lifecycle.test.ts && NODE_PATH=$PWD/node_modules node --test /tmp/sales-lifecycle-tests/sales-lifecycle.test.js",
     "test:head-scout-lifecycle": "rm -rf /tmp/head-scout-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/head-scout-lifecycle-tests src/lib/head-scout-appointment-lifecycle.ts src/lib/head-scout-appointment-lifecycle.test.ts src/lib/head-scout-schedules.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/python-env.ts src/lib/logger.ts src/lib/scout-prep-ai.ts src/lib/scout-prep-contact.ts src/lib/scout-follow-up-templates.ts src/lib/sales-lifecycle.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts && NODE_PATH=$PWD/node_modules node --test /tmp/head-scout-lifecycle-tests/lib/head-scout-appointment-lifecycle.test.js",
     "test:head-scout-schedules": "rm -rf /tmp/head-scout-schedules-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/head-scout-schedules-tests src/lib/head-scout-schedules.ts src/lib/head-scout-schedules.test.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/python-env.ts src/lib/logger.ts src/lib/scout-prep-ai.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts && NODE_PATH=$PWD/node_modules node --test /tmp/head-scout-schedules-tests/lib/head-scout-schedules.test.js",

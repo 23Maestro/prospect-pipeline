@@ -57,7 +57,9 @@ function logFailure(event: string, step: string, error: string, context?: Record
   });
 }
 
-export async function fetchScoutPortalTasks(range: ScoutTaskRange = 'todayPastDue'): Promise<ScoutPortalTask[]> {
+export async function fetchScoutPortalTasks(
+  range: ScoutTaskRange = 'todayPastDue',
+): Promise<ScoutPortalTask[]> {
   logInfo('SCOUT_PREP_TASKS_FETCH', 'request', 'start');
   const response = await apiFetch(`/scout/tasks?range=${encodeURIComponent(range)}`);
   if (!response.ok) {
@@ -425,6 +427,45 @@ export async function updateScoutPrepTask(args: {
   return (await response.json()) as {
     success?: boolean;
     task_id?: string | null;
+    message?: string | null;
+  };
+}
+
+export async function recordCallAttempt3MessageSent(args: {
+  athleteId: string;
+  athleteMainId: string;
+  taskId: string;
+}): Promise<{
+  success?: boolean;
+  task_id?: string | null;
+  stage?: string | null;
+  message?: string | null;
+}> {
+  const now = new Date();
+  const completedDate = formatLegacyTaskDate(now);
+  const completedTime = formatLegacyTaskTime(now);
+
+  const response = await apiFetch('/tasks/call-attempt-3-sent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      athlete_id: args.athleteId,
+      athlete_main_id: args.athleteMainId,
+      task_id: args.taskId,
+      completed_date: completedDate,
+      completed_time: completedTime,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText.slice(0, 200) || `Call Attempt 3 HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as {
+    success?: boolean;
+    task_id?: string | null;
+    stage?: string | null;
     message?: string | null;
   };
 }

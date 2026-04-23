@@ -1,4 +1,5 @@
 import { Action, ActionPanel, Form, showToast, Toast, useNavigation } from '@raycast/api';
+import { useState } from 'react';
 import type {
   ConfirmationFollowUpVariant,
   VoicemailFollowUpVariant,
@@ -26,7 +27,14 @@ export function VoicemailFollowUpMessageForm(props: {
   defaultVariant: VoicemailFollowUpVariant;
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
 }) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   async function handleSubmit(values: VoicemailFollowUpFormValues) {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       await props.onSubmit(values);
     } catch (error) {
@@ -35,16 +43,19 @@ export function VoicemailFollowUpMessageForm(props: {
         title: 'Failed to build follow-up text',
         message: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Form
       navigationTitle={props.navigationTitle}
+      isLoading={isSubmitting}
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Send Message"
+            title={isSubmitting ? 'Sending…' : 'Send Message'}
             onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
           />
         </ActionPanel>
@@ -66,6 +77,7 @@ export function VoicemailFollowUpMessageForm(props: {
       <Form.Dropdown id="variant" title="Follow-Up Type" defaultValue={props.defaultVariant}>
         <Form.Dropdown.Item value="call_attempt_1" title="Attempt 1" />
         <Form.Dropdown.Item value="call_attempt_2" title="Attempt 2" />
+        <Form.Dropdown.Item value="call_attempt_3" title="Attempt 3" />
         <Form.Dropdown.Item value="no_show" title="No Show" />
       </Form.Dropdown>
     </Form>

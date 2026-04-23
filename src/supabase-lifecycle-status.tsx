@@ -1,9 +1,6 @@
 import { Action, ActionPanel, Detail, Icon, Toast, showToast } from '@raycast/api';
 import { useEffect, useState } from 'react';
-import {
-  getLifecycleHealthSnapshot,
-  type LifecycleHealthSnapshot,
-} from './lib/supabase-lifecycle';
+import { getLifecycleHealthSnapshot, type LifecycleHealthSnapshot } from './lib/supabase-lifecycle';
 
 function formatTimestamp(value?: string | null): string {
   const trimmed = String(value || '').trim();

@@ -18,7 +18,9 @@ function normalizePhoneForMessagesTarget(raw?: string | null): string | null {
   return null;
 }
 
-export async function openMessagesServiceClientInbox(context: MessagesClientInboxLaunchContext = {}) {
+export async function openMessagesServiceClientInbox(
+  context: MessagesClientInboxLaunchContext = {},
+) {
   const normalizedPhone = normalizePhoneForMessagesTarget(context.chatIdentifier);
 
   if (context.draftMessage && normalizedPhone) {

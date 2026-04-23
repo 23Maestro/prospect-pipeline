@@ -15,7 +15,9 @@ from app.models.schemas import (
     TaskUpdateRequest,
     TaskUpdateResponse,
     TaskCompleteRequest,
-    TaskCompleteResponse
+    TaskCompleteResponse,
+    TaskCallAttempt3SentRequest,
+    TaskCallAttempt3SentResponse,
 )
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
@@ -373,4 +375,102 @@ async def complete_task(request: Request, payload: TaskCompleteRequest):
         raise
     except Exception as exc:
         logger.error(f"❌ Task complete error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/call-attempt-3-sent", response_model=TaskCallAttempt3SentResponse)
+async def call_attempt_3_sent(request: Request, payload: TaskCallAttempt3SentRequest):
+    """
+    After an actual Call Attempt 3 text is sent, update sales stage and the exact legacy task.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "📨 Call Attempt 3 sent athlete_id=%s athlete_main_id=%s task_id=%s stage=%s",
+        payload.athlete_id,
+        payload.athlete_main_id,
+        payload.task_id,
+        payload.stage,
+    )
+
+    try:
+        stage_endpoint, stage_data = translator.sales_stage_update_to_legacy(
+            athlete_main_id=payload.athlete_main_id,
+            athlete_id=payload.athlete_id,
+            stage=payload.stage,
+        )
+        stage_response = await session.post(stage_endpoint, data=stage_data)
+        stage_preview = (stage_response.text or "")[:200]
+        if stage_response.status_code >= 400:
+            raise HTTPException(
+                status_code=stage_response.status_code,
+                detail=stage_preview or f"Sales stage update HTTP {stage_response.status_code}",
+            )
+
+        popup_endpoint, popup_params = translator.task_popup_to_legacy(payload.task_id)
+        popup_response = await session.get(popup_endpoint, params=popup_params)
+        popup_result = translator.parse_task_popup_response(popup_response.text)
+        form_data = popup_result.get("form_data", {})
+
+        updated_form_data = translator.apply_call_attempt_3_sent(
+            form_data=form_data,
+            athlete_id=payload.athlete_id,
+            athlete_main_id=payload.athlete_main_id,
+            completed_date=payload.completed_date,
+            completed_time=payload.completed_time,
+            task_title=payload.task_title,
+            description=payload.description,
+            assigned_to=payload.assigned_to,
+        )
+
+        required_fields = [
+            "existingtask",
+            "tasktitle",
+            "taskdescription",
+            "contact_task",
+            "athlete_main_id",
+            "completedate",
+            "completed_time",
+            "assignedto",
+        ]
+        missing_fields = [field for field in required_fields if not str(updated_form_data.get(field) or "").strip()]
+        changed_fields = _diff_form_data(form_data, updated_form_data)
+
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required task fields: {', '.join(missing_fields)}",
+            )
+
+        logger.info(
+            "🧾 Call Attempt 3 form summary=%s",
+            _sanitize_form_data(updated_form_data),
+        )
+        logger.info(
+            "🧾 Call Attempt 3 changed fields=%s",
+            _sanitize_form_data(changed_fields),
+        )
+
+        update_endpoint, final_form_data = translator.task_update_to_legacy(updated_form_data)
+        update_response = await session.post(update_endpoint, data=final_form_data)
+        update_result = translator.parse_task_update_response(update_response.text)
+
+        if update_result.get("success"):
+            return TaskCallAttempt3SentResponse(
+                success=True,
+                task_id=payload.task_id,
+                stage=payload.stage,
+                message=update_result.get("message", "Call Attempt 3 recorded"),
+                raw_response=update_result.get("raw"),
+            )
+
+        raise HTTPException(
+            status_code=400,
+            detail=update_result.get("message", "Call Attempt 3 update failed"),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"❌ Call Attempt 3 sent error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))

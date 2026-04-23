@@ -579,7 +579,9 @@ export async function prepareConfirmationFollowUp(args: {
     crmSalesStage,
     followUpTask,
     headScoutName:
-      String(args.headScoutName || '').trim() || inferHeadScoutNameFromText(args.fallbackText) || '',
+      String(args.headScoutName || '').trim() ||
+      inferHeadScoutNameFromText(args.fallbackText) ||
+      '',
     sport: args.sport,
     gradYear: args.gradYear,
     state: args.state,

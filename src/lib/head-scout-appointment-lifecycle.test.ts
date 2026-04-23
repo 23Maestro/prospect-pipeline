@@ -8,7 +8,10 @@ import {
   selectAppointmentMeetings,
   type AppointmentTaskSnapshot,
 } from './head-scout-appointment-lifecycle';
-import { buildConfirmationMessage, buildMinimalFollowUpQueueRecord } from './scout-follow-up-templates';
+import {
+  buildConfirmationMessage,
+  buildMinimalFollowUpQueueRecord,
+} from './scout-follow-up-templates';
 
 const weekendMeeting = {
   event_id: 'old-weekend',

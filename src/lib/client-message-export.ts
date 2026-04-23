@@ -110,7 +110,8 @@ export function buildAssociatedClientsFromContactInfo(args: {
 
     const relationshipLabel = buildRelationshipLabel(candidate.role, candidate.relationship);
     const preferredName =
-      String(candidate.name || '').trim() || (candidate.role === 'studentAthlete' ? args.athleteName : null);
+      String(candidate.name || '').trim() ||
+      (candidate.role === 'studentAthlete' ? args.athleteName : null);
     const displayLabel = preferredName
       ? `${relationshipLabel}: ${preferredName}`
       : relationshipLabel;
@@ -182,7 +183,9 @@ function shouldIncludeClientLifecycle(rawStage?: string | null): boolean {
   );
 }
 
-function buildClientDraft(row: Awaited<ReturnType<typeof getActiveMeetingFallbackRows>>[number]): DraftRow | null {
+function buildClientDraft(
+  row: Awaited<ReturnType<typeof getActiveMeetingFallbackRows>>[number],
+): DraftRow | null {
   const contactId = String(row.athleteId || '').trim();
   const athleteMainId = String(row.athleteMainId || '').trim();
   const athleteName = String(row.athleteName || '').trim();
@@ -208,7 +211,8 @@ function mergeDraftRows(existing: DraftRow | undefined, incoming: DraftRow): Dra
   if (!existing) {
     return incoming;
   }
-  const segment = existing.segment === 'client' || incoming.segment === 'client' ? 'client' : 'pending';
+  const segment =
+    existing.segment === 'client' || incoming.segment === 'client' ? 'client' : 'pending';
 
   return {
     ...existing,
@@ -256,7 +260,9 @@ export async function buildClientMessageExportPayload(): Promise<ClientMessageEx
         athleteName: draft.athleteName,
         contactInfo,
       });
-      const normalizedPhoneNumbers = Array.from(new Set(associatedClients.map((client) => client.normalizedPhoneNumber)));
+      const normalizedPhoneNumbers = Array.from(
+        new Set(associatedClients.map((client) => client.normalizedPhoneNumber)),
+      );
 
       if (!normalizedPhoneNumbers.length) {
         return null;

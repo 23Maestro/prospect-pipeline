@@ -106,7 +106,11 @@ function getConfig(target: SyncTarget): NotionCallScriptConfig {
   return { token, pageId, toggleTitle };
 }
 
-export async function notionRequest<T>(token: string, path: string, init: RequestInit = {}): Promise<T> {
+export async function notionRequest<T>(
+  token: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
   const response = await fetch(`https://api.notion.com/v1${path}`, {
     ...init,
     headers: {

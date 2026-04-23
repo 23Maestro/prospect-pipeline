@@ -49,7 +49,11 @@ import {
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
-import { fetchScoutPortalTasks, loadScoutPrepContext, stripMoveThisTaskPrefix } from './lib/scout-prep';
+import {
+  fetchScoutPortalTasks,
+  loadScoutPrepContext,
+  stripMoveThisTaskPrefix,
+} from './lib/scout-prep';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
 type HeadScoutSchedulesRootProps = {
@@ -213,7 +217,9 @@ function normalizeAthleteMatchKey(value?: string | null): string {
 function resolveAthleteDisplayName(taskName: string, eventTitle: string): string {
   const cleanedTitle = cleanMeetingResolveTitle(eventTitle);
   const normalizedTitle = cleanedTitle.toLowerCase();
-  const normalizedTaskName = String(taskName || '').trim().toLowerCase();
+  const normalizedTaskName = String(taskName || '')
+    .trim()
+    .toLowerCase();
   const startIndex = normalizedTitle.indexOf(normalizedTaskName);
   if (startIndex >= 0) {
     return cleanedTitle.slice(startIndex, startIndex + normalizedTaskName.length).trim();
@@ -224,9 +230,15 @@ function resolveAthleteDisplayName(taskName: string, eventTitle: string): string
 function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<string, unknown>>) {
   const matches = tasks.filter((task) => {
     const rawTask = task as Record<string, unknown>;
-    const title = String(task.title || '').trim().toLowerCase();
-    const description = String(task.description || '').trim().toLowerCase();
-    const assignedOwner = String(rawTask.assigned_owner || rawTask.assignedOwner || '').trim().toLowerCase();
+    const title = String(task.title || '')
+      .trim()
+      .toLowerCase();
+    const description = String(task.description || '')
+      .trim()
+      .toLowerCase();
+    const assignedOwner = String(rawTask.assigned_owner || rawTask.assignedOwner || '')
+      .trim()
+      .toLowerCase();
     const isConfirmation =
       title.includes('confirmation call') || description.includes('confirm the meeting set');
     return isConfirmation && assignedOwner === 'jerami singleton';
@@ -246,7 +258,9 @@ function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<stri
     if (!Number.isNaN(leftDate) && !Number.isNaN(rightDate) && leftDate !== rightDate) {
       return rightDate - leftDate;
     }
-    return String(right.task_id || right.taskId || '').localeCompare(String(left.task_id || left.taskId || ''));
+    return String(right.task_id || right.taskId || '').localeCompare(
+      String(left.task_id || left.taskId || ''),
+    );
   })[0];
 }
 
@@ -260,8 +274,12 @@ async function loadWeeklyJeramiMeetingCandidates(
 
   const actualMeetings = (weekly.events || []).filter((event) => isActualSetMeetingEvent(event));
   const filteredJeramiTasks = (jeramiTasks || []).filter((task) => {
-    const title = String(task.title || '').trim().toLowerCase();
-    const assignedOwner = String(task.assigned_owner || '').trim().toLowerCase();
+    const title = String(task.title || '')
+      .trim()
+      .toLowerCase();
+    const assignedOwner = String(task.assigned_owner || '')
+      .trim()
+      .toLowerCase();
     return assignedOwner === 'jerami singleton' && title.includes('confirmation call');
   });
 
@@ -291,7 +309,9 @@ async function loadWeeklyJeramiMeetingCandidates(
 
     tasksByAthlete.delete(athleteKey);
 
-    const athleteId = String(confirmationTask.athlete_id || confirmationTask.contact_id || '').trim();
+    const athleteId = String(
+      confirmationTask.athlete_id || confirmationTask.contact_id || '',
+    ).trim();
     const athleteMainId = String(confirmationTask.athlete_main_id || '').trim();
     if (!athleteId || !athleteMainId) {
       return null;
@@ -301,10 +321,14 @@ async function loadWeeklyJeramiMeetingCandidates(
       key: `${athleteId}:${athleteMainId}`,
       athleteId,
       athleteMainId,
-      athleteName: resolveAthleteDisplayName(String(confirmationTask.athlete_name || '').trim(), event.title),
+      athleteName: resolveAthleteDisplayName(
+        String(confirmationTask.athlete_name || '').trim(),
+        event.title,
+      ),
       dueDate: String(confirmationTask.due_date || '').trim() || event.start,
       stage: 'Meeting Set',
-      currentTask: stripMoveThisTaskPrefix(String(confirmationTask.title || '').trim()) || 'Confirmation Call',
+      currentTask:
+        stripMoveThisTaskPrefix(String(confirmationTask.title || '').trim()) || 'Confirmation Call',
       taskId: String(confirmationTask.task_id || '').trim(),
       adminUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}`,
       taskUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&tasktab=1`,
@@ -367,11 +391,11 @@ export function HeadScoutBookingsList({
               Array.from(
                 new Map(
                   [
-                    ...await loadHeadScoutWeeklyMeetingCandidates({
+                    ...(await loadHeadScoutWeeklyMeetingCandidates({
                       weekStart: weekWindow.start,
                       weekEnd: weekWindow.end,
-                    }),
-                    ...await loadHeadScoutFollowUpCandidates(),
+                    })),
+                    ...(await loadHeadScoutFollowUpCandidates()),
                   ].map((candidate) => [candidate.key, candidate]),
                 ).values(),
               ).map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
@@ -380,8 +404,9 @@ export function HeadScoutBookingsList({
         const filteredCandidates = enriched.filter((candidate) => {
           if (
             scoutName &&
-            String(candidate.headScoutName || '').trim().toLowerCase() !==
-              scoutName.trim().toLowerCase()
+            String(candidate.headScoutName || '')
+              .trim()
+              .toLowerCase() !== scoutName.trim().toLowerCase()
           ) {
             return false;
           }
@@ -564,119 +589,118 @@ export function HeadScoutBookingsList({
           title={weeklyMeetingsOnly ? `Set Meetings • ${weekLabel}` : 'Set Meetings'}
           subtitle={String(candidates.length)}
         >
-          {candidates.map((candidate) => (
+          {candidates.map((candidate) =>
             (() => {
-              const meetingLabel = candidate.currentMeetingLabel?.replace(/^Current:\s*/, '') || null;
+              const meetingLabel =
+                candidate.currentMeetingLabel?.replace(/^Current:\s*/, '') || null;
               const headScoutLabel = candidate.headScoutName || 'Scout not resolved';
               return (
-            <List.Item
-              key={candidate.key}
-              icon={
-                candidate.needsManualReview
-                  ? Icon.ExclamationMark
-                  : candidate.bookedMeeting
-                    ? Icon.CheckCircle
-                    : Icon.Circle
-              }
-              title={
-                candidate.athleteName
-              }
-              subtitle={
-                weeklyMeetingsOnly && !scoutName
-                  ? headScoutLabel
-                  : meetingLabel ||
-                    (candidate.needsManualReview
-                      ? 'Rescheduled stage, no current booked meeting found.'
-                      : buildMeetingDayLabel(candidate))
-              }
-              keywords={[
-                candidate.athleteName,
-                candidate.parent1Name || '',
-                candidate.parent2Name || '',
-                candidate.headScoutName || '',
-              ]}
-              accessories={[
-                ...(weeklyMeetingsOnly
-                  ? meetingLabel
-                    ? [{ text: meetingLabel }]
-                    : []
-                  : scoutName
-                    ? []
-                    : [{ text: headScoutLabel }]),
-                ...(weeklyMeetingsOnly
-                  ? []
-                  : candidate.badges
-                      .filter((badge) => badge.label !== candidate.currentMeetingLabel)
-                      .map((badge) => ({ tag: badge.label }))),
-              ]}
-              actions={
-                <ActionPanel>
-                  {candidate.athleteId && candidate.athleteMainId ? (
-                    <Action.Push
-                      title="Send Confirmation Text"
-                      icon={Icon.Message}
-                      shortcut={{ modifiers: ['cmd'], key: 'm' }}
-                      target={buildConfirmationTextForm(candidate)}
-                    />
-                  ) : null}
-                  {candidate.bookedMeeting?.event_id ? (
-                    <>
-                      {APPOINTMENT_TITLE_PREFIXES.map((prefix, index) => (
-                        <Action
-                          key={prefix}
-                          title={`Mark ${prefix}`}
-                          icon={Icon.Pencil}
-                          shortcut={
-                            index < APPOINTMENT_SHORTCUT_KEYS.length
-                              ? { modifiers: ['cmd'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
-                              : undefined
+                <List.Item
+                  key={candidate.key}
+                  icon={
+                    candidate.needsManualReview
+                      ? Icon.ExclamationMark
+                      : candidate.bookedMeeting
+                        ? Icon.CheckCircle
+                        : Icon.Circle
+                  }
+                  title={candidate.athleteName}
+                  subtitle={
+                    weeklyMeetingsOnly && !scoutName
+                      ? headScoutLabel
+                      : meetingLabel ||
+                        (candidate.needsManualReview
+                          ? 'Rescheduled stage, no current booked meeting found.'
+                          : buildMeetingDayLabel(candidate))
+                  }
+                  keywords={[
+                    candidate.athleteName,
+                    candidate.parent1Name || '',
+                    candidate.parent2Name || '',
+                    candidate.headScoutName || '',
+                  ]}
+                  accessories={[
+                    ...(weeklyMeetingsOnly
+                      ? meetingLabel
+                        ? [{ text: meetingLabel }]
+                        : []
+                      : scoutName
+                        ? []
+                        : [{ text: headScoutLabel }]),
+                    ...(weeklyMeetingsOnly
+                      ? []
+                      : candidate.badges
+                          .filter((badge) => badge.label !== candidate.currentMeetingLabel)
+                          .map((badge) => ({ tag: badge.label }))),
+                  ]}
+                  actions={
+                    <ActionPanel>
+                      {candidate.athleteId && candidate.athleteMainId ? (
+                        <Action.Push
+                          title="Send Confirmation Text"
+                          icon={Icon.Message}
+                          shortcut={{ modifiers: ['cmd'], key: 'm' }}
+                          target={buildConfirmationTextForm(candidate)}
+                        />
+                      ) : null}
+                      {candidate.bookedMeeting?.event_id ? (
+                        <>
+                          {APPOINTMENT_TITLE_PREFIXES.map((prefix, index) => (
+                            <Action
+                              key={prefix}
+                              title={`Mark ${prefix}`}
+                              icon={Icon.Pencil}
+                              shortcut={
+                                index < APPOINTMENT_SHORTCUT_KEYS.length
+                                  ? { modifiers: ['cmd'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
+                                  : undefined
+                              }
+                              onAction={() => void handleMarkMeeting(candidate, prefix)}
+                            />
+                          ))}
+                        </>
+                      ) : null}
+                      {weeklyMeetingsOnly ? (
+                        <Action.Push
+                          title="Next Week"
+                          icon={Icon.ArrowRight}
+                          shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
+                          target={
+                            <HeadScoutBookingsList
+                              scoutName={scoutName}
+                              weekOffset={weekOffset + 1}
+                              weeklyMeetingsOnly
+                            />
                           }
-                          onAction={() => void handleMarkMeeting(candidate, prefix)}
                         />
-                      ))}
-                    </>
-                  ) : null}
-                  {weeklyMeetingsOnly ? (
-                    <Action.Push
-                      title="Next Week"
-                      icon={Icon.ArrowRight}
-                      shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
-                      target={
-                        <HeadScoutBookingsList
-                          scoutName={scoutName}
-                          weekOffset={weekOffset + 1}
-                          weeklyMeetingsOnly
+                      ) : null}
+                      {candidate.adminUrl ? (
+                        <Action.OpenInBrowser
+                          title="Open Athlete Admin"
+                          shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                          url={candidate.adminUrl}
                         />
-                      }
-                    />
-                  ) : null}
-                  {candidate.adminUrl ? (
-                    <Action.OpenInBrowser
-                      title="Open Athlete Admin"
-                      shortcut={{ modifiers: ['cmd'], key: 'o' }}
-                      url={candidate.adminUrl}
-                    />
-                  ) : null}
-                  {candidate.taskUrl ? (
-                    <Action.OpenInBrowser
-                      title="Open Athlete Task Tab"
-                      shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-                      url={candidate.taskUrl}
-                    />
-                  ) : null}
-                  {candidate.bookedMeeting ? (
-                    <Action.CopyToClipboard
-                      title="Copy Booked Meeting"
-                      shortcut={{ modifiers: ['cmd'], key: 'c' }}
-                      content={`${candidate.athleteName} • ${candidate.bookedMeeting.date_time_label}`}
-                    />
-                  ) : null}
-                </ActionPanel>
-              }
-            />
+                      ) : null}
+                      {candidate.taskUrl ? (
+                        <Action.OpenInBrowser
+                          title="Open Athlete Task Tab"
+                          shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                          url={candidate.taskUrl}
+                        />
+                      ) : null}
+                      {candidate.bookedMeeting ? (
+                        <Action.CopyToClipboard
+                          title="Copy Booked Meeting"
+                          shortcut={{ modifiers: ['cmd'], key: 'c' }}
+                          content={`${candidate.athleteName} • ${candidate.bookedMeeting.date_time_label}`}
+                        />
+                      ) : null}
+                    </ActionPanel>
+                  }
+                />
               );
-            })()
-          ))}
+            })(),
+          )}
         </List.Section>
       ) : (
         <List.EmptyView

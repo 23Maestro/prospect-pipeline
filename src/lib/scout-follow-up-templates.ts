@@ -3,7 +3,11 @@ import { resolveSalesLifecycle } from './sales-lifecycle';
 export const DEFAULT_FOLLOW_UP_SENDER_NAME = 'Jerami Singleton';
 
 export type FollowUpMessageType = 'call_attempt_2' | 'confirmation';
-export type VoicemailFollowUpVariant = 'call_attempt_1' | 'call_attempt_2' | 'no_show';
+export type VoicemailFollowUpVariant =
+  | 'call_attempt_1'
+  | 'call_attempt_2'
+  | 'call_attempt_3'
+  | 'no_show';
 export type ConfirmationFollowUpVariant = 'confirmation_1' | 'confirmation_2';
 export type FollowUpMessageVariant = VoicemailFollowUpVariant | ConfirmationFollowUpVariant;
 
@@ -53,7 +57,13 @@ function firstName(value?: string | null): string {
 }
 
 function resolveIanaTimeZone(timezoneLabel?: string | null): string | null {
-  return TIMEZONE_LABEL_TO_IANA[String(timezoneLabel || '').trim().toUpperCase()] || null;
+  return (
+    TIMEZONE_LABEL_TO_IANA[
+      String(timezoneLabel || '')
+        .trim()
+        .toUpperCase()
+    ] || null
+  );
 }
 
 function getHourForTimeZone(date: Date, timezoneLabel?: string | null): number {
@@ -107,7 +117,10 @@ function normalizeText(value?: string | null): string {
 }
 
 function sportScoutLabel(value?: string | null): string {
-  const trimmed = String(value || '').trim().toLowerCase();
+  const trimmed = String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^(men's|mens|women's|womens)\s+/i, '');
   return trimmed || 'football';
 }
 
@@ -155,6 +168,17 @@ export function resolveVoicemailFollowUpVariant(args: {
   const rawCandidates = [args.currentTask, args.crmStage]
     .map((value) => normalizeText(value))
     .filter(Boolean);
+
+  if (
+    rawCandidates.some(
+      (value) =>
+        value.includes('left voice mail 3') ||
+        value.includes('left voicemail 3') ||
+        value.includes('call attempt 3'),
+    )
+  ) {
+    return 'call_attempt_3';
+  }
 
   if (
     rawCandidates.some(
@@ -215,7 +239,8 @@ export function buildVoicemailFollowUpMessage(args: {
   const athleteProfile = buildAthleteProfileLabel(args.athleteName);
   const senderName = String(args.senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
   const scoutLabel = sportScoutLabel(args.sport);
-  const signOffTitle = String(args.signOffTitle || '').trim() || `${scoutLabel} scouting coordinator`;
+  const signOffTitle =
+    String(args.signOffTitle || '').trim() || `${scoutLabel} scouting coordinator`;
   const closingLine = String(args.closingLine || '').trim();
   const now = args.now || new Date();
 
@@ -226,19 +251,27 @@ export function buildVoicemailFollowUpMessage(args: {
           '',
           `Would tomorrow or ${buildNoShowNextBestDayLabel(now)} work better?`,
         ]
-      : args.variant === 'call_attempt_2'
-      ? [
-          `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I left you another voicemail about ${athleteProfile}.`,
-          '',
-          `We received his info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
-          '',
-          'When would you have a 10 min gap today or in the next few days? I can be flexible on time.',
-        ]
-      : [
-          `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
-          '',
-          'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.',
-        ];
+      : args.variant === 'call_attempt_3'
+        ? [
+            `${greeting} this is ${senderName} with Prospect ID. Just checking one last time on ${args.athleteName.trim() || 'your athlete'}.`,
+            '',
+            `If playing college ${scoutLabel} is still a serious goal worth exploring, I’m happy to connect.`,
+            '',
+            'I can go ahead and mark this as no interest for now, and revisit later?',
+          ]
+        : args.variant === 'call_attempt_2'
+          ? [
+              `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I left you another voicemail about ${athleteProfile}.`,
+              '',
+              `We received his info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
+              '',
+              'When would you have a 10 min gap today or in the next few days? I can be flexible on time.',
+            ]
+          : [
+              `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
+              '',
+              'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.',
+            ];
 
   if (closingLine) {
     lines.push('', closingLine);

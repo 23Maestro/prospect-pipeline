@@ -24,6 +24,7 @@ const REQUIRED_SERVER_PATHS = [
   '/api/v1/tasks/popup',
   '/api/v1/tasks/update',
   '/api/v1/tasks/complete',
+  '/api/v1/tasks/call-attempt-3-sent',
   '/api/v1/calendar/head-scout-slots',
   '/api/v1/calendar/booked-meetings',
   '/api/v1/calendar/open-meetings',

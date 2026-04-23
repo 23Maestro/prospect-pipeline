@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  APPOINTMENT_TITLE_PREFIXES,
-  applyAppointmentTitlePrefix,
-} from './head-scout-event-prefix';
+import { APPOINTMENT_TITLE_PREFIXES, applyAppointmentTitlePrefix } from './head-scout-event-prefix';
 
 test('adds prefix to unprefixed title', () => {
   assert.equal(

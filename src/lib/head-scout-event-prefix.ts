@@ -1,6 +1,6 @@
 export const APPOINTMENT_TITLE_PREFIXES = ['(ACF)', '(CF)', '(RSP)', '(CAN)', '(ACF*2)'] as const;
 
-export type AppointmentTitlePrefix = typeof APPOINTMENT_TITLE_PREFIXES[number];
+export type AppointmentTitlePrefix = (typeof APPOINTMENT_TITLE_PREFIXES)[number];
 
 const KNOWN_PREFIX_PATTERN = new RegExp(
   `^\\s*(?:${APPOINTMENT_TITLE_PREFIXES.map((prefix) =>
@@ -8,10 +8,7 @@ const KNOWN_PREFIX_PATTERN = new RegExp(
   ).join('|')})\\s*`,
 );
 
-export function applyAppointmentTitlePrefix(
-  title: string,
-  prefix: AppointmentTitlePrefix,
-): string {
+export function applyAppointmentTitlePrefix(title: string, prefix: AppointmentTitlePrefix): string {
   const trimmedTitle = String(title || '').trim();
   if (!trimmedTitle) {
     return prefix;

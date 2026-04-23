@@ -27,13 +27,15 @@ import {
   type OperatorWorkflowStatus,
 } from './sales-lifecycle';
 import { getActiveMeetingFallbackRows, type ActiveMeetingFallbackRow } from './supabase-lifecycle';
-import {
-  fetchAthleteBookedMeetings,
-  type BookedMeetingEvent,
-} from './head-scout-schedules';
+import { fetchAthleteBookedMeetings, type BookedMeetingEvent } from './head-scout-schedules';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
-const ACTIVE_TASK_RANGES = ['todayPastDue', 'today', 'tomorrow', 'future'] as const satisfies readonly ScoutTaskRange[];
+const ACTIVE_TASK_RANGES = [
+  'todayPastDue',
+  'today',
+  'tomorrow',
+  'future',
+] as const satisfies readonly ScoutTaskRange[];
 
 type CandidateSource = 'website' | 'supabase';
 
@@ -102,7 +104,11 @@ function buildTaskStage(task: ScoutAthleteTask): string {
 }
 
 function buildTaskLabelFromStatus(taskStatus?: string | null): string {
-  switch (String(taskStatus || '').trim().toLowerCase()) {
+  switch (
+    String(taskStatus || '')
+      .trim()
+      .toLowerCase()
+  ) {
     case 'confirmation_call':
       return 'Confirmation Call';
     case 'spoke_to_follow_up':
@@ -119,7 +125,9 @@ function buildTaskLabelFromStatus(taskStatus?: string | null): string {
 }
 
 function isMeetingLikeEvent(event?: Pick<BookedMeetingEvent, 'title'> | null): boolean {
-  const normalized = String(event?.title || '').trim().toLowerCase();
+  const normalized = String(event?.title || '')
+    .trim()
+    .toLowerCase();
   if (!normalized) {
     return false;
   }
@@ -230,9 +238,7 @@ function selectRelevantPortalTask(tasks: ScoutPortalTask[]): ScoutPortalTask | n
   const followUps = tasks.filter((task) => {
     const title = stripMoveThisTaskPrefix(task.title).toLowerCase();
     return (
-      title.includes('follow up') ||
-      title.includes('follow-up') ||
-      title.includes('call attempt')
+      title.includes('follow up') || title.includes('follow-up') || title.includes('call attempt')
     );
   });
   if (followUps.length > 0) {
@@ -264,11 +270,7 @@ function buildPortalTaskStage(task?: ScoutPortalTask | null): string | null {
     return null;
   }
 
-  return (
-    stripMoveThisTaskPrefix(task.title) ||
-    String(task.description || '').trim() ||
-    null
-  );
+  return stripMoveThisTaskPrefix(task.title) || String(task.description || '').trim() || null;
 }
 
 function shouldIncludeCandidate(args: {
@@ -370,7 +372,8 @@ export async function loadHeadScoutFollowUpCandidates(): Promise<HeadScoutFollow
         fetchAthleteTasks(entry.athleteId, entry.athleteMainId) as Promise<ScoutAthleteTask[]>,
         fetchCuratedSalesStageOptions(entry.athleteId).catch(() => []),
       ]);
-      const crmSalesStage = getSelectedSalesStageLabel(stageOptions) || entry.supabaseState?.crmStage || null;
+      const crmSalesStage =
+        getSelectedSalesStageLabel(stageOptions) || entry.supabaseState?.crmStage || null;
       const selectedTask = selectRelevantTask(tasks);
       if (!selectedTask && !shouldIncludeCandidate({ crmSalesStage, selectedTask })) {
         return null;
@@ -502,15 +505,14 @@ export async function loadHeadScoutWeeklyMeetingCandidates(args: {
 export async function enrichHeadScoutFollowUpCandidate(
   candidate: HeadScoutFollowUpCandidate,
 ): Promise<HeadScoutFollowUpCandidate> {
-  const athleteEvents =
-    String(candidate.athleteMainId || '').trim()
-      ? await fetchAthleteBookedMeetings({
-          athleteId: candidate.athleteId,
-          athleteMainId: candidate.athleteMainId,
-        })
-          .then((payload) => payload.events || [])
-          .catch(() => [])
-      : [];
+  const athleteEvents = String(candidate.athleteMainId || '').trim()
+    ? await fetchAthleteBookedMeetings({
+        athleteId: candidate.athleteId,
+        athleteMainId: candidate.athleteMainId,
+      })
+        .then((payload) => payload.events || [])
+        .catch(() => [])
+    : [];
   const preferredBookedMeeting = selectPreferredBookedMeeting({
     supabaseState: candidate.supabaseState || null,
     athleteEvents,

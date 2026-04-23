@@ -29,7 +29,9 @@ type FollowUpCacheRecord = {
   task: ScoutAthleteTask | null;
 };
 
-function normalizePointer(pointer: Omit<ScoutPrepFollowUpPointer, 'addedAt'>): ScoutPrepFollowUpPointer | null {
+function normalizePointer(
+  pointer: Omit<ScoutPrepFollowUpPointer, 'addedAt'>,
+): ScoutPrepFollowUpPointer | null {
   const athleteId = String(pointer.athleteId || '').trim();
   const athleteMainId = String(pointer.athleteMainId || '').trim();
   const athleteName = String(pointer.athleteName || '').trim();
@@ -60,10 +62,10 @@ async function loadIndex(storage: StorageLike = LocalStorage): Promise<ScoutPrep
     return parsed.entries.filter((entry): entry is ScoutPrepFollowUpPointer => {
       return Boolean(
         entry &&
-          String(entry.athleteId || '').trim() &&
-          String(entry.athleteMainId || '').trim() &&
-          String(entry.athleteName || '').trim() &&
-          String(entry.addedAt || '').trim(),
+        String(entry.athleteId || '').trim() &&
+        String(entry.athleteMainId || '').trim() &&
+        String(entry.athleteName || '').trim() &&
+        String(entry.addedAt || '').trim(),
       );
     });
   } catch {
@@ -71,7 +73,10 @@ async function loadIndex(storage: StorageLike = LocalStorage): Promise<ScoutPrep
   }
 }
 
-async function saveIndex(entries: ScoutPrepFollowUpPointer[], storage: StorageLike = LocalStorage): Promise<void> {
+async function saveIndex(
+  entries: ScoutPrepFollowUpPointer[],
+  storage: StorageLike = LocalStorage,
+): Promise<void> {
   await storage.setItem(
     STORAGE_KEY,
     JSON.stringify({
@@ -104,8 +109,7 @@ export async function addScoutPrepFollowUpPointer(
   const filtered = existing.filter(
     (entry) =>
       !(
-        entry.athleteId === normalized.athleteId &&
-        entry.athleteMainId === normalized.athleteMainId
+        entry.athleteId === normalized.athleteId && entry.athleteMainId === normalized.athleteMainId
       ),
   );
   await saveIndex([normalized, ...filtered], storage);
@@ -127,8 +131,7 @@ export async function removeScoutPrepFollowUpPointer(
     existing.filter(
       (entry) =>
         !(
-          entry.athleteId === normalizedAthleteId &&
-          entry.athleteMainId === normalizedAthleteMainId
+          entry.athleteId === normalizedAthleteId && entry.athleteMainId === normalizedAthleteMainId
         ),
     ),
     storage,

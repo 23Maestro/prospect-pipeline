@@ -291,8 +291,7 @@ export function buildBookedMeetingLookupWindow(
   anchorDate?: Date | null,
   now: Date = new Date(),
 ): { start: string; end: string } {
-  const safeAnchor =
-    anchorDate && !Number.isNaN(anchorDate.getTime()) ? anchorDate : now;
+  const safeAnchor = anchorDate && !Number.isNaN(anchorDate.getTime()) ? anchorDate : now;
   const earliest = safeAnchor.getTime() < now.getTime() ? safeAnchor : now;
   const latest = safeAnchor.getTime() > now.getTime() ? safeAnchor : now;
   const start = new Date(earliest);
@@ -437,7 +436,8 @@ export async function updateBookedMeetingTitlePrefix(args: {
 
   if (!response.ok) {
     const errorText = await response.text();
-    const message = errorText.slice(0, 200) || `Booked meeting title update HTTP ${response.status}`;
+    const message =
+      errorText.slice(0, 200) || `Booked meeting title update HTTP ${response.status}`;
     logFailure('BOOKED_MEETING_TITLE_UPDATE', 'request', message, {
       eventId: args.eventId,
       eventDate: args.eventDate,

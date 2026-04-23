@@ -176,7 +176,9 @@ function resolveMeetingLifecycle(args: {
   return 'needs_manual_review';
 }
 
-export function isTerminalSalesState(lifecycle: Pick<SalesRecordLifecycle, 'normalizedStage'>): boolean {
+export function isTerminalSalesState(
+  lifecycle: Pick<SalesRecordLifecycle, 'normalizedStage'>,
+): boolean {
   return (
     lifecycle.normalizedStage === 'closed_won' ||
     lifecycle.normalizedStage === 'closed_lost' ||
@@ -188,8 +190,7 @@ export function isActiveCallQueueItem(
   lifecycle: Pick<SalesRecordLifecycle, 'normalizedStage'>,
 ): boolean {
   return (
-    lifecycle.normalizedStage === 'new_opportunity' ||
-    lifecycle.normalizedStage === 'call_attempt'
+    lifecycle.normalizedStage === 'new_opportunity' || lifecycle.normalizedStage === 'call_attempt'
   );
 }
 
@@ -208,10 +209,7 @@ export function isActiveMeetingQueueItem(
 export function shouldDropFromWorkingQueue(
   lifecycle: Pick<SalesRecordLifecycle, 'normalizedStage' | 'operatorStatus'>,
 ): boolean {
-  return (
-    isTerminalSalesState(lifecycle) &&
-    lifecycle.operatorStatus !== 'needs_manual_review'
-  );
+  return isTerminalSalesState(lifecycle) && lifecycle.operatorStatus !== 'needs_manual_review';
 }
 
 export function isKnownCrmSalesStage(rawCrmStage?: string | null): boolean {

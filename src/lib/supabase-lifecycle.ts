@@ -223,7 +223,12 @@ export type ActiveMeetingFallbackRow = {
   updatedAt: string;
 };
 
-function logInfo(event: string, step: string, status: 'start' | 'success', context?: Record<string, unknown>) {
+function logInfo(
+  event: string,
+  step: string,
+  status: 'start' | 'success',
+  context?: Record<string, unknown>,
+) {
   searchLogger.info(event, {
     event,
     step,
@@ -307,9 +312,7 @@ function readRepoEnv(): Record<string, string> {
 function getConfig(): SupabaseConfig | null {
   const prefs = getPreferenceValues<Preferences>();
   const repoEnv = readRepoEnv();
-  const url = String(
-    process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '',
-  )
+  const url = String(process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '')
     .trim()
     .replace(/\/+$/, '');
   const key = String(
@@ -321,9 +324,10 @@ function getConfig(): SupabaseConfig | null {
       prefs.supabaseServiceRoleKey ||
       '',
   ).trim();
-  const schema = String(
-    process.env.SUPABASE_SCHEMA || repoEnv.SUPABASE_SCHEMA || prefs.supabaseSchema || '',
-  ).trim() || DEFAULT_SCHEMA;
+  const schema =
+    String(
+      process.env.SUPABASE_SCHEMA || repoEnv.SUPABASE_SCHEMA || prefs.supabaseSchema || '',
+    ).trim() || DEFAULT_SCHEMA;
   if (!url || !key) {
     return null;
   }
@@ -353,9 +357,7 @@ export function buildAppointmentId(args: {
   sourceEventId?: string | null;
   startsAt?: string | null;
 }): string {
-  const explicit =
-    normalizeValue(args.appointmentId) ||
-    normalizeValue(args.sourceEventId);
+  const explicit = normalizeValue(args.appointmentId) || normalizeValue(args.sourceEventId);
   if (explicit) {
     return explicit;
   }
@@ -373,12 +375,7 @@ export function buildReminderDedupeKey(args: {
   sendAt?: string | null;
 }): string {
   const sendAt = normalizeIsoValue(args.sendAt) || 'none';
-  return [
-    args.appointmentId.trim(),
-    args.kind.trim(),
-    args.suffix.trim(),
-    sendAt,
-  ].join(':');
+  return [args.appointmentId.trim(), args.kind.trim(), args.suffix.trim(), sendAt].join(':');
 }
 
 function buildAthleteRow(actor: PipelineActor, updatedAt: string): AthletesRow {
@@ -391,7 +388,11 @@ function buildAthleteRow(actor: PipelineActor, updatedAt: string): AthletesRow {
   };
 }
 
-function buildPipelineStateRow(actor: PipelineActor, state: PipelineStateSnapshot, updatedAt: string): PipelineStateRow {
+function buildPipelineStateRow(
+  actor: PipelineActor,
+  state: PipelineStateSnapshot,
+  updatedAt: string,
+): PipelineStateRow {
   return {
     athlete_key: buildAthleteKey(actor.athleteId, actor.athleteMainId),
     athlete_id: actor.athleteId.trim(),
@@ -406,7 +407,11 @@ function buildPipelineStateRow(actor: PipelineActor, state: PipelineStateSnapsho
   };
 }
 
-function buildAppointmentRow(actor: PipelineActor, appointment: AppointmentSnapshot, updatedAt: string): AppointmentRow {
+function buildAppointmentRow(
+  actor: PipelineActor,
+  appointment: AppointmentSnapshot,
+  updatedAt: string,
+): AppointmentRow {
   return {
     id: buildAppointmentId({
       athleteId: actor.athleteId,
@@ -472,9 +477,7 @@ async function request(
     onConflict?: string;
   },
 ): Promise<void> {
-  const query = args.onConflict
-    ? `?on_conflict=${encodeURIComponent(args.onConflict)}`
-    : '';
+  const query = args.onConflict ? `?on_conflict=${encodeURIComponent(args.onConflict)}` : '';
   const endpoint = `${config.url}/rest/v1/${encodeURIComponent(table)}${query}`;
   const response = await fetch(endpoint, {
     method: args.method || 'POST',
@@ -495,11 +498,7 @@ async function request(
   }
 }
 
-async function queryTable<T>(
-  config: SupabaseConfig,
-  table: string,
-  query: string,
-): Promise<T[]> {
+async function queryTable<T>(config: SupabaseConfig, table: string, query: string): Promise<T[]> {
   const endpoint = `${config.url}/rest/v1/${encodeURIComponent(table)}?${query}`;
   const response = await fetch(endpoint, {
     method: 'GET',
@@ -527,7 +526,9 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
 
   const updatedAt = new Date().toISOString();
   const athleteRow = buildAthleteRow(args.athlete, updatedAt);
-  const appointmentRow = args.appointment ? buildAppointmentRow(args.athlete, args.appointment, updatedAt) : null;
+  const appointmentRow = args.appointment
+    ? buildAppointmentRow(args.athlete, args.appointment, updatedAt)
+    : null;
   const reminderRow = args.reminder ? buildReminderRow(args.reminder, updatedAt) : null;
   const eventRow = buildLifecycleEventRow(args.athlete, args, updatedAt);
   const stateRow = buildPipelineStateRow(args.athlete, args.state, updatedAt);
@@ -830,7 +831,10 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
   ]);
 
   const athleteNamesByKey = new Map(
-    athleteRows.map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()]),
+    athleteRows.map((row) => [
+      String(row.athlete_key || '').trim(),
+      String(row.athlete_name || '').trim(),
+    ]),
   );
   const appointmentsById = new Map(
     appointmentRows.map((row) => [String(row.id || '').trim(), row]),
