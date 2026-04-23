@@ -15,7 +15,7 @@ import {
 } from '@raycast/api';
 import { useForm } from '@raycast/utils';
 import { spawn } from 'child_process';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import {
@@ -2514,7 +2514,7 @@ function ScoutPrepDetail({
 }) {
   const { push, pop } = useNavigation();
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
-  const [metadata, setMetadata] = useState<ReactElement | undefined>(undefined);
+  const [metadata, setMetadata] = useState<any>(undefined);
   const [isLoading, setIsLoading] = useState(true);
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadScoutPrepContext>> | null>(
     null,
@@ -3858,7 +3858,6 @@ export default function ScoutPrepCommand() {
         return 'tasks';
       }
       // Enter recent from anywhere
-      setTaskSearchText('');
       setProspectSearchText('');
       setProspectResults([]);
       setIsProspectSearching(false);
@@ -3876,7 +3875,6 @@ export default function ScoutPrepCommand() {
         return 'tasks';
       }
       // Enter prospect from anywhere
-      setTaskSearchText('');
       setRecentProfiles([]);
       setIsRecentFollowUpsLoading(false);
       return 'prospect';
@@ -3915,16 +3913,8 @@ export default function ScoutPrepCommand() {
             ? 'Prospect Search — Enter athlete name or email'
             : 'Search Task List'
       }
-      searchText={
-        viewMode !== 'tasks' ? (viewMode === 'recent' ? '' : prospectSearchText) : undefined
-      }
-      onSearchTextChange={
-        viewMode === 'recent'
-          ? undefined
-          : viewMode === 'prospect'
-            ? setProspectSearchText
-            : undefined
-      }
+      searchText={viewMode === 'prospect' ? prospectSearchText : undefined}
+      onSearchTextChange={viewMode === 'prospect' ? setProspectSearchText : undefined}
     >
       {viewMode === 'recent' ? (
         <List.Section title="Recent Profiles" subtitle={String(recentProfiles.length)}>
