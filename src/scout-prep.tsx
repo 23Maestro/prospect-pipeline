@@ -101,7 +101,6 @@ import {
   type ConfirmationFollowUpVariant,
   type VoicemailFollowUpVariant,
 } from './lib/scout-follow-up-templates';
-import { syncScoutOutcomeToNotion } from './lib/scout-outcome-sync';
 import {
   recordConfirmationSent,
   recordMeetingSet,
@@ -172,15 +171,6 @@ function buildMeetingSetStartsAt(
 
   const [, month, day, year] = match;
   return `20${year}-${month}-${day}T${rawStartTime}`;
-}
-
-function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {
-  const params = new URLSearchParams({ contactid: String(athleteId || '').trim() });
-  const mainId = String(athleteMainId || '').trim();
-  if (mainId) {
-    params.set('athlete_main_id', mainId);
-  }
-  return `${DASHBOARD_BASE_URL}/admin/athletes?${params.toString()}`;
 }
 
 function getTaskDisplayTitle(
@@ -2018,6 +2008,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   }, [selectedStage, selectedStageLabel, task]);
 
   const meetingTemplateKey = `${selectedStage}-${meetingTemplate?.meeting_name || 'meeting'}`;
+  const meetingDetailsKey = `${meetingTemplateKey}-${meetingTemplate?.details_template || ''}`;
   const openMeetingsKey = `${selectedStage}-${selectedMeetingFor}-${selectedOpenMeetingId || 'open'}`;
   const canRenderStageFields =
     !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
@@ -2231,56 +2222,13 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           : 'Task completed.';
       }
 
-      let notionSyncError: string | null = null;
-      try {
-        const notionTaskId =
-          String(
-            meetingSetResult?.created_task?.task_id ||
-              salesStageResult.created_task?.task_id ||
-              task.task_id ||
-              '',
-          ).trim() || null;
-        const notionDueDate =
-          String(
-            meetingSetResult?.created_task?.due_date ||
-              salesStageResult.created_task?.due_date ||
-              task.due_date ||
-              '',
-          ).trim() || null;
-        const notionCurrentTask =
-          stripMoveThisTaskPrefix(
-            meetingSetResult?.created_task?.title ||
-              salesStageResult.created_task?.title ||
-              task.title ||
-              '',
-          ) || (stageLabel === MEETING_SET_LABEL ? 'Confirmation Call' : 'Follow Up');
-
-        await syncScoutOutcomeToNotion({
-          athleteId,
-          athleteMainId,
-          athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
-          parent1Name: syncContext.contactInfo.parent1?.name || null,
-          parent2Name: syncContext.contactInfo.parent2?.name || null,
-          stage: stageLabel,
-          currentTask: notionCurrentTask,
-          dueDate: notionDueDate,
-          adminUrl: buildAthleteAdminUrl(athleteId, athleteMainId),
-          taskId: notionTaskId,
-        });
-      } catch (error) {
-        notionSyncError = error instanceof Error ? error.message : String(error);
-      }
-
-      toast.style = notionSyncError ? Toast.Style.Failure : Toast.Style.Success;
-      toast.title = notionSyncError
-        ? 'Website saved, Notion sync failed'
-        : taskCompletionMessage
-          ? 'Sales stage saved, task completed'
-          : stageLabel === MEETING_SET_LABEL
-            ? 'Meeting Set + sales stage saved'
-            : 'Sales stage saved';
+      toast.style = Toast.Style.Success;
+      toast.title = taskCompletionMessage
+        ? 'Sales stage saved, task completed'
+        : stageLabel === MEETING_SET_LABEL
+          ? 'Meeting Set + sales stage saved'
+          : 'Sales stage saved';
       toast.message =
-        notionSyncError ||
         taskCompletionMessage ||
         (stageLabel === MEETING_SET_LABEL
           ? meetingSetResult?.email_sent
@@ -2358,7 +2306,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
                 ))}
               </Form.Dropdown>
               <Form.TextArea
-                key={`${meetingTemplateKey}-details`}
+                key={`${meetingDetailsKey}-details`}
                 id="meetingDetails"
                 title="Meeting Set Details"
                 defaultValue={meetingTemplate?.details_template || buildFallbackMeetingDetails()}

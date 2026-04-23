@@ -520,15 +520,31 @@ function replaceSectionBody(template: string, label: string, lines: string[]): s
     return template;
   }
 
-  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(`(${escaped}:\\n)([\\s\\S]*?)(\\n(?:Deficit:|Other Details:|$))`, 'm');
-  const nextBody = `${label}:\n${lines.join('\n')}`;
+  const normalized = template.replace(/\r\n?/g, '\n');
+  const sectionHeader = `${label}:`;
+  const nextSectionHeaders = new Set(['Deficit:', 'Other Details:']);
+  const sourceLines = normalized.split('\n');
+  const startIndex = sourceLines.findIndex((line) => line.trim() === sectionHeader);
 
-  if (pattern.test(template)) {
-    return template.replace(pattern, `${nextBody}$3`);
+  if (startIndex === -1) {
+    return template;
   }
 
-  return template;
+  let endIndex = sourceLines.length;
+  for (let index = startIndex + 1; index < sourceLines.length; index += 1) {
+    if (nextSectionHeaders.has(sourceLines[index].trim())) {
+      endIndex = index;
+      break;
+    }
+  }
+
+  const rebuilt = [
+    ...sourceLines.slice(0, startIndex + 1),
+    ...lines,
+    ...sourceLines.slice(endIndex),
+  ].join('\n');
+
+  return rebuilt;
 }
 
 function upsertGpaLine(template: string, gpa?: string | null): string {

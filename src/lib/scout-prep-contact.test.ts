@@ -158,7 +158,7 @@ test('mergeMeetingDetailsTemplate: prefills athlete details and optional GPA onl
 
   assert.match(
     merged,
-    /About The Athlete:\nS \| ATH\n6'0" \| 175\nArroyo Grande High School\n\nGPA 3.70\n\nDeficit:/,
+    /About The Athlete:\nS \| ATH\n6'0" \| 175\nHigh School: Arroyo Grande High School\n\nGPA 3.70\n\nDeficit:/,
   );
 });
 
