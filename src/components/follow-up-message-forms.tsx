@@ -26,12 +26,9 @@ export function VoicemailFollowUpMessageForm(props: {
   defaultVariant: VoicemailFollowUpVariant;
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
 }) {
-  const { pop } = useNavigation();
-
   async function handleSubmit(values: VoicemailFollowUpFormValues) {
     try {
       await props.onSubmit(values);
-      pop();
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -47,7 +44,7 @@ export function VoicemailFollowUpMessageForm(props: {
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Open in Messages"
+            title="Send Message"
             onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
           />
         </ActionPanel>

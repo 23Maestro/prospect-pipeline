@@ -1,5 +1,6 @@
 import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types';
 import { formatCurrentLocalTime, resolveTimezone } from './scout-prep-ai';
+import { cleanPositions } from './prospect-search';
 import {
   buildVoicemailFollowUpMessage,
   resolveVoicemailFollowUpVariant,
@@ -281,15 +282,12 @@ export function getVoicemailFollowUpRecipients(
   context: ScoutPrepContext,
 ): VoicemailFollowUpRecipient[] {
   const candidates = getProspectContactShortcutCandidates(context);
-  const parentRecipients = candidates.filter(
-    (candidate) => candidate.id === 'parent1' || candidate.id === 'parent2',
-  );
-  const uniqueParentRecipients = new Map<string, VoicemailFollowUpRecipient>();
-  for (const candidate of parentRecipients) {
-    if (uniqueParentRecipients.has(candidate.phone)) {
+  const uniqueRecipients = new Map<string, VoicemailFollowUpRecipient>();
+  for (const candidate of candidates) {
+    if (uniqueRecipients.has(candidate.phone)) {
       continue;
     }
-    uniqueParentRecipients.set(candidate.phone, {
+    uniqueRecipients.set(candidate.phone, {
       id: candidate.id,
       label: candidate.label,
       name: candidate.name,
@@ -297,15 +295,15 @@ export function getVoicemailFollowUpRecipients(
     });
   }
 
-  const recipients = Array.from(uniqueParentRecipients.values());
+  const recipients = Array.from(uniqueRecipients.values());
 
-  const parentPhones = Array.from(new Set(parentRecipients.map((candidate) => candidate.phone)));
-  if (parentPhones.length > 1) {
+  const groupPhones = Array.from(new Set(candidates.map((candidate) => candidate.phone)));
+  if (groupPhones.length > 1) {
     recipients.push({
       id: 'groupAll',
       label: 'Group Text',
-      name: 'All Parent Contacts',
-      phones: parentPhones,
+      name: 'All Associated Contacts',
+      phones: groupPhones,
     });
   }
 
@@ -495,9 +493,69 @@ function setTemplateValue(template: string, label: string, value?: string | null
   return pattern.test(template) ? template.replace(pattern, replacement) : template;
 }
 
+function buildAthleteDetailsLines(context: ScoutPrepContext): string[] {
+  const lines: string[] = [];
+  const positions = cleanPositions(context.resolved.positions || undefined);
+  const heightWeight = [context.resolved.height, context.resolved.weight]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join(' | ');
+  const highSchool = String(context.resolved.high_school || '').trim();
+
+  if (positions) {
+    lines.push(positions);
+  }
+  if (heightWeight) {
+    lines.push(heightWeight);
+  }
+  if (highSchool) {
+    lines.push(highSchool);
+  }
+
+  return lines;
+}
+
+function replaceSectionBody(template: string, label: string, lines: string[]): string {
+  if (!lines.length) {
+    return template;
+  }
+
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(`(${escaped}:\\n)([\\s\\S]*?)(\\n(?:Deficit:|Other Details:|$))`, 'm');
+  const nextBody = `${label}:\n${lines.join('\n')}`;
+
+  if (pattern.test(template)) {
+    return template.replace(pattern, `${nextBody}$3`);
+  }
+
+  return template;
+}
+
+function upsertGpaLine(template: string, gpa?: string | null): string {
+  const normalizedGpa = String(gpa || '').trim();
+  const pattern = /^GPA .*$/m;
+
+  if (!normalizedGpa) {
+    return template.replace(pattern, '').replace(/\n{3,}/g, '\n\n');
+  }
+
+  const nextLine = `GPA ${normalizedGpa}`;
+  if (pattern.test(template)) {
+    return template.replace(pattern, nextLine);
+  }
+
+  const deficitIndex = template.indexOf('\nDeficit:');
+  if (deficitIndex >= 0) {
+    return `${template.slice(0, deficitIndex).trimEnd()}\n\n${nextLine}${template.slice(deficitIndex)}`;
+  }
+
+  return `${template.trimEnd()}\n\n${nextLine}`;
+}
+
 export function mergeMeetingDetailsTemplate(
   template: string,
   contactSelection: ScoutPrepContactSelection,
+  context?: ScoutPrepContext | null,
 ): string {
   let merged = template;
   merged = setTemplateValue(
@@ -512,6 +570,12 @@ export function mergeMeetingDetailsTemplate(
   );
   merged = setTemplateValue(merged, 'Spoke To', contactSelection.spokeTo);
   merged = setTemplateValue(merged, 'Other Parent', contactSelection.otherParent);
+
+  if (context) {
+    merged = replaceSectionBody(merged, 'About The Athlete', buildAthleteDetailsLines(context));
+    merged = upsertGpaLine(merged, context.resolved.gpa);
+  }
+
   return merged;
 }
 
@@ -541,6 +605,7 @@ export function buildMeetingTemplateDefaults(
     details_template: mergeMeetingDetailsTemplate(
       template.details_template || '',
       contactSelection,
+      context,
     ),
   };
 }

@@ -118,6 +118,50 @@ test('mergeMeetingDetailsTemplate: injects contact fields into labeled lines', (
   assert.match(merged, /Other Parent: Chris Smith/);
 });
 
+test('mergeMeetingDetailsTemplate: prefills athlete details and optional GPA only when available', () => {
+  const template = [
+    'Main Number:',
+    'Backup Number:',
+    'Spoke To:',
+    'Other Parent:',
+    '',
+    'About The Athlete:',
+    '',
+    'Deficit:',
+    '',
+    'Other Details:',
+  ].join('\n');
+
+  const merged = mergeMeetingDetailsTemplate(
+    template,
+    selectScoutPrepContactNumbers(
+      buildContext({
+        resolved: {
+          positions: 'S / ATH',
+          height: `6'0"`,
+          weight: '175',
+          high_school: 'Arroyo Grande High School',
+          gpa: '3.70',
+        },
+      }),
+    ),
+    buildContext({
+      resolved: {
+        positions: 'S / ATH',
+        height: `6'0"`,
+        weight: '175',
+        high_school: 'Arroyo Grande High School',
+        gpa: '3.70',
+      },
+    }),
+  );
+
+  assert.match(
+    merged,
+    /About The Athlete:\nS \| ATH\n6'0" \| 175\nArroyo Grande High School\n\nGPA 3.70\n\nDeficit:/,
+  );
+});
+
 test('buildMeetingTemplateDefaults: prefers computed timezone when option exists', () => {
   const template: MeetingSetTemplateResponse = {
     success: true,

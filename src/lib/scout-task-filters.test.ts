@@ -50,32 +50,44 @@ test('all items returns only todayPastDue website rows', () => {
     taskBuckets: buildBuckets(),
   });
 
-  assert.deepEqual(rows.map((row) => row.task.athlete_name), ['Today Past Due Athlete']);
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Today Past Due Athlete'],
+  );
 });
 
-test('today returns only today website rows', () => {
+test('today returns only today rows', () => {
   const rows = buildTaskBucketRows({
     filter: 'today',
     taskBuckets: buildBuckets(),
   });
 
-  assert.deepEqual(rows.map((row) => row.task.athlete_name), ['Today Athlete']);
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Today Athlete'],
+  );
 });
 
-test('tomorrow returns only tomorrow website rows', () => {
+test('tomorrow returns only tomorrow rows', () => {
   const rows = buildTaskBucketRows({
     filter: 'tomorrow',
     taskBuckets: buildBuckets(),
   });
 
-  assert.deepEqual(rows.map((row) => row.task.athlete_name), ['Tomorrow Athlete']);
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Tomorrow Athlete'],
+  );
 });
 
-test('future returns only future website rows', () => {
+test('future returns only future rows', () => {
   const rows = buildTaskBucketRows({
     filter: 'future',
     taskBuckets: buildBuckets(),
   });
 
-  assert.deepEqual(rows.map((row) => row.task.athlete_name), ['Future Athlete']);
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Future Athlete'],
+  );
 });

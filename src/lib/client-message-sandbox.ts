@@ -1,5 +1,5 @@
 import { homedir } from 'os';
-import { resolve } from 'path';
+import { dirname, resolve } from 'path';
 
 import { Color, Icon, Image } from '@raycast/api';
 import { executeSQL, runAppleScript, usePromise, useSQL } from '@raycast/utils';
@@ -7,11 +7,15 @@ import { fetchContactsInGroup } from 'swift:../../swift/contacts';
 
 import {
   type PipelineClientAssociate,
+  buildClientMessageExportPayload,
   type PipelineClientExportRow,
 } from './client-message-export';
 
 const DB_PATH = resolve(homedir(), 'Library/Messages/chat.db');
-const PIPELINE_EXPORT_PATH = resolve(homedir(), 'Raycast/prospect-pipeline/tmp/client-message-inbox-export.json');
+const PIPELINE_EXPORT_PATH = resolve(
+  homedir(),
+  'Raycast/prospect-pipeline/tmp/client-message-inbox-export.json',
+);
 const CLIENT_CONTACT_GROUP_CANDIDATES = ['ID Clients', 'ID Contacts'];
 
 type Contact = {
@@ -52,8 +56,10 @@ export type ClientInboxChat = {
   group_name: string | null;
   group_participants: string | null;
   is_group: boolean;
+  participant_count: number;
   last_message_date: string;
   displayName: string;
+  matchedPhones: string[];
   avatar?: Image.ImageLike;
   clientMatch: ClientDirectoryMatch;
 };
@@ -108,7 +114,76 @@ function contactDisplayName(contact: Pick<Contact, 'givenName' | 'familyName'>):
 }
 
 function buildChatDisplayName(chat: SQLChat): string {
-  return String(chat.display_name || '').trim() || String(chat.participant_identifier || chat.chat_identifier).trim();
+  return (
+    String(chat.display_name || '').trim() ||
+    String(chat.participant_identifier || chat.chat_identifier).trim()
+  );
+}
+
+function getChatParticipantPhones(
+  chat: Pick<
+    SQLChat,
+    'is_group' | 'group_participants' | 'participant_identifier' | 'chat_identifier'
+  >,
+) {
+  const rawParticipants = chat.is_group
+    ? String(chat.group_participants || '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean)
+    : [String(chat.participant_identifier || chat.chat_identifier || '').trim()].filter(Boolean);
+
+  return rawParticipants
+    .map((value) => normalizePhoneForClientMatch(value))
+    .filter((value): value is string => Boolean(value));
+}
+
+function resolveMatchedPhones(
+  chat: Pick<
+    SQLChat,
+    'is_group' | 'group_participants' | 'participant_identifier' | 'chat_identifier'
+  >,
+  matchesByPhone?: Map<string, ClientDirectoryMatch>,
+) {
+  const matchedPhones = getChatParticipantPhones(chat).filter((phone) =>
+    matchesByPhone?.has(phone),
+  );
+  return Array.from(new Set(matchedPhones));
+}
+
+function resolveClientMatchForChat(
+  chat: SQLChat,
+  matchesByPhone?: Map<string, ClientDirectoryMatch>,
+) {
+  const matchedPhones = resolveMatchedPhones(chat, matchesByPhone);
+  if (!matchedPhones.length || !matchesByPhone) {
+    return null;
+  }
+
+  const clientMatch = matchedPhones
+    .map((phone) => matchesByPhone.get(phone))
+    .filter((match): match is ClientDirectoryMatch => Boolean(match))
+    .reduce<ClientDirectoryMatch | null>(
+      (merged, match) => mergeMatch(merged || undefined, match),
+      null,
+    );
+
+  if (!clientMatch) {
+    return null;
+  }
+
+  return {
+    clientMatch,
+    matchedPhones,
+  };
+}
+
+function resolveInboxDisplayName(chat: SQLChat, clientMatch: ClientDirectoryMatch): string {
+  if (chat.is_group) {
+    return String(chat.group_name || chat.display_name || '').trim() || buildChatDisplayName(chat);
+  }
+
+  return clientMatch.displayName || buildChatDisplayName(chat);
 }
 
 function fuzzySearch(text: string, searchTerms: string[]): boolean {
@@ -163,7 +238,14 @@ function mergeMatch(
 async function readPipelineExport(): Promise<PipelineClientExportPayload> {
   const fs = await import('fs');
   if (!fs.existsSync(PIPELINE_EXPORT_PATH)) {
-    return {};
+    const payload = await buildClientMessageExportPayload().catch(() => null);
+    if (!payload) {
+      return {};
+    }
+
+    await fs.promises.mkdir(dirname(PIPELINE_EXPORT_PATH), { recursive: true });
+    await fs.promises.writeFile(PIPELINE_EXPORT_PATH, JSON.stringify(payload, null, 2), 'utf8');
+    return payload;
   }
   const raw = await fs.promises.readFile(PIPELINE_EXPORT_PATH, 'utf8');
   return JSON.parse(raw) as PipelineClientExportPayload;
@@ -276,7 +358,7 @@ export function useClientInboxChats(searchText = '') {
           'unixepoch'
         )) AS last_message_date,
         CASE
-          WHEN chat.chat_identifier LIKE '%chat%' THEN GROUP_CONCAT(DISTINCT handle.id)
+          WHEN COUNT(DISTINCT handle.id) > 1 THEN GROUP_CONCAT(DISTINCT handle.id)
           ELSE handle.id
         END as group_participants
       FROM chat
@@ -294,33 +376,29 @@ export function useClientInboxChats(searchText = '') {
     },
   );
 
-  const { data: clientDirectory, isLoading: isLoadingDirectory, revalidate: revalidateDirectory } = usePromise(
-    loadClientDirectory,
-    [],
-  );
+  const {
+    data: clientDirectory,
+    isLoading: isLoadingDirectory,
+    revalidate: revalidateDirectory,
+  } = usePromise(loadClientDirectory, []);
 
   const chats = (rawData || [])
-    .filter((chat) => !Boolean(chat.is_group))
     .map((chat) => {
       const participantIdentifier = String(chat.participant_identifier || '').trim();
-      const normalizedPhone = normalizePhoneForClientMatch(participantIdentifier);
-      if (!normalizedPhone) return null;
-      const clientMatch = clientDirectory?.matchesByPhone.get(normalizedPhone);
-      if (!clientMatch) return null;
+      const resolvedMatch = resolveClientMatchForChat(chat, clientDirectory?.matchesByPhone);
+      if (!resolvedMatch) return null;
       return {
         ...chat,
         participant_identifier: participantIdentifier,
-        displayName: clientMatch.displayName || buildChatDisplayName(chat),
+        displayName: resolveInboxDisplayName(chat, resolvedMatch.clientMatch),
+        matchedPhones: resolvedMatch.matchedPhones,
         avatar: { source: Icon.PersonCircle, tintColor: Color.SecondaryText } as Image.ImageLike,
-        clientMatch,
+        clientMatch: resolvedMatch.clientMatch,
       } satisfies ClientInboxChat;
     })
     .filter((chat): chat is ClientInboxChat => Boolean(chat))
     .filter((chat) => {
-      const terms = searchText
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(Boolean);
+      const terms = searchText.toLowerCase().split(/\s+/).filter(Boolean);
       if (!terms.length) return true;
       return fuzzySearch(
         [
@@ -331,6 +409,8 @@ export function useClientInboxChats(searchText = '') {
           chat.clientMatch.taskStatus,
           chat.clientMatch.crmStage,
           chat.participant_identifier,
+          chat.group_participants,
+          ...chat.matchedPhones,
         ]
           .filter(Boolean)
           .join(' '),
@@ -414,9 +494,9 @@ export async function getClientThreadMessages(
       END as group_name,
       message.service,
       hex(message.attributedBody) as body,
-      CASE WHEN chat.chat_identifier LIKE '%chat%' THEN 1 ELSE 0 END as is_group,
+      CASE WHEN COUNT(DISTINCT handle.id) > 1 THEN 1 ELSE 0 END as is_group,
       CASE
-        WHEN chat.chat_identifier LIKE '%chat%' THEN GROUP_CONCAT(DISTINCT handle.id)
+        WHEN COUNT(DISTINCT handle.id) > 1 THEN GROUP_CONCAT(DISTINCT handle.id)
         ELSE handle.id
       END as group_participants,
       attachment.filename as attachment_filename,

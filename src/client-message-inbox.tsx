@@ -1,4 +1,13 @@
-import { Action, ActionPanel, Form, Icon, List, showToast, useNavigation } from '@raycast/api';
+import {
+  Action,
+  ActionPanel,
+  Form,
+  Icon,
+  List,
+  Toast,
+  showToast,
+  useNavigation,
+} from '@raycast/api';
 import { useForm, usePromise } from '@raycast/utils';
 import { format } from 'date-fns';
 import { useState } from 'react';
@@ -13,9 +22,15 @@ import {
 } from './lib/client-message-sandbox';
 import { openMessagesServiceClientInbox } from './lib/messages-service';
 
-function getMessagesUrl(chat: { chat_identifier: string }, body?: string): string {
+function getMessagesUrl(
+  chat: Pick<ClientInboxChat, 'chat_identifier' | 'group_participants' | 'is_group'>,
+  body?: string,
+): string {
+  const addresses = chat.is_group
+    ? chat.group_participants || chat.chat_identifier
+    : chat.chat_identifier;
   const encodedBody = body ? `&body=${encodeURIComponent(body)}` : '';
-  return `sms://open?addresses=${chat.chat_identifier}${encodedBody}`;
+  return `sms://open?addresses=${addresses}${encodedBody}`;
 }
 
 function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
@@ -44,13 +59,19 @@ function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
       navigationTitle={`Send Follow-Up • ${chat.displayName}`}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Open in Messages Service" icon={Icon.Message} onSubmit={handleSubmit} />
+          <Action.SubmitForm
+            title="Open in Messages Service"
+            icon={Icon.Message}
+            onSubmit={handleSubmit}
+          />
         </ActionPanel>
       }
     >
       <Form.Description
         title="Client"
-        text={[chat.clientMatch.athleteName, chat.clientMatch.associateLabel].filter(Boolean).join(' • ')}
+        text={[chat.clientMatch.athleteName, chat.clientMatch.associateLabel]
+          .filter(Boolean)
+          .join(' • ')}
       />
       <Form.TextArea
         {...itemProps.message}
@@ -99,10 +120,11 @@ function ReplyForm({ message, onSent }: { message: ClientThreadMessage; onSent: 
 function ClientThread({ chat }: { chat: ClientInboxChat }) {
   const [searchText, setSearchText] = useState('');
   const { push } = useNavigation();
-  const { data: messages, isLoading, revalidate } = usePromise(
-    getClientThreadMessages,
-    [chat.chat_identifier, chat.displayName, searchText],
-  );
+  const {
+    data: messages,
+    isLoading,
+    revalidate,
+  } = usePromise(getClientThreadMessages, [chat.guid, chat.displayName, searchText]);
 
   return (
     <List
@@ -117,16 +139,30 @@ function ClientThread({ chat }: { chat: ClientInboxChat }) {
           key={message.guid}
           title={message.senderName}
           subtitle={message.body}
-          accessories={[{ date: new Date(message.date), tooltip: format(new Date(message.date), 'PPpp') }]}
+          accessories={[
+            { date: new Date(message.date), tooltip: format(new Date(message.date), 'PPpp') },
+          ]}
           actions={
             <ActionPanel>
-              <Action title="Reply" icon={Icon.Reply} onAction={() => push(<ReplyForm message={message} onSent={revalidate} />)} />
-              <Action.Open title="Open in Messages" icon={Icon.Message} target={getMessagesUrl(chat)} />
+              <Action
+                title="Reply"
+                icon={Icon.Reply}
+                onAction={() => push(<ReplyForm message={message} onSent={revalidate} />)}
+              />
+              <Action.Open
+                title="Open in Messages"
+                icon={Icon.Message}
+                target={getMessagesUrl(chat)}
+              />
               <Action title="Refresh Thread" icon={Icon.ArrowClockwise} onAction={revalidate} />
             </ActionPanel>
           }
         />
       ))}
+      <List.EmptyView
+        title="No messages found"
+        description="This thread did not return any local Messages rows yet."
+      />
     </List>
   );
 }
@@ -134,7 +170,13 @@ function ClientThread({ chat }: { chat: ClientInboxChat }) {
 export default function ClientMessageInboxCommand() {
   const [searchText, setSearchText] = useState('');
   const { push } = useNavigation();
-  const { data: chats, isLoading, permissionView, revalidateDirectory, directory } = useClientInboxChats(searchText);
+  const {
+    data: chats,
+    isLoading,
+    permissionView,
+    revalidateDirectory,
+    directory,
+  } = useClientInboxChats(searchText);
 
   if (permissionView) {
     return permissionView;
@@ -152,36 +194,58 @@ export default function ClientMessageInboxCommand() {
         <List.Item
           key={chat.guid}
           title={chat.displayName}
-          subtitle={[
-            chat.clientMatch.athleteName && chat.clientMatch.athleteName !== chat.displayName
-              ? `${chat.clientMatch.athleteName} • ${chat.clientMatch.associateLabel || 'Associated Client'}`
-              : chat.clientMatch.associateLabel || null,
-            chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus || null,
-          ]
-            .filter(Boolean)
-            .join(' | ')}
+          subtitle={chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus || ''}
           accessories={[
-            { tag: { value: chat.clientMatch.segment === 'client' ? 'Client' : 'Pending' } },
-            ...(chat.clientMatch.crmStage ? [{ text: chat.clientMatch.crmStage }] : []),
-            { date: new Date(chat.last_message_date), tooltip: format(new Date(chat.last_message_date), 'PPpp') },
+            ...(chat.clientMatch.athleteName
+              ? [{ tag: { value: chat.clientMatch.athleteName } }]
+              : []),
+            ...(chat.is_group ? [{ tag: { value: 'Group' } }] : []),
+            {
+              date: new Date(chat.last_message_date),
+              tooltip: format(new Date(chat.last_message_date), 'PPpp'),
+            },
           ]}
           actions={
             <ActionPanel>
-              <Action title="Open Client Thread" icon={Icon.Message} onAction={() => push(<ClientThread chat={chat} />)} />
-              <Action title="Send Follow-Up" icon={Icon.PaperPlane} onAction={() => push(<FollowUpDraftForm chat={chat} />)} />
               <Action
-                title="Open in Messages Service"
-                icon={Icon.Bubble}
-                onAction={() =>
-                  openMessagesServiceClientInbox({
-                    chatIdentifier: chat.chat_identifier,
-                    openThread: true,
-                  })
-                }
+                title="Open Client Thread"
+                icon={Icon.Message}
+                onAction={() => push(<ClientThread chat={chat} />)}
               />
+              <Action
+                title="Send Follow-Up"
+                icon={Icon.PaperPlane}
+                onAction={() => push(<FollowUpDraftForm chat={chat} />)}
+              />
+              {chat.is_group ? (
+                <Action.Open
+                  title="Open in Messages"
+                  icon={Icon.Bubble}
+                  target={getMessagesUrl(chat)}
+                />
+              ) : (
+                <Action
+                  title="Open in Messages Service"
+                  icon={Icon.Bubble}
+                  onAction={() =>
+                    openMessagesServiceClientInbox({
+                      chatIdentifier: chat.chat_identifier,
+                      openThread: true,
+                    })
+                  }
+                />
+              )}
               <ActionPanel.Section>
-                <Action.Push title="Export Client Message Inbox" icon={Icon.Upload} target={<ExportClientMessageInboxCommand />} />
-                <Action title="Refresh Client Source" icon={Icon.ArrowClockwise} onAction={revalidateDirectory} />
+                <Action.Push
+                  title="Export Client Message Inbox"
+                  icon={Icon.Upload}
+                  target={<ExportClientMessageInboxCommand />}
+                />
+                <Action
+                  title="Refresh Client Source"
+                  icon={Icon.ArrowClockwise}
+                  onAction={revalidateDirectory}
+                />
               </ActionPanel.Section>
             </ActionPanel>
           }
@@ -197,8 +261,16 @@ export default function ClientMessageInboxCommand() {
         }
         actions={
           <ActionPanel>
-            <Action.Push title="Export Client Message Inbox" icon={Icon.Upload} target={<ExportClientMessageInboxCommand />} />
-            <Action title="Refresh Client Source" icon={Icon.ArrowClockwise} onAction={revalidateDirectory} />
+            <Action.Push
+              title="Export Client Message Inbox"
+              icon={Icon.Upload}
+              target={<ExportClientMessageInboxCommand />}
+            />
+            <Action
+              title="Refresh Client Source"
+              icon={Icon.ArrowClockwise}
+              onAction={revalidateDirectory}
+            />
           </ActionPanel>
         }
       />

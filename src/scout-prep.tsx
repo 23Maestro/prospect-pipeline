@@ -9,9 +9,11 @@ import {
   Toast,
   Clipboard,
   open,
+  popToRoot,
   showToast,
   useNavigation,
 } from '@raycast/api';
+import { useForm } from '@raycast/utils';
 import { spawn } from 'child_process';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import BackSyncScoutFollowUpsCommand from './back-sync-scout-follow-ups';
@@ -106,6 +108,7 @@ import {
   recordRescheduled,
 } from './lib/supabase-lifecycle';
 import { buildAssociatedClientsFromContactInfo } from './lib/client-message-export';
+import { sendClientMessage } from './lib/client-message-sandbox';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
@@ -664,10 +667,10 @@ async function createProspectContactsBatch(
       'end findPreferredGroup',
       '',
       'on joinLines(values)',
-      'set previousDelimiters to AppleScript\'s text item delimiters',
-      'set AppleScript\'s text item delimiters to linefeed',
+      "set previousDelimiters to AppleScript's text item delimiters",
+      "set AppleScript's text item delimiters to linefeed",
       'set joinedText to values as text',
-      'set AppleScript\'s text item delimiters to previousDelimiters',
+      "set AppleScript's text item delimiters to previousDelimiters",
       'return joinedText',
       'end joinLines',
       '',
@@ -734,8 +737,9 @@ async function createProspectContactsBatch(
           ? statusValue
           : 'created';
       const candidate =
-        candidateByKey.get(`${String(nameValue || '').trim()}|${String(phoneValue || '').trim()}`) ||
-        uniqueCandidates.find((item) => item.phone === String(phoneValue || '').trim());
+        candidateByKey.get(
+          `${String(nameValue || '').trim()}|${String(phoneValue || '').trim()}`,
+        ) || uniqueCandidates.find((item) => item.phone === String(phoneValue || '').trim());
       if (!candidate) {
         return null;
       }
@@ -753,7 +757,9 @@ async function createProspectContactsBatch(
     );
 
   const groupNames = Array.from(
-    new Set(results.map((result) => result.groupName).filter((value): value is string => Boolean(value))),
+    new Set(
+      results.map((result) => result.groupName).filter((value): value is string => Boolean(value)),
+    ),
   );
 
   return {
@@ -814,16 +820,13 @@ async function collectBatchProspectContactCandidates(tasks: ScoutPortalTask[]): 
           name:
             String(associate.name || '').trim() ||
             (associate.role === 'studentAthlete' ? task.athlete_name : associate.relationshipLabel),
-          phone: associate.normalizedPhoneNumber.replace(
-            /(\d{3})(\d{3})(\d{4})/,
-            '$1-$2-$3',
-          ),
+          phone: associate.normalizedPhoneNumber.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3'),
         }))
         .sort(
-        (left, right) =>
-          ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
-          ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
-      );
+          (left, right) =>
+            ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
+            ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
+        );
       for (const candidate of candidates) {
         const key = `${candidate.phone}|${candidate.name.toLowerCase()}`;
         if (!uniqueCandidates.has(key)) {
@@ -1096,6 +1099,54 @@ type VoicemailFollowUpFormValues = {
   variant?: VoicemailFollowUpVariant;
 };
 
+function SingleRecipientMessageForm({
+  title,
+  recipientName,
+  phone,
+  initialMessage,
+}: {
+  title: string;
+  recipientName: string;
+  phone: string;
+  initialMessage: string;
+}) {
+  const { itemProps, handleSubmit } = useForm<{ message: string }>({
+    initialValues: { message: initialMessage },
+    async onSubmit(values) {
+      const result = await sendClientMessage({
+        address: phone,
+        text: values.message,
+        serviceName: 'iMessage',
+      });
+
+      if (result !== 'Success') {
+        throw new Error(result);
+      }
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Message sent',
+        message: recipientName,
+      });
+      await popToRoot({ clearSearchBar: true });
+    },
+  });
+
+  return (
+    <Form
+      navigationTitle={title}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Send Message" icon={Icon.Message} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.Description title="Client" text={`${recipientName} • ${phone}`} />
+      <Form.TextArea {...itemProps.message} title="Message" />
+    </Form>
+  );
+}
+
 type ScoutPrepParentOption = {
   id: 'parent1' | 'parent2';
   name: string;
@@ -1179,6 +1230,7 @@ function VoicemailFollowUpRecipientForm({
   crmStage?: string | null;
   currentTask?: string | null;
 }) {
+  const { push } = useNavigation();
   const recipients = getVoicemailFollowUpRecipients(context);
   const defaultVariant = resolveVoicemailFollowUpVariant({
     crmStage,
@@ -1215,6 +1267,26 @@ function VoicemailFollowUpRecipientForm({
     });
 
     try {
+      if (recipient.phones.length === 1 && recipient.id !== 'groupAll') {
+        push(
+          <SingleRecipientMessageForm
+            title={`Send Message • ${recipient.name}`}
+            recipientName={recipient.name}
+            phone={recipient.phones[0]}
+            initialMessage={body}
+          />,
+        );
+        logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
+          contactId: context.task.contact_id,
+          recipientId: recipient.id,
+          recipientName: recipient.name,
+          recipientCount: recipient.phones.length,
+          mode: 'raycast-ui',
+          variant: variant || defaultVariant,
+        });
+        return;
+      }
+
       const mode = await openMessagesDraftForRecipients(recipient.phones, body);
       logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
         contactId: context.task.contact_id,
@@ -1224,6 +1296,7 @@ function VoicemailFollowUpRecipientForm({
         mode,
         variant: variant || defaultVariant,
       });
+      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       await Clipboard.copy(body);
       await open(`sms:${recipient.phones[0]}`);
@@ -1245,6 +1318,7 @@ function VoicemailFollowUpRecipientForm({
         title: 'Messages opened',
         message: 'Voicemail text copied to clipboard.',
       });
+      await popToRoot({ clearSearchBar: true });
     }
   }
 
@@ -1265,99 +1339,6 @@ function VoicemailFollowUpRecipientForm({
           recipientId: values.recipientId,
           variant: values.variant,
         })
-      }
-    />
-  );
-}
-
-function buildPostCallPreviewMarkdown(
-  task: ScoutPortalTask,
-  values: Record<string, string | undefined>,
-  createdTask?: ScoutAthleteTask | null,
-  meetingSetResult?: MeetingSetSubmitResponse | null,
-): string {
-  const lines = [
-    `# Post-Call Update`,
-    '',
-    `## ${task.athlete_name}`,
-    '',
-    `- **Official Sales Stage:** ${values.officialStage || 'Not selected'}`,
-  ];
-
-  if ((values.officialStage || '') === MEETING_SET_LABEL) {
-    lines.push(
-      `- **Meeting Name:** ${values.meetingName || 'Not provided'}`,
-      `- **Recruit Time Zone:** ${values.recruitTimeZone || 'Not selected'}`,
-      '',
-      '## Meeting Set Details',
-      '',
-      values.meetingDetails || buildFallbackMeetingDetails(),
-    );
-  }
-
-  if (createdTask) {
-    lines.push(
-      '',
-      '## Next Task Created',
-      '',
-      `- **Task:** ${createdTask.title || 'Unknown task'}`,
-      `- **Due Date:** ${createdTask.due_date || 'Not provided'}`,
-      `- **Description:** ${createdTask.description || 'Not provided'}`,
-    );
-  }
-
-  lines.push('');
-  if ((values.officialStage || '') === MEETING_SET_LABEL) {
-    lines.push(
-      `> Meeting Set legacy flow submitted.${meetingSetResult?.email_sent ? ' Notification email sent.' : ' Notification email not confirmed.'}`,
-    );
-  } else {
-    lines.push('> Official sales stage saved.');
-  }
-
-  return lines.join('\n');
-}
-
-function PostCallUpdatePreview({
-  task,
-  values,
-  createdTask,
-  meetingSetResult,
-}: {
-  task: ScoutPortalTask;
-  values: Record<string, string | undefined>;
-  createdTask?: ScoutAthleteTask | null;
-  meetingSetResult?: MeetingSetSubmitResponse | null;
-}) {
-  return (
-    <Detail
-      navigationTitle={`Post-Call Update • ${task.athlete_name}`}
-      markdown={buildPostCallPreviewMarkdown(task, values, createdTask, meetingSetResult)}
-      actions={
-        <ActionPanel>
-          <Action.OpenInBrowser
-            title="Open Athlete Task Tab"
-            icon={Icon.Globe}
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-            url={buildScoutPrepTaskUrl(task, task.athlete_main_id)}
-          />
-          {createdTask ? (
-            <Action.Push
-              title="Build Scout Prep for Follow-Up"
-              icon={Icon.Wand}
-              target={
-                <ScoutPrepDetail
-                  task={{
-                    ...task,
-                    due_date: createdTask.due_date || task.due_date,
-                    title: createdTask.title || task.title,
-                    description: createdTask.description || task.description,
-                  }}
-                />
-              }
-            />
-          ) : null}
-        </ActionPanel>
       }
     />
   );
@@ -1896,7 +1877,6 @@ function UpdateAthleteTaskPicker({
 }
 
 function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
-  const { push } = useNavigation();
   const [stageOptions, setStageOptions] = useState<SalesStageOption[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>('');
   const [meetingTemplate, setMeetingTemplate] = useState<MeetingSetTemplateResponse | null>(null);
@@ -2308,17 +2288,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             : 'Meeting Set saved'
           : stageLabel);
 
-      push(
-        <PostCallUpdatePreview
-          task={task}
-          values={{
-            ...values,
-            officialStage: stageLabel,
-          }}
-          createdTask={meetingSetResult?.created_task || salesStageResult.created_task || null}
-          meetingSetResult={meetingSetResult}
-        />,
-      );
+      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.style = Toast.Style.Failure;
@@ -2439,7 +2409,13 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
   );
 }
 
-function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
+function ScoutPrepDetail({
+  task,
+  onReturnToRootList,
+}: {
+  task: ScoutPortalTask;
+  onReturnToRootList?: () => void;
+}) {
   const { push, pop } = useNavigation();
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
   const [metadata, setMetadata] = useState<ReactElement | undefined>(undefined);
@@ -2474,6 +2450,7 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       return;
     }
     const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+    let shouldReturnToRootList = false;
     push(
       <VoicemailFollowUpRecipientForm
         task={task}
@@ -2481,6 +2458,14 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
         crmStage={crmStage}
         currentTask={task.title || null}
       />,
+      () => {
+        if (!shouldReturnToRootList) {
+          return;
+        }
+        shouldReturnToRootList = false;
+        pop();
+        onReturnToRootList?.();
+      },
     );
   }
 
@@ -2863,10 +2848,20 @@ function ScoutPrepDetail({ task }: { task: ScoutPortalTask }) {
       metadata={metadata}
       actions={
         <ActionPanel>
-          <Action.Push
+          <Action
             title="Post-Call Update"
             icon={Icon.Pencil}
-            target={<PostCallUpdateForm task={task} />}
+            onAction={() => {
+              let shouldReturnToRootList = false;
+              push(<PostCallUpdateForm task={task} />, () => {
+                if (!shouldReturnToRootList) {
+                  return;
+                }
+                shouldReturnToRootList = false;
+                pop();
+                onReturnToRootList?.();
+              });
+            }}
           />
           <Action
             title="Voicemail Follow-Up"
@@ -2968,14 +2963,18 @@ function ScoutPrepTaskItem({
   onToggleProspectSearchMode,
   isProspectSearchMode,
   onToggleRecentMode,
+  onSelectTaskListFilter,
+  onReturnToRootList,
 }: {
   task: ScoutPortalTask;
   visibleTasks: ScoutPortalTask[];
   onToggleProspectSearchMode: () => void;
   isProspectSearchMode: boolean;
   onToggleRecentMode: () => void;
+  onSelectTaskListFilter: (filter: TaskListFilter) => void;
+  onReturnToRootList: () => void;
 }) {
-  const { push, pop } = useNavigation();
+  const { push } = useNavigation();
 
   async function handleVoicemailFollowUp() {
     try {
@@ -2989,6 +2988,7 @@ function ScoutPrepTaskItem({
         return;
       }
       const crmStage = await getSelectedCrmStageLabel(task.contact_id);
+      let shouldResetRootList = false;
       push(
         <VoicemailFollowUpRecipientForm
           task={task}
@@ -2996,6 +2996,13 @@ function ScoutPrepTaskItem({
           crmStage={crmStage}
           currentTask={task.title || null}
         />,
+        () => {
+          if (!shouldResetRootList) {
+            return;
+          }
+          shouldResetRootList = false;
+          onReturnToRootList();
+        },
       );
     } catch (error) {
       await showToast({
@@ -3219,7 +3226,7 @@ function ScoutPrepTaskItem({
           <Action.Push
             title="Build Scout Prep"
             icon={Icon.Wand}
-            target={<ScoutPrepDetail task={task} />}
+            target={<ScoutPrepDetail task={task} onReturnToRootList={onReturnToRootList} />}
           />
           <Action
             title="Voicemail Follow-Up"
@@ -3232,11 +3239,20 @@ function ScoutPrepTaskItem({
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
             onAction={() => void handleTextMeetingReminder()}
           />
-          <Action.Push
+          <Action
             title="Post-Call Update"
             icon={Icon.Pencil}
             shortcut={{ modifiers: ['cmd'], key: 'u' }}
-            target={<PostCallUpdateForm task={task} />}
+            onAction={() => {
+              let shouldResetRootList = false;
+              push(<PostCallUpdateForm task={task} />, () => {
+                if (!shouldResetRootList) {
+                  return;
+                }
+                shouldResetRootList = false;
+                onReturnToRootList();
+              });
+            }}
           />
           <Action.Push
             title="Contact Info"
@@ -3298,6 +3314,26 @@ function ScoutPrepTaskItem({
           </ActionPanel.Section>
           <ActionPanel.Section title="Navigation">
             <Action
+              title="Show All Items"
+              shortcut={{ modifiers: ['cmd'], key: '1' }}
+              onAction={() => onSelectTaskListFilter('all')}
+            />
+            <Action
+              title="Show Today"
+              shortcut={{ modifiers: ['cmd'], key: '2' }}
+              onAction={() => onSelectTaskListFilter('today')}
+            />
+            <Action
+              title="Show Tomorrow"
+              shortcut={{ modifiers: ['cmd'], key: '3' }}
+              onAction={() => onSelectTaskListFilter('tomorrow')}
+            />
+            <Action
+              title="Show Future"
+              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              onAction={() => onSelectTaskListFilter('future')}
+            />
+            <Action
               title="Show Recent Items"
               icon={Icon.Clock}
               shortcut={{ modifiers: ['cmd'], key: 'f' }}
@@ -3321,11 +3357,13 @@ function ScoutPrepTaskItem({
 function ProspectSearchListItem({
   result,
   onToggleProspectSearchMode,
+  onReturnToRootList,
 }: {
   result: ProspectResult;
   onToggleProspectSearchMode: () => void;
   isProspectSearchMode: boolean;
   onShowRecentProfiles: () => void;
+  onReturnToRootList: () => void;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
   const location = [result.city, result.state].filter(Boolean).join(', ');
@@ -3358,7 +3396,9 @@ function ProspectSearchListItem({
             <Action.Push
               title="Build Scout Prep"
               icon={Icon.Wand}
-              target={<ScoutPrepDetail task={scoutPrepTask} />}
+              target={
+                <ScoutPrepDetail task={scoutPrepTask} onReturnToRootList={onReturnToRootList} />
+              }
             />
           ) : null}
           <Action.OpenInBrowser
@@ -3385,11 +3425,13 @@ function ProspectSearchListItem({
 function RecentProfileListItem({
   item,
   onToggleRecentMode,
+  onReturnToRootList,
 }: {
   item: RecentProfileRow;
   onShowProspectSearch: () => void;
   onToggleProspectSearchMode: () => void;
   onToggleRecentMode: () => void;
+  onReturnToRootList: () => void;
 }) {
   const { task, followUpTask, profile, status, error } = item;
   const statusLabel =
@@ -3426,7 +3468,7 @@ function RecentProfileListItem({
           <Action.Push
             title="Build Scout Prep"
             icon={Icon.Wand}
-            target={<ScoutPrepDetail task={task} />}
+            target={<ScoutPrepDetail task={task} onReturnToRootList={onReturnToRootList} />}
           />
           {followUpTask ? (
             <Action.OpenInBrowser
@@ -3519,8 +3561,8 @@ export default function ScoutPrepCommand() {
           futureCount: nextTaskBuckets.future.length,
           firstAthlete: nextTaskBuckets[selectedRange][0]?.athlete_name || null,
           lastAthlete:
-            nextTaskBuckets[selectedRange][nextTaskBuckets[selectedRange].length - 1]?.athlete_name ||
-            null,
+            nextTaskBuckets[selectedRange][nextTaskBuckets[selectedRange].length - 1]
+              ?.athlete_name || null,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -3807,6 +3849,7 @@ export default function ScoutPrepCommand() {
                 onShowProspectSearch={toggleProspectSearchMode}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
                 onToggleRecentMode={toggleRecentMode}
+                onReturnToRootList={() => undefined}
               />
             ))
           ) : (
@@ -3843,6 +3886,7 @@ export default function ScoutPrepCommand() {
                 onToggleProspectSearchMode={toggleProspectSearchMode}
                 isProspectSearchMode={isProspectSearchMode}
                 onShowRecentProfiles={toggleRecentMode}
+                onReturnToRootList={() => undefined}
               />
             ))
           ) : (
@@ -3879,12 +3923,40 @@ export default function ScoutPrepCommand() {
         </List.Section>
       ) : !hasTaskModeResults ? (
         <List.EmptyView
-          title={`No ${selectedSectionTitle.toLowerCase()} items found`}
-          description={`The ${selectedSectionTitle.toLowerCase()} task bucket is empty.`}
+          title={
+            taskListFilter === 'all'
+              ? 'No items found'
+              : `No ${selectedSectionTitle.toLowerCase()} items found`
+          }
+          description={
+            taskListFilter === 'all'
+              ? 'There are no active Scout Prep tasks in any bucket.'
+              : `The ${selectedSectionTitle.toLowerCase()} task bucket is empty.`
+          }
           actions={
             <ActionPanel>
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
               <ActionPanel.Section title="Navigation">
+                <Action
+                  title="Show All Items"
+                  shortcut={{ modifiers: ['cmd'], key: '1' }}
+                  onAction={() => setTaskListFilter('all')}
+                />
+                <Action
+                  title="Show Today"
+                  shortcut={{ modifiers: ['cmd'], key: '2' }}
+                  onAction={() => setTaskListFilter('today')}
+                />
+                <Action
+                  title="Show Tomorrow"
+                  shortcut={{ modifiers: ['cmd'], key: '3' }}
+                  onAction={() => setTaskListFilter('tomorrow')}
+                />
+                <Action
+                  title="Show Future"
+                  shortcut={{ modifiers: ['cmd'], key: '4' }}
+                  onAction={() => setTaskListFilter('future')}
+                />
                 <Action
                   title="Show Recent Items"
                   icon={Icon.Clock}
@@ -3913,6 +3985,8 @@ export default function ScoutPrepCommand() {
               onToggleProspectSearchMode={toggleProspectSearchMode}
               isProspectSearchMode={isSearchModeActive}
               onToggleRecentMode={toggleRecentMode}
+              onSelectTaskListFilter={setTaskListFilter}
+              onReturnToRootList={() => undefined}
             />
           ))}
         </List.Section>
