@@ -10,6 +10,7 @@ export interface CachedVideoTask {
   athlete_id: number;
   athlete_main_id: string;
   athletename: string;
+  video_progress_stage?: string;
   video_progress_status: string;
   stage: string;
   sport_name: string;

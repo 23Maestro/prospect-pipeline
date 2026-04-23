@@ -14,6 +14,7 @@ import type {
 } from '../features/scout-prep/types';
 import type { AthleteTaskSummary } from '../types/athlete-workflows';
 import { searchLogger } from './logger';
+import type { VoicemailFollowUpVariant } from './scout-follow-up-templates';
 import {
   getCachedScoutPrepContactInfo,
   getCachedScoutPrepMeasurables,
@@ -460,6 +461,87 @@ export async function recordCallAttempt3MessageSent(args: {
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
     throw new Error(errorText.slice(0, 200) || `Call Attempt 3 HTTP ${response.status}`);
+  }
+
+  return (await response.json()) as {
+    success?: boolean;
+    task_id?: string | null;
+    stage?: string | null;
+    message?: string | null;
+  };
+}
+
+const FOLLOW_UP_STAGE_BY_VARIANT: Partial<Record<VoicemailFollowUpVariant, string>> = {
+  call_attempt_1: 'Left Voice Mail 1',
+  call_attempt_2: 'Left Voice Mail 2',
+  call_attempt_3: 'Never Spoke To',
+};
+
+const FOLLOW_UP_DESCRIPTION_BY_VARIANT: Partial<Record<VoicemailFollowUpVariant, string>> = {
+  call_attempt_1: 'Call the family and leave first voicemail follow-up.',
+  call_attempt_2: 'Call the family second time and leave follow-up voicemail.',
+  call_attempt_3:
+    "Call the family third time. Then If you do not get a hold of them, code as 'Did Not Speak To'",
+};
+
+const FOLLOW_UP_TASK_TITLE_BY_VARIANT: Partial<Record<VoicemailFollowUpVariant, string>> = {
+  call_attempt_1: 'Call Attempt 1',
+  call_attempt_2: 'Call Attempt 2',
+  call_attempt_3: 'Call Attempt 3',
+};
+
+export async function recordVoicemailFollowUpMessageSent(args: {
+  athleteId: string;
+  athleteMainId: string;
+  taskId: string;
+  variant: VoicemailFollowUpVariant;
+  taskTitle?: string | null;
+  description?: string | null;
+  assignedTo?: string | null;
+}): Promise<{
+  success?: boolean;
+  task_id?: string | null;
+  stage?: string | null;
+  message?: string | null;
+}> {
+  const stage = FOLLOW_UP_STAGE_BY_VARIANT[args.variant];
+  const taskTitle = String(
+    args.taskTitle || FOLLOW_UP_TASK_TITLE_BY_VARIANT[args.variant] || '',
+  ).trim();
+  const description = String(
+    args.description || FOLLOW_UP_DESCRIPTION_BY_VARIANT[args.variant] || taskTitle,
+  ).trim();
+
+  if (!stage) {
+    throw new Error(`No lifecycle update configured for ${args.variant}`);
+  }
+  if (!taskTitle) {
+    throw new Error(`Missing task title for ${args.variant}`);
+  }
+
+  const now = new Date();
+  const completedDate = formatLegacyTaskDate(now);
+  const completedTime = formatLegacyTaskTime(now);
+
+  const response = await apiFetch('/tasks/follow-up-message-sent', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      athlete_id: args.athleteId,
+      athlete_main_id: args.athleteMainId,
+      task_id: args.taskId,
+      completed_date: completedDate,
+      completed_time: completedTime,
+      stage,
+      task_title: taskTitle,
+      description,
+      assigned_to: args.assignedTo || '1408164',
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText.slice(0, 200) || `Follow-up update HTTP ${response.status}`);
   }
 
   return (await response.json()) as {

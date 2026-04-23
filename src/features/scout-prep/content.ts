@@ -9,7 +9,7 @@ type ScoutPrepCardDiagnostics = {
   anchorCount: number;
   snapshotFieldCount: number;
   deficitGrade: ScoutPrepGrade;
-  rapportSource: 'ai' | 'fallback';
+  rapportSource: 'deterministic';
   hasLocalTime: boolean;
   hasState: boolean;
   hasCity: boolean;
@@ -483,7 +483,7 @@ export function buildScoutPrepCard(
       anchorCount: anchors.length,
       snapshotFieldCount: snapshotLines.length,
       deficitGrade: values.gradYear,
-      rapportSource: ai?.rapportSource || 'fallback',
+      rapportSource: ai?.rapportSource || 'deterministic',
       hasLocalTime: Boolean(ai?.localTimeInsight),
       hasState: Boolean(String(context?.resolved.state || '').trim()),
       hasCity: Boolean(String(context?.resolved.city || '').trim()),

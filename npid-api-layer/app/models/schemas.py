@@ -396,6 +396,26 @@ class TaskCallAttempt3SentResponse(BaseModel):
     raw_response: Optional[str] = None
 
 
+class TaskFollowUpMessageSentRequest(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+    task_id: str
+    completed_date: str
+    completed_time: str
+    stage: str
+    task_title: str
+    description: str
+    assigned_to: Optional[str] = Field(default="1408164")
+
+
+class TaskFollowUpMessageSentResponse(BaseModel):
+    success: bool
+    task_id: Optional[str] = None
+    stage: Optional[str] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None
+
+
 class APIError(BaseModel):
     """Standardized error response."""
     success: bool = False

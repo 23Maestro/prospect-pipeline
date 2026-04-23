@@ -11,16 +11,7 @@ export type ScoutPrepFormValues = {
 export type ScoutPrepAIOutput = {
   rapportCues: string[];
   localTimeInsight?: string | null;
-  rapportSource: 'ai' | 'fallback';
-  microEnrichment?: ScoutPrepMicroEnrichment | null;
-};
-
-export type ScoutPrepMicroEnrichment = {
-  rapportAnchor?: string | null;
-  suggestedLiveRapportLane?: string | null;
-  gpaToneLine?: string | null;
-  deficitEmphasis?: string | null;
-  sportPromptBias?: string | null;
+  rapportSource: 'deterministic';
 };
 
 export type ScoutPortalTask = {

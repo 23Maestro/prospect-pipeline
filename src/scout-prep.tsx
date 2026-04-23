@@ -62,7 +62,7 @@ import {
   findNewestIncompleteFollowUpTask,
   findNewestIncompleteConfirmationTask,
   loadScoutPrepContext,
-  recordCallAttempt3MessageSent,
+  recordVoicemailFollowUpMessageSent,
   stripMoveThisTaskPrefix,
   updateScoutPrepTask,
 } from './lib/scout-prep';
@@ -117,6 +117,8 @@ import { sendClientMessage } from './lib/client-message-sandbox';
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
 const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
+const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
+const NEVER_SPOKE_TO_LABEL = 'Never Spoke To';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 
 function logInfo(
@@ -194,6 +196,25 @@ function getTaskDisplayTitle(
   );
 }
 
+function shouldAutoCompletePostCallTask(stageLabel: string, task?: ScoutPortalTask | null): boolean {
+  const normalizedStage = String(stageLabel || '').trim();
+  const taskTitle = stripMoveThisTaskPrefix(task?.title) || '';
+
+  if (normalizedStage === LEFT_VOICE_MAIL_1_LABEL) {
+    return true;
+  }
+
+  if (normalizedStage === LEFT_VOICE_MAIL_2_LABEL && taskTitle === 'Call Attempt 2') {
+    return true;
+  }
+
+  if (normalizedStage === NEVER_SPOKE_TO_LABEL && taskTitle === 'Call Attempt 3') {
+    return true;
+  }
+
+  return false;
+}
+
 function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
   return tasks
     .filter(
@@ -213,6 +234,22 @@ function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthle
       const rightId = Number.parseInt(String(right.task_id || '0'), 10);
       return rightId - leftId;
     });
+}
+
+function findNewestIncompleteTaskByTitle(
+  tasks: ScoutPrepContext['tasks'],
+  taskTitle: string,
+): ScoutAthleteTask | null {
+  const normalizedTarget = String(taskTitle || '').trim().toLowerCase();
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  return (
+    getIncompleteAthleteTasks(tasks).find(
+      (candidate) => (stripMoveThisTaskPrefix(candidate.title) || '').trim().toLowerCase() === normalizedTarget,
+    ) || null
+  );
 }
 
 function SupabaseLifecycleStatusAction() {
@@ -1099,12 +1136,14 @@ function SingleRecipientMessageForm({
   phone,
   initialMessage,
   onMessageSent,
+  onMessageSentLabel,
 }: {
   title: string;
   recipientName: string;
   phone: string;
   initialMessage: string;
   onMessageSent?: () => Promise<void>;
+  onMessageSentLabel?: string;
 }) {
   const { itemProps, handleSubmit } = useForm<{ message: string }>({
     initialValues: { message: initialMessage },
@@ -1120,7 +1159,7 @@ function SingleRecipientMessageForm({
       }
 
       if (onMessageSent) {
-        const toast = await showLoadingToast('Saving', 'Call Attempt 3');
+        const toast = await showLoadingToast('Saving', onMessageSentLabel || 'Follow-up');
         try {
           await onMessageSent();
           toast.hide();
@@ -1300,13 +1339,30 @@ function VoicemailFollowUpRecipientForm({
     currentTask: currentTask || task.title || null,
   });
 
-  function resolveCallAttempt3TaskId(): string | null {
-    const directTaskId = String(task.task_id || '').trim();
-    if (directTaskId) {
-      return directTaskId;
+  function resolveLifecycleFollowUpTask(variant: VoicemailFollowUpVariant): ScoutAthleteTask | null {
+    if (variant === 'no_show') {
+      return null;
     }
 
-    return String(findNewestIncompleteFollowUpTask(context.tasks)?.task_id || '').trim() || null;
+    const expectedTaskTitle =
+      variant === 'call_attempt_1'
+        ? 'Call Attempt 1'
+        : variant === 'call_attempt_2'
+          ? 'Call Attempt 2'
+          : 'Call Attempt 3';
+    const directTaskTitle = stripMoveThisTaskPrefix(task.title) || '';
+    const directTaskId = String(task.task_id || '').trim();
+
+    if (directTaskId && directTaskTitle === expectedTaskTitle) {
+      return {
+        task_id: directTaskId,
+        title: directTaskTitle,
+        assigned_owner: task.assigned_owner || null,
+        description: task.description || directTaskTitle,
+      };
+    }
+
+    return findNewestIncompleteTaskByTitle(context.tasks, expectedTaskTitle);
   }
 
   async function openMessagesForRecipient(
@@ -1340,16 +1396,18 @@ function VoicemailFollowUpRecipientForm({
 
     try {
       if (recipient.phones.length === 1 && recipient.id !== 'groupAll') {
+        const selectedVariant = variant || defaultVariant;
         push(
           <SingleRecipientMessageForm
             title={`Send Message • ${recipient.name}`}
             recipientName={recipient.name}
             phone={recipient.phones[0]}
             initialMessage={body}
+            onMessageSentLabel={selectedVariant.replace(/_/g, ' ')}
             onMessageSent={
-              (variant || defaultVariant) === 'call_attempt_3'
+              selectedVariant !== 'no_show'
                 ? async () => {
-                    const taskId = resolveCallAttempt3TaskId();
+                    const followUpTask = resolveLifecycleFollowUpTask(selectedVariant);
                     const athleteId = String(
                       task.contact_id || context.task.contact_id || '',
                     ).trim();
@@ -1357,14 +1415,17 @@ function VoicemailFollowUpRecipientForm({
                       context.resolved.athlete_main_id || task.athlete_main_id || '',
                     ).trim();
 
-                    if (!taskId || !athleteId || !athleteMainId) {
-                      throw new Error('Missing Call Attempt 3 identifiers');
+                    if (!followUpTask?.task_id || !athleteId || !athleteMainId) {
+                      throw new Error('Missing voicemail follow-up identifiers');
                     }
 
-                    await recordCallAttempt3MessageSent({
+                    await recordVoicemailFollowUpMessageSent({
                       athleteId,
                       athleteMainId,
-                      taskId,
+                      taskId: followUpTask.task_id,
+                      variant: selectedVariant,
+                      taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || undefined,
+                      description: followUpTask.description || undefined,
                     });
                   }
                 : undefined
@@ -1725,15 +1786,18 @@ function UpdateAthleteTaskForm({
   selectedTask,
   athleteMainId,
   contactTask,
+  onUpdated,
 }: {
   task: ScoutPortalTask;
   selectedTask: ScoutAthleteTask;
   athleteMainId: string;
   contactTask: string;
+  onUpdated?: () => void | Promise<void>;
 }) {
   const { pop } = useNavigation();
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
+  const currentTaskTitle = getTaskDisplayTitle(selectedTask);
 
   async function handleUpdate(values: { dueDate?: Date }) {
     if (isSaving) return;
@@ -1743,16 +1807,17 @@ function UpdateAthleteTaskForm({
         taskId: selectedTask.task_id,
         contactTask,
         athleteMainId,
-        taskTitle: getTaskDisplayTitle(selectedTask),
-        description: selectedTask.description || getTaskDisplayTitle(selectedTask),
+        taskTitle: currentTaskTitle,
+        description: selectedTask.description || currentTaskTitle,
         dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
         dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
       });
       await showToast({
         style: Toast.Style.Success,
         title: 'Task updated',
-        message: getTaskDisplayTitle(selectedTask),
+        message: currentTaskTitle,
       });
+      await onUpdated?.();
       pop();
     } catch (error) {
       await showToast({
@@ -1773,15 +1838,15 @@ function UpdateAthleteTaskForm({
         athleteId: contactTask,
         athleteMainId,
         contactTask,
-        taskTitle: getTaskDisplayTitle(selectedTask),
+        taskTitle: currentTaskTitle,
         assignedOwner: selectedTask.assigned_owner,
-        description: selectedTask.description || getTaskDisplayTitle(selectedTask),
+        description: selectedTask.description || currentTaskTitle,
         taskId: selectedTask.task_id,
       });
       await showToast({
         style: Toast.Style.Success,
         title: 'Task completed',
-        message: getTaskDisplayTitle(selectedTask),
+        message: currentTaskTitle,
       });
       pop();
     } catch (error) {
@@ -1795,6 +1860,37 @@ function UpdateAthleteTaskForm({
     }
   }
 
+  async function handleSetScheduledFollowUp(values: { dueDate?: Date }) {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await updateScoutPrepTask({
+        taskId: selectedTask.task_id,
+        contactTask,
+        athleteMainId,
+        taskTitle: 'SCHEDULED FOLLOW-UP',
+        description: selectedTask.description || currentTaskTitle,
+        dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
+        dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
+      });
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Task updated',
+        message: 'SCHEDULED FOLLOW-UP',
+      });
+      await onUpdated?.();
+      pop();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Failed to update task title',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   return (
     <Form
       navigationTitle={`Update Task • ${task.athlete_name}`}
@@ -1805,6 +1901,11 @@ function UpdateAthleteTaskForm({
             icon={Icon.Calendar}
             onSubmit={(values) => void handleUpdate(values as { dueDate?: Date })}
           />
+          <Action.SubmitForm
+            title={isSaving ? 'Saving…' : 'Set SCHEDULED FOLLOW-UP'}
+            icon={Icon.Pencil}
+            onSubmit={(values) => void handleSetScheduledFollowUp(values as { dueDate?: Date })}
+          />
           <Action
             title={isCompleting ? 'Completing…' : 'Complete Task'}
             icon={Icon.CheckCircle}
@@ -1813,10 +1914,6 @@ function UpdateAthleteTaskForm({
         </ActionPanel>
       }
     >
-      <Form.Description
-        title="Task"
-        text={`${getTaskDisplayTitle(selectedTask)}${selectedTask.assigned_owner ? ` • ${selectedTask.assigned_owner}` : ''}`}
-      />
       <Form.DatePicker
         id="dueDate"
         title="Task Due Date"
@@ -1894,6 +1991,10 @@ function UpdateAthleteTaskPicker({
         selectedTask={selectedTask}
         athleteMainId={athleteMainId}
         contactTask={contactTask}
+        onUpdated={async () => {
+          const loadedContext = await loadScoutPrepContext(task);
+          setContext(loadedContext);
+        }}
       />,
     );
   }
@@ -2328,7 +2429,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
 
       let taskCompletionMessage: string | null = null;
-      if (stageLabel === LEFT_VOICE_MAIL_1_LABEL) {
+      if (shouldAutoCompletePostCallTask(stageLabel, task)) {
         const result = await completeScoutPrepTaskAfterVoicemail({
           athleteId,
           athleteMainId,
@@ -3000,6 +3101,11 @@ function ScoutPrepDetail({
             shortcut={{ modifiers: ['cmd'], key: '4' }}
             onAction={() => void handleCreateReminder('text')}
           />
+          <Action.CopyToClipboard
+            title="Copy Athlete Name"
+            content={context?.contactInfo.studentAthlete.name || task.athlete_name}
+            shortcut={{ modifiers: ['cmd'], key: 'c' }}
+          />
           <Action
             title="Sync Notion Call Prep"
             icon={Icon.Upload}
@@ -3366,6 +3472,11 @@ function ScoutPrepTaskItem({
                 onReturnToRootList();
               });
             }}
+          />
+          <Action.CopyToClipboard
+            title="Copy Athlete Name"
+            content={task.athlete_name}
+            shortcut={{ modifiers: ['cmd'], key: 'c' }}
           />
           <Action.Push
             title="Contact Info"

@@ -4479,7 +4479,7 @@ class LegacyTranslator:
         return updated
 
     @staticmethod
-    def apply_call_attempt_3_sent(
+    def apply_follow_up_message_sent(
         form_data: Dict[str, Any],
         athlete_id: str,
         athlete_main_id: str,
@@ -4490,7 +4490,7 @@ class LegacyTranslator:
         assigned_to: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
-        Apply the exact legacy form updates for a sent Call Attempt 3 follow-up.
+        Apply the exact legacy form updates for a sent follow-up message.
         """
         updated = dict(form_data)
         updated["tasktitle"] = task_title
@@ -4511,6 +4511,28 @@ class LegacyTranslator:
             updated["existingtask"] = str(form_data.get("existingtask") or "").strip()
 
         return updated
+
+    @staticmethod
+    def apply_call_attempt_3_sent(
+        form_data: Dict[str, Any],
+        athlete_id: str,
+        athlete_main_id: str,
+        completed_date: str,
+        completed_time: str,
+        task_title: str,
+        description: str,
+        assigned_to: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        return LegacyTranslator.apply_follow_up_message_sent(
+            form_data=form_data,
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+            completed_date=completed_date,
+            completed_time=completed_time,
+            task_title=task_title,
+            description=description,
+            assigned_to=assigned_to,
+        )
 
     @staticmethod
     def task_update_to_legacy(form_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:

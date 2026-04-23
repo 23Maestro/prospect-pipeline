@@ -18,6 +18,8 @@ from app.models.schemas import (
     TaskCompleteResponse,
     TaskCallAttempt3SentRequest,
     TaskCallAttempt3SentResponse,
+    TaskFollowUpMessageSentRequest,
+    TaskFollowUpMessageSentResponse,
 )
 from app.translators.legacy import LegacyTranslator
 from app.session import NPIDSession
@@ -110,6 +112,87 @@ def _diff_form_data(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, 
         if str(before_val) != str(after_val):
             changed[key] = _truncate(after_val, 160)
     return changed
+
+
+async def _record_follow_up_message_sent(
+    session: NPIDSession,
+    translator: LegacyTranslator,
+    payload: TaskFollowUpMessageSentRequest,
+) -> TaskFollowUpMessageSentResponse:
+    stage_endpoint, stage_data = translator.sales_stage_update_to_legacy(
+        athlete_main_id=payload.athlete_main_id,
+        athlete_id=payload.athlete_id,
+        stage=payload.stage,
+    )
+    stage_response = await session.post(stage_endpoint, data=stage_data)
+    stage_preview = (stage_response.text or "")[:200]
+    if stage_response.status_code >= 400:
+        raise HTTPException(
+            status_code=stage_response.status_code,
+            detail=stage_preview or f"Sales stage update HTTP {stage_response.status_code}",
+        )
+
+    popup_endpoint, popup_params = translator.task_popup_to_legacy(payload.task_id)
+    popup_response = await session.get(popup_endpoint, params=popup_params)
+    popup_result = translator.parse_task_popup_response(popup_response.text)
+    form_data = popup_result.get("form_data", {})
+
+    updated_form_data = translator.apply_follow_up_message_sent(
+        form_data=form_data,
+        athlete_id=payload.athlete_id,
+        athlete_main_id=payload.athlete_main_id,
+        completed_date=payload.completed_date,
+        completed_time=payload.completed_time,
+        task_title=payload.task_title,
+        description=payload.description,
+        assigned_to=payload.assigned_to,
+    )
+
+    required_fields = [
+        "existingtask",
+        "tasktitle",
+        "taskdescription",
+        "contact_task",
+        "athlete_main_id",
+        "completedate",
+        "completed_time",
+        "assignedto",
+    ]
+    missing_fields = [field for field in required_fields if not str(updated_form_data.get(field) or "").strip()]
+    changed_fields = _diff_form_data(form_data, updated_form_data)
+
+    if missing_fields:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Missing required task fields: {', '.join(missing_fields)}",
+        )
+
+    logger.info(
+        "🧾 Follow-up form summary=%s",
+        _sanitize_form_data(updated_form_data),
+    )
+    logger.info(
+        "🧾 Follow-up changed fields=%s",
+        _sanitize_form_data(changed_fields),
+    )
+
+    update_endpoint, final_form_data = translator.task_update_to_legacy(updated_form_data)
+    update_response = await session.post(update_endpoint, data=final_form_data)
+    update_result = translator.parse_task_update_response(update_response.text)
+
+    if update_result.get("success"):
+        return TaskFollowUpMessageSentResponse(
+            success=True,
+            task_id=payload.task_id,
+            stage=payload.stage,
+            message=update_result.get("message", "Follow-up recorded"),
+            raw_response=update_result.get("raw"),
+        )
+
+    raise HTTPException(
+        status_code=400,
+        detail=update_result.get("message", "Follow-up update failed"),
+    )
 
 
 @router.post("/list", response_model=TaskListResponse)
@@ -395,82 +478,60 @@ async def call_attempt_3_sent(request: Request, payload: TaskCallAttempt3SentReq
     )
 
     try:
-        stage_endpoint, stage_data = translator.sales_stage_update_to_legacy(
-            athlete_main_id=payload.athlete_main_id,
-            athlete_id=payload.athlete_id,
-            stage=payload.stage,
-        )
-        stage_response = await session.post(stage_endpoint, data=stage_data)
-        stage_preview = (stage_response.text or "")[:200]
-        if stage_response.status_code >= 400:
-            raise HTTPException(
-                status_code=stage_response.status_code,
-                detail=stage_preview or f"Sales stage update HTTP {stage_response.status_code}",
-            )
-
-        popup_endpoint, popup_params = translator.task_popup_to_legacy(payload.task_id)
-        popup_response = await session.get(popup_endpoint, params=popup_params)
-        popup_result = translator.parse_task_popup_response(popup_response.text)
-        form_data = popup_result.get("form_data", {})
-
-        updated_form_data = translator.apply_call_attempt_3_sent(
-            form_data=form_data,
-            athlete_id=payload.athlete_id,
-            athlete_main_id=payload.athlete_main_id,
-            completed_date=payload.completed_date,
-            completed_time=payload.completed_time,
-            task_title=payload.task_title,
-            description=payload.description,
-            assigned_to=payload.assigned_to,
-        )
-
-        required_fields = [
-            "existingtask",
-            "tasktitle",
-            "taskdescription",
-            "contact_task",
-            "athlete_main_id",
-            "completedate",
-            "completed_time",
-            "assignedto",
-        ]
-        missing_fields = [field for field in required_fields if not str(updated_form_data.get(field) or "").strip()]
-        changed_fields = _diff_form_data(form_data, updated_form_data)
-
-        if missing_fields:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Missing required task fields: {', '.join(missing_fields)}",
-            )
-
-        logger.info(
-            "🧾 Call Attempt 3 form summary=%s",
-            _sanitize_form_data(updated_form_data),
-        )
-        logger.info(
-            "🧾 Call Attempt 3 changed fields=%s",
-            _sanitize_form_data(changed_fields),
-        )
-
-        update_endpoint, final_form_data = translator.task_update_to_legacy(updated_form_data)
-        update_response = await session.post(update_endpoint, data=final_form_data)
-        update_result = translator.parse_task_update_response(update_response.text)
-
-        if update_result.get("success"):
-            return TaskCallAttempt3SentResponse(
-                success=True,
+        result = await _record_follow_up_message_sent(
+            session=session,
+            translator=translator,
+            payload=TaskFollowUpMessageSentRequest(
+                athlete_id=payload.athlete_id,
+                athlete_main_id=payload.athlete_main_id,
                 task_id=payload.task_id,
+                completed_date=payload.completed_date,
+                completed_time=payload.completed_time,
                 stage=payload.stage,
-                message=update_result.get("message", "Call Attempt 3 recorded"),
-                raw_response=update_result.get("raw"),
-            )
-
-        raise HTTPException(
-            status_code=400,
-            detail=update_result.get("message", "Call Attempt 3 update failed"),
+                task_title=payload.task_title,
+                description=payload.description,
+                assigned_to=payload.assigned_to,
+            ),
+        )
+        return TaskCallAttempt3SentResponse(
+            success=result.success,
+            task_id=result.task_id,
+            stage=result.stage,
+            message=result.message,
+            raw_response=result.raw_response,
         )
     except HTTPException:
         raise
     except Exception as exc:
         logger.error(f"❌ Call Attempt 3 sent error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/follow-up-message-sent", response_model=TaskFollowUpMessageSentResponse)
+async def follow_up_message_sent(request: Request, payload: TaskFollowUpMessageSentRequest):
+    """
+    After an actual voicemail follow-up text is sent, update sales stage and the exact legacy task.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "📨 Follow-up sent athlete_id=%s athlete_main_id=%s task_id=%s stage=%s task_title=%s",
+        payload.athlete_id,
+        payload.athlete_main_id,
+        payload.task_id,
+        payload.stage,
+        payload.task_title,
+    )
+
+    try:
+        return await _record_follow_up_message_sent(
+            session=session,
+            translator=translator,
+            payload=payload,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"❌ Follow-up sent error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))

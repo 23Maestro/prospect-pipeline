@@ -6,6 +6,8 @@ PROJECT_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
 PROCFILE_PATH="${PROJECT_ROOT}/Procfile.dev"
 API_PORT="${API_PORT:-8000}"
 WAIT_SCRIPT="${PROJECT_ROOT}/scripts/wait-for-api.sh"
+FASTAPI_LAUNCH_AGENT_LABEL="com.npid.fastapi"
+FASTAPI_LAUNCH_AGENT_PLIST="${HOME}/Library/LaunchAgents/${FASTAPI_LAUNCH_AGENT_LABEL}.plist"
 
 has_command() {
   command -v "$1" >/dev/null 2>&1
@@ -62,6 +64,23 @@ clear_stale_overmind_socket() {
   if [[ -S "${socket_path}" ]] && ! has_active_overmind_session; then
     rm -f "${socket_path}"
   fi
+}
+
+is_legacy_fastapi_launch_agent() {
+  if [[ ! -f "${FASTAPI_LAUNCH_AGENT_PLIST}" ]]; then
+    return 1
+  fi
+
+  grep -q "npid-api-layer/start-server.sh" "${FASTAPI_LAUNCH_AGENT_PLIST}"
+}
+
+disable_conflicting_fastapi_launch_agent() {
+  if ! is_legacy_fastapi_launch_agent; then
+    return 0
+  fi
+
+  launchctl unload -w "${FASTAPI_LAUNCH_AGENT_PLIST}" >/dev/null 2>&1 || true
+  launchctl bootout "gui/$(id -u)/${FASTAPI_LAUNCH_AGENT_LABEL}" >/dev/null 2>&1 || true
 }
 
 print_usage() {
@@ -154,6 +173,7 @@ install_overmind() {
 start_stack() {
   cd "${PROJECT_ROOT}"
   if has_command overmind; then
+    disable_conflicting_fastapi_launch_agent
     clear_stale_overmind_socket
     clear_api_port
     overmind start -D -f "${PROCFILE_PATH}" >/dev/null
@@ -168,6 +188,12 @@ start_stack() {
 restart_process() {
   local process="${1:-api}"
   if has_command overmind; then
+    if [[ "${process}" == "api" ]]; then
+      disable_conflicting_fastapi_launch_agent
+    fi
+    if [[ "${process}" == "api" ]]; then
+      clear_api_port
+    fi
     ensure_overmind_session
     overmind restart "${process}"
     if [[ "${process}" == "api" ]]; then

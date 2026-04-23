@@ -390,8 +390,57 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
   );
 
   assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
-  assert.match(body, /I left you another voicemail about Jaylin's recruiting profile\./);
+  assert.match(body, /I received Jaylin's info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college football\./);
   assert.match(body, /With him being a 2027, timing matters in the recruiting process/);
+});
+
+test('buildVoicemailFollowUpBody: student athlete attempt 2 uses shorter action-oriented copy', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Jayson Bailey',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'Los Angeles',
+        state: 'CA',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jayson Bailey',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'studentAthlete',
+    'call_attempt_2',
+    'Left Voice Mail 2',
+    'Call Attempt 2',
+    new Date('2026-04-17T19:28:00Z'),
+  );
+
+  assert.match(
+    body,
+    /^Good afternoon Jayson, this is Jerami Singleton, college football scout with Prospect ID\./,
+  );
+  assert.match(body, /I received your info and wanted to learn a little more about your goals for playing in college\./);
+  assert.match(
+    body,
+    /If that’s something you’re serious about, have one of your parents give me a quick call or text when they get a few minutes so we can set up a time to connect\./,
+  );
+  assert.doesNotMatch(body, /I left you another voicemail/);
 });
 
 test('buildVoicemailFollowUpBody: no show uses first name only', () => {

@@ -393,11 +393,13 @@ export function buildVoicemailFollowUpBody(
     ) || 'there';
   const greeting =
     selectedVariant === 'no_show' ? `Hi ${noShowFirstName},` : `${dayGreeting} ${greetingName},`;
+  const recipientType = recipient?.id === 'studentAthlete' ? 'student_athlete' : 'parent';
 
   return buildVoicemailFollowUpMessage({
     variant: selectedVariant,
     greeting,
     athleteName: athleteFirstName || athleteName || 'your athlete',
+    recipientType,
     sport,
     gradYear,
     signOffTitle,

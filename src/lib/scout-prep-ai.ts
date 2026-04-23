@@ -3,30 +3,11 @@ import type {
   ScoutPrepAIOutput,
   ScoutPrepContext,
   ScoutPrepFormValues,
-  ScoutPrepMicroEnrichment,
 } from '../features/scout-prep/types';
 import { buildDeterministicRapportCues } from '../features/scout-prep/content';
 import { searchLogger } from './logger';
 
 const FEATURE = 'scout-prep.ai';
-const LOCAL_MODEL_ID = 'onnx-community/Qwen3-0.6B-ONNX';
-const LOCAL_MODEL_TIMEOUT_MS = 25000;
-const LOCAL_GENERATION_TIMEOUT_MS = 12000;
-
-let localGeneratorPromise: Promise<unknown> | null = null;
-let localModelUnavailable = false;
-
-async function loadTransformersPipeline(): Promise<
-  (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown>
-> {
-  const dynamicImport = new Function('specifier', 'return import(specifier)') as (
-    specifier: string,
-  ) => Promise<{
-    pipeline: (task: string, model: string, options?: Record<string, unknown>) => Promise<unknown>;
-  }>;
-  const transformers = await dynamicImport('@huggingface/transformers');
-  return transformers.pipeline;
-}
 
 const CITY_STATE_TIMEZONE_OVERRIDES: Record<string, string> = {
   'LONDON|OH': 'America/New_York',
@@ -171,40 +152,9 @@ function logInfo(
   });
 }
 
-function logFailure(event: string, step: string, error: string, context?: Record<string, unknown>) {
-  searchLogger.error(event, {
-    event,
-    step,
-    status: 'failure',
-    feature: FEATURE,
-    error,
-    context: context || {},
-  });
-}
-
 function clean(value?: string | null): string | null {
   const trimmed = String(value || '').trim();
   return trimmed || null;
-}
-
-function compactLine(value: unknown): string | null {
-  const cleaned = String(value || '')
-    .replace(/^[\s"'`*-]+|[\s"'`*-]+$/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (!cleaned || cleaned.length > 180 || cleaned.split(/[.!?]/).filter(Boolean).length > 2) {
-    return null;
-  }
-  return cleaned;
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs);
-    }),
-  ]);
 }
 
 function titleCase(value?: string | null): string {
@@ -331,195 +281,7 @@ export function formatScoutPrepTimeInsight(
   return `${localTime} | ${zoneLabel} | ${location}`;
 }
 
-export function buildScoutPrepMicroEnrichmentPrompt(
-  values: ScoutPrepFormValues,
-  context: ScoutPrepContext,
-  localTimeInsight?: string | null,
-): string {
-  const athleteName =
-    clean(context.contactInfo.studentAthlete.name || values.athleteName) || 'Unknown Athlete';
-  const parent1 = clean(context.contactInfo.parent1?.name || values.parent1Name);
-  const parent2 = clean(context.contactInfo.parent2?.name || values.parent2Name);
-  const sport = clean(context.resolved.sport || values.sport);
-  const school = clean(context.resolved.high_school);
-  const city = clean(context.resolved.city);
-  const state = clean(context.resolved.state);
-  const gradYear = clean(values.gradYear);
-  const gpa = clean(context.resolved.gpa);
-  const position = clean(context.resolved.positions);
-
-  return `You are filling five tiny Scout Prep card slots.
-Do not rewrite the script. Do not generate a call. Do not add markdown.
-Return strict JSON only with these exact keys:
-{"rapportAnchor":"","suggestedLiveRapportLane":"","gpaToneLine":"","deficitEmphasis":"","sportPromptBias":""}
-
-Rules:
-- One short factual sentence per value.
-- No value over 22 words.
-- Tone: live recruiting call, practical, skimmable.
-- Keep fixed close, meeting, handoff, and final confirmation language untouched.
-- If location/sport hook is weak, use safe regional sports culture.
-- GPA >= 3.0: praise/celebrate. GPA 2.5-2.99: encourage/build up. GPA < 2.5: encouragement plus academic urgency.
-- Freshman/Sophomore: get on the map. Junior: coaches should already be reaching out. Senior: where things stand right now.
-- Football bias: position, varsity, size, speed, offseason training.
-- Baseball bias: travel ball, varsity, pop time, velo, 60.
-- Basketball bias: varsity, AAU, size, role, exposure.
-
-Context:
-athlete_name: ${athleteName}
-parent_1: ${parent1 || 'unknown'}
-parent_2: ${parent2 || 'unknown'}
-sport: ${sport || 'unknown'}
-grad_year: ${gradYear || 'unknown'}
-gpa: ${gpa || 'unknown'}
-position: ${position || 'unknown'}
-school: ${school || 'unknown'}
-city: ${city || 'unknown'}
-state: ${state || 'unknown'}
-local_time: ${localTimeInsight || 'unknown'}`;
-}
-
-function extractGeneratedText(output: unknown): string {
-  if (Array.isArray(output)) {
-    const first = output[0] as { generated_text?: unknown };
-    return String(first?.generated_text || '');
-  }
-  if (output && typeof output === 'object' && 'generated_text' in output) {
-    return String((output as { generated_text?: unknown }).generated_text || '');
-  }
-  return String(output || '');
-}
-
-function parseMicroEnrichment(raw: string): ScoutPrepMicroEnrichment | null {
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start === -1 || end === -1 || end <= start) {
-    return null;
-  }
-
-  const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-  const enrichment: ScoutPrepMicroEnrichment = {
-    rapportAnchor: compactLine(parsed.rapportAnchor),
-    suggestedLiveRapportLane: compactLine(parsed.suggestedLiveRapportLane),
-    gpaToneLine: compactLine(parsed.gpaToneLine),
-    deficitEmphasis: compactLine(parsed.deficitEmphasis),
-    sportPromptBias: compactLine(parsed.sportPromptBias),
-  };
-
-  return Object.values(enrichment).some(Boolean) ? enrichment : null;
-}
-
-async function getLocalGenerator(): Promise<unknown> {
-  if (localModelUnavailable) {
-    throw new Error('Local scout-prep model unavailable in Raycast runtime');
-  }
-
-  if (!localGeneratorPromise) {
-    const startedAt = Date.now();
-    logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'start', {
-      model: LOCAL_MODEL_ID,
-    });
-    localGeneratorPromise = withTimeout(
-      loadTransformersPipeline().then((transformersPipeline) =>
-        transformersPipeline('text-generation', LOCAL_MODEL_ID, { dtype: 'q4' }),
-      ),
-      LOCAL_MODEL_TIMEOUT_MS,
-      'Local scout-prep model load',
-    )
-      .then((generator) => {
-        logInfo('SCOUT_PREP_LOCAL_MODEL', 'load-model', 'success', {
-          model: LOCAL_MODEL_ID,
-          elapsedMs: Date.now() - startedAt,
-        });
-        return generator;
-      })
-      .catch((error) => {
-        localGeneratorPromise = null;
-        const message = error instanceof Error ? error.message : String(error);
-        if (message.includes("Cannot find package '@huggingface/transformers'")) {
-          localModelUnavailable = true;
-          searchLogger.warn('SCOUT_PREP_LOCAL_MODEL_UNAVAILABLE', {
-            event: 'SCOUT_PREP_LOCAL_MODEL_UNAVAILABLE',
-            step: 'load-model',
-            feature: FEATURE,
-            reason: message,
-            context: {
-              model: LOCAL_MODEL_ID,
-              fallback: 'deterministic-scout-prep-only',
-            },
-          });
-        }
-        throw error;
-      });
-  }
-  return localGeneratorPromise;
-}
-
-export async function generateScoutPrepLocalEnrichment(
-  values: ScoutPrepFormValues,
-  context: ScoutPrepContext,
-): Promise<ScoutPrepAIOutput | null> {
-  if (localModelUnavailable) {
-    return null;
-  }
-
-  const fallback = buildScoutPrepFallbackOutput(values, context);
-  const prompt = buildScoutPrepMicroEnrichmentPrompt(values, context, fallback.localTimeInsight);
-  const startedAt = Date.now();
-
-  try {
-    logInfo('SCOUT_PREP_LOCAL_MODEL', 'generate', 'start', {
-      model: LOCAL_MODEL_ID,
-      athleteName: values.athleteName,
-    });
-    const generator = (await getLocalGenerator()) as (
-      prompt: string,
-      options: Record<string, unknown>,
-    ) => Promise<unknown>;
-    const output = await withTimeout(
-      generator(prompt, {
-        max_new_tokens: 140,
-        temperature: 0.2,
-        do_sample: false,
-        return_full_text: false,
-      }),
-      LOCAL_GENERATION_TIMEOUT_MS,
-      'Local scout-prep model generation',
-    );
-    const microEnrichment = parseMicroEnrichment(extractGeneratedText(output));
-    if (!microEnrichment) {
-      logFailure('SCOUT_PREP_LOCAL_MODEL', 'parse', 'Local model returned unusable JSON', {
-        model: LOCAL_MODEL_ID,
-      });
-      return null;
-    }
-
-    logInfo('SCOUT_PREP_LOCAL_MODEL', 'generate', 'success', {
-      model: LOCAL_MODEL_ID,
-      elapsedMs: Date.now() - startedAt,
-      slotCount: Object.values(microEnrichment).filter(Boolean).length,
-    });
-
-    return {
-      ...fallback,
-      rapportSource: 'ai',
-      microEnrichment,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("Cannot find package '@huggingface/transformers'")) {
-      localModelUnavailable = true;
-      return null;
-    }
-    logFailure('SCOUT_PREP_LOCAL_MODEL', 'generate', message, {
-      model: LOCAL_MODEL_ID,
-      elapsedMs: Date.now() - startedAt,
-    });
-    return null;
-  }
-}
-
-export function buildScoutPrepFallbackOutput(
+export function buildScoutPrepDeterministicOutput(
   values: ScoutPrepFormValues,
   context: ScoutPrepContext,
 ): ScoutPrepAIOutput {
@@ -536,6 +298,8 @@ export function buildScoutPrepFallbackOutput(
   return {
     rapportCues: buildDeterministicRapportCues(values, context),
     localTimeInsight,
-    rapportSource: 'fallback',
+    rapportSource: 'deterministic',
   };
 }
+
+export const buildScoutPrepFallbackOutput = buildScoutPrepDeterministicOutput;
