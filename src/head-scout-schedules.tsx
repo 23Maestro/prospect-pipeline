@@ -36,6 +36,7 @@ import {
 } from './lib/head-scout-schedules';
 import {
   APPOINTMENT_TITLE_PREFIXES,
+  resolveAppointmentTitleOutcome,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
 import {
@@ -193,6 +194,10 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
 function isActualSetMeetingEvent(event?: Pick<BookedMeetingEvent, 'title'> | null): boolean {
   const title = String(event?.title || '').trim();
   if (!title) {
+    return false;
+  }
+
+  if (resolveAppointmentTitleOutcome(title) !== 'active') {
     return false;
   }
 

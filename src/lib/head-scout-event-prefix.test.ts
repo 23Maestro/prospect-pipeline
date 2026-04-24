@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APPOINTMENT_TITLE_PREFIXES, applyAppointmentTitlePrefix } from './head-scout-event-prefix';
+import {
+  APPOINTMENT_TITLE_PREFIXES,
+  applyAppointmentTitlePrefix,
+  resolveAppointmentTitleOutcome,
+} from './head-scout-event-prefix';
 
 test('adds prefix to unprefixed title', () => {
   assert.equal(
@@ -39,4 +43,25 @@ test('handles unknown existing prefix safely', () => {
 
 test('exported prefixes stay in expected order', () => {
   assert.deepEqual(APPOINTMENT_TITLE_PREFIXES, ['(ACF)', '(CF)', '(RSP)', '(CAN)', '(ACF*2)']);
+});
+
+test('(FU) titles resolve to soft archive', () => {
+  assert.equal(
+    resolveAppointmentTitleOutcome('(FU) Victor Williams Football 2028 TX'),
+    'soft_archive_follow_up',
+  );
+});
+
+test('(ENR ...) titles resolve to terminal enrollment', () => {
+  assert.equal(
+    resolveAppointmentTitleOutcome('(ENR $69) Victor Williams Football 2028 TX'),
+    'terminal_enrollment',
+  );
+});
+
+test('(CL) titles resolve to terminal close lost', () => {
+  assert.equal(
+    resolveAppointmentTitleOutcome('(CL) Victor Williams Football 2028 TX'),
+    'terminal_close_lost',
+  );
 });

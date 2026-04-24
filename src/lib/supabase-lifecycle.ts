@@ -2,11 +2,14 @@ import { getPreferenceValues } from '@raycast/api';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { resolveAppointmentTitleOutcome } from './head-scout-event-prefix';
 import { searchLogger } from './logger';
+import { resolveSalesLifecycle } from './sales-lifecycle';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
 const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const API_BASE = 'http://127.0.0.1:8000/api/v1';
 
 type Preferences = {
   supabaseUrl?: string;
@@ -150,6 +153,23 @@ type AppointmentRow = {
   status: string | null;
   source_event_id: string | null;
   updated_at: string;
+};
+
+type LiveBookedMeetingEvent = {
+  event_id: string;
+  title: string;
+  assigned_owner?: string | null;
+  start?: string | null;
+  end?: string | null;
+  date_time_label?: string | null;
+};
+
+type LifecycleRetentionAction = 'keep' | 'soft_archive' | 'purge';
+
+type LifecycleRetentionDecision = {
+  action: LifecycleRetentionAction;
+  effectiveCrmStage: string | null;
+  reason: string;
 };
 
 type LifecycleEventRow = {
@@ -472,12 +492,23 @@ async function request(
   config: SupabaseConfig,
   table: string,
   args: {
-    method?: 'POST';
-    rows: unknown[];
+    method?: 'PATCH' | 'POST';
+    rows: unknown[] | Record<string, unknown>;
     onConflict?: string;
+    query?: string;
   },
 ): Promise<void> {
-  const query = args.onConflict ? `?on_conflict=${encodeURIComponent(args.onConflict)}` : '';
+  const params = new URLSearchParams();
+  if (args.onConflict) {
+    params.set('on_conflict', args.onConflict);
+  }
+  if (args.query) {
+    const queryParams = new URLSearchParams(args.query);
+    for (const [key, value] of queryParams.entries()) {
+      params.append(key, value);
+    }
+  }
+  const query = params.toString() ? `?${params.toString()}` : '';
   const endpoint = `${config.url}/rest/v1/${encodeURIComponent(table)}${query}`;
   const response = await fetch(endpoint, {
     method: args.method || 'POST',
@@ -490,6 +521,25 @@ async function request(
       'Content-Profile': config.schema,
     },
     body: JSON.stringify(args.rows),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText.slice(0, 300) || `Supabase HTTP ${response.status}`);
+  }
+}
+
+async function deleteRows(config: SupabaseConfig, table: string, query: string): Promise<void> {
+  const endpoint = `${config.url}/rest/v1/${encodeURIComponent(table)}?${query}`;
+  const response = await fetch(endpoint, {
+    method: 'DELETE',
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      Prefer: 'return=minimal',
+      'Accept-Profile': config.schema,
+      'Content-Profile': config.schema,
+    },
   });
 
   if (!response.ok) {
@@ -516,6 +566,142 @@ async function queryTable<T>(config: SupabaseConfig, table: string, query: strin
 
   const payload = (await response.json()) as T[];
   return Array.isArray(payload) ? payload : [];
+}
+
+async function fetchLiveSelectedSalesStage(athleteId: string): Promise<string | null> {
+  const response = await fetch(
+    `${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`,
+  ).catch(() => null);
+  if (!response?.ok) {
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | { selected_label?: string | null; selected_value?: string | null }
+    | null;
+  return normalizeValue(payload?.selected_label) || normalizeValue(payload?.selected_value);
+}
+
+async function fetchLiveBookedEvent(args: {
+  athleteId: string;
+  athleteMainId: string;
+  eventId: string;
+}): Promise<LiveBookedMeetingEvent | null> {
+  const response = await fetch(
+    `${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(
+      args.athleteId.trim(),
+    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`,
+  ).catch(() => null);
+  if (!response?.ok) {
+    return null;
+  }
+
+  const payload = (await response.json().catch(() => null)) as
+    | { events?: LiveBookedMeetingEvent[] | null }
+    | null;
+  const events = Array.isArray(payload?.events) ? payload.events : [];
+  return (
+    events.find((event) => String(event.event_id || '').trim() === args.eventId.trim()) || null
+  );
+}
+
+export function resolveLifecycleRetentionDecision(args: {
+  crmStage?: string | null;
+  liveCrmStage?: string | null;
+  bookedEventTitle?: string | null;
+}): LifecycleRetentionDecision {
+  const effectiveCrmStage = normalizeValue(args.liveCrmStage) || normalizeValue(args.crmStage);
+  const effectiveLifecycle = resolveSalesLifecycle(effectiveCrmStage);
+  if (effectiveLifecycle.shouldArchiveFromWorkingViews) {
+    return {
+      action: 'purge',
+      effectiveCrmStage,
+      reason: effectiveLifecycle.reason,
+    };
+  }
+
+  const titleOutcome = resolveAppointmentTitleOutcome(args.bookedEventTitle);
+  if (titleOutcome === 'terminal_enrollment') {
+    return {
+      action: 'purge',
+      effectiveCrmStage,
+      reason: 'Booked event title shows enrollment, so the lifecycle is complete.',
+    };
+  }
+  if (titleOutcome === 'terminal_close_lost') {
+    return {
+      action: 'purge',
+      effectiveCrmStage,
+      reason: 'Booked event title is marked (CL), so the lifecycle is closed lost.',
+    };
+  }
+  if (titleOutcome === 'soft_archive_follow_up') {
+    return {
+      action: 'soft_archive',
+      effectiveCrmStage,
+      reason: 'Booked event title is marked (FU), so keep history but remove it from active queues.',
+    };
+  }
+
+  return {
+    action: 'keep',
+    effectiveCrmStage,
+    reason: 'Supabase lifecycle is still active.',
+  };
+}
+
+async function softArchiveCurrentAppointment(args: {
+  config: SupabaseConfig;
+  athleteKey: string;
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  crmStage?: string | null;
+  taskStatus?: string | null;
+  currentAppointmentId?: string | null;
+  bookedEventTitle?: string | null;
+  reason: string;
+}): Promise<void> {
+  const updatedAt = new Date().toISOString();
+  await request(args.config, 'athlete_pipeline_state', {
+    method: 'PATCH',
+    query: `athlete_key=eq.${encodeURIComponent(args.athleteKey)}`,
+    rows: {
+      crm_stage: normalizeValue(args.crmStage),
+      task_status: normalizeValue(args.taskStatus),
+      current_task_id: null,
+      current_task_title: null,
+      current_appointment_id: null,
+      updated_at: updatedAt,
+    },
+  });
+
+  await request(args.config, 'lifecycle_events', {
+    rows: [
+      {
+        id: randomUUID(),
+        athlete_key: args.athleteKey,
+        athlete_id: args.athleteId,
+        athlete_main_id: args.athleteMainId,
+        event_type: 'meeting_soft_archived',
+        crm_stage: normalizeValue(args.crmStage),
+        task_status: normalizeValue(args.taskStatus),
+        payload_json: {
+          current_appointment_id: normalizeValue(args.currentAppointmentId),
+          booked_event_title: normalizeValue(args.bookedEventTitle),
+          reason: args.reason,
+        },
+        created_at: updatedAt,
+      },
+    ],
+  });
+}
+
+async function purgeAthleteLifecycle(args: {
+  config: SupabaseConfig;
+  athleteKey: string;
+}): Promise<void> {
+  await deleteRows(args.config, 'athletes', `athlete_key=eq.${encodeURIComponent(args.athleteKey)}`);
 }
 
 async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: boolean }> {
@@ -823,10 +1009,10 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
       'athletes',
       'select=athlete_key,athlete_name&limit=500',
     ),
-    queryTable<{ id: string; starts_at: string | null; status: string | null }>(
+    queryTable<{ id: string; starts_at: string | null; status: string | null; source_event_id: string | null }>(
       config,
       'appointments',
-      'select=id,starts_at,status&limit=500',
+      'select=id,starts_at,status,source_event_id&limit=500',
     ),
   ]);
 
@@ -840,11 +1026,64 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
     appointmentRows.map((row) => [String(row.id || '').trim(), row]),
   );
 
-  return stateRows.map((row) => {
+  const now = Date.now();
+  const results: ActiveMeetingFallbackRow[] = [];
+
+  for (const row of stateRows) {
     const appointmentId = String(row.current_appointment_id || '').trim();
     const appointment = appointmentId ? appointmentsById.get(appointmentId) : null;
     const athleteKey = String(row.athlete_key || '').trim();
-    return {
+    const storedCrmStage = normalizeValue(row.crm_stage);
+    const storedLifecycle = resolveSalesLifecycle(storedCrmStage);
+
+    if (storedLifecycle.shouldArchiveFromWorkingViews) {
+      await purgeAthleteLifecycle({ config, athleteKey }).catch(() => undefined);
+      continue;
+    }
+
+    const appointmentStartsAt = normalizeIsoValue(appointment?.starts_at);
+    const appointmentTimestamp = appointmentStartsAt ? Date.parse(appointmentStartsAt) : Number.NaN;
+    const shouldReconcileLive =
+      !appointmentStartsAt || Number.isNaN(appointmentTimestamp) || appointmentTimestamp <= now;
+
+    if (shouldReconcileLive) {
+      const liveCrmStage = await fetchLiveSelectedSalesStage(String(row.athlete_id || '').trim());
+      const liveEvent = appointmentId
+        ? await fetchLiveBookedEvent({
+            athleteId: String(row.athlete_id || '').trim(),
+            athleteMainId: String(row.athlete_main_id || '').trim(),
+            eventId: String(appointment?.source_event_id || appointmentId).trim(),
+          })
+        : null;
+      const decision = resolveLifecycleRetentionDecision({
+        crmStage: storedCrmStage,
+        liveCrmStage,
+        bookedEventTitle: liveEvent?.title || null,
+      });
+
+      if (decision.action === 'purge') {
+        await purgeAthleteLifecycle({ config, athleteKey }).catch(() => undefined);
+        continue;
+      }
+
+      if (decision.action === 'soft_archive') {
+        await softArchiveCurrentAppointment({
+          config,
+          athleteKey,
+          athleteId: String(row.athlete_id || '').trim(),
+          athleteMainId: String(row.athlete_main_id || '').trim(),
+          athleteName: athleteNamesByKey.get(athleteKey) || athleteKey,
+          crmStage: decision.effectiveCrmStage || storedCrmStage,
+          taskStatus: normalizeValue(row.task_status),
+          currentAppointmentId: appointmentId,
+          bookedEventTitle: liveEvent?.title || null,
+          reason: decision.reason,
+        }).catch(() => undefined);
+        continue;
+      }
+    }
+
+    results.push({
       athleteKey,
       athleteId: String(row.athlete_id || '').trim(),
       athleteMainId: String(row.athlete_main_id || '').trim(),
@@ -855,9 +1094,11 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
       currentTaskId: normalizeValue(row.current_task_id),
       currentTaskTitle: normalizeValue(row.current_task_title),
       currentAppointmentId: normalizeValue(row.current_appointment_id),
-      appointmentStartsAt: normalizeIsoValue(appointment?.starts_at),
+      appointmentStartsAt,
       appointmentStatus: normalizeValue(appointment?.status),
       updatedAt: normalizeIsoValue(row.updated_at) || row.updated_at,
-    };
-  });
+    });
+  }
+
+  return results;
 }

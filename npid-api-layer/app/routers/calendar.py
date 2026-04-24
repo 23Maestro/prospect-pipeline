@@ -507,6 +507,18 @@ async def update_booked_meeting_title(
                     detail=update_result.get("message", "Booked meeting title update failed"),
                 )
 
+            verify_popup_response = await session.get(popup_endpoint, params=popup_params)
+            verify_popup_result = translator.parse_booked_meeting_popup_response(verify_popup_response.text)
+            verified_title = str(verify_popup_result.get("form_data", {}).get("tasktitle") or "").strip()
+            if verified_title != updated_title:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f'Booked meeting title save did not stick. '
+                        f'Expected "{updated_title}" but found "{verified_title or original_title}".'
+                    ),
+                )
+
         return BookedMeetingTitleUpdateResponse(
             success=True,
             event_id=payload.event_id,

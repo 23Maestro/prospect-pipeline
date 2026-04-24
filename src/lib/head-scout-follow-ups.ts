@@ -27,6 +27,7 @@ import {
   type OperatorWorkflowStatus,
 } from './sales-lifecycle';
 import { getActiveMeetingFallbackRows, type ActiveMeetingFallbackRow } from './supabase-lifecycle';
+import { resolveAppointmentTitleOutcome } from './head-scout-event-prefix';
 import { fetchAthleteBookedMeetings, type BookedMeetingEvent } from './head-scout-schedules';
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
@@ -129,6 +130,9 @@ function isMeetingLikeEvent(event?: Pick<BookedMeetingEvent, 'title'> | null): b
     .trim()
     .toLowerCase();
   if (!normalized) {
+    return false;
+  }
+  if (resolveAppointmentTitleOutcome(event?.title) !== 'active') {
     return false;
   }
   return !(
