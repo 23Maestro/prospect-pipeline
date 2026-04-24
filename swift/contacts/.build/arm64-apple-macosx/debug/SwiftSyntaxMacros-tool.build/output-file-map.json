@@ -1,0 +1,103 @@
+{
+  "": {
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/primary.swiftdeps"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/AbstractSourceLocation.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AbstractSourceLocation.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AbstractSourceLocation.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AbstractSourceLocation~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AbstractSourceLocation.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AbstractSourceLocation.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroExpansionContext.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MacroExpansionContext.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MacroExpansionContext.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MacroExpansionContext~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MacroExpansionContext.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MacroExpansionContext.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/AccessorMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AccessorMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AccessorMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AccessorMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AccessorMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AccessorMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/AttachedMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AttachedMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AttachedMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AttachedMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AttachedMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/AttachedMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/CodeItemMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/CodeItemMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/CodeItemMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/CodeItemMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/CodeItemMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/CodeItemMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/DeclarationMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/DeclarationMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/DeclarationMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/DeclarationMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/DeclarationMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/DeclarationMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/ExpressionMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExpressionMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExpressionMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExpressionMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExpressionMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExpressionMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/ExtensionMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExtensionMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExtensionMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExtensionMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExtensionMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/ExtensionMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/FreestandingMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/FreestandingMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/FreestandingMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/FreestandingMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/FreestandingMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/FreestandingMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/Macro+Format.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro+Format.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro+Format.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro+Format~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro+Format.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro+Format.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/Macro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/Macro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/MemberAttributeMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberAttributeMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberAttributeMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberAttributeMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberAttributeMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberAttributeMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/MemberMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/MemberMacro.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntaxMacros/MacroProtocols/PeerMacro.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/PeerMacro.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/PeerMacro.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/PeerMacro~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/PeerMacro.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntaxMacros-tool.build/PeerMacro.dia"
+  }
+}

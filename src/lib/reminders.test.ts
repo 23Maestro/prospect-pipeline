@@ -108,6 +108,24 @@ test('resolveClientReminderTarget returns an immediate option for single-thread 
   assert.equal(result.options.length, 2);
 });
 
+test('resolveClientReminderTarget falls back to matched ID contact when pipeline associates are missing', () => {
+  const result = resolveClientReminderTarget({
+    isGroup: false,
+    matchedPhones: ['3864533258'],
+    associatedClients: [],
+    fallbackContact: {
+      id: 'matchedContact',
+      label: 'Mom',
+      name: 'Danielle Howell',
+      phone: '3864533258',
+    },
+  });
+
+  assert.equal(result.immediateOption?.name, 'Danielle Howell');
+  assert.equal(result.immediateOption?.phone, '3864533258');
+  assert.equal(result.options.length, 1);
+});
+
 test('resolveClientReminderTarget requires chooser for group threads', () => {
   const result = resolveClientReminderTarget({
     isGroup: true,

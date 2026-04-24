@@ -1,22 +1,17 @@
 import { homedir } from 'os';
-import { dirname, resolve } from 'path';
+import { resolve } from 'path';
 
-import { Color, Icon, Image } from '@raycast/api';
+import { Color, Icon, Image, LocalStorage } from '@raycast/api';
 import { executeSQL, runAppleScript, usePromise, useSQL } from '@raycast/utils';
 import { fetchContactsInGroup } from 'swift:../../swift/contacts';
 
-import {
-  type PipelineClientAssociate,
-  buildClientMessageExportPayload,
-  type PipelineClientExportRow,
-} from './client-message-export';
+import { apiFetch } from './fastapi-client';
+import { fetchContactInfo, type ContactInfo } from './npid-mcp-adapter';
 
 const DB_PATH = resolve(homedir(), 'Library/Messages/chat.db');
-const PIPELINE_EXPORT_PATH = resolve(
-  homedir(),
-  'Raycast/prospect-pipeline/tmp/client-message-inbox-export.json',
-);
 const CLIENT_CONTACT_GROUP_CANDIDATES = ['ID Clients', 'ID Contacts'];
+const CLIENT_IDENTITY_CACHE_TTL_MS = 1000 * 60 * 60 * 6;
+const CLIENT_IDENTITY_CACHE_PREFIX = 'client-chat-identity';
 
 type Contact = {
   id: string;
@@ -28,24 +23,23 @@ type Contact = {
 
 export type ClientSegment = 'client' | 'pending';
 
-type PipelineClientExportPayload = {
-  generatedAt?: string;
-  rows?: PipelineClientExportRow[];
+type ContactSearchResult = {
+  contactId?: string | null;
+  athleteMainId?: string | null;
+  name?: string | null;
 };
 
 export type ClientDirectoryMatch = {
   normalizedPhone: string;
   displayName: string;
   athleteName?: string | null;
-  associateLabel?: string | null;
-  associatedClients?: PipelineClientAssociate[];
   segment: ClientSegment;
   crmStage?: string | null;
   taskStatus?: string | null;
   currentTaskTitle?: string | null;
   contactId?: string | null;
   athleteMainId?: string | null;
-  source: 'contacts' | 'pipeline' | 'merged';
+  source: 'contacts' | 'backend' | 'merged';
 };
 
 export type ClientInboxChat = {
@@ -110,13 +104,28 @@ export function normalizePhoneForClientMatch(raw?: string | null): string | null
   return null;
 }
 
+export function toClientDisplayName(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) =>
+      part
+        .split('-')
+        .map((piece) => (piece ? piece.charAt(0).toUpperCase() + piece.slice(1) : piece))
+        .join('-'),
+    )
+    .join(' ');
+}
+
 function contactDisplayName(contact: Pick<Contact, 'givenName' | 'familyName'>): string {
-  return `${contact.givenName} ${contact.familyName}`.trim() || 'Unknown Contact';
+  return toClientDisplayName(`${contact.givenName} ${contact.familyName}`) || 'Unknown Contact';
 }
 
 function buildChatDisplayName(chat: SQLChat): string {
   return (
-    String(chat.display_name || '').trim() ||
+    toClientDisplayName(chat.display_name) ||
     String(chat.participant_identifier || chat.chat_identifier).trim()
   );
 }
@@ -225,10 +234,6 @@ function mergeMatch(
     ...incoming,
     displayName: existing.displayName || incoming.displayName,
     athleteName: existing.athleteName || incoming.athleteName,
-    associateLabel: existing.associateLabel || incoming.associateLabel,
-    associatedClients: existing.associatedClients?.length
-      ? existing.associatedClients
-      : incoming.associatedClients || [],
     crmStage: existing.crmStage || incoming.crmStage,
     taskStatus: existing.taskStatus || incoming.taskStatus,
     currentTaskTitle: existing.currentTaskTitle || incoming.currentTaskTitle,
@@ -239,59 +244,169 @@ function mergeMatch(
   };
 }
 
-async function readPipelineExport(): Promise<PipelineClientExportPayload> {
-  const fs = await import('fs');
-  if (!fs.existsSync(PIPELINE_EXPORT_PATH)) {
-    const payload = await buildClientMessageExportPayload().catch(() => null);
-    if (!payload) {
-      return {
-        generatedAt: undefined,
-        rows: [],
-      };
+type CachedClientIdentity = {
+  normalizedPhone: string;
+  contactName: string;
+  athleteName: string;
+  contactId: string;
+  athleteMainId: string;
+  cachedAt: number;
+};
+
+function clientIdentityCacheKey(normalizedPhone: string, contactName: string): string {
+  return `${CLIENT_IDENTITY_CACHE_PREFIX}:${normalizedPhone}:${contactName.toLowerCase()}`;
+}
+
+async function getCachedClientIdentity(
+  normalizedPhone: string,
+  contactName: string,
+): Promise<ClientDirectoryMatch | null> {
+  const raw = await LocalStorage.getItem<string>(
+    clientIdentityCacheKey(normalizedPhone, contactName),
+  ).catch(() => null);
+  if (!raw) {
+    return null;
+  }
+
+  let cached: Partial<CachedClientIdentity>;
+  try {
+    cached = JSON.parse(raw) as Partial<CachedClientIdentity>;
+  } catch {
+    return null;
+  }
+  if (!cached.cachedAt || Date.now() - cached.cachedAt > CLIENT_IDENTITY_CACHE_TTL_MS) {
+    return null;
+  }
+
+  const athleteName = toClientDisplayName(cached.athleteName);
+  const contactId = String(cached.contactId || '').trim();
+  const athleteMainId = String(cached.athleteMainId || '').trim();
+  if (!athleteName || !contactId || !athleteMainId) {
+    return null;
+  }
+
+  return {
+    normalizedPhone,
+    displayName: toClientDisplayName(cached.contactName) || toClientDisplayName(contactName),
+    athleteName,
+    segment: 'pending',
+    contactId,
+    athleteMainId,
+    source: 'backend',
+  };
+}
+
+async function setCachedClientIdentity(match: ClientDirectoryMatch): Promise<void> {
+  const athleteName = String(match.athleteName || '').trim();
+  const contactId = String(match.contactId || '').trim();
+  const athleteMainId = String(match.athleteMainId || '').trim();
+  if (!athleteName || !contactId || !athleteMainId) {
+    return;
+  }
+
+  await LocalStorage.setItem(
+    clientIdentityCacheKey(match.normalizedPhone, match.displayName),
+    JSON.stringify({
+      normalizedPhone: match.normalizedPhone,
+      contactName: match.displayName,
+      athleteName,
+      contactId,
+      athleteMainId,
+      cachedAt: Date.now(),
+    } satisfies CachedClientIdentity),
+  ).catch(() => undefined);
+}
+
+async function searchParentContactsByName(query: string): Promise<ContactSearchResult[]> {
+  const normalizedQuery = String(query || '').trim();
+  if (!normalizedQuery) {
+    return [];
+  }
+
+  const response = await apiFetch('/inbox/contacts/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: normalizedQuery, search_type: 'parent' }),
+  }).catch(() => null);
+
+  if (!response?.ok) {
+    return [];
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as { contacts?: ContactSearchResult[] };
+  return Array.isArray(payload.contacts) ? payload.contacts : [];
+}
+
+function contactInfoHasPhone(contactInfo: ContactInfo, normalizedPhone: string): boolean {
+  return [
+    contactInfo.studentAthlete.phone,
+    contactInfo.parent1?.phone,
+    contactInfo.parent2?.phone,
+  ].some((phone) => normalizePhoneForClientMatch(phone) === normalizedPhone);
+}
+
+async function resolveBackendMatchForContact(args: {
+  contactName: string;
+  normalizedPhone: string;
+}): Promise<ClientDirectoryMatch | null> {
+  const cached = await getCachedClientIdentity(args.normalizedPhone, args.contactName);
+  if (cached) {
+    return cached;
+  }
+
+  const candidates = await searchParentContactsByName(args.contactName);
+  for (const candidate of candidates.slice(0, 3)) {
+    const contactId = String(candidate.contactId || '').trim();
+    const athleteMainId = String(candidate.athleteMainId || '').trim();
+    if (!contactId || !athleteMainId) {
+      continue;
     }
 
-    await fs.promises.mkdir(dirname(PIPELINE_EXPORT_PATH), { recursive: true });
-    await fs.promises.writeFile(PIPELINE_EXPORT_PATH, JSON.stringify(payload, null, 2), 'utf8');
-    return payload;
+    const contactInfo = await fetchContactInfo(contactId, athleteMainId).catch(() => null);
+    if (!contactInfo) {
+      continue;
+    }
+
+    if (!contactInfoHasPhone(contactInfo, args.normalizedPhone)) {
+      continue;
+    }
+
+    const match = {
+      normalizedPhone: args.normalizedPhone,
+      displayName: toClientDisplayName(args.contactName),
+      athleteName:
+        toClientDisplayName(contactInfo.studentAthlete.name) || toClientDisplayName(candidate.name),
+      segment: 'pending',
+      contactId,
+      athleteMainId,
+      source: 'backend',
+    };
+    await setCachedClientIdentity(match);
+    return match;
   }
-  const raw = await fs.promises.readFile(PIPELINE_EXPORT_PATH, 'utf8');
-  return JSON.parse(raw) as PipelineClientExportPayload;
+
+  return null;
 }
 
-function buildPipelineAssociates(row: PipelineClientExportRow): PipelineClientAssociate[] {
-  if (row.associatedClients?.length) {
-    return row.associatedClients;
-  }
-
-  return (row.normalizedPhoneNumbers || []).map((normalizedPhoneNumber) => ({
-    role: 'studentAthlete',
-    name: row.athleteName,
-    relationshipLabel: 'Student Athlete',
-    displayLabel: `Student Athlete: ${row.athleteName}`,
-    normalizedPhoneNumber,
-  }));
-}
-
-export async function loadClientDirectory() {
-  const [groupContacts, pipelineExport] = await Promise.all([
-    (async () => {
-      for (const groupName of CLIENT_CONTACT_GROUP_CANDIDATES) {
-        const contacts = await fetchContactsInGroup(groupName, false).catch(() => [] as Contact[]);
-        if (contacts.length) {
-          return contacts;
-        }
+export async function loadClientDirectory(chats: SQLChat[] = []) {
+  const groupContacts = await (async () => {
+    for (const groupName of CLIENT_CONTACT_GROUP_CANDIDATES) {
+      const contacts = await fetchContactsInGroup(groupName, false).catch(() => [] as Contact[]);
+      if (contacts.length) {
+        return contacts;
       }
-      return [] as Contact[];
-    })(),
-    readPipelineExport().catch(() => ({})),
-  ]);
+    }
+    return [] as Contact[];
+  })();
 
   const matchesByPhone = new Map<string, ClientDirectoryMatch>();
+  const contactsByPhone = new Map<string, Contact>();
 
   for (const contact of groupContacts) {
     for (const phone of contact.phoneNumbers) {
       const normalizedPhone = normalizePhoneForClientMatch(phone.number);
       if (!normalizedPhone) continue;
+      contactsByPhone.set(normalizedPhone, contact);
 
       matchesByPhone.set(
         normalizedPhone,
@@ -305,37 +420,42 @@ export async function loadClientDirectory() {
     }
   }
 
-  for (const row of pipelineExport.rows || []) {
-    const associates = buildPipelineAssociates(row);
+  const chatPhonesToResolve = Array.from(
+    new Set(
+      chats
+        .flatMap((chat) => getChatParticipantPhones(chat))
+        .filter((phone) => contactsByPhone.has(phone)),
+    ),
+  );
 
-    for (const associate of associates) {
-      const normalizedPhone = normalizePhoneForClientMatch(associate.normalizedPhoneNumber);
-      if (!normalizedPhone) continue;
+  await Promise.all(
+    chatPhonesToResolve.slice(0, 25).map(async (phone) => {
+      const existingMatch = matchesByPhone.get(phone);
+      if (existingMatch?.athleteName) {
+        return;
+      }
 
-      matchesByPhone.set(
-        normalizedPhone,
-        mergeMatch(matchesByPhone.get(normalizedPhone), {
-          normalizedPhone,
-          displayName: associate.name || row.athleteName,
-          athleteName: row.athleteName,
-          associateLabel: associate.relationshipLabel,
-          associatedClients: associates,
-          segment: row.segment,
-          crmStage: row.crmStage,
-          taskStatus: row.taskStatus,
-          currentTaskTitle: row.currentTaskTitle,
-          contactId: row.contactId,
-          athleteMainId: row.athleteMainId,
-          source: 'pipeline',
-        }),
-      );
-    }
-  }
+      const contact = contactsByPhone.get(phone);
+      if (!contact) {
+        return;
+      }
+
+      const backendMatch = await resolveBackendMatchForContact({
+        contactName: contactDisplayName(contact),
+        normalizedPhone: phone,
+      });
+      if (!backendMatch) {
+        return;
+      }
+
+      matchesByPhone.set(phone, mergeMatch(matchesByPhone.get(phone), backendMatch));
+    }),
+  );
 
   return {
     matchesByPhone,
-    generatedAt: pipelineExport.generatedAt || null,
-    exportPath: PIPELINE_EXPORT_PATH,
+    generatedAt: null,
+    exportPath: null,
   };
 }
 
@@ -388,7 +508,7 @@ export function useClientInboxChats(searchText = '') {
     data: clientDirectory,
     isLoading: isLoadingDirectory,
     revalidate: revalidateDirectory,
-  } = usePromise(loadClientDirectory, []);
+  } = usePromise(loadClientDirectory, [rawData || []]);
 
   const chats = (
     (rawData || [])
@@ -414,7 +534,6 @@ export function useClientInboxChats(searchText = '') {
         [
           chat.displayName,
           chat.clientMatch.athleteName,
-          chat.clientMatch.associateLabel,
           chat.clientMatch.currentTaskTitle,
           chat.clientMatch.taskStatus,
           chat.clientMatch.crmStage,
@@ -559,11 +678,19 @@ async function isMessagesAppRunning() {
 }
 
 async function quitMessagesApp() {
-  await runAppleScript(`
-    tell application "Messages"
-      quit
-    end tell
-  `);
+  try {
+    await runAppleScript(`
+      tell application "Messages"
+        quit
+      end tell
+    `);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/User\s+canceled/i.test(message) || /\(-128\)/.test(message)) {
+      return;
+    }
+    throw error;
+  }
 }
 
 export async function sendClientMessage(args: {

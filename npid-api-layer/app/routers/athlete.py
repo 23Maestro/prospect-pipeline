@@ -10,6 +10,7 @@ import time
 import httpx
 
 from app.models.schemas import (
+    AdminDuplicateSearchRequest,
     AthleteIdentifiers,
     AthleteMeasurables,
     AdminAthleteTableResponse,
@@ -594,6 +595,78 @@ def _merge_search_results(
             existing = item
         merged[athlete_id] = existing
     return list(merged.values())
+
+
+@router.post("/admin-duplicate-search", response_model=RawAthleteSearchResponse)
+async def admin_duplicate_search(request: Request, payload: AdminDuplicateSearchRequest):
+    """Exact duplicate-profile search via legacy /admin/searchathlete using searchany and blank email."""
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    term = (payload.search_term or "").strip()
+    contact_id = str(payload.contact_id or "").strip()
+    athlete_main_id = str(payload.athlete_main_id or "").strip()
+    if not term:
+        return RawAthleteSearchResponse(success=True, count=0, results=[], sources=[])
+
+    try:
+        admin_page = await session.get(
+            "/admin/athletes",
+            params={
+                "contactid": contact_id,
+                "tasktab": "1",
+                "athlete_main_id": athlete_main_id,
+            },
+        )
+        if admin_page.status_code != 200:
+            raise HTTPException(
+                status_code=admin_page.status_code,
+                detail="Failed to open athlete admin page before duplicate search",
+            )
+
+        endpoint, form_data = translator.admin_search_athlete_to_legacy({
+            "searchany": term,
+            "email": "",
+        })
+        admin_start = time.monotonic()
+        admin_response = await session.post(endpoint, data=form_data)
+        if admin_response.status_code != 200:
+            raise HTTPException(status_code=admin_response.status_code, detail="admin searchathlete failed")
+        admin_ms = int((time.monotonic() - admin_start) * 1000)
+        admin_parsed = translator.parse_admin_search_athlete_response(admin_response.text or "")
+        results = admin_parsed.get("results", [])
+
+        logger.info(
+            "🔎 Admin duplicate search contact_id=%s athlete_main_id=%s term=%s email=%s count=%s duration_ms=%s",
+            contact_id,
+            athlete_main_id,
+            term,
+            "",
+            len(results),
+            admin_ms,
+        )
+
+        return RawAthleteSearchResponse(
+            success=True,
+            count=len(results),
+            results=results,
+            sources=[
+                {
+                    "source": "admin_search",
+                    "status": admin_response.status_code,
+                    "count": len(results),
+                    "format": admin_parsed.get("format"),
+                    "duration_ms": admin_ms,
+                    "searchany": term,
+                    "email": "",
+                }
+            ],
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ Admin duplicate search failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/raw-search", response_model=RawAthleteSearchResponse)

@@ -37,6 +37,13 @@ type ReminderAssociatedContact = {
   normalizedPhoneNumber: string;
 };
 
+type ReminderFallbackContact = {
+  id?: string | null;
+  label?: string | null;
+  name?: string | null;
+  phone?: string | null;
+};
+
 const REMINDER_CONTACT_ORDER = ['parent1', 'studentAthlete', 'parent2'];
 
 function escapeAppleScript(value: string): string {
@@ -146,11 +153,34 @@ export function resolveClientReminderTarget(args: {
   isGroup: boolean;
   matchedPhones: string[];
   associatedClients: ReminderAssociatedContact[];
+  fallbackContact?: ReminderFallbackContact | null;
 }): {
   options: ReminderContactOption[];
   immediateOption: ReminderContactOption | null;
 } {
-  const options = mapAssociatedContactsToReminderOptions(args.associatedClients);
+  const associatedOptions = mapAssociatedContactsToReminderOptions(args.associatedClients);
+  const fallbackName = String(args.fallbackContact?.name || '').trim();
+  const fallbackPhone = String(args.fallbackContact?.phone || args.matchedPhones[0] || '')
+    .replace(/\D/g, '')
+    .trim();
+  const fallbackOptions =
+    fallbackName && fallbackPhone
+      ? mapAssociatedContactsToReminderOptions([
+          {
+            id: String(args.fallbackContact?.id || 'matchedContact').trim(),
+            label: String(args.fallbackContact?.label || 'Contact').trim(),
+            name: fallbackName,
+            phone: fallbackPhone,
+          },
+        ])
+      : [];
+  const optionMap = new Map(
+    [...associatedOptions, ...fallbackOptions].map((option) => [
+      `${option.id}:${option.phone}`,
+      option,
+    ]),
+  );
+  const options = Array.from(optionMap.values());
   const matchedPhoneSet = new Set(
     args.matchedPhones.map((phone) => String(phone || '').replace(/\D/g, '')).filter(Boolean),
   );
@@ -214,11 +244,12 @@ export async function createReminder(reminder: ReminderDraft): Promise<void> {
       set targetList to my findListByName(listName)
       if targetList is missing value then error "Reminders list '" & listName & "' was not found."
 
-      set reminderProps to {name:reminderTitle, body:reminderBody}
-      if reminderUrl is not "" then
-        set reminderProps to {name:reminderTitle, body:reminderBody, URL:reminderUrl}
+      set createdReminder to make new reminder at end of reminders of targetList with properties {name:reminderTitle}
+      if reminderBody is not "" then
+        try
+          set body of createdReminder to reminderBody
+        end try
       end if
-      set createdReminder to make new reminder at end of reminders of targetList with properties reminderProps
       if remindDate is not missing value then
         try
           set remind me date of createdReminder to remindDate

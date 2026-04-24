@@ -38,6 +38,10 @@ import {
   APPOINTMENT_TITLE_PREFIXES,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
+import {
+  findHeadScoutContactCard,
+  openHeadScoutContactCard,
+} from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
 import {
@@ -81,6 +85,16 @@ export type HeadScoutBookingsListProps = {
 };
 
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5'];
+
+async function showLoadingToast(title: string, message?: string) {
+  return showToast({
+    style: Toast.Style.Animated,
+    title: String(title || '').trim().slice(0, 24),
+    message: String(message || '')
+      .trim()
+      .slice(0, 28) || undefined,
+  });
+}
 
 function getHeadScoutCountColor(scoutName: string): string | Color {
   switch (scoutName) {
@@ -466,8 +480,12 @@ export function HeadScoutBookingsList({
   async function sendConfirmationText(
     candidate: HeadScoutFollowUpCandidate,
     variant: ConfirmationFollowUpVariant,
+    options?: {
+      openContactCard?: boolean;
+    },
   ) {
     setSendingTextKey(candidate.key);
+    const toast = await showLoadingToast('Opening', candidate.athleteName);
     try {
       const task = buildCandidateTask(candidate);
       const context = await loadScoutPrepContext(task);
@@ -498,20 +516,31 @@ export function HeadScoutBookingsList({
         await open(
           buildMessagesComposeUrlForRecipients(reminderRecipient.phones, prepared.message),
         );
-        await showToast({
-          style: Toast.Style.Success,
-          title: 'Messages opened',
-          message: 'Confirmation text draft ready.',
-        });
       } catch {
         await Clipboard.copy(prepared.message);
         await open(`sms:${reminderRecipient.phones[0]}`);
-        await showToast({
-          style: Toast.Style.Success,
-          title: 'Messages opened',
-          message: 'Confirmation text copied to clipboard.',
-        });
       }
+
+      let openedContactName: string | null = null;
+      if (options?.openContactCard) {
+        const card = await findHeadScoutContactCard(candidate.headScoutName || null);
+        if (!card) {
+          throw new Error(
+            `No contact card found for ${String(candidate.headScoutName || 'this scout').trim()}`,
+          );
+        }
+
+        await Clipboard.copy(`${card.fullName}\n${card.path}`);
+        await openHeadScoutContactCard(candidate.headScoutName || null);
+        openedContactName = card.fullName;
+      }
+      toast.style = Toast.Style.Success;
+      toast.title = 'Ready';
+      toast.message = openedContactName ? 'Draft + card' : 'Draft open';
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Open failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setSendingTextKey((current) => (current === candidate.key ? null : current));
     }
@@ -528,7 +557,12 @@ export function HeadScoutBookingsList({
       <ConfirmationReminderMessageForm
         navigationTitle={`Confirmation Text • ${candidate.athleteName}`}
         defaultVariant={defaultVariant}
-        onSubmit={(values) => sendConfirmationText(candidate, values.variant)}
+        secondarySubmitTitle={candidate.headScoutName ? 'Msg + Card' : undefined}
+        onSubmit={(values, mode) =>
+          sendConfirmationText(candidate, values.variant, {
+            openContactCard: mode === 'messages_and_contact',
+          })
+        }
       />
     );
   }
@@ -542,31 +576,28 @@ export function HeadScoutBookingsList({
     if (!meeting?.event_id || !eventDate) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'No editable booked meeting',
-        message: 'Current booked meeting event id was not resolved.',
+        title: 'No meeting',
+        message: 'Missing event id.',
       });
       return;
     }
 
     setUpdatingMeetingKey(candidate.key);
+    const toast = await showLoadingToast('Saving', prefix);
     try {
       const result = await updateBookedMeetingTitlePrefix({
         eventId: meeting.event_id,
         eventDate,
         prefix,
       });
-      await showToast({
-        style: Toast.Style.Success,
-        title: `${prefix} saved`,
-        message: result.updated_title,
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Saved';
+      toast.message = result.updated_title;
       setRefreshTick((current) => current + 1);
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Failed to update meeting title',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Save failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setUpdatingMeetingKey((current) => (current === candidate.key ? null : current));
     }
@@ -637,7 +668,7 @@ export function HeadScoutBookingsList({
                     <ActionPanel>
                       {candidate.athleteId && candidate.athleteMainId ? (
                         <Action.Push
-                          title="Send Confirmation Text"
+                          title={sendingTextKey === candidate.key ? 'Opening…' : 'Send Confirmation'}
                           icon={Icon.Message}
                           shortcut={{ modifiers: ['cmd'], key: 'm' }}
                           target={buildConfirmationTextForm(candidate)}
@@ -648,7 +679,9 @@ export function HeadScoutBookingsList({
                           {APPOINTMENT_TITLE_PREFIXES.map((prefix, index) => (
                             <Action
                               key={prefix}
-                              title={`Mark ${prefix}`}
+                              title={
+                                updatingMeetingKey === candidate.key ? 'Saving…' : `Mark ${prefix}`
+                              }
                               icon={Icon.Pencil}
                               shortcut={
                                 index < APPOINTMENT_SHORTCUT_KEYS.length
@@ -750,6 +783,7 @@ function HeadScoutScheduleList({
     [scout.slots, weekOffset],
   );
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isSyncingSlots, setIsSyncingSlots] = useState(false);
   const athleteTimezone = syncContext
     ? resolveAthleteTimezone(syncContext.context.resolved.city, syncContext.context.resolved.state)
     : null;
@@ -797,22 +831,22 @@ function HeadScoutScheduleList({
       slotLabels,
     });
 
+    setIsSyncingSlots(true);
+    const toast = await showLoadingToast('Syncing', scout.scout_name);
     try {
       const result = await syncCallScriptToggleToNotion({
         target: 'script',
         markdown: notionMarkdown,
       });
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Notion script updated',
-        message: `Replaced ${result.toggleTitle} with ${scout.scout_name} slots.`,
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Synced';
+      toast.message = result.toggleTitle;
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Notion sync failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Sync failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      setIsSyncingSlots(false);
     }
   }
 
@@ -821,6 +855,7 @@ function HeadScoutScheduleList({
       navigationTitle={`${scout.scout_name} • ${formatHeadScoutWeekLabel(weekStart, weekEnd)}`}
       searchBarPlaceholder="Filter open slots"
       isShowingDetail={false}
+      isLoading={isSyncingSlots}
     >
       {visibleSlots.map((slot) =>
         (() => {
@@ -846,7 +881,7 @@ function HeadScoutScheduleList({
                         onAction={() => toggleSlotSelection(slot)}
                       />
                       <Action
-                        title="Sync Selected Slots to Notion"
+                        title={isSyncingSlots ? 'Syncing…' : 'Sync to Notion'}
                         icon={Icon.Upload}
                         onAction={() => void handleSyncSelectedSlotsToNotion()}
                       />

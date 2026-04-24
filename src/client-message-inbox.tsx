@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Color,
   Form,
   Icon,
   List,
@@ -31,6 +32,14 @@ import {
   useClientInboxChats,
 } from './lib/client-message-sandbox';
 import { openMessagesServiceClientInbox } from './lib/messages-service';
+
+const TAG_COLORS = [Color.Blue, Color.Green, Color.Magenta, Color.Orange, Color.Purple, Color.Red];
+
+function tagColorFor(value?: string | null): Color {
+  const normalized = String(value || '').trim();
+  const total = normalized.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return TAG_COLORS[total % TAG_COLORS.length];
+}
 
 function getMessagesUrl(
   chat: Pick<ClientInboxChat, 'chat_identifier' | 'group_participants' | 'is_group'>,
@@ -79,9 +88,7 @@ function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
     >
       <Form.Description
         title="Client"
-        text={[chat.clientMatch.athleteName, chat.clientMatch.associateLabel]
-          .filter(Boolean)
-          .join(' • ')}
+        text={[chat.clientMatch.athleteName, chat.displayName].filter(Boolean).join(' • ')}
       />
       <Form.TextArea
         {...itemProps.message}
@@ -241,11 +248,16 @@ export default function ClientMessageInboxCommand() {
   }
 
   async function handleCreateReminder(chat: ClientInboxChat, mode: ReminderMode) {
-    const associatedClients = chat.clientMatch.associatedClients || [];
     const { options, immediateOption } = resolveClientReminderTarget({
       isGroup: chat.is_group,
       matchedPhones: chat.matchedPhones,
-      associatedClients,
+      associatedClients: [],
+      fallbackContact: {
+        id: 'matchedContact',
+        label: 'Contact',
+        name: chat.displayName,
+        phone: chat.matchedPhones[0] || chat.chat_identifier,
+      },
     });
 
     if (!options.length) {
@@ -320,9 +332,16 @@ export default function ClientMessageInboxCommand() {
           subtitle={chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus || ''}
           accessories={[
             ...(chat.clientMatch.athleteName
-              ? [{ tag: { value: chat.clientMatch.athleteName } }]
+              ? [
+                  {
+                    tag: {
+                      value: chat.clientMatch.athleteName,
+                      color: tagColorFor(chat.clientMatch.athleteName),
+                    },
+                  },
+                ]
               : []),
-            ...(chat.is_group ? [{ tag: { value: 'Group' } }] : []),
+            ...(chat.is_group ? [{ tag: { value: 'Group', color: Color.Yellow } }] : []),
             {
               date: new Date(chat.last_message_date),
               tooltip: format(new Date(chat.last_message_date), 'PPpp'),

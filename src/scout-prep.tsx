@@ -112,6 +112,10 @@ import {
 } from './lib/supabase-lifecycle';
 import { buildAssociatedClientsFromContactInfo } from './lib/client-message-export';
 import { sendClientMessage } from './lib/client-message-sandbox';
+import {
+  isCallAttempt1PortalTask,
+  runDuplicateProfileResolutionForTask,
+} from './lib/scout-duplicate-profiles';
 
 const FEATURE = 'scout-prep';
 const MEETING_SET_LABEL = 'Meeting Set';
@@ -2852,6 +2856,54 @@ function ScoutPrepDetail({
     );
   }
 
+  async function handleDuplicateProfileCheck() {
+    if (!isCallAttempt1PortalTask(task)) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Call Attempt 1 only',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Dup Check', task.athlete_name);
+    try {
+      const result = await runDuplicateProfileResolutionForTask(task);
+      if (result.matchCount <= 1) {
+        toast.style = Toast.Style.Success;
+        toast.title = 'No duplicate found';
+        toast.message = task.athlete_name;
+        return;
+      }
+
+      const duplicateHadNoTask = result.skipped.some((item) =>
+        /No incomplete Call Attempt 1 task on duplicate profile/i.test(item.reason),
+      );
+      if (!result.completed.length && duplicateHadNoTask) {
+        toast.style = Toast.Style.Success;
+        toast.title = 'Duplicate found';
+        toast.message = 'Other profile has no task. Keep this one.';
+        return;
+      }
+
+      if (!result.completed.length && result.skipped.length) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Duplicate unresolved';
+        toast.message = result.skipped[0]?.reason || 'No duplicate task updated';
+        return;
+      }
+
+      toast.style = result.skipped.length ? Toast.Style.Failure : Toast.Style.Success;
+      toast.title = result.skipped.length ? 'Duplicate partial' : 'Duplicate resolved';
+      toast.message = result.skipped.length
+        ? `${result.completed.length} closed, ${result.skipped.length} skipped`
+        : `${result.completed.length} duplicate closed`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Duplicate check failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function handleSyncCallPrepToNotion() {
     if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
       await showToast({
@@ -3319,6 +3371,54 @@ function ScoutPrepTaskItem({
     );
   }
 
+  async function handleDuplicateProfileCheck() {
+    if (!isCallAttempt1PortalTask(task)) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Call Attempt 1 only',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Dup Check', task.athlete_name);
+    try {
+      const result = await runDuplicateProfileResolutionForTask(task);
+      if (result.matchCount <= 1) {
+        toast.style = Toast.Style.Success;
+        toast.title = 'No duplicate found';
+        toast.message = task.athlete_name;
+        return;
+      }
+
+      const duplicateHadNoTask = result.skipped.some((item) =>
+        /No incomplete Call Attempt 1 task on duplicate profile/i.test(item.reason),
+      );
+      if (!result.completed.length && duplicateHadNoTask) {
+        toast.style = Toast.Style.Success;
+        toast.title = 'Duplicate found';
+        toast.message = 'Other profile has no task. Keep this one.';
+        return;
+      }
+
+      if (!result.completed.length && result.skipped.length) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Duplicate unresolved';
+        toast.message = result.skipped[0]?.reason || 'No duplicate task updated';
+        return;
+      }
+
+      toast.style = result.skipped.length ? Toast.Style.Failure : Toast.Style.Success;
+      toast.title = result.skipped.length ? 'Duplicate partial' : 'Duplicate resolved';
+      toast.message = result.skipped.length
+        ? `${result.completed.length} closed, ${result.skipped.length} skipped`
+        : `${result.completed.length} duplicate closed`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Duplicate check failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
 
   return (
@@ -3369,6 +3469,12 @@ function ScoutPrepTaskItem({
             title="Copy Athlete Name"
             shortcut={{ modifiers: ['cmd'], key: 'c' }}
             onAction={() => void copyToClipboardWithToast(task.athlete_name, 'Athlete Copied')}
+          />
+          <Action
+            title="Duplicate Profile Check"
+            icon={Icon.PersonCircle}
+            shortcut={{ modifiers: ['cmd'], key: 'd' }}
+            onAction={() => void handleDuplicateProfileCheck()}
           />
           <Action.Push
             title="Contact Info"

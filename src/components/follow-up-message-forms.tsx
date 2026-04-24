@@ -20,6 +20,8 @@ type ConfirmationReminderFormValues = {
   variant: ConfirmationFollowUpVariant;
 };
 
+type ConfirmationSubmitMode = 'messages' | 'messages_and_contact';
+
 export function VoicemailFollowUpMessageForm(props: {
   navigationTitle: string;
   recipients: VoicemailRecipient[];
@@ -87,32 +89,56 @@ export function VoicemailFollowUpMessageForm(props: {
 export function ConfirmationReminderMessageForm(props: {
   navigationTitle: string;
   defaultVariant: ConfirmationFollowUpVariant;
-  onSubmit: (values: ConfirmationReminderFormValues) => Promise<void>;
+  onSubmit: (
+    values: ConfirmationReminderFormValues,
+    mode: ConfirmationSubmitMode,
+  ) => Promise<void>;
+  secondarySubmitTitle?: string;
 }) {
   const { pop } = useNavigation();
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleSubmit(values: ConfirmationReminderFormValues) {
+  async function handleSubmit(values: ConfirmationReminderFormValues, mode: ConfirmationSubmitMode) {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
-      await props.onSubmit(values);
+      await props.onSubmit(values, mode);
       pop();
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Failed to build confirmation text',
+        title: 'Draft failed',
         message: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
   return (
     <Form
       navigationTitle={props.navigationTitle}
+      isLoading={isSubmitting}
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title="Open in Messages"
-            onSubmit={(values) => void handleSubmit(values as ConfirmationReminderFormValues)}
+            title={isSubmitting ? 'Opening…' : 'Messages'}
+            onSubmit={(values) =>
+              void handleSubmit(values as ConfirmationReminderFormValues, 'messages')
+            }
           />
+          {props.secondarySubmitTitle ? (
+            <Action.SubmitForm
+              title={isSubmitting ? 'Opening…' : props.secondarySubmitTitle}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
+              onSubmit={(values) =>
+                void handleSubmit(values as ConfirmationReminderFormValues, 'messages_and_contact')
+              }
+            />
+          ) : null}
         </ActionPanel>
       }
     >

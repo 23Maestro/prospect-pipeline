@@ -241,6 +241,14 @@ class RawAthleteSearchRequest(BaseModel):
     include_recent_search: bool = Field(False, description="Whether to call scoutrecentsearch when IDs are available")
 
 
+class AdminDuplicateSearchRequest(BaseModel):
+    """Request for duplicate profile search using admin searchany flow."""
+    search_term: str = Field(..., description="Full athlete name sent via legacy searchany")
+    contact_id: str = Field(..., description="Current athlete contact id for admin-page context")
+    athlete_main_id: str = Field(..., description="Current athlete main id for admin-page context")
+    email: str = Field("", description="Must remain blank for duplicate profile search")
+
+
 class RawAthleteSearchResult(BaseModel):
     """Normalized athlete search result."""
     athlete_id: str
