@@ -112,24 +112,23 @@ function ReminderRecipientForm({
   mode: ReminderMode;
   onSubmit: (values: { recipientId?: string; remindAt?: Date }) => Promise<void>;
 }) {
-  const { handleSubmit, itemProps } = useForm<{ recipientId?: string; remindAt?: Date }>({
-    initialValues: {
-      recipientId: options[0]?.id,
-      remindAt: buildDefaultReminderDate(),
-    },
-    onSubmit,
-  });
+  const [recipientId, setRecipientId] = useState(options[0]?.id);
+  const [remindAt, setRemindAt] = useState<Date | null>(buildDefaultReminderDate());
 
   return (
     <Form
       navigationTitle={navigationTitle}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title={actionTitle} icon={Icon.Bell} onSubmit={handleSubmit} />
+          <Action.SubmitForm
+            title={actionTitle}
+            icon={Icon.Bell}
+            onSubmit={() => onSubmit({ recipientId, remindAt: remindAt ?? undefined })}
+          />
         </ActionPanel>
       }
     >
-      <Form.Dropdown {...itemProps.recipientId} title="Contact">
+      <Form.Dropdown id="recipientId" title="Contact" value={recipientId} onChange={setRecipientId}>
         {options.map((option) => (
           <Form.Dropdown.Item
             key={`${option.id}-${option.phone}`}
@@ -139,9 +138,11 @@ function ReminderRecipientForm({
         ))}
       </Form.Dropdown>
       <Form.DatePicker
-        {...itemProps.remindAt}
+        id="remindAt"
         title={mode === 'call' ? 'Call Time' : 'Text Time'}
         type={Form.DatePicker.Type.DateTime}
+        value={remindAt}
+        onChange={setRemindAt}
       />
     </Form>
   );

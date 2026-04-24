@@ -252,10 +252,10 @@ export async function createReminder(reminder: ReminderDraft): Promise<void> {
       end if
       if remindDate is not missing value then
         try
-          set remind me date of createdReminder to remindDate
+          set due date of createdReminder to remindDate
         end try
         try
-          set due date of createdReminder to remindDate
+          set remind me date of createdReminder to remindDate
         end try
       end if
       if reminderUrl is not "" then
@@ -264,14 +264,6 @@ export async function createReminder(reminder: ReminderDraft): Promise<void> {
         end try
       end if
 
-      activate
-      try
-        show createdReminder
-      on error
-        try
-          show targetList
-        end try
-      end try
     end tell
   `;
 

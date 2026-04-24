@@ -66,21 +66,21 @@
       "title": "View Scout Openings",
       "description": "View scout open slots for the current week",
       "mode": "view",
-      "icon": "prospect-pipeline.png"
+      "icon": "set-meetings.png"
     },
     {
       "name": "client-message-inbox",
       "title": "Client Messages",
       "description": "Latest messages for saved ID clients with workflow-aware actions.",
       "mode": "view",
-      "icon": "prospect-pipeline.png"
+      "icon": "client-messages.png"
     },
     {
       "name": "view-set-meetings",
       "title": "View Set Meetings",
       "description": "View current Meeting Set bookings",
       "mode": "view",
-      "icon": "prospect-pipeline.png"
+      "icon": "booked-meetings.png"
     }
   ],
   "tools": [
