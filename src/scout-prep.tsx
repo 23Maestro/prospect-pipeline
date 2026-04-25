@@ -123,6 +123,58 @@ const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
 const NEVER_SPOKE_TO_LABEL = 'Never Spoke To';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+};
 
 function logInfo(
   event: string,
@@ -175,6 +227,36 @@ async function copyToClipboardWithToast(content: string, title: string) {
     style: Toast.Style.Success,
     title,
   });
+}
+
+function titleCaseWords(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function formatStateForHighSchoolCopy(state?: string | null): string | null {
+  const rawState = String(state || '').trim();
+  if (!rawState) {
+    return null;
+  }
+
+  const normalized = rawState.toUpperCase();
+  return STATE_NAMES_BY_ABBREVIATION[normalized] || titleCaseWords(rawState);
+}
+
+function buildHighSchoolCopyLabel(context?: ScoutPrepContext | null): string | null {
+  const highSchool = String(context?.resolved.high_school || '').trim();
+  if (!highSchool) {
+    return null;
+  }
+
+  const state = formatStateForHighSchoolCopy(context?.resolved.state);
+  const sport = titleCaseWords(context?.resolved.sport);
+  return [highSchool, state, sport ? `${sport} Team` : null].filter(Boolean).join(' ');
 }
 
 function buildMeetingSetStartsAt(
@@ -2544,6 +2626,7 @@ function ScoutPrepDetail({
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadScoutPrepContext>> | null>(
     null,
   );
+  const highSchoolCopyLabel = buildHighSchoolCopyLabel(context);
 
   async function ensureContext(
     loadingTitle: string,
@@ -3119,6 +3202,16 @@ function ScoutPrepDetail({
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
             target={<UpdateAthleteTaskPicker task={task} initialContext={context} />}
           />
+          {highSchoolCopyLabel ? (
+            <Action
+              title="Copy High School Search"
+              icon={Icon.CopyClipboard}
+              shortcut={{ modifiers: ['cmd'], key: 'h' }}
+              onAction={() =>
+                void copyToClipboardWithToast(highSchoolCopyLabel, 'School Search Copied')
+              }
+            />
+          ) : null}
           <ActionPanel.Section title="Athlete Note">
             <Action
               title="View Notes"

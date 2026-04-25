@@ -78,21 +78,25 @@ test('resolveConfirmationFollowUpVariant stays conservative unless explicit seco
 test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'call_attempt_1',
-    greeting: 'Good morning Mr. Brown,',
-    athleteName: 'Grayson Brown',
-    sport: 'Football',
-    gradYear: '2028',
-    signOffTitle: 'Football Scouting Coordinator',
+    greeting: 'Good afternoon Ms. Messerle,',
+    athleteName: 'Wylie',
+    sport: 'Soccer',
+    signOffTitle: 'Soccer Scouting Coordinator',
     closingLine: 'Enjoy the rest of your week.',
     now: new Date('2026-04-23T23:29:00Z'),
   });
 
   assert.match(
     message,
-    /^Good morning Mr\. Brown, this is Jerami Singleton, college football scout with Prospect ID\./,
+    /^Good afternoon Ms\. Messerle, this is Jerami Singleton with Prospect ID\. Following up on Wylie's recruiting plan\./,
   );
-  assert.match(message, /Following up about Grayson Brown's recruiting plan\./);
-  assert.match(message, /When would you have a 10 min gap today or tomorrow\?/);
+  assert.match(
+    message,
+    /If playing college soccer is still a serious goal for him, I’d like to get a quick 10-minute call scheduled while timing still matters\./,
+  );
+  assert.match(message, /Would later today or tomorrow work better\?/);
+  assert.match(message, /Enjoy the rest of your week\./);
+  assert.match(message, /Jerami Singleton\nSoccer Scouting Coordinator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage removes today after 7:30pm eastern cutoff', () => {
@@ -101,14 +105,14 @@ test('buildVoicemailFollowUpMessage removes today after 7:30pm eastern cutoff', 
 
   const message = buildVoicemailFollowUpMessage({
     variant: 'call_attempt_1',
-    greeting: 'Good evening Mr. Brown,',
-    athleteName: 'Grayson Brown',
-    sport: 'Football',
+    greeting: 'Good afternoon Ms. Messerle,',
+    athleteName: 'Wylie',
+    sport: 'Soccer',
     now: new Date('2026-04-23T23:30:00Z'),
   });
 
-  assert.match(message, /When would you have a 10 min gap tomorrow\?/);
-  assert.doesNotMatch(message, /today or tomorrow/);
+  assert.match(message, /Would tomorrow or the next day work better\?/);
+  assert.doesNotMatch(message, /later today or tomorrow/);
 });
 
 test('buildVoicemailFollowUpMessage removes today from attempt 2 after cutoff', () => {
@@ -137,7 +141,10 @@ test('buildVoicemailFollowUpMessage renders no show copy with simple next best d
     message,
     /^Hi Jamie, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
   );
-  assert.match(message, /If playing college football is still a real goal for him/);
+  assert.match(
+    message,
+    /No worries, things come up\. If playing college football is still a serious goal for him, let’s get you back on the schedule while timing still matters\./,
+  );
   assert.match(message, /Would tomorrow or Monday work better\?/);
 });
 
@@ -176,7 +183,10 @@ test('buildCallAttempt2Message fills athlete and recipient names', () => {
     message,
     /Good morning Mr\. Brown, this is Coach Risner, college football scout with Prospect ID\./,
   );
-  assert.match(message, /I left you another voicemail about Grayson Brown's recruiting profile\./);
+  assert.match(
+    message,
+    /I received Grayson Brown's info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college football\./,
+  );
   assert.match(message, /With him being a 2027, timing matters in the recruiting process/);
 });
 

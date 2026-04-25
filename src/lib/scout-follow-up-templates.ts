@@ -171,10 +171,10 @@ export function isPastTextTodayCutoff(now: Date): boolean {
 
 function buildAttempt1AvailabilityLine(now: Date): string {
   if (isPastTextTodayCutoff(now)) {
-    return 'When would you have a 10 min gap tomorrow? This is my cell, so you can text me back here.';
+    return 'Would tomorrow or the next day work better?';
   }
 
-  return 'When would you have a 10 min gap today or tomorrow? This is my cell, so you can text me back here.';
+  return 'Would later today or tomorrow work better?';
 }
 
 function buildAttempt2AvailabilityLine(now: Date): string {
@@ -310,7 +310,9 @@ export function buildVoicemailFollowUpMessage(args: {
               ]
             : args.variant === 'no_show'
               ? [
-                  `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout. No worries, things come up. If playing college ${scoutLabel} is still a real goal for him, I’d like to get you rescheduled so we can keep the process moving.`,
+                  `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
+                  '',
+                  `No worries, things come up. If playing college ${scoutLabel} is still a serious goal for him, let’s get you back on the schedule while timing still matters.`,
                   '',
                   `Would tomorrow or ${buildNoShowNextBestDayLabel(now)} work better?`,
                 ]
@@ -331,7 +333,9 @@ export function buildVoicemailFollowUpMessage(args: {
                       buildAttempt2AvailabilityLine(now),
                     ]
                   : [
-                      `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. Following up about ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}. I’m looking to learn a little more about his academics, ${scoutLabel} background, and college goals.`,
+                      `${greeting} this is ${senderName} with Prospect ID. Following up on ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}.`,
+                      '',
+                      `If playing college ${scoutLabel} is still a serious goal for him, I’d like to get a quick 10-minute call scheduled while timing still matters.`,
                       '',
                       buildAttempt1AvailabilityLine(now),
                     ];
