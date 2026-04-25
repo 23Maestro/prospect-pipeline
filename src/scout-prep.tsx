@@ -1093,10 +1093,10 @@ function ScoutPrepContactDetail({
   const contactInfo = context?.contactInfo;
   const contactCandidates = context
     ? getProspectContactShortcutCandidates(context).sort(
-        (left, right) =>
-          ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
-          ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
-      )
+      (left, right) =>
+        ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
+        ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
+    )
     : [];
 
   return (
@@ -1388,9 +1388,9 @@ function VoicemailFollowUpRecipientForm({
     const aiHonorific =
       !deterministicHonorific && recipient.id !== 'studentAthlete'
         ? await resolveParentHonorificWithRayAI({
-            parentName: selectedParent?.name || recipient.name,
-            relationship: selectedParent?.relationship || null,
-          }).catch(() => null)
+          parentName: selectedParent?.name || recipient.name,
+          relationship: selectedParent?.relationship || null,
+        }).catch(() => null)
         : null;
 
     const body = buildVoicemailFollowUpBody(
@@ -1424,36 +1424,36 @@ function VoicemailFollowUpRecipientForm({
             onMessageSent={
               selectedVariant !== 'no_show'
                 ? async () => {
-                    const followUpTask = resolveVoicemailLifecycleTaskFromList(
-                      context,
-                      selectedVariant,
+                  const followUpTask = resolveVoicemailLifecycleTaskFromList(
+                    context,
+                    selectedVariant,
+                  );
+                  const athleteId = String(
+                    task.contact_id || context.task.contact_id || '',
+                  ).trim();
+                  const athleteMainId = String(
+                    context.resolved.athlete_main_id || task.athlete_main_id || '',
+                  ).trim();
+
+                  if (!followUpTask?.task_id) {
+                    throw new Error(
+                      `Missing task list item for ${getVoicemailLifecycleTaskTitle(selectedVariant) || selectedVariant}`,
                     );
-                    const athleteId = String(
-                      task.contact_id || context.task.contact_id || '',
-                    ).trim();
-                    const athleteMainId = String(
-                      context.resolved.athlete_main_id || task.athlete_main_id || '',
-                    ).trim();
-
-                    if (!followUpTask?.task_id) {
-                      throw new Error(
-                        `Missing task list item for ${getVoicemailLifecycleTaskTitle(selectedVariant) || selectedVariant}`,
-                      );
-                    }
-
-                    if (!athleteId || !athleteMainId) {
-                      throw new Error('Missing athlete identifiers for voicemail follow-up');
-                    }
-
-                    await recordVoicemailFollowUpMessageSent({
-                      athleteId,
-                      athleteMainId,
-                      taskId: followUpTask.task_id,
-                      variant: selectedVariant,
-                      taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || undefined,
-                      description: followUpTask.description || undefined,
-                    });
                   }
+
+                  if (!athleteId || !athleteMainId) {
+                    throw new Error('Missing athlete identifiers for voicemail follow-up');
+                  }
+
+                  await recordVoicemailFollowUpMessageSent({
+                    athleteId,
+                    athleteMainId,
+                    taskId: followUpTask.task_id,
+                    variant: selectedVariant,
+                    taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || undefined,
+                    description: followUpTask.description || undefined,
+                  });
+                }
                 : undefined
             }
           />,
@@ -1923,17 +1923,17 @@ function UpdateAthleteTaskForm({
         <ActionPanel>
           <Action.SubmitForm
             title={isSaving ? 'Saving…' : 'Save Task Update'}
-            icon={Icon.Calendar}
+            icon='🗓️'
             onSubmit={(values) => void handleUpdate(values as { dueDate?: Date })}
           />
           <Action.SubmitForm
-            title={isSaving ? 'Saving…' : 'Set SCHEDULED FOLLOW-UP'}
-            icon={Icon.Pencil}
+            title={isSaving ? 'Saving…' : 'SCHEDULED FOLLOW-UP'}
+            icon='📝'
             onSubmit={(values) => void handleSetScheduledFollowUp(values as { dueDate?: Date })}
           />
           <Action
             title={isCompleting ? 'Completing…' : 'Complete Task'}
-            icon={Icon.CheckCircle}
+            icon='✅'
             onAction={() => void handleCompleteTask()}
           />
         </ActionPanel>
@@ -2054,11 +2054,11 @@ function UpdateAthleteTaskPicker({
       setContext((current) =>
         current
           ? {
-              ...current,
-              tasks: current.tasks.filter(
-                (candidate) => candidate.task_id !== selectedTask.task_id,
-              ),
-            }
+            ...current,
+            tasks: current.tasks.filter(
+              (candidate) => candidate.task_id !== selectedTask.task_id,
+            ),
+          }
           : current,
       );
 
@@ -2350,10 +2350,10 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       ).trim();
       const athleteId = String(
         task.athlete_id ||
-          task.contact_id ||
-          context?.task.athlete_id ||
-          context?.task.contact_id ||
-          '',
+        task.contact_id ||
+        context?.task.athlete_id ||
+        context?.task.contact_id ||
+        '',
       ).trim();
 
       if (!athleteMainId || !athleteId) {
@@ -2434,8 +2434,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           currentTaskId:
             String(
               meetingSetResult.created_task?.task_id ||
-                salesStageResult.created_task?.task_id ||
-                '',
+              salesStageResult.created_task?.task_id ||
+              '',
             ).trim() || null,
           currentTaskTitle: currentTask,
           appointmentId: meetingSetResult.open_event_id || meetingSetOpenEventId,
@@ -2447,8 +2447,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           taskDueDate:
             String(
               meetingSetResult.created_task?.due_date ||
-                salesStageResult.created_task?.due_date ||
-                '',
+              salesStageResult.created_task?.due_date ||
+              '',
             ).trim() || null,
         });
       }
@@ -3829,9 +3829,9 @@ export default function ScoutPrepCommand() {
   const selectedTaskRows =
     viewMode === 'tasks'
       ? buildTaskBucketRows({
-          filter: taskListFilter,
-          taskBuckets,
-        })
+        filter: taskListFilter,
+        taskBuckets,
+      })
       : [];
   const hasTaskModeResults = selectedTaskRows.length > 0;
   const selectedRange = mapTaskListFilterToRange(taskListFilter);
@@ -4003,21 +4003,21 @@ export default function ScoutPrepCommand() {
                 setRecentProfiles((current) =>
                   current.map((item) =>
                     item.profile.athlete_id === row.profile.athlete_id &&
-                    item.profile.athlete_main_id === row.profile.athlete_main_id
+                      item.profile.athlete_main_id === row.profile.athlete_main_id
                       ? {
-                          ...item,
-                          status: 'matched',
-                          followUpTask,
-                          task: {
-                            ...item.task,
-                            task_id: followUpTask.task_id,
-                            due_date: followUpTask.due_date || null,
-                            completion_date: followUpTask.completion_date || null,
-                            assigned_owner: followUpTask.assigned_owner || null,
-                            title: followUpTask.title || null,
-                            description: followUpTask.description || null,
-                          },
-                        }
+                        ...item,
+                        status: 'matched',
+                        followUpTask,
+                        task: {
+                          ...item.task,
+                          task_id: followUpTask.task_id,
+                          due_date: followUpTask.due_date || null,
+                          completion_date: followUpTask.completion_date || null,
+                          assigned_owner: followUpTask.assigned_owner || null,
+                          title: followUpTask.title || null,
+                          description: followUpTask.description || null,
+                        },
+                      }
                       : item,
                   ),
                 );
@@ -4026,7 +4026,7 @@ export default function ScoutPrepCommand() {
                 setRecentProfiles((current) =>
                   current.map((item) =>
                     item.profile.athlete_id === row.profile.athlete_id &&
-                    item.profile.athlete_main_id === row.profile.athlete_main_id
+                      item.profile.athlete_main_id === row.profile.athlete_main_id
                       ? { ...item, status: 'not_found', followUpTask: null, error: null }
                       : item,
                   ),
@@ -4038,13 +4038,13 @@ export default function ScoutPrepCommand() {
               setRecentProfiles((current) =>
                 current.map((item) =>
                   item.profile.athlete_id === row.profile.athlete_id &&
-                  item.profile.athlete_main_id === row.profile.athlete_main_id
+                    item.profile.athlete_main_id === row.profile.athlete_main_id
                     ? {
-                        ...item,
-                        status: 'error',
-                        followUpTask: null,
-                        error: error instanceof Error ? error.message : String(error),
-                      }
+                      ...item,
+                      status: 'error',
+                      followUpTask: null,
+                      error: error instanceof Error ? error.message : String(error),
+                    }
                     : item,
                 ),
               );

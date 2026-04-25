@@ -1,6 +1,6 @@
 import { open } from '@raycast/api';
 import { access, open as openFile, readdir } from 'fs/promises';
-import { constants as fsConstants } from 'fs';
+import { constants as fsConstants, type Dirent } from 'fs';
 
 const CONTACT_CARD_ROOTS = [
   '/Users/singleton23/Library/Messages/Attachments',
@@ -43,7 +43,7 @@ async function walkVcfFiles(root: string): Promise<string[]> {
     const current = queue.shift();
     if (!current) continue;
 
-    let entries: Awaited<ReturnType<typeof readdir>>;
+    let entries: Dirent[];
     try {
       entries = await readdir(current, { withFileTypes: true });
     } catch {

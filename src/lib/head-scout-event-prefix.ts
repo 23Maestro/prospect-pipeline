@@ -4,12 +4,14 @@ export type AppointmentTitlePrefix = (typeof APPOINTMENT_TITLE_PREFIXES)[number]
 export type AppointmentTitleOutcome =
   | 'active'
   | 'soft_archive_follow_up'
+  | 'soft_archive_no_show'
   | 'terminal_enrollment'
   | 'terminal_close_lost';
 
 const ENROLLMENT_PREFIX_PATTERN = /^\s*\(ENR(?:\s+[^)]*)?\)\s*/i;
 const CLOSE_LOST_PREFIX_PATTERN = /^\s*\(CL\)\s*/i;
 const FOLLOW_UP_PREFIX_PATTERN = /^\s*\(FU\)\s*/i;
+const NO_SHOW_PREFIX_PATTERN = /^\s*(?:\(NS\)\*2|\(NS\))\s*/i;
 const LEADING_OUTCOME_PREFIX_PATTERN = /^\s*\((?:[A-Z][A-Z0-9*$]*(?:\s+[^)]*)?)\)\s*/i;
 
 const KNOWN_PREFIX_PATTERN = new RegExp(
@@ -31,6 +33,9 @@ export function resolveAppointmentTitleOutcome(title?: string | null): Appointme
   }
   if (FOLLOW_UP_PREFIX_PATTERN.test(trimmedTitle)) {
     return 'soft_archive_follow_up';
+  }
+  if (NO_SHOW_PREFIX_PATTERN.test(trimmedTitle)) {
+    return 'soft_archive_no_show';
   }
   return 'active';
 }

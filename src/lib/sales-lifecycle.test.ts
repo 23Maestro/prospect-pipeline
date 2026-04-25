@@ -34,8 +34,24 @@ test('meeting result reschedule pending resolves to active meeting work', () => 
   assert.equal(lifecycle.isActiveQueueItem, true);
 });
 
+test('meeting result res. pending resolves to active meeting work', () => {
+  const lifecycle = resolveSalesLifecycle('Meeting Result - Res. Pending');
+  assert.equal(lifecycle.normalizedStage, 'reschedule_pending');
+  assert.equal(lifecycle.operatorStatus, 'awaiting_reschedule');
+  assert.equal(lifecycle.meetingLifecycle, 'reschedule_pending');
+  assert.equal(lifecycle.isActiveQueueItem, true);
+});
+
 test('meeting result rescheduled resolves to active meeting queue', () => {
   const lifecycle = resolveSalesLifecycle('Meeting Result Rescheduled');
+  assert.equal(lifecycle.normalizedStage, 'rescheduled');
+  assert.equal(lifecycle.operatorStatus, 'active_meeting_queue');
+  assert.equal(lifecycle.meetingLifecycle, 'rescheduled');
+  assert.equal(lifecycle.isActiveQueueItem, true);
+});
+
+test('meeting result hyphenated rescheduled resolves to active meeting queue', () => {
+  const lifecycle = resolveSalesLifecycle('Meeting Result - Rescheduled');
   assert.equal(lifecycle.normalizedStage, 'rescheduled');
   assert.equal(lifecycle.operatorStatus, 'active_meeting_queue');
   assert.equal(lifecycle.meetingLifecycle, 'rescheduled');
@@ -48,7 +64,24 @@ test('meeting result no show stays active', () => {
   assert.equal(lifecycle.operatorStatus, 'no_show');
   assert.equal(lifecycle.meetingLifecycle, 'no_show');
   assert.equal(lifecycle.isActiveQueueItem, true);
+  assert.equal(isActiveMeetingQueueItem(lifecycle), false);
   assert.equal(shouldDropFromWorkingQueue(lifecycle), false);
+});
+
+test('meeting result hyphenated no show stays active', () => {
+  const lifecycle = resolveSalesLifecycle('Meeting Result - No Show');
+  assert.equal(lifecycle.normalizedStage, 'no_show');
+  assert.equal(lifecycle.operatorStatus, 'no_show');
+  assert.equal(lifecycle.meetingLifecycle, 'no_show');
+  assert.equal(isActiveMeetingQueueItem(lifecycle), false);
+});
+
+test('actual meeting hyphenated follow up stays active', () => {
+  const lifecycle = resolveSalesLifecycle('Actual Meeting - Follow Up');
+  assert.equal(lifecycle.normalizedStage, 'meeting_follow_up');
+  assert.equal(lifecycle.operatorStatus, 'awaiting_follow_up');
+  assert.equal(lifecycle.meetingLifecycle, 'follow_up_due');
+  assert.equal(lifecycle.isActiveQueueItem, true);
 });
 
 test('actual meeting follow up stays active', () => {
@@ -59,6 +92,22 @@ test('actual meeting follow up stays active', () => {
   assert.equal(lifecycle.isActiveQueueItem, true);
 });
 
+test('meeting result canceled resolves to awaiting reschedule', () => {
+  const lifecycle = resolveSalesLifecycle('Meeting Result - Canceled');
+  assert.equal(lifecycle.normalizedStage, 'reschedule_pending');
+  assert.equal(lifecycle.operatorStatus, 'awaiting_reschedule');
+  assert.equal(lifecycle.meetingLifecycle, 'reschedule_pending');
+  assert.equal(lifecycle.isActiveQueueItem, true);
+});
+
+test('actual meeting close won drops from working queue', () => {
+  const lifecycle = resolveSalesLifecycle('Actual Meeting - Close Won');
+  assert.equal(lifecycle.normalizedStage, 'closed_won');
+  assert.equal(lifecycle.operatorStatus, 'won');
+  assert.equal(lifecycle.isTerminal, true);
+  assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
+});
+
 test('actual meeting closed won drops from working queue', () => {
   const lifecycle = resolveSalesLifecycle('Actual Meeting Closed Won');
   assert.equal(lifecycle.normalizedStage, 'closed_won');
@@ -66,6 +115,14 @@ test('actual meeting closed won drops from working queue', () => {
   assert.equal(lifecycle.isTerminal, true);
   assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
   assert.equal(shouldDropFromWorkingQueue(lifecycle), true);
+});
+
+test('actual meeting close lost drops from working queue', () => {
+  const lifecycle = resolveSalesLifecycle('Actual Meeting - Close Lost');
+  assert.equal(lifecycle.normalizedStage, 'closed_lost');
+  assert.equal(lifecycle.operatorStatus, 'lost');
+  assert.equal(lifecycle.isTerminal, true);
+  assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
 });
 
 test('actual meeting closed lost drops from working queue', () => {

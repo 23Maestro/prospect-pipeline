@@ -222,7 +222,8 @@ function cleanMeetingResolveTitle(title?: string | null): string {
   return String(title || '')
     .trim()
     .replace(/^Follow Up -\s*/i, '')
-    .replace(/^\((?:ACF\*?2?|CF|RSP|CAN|FU|CL|\*)\)\s*/i, '')
+    .replace(/^\(NS\)\*2\s*/i, '')
+    .replace(/^\((?:ACF\*?2?|CF|RSP|CAN|FU|CL|NS|\*)\)\s*/i, '')
     .trim();
 }
 
@@ -268,17 +269,19 @@ function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<stri
   }
 
   return [...matches].sort((left, right) => {
-    const leftCompleted = String(left.completion_date || left.completionDate || '').trim();
-    const rightCompleted = String(right.completion_date || right.completionDate || '').trim();
+    const rawLeft = left as Record<string, unknown>;
+    const rawRight = right as Record<string, unknown>;
+    const leftCompleted = String(left.completion_date || rawLeft.completionDate || '').trim();
+    const rightCompleted = String(right.completion_date || rawRight.completionDate || '').trim();
     if (!leftCompleted && rightCompleted) return -1;
     if (leftCompleted && !rightCompleted) return 1;
-    const leftDate = Date.parse(String(left.due_date || left.dueDate || '').trim());
-    const rightDate = Date.parse(String(right.due_date || right.dueDate || '').trim());
+    const leftDate = Date.parse(String(left.due_date || rawLeft.dueDate || '').trim());
+    const rightDate = Date.parse(String(right.due_date || rawRight.dueDate || '').trim());
     if (!Number.isNaN(leftDate) && !Number.isNaN(rightDate) && leftDate !== rightDate) {
       return rightDate - leftDate;
     }
-    return String(right.task_id || right.taskId || '').localeCompare(
-      String(left.task_id || left.taskId || ''),
+    return String(right.task_id || rawRight.taskId || '').localeCompare(
+      String(left.task_id || rawLeft.taskId || ''),
     );
   })[0];
 }

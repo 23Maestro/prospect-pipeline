@@ -367,7 +367,7 @@ export default function BackSyncScoutFollowUpsCommand() {
                   />
                   <Action
                     title="Supabase Lifecycle Status"
-                    icon={Icon.Database}
+                    icon={Icon.HardDrive}
                     shortcut={{ modifiers: ['ctrl'], key: 'l' }}
                     onAction={() => push(<SupabaseLifecycleStatusCommand />)}
                   />
@@ -403,7 +403,7 @@ export default function BackSyncScoutFollowUpsCommand() {
               />
               <Action
                 title="Supabase Lifecycle Status"
-                icon={Icon.Database}
+                icon={Icon.HardDrive}
                 shortcut={{ modifiers: ['ctrl'], key: 'l' }}
                 onAction={() => push(<SupabaseLifecycleStatusCommand />)}
               />

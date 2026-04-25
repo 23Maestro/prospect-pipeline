@@ -57,6 +57,13 @@ export const KNOWN_BACKEND_CRM_STAGE_LABELS = [
   'Spoke to - Not Interested',
   'Meeting Set',
   'Rescheduled',
+  'Actual Meeting - Follow Up',
+  'Actual Meeting - Close Lost',
+  'Actual Meeting - Close Won',
+  'Meeting Result - Res. Pending',
+  'Meeting Result - Rescheduled',
+  'Meeting Result - Canceled',
+  'Meeting Result - No Show',
 ] as const;
 
 export const KNOWN_TS_ONLY_STAGE_LABELS = ['New Opportunity', 'Spoke to - Follow Up'] as const;
@@ -65,6 +72,8 @@ function normalizeStageText(value?: string | null): string {
   return String(value || '')
     .trim()
     .toLowerCase()
+    .replace(/\s*[-–—]\s*/g, ' ')
+    .replace(/[.:]+/g, ' ')
     .replace(/\s+/g, ' ');
 }
 
@@ -102,7 +111,15 @@ export function normalizeCrmSalesStage(rawCrmStage?: string | null): NormalizedS
 
   if (includesAny(normalized, ['inactive', 'dead lead', 'archived'])) return 'inactive';
   if (includesAny(normalized, ['no show', 'noshow'])) return 'no_show';
-  if (includesAny(normalized, ['reschedule pending', 'rescheduled pending'])) {
+  if (
+    includesAny(normalized, [
+      'reschedule pending',
+      'rescheduled pending',
+      'meeting result res pending',
+      'meeting result canceled',
+      'actual meeting canceled',
+    ])
+  ) {
     return 'reschedule_pending';
   }
   if (includesAny(normalized, ['meeting result rescheduled', 'actual meeting rescheduled'])) {
@@ -201,7 +218,6 @@ export function isActiveMeetingQueueItem(
     lifecycle.normalizedStage === 'meeting_set' ||
     lifecycle.normalizedStage === 'reschedule_pending' ||
     lifecycle.normalizedStage === 'rescheduled' ||
-    lifecycle.normalizedStage === 'no_show' ||
     lifecycle.normalizedStage === 'meeting_follow_up'
   );
 }
@@ -249,7 +265,7 @@ export function resolveSalesLifecycle(rawCrmStage?: string | null): SalesRecordL
   } else if (normalizedStage === 'rescheduled') {
     reason = 'CRM stage is Rescheduled, so the record stays in the active meeting queue.';
   } else if (normalizedStage === 'no_show') {
-    reason = 'CRM stage is a no-show state, so the record stays active for follow-up.';
+    reason = 'CRM stage is a no-show state, so keep the athlete monitored but out of active meeting views.';
   } else if (normalizedStage === 'meeting_follow_up') {
     reason = `CRM stage "${rawCrmStage}" is treated as an active post-meeting follow-up state.`;
   } else if (normalizedStage === 'closed_won') {

@@ -52,6 +52,20 @@ test('(FU) titles resolve to soft archive', () => {
   );
 });
 
+test('(NS) titles resolve to soft archive no show', () => {
+  assert.equal(
+    resolveAppointmentTitleOutcome('(NS) Victor Williams Football 2028 TX'),
+    'soft_archive_no_show',
+  );
+});
+
+test('(NS)*2 titles resolve to soft archive no show', () => {
+  assert.equal(
+    resolveAppointmentTitleOutcome('(NS)*2 Victor Williams Football 2028 TX'),
+    'soft_archive_no_show',
+  );
+});
+
 test('(ENR ...) titles resolve to terminal enrollment', () => {
   assert.equal(
     resolveAppointmentTitleOutcome('(ENR $69) Victor Williams Football 2028 TX'),

@@ -3951,11 +3951,41 @@ class LegacyTranslator:
         """
         soup = BeautifulSoup(raw_response or "", "html.parser")
         target_select = None
+        fallback_labels = [
+            "Left Voice Mail 1",
+            "Left Voice Mail 2",
+            "Never Spoke To",
+            "Called - Unable to Leave VM",
+            "Spoke to - Not Interested",
+            "Meeting Set",
+            "Rescheduled",
+            "Actual Meeting - Follow Up",
+            "Actual Meeting - Close Lost",
+            "Actual Meeting - Close Won",
+            "Meeting Result - Res. Pending",
+            "Meeting Result - Rescheduled",
+            "Meeting Result - Canceled",
+            "Meeting Result - No Show",
+        ]
+
+        def _normalize_stage_label(value: str) -> str:
+            return " ".join(
+                value.lower()
+                .replace("–", " ")
+                .replace("—", " ")
+                .replace("-", " ")
+                .replace(".", " ")
+                .split()
+            )
+
+        anchor_labels = {
+            _normalize_stage_label(label) for label in fallback_labels if _normalize_stage_label(label)
+        }
 
         for select in soup.select("select"):
             options = select.find_all("option")
-            labels = [option.get_text(" ", strip=True) for option in options]
-            if "Meeting Set" in labels and "Left Voice Mail 1" in labels:
+            normalized_labels = {_normalize_stage_label(option.get_text(" ", strip=True)) for option in options}
+            if normalized_labels & anchor_labels:
                 target_select = select
                 break
 
@@ -3964,6 +3994,29 @@ class LegacyTranslator:
         selected_label: Optional[str] = None
 
         if target_select is None:
+            normalized_body = _normalize_stage_label(soup.get_text(" ", strip=True))
+            matching_label = next(
+                (
+                    label
+                    for label in fallback_labels
+                    if _normalize_stage_label(label) and _normalize_stage_label(label) in normalized_body
+                ),
+                None,
+            )
+            if matching_label:
+                return {
+                    "success": True,
+                    "count": 1,
+                    "selected_value": matching_label,
+                    "selected_label": matching_label,
+                    "options": [
+                        {
+                            "value": matching_label,
+                            "label": matching_label,
+                            "selected": True,
+                        }
+                    ],
+                }
             return {
                 "success": True,
                 "count": 0,

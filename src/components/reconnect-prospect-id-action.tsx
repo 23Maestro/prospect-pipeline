@@ -11,7 +11,7 @@ type ReconnectProspectIdActionProps = {
 export function ReconnectProspectIdAction({
   onReconnectSuccess,
   shortcut = { modifiers: ['shift', 'opt'], key: 'r' },
-  title = 'Reconnect Prospect ID Session',
+  title = 'Reconnect Session',
 }: ReconnectProspectIdActionProps) {
   return (
     <Action

@@ -64,6 +64,15 @@ test('(FU) event titles soft archive active meeting rows', () => {
   assert.equal(result.action, 'soft_archive');
 });
 
+test('(NS) event titles soft archive active meeting rows', () => {
+  const result = resolveLifecycleRetentionDecision({
+    crmStage: 'Meeting Set',
+    bookedEventTitle: '(NS) Terry Smith Football 2028 TX',
+  });
+
+  assert.equal(result.action, 'soft_archive');
+});
+
 test('(CL) event titles purge lifecycle rows as close lost', () => {
   const result = resolveLifecycleRetentionDecision({
     crmStage: 'Meeting Set',
