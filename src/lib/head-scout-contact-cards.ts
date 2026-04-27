@@ -1,4 +1,4 @@
-import { open } from '@raycast/api';
+import { Clipboard } from '@raycast/api';
 import { access, open as openFile, readdir } from 'fs/promises';
 import { constants as fsConstants, type Dirent } from 'fs';
 
@@ -10,6 +10,11 @@ const CONTACT_CARD_ROOTS = [
 export type HeadScoutContactCard = {
   path: string;
   fullName: string;
+};
+
+export type HeadScoutContactCardClipboardResult = {
+  card: HeadScoutContactCard;
+  copiedFile: boolean;
 };
 
 function normalizeName(value?: string | null): string {
@@ -114,12 +119,27 @@ export async function findHeadScoutContactCard(
   return null;
 }
 
-export async function openHeadScoutContactCard(scoutName?: string | null): Promise<string> {
+async function copyCardFileWithTextFallback(card: HeadScoutContactCard): Promise<boolean> {
+  try {
+    await Clipboard.copy({ file: card.path });
+    return true;
+  } catch {
+    await Clipboard.copy(`${card.fullName}\n${card.path}`);
+    return false;
+  }
+}
+
+export async function copyHeadScoutContactCardToClipboard(
+  scoutName?: string | null,
+): Promise<HeadScoutContactCardClipboardResult> {
   const card = await findHeadScoutContactCard(scoutName);
   if (!card) {
     throw new Error(`No contact card found for ${String(scoutName || 'this scout').trim()}`);
   }
 
-  await open(card.path);
-  return card.fullName;
+  const copiedFile = await copyCardFileWithTextFallback(card);
+  return {
+    card,
+    copiedFile,
+  };
 }

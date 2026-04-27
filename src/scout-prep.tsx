@@ -118,6 +118,12 @@ import {
 } from './lib/scout-duplicate-profiles';
 
 const FEATURE = 'scout-prep';
+const POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS = [
+  'Actual Meeting - Follow Up',
+  'Actual Meeting - Close Lost',
+  'Actual Meeting - Close Won',
+  'Meeting Result - No Show',
+] as const;
 const MEETING_SET_LABEL = 'Meeting Set';
 const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
@@ -2157,17 +2163,22 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           athleteId: task.contact_id,
           athleteName: task.athlete_name,
         });
-        const options = await fetchCuratedSalesStageOptions(String(task.contact_id));
+        const options = await fetchCuratedSalesStageOptions(String(task.contact_id), {
+          excludeLabels: [...POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS],
+        });
         if (!active) {
           return;
         }
-        setStageOptions(options);
+        const filteredOptions = options.filter(
+          (option) => !POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS.includes(option.label),
+        );
+        setStageOptions(filteredOptions);
         setSelectedStage(
-          options.find((option) => option.selected)?.value || options[0]?.value || '',
+          filteredOptions.find((option) => option.selected)?.value || filteredOptions[0]?.value || '',
         );
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-options', 'success', {
           athleteId: task.contact_id,
-          count: options.length,
+          count: filteredOptions.length,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

@@ -7,9 +7,11 @@ import {
   type KeyEquivalent,
   List,
   open,
+  showHUD,
   showToast,
   Toast,
 } from '@raycast/api';
+import { setTimeout } from 'timers/promises';
 import { useEffect, useMemo, useState } from 'react';
 import { ConfirmationReminderMessageForm } from './components/follow-up-message-forms';
 import {
@@ -39,10 +41,7 @@ import {
   resolveAppointmentTitleOutcome,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
-import {
-  findHeadScoutContactCard,
-  openHeadScoutContactCard,
-} from './lib/head-scout-contact-cards';
+import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
 import {
@@ -520,6 +519,7 @@ export function HeadScoutBookingsList({
         throw new Error(prepared.resolvedAppointment.reason);
       }
 
+      let composeMode: 'draft' | 'clipboard-fallback' = 'draft';
       try {
         await open(
           buildMessagesComposeUrlForRecipients(reminderRecipient.phones, prepared.message),
@@ -527,24 +527,26 @@ export function HeadScoutBookingsList({
       } catch {
         await Clipboard.copy(prepared.message);
         await open(`sms:${reminderRecipient.phones[0]}`);
+        composeMode = 'clipboard-fallback';
       }
 
-      let openedContactName: string | null = null;
-      if (options?.openContactCard) {
-        const card = await findHeadScoutContactCard(candidate.headScoutName || null);
-        if (!card) {
-          throw new Error(
-            `No contact card found for ${String(candidate.headScoutName || 'this scout').trim()}`,
-          );
-        }
-
-        await Clipboard.copy(`${card.fullName}\n${card.path}`);
-        await openHeadScoutContactCard(candidate.headScoutName || null);
-        openedContactName = card.fullName;
+      let contactCardCopied = false;
+      if (options?.openContactCard && composeMode === 'draft') {
+        await setTimeout(1200);
+        await copyHeadScoutContactCardToClipboard(
+          prepared.headScoutName || candidate.headScoutName || context.resolved.head_scout || null,
+        );
+        contactCardCopied = true;
+        await showHUD('Contact card copied');
       }
       toast.style = Toast.Style.Success;
       toast.title = 'Ready';
-      toast.message = openedContactName ? 'Draft + card' : 'Draft open';
+      toast.message =
+        composeMode === 'clipboard-fallback'
+          ? 'Template copied'
+          : contactCardCopied
+            ? 'Draft + copied card'
+            : 'Draft open';
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Open failed';

@@ -191,18 +191,25 @@ test('buildCallAttempt2Message fills athlete and recipient names', () => {
 });
 
 test('buildConfirmationMessage fills coach and meeting time', () => {
-  const dueAt = new Date('2026-04-17T23:00:00.000Z');
+  const dueAt = new Date('2026-04-26T19:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_1',
     headScoutName: 'Ryan Lietz',
     dueAt,
     meetingTimezone: 'CST',
+    recipientNames: ['Peter'],
   });
 
-  assert.match(message, /Coach Ryan Lietz/);
-  assert.match(message, /this evening at 6:00pm central/);
-  assert.match(message, /call your cell at 6:00pm/);
-  assert.match(message, /give you all the zoom code to login/);
+  assert.equal(
+    message,
+    [
+      'Good morning Peter! Prospect ID Zoom tomorrow 4/26 at 2:00 PM CT with Coach Ryan Lietz.',
+      '',
+      'He’ll call your cell at 2:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
+      '',
+      'Save his contact so you know it’s him calling.',
+    ].join('\n'),
+  );
 });
 
 test('buildConfirmationMessage renders short second confirmation copy', () => {
@@ -212,6 +219,7 @@ test('buildConfirmationMessage renders short second confirmation copy', () => {
     headScoutName: 'Luther Winfield',
     dueAt,
     meetingTimezone: 'PST',
+    now: new Date('2026-04-15T16:00:00.000Z'),
   });
 
   assert.match(
@@ -220,6 +228,37 @@ test('buildConfirmationMessage renders short second confirmation copy', () => {
   );
   assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
   assert.doesNotMatch(message, /zoom code/);
+});
+
+test('buildConfirmationMessage uses tomorrow for Friday confirmation 2 Saturday appointments', () => {
+  const dueAt = new Date('2026-04-18T23:00:00.000Z');
+  const message = buildConfirmationMessage({
+    variant: 'confirmation_2',
+    headScoutName: 'Luther Winfield',
+    dueAt,
+    meetingTimezone: 'PST',
+    now: new Date('2026-04-17T16:00:00.000Z'),
+  });
+
+  assert.match(
+    message,
+    /Coach Luther Winfield still has you down for 4:00pm pacific tomorrow\./,
+  );
+  assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
+});
+
+test('buildConfirmationMessage uses tomorrow for Saturday confirmation 2 Sunday appointments', () => {
+  const dueAt = new Date('2026-04-19T23:00:00.000Z');
+  const message = buildConfirmationMessage({
+    variant: 'confirmation_2',
+    headScoutName: 'Ryan Lietz',
+    dueAt,
+    meetingTimezone: 'CST',
+    now: new Date('2026-04-18T16:00:00.000Z'),
+  });
+
+  assert.match(message, /Coach Ryan Lietz still has you down for 6:00pm central tomorrow\./);
+  assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
 });
 
 test('getReminderTimeLabel maps timezone labels to words', () => {

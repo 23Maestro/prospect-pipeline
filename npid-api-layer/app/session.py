@@ -7,6 +7,7 @@ Single session instance reused across all requests.
 import logging
 import pickle
 import os
+import asyncio
 from pathlib import Path
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone
@@ -61,8 +62,19 @@ class NPIDSession:
 
     def __init__(self):
         # 1. Initialize Client Immediately
+        self.client = self._build_client()
+
+        self.csrf_token: Optional[str] = None
+        self.is_authenticated: bool = False
+        self.api_key: str = NPID_API_KEY
+
+        # 2. Load Cookies Immediately (Mimics Python Client lines 31-40)
+        self._load_session_sync(SESSION_FILE)
+        self._hydrate_csrf_from_cookie()
+
+    def _build_client(self) -> httpx.AsyncClient:
         # We enforce 'follow_redirects=False' to catch 302s manually in _is_csrf_failure
-        self.client = httpx.AsyncClient(
+        return httpx.AsyncClient(
             base_url=NPID_BASE_URL,
             timeout=30.0,
             follow_redirects=False,
@@ -74,12 +86,15 @@ class NPIDSession:
             }
         )
 
-        self.csrf_token: Optional[str] = None
-        self.is_authenticated: bool = False
-        self.api_key: str = NPID_API_KEY
-
-        # 2. Load Cookies Immediately (Mimics Python Client lines 31-40)
-        self._load_session_sync(SESSION_FILE)
+    def _replace_client(self):
+        previous_client = getattr(self, "client", None)
+        self.client = self._build_client()
+        if previous_client is not None:
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(previous_client.aclose())
+            except RuntimeError:
+                pass
 
     def _load_session_sync(self, session_path: str):
         """
@@ -116,10 +131,17 @@ class NPIDSession:
             # Do not crash; start with empty session
 
     def reload_from_disk(self):
-        self.client.cookies.clear()
+        self._replace_client()
         self.csrf_token = None
         self.is_authenticated = False
         self._load_session_sync(SESSION_FILE)
+        self._hydrate_csrf_from_cookie()
+
+    def _hydrate_csrf_from_cookie(self):
+        raw_token = self.client.cookies.get("XSRF-TOKEN")
+        if raw_token:
+            self.csrf_token = unquote(raw_token)
+            logger.info("✅ CSRF token loaded from cookie")
 
     async def refresh_csrf(self):
         """
@@ -127,6 +149,7 @@ class NPIDSession:
         """
         logger.info("🔄 Fetching fresh CSRF token...")
         try:
+            self.reload_from_disk()
             # We hit a page we know contains the token, like the video modal or dashboard
             response = await self.client.get("/videoteammsg/videomailprogress")
 
@@ -144,7 +167,7 @@ class NPIDSession:
                 logger.warning("⚠️ Could not extract _token string from HTML (Cookies might still be valid)")
 
         except Exception as e:
-            logger.error(f"❌ Failed to refresh CSRF: {e}")
+            logger.error("❌ Failed to refresh CSRF: %r", e)
 
     def cookie_names(self) -> list[str]:
         return sorted({cookie.name for cookie in self.client.cookies.jar})

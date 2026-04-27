@@ -149,7 +149,7 @@ test('confirmation text uses resolved current meeting time, not stale task date'
     meetingTimezone: result.meetingTimezone,
   });
 
-  assert.match(message, /4:00pm eastern|6:00pm eastern/);
+  assert.match(message, /Prospect ID Zoom tomorrow 4\/23 at 6:00 PM ET/);
   assert.doesNotMatch(message, /04\/19\/26/);
 });
 

@@ -84,6 +84,21 @@ function getHourForTimeZone(date: Date, timezoneLabel?: string | null): number {
   return Number.isNaN(parsed) ? date.getHours() : parsed;
 }
 
+function getWeekdayForTimeZone(date: Date, timezoneLabel?: string | null): number {
+  const timeZone = resolveIanaTimeZone(timezoneLabel);
+  if (!timeZone) {
+    return date.getDay();
+  }
+
+  const shortWeekday = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    weekday: 'short',
+  }).format(date);
+  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const weekday = weekdays.indexOf(shortWeekday);
+  return weekday === -1 ? date.getDay() : weekday;
+}
+
 function formatTimeLabel(date: Date, timezoneLabel?: string | null): string {
   const timeZone = resolveIanaTimeZone(timezoneLabel);
   if (!timeZone) {
@@ -104,6 +119,53 @@ function formatTimeLabel(date: Date, timezoneLabel?: string | null): string {
   const minute = parts.find((part) => part.type === 'minute')?.value || '00';
   const dayPeriod = (parts.find((part) => part.type === 'dayPeriod')?.value || 'AM').toLowerCase();
   return `${hour}:${minute}${dayPeriod}`;
+}
+
+function formatConfirmationDateLabel(date: Date, timezoneLabel?: string | null): string {
+  const timeZone = resolveIanaTimeZone(timezoneLabel);
+  return new Intl.DateTimeFormat('en-US', {
+    ...(timeZone ? { timeZone } : {}),
+    month: 'numeric',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatConfirmationClockLabel(date: Date, timezoneLabel?: string | null): string {
+  const timeZone = resolveIanaTimeZone(timezoneLabel);
+  return new Intl.DateTimeFormat('en-US', {
+    ...(timeZone ? { timeZone } : {}),
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+}
+
+function getConfirmationTimezoneLabel(timezoneLabel?: string | null): string {
+  const normalized = String(timezoneLabel || '')
+    .trim()
+    .toUpperCase();
+  if (normalized === 'EST') return 'ET';
+  if (normalized === 'CST') return 'CT';
+  if (normalized === 'MST') return 'MT';
+  if (normalized === 'PST') return 'PT';
+  return normalized;
+}
+
+function removeDayPeriod(timeLabel: string): string {
+  return timeLabel.replace(/\s?[ap]m$/i, '');
+}
+
+function getConfirmationDayPhrase(args: {
+  dueAt: Date;
+  meetingTimezone?: string | null;
+  now?: Date;
+}): string {
+  const triggerWeekday = getWeekdayForTimeZone(args.now || new Date(), args.meetingTimezone);
+  if (triggerWeekday === 5 || triggerWeekday === 6) {
+    return 'tomorrow';
+  }
+
+  return getTimeOfDayPhrase(args.dueAt, args.meetingTimezone);
 }
 
 function normalizeCurrentTask(value?: string | null): string {
@@ -405,11 +467,19 @@ export function buildConfirmationMessage(args: {
   meetingTimezone?: string | null;
   recipientNames?: string[] | null;
   greetingOverride?: string | null;
+  now?: Date;
 }): string {
   const coachName = getCoachReferenceName(args.headScoutName);
-  const timePhrase = getTimeOfDayPhrase(args.dueAt, args.meetingTimezone);
+  const confirmationDayPhrase = getConfirmationDayPhrase({
+    dueAt: args.dueAt,
+    meetingTimezone: args.meetingTimezone,
+    now: args.now,
+  });
   const meetingTimeLabel = getReminderTimeLabel(args.dueAt, args.meetingTimezone);
   const callTimeLabel = formatTimeLabel(args.dueAt, args.meetingTimezone);
+  const confirmationDateLabel = formatConfirmationDateLabel(args.dueAt, args.meetingTimezone);
+  const confirmationClockLabel = formatConfirmationClockLabel(args.dueAt, args.meetingTimezone);
+  const confirmationTimezoneLabel = getConfirmationTimezoneLabel(args.meetingTimezone);
   const currentGreeting = String(args.greetingOverride || '').trim() || 'Good morning';
   const names = Array.from(
     new Set(
@@ -427,18 +497,18 @@ export function buildConfirmationMessage(args: {
 
   if ((args.variant || 'confirmation_1') === 'confirmation_2') {
     return [
-      `Coach ${coachName} still has you down for ${meetingTimeLabel} ${timePhrase}.`,
+      `Coach ${coachName} still has you down for ${meetingTimeLabel} ${confirmationDayPhrase}.`,
       '',
       'Please reply YES to confirm you’ll be able to attend',
     ].join('\n');
   }
 
   return [
-    `${greeting} we have our zoom interview with Coach ${coachName} ${timePhrase} at ${meetingTimeLabel}. Coach will call your cell at ${callTimeLabel}, throw him on speakerphone so he can give you all the zoom code to login.`,
+    `${greeting.replace(/,$/, '!')} Prospect ID Zoom tomorrow ${confirmationDateLabel} at ${confirmationClockLabel}${confirmationTimezoneLabel ? ` ${confirmationTimezoneLabel}` : ''} with Coach ${coachName}.`,
     '',
-    'Make sure you are in front of a laptop or tablet so he can share his screen.',
+    `He’ll call your cell at ${removeDayPeriod(callTimeLabel)} with the Zoom code. Be on a laptop or tablet so he can share his screen.`,
     '',
-    `Save his contact card so you know it is him giving you a call. Have a wonderful day and take advantage of your time with Coach ${coachName}. I’m excited for him to meet your family!`,
+    'Save his contact so you know it’s him calling.',
   ].join('\n');
 }
 

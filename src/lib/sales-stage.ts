@@ -11,6 +11,7 @@ import type {
 } from '../features/scout-prep/types';
 
 const FEATURE = 'sales-stage';
+const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
 
 const CURATED_STAGE_LABELS = new Set([
   'Left Voice Mail 1',
@@ -18,8 +19,16 @@ const CURATED_STAGE_LABELS = new Set([
   'Never Spoke To',
   'Called - Unable to Leave VM',
   'Spoke to - Not Interested',
+  'Spoke to - Follow Up',
   'Meeting Set',
   'Rescheduled',
+  'Actual Meeting - Follow Up',
+  'Actual Meeting - Close Lost',
+  'Actual Meeting - Close Won',
+  'Meeting Result - Res. Pending',
+  'Meeting Result - Rescheduled',
+  'Meeting Result - Canceled',
+  'Meeting Result - No Show',
 ]);
 
 const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = Array.from(CURATED_STAGE_LABELS).map(
@@ -58,6 +67,9 @@ function logFailure(event: string, step: string, error: string, context?: Record
 
 export async function fetchCuratedSalesStageOptions(
   athleteId: string,
+  args?: {
+    excludeLabels?: string[];
+  },
 ): Promise<SalesStageOption[]> {
   logInfo('SALES_STAGE_OPTIONS_LOAD', 'request', 'start', { athleteId });
   const response = await apiFetch(`/sales/stages/${encodeURIComponent(athleteId)}`);
@@ -75,27 +87,36 @@ export async function fetchCuratedSalesStageOptions(
 
   const payload = (await response.json()) as SalesStageOptionsResponse;
   const options = Array.isArray(payload.options) ? payload.options : [];
+  const excludedLabels = new Set(args?.excludeLabels || DEFAULT_EXCLUDED_STAGE_LABELS);
   const selected = options.find((option) => option.selected) || null;
-  const curated = options.filter((option) => CURATED_STAGE_LABELS.has(option.label));
-  const selectedAlreadyIncluded = selected
+  const selectedAllowed = selected ? !excludedLabels.has(selected.label) : false;
+  const curated = options.filter(
+    (option) => CURATED_STAGE_LABELS.has(option.label) && !excludedLabels.has(option.label),
+  );
+  const selectedAlreadyIncluded = selectedAllowed
     ? curated.some(
         (option) =>
-          option.label === selected.label &&
-          option.value === selected.value &&
-          option.selected === selected.selected,
+          option.label === selected?.label &&
+          option.value === selected?.value &&
+          option.selected === selected?.selected,
       )
     : false;
-  const fallbackOptions = selected
+  const fallbackOptions = selectedAllowed && selected
     ? [
         selected,
         ...FALLBACK_CURATED_OPTIONS.filter(
-          (option) => option.label !== selected.label || option.value !== selected.value,
+          (option) =>
+            !excludedLabels.has(option.label) &&
+            (option.label !== selected.label || option.value !== selected.value),
         ),
       ]
-    : FALLBACK_CURATED_OPTIONS;
+    : FALLBACK_CURATED_OPTIONS.filter((option) => !excludedLabels.has(option.label));
+  const hasOnlySelectedStage = options.length <= 1;
   const finalOptions =
-    curated.length > 0
-      ? selected && !selectedAlreadyIncluded
+    hasOnlySelectedStage
+      ? fallbackOptions
+      : curated.length > 0
+      ? selectedAllowed && selected && !selectedAlreadyIncluded
         ? [selected, ...curated]
         : curated
       : fallbackOptions;
@@ -106,7 +127,8 @@ export async function fetchCuratedSalesStageOptions(
     curatedCount: curated.length,
     selectedStage: selected?.label || selected?.value || null,
     selectedOutsideCurated: Boolean(selected) && !selectedAlreadyIncluded,
-    fallbackUsed: curated.length === 0,
+    fallbackUsed: hasOnlySelectedStage || curated.length === 0,
+    excludedCount: excludedLabels.size,
   });
 
   return finalOptions;
