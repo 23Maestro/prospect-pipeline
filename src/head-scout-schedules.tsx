@@ -85,6 +85,11 @@ export type HeadScoutBookingsListProps = {
 };
 
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5'];
+const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
+  { title: 'Copy Ryan Card', scoutName: 'Ryan Lietz' },
+  { title: 'Copy Luther Card', scoutName: 'Luther Winfield' },
+  { title: 'Copy Jerami Card', scoutName: 'Jerami Singleton' },
+] as const;
 
 async function showLoadingToast(title: string, message?: string) {
   return showToast({
@@ -577,6 +582,20 @@ export function HeadScoutBookingsList({
     );
   }
 
+  async function handleCopyNamedContactCard(scoutName: string) {
+    const toast = await showLoadingToast('Copying', scoutName);
+    try {
+      const result = await copyHeadScoutContactCardToClipboard(scoutName);
+      toast.style = Toast.Style.Success;
+      toast.title = 'Copied';
+      toast.message = result.copiedFile ? result.card.fullName : 'Path copied';
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Copy failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function handleMarkMeeting(
     candidate: HeadScoutFollowUpCandidate,
     prefix: AppointmentTitlePrefix,
@@ -738,6 +757,14 @@ export function HeadScoutBookingsList({
                           content={`${candidate.athleteName} • ${candidate.bookedMeeting.date_time_label}`}
                         />
                       ) : null}
+                      {VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS.map((action) => (
+                        <Action
+                          key={action.scoutName}
+                          title={action.title}
+                          icon={Icon.Clipboard}
+                          onAction={() => void handleCopyNamedContactCard(action.scoutName)}
+                        />
+                      ))}
                     </ActionPanel>
                   }
                 />

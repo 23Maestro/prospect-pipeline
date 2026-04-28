@@ -12,6 +12,10 @@ import type {
 
 const FEATURE = 'sales-stage';
 const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
+const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I need to follow up';
+const STAGE_LABEL_ALIASES = new Map<string, string>([
+  ['Spoke to - Follow Up', SPOKE_TO_FOLLOW_UP_LABEL],
+]);
 
 const CURATED_STAGE_LABELS = new Set([
   'Left Voice Mail 1',
@@ -19,7 +23,7 @@ const CURATED_STAGE_LABELS = new Set([
   'Never Spoke To',
   'Called - Unable to Leave VM',
   'Spoke to - Not Interested',
-  'Spoke to - Follow Up',
+  SPOKE_TO_FOLLOW_UP_LABEL,
   'Meeting Set',
   'Rescheduled',
   'Actual Meeting - Follow Up',
@@ -63,6 +67,11 @@ function logFailure(event: string, step: string, error: string, context?: Record
     error,
     context: context || {},
   });
+}
+
+export function normalizeSalesStageLabelForLegacy(stage: string): string {
+  const trimmed = stage.trim();
+  return STAGE_LABEL_ALIASES.get(trimmed) || trimmed;
 }
 
 export async function fetchCuratedSalesStageOptions(
@@ -180,7 +189,7 @@ export async function updateSalesStage(args: {
 }): Promise<SalesStageUpdateResponse> {
   const athleteMainId = args.athleteMainId.trim();
   const athleteId = args.athleteId.trim();
-  const stage = args.stage.trim();
+  const stage = normalizeSalesStageLabelForLegacy(args.stage);
 
   logInfo('SALES_STAGE_UPDATE', 'request', 'start', {
     athleteId,

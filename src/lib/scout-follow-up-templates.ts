@@ -10,6 +10,7 @@ export type VoicemailFollowUpVariant =
   | 'no_show';
 export type ConfirmationFollowUpVariant = 'confirmation_1' | 'confirmation_2';
 export type FollowUpMessageVariant = VoicemailFollowUpVariant | ConfirmationFollowUpVariant;
+export type AthleteGender = 'male' | 'female';
 
 export type MinimalFollowUpQueueRecord = {
   title: string;
@@ -160,8 +161,8 @@ function getConfirmationDayPhrase(args: {
   meetingTimezone?: string | null;
   now?: Date;
 }): string {
-  const triggerWeekday = getWeekdayForTimeZone(args.now || new Date(), args.meetingTimezone);
-  if (triggerWeekday === 5 || triggerWeekday === 6) {
+  const meetingWeekday = getWeekdayForTimeZone(args.dueAt, args.meetingTimezone);
+  if (meetingWeekday === 0 || meetingWeekday === 6) {
     return 'tomorrow';
   }
 
@@ -186,12 +187,45 @@ function sportScoutLabel(value?: string | null): string {
   return trimmed || 'football';
 }
 
-function buildAttempt2TimingSentence(gradYear?: string | null): string {
-  const trimmed = String(gradYear || '').trim();
-  if (!trimmed) {
-    return 'Timing matters in the recruiting process, so I wanted to follow up by text as well.';
+function normalizeSportKey(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[^a-z\s-]/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+export function resolveAthleteGenderFromSport(sport?: string | null): AthleteGender | null {
+  const normalized = normalizeSportKey(sport);
+  if (!normalized) {
+    return null;
   }
-  return `With ${trimmed ? `him being a ${trimmed}` : 'timing matters'}, timing matters in the recruiting process, so I wanted to follow up by text as well.`;
+
+  if (/\b(womens|women|girls|female)\b/.test(normalized)) {
+    return 'female';
+  }
+
+  if (/\b(mens|men|boys|male)\b/.test(normalized)) {
+    return 'male';
+  }
+
+  if (/\b(softball|volleyball|field hockey|gymnastics|cheer|dance)\b/.test(normalized)) {
+    return 'female';
+  }
+
+  if (/\b(football|baseball|wrestling)\b/.test(normalized)) {
+    return 'male';
+  }
+
+  return null;
+}
+
+function athletePronouns(args: { sport?: string | null; athleteGender?: AthleteGender | null }) {
+  const gender = args.athleteGender || resolveAthleteGenderFromSport(args.sport) || 'male';
+  return gender === 'female'
+    ? { subject: 'she', object: 'her', possessive: 'her', child: 'daughter' }
+    : { subject: 'he', object: 'him', possessive: 'his', child: 'son' };
 }
 
 function buildAthleteProfileLabel(athleteName: string): string {
@@ -331,6 +365,7 @@ export function buildVoicemailFollowUpMessage(args: {
   senderName?: string | null;
   sport?: string | null;
   gradYear?: string | null;
+  athleteGender?: AthleteGender | null;
   signOffTitle?: string | null;
   closingLine?: string | null;
   now?: Date;
@@ -341,9 +376,12 @@ export function buildVoicemailFollowUpMessage(args: {
   const scoutLabel = sportScoutLabel(args.sport);
   const signOffTitle =
     String(args.signOffTitle || '').trim() || `${scoutLabel} scouting coordinator`;
-  const closingLine = String(args.closingLine || '').trim();
   const now = args.now || new Date();
   const recipientType = args.recipientType || 'parent';
+  const pronouns = athletePronouns({
+    sport: args.sport,
+    athleteGender: args.athleteGender,
+  });
 
   const lines =
     recipientType === 'student_athlete' && args.variant === 'no_show'
@@ -374,37 +412,31 @@ export function buildVoicemailFollowUpMessage(args: {
               ? [
                   `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
                   '',
-                  `No worries, things come up. If playing college ${scoutLabel} is still a serious goal for him, let’s get you back on the schedule while timing still matters.`,
+                  `No worries, things come up. If playing college ${scoutLabel} is still a serious goal for ${pronouns.object}, let’s get you back on the schedule while timing still matters.`,
                   '',
                   `Would tomorrow or ${buildNoShowNextBestDayLabel(now)} work better?`,
                 ]
               : args.variant === 'call_attempt_3'
                 ? [
-                    `${greeting} this is ${senderName} with Prospect ID. Just checking one last time on ${args.athleteName.trim() || 'your athlete'}.`,
+                    `${greeting} ${firstName(senderName) || senderName} with Prospect ID. Checking back on ${args.athleteName.trim() || 'your athlete'}’s ${scoutLabel} recruiting.`,
                     '',
-                    `If playing college ${scoutLabel} is still a serious goal worth exploring, I’m happy to connect.`,
-                    '',
-                    'I can go ahead and mark this as no interest for now, and revisit later?',
+                    `If college ${scoutLabel} is still a serious goal, I can help. If you don’t need support right now, should I close this out for now?`,
                   ]
                 : args.variant === 'call_attempt_2'
                   ? [
                       `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID.`,
                       '',
-                      `I received ${args.athleteName.trim() || 'your athlete'}'s info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college ${scoutLabel}. ${buildAttempt2TimingSentence(args.gradYear)}`,
+                      `I received ${args.athleteName.trim() || 'your athlete'}'s info and I’m trying to get a better feel for ${pronouns.object} as a student athlete and learn ${pronouns.possessive} goals for playing college ${scoutLabel}.`,
                       '',
                       buildAttempt2AvailabilityLine(now),
                     ]
                   : [
                       `${greeting} this is ${senderName} with Prospect ID. Following up on ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}.`,
                       '',
-                      `If playing college ${scoutLabel} is still a serious goal for him, I’d like to get a quick 10-minute call scheduled while timing still matters.`,
+                      `If playing college ${scoutLabel} is still a serious goal for ${pronouns.object}, I’d like to get a quick 10-minute call scheduled while timing still matters.`,
                       '',
                       buildAttempt1AvailabilityLine(now),
                     ];
-
-  if (closingLine) {
-    lines.push('', closingLine);
-  }
 
   if (args.variant === 'no_show') {
     lines.push('', senderName);
@@ -420,6 +452,7 @@ export function buildCallAttempt2Message(args: {
   senderName: string;
   sport?: string | null;
   gradYear?: string | null;
+  athleteGender?: AthleteGender | null;
 }): string {
   return buildVoicemailFollowUpMessage({
     variant: 'call_attempt_2',
@@ -428,6 +461,7 @@ export function buildCallAttempt2Message(args: {
     senderName: args.senderName,
     sport: args.sport,
     gradYear: args.gradYear,
+    athleteGender: args.athleteGender,
   });
 }
 

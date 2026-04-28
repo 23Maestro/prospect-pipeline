@@ -92,6 +92,14 @@ test('actual meeting follow up stays active', () => {
   assert.equal(lifecycle.isActiveQueueItem, true);
 });
 
+test('spoke to need follow up resolves as follow-up alias', () => {
+  const lifecycle = resolveSalesLifecycle('Spoke to - I need to follow up');
+  assert.equal(lifecycle.normalizedStage, 'meeting_follow_up');
+  assert.equal(lifecycle.operatorStatus, 'awaiting_follow_up');
+  assert.equal(lifecycle.meetingLifecycle, 'follow_up_due');
+  assert.equal(lifecycle.isActiveQueueItem, true);
+});
+
 test('meeting result canceled resolves to awaiting reschedule', () => {
   const lifecycle = resolveSalesLifecycle('Meeting Result - Canceled');
   assert.equal(lifecycle.normalizedStage, 'reschedule_pending');

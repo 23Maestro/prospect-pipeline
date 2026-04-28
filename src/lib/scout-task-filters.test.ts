@@ -8,16 +8,21 @@ import {
 } from './scout-task-filters.js';
 import type { ScoutPortalTask } from '../features/scout-prep/types.js';
 
-function buildTask(name: string, dueDate: string): ScoutPortalTask {
+function buildTask(
+  name: string,
+  dueDate: string,
+  gradYear = '2028',
+  title = 'Call Attempt 1',
+): ScoutPortalTask {
   return {
     contact_id: name.toLowerCase().replace(/\s+/g, '-'),
     athlete_id: name.toLowerCase().replace(/\s+/g, '-'),
     athlete_main_id: `${name}-main`,
     athlete_name: name,
     due_date: dueDate,
-    title: 'Call Attempt 1',
+    title,
     description: null,
-    grad_year: '2028',
+    grad_year: gradYear,
   };
 }
 
@@ -89,5 +94,45 @@ test('future returns only future rows', () => {
   assert.deepEqual(
     rows.map((row) => row.task.athlete_name),
     ['Future Athlete'],
+  );
+});
+
+test('all items can sort by grad year without changing the selected bucket', () => {
+  const rows = buildTaskBucketRows({
+    filter: 'all',
+    taskBuckets: {
+      ...buildBuckets(),
+      todayPastDue: [
+        buildTask('Senior Athlete', '04/22/2026 09:00 AM', '2026'),
+        buildTask('Junior Athlete', '04/22/2026 10:00 AM', '2027'),
+        buildTask('Missing Grad', '04/22/2026 11:00 AM', ''),
+      ],
+    },
+    sort: { key: 'gradYear', direction: 'desc' },
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Junior Athlete', 'Senior Athlete', 'Missing Grad'],
+  );
+});
+
+test('all items can sort by call attempt with non-attempt rows last', () => {
+  const rows = buildTaskBucketRows({
+    filter: 'all',
+    taskBuckets: {
+      ...buildBuckets(),
+      todayPastDue: [
+        buildTask('Meeting Athlete', '04/22/2026 09:00 AM', '2027', 'Confirmation Call'),
+        buildTask('Attempt 3 Athlete', '04/22/2026 10:00 AM', '2027', 'Call Attempt 3'),
+        buildTask('Attempt 1 Athlete', '04/22/2026 11:00 AM', '2027', 'Call Attempt 1'),
+      ],
+    },
+    sort: { key: 'callAttempt', direction: 'asc' },
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Attempt 1 Athlete', 'Attempt 3 Athlete', 'Meeting Athlete'],
   );
 });

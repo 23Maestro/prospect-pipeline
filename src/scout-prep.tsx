@@ -48,7 +48,7 @@ import {
   type ProspectContactShortcutCandidate,
   selectScoutPrepContactNumbers,
 } from './lib/scout-prep-contact';
-import { resolveParentHonorificWithRayAI } from './lib/raycast-ai';
+import { resolveAthleteGenderWithRayAI, resolveParentHonorificWithRayAI } from './lib/raycast-ai';
 import {
   buildScoutPrepDetailMarkdown,
   buildScoutPrepMetadata,
@@ -69,6 +69,8 @@ import {
   buildTaskBucketRows,
   getTaskSectionTitle,
   mapTaskListFilterToRange,
+  type TaskListSort,
+  type TaskListSortKey,
   type TaskListFilter,
 } from './lib/scout-task-filters';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
@@ -128,6 +130,10 @@ const MEETING_SET_LABEL = 'Meeting Set';
 const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
 const NEVER_SPOKE_TO_LABEL = 'Never Spoke To';
+const CALLED_UNABLE_TO_LEAVE_VM_LABEL = 'Called - Unable to Leave VM';
+const SPOKE_TO_NOT_INTERESTED_LABEL = 'Spoke to - Not Interested';
+const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I need to follow up';
+const SPOKE_TO_FOLLOW_UP_ALIAS_LABEL = 'Spoke to - Follow Up';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
   AL: 'Alabama',
@@ -300,6 +306,20 @@ function getTaskDisplayTitle(
   );
 }
 
+function isIncompleteTaskValue(value?: string | null): boolean {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  return (
+    !normalized ||
+    normalized === '-' ||
+    normalized === '--' ||
+    normalized === 'n/a' ||
+    normalized === 'not completed' ||
+    normalized === 'incomplete'
+  );
+}
+
 function resolvePostCallVoicemailVariant(stageLabel: string): VoicemailFollowUpVariant | null {
   const normalizedStage = String(stageLabel || '').trim();
 
@@ -318,17 +338,45 @@ function resolvePostCallVoicemailVariant(stageLabel: string): VoicemailFollowUpV
   return null;
 }
 
+function shouldCompleteTopmostPostCallTask(stageLabel: string): boolean {
+  const normalizedStage = String(stageLabel || '').trim();
+  return (
+    normalizedStage === MEETING_SET_LABEL ||
+    normalizedStage === CALLED_UNABLE_TO_LEAVE_VM_LABEL ||
+    normalizedStage === SPOKE_TO_NOT_INTERESTED_LABEL ||
+    normalizedStage === SPOKE_TO_FOLLOW_UP_LABEL ||
+    normalizedStage === SPOKE_TO_FOLLOW_UP_ALIAS_LABEL
+  );
+}
+
 function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): string | null {
   if (variant === 'call_attempt_1') return 'Call Attempt 1';
   if (variant === 'call_attempt_2') return 'Call Attempt 2';
   if (variant === 'call_attempt_3') return 'Call Attempt 3';
+  if (variant === 'no_show') return 'No Show';
   return null;
+}
+
+function normalizeTaskMatchText(task: Pick<ScoutAthleteTask, 'title' | 'description' | 'row_text'>): string {
+  return [task.title, task.description, task.row_text]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ');
+}
+
+function isNoShowTaskMatch(task: Pick<ScoutAthleteTask, 'title' | 'description' | 'row_text'>): boolean {
+  const text = normalizeTaskMatchText(task).replace(/[-_]+/g, ' ');
+  return /\bno\s*show\b/.test(text) || /\bnoshow\b/.test(text);
 }
 
 function resolveVoicemailLifecycleTaskFromList(
   context: ScoutPrepContext,
   variant: VoicemailFollowUpVariant,
 ): ScoutAthleteTask | null {
+  if (variant === 'no_show') {
+    return getIncompleteAthleteTasks(context.tasks).find((candidate) => isNoShowTaskMatch(candidate)) || null;
+  }
+
   const expectedTaskTitle = getVoicemailLifecycleTaskTitle(variant);
   if (!expectedTaskTitle) {
     return null;
@@ -346,7 +394,7 @@ function resolveVoicemailLifecycleTaskFromList(
 function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
   return tasks
     .filter(
-      (task) => !String(task.completion_date || '').trim() && String(task.task_id || '').trim(),
+      (task) => isIncompleteTaskValue(task.completion_date) && String(task.task_id || '').trim(),
     )
     .map((task) => ({
       task_id: String(task.task_id || '').trim(),
@@ -362,6 +410,24 @@ function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthle
       const rightId = Number.parseInt(String(right.task_id || '0'), 10);
       return rightId - leftId;
     });
+}
+
+function getTopmostIncompleteAthleteTask(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask | null {
+  const task = tasks.find(
+    (candidate) =>
+      isIncompleteTaskValue(candidate.completion_date) && String(candidate.task_id || '').trim(),
+  );
+  return task
+    ? {
+        task_id: String(task.task_id || '').trim(),
+        title: task.title,
+        assigned_owner: task.assigned_owner,
+        due_date: task.due_date,
+        completion_date: task.completion_date,
+        description: task.description,
+        row_text: task.row_text,
+      }
+    : null;
 }
 
 function findNewestIncompleteTaskByTitle(
@@ -411,6 +477,59 @@ function isVoicemailLifecycleTaskMatch(
   }
 
   return false;
+}
+
+async function completeSentTextTask(args: {
+  context: ScoutPrepContext;
+  task: ScoutPortalTask;
+  variant: VoicemailFollowUpVariant;
+}): Promise<void> {
+  const matchedTask = resolveVoicemailLifecycleTaskFromList(args.context, args.variant);
+  const taskLabel = getVoicemailLifecycleTaskTitle(args.variant) || args.variant;
+  if (!matchedTask?.task_id) {
+    throw new Error(`Missing task list item for ${taskLabel}`);
+  }
+
+  const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
+  const athleteMainId = String(
+    args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
+  ).trim();
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete identifiers for sent-text completion');
+  }
+
+  await completeScoutPrepTaskAfterVoicemail({
+    athleteId,
+    athleteMainId,
+    contactTask: args.task.contact_id,
+    taskId: matchedTask.task_id,
+    taskTitle: getTaskDisplayTitle(matchedTask),
+    assignedOwner: matchedTask.assigned_owner,
+    description: matchedTask.description || getTaskDisplayTitle(matchedTask),
+  });
+}
+
+async function completeConfirmation2Task(args: {
+  activeContext: ScoutPrepContext;
+  task: ScoutPortalTask;
+  confirmationTask: ScoutAthleteTask;
+  athleteMainId: string;
+}): Promise<void> {
+  const athleteId = String(args.task.contact_id || args.activeContext.task.contact_id || '').trim();
+  const athleteMainId = String(args.athleteMainId || '').trim();
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete identifiers for confirmation completion');
+  }
+
+  await completeScoutPrepTaskAfterVoicemail({
+    athleteId,
+    athleteMainId,
+    contactTask: args.task.contact_id,
+    taskId: args.confirmationTask.task_id,
+    taskTitle: getTaskDisplayTitle(args.confirmationTask),
+    assignedOwner: args.confirmationTask.assigned_owner,
+    description: args.confirmationTask.description || getTaskDisplayTitle(args.confirmationTask),
+  });
 }
 
 function SupabaseLifecycleStatusAction() {
@@ -1388,6 +1507,7 @@ function VoicemailFollowUpRecipientForm({
 
     const selectedParent =
       recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
+    const selectedVariant = variant || defaultVariant;
     const deterministicHonorific = resolveParentHonorificFromRelationship(
       selectedParent?.relationship,
     );
@@ -1398,6 +1518,10 @@ function VoicemailFollowUpRecipientForm({
           relationship: selectedParent?.relationship || null,
         }).catch(() => null)
         : null;
+    const athleteGender = await resolveAthleteGenderWithRayAI({
+      athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
+      sport: context.resolved.sport,
+    }).catch(() => null);
 
     const body = buildVoicemailFollowUpBody(
       context,
@@ -1407,6 +1531,7 @@ function VoicemailFollowUpRecipientForm({
       currentTask || task.title || null,
       undefined,
       deterministicHonorific || aiHonorific,
+      athleteGender,
     );
 
     logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
@@ -1419,7 +1544,6 @@ function VoicemailFollowUpRecipientForm({
 
     try {
       if (recipient.phones.length === 1 && recipient.id !== 'groupAll') {
-        const selectedVariant = variant || defaultVariant;
         push(
           <SingleRecipientMessageForm
             title={`Send Message • ${recipient.name}`}
@@ -1428,8 +1552,15 @@ function VoicemailFollowUpRecipientForm({
             initialMessage={body}
             onMessageSentLabel={selectedVariant.replace(/_/g, ' ')}
             onMessageSent={
-              selectedVariant !== 'no_show'
+              selectedVariant === 'no_show'
                 ? async () => {
+                  await completeSentTextTask({
+                    context,
+                    task,
+                    variant: selectedVariant,
+                  });
+                }
+                : async () => {
                   const followUpTask = resolveVoicemailLifecycleTaskFromList(
                     context,
                     selectedVariant,
@@ -1460,7 +1591,6 @@ function VoicemailFollowUpRecipientForm({
                     description: followUpTask.description || undefined,
                   });
                 }
-                : undefined
             }
           />,
         );
@@ -1484,6 +1614,20 @@ function VoicemailFollowUpRecipientForm({
         mode,
         variant: variant || defaultVariant,
       });
+      try {
+        await completeSentTextTask({
+          context,
+          task,
+          variant: selectedVariant,
+        });
+      } catch (error) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Draft open, save failed',
+          message: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
       await popToRoot({ clearSearchBar: true });
     } catch (error) {
       await Clipboard.copy(body);
@@ -1533,6 +1677,33 @@ function VoicemailFollowUpRecipientForm({
 }
 
 type ViewMode = 'tasks' | 'recent' | 'prospect';
+
+function cycleTaskListSort(current: TaskListSort, key: TaskListSortKey): TaskListSort {
+  if (!current || current.key !== key) {
+    return { key, direction: 'asc' };
+  }
+  if (current.direction === 'asc') {
+    return { key, direction: 'desc' };
+  }
+  return null;
+}
+
+function getTaskListSortLabel(sort: TaskListSort): string | null {
+  if (!sort) return null;
+  const direction = sort.direction === 'asc' ? '↑' : '↓';
+  return sort.key === 'gradYear' ? `Grad Year ${direction}` : `Call Attempt ${direction}`;
+}
+
+function getSortActionTitle(sort: TaskListSort, key: TaskListSortKey): string {
+  const label = key === 'gradYear' ? 'Grad Year' : 'Call Attempt';
+  if (!sort || sort.key !== key) {
+    return `Sort ${label} Ascending`;
+  }
+  if (sort.direction === 'asc') {
+    return `Sort ${label} Descending`;
+  }
+  return `Turn Off ${label} Sort`;
+}
 
 type RecentProfileRow = {
   profile: ScoutRecentProfile;
@@ -1838,8 +2009,6 @@ function UpdateAthleteTaskForm({
         taskId: selectedTask.task_id,
         contactTask,
         athleteMainId,
-        taskTitle: currentTaskTitle,
-        description: selectedTask.description || currentTaskTitle,
         dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
         dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
       });
@@ -2105,14 +2274,14 @@ function UpdateAthleteTaskPicker({
               actions={
                 <ActionPanel>
                   <Action
-                    title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
-                    icon={Icon.CheckCircle}
-                    onAction={() => void handleCompleteTaskFromList(candidate)}
-                  />
-                  <Action
                     title="Update Task"
                     icon={Icon.Pencil}
                     onAction={() => void handleOpenTaskUpdate(candidate)}
+                  />
+                  <Action
+                    title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
+                    icon={Icon.CheckCircle}
+                    onAction={() => void handleCompleteTaskFromList(candidate)}
                   />
                   {candidate.description ? (
                     <Action.CopyToClipboard
@@ -2371,6 +2540,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         throw new Error('Missing athlete_main_id or athlete_id for sales stage update');
       }
 
+      const preUpdateContext = context || (await loadScoutPrepContext(task));
       let meetingSetResult: MeetingSetSubmitResponse | null = null;
       let meetingSetAssignedTo: string | null = null;
       let meetingSetOpenEventId: string | null = null;
@@ -2422,7 +2592,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         stage: stageLabel,
       });
 
-      const syncContext = context || (await loadScoutPrepContext(task));
+      const syncContext = preUpdateContext;
       if (stageLabel === MEETING_SET_LABEL && meetingSetResult) {
         const selectedScout =
           HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === meetingSetResult.assigned_to) ||
@@ -2465,6 +2635,23 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
 
       let taskCompletionMessage: string | null = null;
+      if (shouldCompleteTopmostPostCallTask(stageLabel)) {
+        const topmostIncompleteTask = getTopmostIncompleteAthleteTask(preUpdateContext.tasks);
+        if (!topmostIncompleteTask?.task_id) {
+          throw new Error(`Missing top incomplete task for ${stageLabel} completion`);
+        }
+        const result = await completeScoutPrepTaskAfterVoicemail({
+          athleteId,
+          athleteMainId,
+          contactTask: task.contact_id,
+          taskId: topmostIncompleteTask.task_id,
+          taskTitle: getTaskDisplayTitle(topmostIncompleteTask),
+          assignedOwner: topmostIncompleteTask.assigned_owner,
+          description: topmostIncompleteTask.description || getTaskDisplayTitle(topmostIncompleteTask),
+        });
+        taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
+      }
+
       const postCallVoicemailVariant = resolvePostCallVoicemailVariant(stageLabel);
       if (postCallVoicemailVariant) {
         const postCallTask = resolveVoicemailLifecycleTaskFromList(
@@ -2915,6 +3102,14 @@ function ScoutPrepDetail({
               prepared,
               reminderVariant: values.variant,
             });
+            if (values.variant === 'confirmation_2') {
+              await completeConfirmation2Task({
+                activeContext,
+                task,
+                confirmationTask,
+                athleteMainId,
+              });
+            }
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
             toast.message = 'Draft ready.';
@@ -2930,6 +3125,14 @@ function ScoutPrepDetail({
               prepared,
               reminderVariant: values.variant,
             });
+            if (values.variant === 'confirmation_2') {
+              await completeConfirmation2Task({
+                activeContext,
+                task,
+                confirmationTask,
+                athleteMainId,
+              });
+            }
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
             toast.message = 'Copied to clipboard.';
@@ -3019,10 +3222,15 @@ function ScoutPrepDetail({
       }
 
       const parentName = getScoutPrepParentOptions(activeContext)[0]?.name || 'Parent';
+      const athleteGender = await resolveAthleteGenderWithRayAI({
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        sport: activeContext.resolved.sport,
+      }).catch(() => null);
       const voicemail = buildScoutPrepLeavingVoicemailBody({
         parentName,
         athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
         sport: activeContext.resolved.sport,
+        athleteGender,
       });
 
       const [scriptResult, voicemailResult] = await Promise.all([
@@ -3246,16 +3454,20 @@ function ScoutPrepDetail({
 function ScoutPrepTaskItem({
   task,
   visibleTasks,
+  taskListSort,
   onToggleProspectSearchMode,
   onToggleRecentMode,
   onSelectTaskListFilter,
+  onCycleTaskListSort,
   onReturnToRootList,
 }: {
   task: ScoutPortalTask;
   visibleTasks: ScoutPortalTask[];
+  taskListSort: TaskListSort;
   onToggleProspectSearchMode: () => void;
   onToggleRecentMode: () => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
+  onCycleTaskListSort: (key: TaskListSortKey) => void;
   onReturnToRootList: () => void;
 }) {
   const { push, pop } = useNavigation();
@@ -3440,6 +3652,14 @@ function ScoutPrepTaskItem({
               prepared,
               reminderVariant: values.variant,
             });
+            if (values.variant === 'confirmation_2') {
+              await completeConfirmation2Task({
+                activeContext,
+                task,
+                confirmationTask,
+                athleteMainId,
+              });
+            }
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
             toast.message = 'Draft ready.';
@@ -3455,6 +3675,14 @@ function ScoutPrepTaskItem({
               prepared,
               reminderVariant: values.variant,
             });
+            if (values.variant === 'confirmation_2') {
+              await completeConfirmation2Task({
+                activeContext,
+                task,
+                confirmationTask,
+                athleteMainId,
+              });
+            }
             toast.style = Toast.Style.Success;
             toast.title = 'Messages opened';
             toast.message = 'Copied to clipboard.';
@@ -3629,7 +3857,7 @@ function ScoutPrepTaskItem({
             <Action
               title="View Notes"
               icon={Icon.Clipboard}
-              shortcut={{ modifiers: ['cmd'], key: 'n' }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
               onAction={() => void handleViewNotes()}
             />
             <Action
@@ -3673,6 +3901,20 @@ function ScoutPrepTaskItem({
               onAction={onToggleProspectSearchMode}
             />
             <SupabaseLifecycleStatusAction />
+          </ActionPanel.Section>
+          <ActionPanel.Section title="Sort">
+            <Action
+              title={getSortActionTitle(taskListSort, 'gradYear')}
+              icon={Icon.ChevronUpDown}
+              shortcut={{ modifiers: ['cmd'], key: 'n' }}
+              onAction={() => onCycleTaskListSort('gradYear')}
+            />
+            <Action
+              title={getSortActionTitle(taskListSort, 'callAttempt')}
+              icon={Icon.ChevronUpDown}
+              shortcut={{ modifiers: ['cmd'], key: 'm' }}
+              onAction={() => onCycleTaskListSort('callAttempt')}
+            />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -3827,6 +4069,7 @@ export default function ScoutPrepCommand() {
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('all');
+  const [taskListSort, setTaskListSort] = useState<TaskListSort>(null);
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
@@ -3842,11 +4085,13 @@ export default function ScoutPrepCommand() {
       ? buildTaskBucketRows({
         filter: taskListFilter,
         taskBuckets,
+        sort: taskListSort,
       })
       : [];
   const hasTaskModeResults = selectedTaskRows.length > 0;
   const selectedRange = mapTaskListFilterToRange(taskListFilter);
   const selectedSectionTitle = getTaskSectionTitle(taskListFilter);
+  const selectedSortLabel = getTaskListSortLabel(taskListSort);
 
   const loadTasks = async () => {
     if (loadTasksPromiseRef.current) {
@@ -4112,6 +4357,10 @@ export default function ScoutPrepCommand() {
     });
   }
 
+  function cycleSort(key: TaskListSortKey) {
+    setTaskListSort((current) => cycleTaskListSort(current, key));
+  }
+
   return (
     <List
       isLoading={isLoading || isProspectSearching || isRecentFollowUpsLoading}
@@ -4275,19 +4524,40 @@ export default function ScoutPrepCommand() {
                 />
                 <SupabaseLifecycleStatusAction />
               </ActionPanel.Section>
+              <ActionPanel.Section title="Sort">
+                <Action
+                  title={getSortActionTitle(taskListSort, 'gradYear')}
+                  icon={Icon.ChevronUpDown}
+                  shortcut={{ modifiers: ['cmd'], key: 'n' }}
+                  onAction={() => cycleSort('gradYear')}
+                />
+                <Action
+                  title={getSortActionTitle(taskListSort, 'callAttempt')}
+                  icon={Icon.ChevronUpDown}
+                  shortcut={{ modifiers: ['cmd'], key: 'm' }}
+                  onAction={() => cycleSort('callAttempt')}
+                />
+              </ActionPanel.Section>
             </ActionPanel>
           }
         />
       ) : (
-        <List.Section title={selectedSectionTitle} subtitle={String(selectedTaskRows.length)}>
+        <List.Section
+          title={
+            selectedSortLabel ? `${selectedSectionTitle} • ${selectedSortLabel}` : selectedSectionTitle
+          }
+          subtitle={String(selectedTaskRows.length)}
+        >
           {selectedTaskRows.map((row) => (
             <ScoutPrepTaskItem
               key={`${row.task.contact_id}-${row.task.title || 'task'}-${row.task.due_date || 'due'}`}
               task={row.task}
               visibleTasks={selectedTaskRows.map((item) => item.task)}
+              taskListSort={taskListSort}
               onToggleProspectSearchMode={toggleProspectSearchMode}
               onToggleRecentMode={toggleRecentMode}
               onSelectTaskListFilter={setTaskListFilter}
+              onCycleTaskListSort={cycleSort}
               onReturnToRootList={() => undefined}
             />
           ))}

@@ -642,6 +642,13 @@ export function resolveLifecycleRetentionDecision(args: {
       reason: 'Booked event title is marked (FU), so keep history but remove it from active queues.',
     };
   }
+  if (titleOutcome === 'soft_archive_canceled') {
+    return {
+      action: 'soft_archive',
+      effectiveCrmStage,
+      reason: 'Booked event title is marked (CAN), so keep the athlete dormant but remove this canceled meeting from active queues.',
+    };
+  }
   if (titleOutcome === 'soft_archive_no_show') {
     return {
       action: 'soft_archive',

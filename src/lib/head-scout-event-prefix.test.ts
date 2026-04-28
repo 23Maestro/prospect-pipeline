@@ -52,6 +52,13 @@ test('(FU) titles resolve to soft archive', () => {
   );
 });
 
+test('(CAN) titles resolve to soft archive canceled', () => {
+  assert.equal(
+    resolveAppointmentTitleOutcome('(CAN) Levi Childers Football 2026 CA'),
+    'soft_archive_canceled',
+  );
+});
+
 test('(NS) titles resolve to soft archive no show', () => {
   assert.equal(
     resolveAppointmentTitleOutcome('(NS) Victor Williams Football 2028 TX'),

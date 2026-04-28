@@ -3937,10 +3937,14 @@ class LegacyTranslator:
         Body: _token, athlete_main_id, athlete_id, stage
         """
         endpoint = "/tasks/salesstage"
+        stage_aliases = {
+            "Spoke to - Follow Up": "Spoke to - I need to follow up",
+        }
+        legacy_stage = stage_aliases.get(stage.strip(), stage)
         data: Dict[str, Any] = {
             "athlete_main_id": athlete_main_id,
             "athlete_id": athlete_id,
-            "stage": stage,
+            "stage": legacy_stage,
         }
         return endpoint, data
 
@@ -3957,6 +3961,7 @@ class LegacyTranslator:
             "Never Spoke To",
             "Called - Unable to Leave VM",
             "Spoke to - Not Interested",
+            "Spoke to - I need to follow up",
             "Meeting Set",
             "Rescheduled",
             "Actual Meeting - Follow Up",
@@ -4543,11 +4548,17 @@ class LegacyTranslator:
         description: Optional[str] = None,
         due_date: Optional[str] = None,
         due_time: Optional[str] = None,
+        checkbox_fields: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Apply non-completion task updates to task form data.
         """
         updated = dict(form_data)
+
+        updated["completedate"] = ""
+        updated["completed_time"] = ""
+        for field_name in checkbox_fields or []:
+            updated.pop(field_name, None)
 
         if task_title is not None:
             updated["tasktitle"] = task_title

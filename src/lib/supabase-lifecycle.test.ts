@@ -64,6 +64,15 @@ test('(FU) event titles soft archive active meeting rows', () => {
   assert.equal(result.action, 'soft_archive');
 });
 
+test('(CAN) event titles soft archive active meeting rows', () => {
+  const result = resolveLifecycleRetentionDecision({
+    crmStage: 'Meeting Result - Canceled',
+    bookedEventTitle: '(CAN) Levi Childers Football 2026 CA',
+  });
+
+  assert.equal(result.action, 'soft_archive');
+});
+
 test('(NS) event titles soft archive active meeting rows', () => {
   const result = resolveLifecycleRetentionDecision({
     crmStage: 'Meeting Set',

@@ -167,7 +167,7 @@ test('mergeMeetingDetailsTemplate: prefills athlete details and optional GPA onl
 
   assert.match(
     merged,
-    /About The Athlete:\nS \| ATH\n6'0" \| 175\nHigh School: Arroyo Grande High School\n\nGPA 3.70\n\nDeficit:/,
+    /About The Athlete:\nS \| ATH\n6'0" \| 175\nArroyo Grande High School\n\nGPA 3.70\nDeficit:/,
   );
 });
 
@@ -221,10 +221,16 @@ test('getVoicemailFollowUpRecipients: returns parents plus group text option', (
       phones: ['651-555-9898'],
     },
     {
+      id: 'studentAthlete',
+      label: 'Student Athlete',
+      name: 'Bryson Smith',
+      phones: ['651-555-3000'],
+    },
+    {
       id: 'groupAll',
       label: 'Group Text',
-      name: 'All Parent Contacts',
-      phones: ['651-555-1212', '651-555-9898'],
+      name: 'All Associated Contacts',
+      phones: ['651-555-1212', '651-555-9898', '651-555-3000'],
     },
   ]);
 });
@@ -284,17 +290,19 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
   const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
   assert.match(
     body,
-    /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./,
+    /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\. Following up on Bryson's recruiting plan\./,
   );
-  assert.match(body, /Following up about Bryson's recruiting plan\./i);
-  assert.match(body, /football background, and college goals/i);
-  assert.match(body, /When would you have a 10 min gap today or tomorrow/i);
-  assert.match(body, /Enjoy the rest of your weekend\./);
+  assert.match(
+    body,
+    /If playing college football is still a serious goal for him, I’d like to get a quick 10-minute call scheduled while timing still matters\./,
+  );
+  assert.match(body, /Would later today or tomorrow work better\?/);
+  assert.doesNotMatch(body, /Enjoy the rest of your weekend\./);
   assert.match(url, /^sms:651-555-1212\?body=/);
   assert.match(url, /Bryson's%20recruiting%20plan/);
 });
 
-test('buildVoicemailFollowUpBody: group text still uses parent template and weekday closing', () => {
+test('buildVoicemailFollowUpBody: group text still uses parent template without nicety closing', () => {
   const body = buildVoicemailFollowUpBody(
     buildContext({
       resolved: {
@@ -312,10 +320,10 @@ test('buildVoicemailFollowUpBody: group text still uses parent template and week
 
   assert.match(
     body,
-    /^Good morning Ms\. Smith, this is Jerami Singleton, football scout with Prospect ID\./,
+    /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\. Following up on Bryson's recruiting plan\./,
   );
-  assert.match(body, /When would you have a 10 min gap today or tomorrow\?/);
-  assert.match(body, /Enjoy the rest of your week\./);
+  assert.match(body, /Would later today or tomorrow work better\?/);
+  assert.doesNotMatch(body, /Enjoy the rest of your week\./);
 });
 
 test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => {
@@ -357,7 +365,7 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
 
   assert.match(
     body,
-    /^Good afternoon Mr\. Bailey, this is Jerami Singleton, football scout with Prospect ID\./,
+    /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\. Following up on Jaylin's recruiting plan\./,
   );
 });
 
@@ -398,12 +406,18 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
   assert.match(
     body,
-    /I received Jaylin's info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college football\./,
+    /^Good afternoon Mr\. Bailey, this is Jerami Singleton, college football scout with Prospect ID\./,
   );
-  assert.match(body, /With him being a 2027, timing matters in the recruiting process/);
+  assert.match(
+    body,
+    /I received Jaylin's info and I’m trying to get a better feel for him as a student athlete and learn his goals for playing college football\./,
+  );
+  assert.match(
+    body,
+    /When would you have a 10 min gap today or in the next few days\? I can be flexible on time\./,
+  );
 });
 
 test('buildVoicemailFollowUpBody: student athlete attempt 2 uses shorter action-oriented copy', () => {
@@ -453,7 +467,7 @@ test('buildVoicemailFollowUpBody: student athlete attempt 2 uses shorter action-
   );
   assert.match(
     body,
-    /If that’s something you’re serious about, have one of your parents give me a quick call or text when they get a few minutes so we can set up a time to connect\./,
+    /If that’s something you’re serious about, have one of your parents give me a quick call or text\./,
   );
   assert.doesNotMatch(body, /I left you another voicemail/);
 });
@@ -505,10 +519,10 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
 test('buildMessagesComposeUrlForRecipients: supports group threads with deduped phone list', () => {
   const url = buildMessagesComposeUrlForRecipients(
     ['651-555-1212', '(651) 555-1212', '651-555-9898'],
-    'Hello',
+    'Hello there',
   );
 
-  assert.equal(url, 'sms:651-555-1212,651-555-9898?body=Hello');
+  assert.equal(url, 'sms:/open?addresses=651-555-1212%2C651-555-9898&body=Hello%20there');
 });
 
 test('buildProspectContactShortcutPayload: preserves newline-delimited shortcut format', () => {
@@ -562,10 +576,23 @@ test('buildScoutPrepLeavingVoicemailBody: uses the provided sport for non-footba
     sport: "Men's Basketball",
   });
 
-  assert.match(body, /college men's basketball scout/);
-  assert.match(body, /desire to play college men's basketball/);
-  assert.match(body, /men's basketball talent/);
+  assert.match(body, /college basketball scout/);
+  assert.match(body, /desire to play college basketball/);
+  assert.match(body, /basketball talent/);
   assert.doesNotMatch(body, /football/);
+});
+
+test('buildScoutPrepLeavingVoicemailBody: uses daughter and her for softball athletes', () => {
+  const body = buildScoutPrepLeavingVoicemailBody({
+    parentName: 'Amy Torres',
+    athleteName: 'Ava Torres',
+    sport: 'Softball',
+  });
+
+  assert.match(body, /your daughter Ava/);
+  assert.match(body, /her desire to play college softball/);
+  assert.match(body, /her academics and softball talent/);
+  assert.doesNotMatch(body, /your son/);
 });
 
 test('buildScoutPrepCard: uses one stable call path and exact connect/scout blocks', () => {

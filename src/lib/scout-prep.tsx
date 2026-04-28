@@ -222,9 +222,23 @@ export function isFollowUpScoutTask(task?: Partial<ScoutAthleteTask> | null): bo
     .toLowerCase();
   const completionDate = String(task?.completion_date || '').trim();
   return (
-    !completionDate &&
+    isIncompleteTaskValue(completionDate) &&
     owner.includes('jerami') &&
     (title.startsWith('call attempt') || description.includes('call the family'))
+  );
+}
+
+function isIncompleteTaskValue(value?: string | null): boolean {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
+  return (
+    !normalized ||
+    normalized === '-' ||
+    normalized === '--' ||
+    normalized === 'n/a' ||
+    normalized === 'not completed' ||
+    normalized === 'incomplete'
   );
 }
 
@@ -261,8 +275,7 @@ export function findNewestIncompleteConfirmationTask(
   tasks: Array<Partial<ScoutAthleteTask>>,
 ): ScoutAthleteTask | null {
   const candidates = tasks.filter((task) => {
-    const completionDate = String(task.completion_date || '').trim();
-    return !completionDate && isConfirmationCallTask(task);
+    return isIncompleteTaskValue(task.completion_date) && isConfirmationCallTask(task);
   });
   if (!candidates.length) return null;
 

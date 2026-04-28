@@ -66,7 +66,11 @@ export const KNOWN_BACKEND_CRM_STAGE_LABELS = [
   'Meeting Result - No Show',
 ] as const;
 
-export const KNOWN_TS_ONLY_STAGE_LABELS = ['New Opportunity', 'Spoke to - Follow Up'] as const;
+export const KNOWN_TS_ONLY_STAGE_LABELS = [
+  'New Opportunity',
+  'Spoke to - I need to follow up',
+  'Spoke to - Follow Up',
+] as const;
 
 function normalizeStageText(value?: string | null): string {
   return String(value || '')
@@ -131,7 +135,8 @@ export function normalizeCrmSalesStage(rawCrmStage?: string | null): NormalizedS
   if (
     includesAny(normalized, [
       'actual meeting follow up',
-      'spoke to - follow up',
+      'spoke to i need to follow up',
+      'spoke to follow up',
       'meeting follow up',
       'follow-up',
       'follow up',

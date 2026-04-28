@@ -40,6 +40,36 @@ class SalesStageParserTests(unittest.TestCase):
         self.assertEqual(result["selected_value"], "Meeting Result - No Show")
         self.assertEqual(result["options"][0]["selected"], True)
 
+    def test_parses_spoke_to_need_follow_up_label(self):
+        html = """
+        <html>
+          <body>
+            <select name="sales_stage">
+              <option value="spoke_follow_up" selected>Spoke to - I need to follow up</option>
+            </select>
+          </body>
+        </html>
+        """
+
+        result = LegacyTranslator.parse_sales_stage_options_response(html)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["count"], 1)
+        self.assertEqual(result["selected_label"], "Spoke to - I need to follow up")
+        self.assertEqual(result["selected_value"], "spoke_follow_up")
+
+    def test_sales_stage_update_canonicalizes_follow_up_alias(self):
+        endpoint, data = LegacyTranslator.sales_stage_update_to_legacy(
+            athlete_main_id="main-1",
+            athlete_id="athlete-1",
+            stage="Spoke to - Follow Up",
+        )
+
+        self.assertEqual(endpoint, "/tasks/salesstage")
+        self.assertEqual(data["athlete_main_id"], "main-1")
+        self.assertEqual(data["athlete_id"], "athlete-1")
+        self.assertEqual(data["stage"], "Spoke to - I need to follow up")
+
 
 if __name__ == "__main__":
     unittest.main()

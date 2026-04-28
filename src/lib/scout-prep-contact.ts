@@ -3,7 +3,9 @@ import { formatCurrentLocalTime, resolveTimezone } from './scout-prep-ai';
 import { cleanPositions } from './prospect-search';
 import {
   buildVoicemailFollowUpMessage,
+  resolveAthleteGenderFromSport,
   resolveVoicemailFollowUpVariant,
+  type AthleteGender,
   type VoicemailFollowUpVariant,
 } from './scout-follow-up-templates';
 
@@ -147,14 +149,6 @@ function recipientGreeting(
   return selectedLastName
     ? `${parentHonorific(context, recipientId, honorificOverride)} ${selectedLastName}`
     : 'there';
-}
-
-function buildWeekClosing(now: Date): string {
-  const day = now.getDay();
-  if (day === 5 || day === 6 || day === 0) {
-    return 'Enjoy the rest of your weekend.';
-  }
-  return 'Enjoy the rest of your week.';
 }
 
 export function buildTimeOfDayGreeting(context: ScoutPrepContext, now: Date = new Date()): string {
@@ -399,6 +393,7 @@ export function buildVoicemailFollowUpBody(
   currentTask?: string | null,
   now: Date = new Date(),
   honorificOverride?: ParentHonorific | null,
+  athleteGender?: AthleteGender | null,
 ): string {
   const recipients = getVoicemailFollowUpRecipients(context);
   const recipient =
@@ -427,7 +422,11 @@ export function buildVoicemailFollowUpBody(
         : context.contactInfo.parent1?.name || context.contactInfo.parent2?.name,
     ) || 'there';
   const greeting =
-    selectedVariant === 'no_show' ? `Hi ${noShowFirstName},` : `${dayGreeting} ${greetingName},`;
+    selectedVariant === 'no_show'
+      ? `Hi ${noShowFirstName},`
+      : recipient?.id === 'studentAthlete'
+        ? `${dayGreeting} ${athleteFirstName},`
+        : `${dayGreeting} ${greetingName},`;
   const recipientType = recipient?.id === 'studentAthlete' ? 'student_athlete' : 'parent';
 
   return buildVoicemailFollowUpMessage({
@@ -437,8 +436,8 @@ export function buildVoicemailFollowUpBody(
     recipientType,
     sport,
     gradYear,
+    athleteGender,
     signOffTitle,
-    closingLine: buildWeekClosing(now),
     now,
   });
 }
@@ -447,19 +446,21 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
   parentName: string;
   athleteName: string;
   sport?: string | null;
-  relationship?: 'son' | 'daughter';
+  athleteGender?: AthleteGender | null;
 }): string {
   const parentFirstName = firstName(args.parentName) || args.parentName || 'Parent';
   const athleteFirstName = firstName(args.athleteName) || args.athleteName || 'your athlete';
   const sport = sportLabel(args.sport).toLowerCase();
-  const relationship = args.relationship || 'son';
+  const gender = args.athleteGender || resolveAthleteGenderFromSport(args.sport) || 'male';
+  const childLabel = gender === 'female' ? 'daughter' : 'son';
+  const possessive = gender === 'female' ? 'her' : 'his';
 
   return [
     `Hi ${parentFirstName}, this is Jerami Singleton, college ${sport} scout with National Prospect ID.`,
     '',
-    `The reason why I’m calling is because I had some information come across my desk today about your ${relationship} ${athleteFirstName}.`,
+    `The reason why I’m calling is because I had some information come across my desk today about your ${childLabel} ${athleteFirstName}.`,
     '',
-    `I had some questions I wanted to ask you about his desire to play college ${sport}, and I wanted to learn more about his academics and ${sport} talent.`,
+    `I had some questions I wanted to ask you about ${possessive} desire to play college ${sport}, and I wanted to learn more about ${possessive} academics and ${sport} talent.`,
     '',
     'Please give me a call back today, my number here is 407-473-3637.',
     '',
@@ -484,7 +485,11 @@ export function buildMessagesComposeUrlForRecipients(phones: string[], body: str
     throw new Error('At least one valid phone number is required');
   }
 
-  return `sms:${uniquePhones.join(',')}?body=${encodeURIComponent(body)}`;
+  if (uniquePhones.length === 1) {
+    return `sms:${uniquePhones[0]}?body=${encodeURIComponent(body)}`;
+  }
+
+  return `sms:/open?addresses=${encodeURIComponent(uniquePhones.join(','))}&body=${encodeURIComponent(body)}`;
 }
 
 export function buildProspectContactShortcutPayload(args: {

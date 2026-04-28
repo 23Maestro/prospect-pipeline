@@ -95,8 +95,24 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
     /If playing college soccer is still a serious goal for him, I’d like to get a quick 10-minute call scheduled while timing still matters\./,
   );
   assert.match(message, /Would later today or tomorrow work better\?/);
-  assert.match(message, /Enjoy the rest of your week\./);
+  assert.doesNotMatch(message, /Enjoy the rest of your week\./);
   assert.match(message, /Jerami Singleton\nSoccer Scouting Coordinator\nProspect ID/);
+});
+
+test('buildVoicemailFollowUpMessage uses female pronouns for softball templates', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_1',
+    greeting: 'Good afternoon Ms. Torres,',
+    athleteName: 'Ava',
+    sport: 'Softball',
+    now: new Date('2026-04-23T23:29:00Z'),
+  });
+
+  assert.match(
+    message,
+    /If playing college softball is still a serious goal for her, I’d like to get a quick 10-minute call scheduled while timing still matters\./,
+  );
+  assert.doesNotMatch(message, /serious goal for him/);
 });
 
 test('buildVoicemailFollowUpMessage removes today after 7:30pm eastern cutoff', () => {
@@ -151,23 +167,25 @@ test('buildVoicemailFollowUpMessage renders no show copy with simple next best d
 test('buildVoicemailFollowUpMessage renders attempt 3 copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'call_attempt_3',
-    greeting: 'Good afternoon Ms. Torres,',
-    athleteName: 'Jason',
+    greeting: 'Good afternoon Ms. Bowden,',
+    athleteName: 'Andrajhez',
     senderName: 'Jerami Singleton',
-    sport: "Men's Basketball",
-    signOffTitle: 'Basketball Scouting Coordinator',
+    sport: 'Football',
+    signOffTitle: 'Football Scouting Coordinator',
     closingLine: 'Enjoy the rest of your week.',
   });
 
-  assert.match(message, /^Good afternoon Ms\. Torres, this is Jerami Singleton with Prospect ID\./);
-  assert.match(message, /Just checking one last time on Jason\./);
   assert.match(
     message,
-    /If playing college basketball is still a serious goal worth exploring, I’m happy to connect\./,
+    /^Good afternoon Ms\. Bowden, Jerami with Prospect ID\. Checking back on Andrajhez’s football recruiting\./,
   );
-  assert.match(message, /I can go ahead and mark this as no interest for now, and revisit later\?/);
-  assert.match(message, /Enjoy the rest of your week\./);
-  assert.match(message, /Jerami Singleton\nBasketball Scouting Coordinator\nProspect ID/);
+  assert.match(
+    message,
+    /If college football is still a serious goal, I can help\. If you don’t need support right now, should I close this out for now\?/,
+  );
+  assert.equal((message.match(/\bhelp\b/g) || []).length, 1);
+  assert.doesNotMatch(message, /Enjoy the rest of your week\./);
+  assert.match(message, /Jerami Singleton\nFootball Scouting Coordinator\nProspect ID/);
 });
 
 test('buildCallAttempt2Message fills athlete and recipient names', () => {
@@ -185,9 +203,12 @@ test('buildCallAttempt2Message fills athlete and recipient names', () => {
   );
   assert.match(
     message,
-    /I received Grayson Brown's info and I’m trying to get a better feel for where he’s at academically, athletically, and what his goals are for playing college football\./,
+    /I received Grayson Brown's info and I’m trying to get a better feel for him as a student athlete and learn his goals for playing college football\./,
   );
-  assert.match(message, /With him being a 2027, timing matters in the recruiting process/);
+  assert.match(
+    message,
+    /When would you have a 10 min gap today or in the next few days\? I can be flexible on time\./,
+  );
 });
 
 test('buildConfirmationMessage fills coach and meeting time', () => {
@@ -245,6 +266,20 @@ test('buildConfirmationMessage uses tomorrow for Friday confirmation 2 Saturday 
     /Coach Luther Winfield still has you down for 4:00pm pacific tomorrow\./,
   );
   assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
+});
+
+test('buildConfirmationMessage does not use tomorrow just because text is sent Friday', () => {
+  const dueAt = new Date('2026-04-20T23:00:00.000Z');
+  const message = buildConfirmationMessage({
+    variant: 'confirmation_2',
+    headScoutName: 'Ryan Lietz',
+    dueAt,
+    meetingTimezone: 'CST',
+    now: new Date('2026-04-17T16:00:00.000Z'),
+  });
+
+  assert.match(message, /Coach Ryan Lietz still has you down for 6:00pm central this evening\./);
+  assert.doesNotMatch(message, /tomorrow/);
 });
 
 test('buildConfirmationMessage uses tomorrow for Saturday confirmation 2 Sunday appointments', () => {

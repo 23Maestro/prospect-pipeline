@@ -307,6 +307,7 @@ async def update_task(request: Request, payload: TaskUpdateRequest):
         popup_response = await session.get(endpoint, params=params)
         popup_result = translator.parse_task_popup_response(popup_response.text)
         form_data = popup_result.get("form_data", {})
+        checkbox_fields = popup_result.get("checkbox_fields", [])
 
         updated_form_data = translator.apply_task_update(
             form_data=form_data,
@@ -316,6 +317,7 @@ async def update_task(request: Request, payload: TaskUpdateRequest):
             description=payload.description,
             due_date=payload.due_date,
             due_time=payload.due_time,
+            checkbox_fields=checkbox_fields,
         )
 
         if not str(updated_form_data.get("existingtask") or "").strip():
