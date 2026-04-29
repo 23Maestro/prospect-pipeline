@@ -3873,24 +3873,19 @@ function ScoutPrepTaskItem({
               onAction={() => onSelectTaskListFilter('todayPastDue')}
             />
             <Action
-              title="Show All"
-              shortcut={{ modifiers: ['cmd'], key: '0' }}
-              onAction={() => onSelectTaskListFilter('all')}
-            />
-            <Action
-              title="Show Today"
-              shortcut={{ modifiers: ['cmd'], key: '2' }}
-              onAction={() => onSelectTaskListFilter('today')}
-            />
-            <Action
               title="Show Tomorrow"
-              shortcut={{ modifiers: ['cmd'], key: '3' }}
+              shortcut={{ modifiers: ['cmd'], key: '2' }}
               onAction={() => onSelectTaskListFilter('tomorrow')}
             />
             <Action
               title="Show Future"
-              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              shortcut={{ modifiers: ['cmd'], key: '3' }}
               onAction={() => onSelectTaskListFilter('future')}
+            />
+            <Action
+              title="Show All"
+              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              onAction={() => onSelectTaskListFilter('all')}
             />
             <Action
               title="Prospect Search"
@@ -4059,7 +4054,6 @@ export default function ScoutPrepCommand() {
   const [taskBuckets, setTaskBuckets] = useState<Record<ScoutTaskRange, ScoutPortalTask[]>>({
     todayPastDue: [],
     all: [],
-    today: [],
     tomorrow: [],
     future: [],
   });
@@ -4103,7 +4097,6 @@ export default function ScoutPrepCommand() {
         const taskBuckets = await fetchScoutPortalTaskBuckets([
           'todayPastDue',
           'all',
-          'today',
           'tomorrow',
           'future',
         ] as const, {
@@ -4112,7 +4105,6 @@ export default function ScoutPrepCommand() {
         const nextTaskBuckets = {
           todayPastDue: [...taskBuckets.todayPastDue].reverse(),
           all: [...taskBuckets.all],
-          today: [...taskBuckets.today].reverse(),
           tomorrow: [...taskBuckets.tomorrow].reverse(),
           future: [...taskBuckets.future].reverse(),
         };
@@ -4121,7 +4113,6 @@ export default function ScoutPrepCommand() {
           selectedRange,
           todayPastDueCount: nextTaskBuckets.todayPastDue.length,
           allCount: nextTaskBuckets.all.length,
-          todayCount: nextTaskBuckets.today.length,
           tomorrowCount: nextTaskBuckets.tomorrow.length,
           futureCount: nextTaskBuckets.future.length,
           firstAthlete: nextTaskBuckets[selectedRange][0]?.athlete_name || null,
@@ -4381,10 +4372,9 @@ export default function ScoutPrepCommand() {
             onChange={(newValue) => setTaskListFilter(newValue as TaskListFilter)}
           >
             <List.Dropdown.Item title="Today/PastDue" value="todayPastDue" />
-            <List.Dropdown.Item title="All" value="all" />
-            <List.Dropdown.Item title="Today" value="today" />
             <List.Dropdown.Item title="Tomorrow" value="tomorrow" />
             <List.Dropdown.Item title="Future" value="future" />
+            <List.Dropdown.Item title="All" value="all" />
           </List.Dropdown>
         ) : undefined
       }
@@ -4499,24 +4489,19 @@ export default function ScoutPrepCommand() {
                   onAction={() => setTaskListFilter('todayPastDue')}
                 />
                 <Action
-                  title="Show All"
-                  shortcut={{ modifiers: ['cmd'], key: '0' }}
-                  onAction={() => setTaskListFilter('all')}
-                />
-                <Action
-                  title="Show Today"
-                  shortcut={{ modifiers: ['cmd'], key: '2' }}
-                  onAction={() => setTaskListFilter('today')}
-                />
-                <Action
                   title="Show Tomorrow"
-                  shortcut={{ modifiers: ['cmd'], key: '3' }}
+                  shortcut={{ modifiers: ['cmd'], key: '2' }}
                   onAction={() => setTaskListFilter('tomorrow')}
                 />
                 <Action
                   title="Show Future"
-                  shortcut={{ modifiers: ['cmd'], key: '4' }}
+                  shortcut={{ modifiers: ['cmd'], key: '3' }}
                   onAction={() => setTaskListFilter('future')}
+                />
+                <Action
+                  title="Show All"
+                  shortcut={{ modifiers: ['cmd'], key: '4' }}
+                  onAction={() => setTaskListFilter('all')}
                 />
                 <Action
                   title="Prospect Search"

@@ -30,7 +30,6 @@ function buildBuckets(): Record<ScoutTaskRange, ScoutPortalTask[]> {
   return {
     todayPastDue: [buildTask('Today Past Due Athlete', '04/22/2026 09:00 AM')],
     all: [buildTask('All Athlete', '04/20/2026 09:00 AM')],
-    today: [buildTask('Today Athlete', '04/22/2026 02:00 PM')],
     tomorrow: [buildTask('Tomorrow Athlete', '04/23/2026 11:00 AM')],
     future: [buildTask('Future Athlete', '04/25/2026 11:00 AM')],
   };
@@ -39,7 +38,6 @@ function buildBuckets(): Record<ScoutTaskRange, ScoutPortalTask[]> {
 test('mapTaskListFilterToRange uses website-aligned range names', () => {
   assert.equal(mapTaskListFilterToRange('todayPastDue'), 'todayPastDue');
   assert.equal(mapTaskListFilterToRange('all'), 'all');
-  assert.equal(mapTaskListFilterToRange('today'), 'today');
   assert.equal(mapTaskListFilterToRange('tomorrow'), 'tomorrow');
   assert.equal(mapTaskListFilterToRange('future'), 'future');
 });
@@ -47,7 +45,6 @@ test('mapTaskListFilterToRange uses website-aligned range names', () => {
 test('getTaskSectionTitle uses site-matched labels', () => {
   assert.equal(getTaskSectionTitle('todayPastDue'), 'Today / Past Due');
   assert.equal(getTaskSectionTitle('all'), 'All');
-  assert.equal(getTaskSectionTitle('today'), 'Today');
   assert.equal(getTaskSectionTitle('tomorrow'), 'Tomorrow');
   assert.equal(getTaskSectionTitle('future'), 'Future');
 });
@@ -73,18 +70,6 @@ test('all returns only legacy all rows', () => {
   assert.deepEqual(
     rows.map((row) => row.task.athlete_name),
     ['All Athlete'],
-  );
-});
-
-test('today returns only today rows', () => {
-  const rows = buildTaskBucketRows({
-    filter: 'today',
-    taskBuckets: buildBuckets(),
-  });
-
-  assert.deepEqual(
-    rows.map((row) => row.task.athlete_name),
-    ['Today Athlete'],
   );
 });
 

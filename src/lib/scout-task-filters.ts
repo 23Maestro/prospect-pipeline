@@ -1,7 +1,7 @@
 import type { ScoutPortalTask } from '../features/scout-prep/types';
 
-export type TaskListFilter = 'todayPastDue' | 'all' | 'today' | 'tomorrow' | 'future';
-export type ScoutTaskRange = 'todayPastDue' | 'all' | 'today' | 'tomorrow' | 'future';
+export type TaskListFilter = 'todayPastDue' | 'all' | 'tomorrow' | 'future';
+export type ScoutTaskRange = 'todayPastDue' | 'all' | 'tomorrow' | 'future';
 export type TaskListSortKey = 'gradYear' | 'callAttempt';
 export type TaskListSortDirection = 'asc' | 'desc';
 
@@ -17,8 +17,6 @@ export type TaskBucketRow = {
 
 export function mapTaskListFilterToRange(filter: TaskListFilter): ScoutTaskRange {
   switch (filter) {
-    case 'today':
-      return 'today';
     case 'all':
       return 'all';
     case 'tomorrow':
@@ -33,8 +31,6 @@ export function mapTaskListFilterToRange(filter: TaskListFilter): ScoutTaskRange
 
 export function getTaskSectionTitle(filter: TaskListFilter): string {
   switch (filter) {
-    case 'today':
-      return 'Today';
     case 'all':
       return 'All';
     case 'tomorrow':
