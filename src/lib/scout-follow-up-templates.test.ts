@@ -219,17 +219,59 @@ test('buildConfirmationMessage fills coach and meeting time', () => {
     dueAt,
     meetingTimezone: 'CST',
     recipientNames: ['Peter'],
+    now: new Date('2026-04-25T16:00:00.000Z'),
   });
 
   assert.equal(
     message,
     [
-      'Good morning Peter! Prospect ID Zoom tomorrow 4/26 at 2:00 PM CT with Coach Ryan Lietz.',
+      'Good morning Peter! Prospect ID Zoom Meeting tomorrow afternoon 4/26 at 2:00 PM CT with Coach Ryan Lietz.',
       '',
       'He’ll call your cell at 2:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
       '',
       'Save his contact so you know it’s him calling.',
     ].join('\n'),
+  );
+});
+
+test('buildConfirmationMessage uses this evening when first confirmation is for current calendar day', () => {
+  const dueAt = new Date('2026-04-29T23:00:00.000Z');
+  const message = buildConfirmationMessage({
+    variant: 'confirmation_1',
+    headScoutName: 'Ryan Lietz',
+    dueAt,
+    meetingTimezone: 'EST',
+    recipientNames: ['Terresita'],
+    now: new Date('2026-04-29T13:00:00.000Z'),
+  });
+
+  assert.equal(
+    message,
+    [
+      'Good morning Terresita! Prospect ID Zoom Meeting this evening 4/29 at 7:00 PM ET with Coach Ryan Lietz.',
+      '',
+      'He’ll call your cell at 7:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
+      '',
+      'Save his contact so you know it’s him calling.',
+    ].join('\n'),
+  );
+  assert.doesNotMatch(message, /tomorrow/);
+});
+
+test('buildConfirmationMessage uses tomorrow evening for next-day evening appointments', () => {
+  const dueAt = new Date('2026-04-30T23:00:00.000Z');
+  const message = buildConfirmationMessage({
+    variant: 'confirmation_1',
+    headScoutName: 'Ryan Lietz',
+    dueAt,
+    meetingTimezone: 'EST',
+    recipientNames: ['Terresita'],
+    now: new Date('2026-04-29T13:00:00.000Z'),
+  });
+
+  assert.match(
+    message,
+    /Prospect ID Zoom Meeting tomorrow evening 4\/30 at 7:00 PM ET with Coach Ryan Lietz\./,
   );
 });
 

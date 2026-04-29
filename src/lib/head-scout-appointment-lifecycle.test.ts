@@ -147,9 +147,10 @@ test('confirmation text uses resolved current meeting time, not stale task date'
     headScoutName: result.assignedScout,
     dueAt: result.currentMeetingDate || new Date('2026-04-19T18:00:00'),
     meetingTimezone: result.meetingTimezone,
+    now: new Date('2026-04-20T12:00:00Z'),
   });
 
-  assert.match(message, /Prospect ID Zoom tomorrow 4\/23 at 6:00 PM ET/);
+  assert.match(message, /Prospect ID Zoom Meeting on 4\/23 evening at 6:00 PM ET/);
   assert.doesNotMatch(message, /04\/19\/26/);
 });
 

@@ -141,6 +141,49 @@ function formatConfirmationClockLabel(date: Date, timezoneLabel?: string | null)
   }).format(date);
 }
 
+function getCalendarDayValue(date: Date, timezoneLabel?: string | null): number {
+  const timeZone = resolveIanaTimeZone(timezoneLabel);
+  if (!timeZone) {
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  }).formatToParts(date);
+  const year = Number.parseInt(parts.find((part) => part.type === 'year')?.value || '', 10);
+  const month = Number.parseInt(parts.find((part) => part.type === 'month')?.value || '', 10);
+  const day = Number.parseInt(parts.find((part) => part.type === 'day')?.value || '', 10);
+
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  return Date.UTC(year, month - 1, day);
+}
+
+function getConfirmationDatePhrase(args: {
+  dueAt: Date;
+  meetingTimezone?: string | null;
+  now?: Date;
+}): string {
+  const now = args.now || new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const dayDiff = Math.round(
+    (getCalendarDayValue(args.dueAt, args.meetingTimezone) -
+      getCalendarDayValue(now, args.meetingTimezone)) /
+      dayMs,
+  );
+  const dateLabel = formatConfirmationDateLabel(args.dueAt, args.meetingTimezone);
+  const timeOfDayPhrase = getTimeOfDayPhrase(args.dueAt, args.meetingTimezone).replace(/^this /, '');
+
+  if (dayDiff === 0) return `this ${timeOfDayPhrase} ${dateLabel}`;
+  if (dayDiff === 1) return `tomorrow ${timeOfDayPhrase} ${dateLabel}`;
+  return `on ${dateLabel} ${timeOfDayPhrase}`;
+}
+
 function getConfirmationTimezoneLabel(timezoneLabel?: string | null): string {
   const normalized = String(timezoneLabel || '')
     .trim()
@@ -511,7 +554,11 @@ export function buildConfirmationMessage(args: {
   });
   const meetingTimeLabel = getReminderTimeLabel(args.dueAt, args.meetingTimezone);
   const callTimeLabel = formatTimeLabel(args.dueAt, args.meetingTimezone);
-  const confirmationDateLabel = formatConfirmationDateLabel(args.dueAt, args.meetingTimezone);
+  const confirmationDatePhrase = getConfirmationDatePhrase({
+    dueAt: args.dueAt,
+    meetingTimezone: args.meetingTimezone,
+    now: args.now,
+  });
   const confirmationClockLabel = formatConfirmationClockLabel(args.dueAt, args.meetingTimezone);
   const confirmationTimezoneLabel = getConfirmationTimezoneLabel(args.meetingTimezone);
   const currentGreeting = String(args.greetingOverride || '').trim() || 'Good morning';
@@ -538,7 +585,7 @@ export function buildConfirmationMessage(args: {
   }
 
   return [
-    `${greeting.replace(/,$/, '!')} Prospect ID Zoom tomorrow ${confirmationDateLabel} at ${confirmationClockLabel}${confirmationTimezoneLabel ? ` ${confirmationTimezoneLabel}` : ''} with Coach ${coachName}.`,
+    `${greeting.replace(/,$/, '!')} Prospect ID Zoom Meeting ${confirmationDatePhrase} at ${confirmationClockLabel}${confirmationTimezoneLabel ? ` ${confirmationTimezoneLabel}` : ''} with Coach ${coachName}.`,
     '',
     `He’ll call your cell at ${removeDayPeriod(callTimeLabel)} with the Zoom code. Be on a laptop or tablet so he can share his screen.`,
     '',
