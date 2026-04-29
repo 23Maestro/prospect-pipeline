@@ -3901,6 +3901,8 @@ class LegacyTranslator:
     def portal_tasks_to_legacy(
         assigned_to: str = "1408164",
         range_value: str = "todayPastDue",
+        start: Optional[int] = None,
+        length: Optional[int] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Build request for the dashboard task list XHR.
@@ -3911,6 +3913,10 @@ class LegacyTranslator:
             "range": range_value,
             "assignedto": assigned_to,
         }
+        if start is not None:
+            params["start"] = start
+        if length is not None:
+            params["length"] = length
         return endpoint, params
 
     @staticmethod

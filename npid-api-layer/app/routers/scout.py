@@ -26,6 +26,8 @@ async def get_scout_portal_tasks(
     request: Request,
     assignedto: str = "1408164",
     range: str = "todayPastDue",
+    start: int | None = None,
+    length: int | None = None,
 ):
     """
     Fetch the scout task list shown by the dashboard task XHR.
@@ -43,12 +45,19 @@ async def get_scout_portal_tasks(
             "context": {
                 "assignedto": assignedto,
                 "range": range,
+                "start": start,
+                "length": length,
             },
         },
     )
 
     try:
-        endpoint, params = translator.portal_tasks_to_legacy(assigned_to=assignedto, range_value=range)
+        endpoint, params = translator.portal_tasks_to_legacy(
+            assigned_to=assignedto,
+            range_value=range,
+            start=start,
+            length=length,
+        )
         response = await session.get(endpoint, params=params)
         logger.info(
             "SCOUT_TASKS_FETCH %s",
@@ -60,6 +69,8 @@ async def get_scout_portal_tasks(
                 "context": {
                     "assignedto": assignedto,
                     "range": range,
+                    "start": start,
+                    "length": length,
                     "endpoint": endpoint,
                     "statusCode": response.status_code,
                     "contentType": response.headers.get("content-type"),
@@ -68,6 +79,9 @@ async def get_scout_portal_tasks(
         )
         result = translator.parse_portal_tasks_response(response.text)
         tasks = result.get("tasks", [])
+        if length is not None and len(tasks) > length:
+            page_start = max(start or 0, 0)
+            tasks = tasks[page_start:page_start + max(length, 0)]
         logger.info(
             "SCOUT_TASKS_FETCH %s",
             {
@@ -78,6 +92,8 @@ async def get_scout_portal_tasks(
                 "context": {
                     "assignedto": assignedto,
                     "range": range,
+                    "start": start,
+                    "length": length,
                     "count": len(tasks),
                 },
             },
@@ -97,6 +113,8 @@ async def get_scout_portal_tasks(
                 "context": {
                     "assignedto": assignedto,
                     "range": range,
+                    "start": start,
+                    "length": length,
                 },
             },
         )

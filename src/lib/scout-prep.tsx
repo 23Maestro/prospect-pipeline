@@ -26,11 +26,17 @@ import {
 const FEATURE = 'scout-prep';
 export type ScoutTaskRange =
   | 'todayPastDue'
+  | 'all'
   | 'today'
   | 'tomorrow'
   | 'future'
   | 'thisWeek'
   | 'nextWeek';
+
+export type ScoutPortalTaskFetchOptions = {
+  start?: number;
+  length?: number;
+};
 
 function logInfo(
   event: string,
@@ -60,9 +66,13 @@ function logFailure(event: string, step: string, error: string, context?: Record
 
 export async function fetchScoutPortalTasks(
   range: ScoutTaskRange = 'todayPastDue',
+  options: ScoutPortalTaskFetchOptions = {},
 ): Promise<ScoutPortalTask[]> {
   logInfo('SCOUT_PREP_TASKS_FETCH', 'request', 'start');
-  const response = await apiFetch(`/scout/tasks?range=${encodeURIComponent(range)}`);
+  const params = new URLSearchParams({ range });
+  if (typeof options.start === 'number') params.set('start', String(options.start));
+  if (typeof options.length === 'number') params.set('length', String(options.length));
+  const response = await apiFetch(`/scout/tasks?${params.toString()}`);
   if (!response.ok) {
     let message = `Failed to fetch scout tasks: ${response.status}`;
     if (response.status === 404) {
@@ -92,15 +102,21 @@ export async function fetchScoutPortalTasks(
   logInfo('SCOUT_PREP_TASKS_FETCH', 'parse', 'success', {
     count: tasks.length,
     range,
+    start: options.start ?? null,
+    length: options.length ?? null,
   });
   return tasks;
 }
 
 export async function fetchScoutPortalTaskBuckets<T extends ScoutTaskRange>(
   ranges: readonly T[],
+  optionsByRange: Partial<Record<T, ScoutPortalTaskFetchOptions>> = {},
 ): Promise<Record<T, ScoutPortalTask[]>> {
   const entries = await Promise.all(
-    ranges.map(async (range) => [range, await fetchScoutPortalTasks(range)] as const),
+    ranges.map(async (range) => [
+      range,
+      await fetchScoutPortalTasks(range, optionsByRange[range] || {}),
+    ] as const),
   );
   return Object.fromEntries(entries) as Record<T, ScoutPortalTask[]>;
 }

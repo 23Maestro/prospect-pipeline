@@ -235,7 +235,7 @@ test('getVoicemailFollowUpRecipients: returns parents plus group text option', (
   ]);
 });
 
-test('getVoicemailFollowUpRecipients: collapses duplicate phone paths into one recipient', () => {
+test('getVoicemailFollowUpRecipients: duplicate parent and athlete phone uses student athlete recipient', () => {
   const recipients = getVoicemailFollowUpRecipients(
     buildContext({
       contactInfo: {
@@ -258,12 +258,60 @@ test('getVoicemailFollowUpRecipients: collapses duplicate phone paths into one r
 
   assert.deepEqual(recipients, [
     {
-      id: 'parent1',
-      label: 'Parent 1',
-      name: 'Robert Bailey',
+      id: 'studentAthlete',
+      label: 'Student Athlete',
+      name: 'Jaylin Bailey',
       phones: ['310-555-1111'],
     },
   ]);
+});
+
+test('buildVoicemailFollowUpBody: duplicate parent and athlete phone uses student athlete template', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Jaylin Bailey',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'Los Angeles',
+        state: 'CA',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jaylin Bailey',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    undefined,
+    'call_attempt_1',
+    'Left Voice Mail 1',
+    'Call Attempt 1',
+    new Date('2026-04-17T19:28:00Z'),
+  );
+
+  assert.match(
+    body,
+    /^Good afternoon Jaylin, this is Jerami Singleton, college football scout with Prospect ID\./,
+  );
+  assert.match(
+    body,
+    /If that’s something you’re serious about, have one of your parents give me a quick call or text\./,
+  );
+  assert.doesNotMatch(body, /Following up on Jaylin's recruiting plan/);
 });
 
 test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds formal parent handoff', () => {

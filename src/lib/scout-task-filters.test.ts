@@ -29,6 +29,7 @@ function buildTask(
 function buildBuckets(): Record<ScoutTaskRange, ScoutPortalTask[]> {
   return {
     todayPastDue: [buildTask('Today Past Due Athlete', '04/22/2026 09:00 AM')],
+    all: [buildTask('All Athlete', '04/20/2026 09:00 AM')],
     today: [buildTask('Today Athlete', '04/22/2026 02:00 PM')],
     tomorrow: [buildTask('Tomorrow Athlete', '04/23/2026 11:00 AM')],
     future: [buildTask('Future Athlete', '04/25/2026 11:00 AM')],
@@ -36,20 +37,34 @@ function buildBuckets(): Record<ScoutTaskRange, ScoutPortalTask[]> {
 }
 
 test('mapTaskListFilterToRange uses website-aligned range names', () => {
-  assert.equal(mapTaskListFilterToRange('all'), 'todayPastDue');
+  assert.equal(mapTaskListFilterToRange('todayPastDue'), 'todayPastDue');
+  assert.equal(mapTaskListFilterToRange('all'), 'all');
   assert.equal(mapTaskListFilterToRange('today'), 'today');
   assert.equal(mapTaskListFilterToRange('tomorrow'), 'tomorrow');
   assert.equal(mapTaskListFilterToRange('future'), 'future');
 });
 
 test('getTaskSectionTitle uses site-matched labels', () => {
-  assert.equal(getTaskSectionTitle('all'), 'Today / Past Due');
+  assert.equal(getTaskSectionTitle('todayPastDue'), 'Today / Past Due');
+  assert.equal(getTaskSectionTitle('all'), 'All');
   assert.equal(getTaskSectionTitle('today'), 'Today');
   assert.equal(getTaskSectionTitle('tomorrow'), 'Tomorrow');
   assert.equal(getTaskSectionTitle('future'), 'Future');
 });
 
-test('all items returns only todayPastDue website rows', () => {
+test('todayPastDue returns only todayPastDue website rows', () => {
+  const rows = buildTaskBucketRows({
+    filter: 'todayPastDue',
+    taskBuckets: buildBuckets(),
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Today Past Due Athlete'],
+  );
+});
+
+test('all returns only legacy all rows', () => {
   const rows = buildTaskBucketRows({
     filter: 'all',
     taskBuckets: buildBuckets(),
@@ -57,7 +72,7 @@ test('all items returns only todayPastDue website rows', () => {
 
   assert.deepEqual(
     rows.map((row) => row.task.athlete_name),
-    ['Today Past Due Athlete'],
+    ['All Athlete'],
   );
 });
 
@@ -102,7 +117,7 @@ test('all items can sort by grad year without changing the selected bucket', () 
     filter: 'all',
     taskBuckets: {
       ...buildBuckets(),
-      todayPastDue: [
+      all: [
         buildTask('Senior Athlete', '04/22/2026 09:00 AM', '2026'),
         buildTask('Junior Athlete', '04/22/2026 10:00 AM', '2027'),
         buildTask('Missing Grad', '04/22/2026 11:00 AM', ''),
@@ -122,7 +137,7 @@ test('all items can sort by call attempt with non-attempt rows last', () => {
     filter: 'all',
     taskBuckets: {
       ...buildBuckets(),
-      todayPastDue: [
+      all: [
         buildTask('Meeting Athlete', '04/22/2026 09:00 AM', '2027', 'Confirmation Call'),
         buildTask('Attempt 3 Athlete', '04/22/2026 10:00 AM', '2027', 'Call Attempt 3'),
         buildTask('Attempt 1 Athlete', '04/22/2026 11:00 AM', '2027', 'Call Attempt 1'),

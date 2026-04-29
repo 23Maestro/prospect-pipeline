@@ -313,7 +313,7 @@ export function getVoicemailFollowUpRecipients(
   const candidates = getProspectContactShortcutCandidates(context);
   const uniqueRecipients = new Map<string, VoicemailFollowUpRecipient>();
   for (const candidate of candidates) {
-    if (uniqueRecipients.has(candidate.phone)) {
+    if (uniqueRecipients.has(candidate.phone) && candidate.id !== 'studentAthlete') {
       continue;
     }
     uniqueRecipients.set(candidate.phone, {

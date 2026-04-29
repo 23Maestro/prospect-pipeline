@@ -72,6 +72,7 @@ import {
   type TaskListSort,
   type TaskListSortKey,
   type TaskListFilter,
+  type ScoutTaskRange,
 } from './lib/scout-task-filters';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import {
@@ -3456,7 +3457,6 @@ function ScoutPrepTaskItem({
   visibleTasks,
   taskListSort,
   onToggleProspectSearchMode,
-  onToggleRecentMode,
   onSelectTaskListFilter,
   onCycleTaskListSort,
   onReturnToRootList,
@@ -3465,7 +3465,6 @@ function ScoutPrepTaskItem({
   visibleTasks: ScoutPortalTask[];
   taskListSort: TaskListSort;
   onToggleProspectSearchMode: () => void;
-  onToggleRecentMode: () => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onCycleTaskListSort: (key: TaskListSortKey) => void;
   onReturnToRootList: () => void;
@@ -3869,8 +3868,13 @@ function ScoutPrepTaskItem({
           </ActionPanel.Section>
           <ActionPanel.Section title="Navigation">
             <Action
-              title="Show All Items"
+              title="Show Today/PastDue"
               shortcut={{ modifiers: ['cmd'], key: '1' }}
+              onAction={() => onSelectTaskListFilter('todayPastDue')}
+            />
+            <Action
+              title="Show All"
+              shortcut={{ modifiers: ['cmd'], key: '0' }}
               onAction={() => onSelectTaskListFilter('all')}
             />
             <Action
@@ -3887,12 +3891,6 @@ function ScoutPrepTaskItem({
               title="Show Future"
               shortcut={{ modifiers: ['cmd'], key: '4' }}
               onAction={() => onSelectTaskListFilter('future')}
-            />
-            <Action
-              title="Show Recent Items"
-              icon={Icon.Clock}
-              shortcut={{ modifiers: ['cmd'], key: 'f' }}
-              onAction={onToggleRecentMode}
             />
             <Action
               title="Prospect Search"
@@ -4058,17 +4056,16 @@ function RecentProfileListItem({
 }
 
 export default function ScoutPrepCommand() {
-  const [taskBuckets, setTaskBuckets] = useState<
-    Record<'todayPastDue' | 'today' | 'tomorrow' | 'future', ScoutPortalTask[]>
-  >({
+  const [taskBuckets, setTaskBuckets] = useState<Record<ScoutTaskRange, ScoutPortalTask[]>>({
     todayPastDue: [],
+    all: [],
     today: [],
     tomorrow: [],
     future: [],
   });
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
-  const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('all');
+  const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('todayPastDue');
   const [taskListSort, setTaskListSort] = useState<TaskListSort>(null);
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
@@ -4105,12 +4102,16 @@ export default function ScoutPrepCommand() {
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'start');
         const taskBuckets = await fetchScoutPortalTaskBuckets([
           'todayPastDue',
+          'all',
           'today',
           'tomorrow',
           'future',
-        ] as const);
+        ] as const, {
+          all: { start: 0, length: 100 },
+        });
         const nextTaskBuckets = {
           todayPastDue: [...taskBuckets.todayPastDue].reverse(),
+          all: [...taskBuckets.all],
           today: [...taskBuckets.today].reverse(),
           tomorrow: [...taskBuckets.tomorrow].reverse(),
           future: [...taskBuckets.future].reverse(),
@@ -4119,6 +4120,7 @@ export default function ScoutPrepCommand() {
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'success', {
           selectedRange,
           todayPastDueCount: nextTaskBuckets.todayPastDue.length,
+          allCount: nextTaskBuckets.all.length,
           todayCount: nextTaskBuckets.today.length,
           tomorrowCount: nextTaskBuckets.tomorrow.length,
           futureCount: nextTaskBuckets.future.length,
@@ -4378,7 +4380,8 @@ export default function ScoutPrepCommand() {
             value={taskListFilter}
             onChange={(newValue) => setTaskListFilter(newValue as TaskListFilter)}
           >
-            <List.Dropdown.Item title="All Items" value="all" />
+            <List.Dropdown.Item title="Today/PastDue" value="todayPastDue" />
+            <List.Dropdown.Item title="All" value="all" />
             <List.Dropdown.Item title="Today" value="today" />
             <List.Dropdown.Item title="Tomorrow" value="tomorrow" />
             <List.Dropdown.Item title="Future" value="future" />
@@ -4477,13 +4480,13 @@ export default function ScoutPrepCommand() {
       ) : !hasTaskModeResults ? (
         <List.EmptyView
           title={
-            taskListFilter === 'all'
+            taskListFilter === 'todayPastDue'
               ? 'No items found'
               : `No ${selectedSectionTitle.toLowerCase()} items found`
           }
           description={
-            taskListFilter === 'all'
-              ? 'There are no active Scout Prep tasks in any bucket.'
+            taskListFilter === 'todayPastDue'
+              ? 'There are no active Scout Prep tasks due today or past due.'
               : `The ${selectedSectionTitle.toLowerCase()} task bucket is empty.`
           }
           actions={
@@ -4491,8 +4494,13 @@ export default function ScoutPrepCommand() {
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
               <ActionPanel.Section title="Navigation">
                 <Action
-                  title="Show All Items"
+                  title="Show Today/PastDue"
                   shortcut={{ modifiers: ['cmd'], key: '1' }}
+                  onAction={() => setTaskListFilter('todayPastDue')}
+                />
+                <Action
+                  title="Show All"
+                  shortcut={{ modifiers: ['cmd'], key: '0' }}
                   onAction={() => setTaskListFilter('all')}
                 />
                 <Action
@@ -4509,12 +4517,6 @@ export default function ScoutPrepCommand() {
                   title="Show Future"
                   shortcut={{ modifiers: ['cmd'], key: '4' }}
                   onAction={() => setTaskListFilter('future')}
-                />
-                <Action
-                  title="Show Recent Items"
-                  icon={Icon.Clock}
-                  shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                  onAction={toggleRecentMode}
                 />
                 <Action
                   title="Prospect Search"
@@ -4555,7 +4557,6 @@ export default function ScoutPrepCommand() {
               visibleTasks={selectedTaskRows.map((item) => item.task)}
               taskListSort={taskListSort}
               onToggleProspectSearchMode={toggleProspectSearchMode}
-              onToggleRecentMode={toggleRecentMode}
               onSelectTaskListFilter={setTaskListFilter}
               onCycleTaskListSort={cycleSort}
               onReturnToRootList={() => undefined}
