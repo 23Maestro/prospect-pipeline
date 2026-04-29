@@ -244,6 +244,17 @@ async function copyToClipboardWithToast(content: string, title: string) {
   });
 }
 
+async function triggerMaxPrepsSearch(searchLabel: string) {
+  await Clipboard.copy(searchLabel);
+  await open(
+    `kmtrigger://macro=B4784B2F-FC2A-46C1-A8D3-24D1A5A97896&value=${encodeURIComponent(searchLabel)}`,
+  );
+  await showToast({
+    style: Toast.Style.Success,
+    title: 'MaxPreps Search Sent',
+  });
+}
+
 function titleCaseWords(value?: string | null): string {
   return String(value || '')
     .trim()
@@ -3428,12 +3439,10 @@ function ScoutPrepDetail({
           />
           {highSchoolCopyLabel ? (
             <Action
-              title="Copy High School Search"
-              icon={Icon.CopyClipboard}
+              title="Open MaxPreps Search"
+              icon={Icon.MagnifyingGlass}
               shortcut={{ modifiers: ['cmd'], key: 'h' }}
-              onAction={() =>
-                void copyToClipboardWithToast(highSchoolCopyLabel, 'School Search Copied')
-              }
+              onAction={() => void triggerMaxPrepsSearch(highSchoolCopyLabel)}
             />
           ) : null}
           <ActionPanel.Section title="Athlete Note">
