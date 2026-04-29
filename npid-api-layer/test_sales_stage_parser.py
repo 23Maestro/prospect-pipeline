@@ -70,6 +70,28 @@ class SalesStageParserTests(unittest.TestCase):
         self.assertEqual(data["athlete_id"], "athlete-1")
         self.assertEqual(data["stage"], "Spoke to - I need to follow up")
 
+    def test_sales_stage_update_accepts_new_spoke_to_labels(self):
+        for stage in ("Spoke to - Athlete, not Parent", "Spoke to - Too Young"):
+            with self.subTest(stage=stage):
+                endpoint, data = LegacyTranslator.sales_stage_update_to_legacy(
+                    athlete_main_id="main-1",
+                    athlete_id="athlete-1",
+                    stage=stage,
+                )
+
+                self.assertEqual(endpoint, "/tasks/salesstage")
+                self.assertEqual(data["stage"], stage)
+
+    def test_parses_new_spoke_to_plain_text_stages(self):
+        for stage in ("Spoke to - Athlete, not Parent", "Spoke to - Too Young"):
+            with self.subTest(stage=stage):
+                result = LegacyTranslator.parse_sales_stage_options_response(f"<html><body>{stage}</body></html>")
+
+                self.assertTrue(result["success"])
+                self.assertEqual(result["count"], 1)
+                self.assertEqual(result["selected_label"], stage)
+                self.assertEqual(result["selected_value"], stage)
+
 
 if __name__ == "__main__":
     unittest.main()

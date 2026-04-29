@@ -55,6 +55,8 @@ export const KNOWN_BACKEND_CRM_STAGE_LABELS = [
   'Never Spoke To',
   'Called - Unable to Leave VM',
   'Spoke to - Not Interested',
+  'Spoke to - Athlete, not Parent',
+  'Spoke to - Too Young',
   'Meeting Set',
   'Rescheduled',
   'Actual Meeting - Follow Up',
@@ -77,7 +79,7 @@ function normalizeStageText(value?: string | null): string {
     .trim()
     .toLowerCase()
     .replace(/\s*[-–—]\s*/g, ' ')
-    .replace(/[.:]+/g, ' ')
+    .replace(/[.,:]+/g, ' ')
     .replace(/\s+/g, ' ');
 }
 
@@ -99,7 +101,9 @@ export function normalizeCrmSalesStage(rawCrmStage?: string | null): NormalizedS
     normalized === 'never spoke to' ||
     normalized === 'called - unable to leave vm' ||
     normalized === 'called unable to leave vm' ||
-    normalized === 'unable to leave vm'
+    normalized === 'unable to leave vm' ||
+    normalized === 'spoke to athlete not parent' ||
+    normalized === 'athlete not parent'
   ) {
     return 'call_attempt';
   }
@@ -113,7 +117,7 @@ export function normalizeCrmSalesStage(rawCrmStage?: string | null): NormalizedS
     return 'closed_lost';
   }
 
-  if (includesAny(normalized, ['inactive', 'dead lead', 'archived'])) return 'inactive';
+  if (includesAny(normalized, ['inactive', 'dead lead', 'archived', 'too young'])) return 'inactive';
   if (includesAny(normalized, ['no show', 'noshow'])) return 'no_show';
   if (
     includesAny(normalized, [

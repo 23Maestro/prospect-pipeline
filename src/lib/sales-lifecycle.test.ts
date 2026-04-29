@@ -100,6 +100,22 @@ test('spoke to need follow up resolves as follow-up alias', () => {
   assert.equal(lifecycle.isActiveQueueItem, true);
 });
 
+test('spoke to athlete not parent stays in call queue', () => {
+  const lifecycle = resolveSalesLifecycle('Spoke to - Athlete, not Parent');
+  assert.equal(lifecycle.normalizedStage, 'call_attempt');
+  assert.equal(lifecycle.operatorStatus, 'active_call_queue');
+  assert.equal(lifecycle.meetingLifecycle, 'not_set');
+  assert.equal(lifecycle.isActiveQueueItem, true);
+});
+
+test('spoke to too young drops from working queue', () => {
+  const lifecycle = resolveSalesLifecycle('Spoke to - Too Young');
+  assert.equal(lifecycle.normalizedStage, 'inactive');
+  assert.equal(lifecycle.operatorStatus, 'inactive');
+  assert.equal(lifecycle.isTerminal, true);
+  assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
+});
+
 test('meeting result canceled resolves to awaiting reschedule', () => {
   const lifecycle = resolveSalesLifecycle('Meeting Result - Canceled');
   assert.equal(lifecycle.normalizedStage, 'reschedule_pending');

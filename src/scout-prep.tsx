@@ -133,6 +133,8 @@ const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
 const NEVER_SPOKE_TO_LABEL = 'Never Spoke To';
 const CALLED_UNABLE_TO_LEAVE_VM_LABEL = 'Called - Unable to Leave VM';
 const SPOKE_TO_NOT_INTERESTED_LABEL = 'Spoke to - Not Interested';
+const SPOKE_TO_ATHLETE_NOT_PARENT_LABEL = 'Spoke to - Athlete, not Parent';
+const SPOKE_TO_TOO_YOUNG_LABEL = 'Spoke to - Too Young';
 const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I need to follow up';
 const SPOKE_TO_FOLLOW_UP_ALIAS_LABEL = 'Spoke to - Follow Up';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
@@ -345,6 +347,8 @@ function shouldCompleteTopmostPostCallTask(stageLabel: string): boolean {
     normalizedStage === MEETING_SET_LABEL ||
     normalizedStage === CALLED_UNABLE_TO_LEAVE_VM_LABEL ||
     normalizedStage === SPOKE_TO_NOT_INTERESTED_LABEL ||
+    normalizedStage === SPOKE_TO_ATHLETE_NOT_PARENT_LABEL ||
+    normalizedStage === SPOKE_TO_TOO_YOUNG_LABEL ||
     normalizedStage === SPOKE_TO_FOLLOW_UP_LABEL ||
     normalizedStage === SPOKE_TO_FOLLOW_UP_ALIAS_LABEL
   );

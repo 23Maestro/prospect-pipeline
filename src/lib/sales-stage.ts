@@ -23,6 +23,8 @@ const CURATED_STAGE_LABELS = new Set([
   'Never Spoke To',
   'Called - Unable to Leave VM',
   'Spoke to - Not Interested',
+  'Spoke to - Athlete, not Parent',
+  'Spoke to - Too Young',
   SPOKE_TO_FOLLOW_UP_LABEL,
   'Meeting Set',
   'Rescheduled',

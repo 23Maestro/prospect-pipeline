@@ -3967,6 +3967,8 @@ class LegacyTranslator:
             "Never Spoke To",
             "Called - Unable to Leave VM",
             "Spoke to - Not Interested",
+            "Spoke to - Athlete, not Parent",
+            "Spoke to - Too Young",
             "Spoke to - I need to follow up",
             "Meeting Set",
             "Rescheduled",
