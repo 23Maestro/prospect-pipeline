@@ -108,6 +108,61 @@ def _pick_created_confirmation_task(tasks: List[Dict[str, Any]]) -> Optional[Dic
     return _normalize_task_for_response(sorted(candidates, key=sort_key, reverse=True)[0])
 
 
+async def _verify_sales_stage_persisted(
+    session: NPIDSession,
+    translator: LegacyTranslator,
+    athlete_id: str,
+    expected_stage: str,
+) -> str:
+    endpoint, params = translator.sales_stage_options_to_legacy(athlete_id=athlete_id)
+    response = await session.get(endpoint, params=params)
+    body_preview = (response.text or "")[:200]
+    result = translator.parse_sales_stage_options_response(response.text)
+    selected_stage = str(
+        result.get("selected_label") or result.get("selected_value") or ""
+    ).strip()
+
+    if not selected_stage or not translator.sales_stage_labels_match(selected_stage, expected_stage):
+        logger.error(
+            "SALES_STAGE_VERIFY %s",
+            {
+                "event": "SALES_STAGE_VERIFY",
+                "step": "readback",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": "Sales stage did not persist",
+                "context": {
+                    "athleteId": athlete_id,
+                    "expectedStage": expected_stage,
+                    "selectedStage": selected_stage or None,
+                    "statusCode": response.status_code,
+                    "contentType": response.headers.get("content-type"),
+                    "bodyPreview": body_preview,
+                },
+            },
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Sales stage did not persist; selected is {selected_stage or 'Select'}",
+        )
+
+    logger.info(
+        "SALES_STAGE_VERIFY %s",
+        {
+            "event": "SALES_STAGE_VERIFY",
+            "step": "readback",
+            "status": "success",
+            "feature": FEATURE,
+            "context": {
+                "athleteId": athlete_id,
+                "selectedStage": selected_stage,
+                "statusCode": response.status_code,
+            },
+        },
+    )
+    return selected_stage
+
+
 @router.get("/stages/{athlete_id}", response_model=SalesStageOptionsResponse)
 async def get_sales_stage_options(request: Request, athlete_id: str):
     """
@@ -311,6 +366,7 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
         )
         response = await session.post(endpoint, data=data)
         body_preview = (response.text or "")[:200]
+        persisted_stage = ""
         if response.status_code >= 400:
             logger.error(
                 "SALES_STAGE_UPDATE %s",
@@ -333,6 +389,13 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
                 detail=body_preview or f"Sales stage update HTTP {response.status_code}",
             )
 
+        persisted_stage = await _verify_sales_stage_persisted(
+            session=session,
+            translator=translator,
+            athlete_id=athlete_id,
+            expected_stage=data.get("stage", stage),
+        )
+
         logger.info(
             "SALES_STAGE_UPDATE %s",
             {
@@ -344,6 +407,7 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
                     "athleteId": athlete_id,
                     "athleteMainId": athlete_main_id,
                     "stage": stage,
+                    "persistedStage": persisted_stage,
                     "endpoint": endpoint,
                     "statusCode": response.status_code,
                     "bodyPreview": body_preview,
@@ -358,7 +422,7 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
 
         return SalesStageUpdateResponse(
             success=True,
-            stage=stage,
+            stage=persisted_stage or stage,
             athlete_id=athlete_id,
             athlete_main_id=athlete_main_id,
             status_code=response.status_code,

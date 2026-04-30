@@ -3953,16 +3953,44 @@ class LegacyTranslator:
         Body: _token, athlete_main_id, athlete_id, stage
         """
         endpoint = "/tasks/salesstage"
-        stage_aliases = {
-            "Spoke to - Follow Up": "Spoke to - I need to follow up",
-        }
-        legacy_stage = stage_aliases.get(stage.strip(), stage)
+        legacy_stage = LegacyTranslator.normalize_sales_stage_label_for_legacy(stage)
         data: Dict[str, Any] = {
             "athlete_main_id": athlete_main_id,
             "athlete_id": athlete_id,
             "stage": legacy_stage,
         }
         return endpoint, data
+
+    @staticmethod
+    def normalize_sales_stage_label_for_legacy(stage: str) -> str:
+        trimmed = (stage or "").strip()
+        aliases = {
+            "spoke to follow up": "Spoke to - I need to follow up",
+            "spoke to i need to follow up": "Spoke to - I need to follow up",
+        }
+        return aliases.get(LegacyTranslator.normalize_sales_stage_label_for_compare(trimmed), trimmed)
+
+    @staticmethod
+    def normalize_sales_stage_label_for_compare(stage: str) -> str:
+        return " ".join(
+            (stage or "")
+            .lower()
+            .replace("–", " ")
+            .replace("—", " ")
+            .replace("-", " ")
+            .replace(".", " ")
+            .replace(",", " ")
+            .split()
+        )
+
+    @staticmethod
+    def sales_stage_labels_match(actual: str, expected: str) -> bool:
+        return (
+            LegacyTranslator.normalize_sales_stage_label_for_compare(actual)
+            == LegacyTranslator.normalize_sales_stage_label_for_compare(
+                LegacyTranslator.normalize_sales_stage_label_for_legacy(expected)
+            )
+        )
 
     @staticmethod
     def parse_sales_stage_options_response(raw_response: str) -> Dict[str, Any]:

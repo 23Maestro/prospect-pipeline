@@ -114,6 +114,43 @@ def _diff_form_data(before: Dict[str, Any], after: Dict[str, Any]) -> Dict[str, 
     return changed
 
 
+async def _verify_sales_stage_persisted(
+    session: NPIDSession,
+    translator: LegacyTranslator,
+    athlete_id: str,
+    expected_stage: str,
+) -> str:
+    endpoint, params = translator.sales_stage_options_to_legacy(athlete_id=athlete_id)
+    response = await session.get(endpoint, params=params)
+    result = translator.parse_sales_stage_options_response(response.text)
+    selected_stage = str(
+        result.get("selected_label") or result.get("selected_value") or ""
+    ).strip()
+
+    if not selected_stage or not translator.sales_stage_labels_match(selected_stage, expected_stage):
+        logger.error(
+            "❌ Sales stage did not persist athlete_id=%s expected=%s selected=%s status=%s content_type=%s preview=%s",
+            athlete_id,
+            expected_stage,
+            selected_stage or "Select",
+            response.status_code,
+            response.headers.get("content-type"),
+            _truncate(response.text, 200),
+        )
+        raise HTTPException(
+            status_code=502,
+            detail=f"Sales stage did not persist; selected is {selected_stage or 'Select'}",
+        )
+
+    logger.info(
+        "✅ Sales stage verified athlete_id=%s selected=%s status=%s",
+        athlete_id,
+        selected_stage,
+        response.status_code,
+    )
+    return selected_stage
+
+
 async def _record_follow_up_message_sent(
     session: NPIDSession,
     translator: LegacyTranslator,
@@ -126,11 +163,23 @@ async def _record_follow_up_message_sent(
     )
     stage_response = await session.post(stage_endpoint, data=stage_data)
     stage_preview = (stage_response.text or "")[:200]
+    logger.info(
+        "📥 Follow-up sales stage response status=%s content_type=%s preview=%s",
+        stage_response.status_code,
+        stage_response.headers.get("content-type"),
+        _truncate(stage_preview, 200),
+    )
     if stage_response.status_code >= 400:
         raise HTTPException(
             status_code=stage_response.status_code,
             detail=stage_preview or f"Sales stage update HTTP {stage_response.status_code}",
         )
+    persisted_stage = await _verify_sales_stage_persisted(
+        session=session,
+        translator=translator,
+        athlete_id=payload.athlete_id,
+        expected_stage=stage_data.get("stage", payload.stage),
+    )
 
     popup_endpoint, popup_params = translator.task_popup_to_legacy(payload.task_id)
     popup_response = await session.get(popup_endpoint, params=popup_params)
@@ -184,7 +233,7 @@ async def _record_follow_up_message_sent(
         return TaskFollowUpMessageSentResponse(
             success=True,
             task_id=payload.task_id,
-            stage=payload.stage,
+            stage=persisted_stage or payload.stage,
             message=update_result.get("message", "Follow-up recorded"),
             raw_response=update_result.get("raw"),
         )

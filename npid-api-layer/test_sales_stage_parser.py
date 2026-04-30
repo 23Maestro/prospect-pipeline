@@ -59,16 +59,30 @@ class SalesStageParserTests(unittest.TestCase):
         self.assertEqual(result["selected_value"], "spoke_follow_up")
 
     def test_sales_stage_update_canonicalizes_follow_up_alias(self):
-        endpoint, data = LegacyTranslator.sales_stage_update_to_legacy(
-            athlete_main_id="main-1",
-            athlete_id="athlete-1",
-            stage="Spoke to - Follow Up",
-        )
+        for stage in (
+            "Spoke to - Follow Up",
+            "Spoke To - I Need To Follow Up",
+            "Spoke to - I need to follow up",
+        ):
+            with self.subTest(stage=stage):
+                endpoint, data = LegacyTranslator.sales_stage_update_to_legacy(
+                    athlete_main_id="main-1",
+                    athlete_id="athlete-1",
+                    stage=stage,
+                )
 
-        self.assertEqual(endpoint, "/tasks/salesstage")
-        self.assertEqual(data["athlete_main_id"], "main-1")
-        self.assertEqual(data["athlete_id"], "athlete-1")
-        self.assertEqual(data["stage"], "Spoke to - I need to follow up")
+                self.assertEqual(endpoint, "/tasks/salesstage")
+                self.assertEqual(data["athlete_main_id"], "main-1")
+                self.assertEqual(data["athlete_id"], "athlete-1")
+                self.assertEqual(data["stage"], "Spoke to - I need to follow up")
+
+    def test_sales_stage_compare_matches_case_variant(self):
+        self.assertTrue(
+            LegacyTranslator.sales_stage_labels_match(
+                "Spoke to - I need to follow up",
+                "Spoke To - I Need To Follow Up",
+            )
+        )
 
     def test_sales_stage_update_accepts_new_spoke_to_labels(self):
         for stage in ("Spoke to - Athlete, not Parent", "Spoke to - Too Young"):

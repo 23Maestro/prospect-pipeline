@@ -1,8 +1,9 @@
-import { Clipboard } from '@raycast/api';
+import { Clipboard, environment } from '@raycast/api';
 import { access, open as openFile, readdir } from 'fs/promises';
 import { constants as fsConstants, type Dirent } from 'fs';
 
 const CONTACT_CARD_ROOTS = [
+  `${environment.assetsPath}/contact-cards`,
   '/Users/singleton23/Library/Messages/Attachments',
   '/Users/singleton23/Library/Containers/com.apple.MobileSMS/Data/tmp/TemporaryItems/com.apple.MobileSMS/LinkedFiles',
 ] as const;
