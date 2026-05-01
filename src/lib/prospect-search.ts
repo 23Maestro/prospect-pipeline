@@ -12,6 +12,11 @@ export interface ProspectResult {
   city?: string;
   high_school?: string;
   email?: string;
+  phone?: string;
+  parent_name?: string;
+  parent_email?: string;
+  parent_phone?: string;
+  url?: string;
   positions?: string;
   source?: string;
   jersey_number?: string;
@@ -135,15 +140,19 @@ export async function ensureProspectDetails(result: ProspectResult): Promise<Pro
   };
 }
 
-export async function runProspectRawSearch(term: string): Promise<ProspectResult[]> {
+export async function runProspectRawSearch(
+  term: string,
+  options?: { searchingFor?: 'Parent' },
+): Promise<ProspectResult[]> {
   const isEmail = term.includes('@');
   const response = await apiFetch('/athlete/raw-search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       term,
+      searching_for: options?.searchingFor,
       email: isEmail ? term : undefined,
-      include_admin_search: true,
+      include_admin_search: options?.searchingFor === 'Parent' ? false : true,
       include_recent_search: false,
     }),
   });

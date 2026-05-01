@@ -260,6 +260,11 @@ class RawAthleteSearchResult(BaseModel):
     city: Optional[str] = None
     high_school: Optional[str] = None
     email: Optional[str] = None
+    phone: Optional[str] = None
+    parent_name: Optional[str] = None
+    parent_email: Optional[str] = None
+    parent_phone: Optional[str] = None
+    url: Optional[str] = None
     positions: Optional[str] = None
     source: Optional[str] = None
 

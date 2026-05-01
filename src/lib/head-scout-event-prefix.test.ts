@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   APPOINTMENT_TITLE_PREFIXES,
   applyAppointmentTitlePrefix,
+  parseAppointmentTitleOutcome,
   resolveAppointmentTitleOutcome,
 } from './head-scout-event-prefix';
 
@@ -31,6 +32,27 @@ test('preserves athlete title text', () => {
   assert.equal(
     applyAppointmentTitlePrefix('(ACF) Donzi Ojeikere Football 2028 TX', '(ACF*2)'),
     '(ACF*2) Donzi Ojeikere Football 2028 TX',
+  );
+});
+
+test('repairs human-error (ACF)*2 prefix before applying a new status', () => {
+  assert.equal(
+    applyAppointmentTitlePrefix('(ACF)*2 Donzi Ojeikere Football 2028 TX', '(CF)'),
+    '(CF) Donzi Ojeikere Football 2028 TX',
+  );
+});
+
+test('repairs human-error (ACF)*2 prefix without duplicating ACF*2', () => {
+  assert.equal(
+    applyAppointmentTitlePrefix('(ACF)*2 Donzi Ojeikere Football 2028 TX', '(ACF*2)'),
+    '(ACF*2) Donzi Ojeikere Football 2028 TX',
+  );
+});
+
+test('strips accidental leftover *2 when RSP replaces ACF*2', () => {
+  assert.equal(
+    applyAppointmentTitlePrefix('(RSP)*2 August Nyakeoga Football 2027 MN', '(CF)'),
+    '(CF) August Nyakeoga Football 2027 MN',
   );
 });
 
@@ -78,6 +100,84 @@ test('(ENR ...) titles resolve to terminal enrollment', () => {
     resolveAppointmentTitleOutcome('(ENR $69) Victor Williams Football 2028 TX'),
     'terminal_enrollment',
   );
+});
+
+test('(ENR $69) titles parse enrollment amount and clean title', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(ENR $69) Victor Williams Football 2028 TX'), {
+    originalTitle: '(ENR $69) Victor Williams Football 2028 TX',
+    cleanTitle: 'Victor Williams Football 2028 TX',
+    outcome: 'terminal_enrollment',
+    revenueCents: 6900,
+    prefix: '(ENR $69)',
+  });
+});
+
+test('(ENR $99) titles parse enrollment amount and clean title', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(ENR $99) Zyon Wicks Football 2027 TX'), {
+    originalTitle: '(ENR $99) Zyon Wicks Football 2027 TX',
+    cleanTitle: 'Zyon Wicks Football 2027 TX',
+    outcome: 'terminal_enrollment',
+    revenueCents: 9900,
+    prefix: '(ENR $99)',
+  });
+});
+
+test('(ENR) title without amount keeps enrollment with null revenue', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(ENR) Zyon Wicks Football 2027 TX'), {
+    originalTitle: '(ENR) Zyon Wicks Football 2027 TX',
+    cleanTitle: 'Zyon Wicks Football 2027 TX',
+    outcome: 'terminal_enrollment',
+    revenueCents: null,
+    prefix: '(ENR)',
+  });
+});
+
+test('(RSP) title parses as reschedule pending with clean title', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome("(RSP) Jordan Niles Men's Basketball 2026 NC"), {
+    originalTitle: "(RSP) Jordan Niles Men's Basketball 2026 NC",
+    cleanTitle: "Jordan Niles Men's Basketball 2026 NC",
+    outcome: 'reschedule_pending',
+    revenueCents: null,
+    prefix: '(RSP)',
+  });
+});
+
+test('(RSP)*2 title parses as reschedule pending with accidental suffix stripped from clean title', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(RSP)*2 August Nyakeoga Football 2027 MN'), {
+    originalTitle: '(RSP)*2 August Nyakeoga Football 2027 MN',
+    cleanTitle: 'August Nyakeoga Football 2027 MN',
+    outcome: 'reschedule_pending',
+    revenueCents: null,
+    prefix: '(RSP)*2',
+  });
+});
+
+test('known outcome prefixes with accidental *number suffix keep their base meaning', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(FU)*3 Victor Williams Football 2028 TX'), {
+    originalTitle: '(FU)*3 Victor Williams Football 2028 TX',
+    cleanTitle: 'Victor Williams Football 2028 TX',
+    outcome: 'soft_archive_follow_up',
+    revenueCents: null,
+    prefix: '(FU)*3',
+  });
+
+  assert.deepEqual(parseAppointmentTitleOutcome('(CL)*4 Zyon Wicks Football 2027 TX'), {
+    originalTitle: '(CL)*4 Zyon Wicks Football 2027 TX',
+    cleanTitle: 'Zyon Wicks Football 2027 TX',
+    outcome: 'terminal_close_lost',
+    revenueCents: null,
+    prefix: '(CL)*4',
+  });
+});
+
+test('unprefixed title parses as active without revenue', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('Zyon Wicks Football 2027 TX'), {
+    originalTitle: 'Zyon Wicks Football 2027 TX',
+    cleanTitle: 'Zyon Wicks Football 2027 TX',
+    outcome: 'active',
+    revenueCents: null,
+    prefix: null,
+  });
 });
 
 test('(CL) titles resolve to terminal close lost', () => {

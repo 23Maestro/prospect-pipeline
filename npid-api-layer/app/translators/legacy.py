@@ -3363,16 +3363,21 @@ class LegacyTranslator:
                 continue
 
             name = pick_value(item, ["name", "athletename", "full_name", "fullName", "player_name", "athlete_name", "contactname"])
+            parent_name = pick_value(item, ["parent_name", "parentName", "parent", "parent_full_name", "parentFullName"])
+            if not parent_name and pick_value(item, ["athletename", "athlete_name"]) and pick_value(item, ["value"]):
+                parent_name = pick_value(item, ["value"])
             grad_year = pick_value(item, ["grad_year", "gradYear", "class_year", "graduation_year", "graduationYear", "year"])
             sport = pick_value(item, ["sport", "sport_name", "sportName"])
             state = pick_value(item, ["state", "state_abbr", "stateAbbr", "state_abbrev", "stateAbbrev", "high_school_state", "hs_state"])
             city = pick_value(item, ["city", "high_school_city", "hs_city"])
             high_school = pick_value(item, ["high_school", "highSchool", "school", "school_name", "schoolName"])
             email = pick_value(item, ["email", "athlete_email", "player_email"])
+            phone = pick_value(item, ["phone", "phone_number", "phoneNumber", "mobile", "cell"])
             positions = pick_value(item, ["positions", "position", "pos"])
             positions = LegacyTranslator._clean_positions(positions)
             athlete_main_id = pick_value(item, ["athlete_main_id", "athleteMainId", "main_id", "athlete_mainid"])
             location = pick_value(item, ["location", "city_state", "cityState", "citystate"])
+            url = pick_value(item, ["url", "profile_url", "profileUrl"])
 
             if location and (not city or not state):
                 split_city, split_state = LegacyTranslator._split_location(location)
@@ -3390,6 +3395,11 @@ class LegacyTranslator:
                 "city": city,
                 "high_school": high_school,
                 "email": email,
+                "phone": phone,
+                "parent_name": parent_name,
+                "parent_email": email if parent_name else None,
+                "parent_phone": phone if parent_name else None,
+                "url": url,
                 "positions": positions,
                 "source": source
             })

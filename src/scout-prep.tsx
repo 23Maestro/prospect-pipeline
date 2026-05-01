@@ -121,12 +121,12 @@ import {
 } from './lib/scout-duplicate-profiles';
 
 const FEATURE = 'scout-prep';
-const POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS = [
+const POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS: readonly string[] = [
   'Actual Meeting - Follow Up',
   'Actual Meeting - Close Lost',
   'Actual Meeting - Close Won',
   'Meeting Result - No Show',
-] as const;
+];
 const MEETING_SET_LABEL = 'Meeting Set';
 const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
 const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
@@ -1728,6 +1728,8 @@ type RecentProfileRow = {
   followUpTask?: ScoutAthleteTask | null;
   error?: string | null;
 };
+
+type ProspectSearchMode = 'athlete' | 'parent';
 
 function buildScoutPrepTaskFromProspect(result: ProspectResult): ScoutPortalTask | null {
   const athleteId = String(result.athlete_id || '').trim();
@@ -3930,18 +3932,36 @@ function ScoutPrepTaskItem({
 
 function ProspectSearchListItem({
   result,
+  index,
+  searchMode,
+  onToggleProspectSearchModeType,
   onToggleProspectSearchMode,
   onReturnToRootList,
 }: {
   result: ProspectResult;
+  index: number;
+  searchMode: ProspectSearchMode;
+  onToggleProspectSearchModeType: () => void;
   onToggleProspectSearchMode: () => void;
   onReturnToRootList: () => void;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
   const location = [result.city, result.state].filter(Boolean).join(', ');
+  const isParentMode = searchMode === 'parent';
+  const parentName = result.parent_name || (isParentMode ? result.name : null);
+  const parentEmail = result.parent_email || (isParentMode ? result.email : null);
+  const parentPhone = result.parent_phone || (isParentMode ? result.phone : null);
+  const parentPhoneColor = [Color.Red, Color.Green, Color.Blue][index % 3];
   const markdown = [
     `# ${result.name || `Athlete ${result.athlete_id}`}`,
     '',
+    ...(isParentMode
+      ? [
+        `- Parent: ${parentName || 'N/A'}`,
+        `- Parent Email: ${parentEmail || 'N/A'}`,
+        `- Parent Phone: ${parentPhone || 'N/A'}`,
+      ]
+      : []),
     `- Athlete ID: ${result.athlete_id || 'N/A'}`,
     `- Athlete Main ID: ${result.athlete_main_id || 'N/A'}`,
     `- Grad Year: ${result.grad_year || 'N/A'}`,
@@ -3954,12 +3974,23 @@ function ProspectSearchListItem({
   return (
     <List.Item
       key={`prospect:${result.athlete_id}:${result.athlete_main_id || 'missing-main-id'}`}
-      icon={Icon.MagnifyingGlass}
-      title={result.name || `Athlete ${result.athlete_id}`}
+      icon={isParentMode ? Icon.Person : Icon.MagnifyingGlass}
+      title={
+        isParentMode
+          ? parentName || result.name || `Parent ${result.athlete_id}`
+          : result.name || `Athlete ${result.athlete_id}`
+      }
       subtitle={
-        [result.grad_year ? `Class ${result.grad_year}` : null, result.sport, result.high_school]
-          .filter(Boolean)
-          .join(' • ') || result.athlete_id
+        isParentMode
+          ? [result.name, parentEmail].filter(Boolean).join(' • ') || result.athlete_id
+          : [result.grad_year ? `Class ${result.grad_year}` : null, result.sport, result.high_school]
+            .filter(Boolean)
+            .join(' • ') || result.athlete_id
+      }
+      accessories={
+        isParentMode && parentPhone
+          ? [{ tag: { value: parentPhone, color: parentPhoneColor } }]
+          : undefined
       }
       detail={<List.Item.Detail markdown={markdown} />}
       actions={
@@ -3976,9 +4007,21 @@ function ProspectSearchListItem({
           <Action.OpenInBrowser
             title="Open Prospect Profile"
             icon={Icon.Globe}
-            url={`https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`}
+            url={
+              result.url?.startsWith('http')
+                ? result.url
+                : result.url
+                  ? `https://dashboard.nationalpid.com${result.url}`
+                  : `https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`
+            }
           />
           <ActionPanel.Section title="Navigation">
+            <Action
+              title={isParentMode ? 'Switch to Athlete Search' : 'Switch to Parent Search'}
+              icon={Icon.Person}
+              shortcut={{ modifiers: ['cmd'], key: 'p' }}
+              onAction={onToggleProspectSearchModeType}
+            />
             <Action
               title="Exit Prospect Search"
               icon={Icon.MagnifyingGlass}
@@ -4074,6 +4117,7 @@ export default function ScoutPrepCommand() {
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('todayPastDue');
   const [taskListSort, setTaskListSort] = useState<TaskListSort>(null);
+  const [prospectSearchMode, setProspectSearchMode] = useState<ProspectSearchMode>('athlete');
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
@@ -4180,7 +4224,10 @@ export default function ScoutPrepCommand() {
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const results = await runProspectRawSearch(term);
+          const results = await runProspectRawSearch(
+            term,
+            prospectSearchMode === 'parent' ? { searchingFor: 'Parent' } : undefined,
+          );
           if (requestId !== prospectSearchRequestIdRef.current) {
             return;
           }
@@ -4209,7 +4256,7 @@ export default function ScoutPrepCommand() {
     }, 350);
 
     return () => clearTimeout(timer);
-  }, [viewMode, prospectSearchText]);
+  }, [viewMode, prospectSearchText, prospectSearchMode]);
 
   useEffect(() => {
     if (viewMode !== 'recent') {
@@ -4351,6 +4398,7 @@ export default function ScoutPrepCommand() {
     setViewMode((current) => {
       if (current === 'prospect') {
         // Exit prospect → back to tasks
+        setProspectSearchMode('athlete');
         setProspectSearchText('');
         setProspectResults([]);
         setIsProspectSearching(false);
@@ -4361,6 +4409,12 @@ export default function ScoutPrepCommand() {
       setIsRecentFollowUpsLoading(false);
       return 'prospect';
     });
+  }
+
+  function toggleProspectSearchModeType() {
+    setProspectSearchMode((current) => (current === 'parent' ? 'athlete' : 'parent'));
+    setProspectResults([]);
+    setIsProspectSearching(false);
   }
 
   function cycleSort(key: TaskListSortKey) {
@@ -4391,12 +4445,14 @@ export default function ScoutPrepCommand() {
           </List.Dropdown>
         ) : undefined
       }
-      filtering={true}
+      filtering={viewMode !== 'prospect'}
       searchBarPlaceholder={
         viewMode === 'recent'
           ? 'Recent Profiles'
           : viewMode === 'prospect'
-            ? 'Prospect Search — Enter athlete name or email'
+            ? prospectSearchMode === 'parent'
+              ? 'Parent Search — Enter parent name, email, or phone'
+              : 'Prospect Search — Enter athlete name or email'
             : 'Search Task List'
       }
       searchText={viewMode === 'prospect' ? prospectSearchText : undefined}
@@ -4441,10 +4497,13 @@ export default function ScoutPrepCommand() {
       ) : viewMode === 'prospect' ? (
         <List.Section title={`Prospect Search`} subtitle={String(prospectResults.length)}>
           {prospectResults.length > 0 ? (
-            prospectResults.map((result) => (
+            prospectResults.map((result, index) => (
               <ProspectSearchListItem
                 key={`search:${result.athlete_id}:${result.athlete_main_id || result.name || 'result'}`}
                 result={result}
+                index={index}
+                searchMode={prospectSearchMode}
+                onToggleProspectSearchModeType={toggleProspectSearchModeType}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
                 onReturnToRootList={() => undefined}
               />
@@ -4468,6 +4527,16 @@ export default function ScoutPrepCommand() {
               }
               actions={
                 <ActionPanel>
+                  <Action
+                    title={
+                      prospectSearchMode === 'parent'
+                        ? 'Switch to Athlete Search'
+                        : 'Switch to Parent Search'
+                    }
+                    icon={Icon.Person}
+                    shortcut={{ modifiers: ['cmd'], key: 'p' }}
+                    onAction={toggleProspectSearchModeType}
+                  />
                   <Action
                     title="Exit Prospect Search"
                     icon={Icon.MagnifyingGlass}

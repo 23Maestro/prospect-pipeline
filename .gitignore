@@ -93,6 +93,9 @@ temp/
 logs
 *.log
 
+# Local generated public Supabase config for the call tracker page
+npid-api-layer/app/static/call-tracker/config.js
+
 # Runtime data
 pids
 *.pid
