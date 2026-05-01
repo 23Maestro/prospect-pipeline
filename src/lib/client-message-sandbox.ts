@@ -376,10 +376,10 @@ async function resolveBackendMatchForContact(args: {
       displayName: toClientDisplayName(args.contactName),
       athleteName:
         toClientDisplayName(contactInfo.studentAthlete.name) || toClientDisplayName(candidate.name),
-      segment: 'pending',
+      segment: 'pending' as const,
       contactId,
       athleteMainId,
-      source: 'backend',
+      source: 'backend' as const,
     };
     await setCachedClientIdentity(match);
     return match;

@@ -58,7 +58,7 @@ function logFailure(event: string, step: string, error: string, context?: Record
   });
 }
 
-async function parseResponse(response: Response) {
+async function parseResponse(response: Awaited<ReturnType<typeof apiFetch>>) {
   const text = await response.text();
   try {
     return { json: JSON.parse(text), text };

@@ -70,6 +70,7 @@ export const KNOWN_BACKEND_CRM_STAGE_LABELS = [
 
 export const KNOWN_TS_ONLY_STAGE_LABELS = [
   'New Opportunity',
+  'Spoke to - I Need To Follow Up',
   'Spoke to - I need to follow up',
   'Spoke to - Follow Up',
 ] as const;

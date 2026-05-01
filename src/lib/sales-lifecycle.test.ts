@@ -93,7 +93,7 @@ test('actual meeting follow up stays active', () => {
 });
 
 test('spoke to need follow up resolves as follow-up alias', () => {
-  const lifecycle = resolveSalesLifecycle('Spoke to - I need to follow up');
+  const lifecycle = resolveSalesLifecycle('Spoke to - I Need To Follow Up');
   assert.equal(lifecycle.normalizedStage, 'meeting_follow_up');
   assert.equal(lifecycle.operatorStatus, 'awaiting_follow_up');
   assert.equal(lifecycle.meetingLifecycle, 'follow_up_due');

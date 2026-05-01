@@ -385,6 +385,7 @@ export type VideoUpdatesViewProps = {
 export default function VideoUpdatesView(
   props: LaunchProps<{ draftValues: VideoUpdateFormValues }> | VideoUpdatesViewProps,
 ) {
+  const enableDrafts = 'enableDrafts' in props ? props.enableDrafts : false;
   const [isSearching, setIsSearching] = useState(false);
   const [selectedPlayer, setSelectedPlayer] = useState<NPIDVideoProgressPlayer | null>(null);
   const [fetchedAthleteMainId, setFetchedAthleteMainId] = useState<string | null>(null);
@@ -818,7 +819,7 @@ export default function VideoUpdatesView(
 
   return (
     <Form
-      enableDrafts={props.enableDrafts ?? false}
+      enableDrafts={enableDrafts ?? false}
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Update NPID Video Profile" onSubmit={handleSubmit} />
@@ -889,10 +890,9 @@ export default function VideoUpdatesView(
         title="YouTube Link"
         placeholder="e.g., https://www.youtube.com/watch?v=..."
         {...itemProps.youtubeLink}
-        disabled={!selectedPlayer}
       />
 
-      <Form.Dropdown title="Video Type" {...itemProps.videoType} disabled={!values.youtubeLink}>
+      <Form.Dropdown title="Video Type" {...itemProps.videoType}>
         <Form.Dropdown.Item value="Full Season Highlight" title="Full Season Highlight" />
         <Form.Dropdown.Item value="Partial Season Highlight" title="Partial Season Highlight" />
         <Form.Dropdown.Item value="Single Game Highlight" title="Single Game Highlight" />
@@ -903,7 +903,6 @@ export default function VideoUpdatesView(
         title="Season/Team"
         {...itemProps.season}
         value={safeSeasonValue}
-        disabled={!values.videoType}
       >
         <Form.Dropdown.Item value="" title="-- Season/Team --" />
         {seasons.map((s) => (

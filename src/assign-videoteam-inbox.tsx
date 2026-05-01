@@ -93,11 +93,11 @@ function AssignmentModal({
   );
 
   const initialStage = useMemo(() => {
-    return (modalData.stages[0]?.value as TaskStage) || '';
+    return (modalData.stages[0]?.value as TaskStage | undefined) || 'In Queue';
   }, [modalData.stages]);
 
   const initialStatus = useMemo(() => {
-    return (modalData.videoStatuses[0]?.value as TaskStatus) || '';
+    return (modalData.videoStatuses[0]?.value as TaskStatus | undefined) || 'HUDL';
   }, [modalData.videoStatuses]);
 
   const [ownerId, setOwnerId] = useState<string>(initialOwnerId);
@@ -194,7 +194,6 @@ function AssignmentModal({
             key={contact.contactId}
             value={contact.contactId}
             title={contact.name || contact.email || contact.contactId}
-            subtitle={[contact.sport, contact.gradYear, contact.state].filter(Boolean).join(' • ')}
           />
         ))}
       </Form.Dropdown>

@@ -56,7 +56,7 @@ export async function resolveAndCacheJerseyNumber(
     return await existingRequest;
   }
 
-  const request = (async () => {
+  const request = (async (): Promise<JerseyResolveResult> => {
     try {
       const query = new URLSearchParams();
       if (options.gradYear) {

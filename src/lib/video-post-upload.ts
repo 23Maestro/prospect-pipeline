@@ -312,7 +312,7 @@ export async function runVideoPostUploadActions({
       athleteMainId,
       logEvent,
     });
-    if (!taskLookup.eligible) {
+    if (taskLookup.eligible === false) {
       taskHudMessage =
         taskLookup.reason === 'assigned_to_other'
           ? 'Upload complete. Task skipped: assigned to another editor.'

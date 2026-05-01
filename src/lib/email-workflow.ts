@@ -117,7 +117,7 @@ export async function sendEmailViaAPI(params: {
     throw new Error(`Failed to send email (HTTP ${response.status})`);
   }
 
-  const result = await response.json();
+  const result = (await response.json()) as { success?: boolean; message?: string };
   if (!result?.success) {
     throw new Error(result?.message || 'Send email request failed');
   }

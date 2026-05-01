@@ -12,9 +12,10 @@ import type {
 
 const FEATURE = 'sales-stage';
 const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
-const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I need to follow up';
+const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I Need To Follow Up';
 const STAGE_LABEL_ALIASES = new Map<string, string>([
   ['Spoke to - Follow Up', SPOKE_TO_FOLLOW_UP_LABEL],
+  ['Spoke to - I need to follow up', SPOKE_TO_FOLLOW_UP_LABEL],
 ]);
 
 const CURATED_STAGE_LABELS = new Set([

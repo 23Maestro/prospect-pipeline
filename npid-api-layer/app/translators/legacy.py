@@ -27,6 +27,8 @@ from app.invariants import Invariant, log_check, hard_fail
 
 logger = logging.getLogger(__name__)
 
+SPOKE_TO_FOLLOW_UP_LEGACY_LABEL = "Spoke to - I Need To Follow Up"
+
 
 class LegacyTranslator:
     """
@@ -3965,15 +3967,16 @@ class LegacyTranslator:
     def normalize_sales_stage_label_for_legacy(stage: str) -> str:
         trimmed = (stage or "").strip()
         aliases = {
-            "spoke to follow up": "Spoke to - I need to follow up",
-            "spoke to i need to follow up": "Spoke to - I need to follow up",
+            "spoke to follow up": SPOKE_TO_FOLLOW_UP_LEGACY_LABEL,
+            "spoke to i need to follow up": SPOKE_TO_FOLLOW_UP_LEGACY_LABEL,
         }
         return aliases.get(LegacyTranslator.normalize_sales_stage_label_for_compare(trimmed), trimmed)
 
     @staticmethod
-    def normalize_sales_stage_label_for_compare(stage: str) -> str:
+    def normalize_sales_stage_label_for_compare(value: Any) -> str:
         return " ".join(
-            (stage or "")
+            str(value or "")
+            .strip()
             .lower()
             .replace("–", " ")
             .replace("—", " ")
@@ -3984,13 +3987,12 @@ class LegacyTranslator:
         )
 
     @staticmethod
-    def sales_stage_labels_match(actual: str, expected: str) -> bool:
-        return (
-            LegacyTranslator.normalize_sales_stage_label_for_compare(actual)
-            == LegacyTranslator.normalize_sales_stage_label_for_compare(
-                LegacyTranslator.normalize_sales_stage_label_for_legacy(expected)
-            )
+    def sales_stage_labels_match(expected: Any, actual: Any) -> bool:
+        expected_normalized = LegacyTranslator.normalize_sales_stage_label_for_compare(
+            LegacyTranslator.normalize_sales_stage_label_for_legacy(str(expected or ""))
         )
+        actual_normalized = LegacyTranslator.normalize_sales_stage_label_for_compare(actual)
+        return bool(expected_normalized and actual_normalized and expected_normalized == actual_normalized)
 
     @staticmethod
     def parse_sales_stage_options_response(raw_response: str) -> Dict[str, Any]:
@@ -4007,7 +4009,7 @@ class LegacyTranslator:
             "Spoke to - Not Interested",
             "Spoke to - Athlete, not Parent",
             "Spoke to - Too Young",
-            "Spoke to - I need to follow up",
+            SPOKE_TO_FOLLOW_UP_LEGACY_LABEL,
             "Meeting Set",
             "Rescheduled",
             "Actual Meeting - Follow Up",
@@ -4020,14 +4022,7 @@ class LegacyTranslator:
         ]
 
         def _normalize_stage_label(value: str) -> str:
-            return " ".join(
-                value.lower()
-                .replace("–", " ")
-                .replace("—", " ")
-                .replace("-", " ")
-                .replace(".", " ")
-                .split()
-            )
+            return LegacyTranslator.normalize_sales_stage_label_for_compare(value)
 
         anchor_labels = {
             _normalize_stage_label(label) for label in fallback_labels if _normalize_stage_label(label)

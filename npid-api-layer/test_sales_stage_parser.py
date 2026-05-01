@@ -45,7 +45,7 @@ class SalesStageParserTests(unittest.TestCase):
         <html>
           <body>
             <select name="sales_stage">
-              <option value="spoke_follow_up" selected>Spoke to - I need to follow up</option>
+              <option value="spoke_follow_up" selected>Spoke to - I Need To Follow Up</option>
             </select>
           </body>
         </html>
@@ -55,7 +55,7 @@ class SalesStageParserTests(unittest.TestCase):
 
         self.assertTrue(result["success"])
         self.assertEqual(result["count"], 1)
-        self.assertEqual(result["selected_label"], "Spoke to - I need to follow up")
+        self.assertEqual(result["selected_label"], "Spoke to - I Need To Follow Up")
         self.assertEqual(result["selected_value"], "spoke_follow_up")
 
     def test_sales_stage_update_canonicalizes_follow_up_alias(self):
@@ -74,13 +74,13 @@ class SalesStageParserTests(unittest.TestCase):
                 self.assertEqual(endpoint, "/tasks/salesstage")
                 self.assertEqual(data["athlete_main_id"], "main-1")
                 self.assertEqual(data["athlete_id"], "athlete-1")
-                self.assertEqual(data["stage"], "Spoke to - I need to follow up")
+                self.assertEqual(data["stage"], "Spoke to - I Need To Follow Up")
 
     def test_sales_stage_compare_matches_case_variant(self):
         self.assertTrue(
             LegacyTranslator.sales_stage_labels_match(
+                "Spoke to - I Need To Follow Up",
                 "Spoke to - I need to follow up",
-                "Spoke To - I Need To Follow Up",
             )
         )
 

@@ -135,7 +135,7 @@ const CALLED_UNABLE_TO_LEAVE_VM_LABEL = 'Called - Unable to Leave VM';
 const SPOKE_TO_NOT_INTERESTED_LABEL = 'Spoke to - Not Interested';
 const SPOKE_TO_ATHLETE_NOT_PARENT_LABEL = 'Spoke to - Athlete, not Parent';
 const SPOKE_TO_TOO_YOUNG_LABEL = 'Spoke to - Too Young';
-const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I need to follow up';
+const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I Need To Follow Up';
 const SPOKE_TO_FOLLOW_UP_ALIAS_LABEL = 'Spoke to - Follow Up';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
@@ -407,6 +407,102 @@ function resolveVoicemailLifecycleTaskFromList(
   );
 }
 
+function resolveVoicemailLifecycleTaskForCompletion(
+  context: ScoutPrepContext,
+  variant: VoicemailFollowUpVariant,
+): ScoutAthleteTask | null {
+  const matchedTask = resolveVoicemailLifecycleTaskFromList(context, variant);
+  if (matchedTask) {
+    return matchedTask;
+  }
+
+  if (
+    variant === 'call_attempt_1' ||
+    variant === 'call_attempt_2' ||
+    variant === 'call_attempt_3'
+  ) {
+    return getTopmostIncompleteAthleteTask(context.tasks);
+  }
+
+  return null;
+}
+
+function normalizePostCallTaskText(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\(?sc move this task\)?\s*/i, '')
+    .replace(/[-_–—]+/g, ' ')
+    .replace(/[.,:]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function isBroadPostCallTaskMatch(task: ScoutAthleteTask, stageLabel: string): boolean {
+  const text = normalizePostCallTaskText(
+    [task.title, task.description, task.row_text].filter(Boolean).join(' '),
+  );
+  const stage = normalizePostCallTaskText(stageLabel);
+  if (!text || !stage) {
+    return false;
+  }
+
+  if (text.includes(stage)) {
+    return true;
+  }
+
+  if (stage.includes('follow up')) {
+    return (
+      text.includes('scheduled follow up') ||
+      text.includes('need to follow up') ||
+      text.includes('follow up')
+    );
+  }
+
+  if (stage.includes('athlete not parent')) {
+    return text.includes('athlete not parent');
+  }
+
+  if (stage.includes('not interested')) {
+    return text.includes('not interested');
+  }
+
+  if (stage.includes('too young')) {
+    return text.includes('too young');
+  }
+
+  if (stage.includes('unable to leave vm')) {
+    return text.includes('unable to leave vm') || text.includes('unable to leave voicemail');
+  }
+
+  return false;
+}
+
+function resolvePostCallTaskToComplete(
+  context: ScoutPrepContext,
+  stageLabel: string,
+): ScoutAthleteTask | null {
+  const postCallVoicemailVariant = resolvePostCallVoicemailVariant(stageLabel);
+  if (postCallVoicemailVariant) {
+    const voicemailTask = resolveVoicemailLifecycleTaskForCompletion(
+      context,
+      postCallVoicemailVariant,
+    );
+    if (voicemailTask) {
+      return voicemailTask;
+    }
+  }
+
+  if (!shouldCompleteTopmostPostCallTask(stageLabel) && !postCallVoicemailVariant) {
+    return null;
+  }
+
+  const incompleteTasks = getIncompleteAthleteTasks(context.tasks);
+  return (
+    incompleteTasks.find((candidate) => isBroadPostCallTaskMatch(candidate, stageLabel)) ||
+    getTopmostIncompleteAthleteTask(context.tasks)
+  );
+}
+
 function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
   return tasks
     .filter(
@@ -500,7 +596,7 @@ async function completeSentTextTask(args: {
   task: ScoutPortalTask;
   variant: VoicemailFollowUpVariant;
 }): Promise<void> {
-  const matchedTask = resolveVoicemailLifecycleTaskFromList(args.context, args.variant);
+  const matchedTask = resolveVoicemailLifecycleTaskForCompletion(args.context, args.variant);
   const taskLabel = getVoicemailLifecycleTaskTitle(args.variant) || args.variant;
   if (!matchedTask?.task_id) {
     throw new Error(`Missing task list item for ${taskLabel}`);
@@ -1577,7 +1673,7 @@ function VoicemailFollowUpRecipientForm({
                   });
                 }
                 : async () => {
-                  const followUpTask = resolveVoicemailLifecycleTaskFromList(
+                  const followUpTask = resolveVoicemailLifecycleTaskForCompletion(
                     context,
                     selectedVariant,
                   );
@@ -2653,33 +2749,12 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
 
       let taskCompletionMessage: string | null = null;
-      if (shouldCompleteTopmostPostCallTask(stageLabel)) {
-        const topmostIncompleteTask = getTopmostIncompleteAthleteTask(preUpdateContext.tasks);
-        if (!topmostIncompleteTask?.task_id) {
-          throw new Error(`Missing top incomplete task for ${stageLabel} completion`);
-        }
-        const result = await completeScoutPrepTaskAfterVoicemail({
-          athleteId,
-          athleteMainId,
-          contactTask: task.contact_id,
-          taskId: topmostIncompleteTask.task_id,
-          taskTitle: getTaskDisplayTitle(topmostIncompleteTask),
-          assignedOwner: topmostIncompleteTask.assigned_owner,
-          description: topmostIncompleteTask.description || getTaskDisplayTitle(topmostIncompleteTask),
-        });
-        taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
-      }
-
-      const postCallVoicemailVariant = resolvePostCallVoicemailVariant(stageLabel);
-      if (postCallVoicemailVariant) {
-        const postCallTask = resolveVoicemailLifecycleTaskFromList(
-          syncContext,
-          postCallVoicemailVariant,
-        );
+      const shouldClearPostCallTask =
+        shouldCompleteTopmostPostCallTask(stageLabel) || Boolean(resolvePostCallVoicemailVariant(stageLabel));
+      if (shouldClearPostCallTask) {
+        const postCallTask = resolvePostCallTaskToComplete(syncContext, stageLabel);
         if (!postCallTask?.task_id) {
-          throw new Error(
-            `Missing task list item for ${getVoicemailLifecycleTaskTitle(postCallVoicemailVariant) || stageLabel}`,
-          );
+          throw new Error(`Missing incomplete task for ${stageLabel} completion`);
         }
         const result = await completeScoutPrepTaskAfterVoicemail({
           athleteId,
@@ -3170,54 +3245,6 @@ function ScoutPrepDetail({
         }}
       />,
     );
-  }
-
-  async function handleDuplicateProfileCheck() {
-    if (!isCallAttempt1PortalTask(task)) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Call Attempt 1 only',
-      });
-      return;
-    }
-
-    const toast = await showLoadingToast('Dup Check', task.athlete_name);
-    try {
-      const result = await runDuplicateProfileResolutionForTask(task);
-      if (result.matchCount <= 1) {
-        toast.style = Toast.Style.Success;
-        toast.title = 'No duplicate found';
-        toast.message = task.athlete_name;
-        return;
-      }
-
-      const duplicateHadNoTask = result.skipped.some((item) =>
-        /No incomplete Call Attempt 1 task on duplicate profile/i.test(item.reason),
-      );
-      if (!result.completed.length && duplicateHadNoTask) {
-        toast.style = Toast.Style.Success;
-        toast.title = 'Duplicate found';
-        toast.message = 'Other profile has no task. Keep this one.';
-        return;
-      }
-
-      if (!result.completed.length && result.skipped.length) {
-        toast.style = Toast.Style.Failure;
-        toast.title = 'Duplicate unresolved';
-        toast.message = result.skipped[0]?.reason || 'No duplicate task updated';
-        return;
-      }
-
-      toast.style = result.skipped.length ? Toast.Style.Failure : Toast.Style.Success;
-      toast.title = result.skipped.length ? 'Duplicate partial' : 'Duplicate resolved';
-      toast.message = result.skipped.length
-        ? `${result.completed.length} closed, ${result.skipped.length} skipped`
-        : `${result.completed.length} duplicate closed`;
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Duplicate check failed';
-      toast.message = error instanceof Error ? error.message : String(error);
-    }
   }
 
   async function handleSyncCallPrepToNotion() {

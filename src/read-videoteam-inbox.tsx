@@ -517,7 +517,6 @@ Please limit the number of clips to a max of 35 and let me know when you have up
 
                 push(
                   <UpdateStageForm
-                    athleteId={resolvedContactId}
                     videoMsgId={String(message.video_msg_id)}
                     athleteName={athleteName}
                     onBack={pop}

@@ -14,7 +14,7 @@ export default function UpdateVideoProgress() {
 
   const feature = 'update-video-progress.submit';
 
-  async function readApiBody(response: Response) {
+  async function readApiBody(response: Awaited<ReturnType<typeof apiFetch>>) {
     const contentType = response?.headers?.get?.('content-type') || '';
     const text = await response.text();
     let json: any = null;

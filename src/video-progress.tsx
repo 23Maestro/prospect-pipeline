@@ -59,6 +59,7 @@ interface Preferences {
 
 export interface VideoProgressTask {
   id?: number; // video_msg_id for updates
+  source?: string;
   athlete_id: number;
   athlete_main_id?: string;
   athletename: string;

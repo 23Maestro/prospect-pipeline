@@ -78,6 +78,51 @@ def _pick_created_follow_up_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[s
     return sorted(candidates, key=sort_key, reverse=True)[0]
 
 
+async def _verify_sales_stage_persisted(
+    session: NPIDSession,
+    translator: LegacyTranslator,
+    athlete_id: str,
+    expected_stage: str,
+) -> str:
+    options_endpoint, options_params = translator.sales_stage_options_to_legacy(athlete_id=athlete_id)
+    options_response = await session.get(options_endpoint, params=options_params)
+    options_result = translator.parse_sales_stage_options_response(options_response.text)
+    selected_label = str(options_result.get("selected_label") or "").strip()
+
+    logger.info(
+        "SALES_STAGE_UPDATE %s",
+        {
+            "event": "SALES_STAGE_UPDATE",
+            "step": "readback",
+            "status": "success",
+            "feature": FEATURE,
+            "context": {
+                "athleteId": athlete_id,
+                "expectedStage": expected_stage,
+                "selectedLabel": selected_label or None,
+                "endpoint": options_endpoint,
+                "statusCode": options_response.status_code,
+                "bodyLength": len(options_response.text or ""),
+                "bodyPreview": (options_response.text or "")[:120],
+            },
+        },
+    )
+
+    if not selected_label or selected_label.lower() == "select":
+        raise HTTPException(
+            status_code=502,
+            detail="Sales stage did not persist; legacy readback is still Select",
+        )
+
+    if not translator.sales_stage_labels_match(expected_stage, selected_label):
+        raise HTTPException(
+            status_code=502,
+            detail=f"Sales stage readback mismatch: expected {expected_stage}, got {selected_label}",
+        )
+
+    return selected_label
+
+
 def _is_confirmation_call_task(task: Dict[str, Any]) -> bool:
     title = _normalize_text(task.get("title"))
     description = _normalize_text(task.get("description"))
@@ -365,6 +410,7 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
             stage=stage,
         )
         response = await session.post(endpoint, data=data)
+        legacy_stage = str(data.get("stage") or stage).strip()
         body_preview = (response.text or "")[:200]
         persisted_stage = ""
         if response.status_code >= 400:
@@ -393,7 +439,7 @@ async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest)
             session=session,
             translator=translator,
             athlete_id=athlete_id,
-            expected_stage=data.get("stage", stage),
+            expected_stage=legacy_stage,
         )
 
         logger.info(
