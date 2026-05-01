@@ -2,6 +2,7 @@
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'node:crypto';
+import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
@@ -45,29 +46,6 @@ function normalizeStageText(value) {
 
 function includesAny(haystack, needles) {
   return needles.some((needle) => haystack.includes(needle));
-}
-
-function normalizeOwnerName(value) {
-  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
-}
-
-function isTrackedOwner(value) {
-  return normalizeOwnerName(value) === normalizeOwnerName(TRACKED_OWNER_NAME);
-}
-
-function resolveTrackerOwnership(tasks) {
-  const taskList = Array.isArray(tasks) ? tasks : [];
-  const trackedTask = taskList.find((task) => isTrackedOwner(task?.assigned_owner));
-  const latestOwnerTask =
-    taskList.find((task) => !String(task?.completion_date || '').trim() && String(task?.assigned_owner || '').trim()) ||
-    taskList.find((task) => String(task?.assigned_owner || '').trim()) ||
-    null;
-
-  return {
-    isTrackedOwner: Boolean(trackedTask),
-    sourceOwner:
-      String(trackedTask?.assigned_owner || latestOwnerTask?.assigned_owner || '').trim() || null,
-  };
 }
 
 function parseAppointmentTitleOutcome(title) {
@@ -417,6 +395,10 @@ async function fetchAthleteTasks(row) {
   return Array.isArray(payload.tasks) ? payload.tasks : [];
 }
 
+async function fetchAthleteProfile(row) {
+  return apiFetch(`/athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true`).catch(() => ({}));
+}
+
 function buildDedupeKey(args) {
   return [
     args.source,
@@ -460,10 +442,11 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
   console.error(`[${index + 1}/${stateRows.length}] ${athleteName || row.athlete_key}`);
 
   try {
-    const [stagePayload, bookedMeetings, tasks] = await Promise.all([
+    const [stagePayload, bookedMeetings, tasks, resolvedProfile] = await Promise.all([
       apiFetch(`/sales/stages/${encodeURIComponent(row.athlete_id)}`),
       fetchAthleteBookedMeetings(row),
       fetchAthleteTasks(row),
+      fetchAthleteProfile(row),
     ]);
     const selectedStage = getSelectedSalesStage(stagePayload);
     const selectedStageLabel = selectedStage.label;
@@ -546,7 +529,19 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       outcome: appointmentStatus || nextTaskStatus,
     });
     const latestTask = tasks.find((task) => !String(task?.completion_date || '').trim()) || tasks[0] || null;
-    const trackerOwnership = resolveTrackerOwnership(tasks);
+    const trackerOwnership = resolveCallTrackerOwnership({
+      trackedOwnerName: TRACKED_OWNER_NAME,
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName,
+      tasks,
+      currentTaskId: row.current_task_id,
+      bookedMeeting,
+      resolvedProfile,
+      pipelineState: row,
+      appointmentId: row.current_appointment_id,
+      liveEventId,
+    });
 
     lifecycleEvents.push({
       id: randomUUID(),
@@ -577,6 +572,7 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         latest_task_owner: latestTask?.assigned_owner || null,
         tracker_owner: TRACKED_OWNER_NAME,
         tracker_source_owner: trackerOwnership.sourceOwner,
+        tracker_owner_proof: trackerOwnership.ownerProof,
         is_tracked_owner: trackerOwnership.isTrackedOwner,
         appointment_status: appointmentStatus,
         revenue_cents: revenueCents,
@@ -614,6 +610,7 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         appointment_status: appointmentStatus,
         tracker_owner: TRACKED_OWNER_NAME,
         tracker_source_owner: trackerOwnership.sourceOwner,
+        tracker_owner_proof: trackerOwnership.ownerProof,
         is_tracked_owner: trackerOwnership.isTrackedOwner,
       },
     });
@@ -632,6 +629,7 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       booked_event_title: bookedTitle,
       revenue_cents: revenueCents,
       source_owner: trackerOwnership.sourceOwner,
+      owner_proof: trackerOwnership.ownerProof,
       is_tracked_owner: trackerOwnership.isTrackedOwner,
     });
   } catch (error) {
@@ -642,6 +640,11 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
     });
     console.error(`  failed: ${failures[failures.length - 1].error}`);
   }
+}
+
+if (failures.length) {
+  console.error(JSON.stringify({ runId: RUN_ID, failures }, null, 2));
+  throw new Error(`Current sales-stage reconciliation failed before writes: ${failures.length} unresolved row(s)`);
 }
 
 for (const patch of statePatches) {

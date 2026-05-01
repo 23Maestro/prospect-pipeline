@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Call Tracker</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260501-week" />
   </head>
   <body>
     <main class="shell">
@@ -22,10 +22,18 @@
         </div>
       </header>
 
-      <section class="daily-grid" aria-label="Today">
+      <section class="daily-grid" aria-label="Current day">
         <div class="daily-panel">
           <div class="daily-head">
-            <h2>Today</h2>
+            <div class="period-toggle" aria-label="Current work week">
+              <button type="button" data-period="week-0" class="active">Mon</button>
+              <button type="button" data-period="week-1">Tue</button>
+              <button type="button" data-period="week-2">Wed</button>
+              <button type="button" data-period="week-3">Thu</button>
+              <button type="button" data-period="week-4">Fri</button>
+              <button type="button" data-period="week-total">Week</button>
+            </div>
+            <h2 id="periodTitle">Current Day</h2>
             <span id="todayLabel">Local</span>
           </div>
           <div class="daily-cards">
@@ -142,6 +150,6 @@
     </dialog>
 
     <script src="config.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260501-week"></script>
   </body>
 </html>

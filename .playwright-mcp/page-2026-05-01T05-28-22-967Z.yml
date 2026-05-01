@@ -1,0 +1,77 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - generic [ref=e5]:
+      - heading "Call Tracker" [level=1] [ref=e6]
+      - paragraph [ref=e7]: Loading
+    - generic [ref=e8]:
+      - generic [ref=e9]: Next check
+      - button "Refresh" [ref=e10] [cursor=pointer]
+  - region "Current day" [ref=e11]:
+    - generic [ref=e12]:
+      - generic [ref=e13]:
+        - generic "Current work week" [ref=e14]:
+          - button "Mon" [ref=e15] [cursor=pointer]
+          - button "Tue" [ref=e16] [cursor=pointer]
+          - button "Wed" [ref=e17] [cursor=pointer]
+          - button "Thu" [ref=e18] [cursor=pointer]
+          - button "Fri" [ref=e19] [cursor=pointer]
+          - button "Week" [ref=e20] [cursor=pointer]
+        - heading "Current Day" [level=2] [ref=e21]
+        - generic [ref=e22]: Local
+      - generic [ref=e23]:
+        - article [ref=e24]:
+          - generic [ref=e25]: Total Calls
+          - strong [ref=e26]: "0"
+        - article [ref=e27]:
+          - generic [ref=e28]: Contacts Made
+          - strong [ref=e29]: "0"
+        - article [ref=e30]:
+          - generic [ref=e31]: Meetings Set
+          - strong [ref=e32]: "0"
+        - article [ref=e33]:
+          - generic [ref=e34]: Set Rate
+          - strong [ref=e35]: 0%
+    - article "Next paycheck pending" [ref=e36]:
+      - generic [ref=e37]: Next Paycheck
+      - strong [ref=e38]: $0
+      - generic [ref=e39]:
+        - generic [ref=e40]: Base $0
+        - generic [ref=e41]: Commission $0
+  - region "Tracker totals" [ref=e42]:
+    - article [ref=e43]:
+      - generic [ref=e44]: Money
+      - strong [ref=e45]: $0
+    - article [ref=e46]:
+      - generic [ref=e47]: Closed Won
+      - strong [ref=e48]: "0"
+    - article [ref=e49]:
+      - generic [ref=e50]: Spoke With
+      - strong [ref=e51]: "0"
+    - article [ref=e52]:
+      - generic [ref=e53]: Dials
+      - strong [ref=e54]: "0"
+    - article [ref=e55]:
+      - generic [ref=e56]: Voicemail
+      - strong [ref=e57]: "0"
+    - article [ref=e58]:
+      - generic [ref=e59]: Appointments
+      - strong [ref=e60]: "0"
+  - generic [ref=e61]:
+    - generic [ref=e63]:
+      - heading "Outcomes" [level=2] [ref=e64]
+      - generic [ref=e65]: Syncing
+    - generic [ref=e67]:
+      - heading "Closed Won" [level=2] [ref=e68]
+      - generic [ref=e69]: 0%
+  - generic [ref=e70]:
+    - heading "Events" [level=2] [ref=e72]
+    - table [ref=e74]:
+      - rowgroup [ref=e75]:
+        - row "When Name Outcome Stage Event Money" [ref=e76]:
+          - columnheader "When" [ref=e77]
+          - columnheader "Name" [ref=e78]
+          - columnheader "Outcome" [ref=e79]
+          - columnheader "Stage" [ref=e80]
+          - columnheader "Event" [ref=e81]
+          - columnheader "Money" [ref=e82]
+      - rowgroup

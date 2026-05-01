@@ -258,6 +258,8 @@
     "backfill:current-pipeline-supabase": "node scripts/backfill-current-pipeline-to-supabase.mjs",
     "reconcile:booked-meetings-supabase": "node scripts/reconcile-booked-meetings-to-supabase.mjs",
     "reconcile:current-sales-stages-supabase": "node scripts/reconcile-current-sales-stages-to-supabase.mjs",
+    "repair:call-event-owner-proof": "node scripts/repair-call-event-owner-proof.mjs",
+    "test:call-tracker-ownership": "node --test scripts/call-tracker-ownership.test.mjs",
     "test:scout-prep-cache": "rm -rf /tmp/scout-prep-cache-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-cache-tests src/lib/scout-prep-cache.ts src/lib/scout-prep-cache.test.ts src/lib/npid-mcp-adapter.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/logger.ts src/types/video-team.ts && mkdir -p /tmp/scout-prep-cache-tests/node_modules/@raycast/api && printf \"exports.LocalStorage = { getItem: async () => undefined, setItem: async () => {} };\\n\" > /tmp/scout-prep-cache-tests/node_modules/@raycast/api/index.js && NODE_PATH=/tmp/scout-prep-cache-tests/node_modules:$PWD/node_modules node --test /tmp/scout-prep-cache-tests/lib/scout-prep-cache.test.js",
     "api": "cd npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
     "dev:all": "concurrently --kill-others -n \"RAY,API\" -c \"bgBlue.bold,bgMagenta.bold\" \"npm:dev\" \"npm:api\"",
