@@ -18,7 +18,7 @@ export type AppointmentTitleParseResult = {
   prefix: string | null;
 };
 
-const ENROLLMENT_PREFIX_PATTERN = /^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?\)\s*/i;
+const ENROLLMENT_PREFIX_PATTERN = /^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?[^)]*\)\s*/i;
 const RESCHEDULE_PENDING_PREFIX_PATTERN = /^\s*\(RSP\)(?:\*\d+)?\s*/i;
 const CLOSE_LOST_PREFIX_PATTERN = /^\s*\(CL\)(?:\*\d+)?\s*/i;
 const FOLLOW_UP_PREFIX_PATTERN = /^\s*\(FU\)(?:\*\d+)?\s*/i;

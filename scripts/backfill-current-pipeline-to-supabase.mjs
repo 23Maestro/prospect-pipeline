@@ -2,9 +2,12 @@
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
+import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
+const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const {
   projectRef,
   url: SUPABASE_URL,
@@ -66,6 +69,12 @@ function parseLegacyTaskDate(value) {
 
   const parsed = new Date(year, month, day, hour, minute);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function daysOld(value) {
+  const parsed = parseLegacyTaskDate(value);
+  if (!parsed) return 0;
+  return Math.floor((Date.now() - new Date(parsed).getTime()) / MS_PER_DAY);
 }
 
 function selectCurrentAndPreviousMeetings(events) {
@@ -218,6 +227,28 @@ function compareBackfillCandidates(left, right) {
   return rightTaskId - leftTaskId;
 }
 
+function shouldSkipStaleActiveCandidate(candidate, previousMeeting) {
+  const meetingAge = daysOld(previousMeeting?.end || previousMeeting?.start);
+  const taskAge = daysOld(candidate.dueAt);
+
+  if (candidate.taskStatus === 'call_attempt_3' && taskAge >= 3) {
+    return 'stale_never_spoke_to_3_days';
+  }
+
+  if (candidate.taskStatus === 'no_show' && Math.max(meetingAge, taskAge) >= 7) {
+    return 'stale_no_show_7_days';
+  }
+
+  if (
+    (candidate.taskStatus === 'spoke_to_follow_up' || candidate.taskStatus === 'meeting_follow_up') &&
+    Math.max(meetingAge, taskAge) >= 7
+  ) {
+    return 'stale_follow_up_7_days';
+  }
+
+  return null;
+}
+
 const scoutTaskPayload = await apiFetch('/scout/tasks');
 const pipelineTasks = Array.isArray(scoutTaskPayload.tasks) ? scoutTaskPayload.tasks : [];
 
@@ -226,6 +257,8 @@ const appointmentsById = new Map();
 const lifecycleEvents = [];
 const stateCandidatesByAthlete = new Map();
 const failures = [];
+const staleSkipped = [];
+const ownerSkipped = [];
 
 for (const [index, pipelineTask] of pipelineTasks.entries()) {
   const athleteId = String(
@@ -292,6 +325,40 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
           : currentMeeting
             ? 'scheduled'
             : null;
+    const ownership = resolveCallTrackerOwnership({
+      trackedOwnerName: TRACKED_OWNER_NAME,
+      athleteId,
+      athleteMainId,
+      athleteName:
+        String(resolvePayload.athlete_name || '').trim() ||
+        String(pipelineTask.athlete_name || '').trim() ||
+        athleteId,
+      tasks: athleteTasks,
+      currentTaskId: String(pipelineTask.task_id || '').trim() || null,
+      bookedMeeting: currentMeeting || previousMeeting || null,
+      resolvedProfile: resolvePayload,
+      pipelineState: {
+        head_scout:
+          String(resolvePayload.head_scout || '').trim() ||
+          String(currentMeeting?.assigned_owner || previousMeeting?.assigned_owner || '').trim() ||
+          null,
+      },
+      appointmentId: currentMeeting?.event_id || previousMeeting?.event_id || null,
+      liveEventId: currentMeeting?.event_id || previousMeeting?.event_id || null,
+    });
+    if (!ownership.isTrackedOwner) {
+      ownerSkipped.push({
+        athlete_key: athleteKey,
+        athlete_name:
+          String(resolvePayload.athlete_name || '').trim() ||
+          String(pipelineTask.athlete_name || '').trim() ||
+          athleteId,
+        task_id: String(pipelineTask.task_id || '').trim() || null,
+        source_owner: ownership.sourceOwner,
+        owner_proof: ownership.ownerProof,
+      });
+      continue;
+    }
 
     athletesByKey.set(athleteKey, {
       athlete_key: athleteKey,
@@ -358,6 +425,17 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       dueAt,
       taskId: String(pipelineTask.task_id || '').trim() || null,
     };
+    const staleReason = shouldSkipStaleActiveCandidate(candidate, previousMeeting);
+    if (staleReason) {
+      staleSkipped.push({
+        athlete_key: athleteKey,
+        athlete_name: athleteName,
+        task_id: candidate.taskId,
+        task_status: candidate.taskStatus,
+        reason: staleReason,
+      });
+      continue;
+    }
 
     const existingCandidates = stateCandidatesByAthlete.get(athleteKey) || [];
     existingCandidates.push(candidate);
@@ -409,6 +487,8 @@ console.log(
       appointmentsUpserted: appointmentsById.size,
       lifecycleEventsInserted: lifecycleEvents.length,
       athletePipelineStateUpserted: athletePipelineStateRows.length,
+      staleSkipped,
+      ownerSkipped,
       failures,
       distinctCurrentStatuses: [
         ...new Set(athletePipelineStateRows.map((row) => row.task_status).filter(Boolean)),

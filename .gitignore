@@ -370,3 +370,6 @@ raycast-env.d.ts
 
 # Local SQLite cache (generated, not committed)
 progress.db
+
+# Local Netlify folder
+.netlify

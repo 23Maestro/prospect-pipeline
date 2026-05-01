@@ -235,22 +235,51 @@ function isMeaningfulEvent(row) {
   return !hiddenDefaultOutcomes.has(row.tracker_outcome);
 }
 
-function periodScopedRows(rows) {
+function periodScopedRows(rows, dateKeyForRow = eventDateKey) {
   if (state.activePeriod === 'week-total') {
     const weekStart = localDateKey(currentWeekdayDate(0));
     const weekEnd = localDateKey(currentWeekdayDate(6));
     return rows.filter((row) => {
-      const rowKey = localDateKey(row.occurred_at);
+      const rowKey = dateKeyForRow(row);
       return rowKey >= weekStart && rowKey <= weekEnd;
     });
   }
 
   const periodKey = localDateKey(activePeriodDate());
-  return rows.filter((row) => localDateKey(row.occurred_at) === periodKey);
+  return rows.filter((row) => dateKeyForRow(row) === periodKey);
 }
 
 function scopedRows() {
   return periodScopedRows(displayRows());
+}
+
+function scopedActivityRows() {
+  return periodScopedRows(displayRows(), (row) => localDateKey(row.occurred_at));
+}
+
+function eventDateKey(row) {
+  if (row.tracker_outcome === 'meeting_set') {
+    return localDateKey(row.occurred_at);
+  }
+  if (isPostMeetingResult(row) || (meetingOutcomes.has(row.tracker_outcome) && row.tracker_outcome !== 'meeting_set')) {
+    return localDateKey(row.event_at || row.occurred_at);
+  }
+  return localDateKey(row.occurred_at);
+}
+
+function isPostMeetingResult(row) {
+  const stage = normalizeKey(row.raw_crm_stage || row.raw_task_status);
+  const title = normalizeKey(row.booked_event_title);
+  return (
+    stage.startsWith('actual meeting') ||
+    stage.startsWith('meeting result') ||
+    title.startsWith('(fu)') ||
+    title.startsWith('(enr') ||
+    title.startsWith('(rsp)') ||
+    title.startsWith('(ns)') ||
+    title.startsWith('(can)') ||
+    title.startsWith('(cl)')
+  );
 }
 
 function displayRows() {
@@ -309,10 +338,10 @@ function rowQuality(row) {
 }
 
 function renderPeriod() {
-  const rows = scopedRows();
+  const rows = scopedActivityRows();
   const meetingsSet = rows.filter((row) => row.tracker_outcome === 'meeting_set').length;
-  const calls = rows.filter((row) => callActivityOutcomes.has(row.tracker_outcome)).length + meetingsSet;
-  const contacts = rows.filter((row) => contactMadeOutcomes.has(row.tracker_outcome)).length + meetingsSet;
+  const calls = rows.filter(isDailyCallActivity).length + meetingsSet;
+  const contacts = rows.filter(isDailyContact).length + meetingsSet;
   const setRate = contacts ? Math.round((meetingsSet / contacts) * 100) : 0;
 
   setText('periodTitle', activePeriodLabel());
@@ -325,6 +354,14 @@ function renderPeriod() {
   document.querySelectorAll('[data-period]').forEach((button) => {
     button.classList.toggle('active', button.dataset.period === state.activePeriod);
   });
+}
+
+function isDailyCallActivity(row) {
+  return callActivityOutcomes.has(row.tracker_outcome) && !isPostMeetingResult(row);
+}
+
+function isDailyContact(row) {
+  return contactMadeOutcomes.has(row.tracker_outcome) && !isPostMeetingResult(row);
 }
 
 function nextPayDate(now = new Date()) {

@@ -1,7 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+import hmac
 import logging
 import os
 from pathlib import Path
@@ -22,6 +23,7 @@ from app.routers.tasks import router as tasks_router
 from app.routers.scout import router as scout_router
 from app.routers.sales import router as sales_router
 from app.routers.calendar import router as calendar_router
+from app.routers.mobile import router as mobile_router
 
 LOG_DIR = Path(os.getenv("RAYCAST_LOG_DIR", "/Users/singleton23/raycast_logs"))
 LOG_FILE = LOG_DIR / "npid-api-layer.log"
@@ -51,7 +53,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="NPID API Bridge", version="1.0")
 
 STATIC_DIR = Path(__file__).parent / "app" / "static"
-DEFAULT_ALLOWED_ORIGINS = "https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000"
+DEFAULT_ALLOWED_ORIGINS = "https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8888,http://127.0.0.1:8888"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -60,6 +62,17 @@ def _parse_allowed_origins() -> list[str]:
     origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
     return origins or ["https://recruiting-api.prospectid.com"]
 
+
+def _host_without_port(value: str | None) -> str:
+    return (value or "").split(":", 1)[0].strip().lower()
+
+
+def _is_public_tailscale_request(request: Request) -> bool:
+    host = _host_without_port(request.headers.get("host"))
+    forwarded_host = _host_without_port(request.headers.get("x-forwarded-host"))
+    return host.endswith(".ts.net") or forwarded_host.endswith(".ts.net")
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_parse_allowed_origins(),
@@ -67,6 +80,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def require_token_for_public_tailscale_requests(request: Request, call_next):
+    if request.url.path == "/health" or not _is_public_tailscale_request(request):
+        return await call_next(request)
+
+    token = os.getenv("PROSPECT_API_TOKEN", "").strip()
+    if not token:
+        return JSONResponse(
+            {"detail": "PROSPECT_API_TOKEN is not configured"},
+            status_code=503,
+        )
+
+    expected = f"Bearer {token}"
+    authorization = request.headers.get("authorization")
+    if not authorization or not hmac.compare_digest(authorization, expected):
+        return JSONResponse(
+            {"detail": "Missing or invalid mobile API token"},
+            status_code=401,
+        )
+
+    return await call_next(request)
 
 
 @app.on_event("startup")
@@ -154,3 +190,4 @@ app.include_router(tasks_router, prefix="/api/v1/tasks", tags=["tasks"])
 app.include_router(scout_router, prefix="/api/v1/scout", tags=["scout"])
 app.include_router(sales_router, prefix="/api/v1/sales", tags=["sales"])
 app.include_router(calendar_router, prefix="/api/v1/calendar", tags=["calendar"])
+app.include_router(mobile_router, prefix="/api/v1/mobile", tags=["mobile"])

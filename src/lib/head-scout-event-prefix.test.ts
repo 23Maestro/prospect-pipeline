@@ -122,6 +122,16 @@ test('(ENR $99) titles parse enrollment amount and clean title', () => {
   });
 });
 
+test('(ENR $99 - note) titles parse enrollment amount and clean title', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(ENR $99 - Post Date) Zyon Wicks Football 2027 TX'), {
+    originalTitle: '(ENR $99 - Post Date) Zyon Wicks Football 2027 TX',
+    cleanTitle: 'Zyon Wicks Football 2027 TX',
+    outcome: 'terminal_enrollment',
+    revenueCents: 9900,
+    prefix: '(ENR $99 - Post Date)',
+  });
+});
+
 test('(ENR) title without amount keeps enrollment with null revenue', () => {
   assert.deepEqual(parseAppointmentTitleOutcome('(ENR) Zyon Wicks Football 2027 TX'), {
     originalTitle: '(ENR) Zyon Wicks Football 2027 TX',

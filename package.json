@@ -253,6 +253,7 @@
     "test:head-scout-schedules": "rm -rf /tmp/head-scout-schedules-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/head-scout-schedules-tests src/lib/head-scout-schedules.ts src/lib/head-scout-schedules.test.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/python-env.ts src/lib/logger.ts src/lib/scout-prep-ai.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts && NODE_PATH=$PWD/node_modules node --test /tmp/head-scout-schedules-tests/lib/head-scout-schedules.test.js",
     "test:supabase-lifecycle": "rm -rf /tmp/supabase-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/supabase-lifecycle-tests src/lib/supabase-lifecycle.ts src/lib/supabase-lifecycle.test.ts src/lib/logger.ts && mkdir -p /tmp/supabase-lifecycle-tests/node_modules/@raycast/api && printf \"exports.getPreferenceValues = () => ({});\\n\" > /tmp/supabase-lifecycle-tests/node_modules/@raycast/api/index.js && NODE_PATH=/tmp/supabase-lifecycle-tests/node_modules:$PWD/node_modules node --test /tmp/supabase-lifecycle-tests/supabase-lifecycle.test.js",
     "sync:supabase-env": "node scripts/sync-supabase-env.mjs",
+    "sync:supabase-pipeline": "bash scripts/sync-supabase-pipeline.sh",
     "sync:call-tracker-config": "node scripts/write-call-tracker-config.mjs",
     "rotate:supabase-server-key": "node scripts/rotate-supabase-server-key.mjs",
     "backfill:current-pipeline-supabase": "node scripts/backfill-current-pipeline-to-supabase.mjs",

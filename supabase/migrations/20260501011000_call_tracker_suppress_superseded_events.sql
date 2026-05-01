@@ -1,0 +1,188 @@
+create or replace view call_tracker_events as
+with classified as (
+  select
+    ce.id,
+    ce.athlete_key,
+    ce.athlete_id,
+    ce.athlete_main_id,
+    ce.athlete_name,
+    ce.occurred_at,
+    ce.source,
+    ce.raw_crm_stage,
+    ce.raw_task_status,
+    ce.raw_event_type,
+    ce.appointment_id,
+    ce.booked_event_title,
+    ce.revenue_cents,
+    case
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%close won%'
+        or lower(coalesce(ce.raw_crm_stage, '')) like '%closed won%'
+        or lower(coalesce(ce.booked_event_title, '')) like '(enr%' then 'closed_won'
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%close lost%'
+        or lower(coalesce(ce.raw_crm_stage, '')) like '%closed lost%'
+        or lower(coalesce(ce.booked_event_title, '')) like '(cl)%' then 'closed_lost'
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%res.%pending%'
+        or lower(coalesce(ce.raw_crm_stage, '')) like '%reschedule%pending%'
+        or lower(coalesce(ce.booked_event_title, '')) like '(rsp)%' then 'reschedule_pending'
+      when lower(coalesce(ce.raw_crm_stage, '')) = 'rescheduled'
+        or lower(coalesce(ce.raw_crm_stage, '')) like '%result%rescheduled%' then 'rescheduled'
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%canceled%'
+        or lower(coalesce(ce.booked_event_title, '')) like '(can)%' then 'canceled'
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%meeting set%' then 'meeting_set'
+      when lower(coalesce(ce.raw_crm_stage, '')) like 'spoke to%'
+        or lower(coalesce(ce.raw_crm_stage, '')) like '%follow up%'
+        or lower(coalesce(ce.booked_event_title, '')) like '(fu)%' then 'spoke_follow_up'
+      when lower(coalesce(ce.raw_crm_stage, '')) in (
+        'left voice mail 1',
+        'left voicemail 1',
+        'left voice mail 2',
+        'left voicemail 2',
+        'never spoke to'
+      ) then 'voicemail'
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%not interested%' then 'not_interested'
+      when lower(coalesce(ce.raw_crm_stage, '')) like '%no show%'
+        or lower(coalesce(ce.booked_event_title, '')) like '(ns)%' then 'no_show'
+      else 'needs_review'
+    end as tracker_outcome,
+    ce.payload_json,
+    ce.created_at,
+    ce.dedupe_key,
+    ce.live_event_id,
+    ce.source_owner,
+    ce.is_tracked_owner,
+    coalesce(
+      nullif(ce.payload_json->>'booked_event_start', '')::timestamp at time zone 'America/New_York',
+      appt.starts_at,
+      ce.occurred_at
+    ) as event_at,
+    ce.owner_proof
+  from call_events ce
+  left join appointments appt
+    on appt.id = coalesce(nullif(ce.live_event_id, ''), nullif(ce.appointment_id, ''))
+    or appt.id = nullif(ce.appointment_id, '')
+  where ce.is_tracked_owner
+    and nullif(ce.source_owner, '') is not null
+    and nullif(ce.owner_proof, '') is not null
+),
+trusted as (
+  select current_row.*
+  from classified current_row
+  where current_row.tracker_outcome <> 'needs_review'
+    and not exists (
+      select 1
+      from classified stronger
+      where stronger.athlete_key = current_row.athlete_key
+        and stronger.tracker_outcome = current_row.tracker_outcome
+        and coalesce(stronger.raw_event_type, '') = coalesce(current_row.raw_event_type, '')
+        and stronger.id <> current_row.id
+        and current_row.dedupe_key is null
+        and (
+          nullif(stronger.dedupe_key, '') is not null
+          or nullif(stronger.live_event_id, '') is not null
+        )
+        and (
+          nullif(current_row.appointment_id, '') is null
+          or nullif(stronger.appointment_id, '') = nullif(current_row.appointment_id, '')
+          or nullif(stronger.live_event_id, '') = nullif(current_row.appointment_id, '')
+          or lower(coalesce(stronger.booked_event_title, '')) = lower(coalesce(current_row.booked_event_title, ''))
+        )
+    )
+),
+ranked as (
+  select
+    trusted.*,
+    row_number() over (
+      partition by
+        case
+          when tracker_outcome in (
+            'meeting_set',
+            'reschedule_pending',
+            'rescheduled',
+            'canceled',
+            'closed_won',
+            'closed_lost',
+            'no_show'
+          ) then concat_ws(
+            '|',
+            athlete_key,
+            tracker_outcome,
+            coalesce(nullif(live_event_id, ''), nullif(appointment_id, ''), lower(coalesce(booked_event_title, '')), event_at::date::text)
+          )
+          when nullif(dedupe_key, '') is not null then dedupe_key
+          else id::text
+        end
+      order by
+        (revenue_cents is not null) desc,
+        (booked_event_title is not null) desc,
+        (live_event_id is not null) desc,
+        created_at desc,
+        id desc
+    ) as tracker_rank
+  from trusted
+)
+select
+  id,
+  athlete_key,
+  athlete_id,
+  athlete_main_id,
+  athlete_name,
+  occurred_at,
+  source,
+  raw_crm_stage,
+  raw_task_status,
+  raw_event_type,
+  appointment_id,
+  booked_event_title,
+  revenue_cents,
+  tracker_outcome,
+  payload_json,
+  created_at,
+  dedupe_key,
+  live_event_id,
+  source_owner,
+  is_tracked_owner,
+  event_at,
+  owner_proof
+from ranked
+where tracker_rank = 1;
+
+create or replace view call_tracker_summary as
+select
+  count(*)::integer as total_events,
+  count(*) filter (
+    where tracker_outcome in (
+      'spoke_follow_up',
+      'meeting_set',
+      'reschedule_pending',
+      'rescheduled',
+      'canceled',
+      'closed_won',
+      'closed_lost',
+      'not_interested'
+    )
+  )::integer as spoke_with,
+  count(*) filter (where tracker_outcome = 'voicemail')::integer as voicemail_only,
+  count(*) filter (where tracker_outcome = 'meeting_set')::integer as meetings_set,
+  count(*) filter (where tracker_outcome = 'reschedule_pending')::integer as reschedule_pending,
+  count(*) filter (where tracker_outcome = 'closed_won')::integer as closed_won,
+  coalesce(sum(revenue_cents) filter (where tracker_outcome = 'closed_won'), 0)::integer as money_earned_cents,
+  min(occurred_at) as first_event_at,
+  max(occurred_at) as last_event_at,
+  count(distinct appointment_id) filter (where appointment_id is not null)::integer as appointments_tracked,
+  count(*) filter (
+    where tracker_outcome in (
+      'meeting_set',
+      'reschedule_pending',
+      'rescheduled',
+      'canceled',
+      'closed_won',
+      'closed_lost',
+      'no_show',
+      'spoke_follow_up'
+    )
+  )::integer as meeting_outcomes_total,
+  count(*) filter (where tracker_outcome = 'rescheduled')::integer as rescheduled,
+  count(*) filter (where tracker_outcome = 'canceled')::integer as canceled,
+  count(*) filter (where tracker_outcome = 'no_show')::integer as no_show,
+  count(*) filter (where tracker_outcome = 'needs_review')::integer as needs_review
+from call_tracker_events;

@@ -8,6 +8,7 @@ import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
 const LOCAL_TIME_ZONE = 'America/New_York';
 const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
 process.env.TZ ||= LOCAL_TIME_ZONE;
 const {
   projectRef,
@@ -59,7 +60,7 @@ function parseAppointmentTitleOutcome(title) {
   };
   if (!originalTitle) return active;
 
-  const enrollmentMatch = originalTitle.match(/^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?\)\s*/i);
+  const enrollmentMatch = originalTitle.match(/^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?[^)]*\)\s*/i);
   if (enrollmentMatch) {
     const revenue = enrollmentMatch[1] ? Number.parseFloat(enrollmentMatch[1]) : Number.NaN;
     return {
@@ -224,6 +225,111 @@ function crmStageForOutcome(titleOutcome, selectedStage) {
   return trimmedStage;
 }
 
+function shouldArchiveReconciledState(titleOutcome) {
+  return new Set([
+    'terminal_enrollment',
+    'terminal_close_lost',
+    'soft_archive_no_show',
+    'soft_archive_canceled',
+    'soft_archive_follow_up',
+  ]).has(titleOutcome);
+}
+
+function parseLooseDate(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const direct = new Date(trimmed);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const match = trimmed.match(
+    /^(?:[A-Za-z]{3}\s+)?(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2})\s*(AM|PM))?$/i,
+  );
+  if (!match) return null;
+
+  const month = Number.parseInt(match[1], 10) - 1;
+  const day = Number.parseInt(match[2], 10);
+  const yearValue = Number.parseInt(match[3], 10);
+  const year = match[3].length === 2 ? 2000 + yearValue : yearValue;
+  let hour = match[4] ? Number.parseInt(match[4], 10) : 0;
+  const minute = match[5] ? Number.parseInt(match[5], 10) : 0;
+  const meridiem = String(match[6] || '').toUpperCase();
+  if (meridiem === 'PM' && hour < 12) hour += 12;
+  if (meridiem === 'AM' && hour === 12) hour = 0;
+  const parsed = new Date(year, month, day, hour, minute);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function daysOldFrom(value, nowMs = Date.now()) {
+  const parsed = parseLooseDate(value);
+  if (!parsed) return 0;
+  return Math.floor((nowMs - parsed.getTime()) / MS_PER_DAY);
+}
+
+function latestTaskDate(task) {
+  return (
+    task?.due_date ||
+    task?.updated_at ||
+    task?.created_at ||
+    task?.completion_date ||
+    null
+  );
+}
+
+function staleActiveStateDecision(args) {
+  const { row, selectedStageLabel, parsedTitle, bookedMeeting, latestTask } = args;
+  const stageText = normalizeStageText(
+    [
+      selectedStageLabel,
+      row.crm_stage,
+      row.task_status,
+      row.current_task_title,
+      latestTask?.title,
+    ].filter(Boolean).join(' '),
+  );
+  const eventAge = daysOldFrom(bookedMeeting?.end || bookedMeeting?.start || row.updated_at);
+  const taskAge = daysOldFrom(latestTaskDate(latestTask) || row.updated_at);
+
+  if (parsedTitle && shouldArchiveReconciledState(parsedTitle.outcome)) {
+    return {
+      shouldArchive: true,
+      reason: `archived_${parsedTitle.outcome}`,
+    };
+  }
+
+  if (stageText.includes('never spoke to') || row.task_status === 'call_attempt_3') {
+    return {
+      shouldArchive: taskAge >= 3,
+      reason: taskAge >= 3 ? 'stale_never_spoke_to_3_days' : 'keep_never_spoke_to',
+    };
+  }
+
+  if (stageText.includes('no show') || row.task_status === 'no_show') {
+    return {
+      shouldArchive: eventAge >= 7 || taskAge >= 7,
+      reason: eventAge >= 7 || taskAge >= 7 ? 'stale_no_show_7_days' : 'keep_no_show_under_7_days',
+    };
+  }
+
+  if (stageText.includes('follow up') || row.task_status === 'meeting_follow_up') {
+    return {
+      shouldArchive: eventAge >= 7 || taskAge >= 7,
+      reason: eventAge >= 7 || taskAge >= 7 ? 'stale_follow_up_7_days' : 'keep_follow_up_under_7_days',
+    };
+  }
+
+  if (stageText.includes('rescheduled') || stageText.includes('res pending') || stageText.includes('reschedule pending')) {
+    const hasFutureBookedMeeting = parseLooseDate(bookedMeeting?.start)?.getTime() > Date.now();
+    return {
+      shouldArchive: !hasFutureBookedMeeting && (eventAge >= 7 || taskAge >= 7),
+      reason: !hasFutureBookedMeeting && (eventAge >= 7 || taskAge >= 7)
+        ? 'stale_reschedule_7_days_without_future_meeting'
+        : 'keep_reschedule_pending',
+    };
+  }
+
+  return { shouldArchive: false, reason: 'keep_active_state' };
+}
+
 function parseMeetingEnd(event) {
   const rawEnd = String(event?.end || '').trim();
   if (!rawEnd) return null;
@@ -366,6 +472,18 @@ async function supabasePatch(table, matchColumn, matchValue, row) {
   );
 }
 
+async function supabaseDelete(table, matchColumn, matchValue) {
+  await supabaseRequest(
+    `${encodeURIComponent(table)}?${encodeURIComponent(matchColumn)}=eq.${encodeURIComponent(matchValue)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Prefer: 'return=minimal',
+      },
+    },
+  );
+}
+
 function getSelectedSalesStage(payload) {
   const options = Array.isArray(payload?.options) ? payload.options : [];
   const selected = options.find((option) => option?.selected);
@@ -431,11 +549,20 @@ const athleteNameByKey = new Map(
 const lifecycleEvents = [];
 const callEvents = [];
 const statePatches = [];
+const stateDeletes = [];
 const appointmentPatches = [];
 const failures = [];
 const updated = [];
 const unchanged = [];
+const cleaned = [];
 const now = new Date().toISOString();
+
+function queueStateDelete(athleteKey, reason) {
+  const key = String(athleteKey || '').trim();
+  if (!key) return;
+  if (stateDeletes.some((entry) => entry.athleteKey === key)) return;
+  stateDeletes.push({ athleteKey: key, reason });
+}
 
 for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()) {
   const athleteName = athleteNameByKey.get(String(row.athlete_key || '').trim()) || '';
@@ -450,13 +577,46 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
     ]);
     const selectedStage = getSelectedSalesStage(stagePayload);
     const selectedStageLabel = selectedStage.label;
+    const latestTask = tasks.find((task) => !String(task?.completion_date || '').trim()) || tasks[0] || null;
     const reconciliationEvent = selectReconciliationEvent(
       bookedMeetings,
       row.current_appointment_id,
       selectedStageLabel,
     );
+    const fallbackRetention = staleActiveStateDecision({
+      row,
+      selectedStageLabel,
+      parsedTitle: { outcome: 'active' },
+      bookedMeeting: null,
+      latestTask,
+    });
+    const trackerOwnership = resolveCallTrackerOwnership({
+      trackedOwnerName: TRACKED_OWNER_NAME,
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName,
+      tasks,
+      currentTaskId: row.current_task_id,
+      bookedMeeting: reconciliationEvent?.event || null,
+      resolvedProfile,
+      pipelineState: row,
+      appointmentId: row.current_appointment_id,
+      liveEventId: reconciliationEvent?.event?.event_id || null,
+    });
 
     if (!selectedStageLabel && !reconciliationEvent) {
+      if (!trackerOwnership.isTrackedOwner || fallbackRetention.shouldArchive) {
+        const reason = !trackerOwnership.isTrackedOwner ? 'not_tracked_owner' : fallbackRetention.reason;
+        queueStateDelete(row.athlete_key, reason);
+        cleaned.push({
+          athlete_key: row.athlete_key,
+          athlete_name: athleteName,
+          reason,
+          source_owner: trackerOwnership.sourceOwner,
+          owner_proof: trackerOwnership.ownerProof,
+        });
+        continue;
+      }
       unchanged.push({
         athlete_key: row.athlete_key,
         athlete_name: athleteName,
@@ -466,6 +626,20 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
     }
 
     if (!reconciliationEvent) {
+      if (!trackerOwnership.isTrackedOwner || fallbackRetention.shouldArchive) {
+        const reason = !trackerOwnership.isTrackedOwner ? 'not_tracked_owner' : fallbackRetention.reason;
+        queueStateDelete(row.athlete_key, reason);
+        cleaned.push({
+          athlete_key: row.athlete_key,
+          athlete_name: athleteName,
+          reason,
+          selected_sales_stage: selectedStageLabel,
+          source_owner: trackerOwnership.sourceOwner,
+          owner_proof: trackerOwnership.ownerProof,
+          latest_task_owner: latestTask?.assigned_owner || null,
+        });
+        continue;
+      }
       unchanged.push({
         athlete_key: row.athlete_key,
         athlete_name: athleteName,
@@ -488,9 +662,30 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       String(nextTaskStatus || '').trim() !== String(row.task_status || '').trim();
     const liveEventChanged =
       liveEventId && liveEventId !== String(row.current_appointment_id || '').trim();
-    const hasOutcome = parsedTitle.outcome !== 'active';
+    const shouldArchiveActiveState = shouldArchiveReconciledState(parsedTitle.outcome);
+    const retentionDecision = staleActiveStateDecision({
+      row,
+      selectedStageLabel,
+      parsedTitle,
+      bookedMeeting,
+      latestTask,
+    });
 
-    if (!stageChanged && !liveEventChanged && !hasOutcome) {
+    if (!trackerOwnership.isTrackedOwner) {
+      queueStateDelete(row.athlete_key, 'not_tracked_owner');
+      cleaned.push({
+        athlete_key: row.athlete_key,
+        athlete_name: athleteName,
+        reason: 'not_tracked_owner',
+        source_owner: trackerOwnership.sourceOwner,
+        owner_proof: trackerOwnership.ownerProof,
+        booked_event_owner: bookedMeeting?.assigned_owner || null,
+        latest_task_owner: latestTask?.assigned_owner || null,
+      });
+      continue;
+    }
+
+    if (!stageChanged && !liveEventChanged && !shouldArchiveActiveState && !retentionDecision.shouldArchive) {
       unchanged.push({
         athlete_key: row.athlete_key,
         athlete_name: athleteName,
@@ -500,20 +695,12 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       continue;
     }
 
-    statePatches.push({
-      athleteKey: row.athlete_key,
-      row: {
-        crm_stage: nextCrmStage,
-        task_status: nextTaskStatus,
-        updated_at: now,
-      },
-    });
-
     if (row.current_appointment_id && appointmentStatus) {
       appointmentPatches.push({
         appointmentId: row.current_appointment_id,
         row: {
           status: appointmentStatus,
+          starts_at: String(bookedMeeting?.start || '').trim() || undefined,
           updated_at: now,
         },
       });
@@ -528,20 +715,23 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       rawEventType,
       outcome: appointmentStatus || nextTaskStatus,
     });
-    const latestTask = tasks.find((task) => !String(task?.completion_date || '').trim()) || tasks[0] || null;
-    const trackerOwnership = resolveCallTrackerOwnership({
-      trackedOwnerName: TRACKED_OWNER_NAME,
-      athleteId: row.athlete_id,
-      athleteMainId: row.athlete_main_id,
-      athleteName,
-      tasks,
-      currentTaskId: row.current_task_id,
-      bookedMeeting,
-      resolvedProfile,
-      pipelineState: row,
-      appointmentId: row.current_appointment_id,
-      liveEventId,
-    });
+
+    if (shouldArchiveActiveState || retentionDecision.shouldArchive) {
+      queueStateDelete(
+        row.athlete_key,
+        shouldArchiveActiveState ? `archived_${parsedTitle.outcome}` : retentionDecision.reason,
+      );
+    } else {
+      statePatches.push({
+        athleteKey: row.athlete_key,
+        row: {
+          crm_stage: nextCrmStage,
+          task_status: nextTaskStatus,
+          current_appointment_id: liveEventId || row.current_appointment_id || null,
+          updated_at: now,
+        },
+      });
+    }
 
     lifecycleEvents.push({
       id: randomUUID(),
@@ -606,6 +796,8 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         stored_appointment_id: row.current_appointment_id || null,
         live_event_id: liveEventId,
         clean_booked_event_title: parsedTitle.cleanTitle || null,
+        booked_event_start: bookedMeeting?.start || null,
+        booked_event_end: bookedMeeting?.end || null,
         booked_event_outcome: parsedTitle.outcome,
         appointment_status: appointmentStatus,
         tracker_owner: TRACKED_OWNER_NAME,
@@ -632,6 +824,18 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       owner_proof: trackerOwnership.ownerProof,
       is_tracked_owner: trackerOwnership.isTrackedOwner,
     });
+
+    if (shouldArchiveActiveState || retentionDecision.shouldArchive) {
+      cleaned.push({
+        athlete_key: row.athlete_key,
+        athlete_name: athleteName,
+        reason: shouldArchiveActiveState ? `archived_${parsedTitle.outcome}` : retentionDecision.reason,
+        crm_stage: nextCrmStage,
+        task_status: nextTaskStatus,
+        live_event_id: liveEventId,
+        booked_event_title: bookedTitle,
+      });
+    }
   } catch (error) {
     failures.push({
       athlete_key: row.athlete_key,
@@ -658,6 +862,10 @@ for (const patch of appointmentPatches) {
 await supabaseWrite('lifecycle_events', lifecycleEvents);
 await supabaseWrite('call_events', callEvents, { onConflict: 'dedupe_key' });
 
+for (const deletion of stateDeletes) {
+  await supabaseDelete('athlete_pipeline_state', 'athlete_key', deletion.athleteKey);
+}
+
 console.log(
   JSON.stringify(
     {
@@ -667,7 +875,9 @@ console.log(
       unchangedCount: unchanged.length,
       lifecycleEventsInserted: lifecycleEvents.length,
       callEventsInserted: callEvents.length,
+      activeStateDeleted: stateDeletes.length,
       failures,
+      cleaned,
       updated,
     },
     null,
