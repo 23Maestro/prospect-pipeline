@@ -64,7 +64,8 @@ function cleanPositions(value?: string | null): string | null {
 
 function formatCityState(city?: string | null, state?: string | null): string | null {
   const cityValue = titleCase(city);
-  const stateValue = titleCase(state);
+  const rawState = String(state || '').trim();
+  const stateValue = rawState.length === 2 ? rawState.toUpperCase() : titleCase(rawState);
   const parts = [cityValue, stateValue].filter(Boolean);
   if (!parts.length) {
     return null;
@@ -73,6 +74,14 @@ function formatCityState(city?: string | null, state?: string | null): string | 
     return parts[0];
   }
   return parts.join(', ');
+}
+
+function regionLabel(context?: ScoutPrepContext): string {
+  const state = String(context?.resolved.state || '').trim();
+  if (state) {
+    return state.length === 2 ? state.toUpperCase() : titleCase(state);
+  }
+  return formatCityState(context?.resolved.city, context?.resolved.state) || 'your area';
 }
 
 function parseGpa(value?: string | null): number | null {
@@ -189,20 +198,21 @@ export function buildDeterministicRapportCues(
 
 function buildRapportQuestions(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const first = athleteFirstName(values, context);
-  const state = titleCase(context?.resolved.state);
   const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const region = regionLabel(context);
 
   if (sport === 'football') {
     return [
-      state ? `You guys are up in ${state}, right?` : 'Is football pretty big around your area?',
-      `What about ${first}, is he big into following football too?`,
-    ].slice(0, state ? 2 : 1);
+      `You guys are in ${region}, right?`,
+      'Is football pretty big out there?',
+      `Is ${first} big into following football too?`,
+    ];
   }
 
   return [
-    state
-      ? `You guys are up in ${state}, right?`
-      : `Is ${sportLabel(values, context).toLowerCase()} pretty big for him right now?`,
+    `You guys are in ${region}, right?`,
+    `Is ${sportLabel(values, context).toLowerCase()} pretty big out there?`,
+    `Is ${first} big into following ${sportLabel(values, context).toLowerCase()} too?`,
   ];
 }
 
@@ -280,9 +290,19 @@ function buildSummaryLine(values: ScoutPrepFormValues, context?: ScoutPrepContex
   const sport = sportLabel(values, context);
   const first = athleteFirstName(values, context);
   const gpaBand = getGpaBand(context?.resolved.gpa);
+  const heightWeight = [context?.resolved.height, context?.resolved.weight]
+    .filter(Boolean)
+    .join(', ');
+  const position = cleanPositions(context?.resolved.positions);
+  const traits = [
+    heightWeight ? `${heightWeight} size` : null,
+    position ? `${position} profile` : null,
+    gpaBand === 'high' ? 'strong academics' : gpaBand === 'medium' ? 'solid academics' : null,
+    `serious about ${sport.toLowerCase()}`,
+  ].filter(Boolean);
 
   if (gpaBand === 'high') {
-    return `“So from what I’m hearing, you’ve got a high-academic kid, serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who he is.”`;
+    return `“So from what I’m hearing, he’s got ${traits.join(', ')}, and now it’s about making sure the right coaches actually know who he is.”`;
   }
 
   if (values.gradYear === 'Senior') {
@@ -292,32 +312,44 @@ function buildSummaryLine(values: ScoutPrepFormValues, context?: ScoutPrepContex
   return `“So from what I’m hearing, ${first} is serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who he is.”`;
 }
 
-function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
-  const athleteFirst = athleteFirstName(values, context);
+function buildAthleteStrength(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
   const heightWeight = [context?.resolved.height, context?.resolved.weight]
     .filter(Boolean)
     .join('/');
+  const position = cleanPositions(context?.resolved.positions);
+  if (heightWeight) return 'his size';
+  if (position) return `his ${position} profile`;
+  return `${athleteFirstName(values, context)} being serious about the sport`;
+}
 
+function buildAcademicStrength(context?: ScoutPrepContext): string {
+  const band = getGpaBand(context?.resolved.gpa);
+  if (band === 'high') return 'strong academics';
+  if (band === 'medium') return 'solid academics';
+  if (band === 'low') return 'academics we need to keep improving';
+  return 'the academic side';
+}
+
+function buildTimelinePressure(values: ScoutPrepFormValues): string {
   if (values.gradYear === 'Junior') {
-    return [
-      '“You’re behind in recruiting, we gotta get him caught up.”',
-      '“There’s other kids his age that have phone calls, for sure.”',
-      heightWeight
-        ? `“Being ${heightWeight}, we just gotta get him caught up.”`
-        : '“If you want to get your son caught up in recruiting, be ready for this call.”',
-    ];
+    return 'D2 coaches have already been able to call, and D1 programs are already making offers in this class.';
   }
+  if (values.gradYear === 'Senior') {
+    return 'At this point, the window is tight, so we need to figure out quickly whether there’s still a real path.';
+  }
+  return 'This is the time to start getting him on the map before coaches already have relationships built with other athletes.';
+}
 
-  if (values.gradYear === 'Freshman' || values.gradYear === 'Sophomore') {
-    return [
-      `“For sophomores, the big thing is just getting ${athleteFirst} on the map.”`,
-      '“If he’s not getting calls at that point, he’s behind in recruiting.”',
-    ];
-  }
+function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
+  const athleteFirst = athleteFirstName(values, context);
 
   return [
-    `“With seniors, the question is where do things stand right now for ${athleteFirst}?”`,
-    '“We need to know what is real, what is still open, and what needs to happen next.”',
+    'Where are you guys at in the recruiting process right now? Are you hearing anything?',
+    `With ${buildAthleteStrength(values, context)}, ${buildAcademicStrength(context)}, and no offers or phone calls yet, what do you think is going on?`,
+    'How come nobody’s calling him?',
+    `Is ${athleteFirst} your first child going through the recruiting process?`,
+    'So there probably isn’t a real game plan yet, right?',
+    buildTimelinePressure(values),
   ];
 }
 
@@ -335,8 +367,32 @@ function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrep
   ];
 }
 
+function buildAthleteBuildUpLines(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): string[] {
+  const first = athleteFirstName(values, context);
+  const heightWeight = [context?.resolved.height, context?.resolved.weight]
+    .filter(Boolean)
+    .join(', ');
+  const gpa = String(context?.resolved.gpa || '').trim();
+  const positionPrompts = buildPositionSpecificPrompts(values, context);
+  const lines = [
+    heightWeight
+      ? `I see ${first}, he’s a big kid… ${heightWeight}… that’s some size we can work with.`
+      : null,
+    gpa ? `I see he’s doing well in the classroom too, ${gpa} GPA.` : null,
+    'That’s a good floor to start with. A lot of college programs can work with that.',
+    ...positionPrompts.slice(0, 3),
+    'From your eye test, what do you feel he does best on the field?',
+    'Maybe less about the numbers, what does your eye test tell you?',
+  ].filter(Boolean);
+
+  return lines.slice(0, 8) as string[];
+}
+
 function blockQuote(lines: string[]): string {
-  return lines.map((line) => `> ${line}`).join('\n>\n');
+  return lines.map((line) => `> ${line}  `).join('\n');
 }
 
 function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
@@ -348,79 +404,59 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
   const sport = sportLabel(values, context);
   const collegeSport = collegeSportLabel(values, context);
   const rapportQuestions = buildRapportQuestions(values, context);
-  const positionPrompts = buildPositionSpecificPrompts(values, context);
-  const measurablePrompts = buildMeasurablePrompts(values, context);
-  const parent2Name = context?.contactInfo.parent2?.name || values.parent2Name || 'Mom';
+  const athleteBuildUpLines = buildAthleteBuildUpLines(values, context);
+  const headScoutName = String(context?.resolved.head_scout || '').trim() || '[Head Scout Name]';
+  const headScoutFirst = headScoutName.startsWith('[')
+    ? '[Head Scout First Name]'
+    : firstName(headScoutName) || '[Head Scout First Name]';
+  const otherParent = context?.contactInfo.parent2?.name || values.parent2Name || 'mom/dad';
 
   return [
     [
-      '### Greeting',
-      '',
-      blockQuote([
-        `Hi ${parent1First}, I’m Jerami Singleton, ${collegeSport} scout with Prospect ID. How are you today?`,
-        `The reason I’m calling is ${athleteFirst} created a profile for connecting with college coaches and is showing an interest in playing in college. Did he happen to mention that to you?`,
-      ]),
-    ].join('\n'),
-    [
       '### Connect the Dots',
       '',
-      '**If Unaware, Say:**',
       blockQuote([
-        'Let me take a step back and explain.',
-        'It looks like your son filled out some information with us online about playing in college.',
-        `Do you support ${athleteFirst} taking this step? Is ${athleteFirst} looking to play ${collegeSport}?`,
-        'My job is to follow up with you and learn a little bit more about him as a student and as an athlete.',
-        'We help families understand where they’re at in the recruiting process and what needs to happen next.',
-        'I just want to make sure you understand who we are and why I’m calling before we move forward.',
+        `Hi, is this ${parent1First}?`,
+        `Hi ${parent1First}, this is Jerami Singleton, I’m a ${sport.toLowerCase()} scout with Prospect ID.`,
+        `The reason I’m calling is ${athleteFirst} filled out some info about playing in college, did they happen to mention that to you?`,
       ]),
       '',
-      '**If Aware, Proceed Here:**',
+      '**If parent says no:**',
       blockQuote([
-        `What we do is help athletes connect directly to college coaches, and because we only work with 500 athletes per grad year for ${sport.toLowerCase()}, we’re pretty selective on who we bring on board. So I’ve got a few questions for you about ${athleteFirst}.`,
+        'Okay, so a bit of a blindside here.',
+        'Let me take a step back and explain.',
+        `${athleteFirst} filled out some information with us online about playing in college.`,
+        `Do you support ${athleteFirst} taking this step? Is he looking to play ${collegeSport}?`,
+        `Because we only work with 500 athletes per grad year for ${sport.toLowerCase()}, I’ve got a few questions to see if this even makes sense.`,
       ]),
     ].join('\n'),
     [
       '### Qualify',
       '',
-      '**Small rapport**',
       ...rapportQuestions.map((question) => `- ${question}`),
+      '- How serious is he about playing in college?',
+      '- How’s he doing in the classroom right now?',
+      position
+        ? `- What position is he playing the most right now? I have ${position} here.`
+        : '- What position is he playing the most right now?',
+      '- Is he on varsity right now, JV, or a mix of both?',
+      '- What’s he doing in the offseason right now to stay ready?',
+      '- Are there any numbers that really stand out about him right now?',
+    ].join('\n'),
+    [
+      '### Rapport + Discovery + Build Up',
       '',
-      '**Athlete intent / parent support**',
-      `- Do you support ${athleteFirst} taking this step?`,
-      `- Is ${athleteFirst} looking to play ${collegeSport}?`,
-      '',
-      '**Academics**',
+      ...athleteBuildUpLines.map((line) => `- ${line}`),
       `- ${buildGpaToneLine(values, context)}`,
       gpa
         ? '- Is that about where he is right now, or has it moved recently?'
         : '- Do you know where his GPA is sitting?',
-      '',
-      '**Current level**',
-      '- Is he on varsity right now, JV, or a mix of both?',
-      position
-        ? `- I see ${athleteFirst} plays ${position}. Where has he really carved out his role?`
-        : '- Where has he really carved out his role so far?',
-      '',
-      '**Offseason / development**',
-      '- What is he doing this offseason to get better?',
-      '- Is he training, lifting, doing camps, or working with a position coach?',
-      '',
-      '**Position-specific prompts**',
-      ...positionPrompts.map((question) => `- ${question}`),
-      '',
-      '**Measurables**',
-      ...measurablePrompts.map((question) => `- ${question}`),
-      '',
-      '**Coach feedback / eye test**',
-      '- What has his coach said about him?',
-      '- When someone watches him, what do you think jumps out first?',
     ].join('\n'),
     [
       '### Summary → Deficit',
       '',
       buildSummaryLine(values, context),
       '',
-      '**Deficit**',
       ...buildDeficitLines(values, context).map((line) => `- ${line.replace(/^“|”$/g, '')}`),
     ].join('\n'),
     [
@@ -428,27 +464,28 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '',
       blockQuote([
         `So the next step, ${parent1First}, is we’ve gotta get you on the phone with one of our top scouts.`,
-        'I’m gonna schedule you with [Scout Name]. He’s one of the best scouts in the entire industry.',
-        'If I book you with [Scout Name], you guys have to be ready for the call.',
-        'Let me check the calendar.',
+        `I’m gonna schedule you with ${headScoutName}.`,
+        'He’s one of the best scouts in the entire industry.',
+        `If I book you with ${headScoutFirst}, you guys have to be ready for the call, sound good?`,
       ]),
     ].join('\n'),
     [
       '### Set Meeting',
       '',
       blockQuote([
-        'He’s got two openings.',
-        'He’s got one [Day/Time Option 1]. Or [Day/Time Option 2].',
-        'He’s got a couple requirements for that meeting.',
-        `Number one, he needs to have the full family there, so that means yourself, ${athleteFirst}, and ${athleteFirst}’s mom. What’s mom’s name again?`,
+        'Let me check the calendar. He’s got two openings.',
+        'He’s got one [Day] at [Time] [Timezone], or [Day] at [Time] [Timezone]. Which one works better?',
+        'If those do not work, what does your availability look like over the next day or two?',
       ]),
-      parent2Name !== 'Mom' ? `> Mom: ${parent2Name}` : null,
+    ].join('\n'),
+    [
+      '### Meeting Requirements',
       '',
       blockQuote([
-        'Number two, he’s gonna walk you through a Zoom meeting, so make sure you have internet and Zoom ready when he calls.',
-        'We don’t want to waste your time, and we don’t want to waste [Scout Name]’s time either.',
-        'I’m gonna send you an email with the details about the meeting, so you can read through the details, okay?',
-        'He’s gonna be calling from a [Area Code] phone number, so watch out for his number.',
+        'He’s got a couple requirements for that meeting.',
+        `Number one, he needs the full family there, so that means yourself, ${athleteFirst}, and ${otherParent}.`,
+        'Number two, he’s gonna walk you through a 45 minute Zoom meeting, so make sure you have internet and Zoom ready when he calls.',
+        `We don’t want to waste your time, and we don’t want to waste ${headScoutFirst}’s time either.`,
       ]),
     ].join('\n'),
   ].map((section) => section.replace(/\nnull\b/g, ''));
