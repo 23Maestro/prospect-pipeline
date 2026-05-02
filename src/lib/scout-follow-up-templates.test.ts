@@ -234,7 +234,7 @@ test('buildConfirmationMessage fills coach and meeting time', () => {
   );
 });
 
-test('buildConfirmationMessage uses this evening when first confirmation is for current calendar day', () => {
+test('buildConfirmationMessage uses tonight when first confirmation is for current calendar day', () => {
   const dueAt = new Date('2026-04-29T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_1',
@@ -248,7 +248,7 @@ test('buildConfirmationMessage uses this evening when first confirmation is for 
   assert.equal(
     message,
     [
-      'Good morning Terresita! Prospect ID Zoom Meeting this evening 4/29 at 7:00 PM ET with Coach Ryan Lietz.',
+      'Good morning Terresita! Prospect ID Zoom Meeting tonight 4/29 at 7:00 PM ET with Coach Ryan Lietz.',
       '',
       'He’ll call your cell at 7:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
       '',
@@ -287,7 +287,7 @@ test('buildConfirmationMessage renders short second confirmation copy', () => {
 
   assert.match(
     message,
-    /Coach Luther Winfield still has you down for 4:00pm pacific this afternoon\./,
+    /Coach Luther Winfield still has you down for 4:00pm pacific on Friday afternoon\./,
   );
   assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
   assert.doesNotMatch(message, /zoom code/);
@@ -305,7 +305,7 @@ test('buildConfirmationMessage uses tomorrow for Friday confirmation 2 Saturday 
 
   assert.match(
     message,
-    /Coach Luther Winfield still has you down for 4:00pm pacific tomorrow\./,
+    /Coach Luther Winfield still has you down for 4:00pm pacific tomorrow afternoon\./,
   );
   assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
 });
@@ -320,7 +320,7 @@ test('buildConfirmationMessage does not use tomorrow just because text is sent F
     now: new Date('2026-04-17T16:00:00.000Z'),
   });
 
-  assert.match(message, /Coach Ryan Lietz still has you down for 6:00pm central this evening\./);
+  assert.match(message, /Coach Ryan Lietz still has you down for 6:00pm central on Monday evening\./);
   assert.doesNotMatch(message, /tomorrow/);
 });
 
@@ -334,8 +334,32 @@ test('buildConfirmationMessage uses tomorrow for Saturday confirmation 2 Sunday 
     now: new Date('2026-04-18T16:00:00.000Z'),
   });
 
-  assert.match(message, /Coach Ryan Lietz still has you down for 6:00pm central tomorrow\./);
+  assert.match(message, /Coach Ryan Lietz still has you down for 6:00pm central tomorrow evening\./);
   assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
+});
+
+test('confirmation 1 and confirmation 2 use the same relative phrase resolver', () => {
+  const dueAt = new Date('2026-05-02T23:00:00.000Z');
+  const now = new Date('2026-05-02T13:00:00.000Z');
+  const baseArgs = {
+    headScoutName: 'Ryan Lietz',
+    dueAt,
+    meetingTimezone: 'EST',
+    now,
+  };
+
+  const confirmation1 = buildConfirmationMessage({
+    ...baseArgs,
+    variant: 'confirmation_1',
+    recipientNames: ['Peter'],
+  });
+  const confirmation2 = buildConfirmationMessage({
+    ...baseArgs,
+    variant: 'confirmation_2',
+  });
+
+  assert.match(confirmation1, /Prospect ID Zoom Meeting tonight 5\/2 at 7:00 PM ET/);
+  assert.match(confirmation2, /still has you down for 7:00pm eastern tonight\./);
 });
 
 test('getReminderTimeLabel maps timezone labels to words', () => {

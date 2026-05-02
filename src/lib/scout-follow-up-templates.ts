@@ -1,4 +1,9 @@
 import { resolveSalesLifecycle } from './sales-lifecycle';
+import {
+  getConfirmationDatePhrase as resolveConfirmationDatePhrase,
+  getConfirmationDayPhrase as resolveConfirmationDayPhrase,
+  getReminderTimeLabel as resolveReminderTimeLabel,
+} from '../domain/temporal-wording';
 
 export const DEFAULT_FOLLOW_UP_SENDER_NAME = 'Jerami Singleton';
 
@@ -27,16 +32,6 @@ export type MinimalFollowUpQueueRecord = {
   lifecycleState?: string | null;
   reason?: string | null;
   messageVariant?: FollowUpMessageVariant | null;
-};
-
-const TIMEZONE_LABEL_TO_WORD: Record<string, string> = {
-  EST: 'eastern',
-  CST: 'central',
-  MST: 'mountain',
-  PST: 'pacific',
-  AKST: 'alaska',
-  HST: 'hawaii',
-  AST: 'atlantic',
 };
 
 const TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
@@ -85,21 +80,6 @@ function getHourForTimeZone(date: Date, timezoneLabel?: string | null): number {
   return Number.isNaN(parsed) ? date.getHours() : parsed;
 }
 
-function getWeekdayForTimeZone(date: Date, timezoneLabel?: string | null): number {
-  const timeZone = resolveIanaTimeZone(timezoneLabel);
-  if (!timeZone) {
-    return date.getDay();
-  }
-
-  const shortWeekday = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    weekday: 'short',
-  }).format(date);
-  const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const weekday = weekdays.indexOf(shortWeekday);
-  return weekday === -1 ? date.getDay() : weekday;
-}
-
 function formatTimeLabel(date: Date, timezoneLabel?: string | null): string {
   const timeZone = resolveIanaTimeZone(timezoneLabel);
   if (!timeZone) {
@@ -122,15 +102,6 @@ function formatTimeLabel(date: Date, timezoneLabel?: string | null): string {
   return `${hour}:${minute}${dayPeriod}`;
 }
 
-function formatConfirmationDateLabel(date: Date, timezoneLabel?: string | null): string {
-  const timeZone = resolveIanaTimeZone(timezoneLabel);
-  return new Intl.DateTimeFormat('en-US', {
-    ...(timeZone ? { timeZone } : {}),
-    month: 'numeric',
-    day: 'numeric',
-  }).format(date);
-}
-
 function formatConfirmationClockLabel(date: Date, timezoneLabel?: string | null): string {
   const timeZone = resolveIanaTimeZone(timezoneLabel);
   return new Intl.DateTimeFormat('en-US', {
@@ -141,47 +112,16 @@ function formatConfirmationClockLabel(date: Date, timezoneLabel?: string | null)
   }).format(date);
 }
 
-function getCalendarDayValue(date: Date, timezoneLabel?: string | null): number {
-  const timeZone = resolveIanaTimeZone(timezoneLabel);
-  if (!timeZone) {
-    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  }
-
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  }).formatToParts(date);
-  const year = Number.parseInt(parts.find((part) => part.type === 'year')?.value || '', 10);
-  const month = Number.parseInt(parts.find((part) => part.type === 'month')?.value || '', 10);
-  const day = Number.parseInt(parts.find((part) => part.type === 'day')?.value || '', 10);
-
-  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
-    return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  }
-
-  return Date.UTC(year, month - 1, day);
-}
-
 function getConfirmationDatePhrase(args: {
   dueAt: Date;
   meetingTimezone?: string | null;
   now?: Date;
 }): string {
-  const now = args.now || new Date();
-  const dayMs = 24 * 60 * 60 * 1000;
-  const dayDiff = Math.round(
-    (getCalendarDayValue(args.dueAt, args.meetingTimezone) -
-      getCalendarDayValue(now, args.meetingTimezone)) /
-      dayMs,
-  );
-  const dateLabel = formatConfirmationDateLabel(args.dueAt, args.meetingTimezone);
-  const timeOfDayPhrase = getTimeOfDayPhrase(args.dueAt, args.meetingTimezone).replace(/^this /, '');
-
-  if (dayDiff === 0) return `this ${timeOfDayPhrase} ${dateLabel}`;
-  if (dayDiff === 1) return `tomorrow ${timeOfDayPhrase} ${dateLabel}`;
-  return `on ${dateLabel} ${timeOfDayPhrase}`;
+  return resolveConfirmationDatePhrase({
+    meetingStart: args.dueAt,
+    meetingTimezone: args.meetingTimezone,
+    now: args.now,
+  });
 }
 
 function getConfirmationTimezoneLabel(timezoneLabel?: string | null): string {
@@ -204,12 +144,11 @@ function getConfirmationDayPhrase(args: {
   meetingTimezone?: string | null;
   now?: Date;
 }): string {
-  const meetingWeekday = getWeekdayForTimeZone(args.dueAt, args.meetingTimezone);
-  if (meetingWeekday === 0 || meetingWeekday === 6) {
-    return 'tomorrow';
-  }
-
-  return getTimeOfDayPhrase(args.dueAt, args.meetingTimezone);
+  return resolveConfirmationDayPhrase({
+    meetingStart: args.dueAt,
+    meetingTimezone: args.meetingTimezone,
+    now: args.now,
+  });
 }
 
 function normalizeCurrentTask(value?: string | null): string {
@@ -527,14 +466,7 @@ export function getCoachReferenceName(headScoutName?: string | null): string {
 }
 
 export function getReminderTimeLabel(date: Date, meetingTimezone?: string | null): string {
-  const timeLabel = formatTimeLabel(date, meetingTimezone);
-  const zoneWord =
-    TIMEZONE_LABEL_TO_WORD[
-      String(meetingTimezone || '')
-        .trim()
-        .toUpperCase()
-    ] || '';
-  return zoneWord ? `${timeLabel} ${zoneWord}` : timeLabel;
+  return resolveReminderTimeLabel({ meetingStart: date, meetingTimezone });
 }
 
 export function buildConfirmationMessage(args: {
