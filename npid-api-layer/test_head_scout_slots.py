@@ -60,6 +60,51 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert ryan["slots"][0]["id"] == "5"
 
 
+def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
+    endpoint, params = LegacyTranslator.head_scout_slots_to_legacy(
+        start="2026-04-13",
+        end="2026-04-20",
+    )
+
+    assert endpoint == "/template/calendarevents"
+    assert params == [
+        ("loginuser", "avdhyXjQ8bFweEf"),
+        ("load_from_tasks_backup", ""),
+        ("selectedowner[]", "OrJsV8nhBouEzKY"),
+        ("selectedowner[]", "bMBrA26OElRUwPs"),
+        ("selectedowner[]", "nhVvYOz8bAaL57c"),
+        ("selectedowner[]", "56"),
+        ("selectedowner[]", "avdhyXjQ8bFweEf"),
+        ("start", "2026-04-13"),
+        ("end", "2026-04-20"),
+    ]
+
+
+def test_open_meetings_request_preserves_meetingfor_field_unchanged():
+    endpoint, params = LegacyTranslator.open_meetings_to_legacy(meeting_for="1354049")
+
+    assert endpoint == "/template/template/openmeetings"
+    assert params == {"meetingfor": "1354049"}
+
+
+def test_booked_meeting_lookup_request_preserves_calendar_access_fields():
+    endpoint, params = LegacyTranslator.booked_meeting_to_legacy(
+        calendar_owner_id="nhVvYOz8bAaL57c",
+        start="2026-04-13",
+        end="2026-04-20",
+    )
+
+    assert endpoint == "/template/calendarevents"
+    assert params == [
+        ("loginuser", "avdhyXjQ8bFweEf"),
+        ("load_from_tasks_backup", ""),
+        ("selectedowner[]", "nhVvYOz8bAaL57c"),
+        ("selectedowner[]", "avdhyXjQ8bFweEf"),
+        ("start", "2026-04-13"),
+        ("end", "2026-04-20"),
+    ]
+
+
 def test_parse_head_scout_slots_response_uses_strict_monday_sunday_week_bounds():
     payload = """
     [
@@ -213,6 +258,9 @@ def test_parse_booked_meeting_popup_response_extracts_title_and_existingtask():
 
 if __name__ == "__main__":
     test_parse_head_scout_slots_response_filters_and_orders_slots()
+    test_head_scout_slots_request_preserves_selected_owner_ids_and_fields()
+    test_open_meetings_request_preserves_meetingfor_field_unchanged()
+    test_booked_meeting_lookup_request_preserves_calendar_access_fields()
     test_parse_head_scout_slots_response_uses_strict_monday_sunday_week_bounds()
     test_parse_open_meetings_response_extracts_openeventid_and_start_time()
     test_parse_booked_meeting_response_returns_newest_match()

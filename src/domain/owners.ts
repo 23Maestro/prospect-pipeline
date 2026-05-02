@@ -59,6 +59,7 @@ function normalizeToken(value?: string | number | null): string {
 
 type OwnerConfig = {
   activeOperatorKey: OwnerKey;
+  headScoutCalendarAccessUserId: string;
   owners: Array<
     Omit<OwnerProfile, 'legacyUserId' | 'roles'> & {
       ownerKey: OwnerKey;

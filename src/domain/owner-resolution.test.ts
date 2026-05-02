@@ -1,16 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getActiveOperator, HEAD_SCOUT_ORDER, resolveOwnerByName } from './owners';
+import {
+  getActiveOperator,
+  getLegacyAssignedToFallback,
+  HEAD_SCOUT_ORDER,
+  PROSPECT_ID_OWNER_CONFIG,
+  resolveOwnerByName,
+} from './owners';
 import { resolveOwnerContext } from './owner-resolution';
 
 test('active operator defaults to Jerami workspace context', () => {
   const operator = getActiveOperator();
 
+  assert.equal(PROSPECT_ID_OWNER_CONFIG.activeOperatorKey, 'jerami_singleton');
+  assert.equal(PROSPECT_ID_OWNER_CONFIG.headScoutCalendarAccessUserId, 'avdhyXjQ8bFweEf');
   assert.equal(operator.operatorKey, 'jerami_singleton');
   assert.equal(operator.personName, 'Jerami Singleton');
   assert.equal(operator.legacyUserId, '1408164');
   assert.equal(operator.taskAssignedOwnerName, 'Jerami Singleton');
+  assert.equal(getLegacyAssignedToFallback(), '1408164');
 });
 
 test('Tim Risner is a known owner profile but not the active operator', () => {

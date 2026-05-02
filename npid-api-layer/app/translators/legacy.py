@@ -24,6 +24,11 @@ from app.models.schemas import (
     MeetingSetSubmitRequest,
 )
 from app.invariants import Invariant, log_check, hard_fail
+from app.domain.prospect_id_owners import (
+    get_head_scout_calendar_access_user_id,
+    get_head_scout_calendar_owner_ids,
+    get_head_scout_config_for_legacy,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -65,45 +70,9 @@ class LegacyTranslator:
         "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/youtube_sign.png' "
         "alt='youtube' width='24' height='24' border='0'></a></td></tr></tbody></table><br>"
     )
-    HEAD_SCOUT_LOGIN_USER = "avdhyXjQ8bFweEf"
-    HEAD_SCOUT_SELECTED_OWNERS = [
-        "OrJsV8nhBouEzKY",
-        "bMBrA26OElRUwPs",
-        "nhVvYOz8bAaL57c",
-        "56",
-        "avdhyXjQ8bFweEf",
-    ]
-    HEAD_SCOUT_CONFIG = [
-        {
-            "scout_name": "Jeffrey Stein",
-            "city": "Wexford",
-            "state": "PA",
-            "calendar_owner_id": "OrJsV8nhBouEzKY",
-            "meeting_for": "1418529",
-        },
-        {
-            "scout_name": "Luther Winfield",
-            "city": "Columbia",
-            "state": "SC",
-            "calendar_owner_id": "bMBrA26OElRUwPs",
-            "meeting_for": "370959",
-        },
-        {
-            "scout_name": "Ryan Lietz",
-            "city": "Gilbert",
-            "state": "AZ",
-            "calendar_owner_id": "nhVvYOz8bAaL57c",
-            "meeting_for": "1354049",
-        },
-        {
-            # James/Logan geo metadata is unreliable in legacy data. Hardcode James to AZ for now.
-            "scout_name": "James Holcomb",
-            "city": "Phoenix",
-            "state": "AZ",
-            "calendar_owner_id": "56",
-            "meeting_for": "56",
-        },
-    ]
+    HEAD_SCOUT_LOGIN_USER = get_head_scout_calendar_access_user_id()
+    HEAD_SCOUT_SELECTED_OWNERS = get_head_scout_calendar_owner_ids() + [HEAD_SCOUT_LOGIN_USER]
+    HEAD_SCOUT_CONFIG = get_head_scout_config_for_legacy()
     APPOINTMENT_TITLE_PREFIXES = ["(ACF)", "(CF)", "(RSP)", "(CAN)", "(ACF*2)"]
 
     @staticmethod

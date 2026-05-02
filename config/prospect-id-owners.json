@@ -1,5 +1,6 @@
 {
   "activeOperatorKey": "jerami_singleton",
+  "headScoutCalendarAccessUserId": "avdhyXjQ8bFweEf",
   "owners": [
     {
       "ownerKey": "jerami_singleton",
@@ -73,7 +74,7 @@
       "ownerKey": "logan_lord",
       "personName": "Logan Lord",
       "aliases": ["Logan Lord", "Logan"],
-      "assignedToLegacyUserId": "2254",
+      "assignedToLegacyUserId": null,
       "meetingForLegacyUserId": null,
       "calendarOwnerId": null,
       "roles": ["task_owner", "appointment_setter"],
