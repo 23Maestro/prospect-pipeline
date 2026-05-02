@@ -51,6 +51,8 @@ create table if not exists lifecycle_events (
   athlete_id text not null,
   athlete_main_id text not null,
   event_type text not null,
+  previous_crm_stage text,
+  previous_task_status text,
   crm_stage text,
   task_status text,
   payload_json jsonb not null default '{}'::jsonb,
@@ -59,6 +61,13 @@ create table if not exists lifecycle_events (
 
 create index if not exists lifecycle_events_athlete_key_idx
   on lifecycle_events (athlete_key, created_at desc);
+
+create index if not exists lifecycle_events_athlete_event_created_idx
+  on lifecycle_events (athlete_key, event_type, created_at desc);
+
+create index if not exists lifecycle_events_transition_stage_idx
+  on lifecycle_events (previous_crm_stage, crm_stage, created_at desc)
+  where previous_crm_stage is not null;
 
 create table if not exists reminders (
   id text primary key,

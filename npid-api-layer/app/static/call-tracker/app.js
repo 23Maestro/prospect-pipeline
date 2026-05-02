@@ -36,7 +36,7 @@ const state = {
   meetingSetRows: [],
   summary: null,
   activeFilter: 'meaningful',
-  activePeriod: 'week-0',
+  activePeriod: currentWeekPeriod(),
 };
 
 function $(id) {
@@ -173,7 +173,14 @@ function getConfig() {
     supabaseUrl: generated.supabaseUrl || stored.supabaseUrl || '',
     anonKey: generated.anonKey || stored.anonKey || '',
     schema: generated.schema || stored.schema || 'public',
+    syncEndpoint: generated.syncEndpoint || stored.syncEndpoint || defaultSyncEndpoint(),
   };
+}
+
+function defaultSyncEndpoint() {
+  return window.location.hostname.endsWith('.netlify.app')
+    ? '/api/call-tracker-sync'
+    : '/api/v1/call-tracker/sync';
 }
 
 function saveConfig(config) {
@@ -202,7 +209,7 @@ async function supabaseGet(path) {
 }
 
 async function loadData() {
-  $('statusText').textContent = 'Syncing';
+  $('statusText').textContent = 'Loading';
   const [summaryRows, eventRows, meetingSetRows] = await Promise.all([
     supabaseGet('call_tracker_summary?select=*'),
     supabaseGet(
@@ -225,6 +232,53 @@ async function loadData() {
   state.rows = Array.isArray(eventRows) ? eventRows : [];
   state.meetingSetRows = Array.isArray(meetingSetRows) ? meetingSetRows : [];
   render();
+}
+
+async function syncSourceData() {
+  const config = getConfig();
+  if (!config.syncEndpoint) return null;
+  $('statusText').textContent = 'Syncing';
+  const response = await fetch(config.syncEndpoint, {
+    method: 'POST',
+    headers: { accept: 'application/json' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = payload.detail || payload.error || payload.message || `HTTP ${response.status}`;
+    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+  }
+  if (payload.status === 'started' || payload.status === 'already_running' || payload.running) {
+    return pollSyncStatus(config.syncEndpoint);
+  }
+  return payload;
+}
+
+async function pollSyncStatus(syncEndpoint) {
+  for (let attempt = 0; attempt < 90; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    const response = await fetch(syncEndpoint, {
+      method: 'GET',
+      headers: { accept: 'application/json' },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const detail = payload.detail || payload.error || payload.message || `HTTP ${response.status}`;
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    if (!payload.running && payload.status !== 'running' && payload.status !== 'started') {
+      if (payload.success === false || payload.status === 'failed') {
+        throw new Error(payload.message || 'Sync failed');
+      }
+      return payload;
+    }
+    $('statusText').textContent = 'Syncing';
+  }
+  throw new Error('Sync timed out');
+}
+
+async function refreshAllData() {
+  await syncSourceData();
+  await loadData();
 }
 
 function setText(id, value) {
@@ -595,7 +649,7 @@ function handleLoadError(error) {
 document.addEventListener('DOMContentLoaded', () => {
   state.activePeriod = currentWeekPeriod();
   wireConfigForm();
-  $('refreshButton').addEventListener('click', () => loadData().catch(handleLoadError));
+  $('refreshButton').addEventListener('click', () => refreshAllData().catch(handleLoadError));
   document.querySelectorAll('[data-period]').forEach((button) => {
     button.addEventListener('click', () => {
       state.activePeriod = button.dataset.period || currentWeekPeriod();

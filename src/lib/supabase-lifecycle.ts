@@ -62,6 +62,7 @@ type LifecycleWriteArgs = {
   payload?: Record<string, unknown>;
   appointment?: AppointmentSnapshot | null;
   reminder?: ReminderSnapshot | null;
+  previousState?: Pick<PipelineStateSnapshot, 'crmStage' | 'taskStatus'> | null;
   state: PipelineStateSnapshot;
 };
 
@@ -106,6 +107,17 @@ type ConfirmationSentWriteArgs = PipelineActor & {
   dueAt?: string | null;
   messagePreview?: string | null;
   reminderKind?: string | null;
+  messageVariant?: string | null;
+};
+
+type VoicemailFollowUpSentWriteArgs = PipelineActor & {
+  previousCrmStage?: string | null;
+  previousTaskStatus?: string | null;
+  crmStage: string;
+  taskStatus: string;
+  headScout?: string | null;
+  currentTaskId?: string | null;
+  currentTaskTitle?: string | null;
   messageVariant?: string | null;
 };
 
@@ -178,6 +190,8 @@ type LifecycleEventRow = {
   athlete_id: string;
   athlete_main_id: string;
   event_type: string;
+  previous_crm_stage: string | null;
+  previous_task_status: string | null;
   crm_stage: string | null;
   task_status: string | null;
   payload_json: Record<string, unknown>;
@@ -455,8 +469,8 @@ function buildLifecycleEventRow(
   actor: PipelineActor,
   args: LifecycleWriteArgs,
   createdAt: string,
-): LifecycleEventRow {
-  return {
+): LifecycleEventRow | Omit<LifecycleEventRow, 'previous_crm_stage' | 'previous_task_status'> {
+  const row = {
     id: randomUUID(),
     athlete_key: buildAthleteKey(actor.athleteId, actor.athleteMainId),
     athlete_id: actor.athleteId.trim(),
@@ -466,6 +480,16 @@ function buildLifecycleEventRow(
     task_status: normalizeValue(args.state.taskStatus),
     payload_json: args.payload || {},
     created_at: createdAt,
+  };
+
+  if (!args.previousState) {
+    return row;
+  }
+
+  return {
+    ...row,
+    previous_crm_stage: normalizeValue(args.previousState.crmStage),
+    previous_task_status: normalizeValue(args.previousState.taskStatus),
   };
 }
 
@@ -895,6 +919,32 @@ export async function recordConfirmationSent(
       currentTaskId: args.currentTaskId,
       currentTaskTitle: args.currentTaskTitle,
       currentAppointmentId: appointmentId,
+    },
+  });
+}
+
+export async function recordVoicemailFollowUpSent(
+  args: VoicemailFollowUpSentWriteArgs,
+): Promise<{ enabled: boolean }> {
+  return writeLifecycle({
+    athlete: args,
+    eventType: 'voicemail_follow_up_sent',
+    previousState: {
+      crmStage: args.previousCrmStage,
+      taskStatus: args.previousTaskStatus,
+    },
+    payload: {
+      message_variant: normalizeValue(args.messageVariant),
+      previous_crm_stage: normalizeValue(args.previousCrmStage),
+      previous_task_status: normalizeValue(args.previousTaskStatus),
+    },
+    state: {
+      crmStage: args.crmStage,
+      taskStatus: args.taskStatus,
+      headScout: args.headScout,
+      currentTaskId: args.currentTaskId,
+      currentTaskTitle: args.currentTaskTitle,
+      currentAppointmentId: null,
     },
   });
 }

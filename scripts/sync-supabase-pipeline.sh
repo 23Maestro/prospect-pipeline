@@ -17,18 +17,22 @@ mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/sync-$(date +%Y-%m-%d).log"
 exec >>"${LOG_FILE}" 2>&1
 
+timestamp() {
+  date "+%Y-%m-%dT%H:%M:%S%z"
+}
+
 if ! mkdir "${LOCK_DIR}" 2>/dev/null; then
-  echo "[$(date -Is)] sync already running; skipping"
+  echo "[$(timestamp)] sync already running; skipping"
   exit 0
 fi
 trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
 
 cd "${PROJECT_ROOT}"
 
-echo "[$(date -Is)] sync start"
+echo "[$(timestamp)] sync start"
 
 if ! API_TIMEOUT_SECONDS=10 "${PROJECT_ROOT}/scripts/wait-for-api.sh"; then
-  echo "[$(date -Is)] local API unavailable; asking ${API_OWNER_LABEL} to restore Overmind-owned API"
+  echo "[$(timestamp)] local API unavailable; asking ${API_OWNER_LABEL} to restore Overmind-owned API"
   launchctl kickstart -k "gui/$(id -u)/${API_OWNER_LABEL}"
   API_TIMEOUT_SECONDS=45 "${PROJECT_ROOT}/scripts/wait-for-api.sh"
 fi
@@ -37,4 +41,4 @@ npm run backfill:current-pipeline-supabase
 npm run reconcile:booked-meetings-supabase
 npm run reconcile:current-sales-stages-supabase
 
-echo "[$(date -Is)] sync complete"
+echo "[$(timestamp)] sync complete"

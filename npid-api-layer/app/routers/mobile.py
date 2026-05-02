@@ -10,6 +10,7 @@ import hmac
 import os
 from typing import Optional
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
@@ -19,6 +20,7 @@ from app.session import NPIDSession
 from app.translators.legacy import LegacyTranslator
 
 router = APIRouter(tags=["mobile"])
+HEAD_SCOUT_TIMEZONE = ZoneInfo("America/New_York")
 
 
 def require_mobile_token(authorization: Optional[str]) -> None:
@@ -119,6 +121,35 @@ def is_actual_set_meeting_event(event: dict | None) -> bool:
         or normalized.startswith("(cl)")
         or normalized.startswith("(*)")
     )
+
+
+def parse_head_scout_event_time(value: str | None) -> datetime | None:
+    raw_value = str(value or "").strip()
+    if not raw_value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo:
+        return parsed.astimezone(HEAD_SCOUT_TIMEZONE)
+    return parsed.replace(tzinfo=HEAD_SCOUT_TIMEZONE)
+
+
+def is_meeting_visible_until_end(event: dict | None, now: datetime | None = None) -> bool:
+    end_at = parse_head_scout_event_time(str((event or {}).get("end") or ""))
+    if not end_at:
+        return True
+    compare_at = now or datetime.now(HEAD_SCOUT_TIMEZONE)
+    if compare_at.tzinfo:
+        compare_at = compare_at.astimezone(HEAD_SCOUT_TIMEZONE)
+    else:
+        compare_at = compare_at.replace(tzinfo=HEAD_SCOUT_TIMEZONE)
+    return end_at > compare_at
+
+
+def is_visible_set_meeting_event(event: dict | None, now: datetime | None = None) -> bool:
+    return is_actual_set_meeting_event(event) and is_meeting_visible_until_end(event, now)
 
 
 def normalize_match_key(value: str | None) -> str:
@@ -240,7 +271,7 @@ async def get_mobile_booked_meetings(
                 tasks_by_athlete.setdefault(key, []).append(task)
 
         materialized_events = []
-        actual_events = [event for event in result.get("events", []) if is_actual_set_meeting_event(event)]
+        actual_events = [event for event in result.get("events", []) if is_visible_set_meeting_event(event)]
         for event in actual_events:
             title_key = normalize_match_key(clean_meeting_title(event.get("title")))
             matching_key = next((key for key in tasks_by_athlete if key and key in title_key), None)

@@ -112,6 +112,7 @@ import {
   recordConfirmationSent,
   recordMeetingSet,
   recordRescheduled,
+  recordVoicemailFollowUpSent,
 } from './lib/supabase-lifecycle';
 import { buildAssociatedClientsFromContactInfo } from './lib/client-message-export';
 import { sendClientMessage } from './lib/client-message-sandbox';
@@ -370,6 +371,13 @@ function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): stri
   if (variant === 'call_attempt_2') return 'Call Attempt 2';
   if (variant === 'call_attempt_3') return 'Call Attempt 3';
   if (variant === 'no_show') return 'No Show';
+  return null;
+}
+
+function getVoicemailLifecycleStageLabel(variant: VoicemailFollowUpVariant): string | null {
+  if (variant === 'call_attempt_1') return LEFT_VOICE_MAIL_1_LABEL;
+  if (variant === 'call_attempt_2') return LEFT_VOICE_MAIL_2_LABEL;
+  if (variant === 'call_attempt_3') return NEVER_SPOKE_TO_LABEL;
   return null;
 }
 
@@ -741,6 +749,44 @@ async function recordRescheduledBestEffort(args: {
   } catch (error) {
     logFailure(
       'SCOUT_PREP_RESCHEDULED_SYNC',
+      'supabase-write',
+      error instanceof Error ? error.message : String(error),
+      {
+        contactId: args.athleteId,
+        athleteMainId: args.athleteMainId,
+        taskId: args.taskId,
+      },
+    );
+  }
+}
+
+async function recordVoicemailFollowUpSentBestEffort(args: {
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  taskId: string;
+  taskTitle: string;
+  previousCrmStage?: string | null;
+  previousTaskStatus?: string | null;
+  crmStage: string;
+  taskStatus: VoicemailFollowUpVariant;
+}) {
+  try {
+    await recordVoicemailFollowUpSent({
+      athleteId: args.athleteId,
+      athleteMainId: args.athleteMainId,
+      athleteName: args.athleteName,
+      previousCrmStage: args.previousCrmStage,
+      previousTaskStatus: args.previousTaskStatus,
+      crmStage: args.crmStage,
+      taskStatus: args.taskStatus,
+      currentTaskId: args.taskId,
+      currentTaskTitle: args.taskTitle,
+      messageVariant: args.taskStatus,
+    });
+  } catch (error) {
+    logFailure(
+      'SCOUT_PREP_VOICEMAIL_SENT_SYNC',
       'supabase-write',
       error instanceof Error ? error.message : String(error),
       {
@@ -1694,13 +1740,25 @@ function VoicemailFollowUpRecipientForm({
                     throw new Error('Missing athlete identifiers for voicemail follow-up');
                   }
 
-                  await recordVoicemailFollowUpMessageSent({
+                  const result = await recordVoicemailFollowUpMessageSent({
                     athleteId,
                     athleteMainId,
                     taskId: followUpTask.task_id,
                     variant: selectedVariant,
                     taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || undefined,
                     description: followUpTask.description || undefined,
+                  });
+                  await recordVoicemailFollowUpSentBestEffort({
+                    athleteId,
+                    athleteMainId,
+                    athleteName:
+                      context.contactInfo.studentAthlete.name || task.athlete_name || athleteId,
+                    taskId: followUpTask.task_id,
+                    taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || selectedVariant,
+                    previousCrmStage: crmStage,
+                    previousTaskStatus: currentTask || task.title || null,
+                    crmStage: result.stage || getVoicemailLifecycleStageLabel(selectedVariant) || selectedVariant,
+                    taskStatus: selectedVariant,
                   });
                 }
             }
@@ -2753,19 +2811,39 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         shouldCompleteTopmostPostCallTask(stageLabel) || Boolean(resolvePostCallVoicemailVariant(stageLabel));
       if (shouldClearPostCallTask) {
         const postCallTask = resolvePostCallTaskToComplete(syncContext, stageLabel);
-        if (!postCallTask?.task_id) {
-          throw new Error(`Missing incomplete task for ${stageLabel} completion`);
+        if (postCallTask?.task_id) {
+          try {
+            const result = await completeScoutPrepTaskAfterVoicemail({
+              athleteId,
+              athleteMainId,
+              contactTask: task.contact_id,
+              taskId: postCallTask.task_id,
+              taskTitle: getTaskDisplayTitle(postCallTask),
+              assignedOwner: postCallTask.assigned_owner,
+              description: postCallTask.description || getTaskDisplayTitle(postCallTask),
+            });
+            taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
+          } catch (error) {
+            logFailure(
+              'SCOUT_PREP_POST_CALL_TASK_COMPLETE',
+              'best-effort',
+              error instanceof Error ? error.message : String(error),
+              {
+                contactId: athleteId,
+                athleteMainId,
+                stageLabel,
+                taskId: postCallTask.task_id,
+              },
+            );
+          }
+        } else {
+          logInfo('SCOUT_PREP_POST_CALL_TASK_COMPLETE', 'best-effort', 'success', {
+            contactId: athleteId,
+            athleteMainId,
+            stageLabel,
+            skipped: 'missing_incomplete_task',
+          });
         }
-        const result = await completeScoutPrepTaskAfterVoicemail({
-          athleteId,
-          athleteMainId,
-          contactTask: task.contact_id,
-          taskId: postCallTask.task_id,
-          taskTitle: getTaskDisplayTitle(postCallTask),
-          assignedOwner: postCallTask.assigned_owner,
-          description: postCallTask.description || getTaskDisplayTitle(postCallTask),
-        });
-        taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
       }
 
       toast.style = Toast.Style.Success;
@@ -3435,7 +3513,7 @@ function ScoutPrepDetail({
           />
           <Action.OpenInBrowser
             title="Open Athlete Admin Page"
-            shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
+            shortcut={{ modifiers: ['cmd'], key: 'o' }}
             url={buildScoutPrepAdminUrl(
               task,
               context?.resolved.athlete_main_id || context?.task.athlete_main_id,
@@ -4046,13 +4124,12 @@ function ProspectSearchListItem({
             <Action
               title={isParentMode ? 'Switch to Athlete Search' : 'Switch to Parent Search'}
               icon={Icon.Person}
-              shortcut={{ modifiers: ['cmd'], key: 'p' }}
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
               onAction={onToggleProspectSearchModeType}
             />
             <Action
               title="Exit Prospect Search"
               icon={Icon.MagnifyingGlass}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
               onAction={onToggleProspectSearchMode}
             />
             <SupabaseLifecycleStatusAction />
@@ -4561,13 +4638,12 @@ export default function ScoutPrepCommand() {
                         : 'Switch to Parent Search'
                     }
                     icon={Icon.Person}
-                    shortcut={{ modifiers: ['cmd'], key: 'p' }}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                     onAction={toggleProspectSearchModeType}
                   />
                   <Action
                     title="Exit Prospect Search"
                     icon={Icon.MagnifyingGlass}
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                     onAction={toggleProspectSearchMode}
                   />
                   <SupabaseLifecycleStatusAction />

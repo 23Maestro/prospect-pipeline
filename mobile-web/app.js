@@ -1,3 +1,5 @@
+import { cleanMeetingTitle, isActualSetMeetingEvent } from './set-meetings-utils.mjs';
+
 const routes = {
   '/set-meetings': {
     title: 'Set Meetings',
@@ -343,19 +345,6 @@ function getCurrentEasternSlotStamp(now = new Date()) {
   }).formatToParts(now);
   const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}`;
-}
-
-function cleanMeetingTitle(title) {
-  return title.replace(/^\((?:ACF|CF|RSP|CAN|ACF\*2)\)\s*/i, '').trim();
-}
-
-function isActualSetMeetingEvent(event) {
-  const title = String(event?.title || '').trim();
-  if (!title) return false;
-  const normalized = title.toLowerCase();
-  if (normalized.startsWith('follow up -')) return false;
-  if (/^\((?:acf\*?2?|cf|rsp|can|fu|cl|ns|\*)\)/i.test(title)) return false;
-  return true;
 }
 
 function formatSlotDate(value) {

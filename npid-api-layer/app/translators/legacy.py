@@ -4002,6 +4002,7 @@ class LegacyTranslator:
         soup = BeautifulSoup(raw_response or "", "html.parser")
         target_select = None
         fallback_labels = [
+            "New Opportunity",
             "Left Voice Mail 1",
             "Left Voice Mail 2",
             "Never Spoke To",

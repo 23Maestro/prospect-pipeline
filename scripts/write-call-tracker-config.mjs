@@ -8,6 +8,7 @@ import { readLinkedProjectRef, readLinkedSupabaseUrl } from './supabase-credenti
 const cwd = process.cwd();
 const projectRef = readLinkedProjectRef(cwd);
 const supabaseUrl = readLinkedSupabaseUrl(cwd);
+const syncEndpoint = process.env.CALL_TRACKER_SYNC_ENDPOINT || '';
 
 if (!projectRef || !supabaseUrl) {
   console.error('Missing linked Supabase project. Run `supabase link` first.');
@@ -39,12 +40,18 @@ if (!publicKey) {
 }
 
 const target = path.join(cwd, 'npid-api-layer/app/static/call-tracker/config.js');
-const contents = `window.CALL_TRACKER_CONFIG = ${JSON.stringify(
-  {
+const config = {
     supabaseUrl,
     anonKey: publicKey,
     schema: 'public',
-  },
+  };
+
+if (syncEndpoint) {
+  config.syncEndpoint = syncEndpoint;
+}
+
+const contents = `window.CALL_TRACKER_CONFIG = ${JSON.stringify(
+  config,
   null,
   2,
 )};\n`;
