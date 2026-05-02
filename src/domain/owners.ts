@@ -1,3 +1,5 @@
+import ownerConfig from '../../config/prospect-id-owners.json';
+
 export type OwnerRole =
   | 'call_tracker_operator'
   | 'appointment_setter'
@@ -19,9 +21,10 @@ export type OwnerProfile = {
   ownerKey: OwnerKey;
   personName: string;
   aliases: readonly string[];
+  assignedToLegacyUserId?: string | null;
   legacyUserId?: string;
-  calendarOwnerId?: string;
-  meetingForLegacyUserId?: string;
+  calendarOwnerId?: string | null;
+  meetingForLegacyUserId?: string | null;
   dashboardTrackingEligible: boolean;
   roles: readonly OwnerRole[];
   city?: string;
@@ -54,78 +57,22 @@ function normalizeToken(value?: string | number | null): string {
     .replace(/\s+/g, ' ');
 }
 
-export const OWNER_DIRECTORY: readonly OwnerProfile[] = [
-  {
-    ownerKey: 'jerami_singleton',
-    personName: 'Jerami Singleton',
-    aliases: ['Jerami', 'Jerami Singleton'],
-    legacyUserId: '1408164',
-    dashboardTrackingEligible: true,
-    roles: ['call_tracker_operator', 'appointment_setter', 'scouting_coordinator', 'task_owner'],
-  },
-  {
-    ownerKey: 'tim_risner',
-    personName: 'Tim Risner',
-    aliases: ['Tim Risner', 'Tim', 'Coach Risner'],
-    dashboardTrackingEligible: false,
-    roles: ['appointment_setter', 'scouting_coordinator', 'task_owner'],
-  },
-  {
-    ownerKey: 'jeffrey_stein',
-    personName: 'Jeffrey Stein',
-    aliases: ['Jeffrey Stein', 'Jeffrey'],
-    legacyUserId: '1418529',
-    calendarOwnerId: 'OrJsV8nhBouEzKY',
-    meetingForLegacyUserId: '1418529',
-    dashboardTrackingEligible: false,
-    roles: ['head_scout', 'calendar_owner', 'appointment_setter'],
-    city: 'Wexford',
-    state: 'PA',
-  },
-  {
-    ownerKey: 'luther_winfield',
-    personName: 'Luther Winfield',
-    aliases: ['Luther Winfield', 'Luther'],
-    legacyUserId: '370959',
-    calendarOwnerId: 'bMBrA26OElRUwPs',
-    meetingForLegacyUserId: '370959',
-    dashboardTrackingEligible: false,
-    roles: ['head_scout', 'calendar_owner', 'appointment_setter'],
-    city: 'Columbia',
-    state: 'SC',
-  },
-  {
-    ownerKey: 'ryan_lietz',
-    personName: 'Ryan Lietz',
-    aliases: ['Ryan Lietz', 'Ryan'],
-    legacyUserId: '1354049',
-    calendarOwnerId: 'nhVvYOz8bAaL57c',
-    meetingForLegacyUserId: '1354049',
-    dashboardTrackingEligible: false,
-    roles: ['head_scout', 'calendar_owner', 'appointment_setter'],
-    city: 'Gilbert',
-    state: 'AZ',
-  },
-  {
-    ownerKey: 'james_holcomb',
-    personName: 'James Holcomb',
-    aliases: ['James Holcomb', 'James'],
-    legacyUserId: '56',
-    calendarOwnerId: '56',
-    meetingForLegacyUserId: '56',
-    dashboardTrackingEligible: false,
-    roles: ['head_scout', 'calendar_owner', 'appointment_setter'],
-    city: 'Phoenix',
-    state: 'AZ',
-  },
-  {
-    ownerKey: 'logan_lord',
-    personName: 'Logan Lord',
-    aliases: ['Logan Lord', 'Logan'],
-    dashboardTrackingEligible: false,
-    roles: ['task_owner', 'appointment_setter'],
-  },
-] as const;
+type OwnerConfig = {
+  activeOperatorKey: OwnerKey;
+  owners: Array<
+    Omit<OwnerProfile, 'legacyUserId' | 'roles'> & {
+      ownerKey: OwnerKey;
+      roles: OwnerRole[];
+    }
+  >;
+};
+
+export const PROSPECT_ID_OWNER_CONFIG = ownerConfig as OwnerConfig;
+
+export const OWNER_DIRECTORY: readonly OwnerProfile[] = PROSPECT_ID_OWNER_CONFIG.owners.map((owner) => ({
+  ...owner,
+  legacyUserId: owner.assignedToLegacyUserId || undefined,
+})) as readonly OwnerProfile[];
 
 export const HEAD_SCOUT_ORDER = OWNER_DIRECTORY.filter((owner) =>
   owner.roles.includes('head_scout'),
@@ -199,7 +146,10 @@ export function getActiveOperator(): ActiveOperatorContext {
       senderName: envOwner.personName,
     };
   }
-  const owner = OWNER_DIRECTORY.find((entry) => entry.ownerKey === 'jerami_singleton') || OWNER_DIRECTORY[0];
+  const configuredOwner = resolveOwnerByKey(PROSPECT_ID_OWNER_CONFIG.activeOperatorKey);
+  const owner = configuredOwner?.dashboardTrackingEligible
+    ? configuredOwner
+    : OWNER_DIRECTORY.find((entry) => entry.ownerKey === 'jerami_singleton') || OWNER_DIRECTORY[0];
   return {
     operatorKey: owner.ownerKey,
     personName: owner.personName,

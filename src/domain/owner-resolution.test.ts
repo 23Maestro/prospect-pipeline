@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getActiveOperator, resolveOwnerByName } from './owners';
+import { getActiveOperator, HEAD_SCOUT_ORDER, resolveOwnerByName } from './owners';
 import { resolveOwnerContext } from './owner-resolution';
 
 test('active operator defaults to Jerami workspace context', () => {
@@ -19,6 +19,14 @@ test('Tim Risner is a known owner profile but not the active operator', () => {
   assert.equal(tim?.ownerKey, 'tim_risner');
   assert.equal(tim?.dashboardTrackingEligible, false);
   assert.equal(tim?.roles.includes('scouting_coordinator'), true);
+  assert.equal(tim?.assignedToLegacyUserId, null);
+});
+
+test('head scout order keeps the visible calendar owners available', () => {
+  assert.deepEqual(
+    HEAD_SCOUT_ORDER.map((scout) => scout.scout_name),
+    ['Jeffrey Stein', 'Luther Winfield', 'Ryan Lietz', 'James Holcomb'],
+  );
 });
 
 test('Jerami task assignment allows active-operator materialization even when booked owner is Ryan', () => {

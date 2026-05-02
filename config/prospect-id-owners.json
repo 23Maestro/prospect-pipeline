@@ -1,0 +1,83 @@
+{
+  "activeOperatorKey": "jerami_singleton",
+  "owners": [
+    {
+      "ownerKey": "jerami_singleton",
+      "personName": "Jerami Singleton",
+      "aliases": ["Jerami", "Jerami Singleton"],
+      "assignedToLegacyUserId": "1408164",
+      "meetingForLegacyUserId": null,
+      "calendarOwnerId": null,
+      "roles": ["call_tracker_operator", "appointment_setter", "scouting_coordinator", "task_owner"],
+      "dashboardTrackingEligible": true
+    },
+    {
+      "ownerKey": "tim_risner",
+      "personName": "Tim Risner",
+      "aliases": ["Tim Risner", "Tim", "Coach Risner"],
+      "assignedToLegacyUserId": null,
+      "meetingForLegacyUserId": null,
+      "calendarOwnerId": null,
+      "roles": ["appointment_setter", "scouting_coordinator", "task_owner"],
+      "dashboardTrackingEligible": false
+    },
+    {
+      "ownerKey": "jeffrey_stein",
+      "personName": "Jeffrey Stein",
+      "aliases": ["Jeffrey Stein", "Jeffrey"],
+      "assignedToLegacyUserId": "1418529",
+      "meetingForLegacyUserId": "1418529",
+      "calendarOwnerId": "OrJsV8nhBouEzKY",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Wexford",
+      "state": "PA"
+    },
+    {
+      "ownerKey": "luther_winfield",
+      "personName": "Luther Winfield",
+      "aliases": ["Luther Winfield", "Luther"],
+      "assignedToLegacyUserId": "370959",
+      "meetingForLegacyUserId": "370959",
+      "calendarOwnerId": "bMBrA26OElRUwPs",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Columbia",
+      "state": "SC"
+    },
+    {
+      "ownerKey": "ryan_lietz",
+      "personName": "Ryan Lietz",
+      "aliases": ["Ryan Lietz", "Ryan"],
+      "assignedToLegacyUserId": "1354049",
+      "meetingForLegacyUserId": "1354049",
+      "calendarOwnerId": "nhVvYOz8bAaL57c",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Gilbert",
+      "state": "AZ"
+    },
+    {
+      "ownerKey": "james_holcomb",
+      "personName": "James Holcomb",
+      "aliases": ["James Holcomb", "James"],
+      "assignedToLegacyUserId": "56",
+      "meetingForLegacyUserId": "56",
+      "calendarOwnerId": "56",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Phoenix",
+      "state": "AZ"
+    },
+    {
+      "ownerKey": "logan_lord",
+      "personName": "Logan Lord",
+      "aliases": ["Logan Lord", "Logan"],
+      "assignedToLegacyUserId": "2254",
+      "meetingForLegacyUserId": null,
+      "calendarOwnerId": null,
+      "roles": ["task_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false
+    }
+  ]
+}
