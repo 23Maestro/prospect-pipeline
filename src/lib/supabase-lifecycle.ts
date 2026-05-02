@@ -66,7 +66,7 @@ type LifecycleWriteArgs = {
   state: PipelineStateSnapshot;
 };
 
-type MeetingSetWriteArgs = PipelineActor & {
+export type MeetingSetWriteArgs = PipelineActor & {
   crmStage: string;
   taskStatus: string;
   headScout?: string | null;

@@ -9,36 +9,15 @@ import type {
   SalesStageUpdateResponse,
   ScoutPortalTask,
 } from '../features/scout-prep/types';
+import {
+  CURATED_SALES_STAGE_LABELS,
+  isCuratedSalesStageLabel,
+  normalizeSalesStageLabelForLaravel,
+} from '../domain/sales-stage-contract';
 
 const FEATURE = 'sales-stage';
 const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
-const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I Need To Follow Up';
-const STAGE_LABEL_ALIASES = new Map<string, string>([
-  ['Spoke to - Follow Up', SPOKE_TO_FOLLOW_UP_LABEL],
-  ['Spoke to - I need to follow up', SPOKE_TO_FOLLOW_UP_LABEL],
-]);
-
-const CURATED_STAGE_LABELS = new Set([
-  'Left Voice Mail 1',
-  'Left Voice Mail 2',
-  'Never Spoke To',
-  'Called - Unable to Leave VM',
-  'Spoke to - Not Interested',
-  'Spoke to - Athlete, not Parent',
-  'Spoke to - Too Young',
-  SPOKE_TO_FOLLOW_UP_LABEL,
-  'Meeting Set',
-  'Rescheduled',
-  'Actual Meeting - Follow Up',
-  'Actual Meeting - Close Lost',
-  'Actual Meeting - Close Won',
-  'Meeting Result - Res. Pending',
-  'Meeting Result - Rescheduled',
-  'Meeting Result - Canceled',
-  'Meeting Result - No Show',
-]);
-
-const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = Array.from(CURATED_STAGE_LABELS).map(
+const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = CURATED_SALES_STAGE_LABELS.map(
   (label) => ({
     value: label,
     label,
@@ -73,8 +52,7 @@ function logFailure(event: string, step: string, error: string, context?: Record
 }
 
 export function normalizeSalesStageLabelForLegacy(stage: string): string {
-  const trimmed = stage.trim();
-  return STAGE_LABEL_ALIASES.get(trimmed) || trimmed;
+  return normalizeSalesStageLabelForLaravel(stage);
 }
 
 export async function fetchCuratedSalesStageOptions(
@@ -103,7 +81,7 @@ export async function fetchCuratedSalesStageOptions(
   const selected = options.find((option) => option.selected) || null;
   const selectedAllowed = selected ? !excludedLabels.has(selected.label) : false;
   const curated = options.filter(
-    (option) => CURATED_STAGE_LABELS.has(option.label) && !excludedLabels.has(option.label),
+    (option) => isCuratedSalesStageLabel(option.label) && !excludedLabels.has(option.label),
   );
   const selectedAlreadyIncluded = selectedAllowed
     ? curated.some(

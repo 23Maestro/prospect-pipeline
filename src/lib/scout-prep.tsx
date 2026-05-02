@@ -15,6 +15,7 @@ import type {
 import type { AthleteTaskSummary } from '../types/athlete-workflows';
 import { searchLogger } from './logger';
 import type { VoicemailFollowUpVariant } from './scout-follow-up-templates';
+import { getActiveOperator, isActiveOperatorTaskAssignedOwner } from '../domain/owners';
 import {
   getCachedScoutPrepContactInfo,
   getCachedScoutPrepMeasurables,
@@ -234,12 +235,11 @@ export function isFollowUpScoutTask(task?: Partial<ScoutAthleteTask> | null): bo
     .trim()
     .toLowerCase();
   const owner = String(task?.assigned_owner || '')
-    .trim()
-    .toLowerCase();
+    .trim();
   const completionDate = String(task?.completion_date || '').trim();
   return (
     isIncompleteTaskValue(completionDate) &&
-    owner.includes('jerami') &&
+    isActiveOperatorTaskAssignedOwner(owner) &&
     (title.startsWith('call attempt') || description.includes('call the family'))
   );
 }
@@ -344,7 +344,7 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     contactTask: args.contactTask || null,
     taskId: args.taskId || null,
     taskTitle: args.taskTitle || 'Call Attempt 1',
-    assignedOwner: args.assignedOwner || 'Jerami Singleton',
+    assignedOwner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
     completedDate,
     completedTime,
   });
@@ -358,7 +358,7 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
       contact_task: args.contactTask || args.athleteId,
       task_id: args.taskId || null,
       task_title: args.taskTitle || 'Call Attempt 1',
-      assigned_owner: args.assignedOwner || 'Jerami Singleton',
+      assigned_owner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
       description: args.description || args.taskTitle || 'Call Attempt 1',
       completed_date: completedDate,
       completed_time: completedTime,
@@ -564,7 +564,7 @@ export async function recordVoicemailFollowUpMessageSent(args: {
       stage,
       task_title: taskTitle,
       description,
-      assigned_to: args.assignedTo || '1408164',
+      assigned_to: args.assignedTo || getActiveOperator().legacyUserId,
     }),
   });
 

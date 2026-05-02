@@ -86,6 +86,12 @@ import {
   submitMeetingSet,
   updateSalesStage,
 } from './lib/sales-stage';
+import { buildPostCallActionPlan } from './domain/post-call-action';
+import {
+  classifyMeetingSetStage,
+  getSalesStageLabelForVoicemailVariant,
+  POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
+} from './domain/sales-stage-contract';
 import { searchLogger } from './lib/logger';
 import {
   fetchOpenMeetings,
@@ -122,22 +128,6 @@ import {
 } from './lib/scout-duplicate-profiles';
 
 const FEATURE = 'scout-prep';
-const POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS: readonly string[] = [
-  'Actual Meeting - Follow Up',
-  'Actual Meeting - Close Lost',
-  'Actual Meeting - Close Won',
-  'Meeting Result - No Show',
-];
-const MEETING_SET_LABEL = 'Meeting Set';
-const LEFT_VOICE_MAIL_1_LABEL = 'Left Voice Mail 1';
-const LEFT_VOICE_MAIL_2_LABEL = 'Left Voice Mail 2';
-const NEVER_SPOKE_TO_LABEL = 'Never Spoke To';
-const CALLED_UNABLE_TO_LEAVE_VM_LABEL = 'Called - Unable to Leave VM';
-const SPOKE_TO_NOT_INTERESTED_LABEL = 'Spoke to - Not Interested';
-const SPOKE_TO_ATHLETE_NOT_PARENT_LABEL = 'Spoke to - Athlete, not Parent';
-const SPOKE_TO_TOO_YOUNG_LABEL = 'Spoke to - Too Young';
-const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I Need To Follow Up';
-const SPOKE_TO_FOLLOW_UP_ALIAS_LABEL = 'Spoke to - Follow Up';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
   AL: 'Alabama',
@@ -311,6 +301,10 @@ function buildMeetingSetStartsAt(
   return `20${year}-${month}-${day}T${rawStartTime}`;
 }
 
+function isMeetingSetStage(stageLabel?: string | null): boolean {
+  return Boolean(classifyMeetingSetStage(String(stageLabel || '')));
+}
+
 function getTaskDisplayTitle(
   task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
 ): string {
@@ -335,37 +329,6 @@ function isIncompleteTaskValue(value?: string | null): boolean {
   );
 }
 
-function resolvePostCallVoicemailVariant(stageLabel: string): VoicemailFollowUpVariant | null {
-  const normalizedStage = String(stageLabel || '').trim();
-
-  if (normalizedStage === LEFT_VOICE_MAIL_1_LABEL) {
-    return 'call_attempt_1';
-  }
-
-  if (normalizedStage === LEFT_VOICE_MAIL_2_LABEL) {
-    return 'call_attempt_2';
-  }
-
-  if (normalizedStage === NEVER_SPOKE_TO_LABEL) {
-    return 'call_attempt_3';
-  }
-
-  return null;
-}
-
-function shouldCompleteTopmostPostCallTask(stageLabel: string): boolean {
-  const normalizedStage = String(stageLabel || '').trim();
-  return (
-    normalizedStage === MEETING_SET_LABEL ||
-    normalizedStage === CALLED_UNABLE_TO_LEAVE_VM_LABEL ||
-    normalizedStage === SPOKE_TO_NOT_INTERESTED_LABEL ||
-    normalizedStage === SPOKE_TO_ATHLETE_NOT_PARENT_LABEL ||
-    normalizedStage === SPOKE_TO_TOO_YOUNG_LABEL ||
-    normalizedStage === SPOKE_TO_FOLLOW_UP_LABEL ||
-    normalizedStage === SPOKE_TO_FOLLOW_UP_ALIAS_LABEL
-  );
-}
-
 function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): string | null {
   if (variant === 'call_attempt_1') return 'Call Attempt 1';
   if (variant === 'call_attempt_2') return 'Call Attempt 2';
@@ -375,10 +338,7 @@ function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): stri
 }
 
 function getVoicemailLifecycleStageLabel(variant: VoicemailFollowUpVariant): string | null {
-  if (variant === 'call_attempt_1') return LEFT_VOICE_MAIL_1_LABEL;
-  if (variant === 'call_attempt_2') return LEFT_VOICE_MAIL_2_LABEL;
-  if (variant === 'call_attempt_3') return NEVER_SPOKE_TO_LABEL;
-  return null;
+  return getSalesStageLabelForVoicemailVariant(variant);
 }
 
 function normalizeTaskMatchText(task: Pick<ScoutAthleteTask, 'title' | 'description' | 'row_text'>): string {
@@ -433,82 +393,6 @@ function resolveVoicemailLifecycleTaskForCompletion(
   }
 
   return null;
-}
-
-function normalizePostCallTaskText(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^\(?sc move this task\)?\s*/i, '')
-    .replace(/[-_–—]+/g, ' ')
-    .replace(/[.,:]+/g, ' ')
-    .replace(/\s+/g, ' ');
-}
-
-function isBroadPostCallTaskMatch(task: ScoutAthleteTask, stageLabel: string): boolean {
-  const text = normalizePostCallTaskText(
-    [task.title, task.description, task.row_text].filter(Boolean).join(' '),
-  );
-  const stage = normalizePostCallTaskText(stageLabel);
-  if (!text || !stage) {
-    return false;
-  }
-
-  if (text.includes(stage)) {
-    return true;
-  }
-
-  if (stage.includes('follow up')) {
-    return (
-      text.includes('scheduled follow up') ||
-      text.includes('need to follow up') ||
-      text.includes('follow up')
-    );
-  }
-
-  if (stage.includes('athlete not parent')) {
-    return text.includes('athlete not parent');
-  }
-
-  if (stage.includes('not interested')) {
-    return text.includes('not interested');
-  }
-
-  if (stage.includes('too young')) {
-    return text.includes('too young');
-  }
-
-  if (stage.includes('unable to leave vm')) {
-    return text.includes('unable to leave vm') || text.includes('unable to leave voicemail');
-  }
-
-  return false;
-}
-
-function resolvePostCallTaskToComplete(
-  context: ScoutPrepContext,
-  stageLabel: string,
-): ScoutAthleteTask | null {
-  const postCallVoicemailVariant = resolvePostCallVoicemailVariant(stageLabel);
-  if (postCallVoicemailVariant) {
-    const voicemailTask = resolveVoicemailLifecycleTaskForCompletion(
-      context,
-      postCallVoicemailVariant,
-    );
-    if (voicemailTask) {
-      return voicemailTask;
-    }
-  }
-
-  if (!shouldCompleteTopmostPostCallTask(stageLabel) && !postCallVoicemailVariant) {
-    return null;
-  }
-
-  const incompleteTasks = getIncompleteAthleteTasks(context.tasks);
-  return (
-    incompleteTasks.find((candidate) => isBroadPostCallTaskMatch(candidate, stageLabel)) ||
-    getTopmostIncompleteAthleteTask(context.tasks)
-  );
 }
 
 function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
@@ -2511,7 +2395,9 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           return;
         }
         const filteredOptions = options.filter(
-          (option) => !POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS.includes(option.label),
+          (option) => !POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS.includes(
+            option.label as (typeof POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS)[number],
+          ),
         );
         setStageOptions(filteredOptions);
         setSelectedStage(
@@ -2552,7 +2438,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
   useEffect(() => {
     let active = true;
-    if (selectedStageLabel !== MEETING_SET_LABEL) {
+    if (!isMeetingSetStage(selectedStageLabel)) {
       setMeetingTemplate(null);
       setIsLoadingMeetingTemplate(false);
       return () => {
@@ -2635,7 +2521,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
   useEffect(() => {
     let active = true;
-    if (selectedStageLabel !== MEETING_SET_LABEL || !selectedMeetingFor) {
+    if (!isMeetingSetStage(selectedStageLabel) || !selectedMeetingFor) {
       setOpenMeetingSlots([]);
       setSelectedOpenMeetingId('');
       setIsLoadingOpenMeetings(false);
@@ -2714,13 +2600,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
       const preUpdateContext = context || (await loadScoutPrepContext(task));
       let meetingSetResult: MeetingSetSubmitResponse | null = null;
-      let meetingSetAssignedTo: string | null = null;
-      let meetingSetOpenEventId: string | null = null;
-      let meetingSetName: string | null = null;
-      let meetingSetTimezone: string | null = null;
-      let meetingSetStartTime: string | null = null;
-      let meetingSetAssignedOwner: string | null = null;
-      if (stageLabel === MEETING_SET_LABEL) {
+      let meetingSetInput: Parameters<typeof buildPostCallActionPlan>[0]['meetingSet'] = undefined;
+      if (isMeetingSetStage(stageLabel)) {
         const assignedTo = String(values.meetingFor || values.legacyAssignedTo || '').trim();
         const openEventId = String(values.openMeetingId || '').trim();
         const meetingLength = String(values.legacyMeetingLength || '01:00').trim() || '01:00';
@@ -2729,6 +2610,8 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         const taskDescription = String(values.meetingDetails || '').trim();
         const selectedOpenMeeting =
           openMeetingSlots.find((slot) => slot.open_event_id === openEventId) || null;
+        const selectedScout =
+          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === assignedTo) || null;
         const startTime = selectedOpenMeeting?.start_time || '';
         const startsAt = buildMeetingSetStartsAt(selectedOpenMeeting);
 
@@ -2739,122 +2622,109 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           throw new Error('Meeting Set requires scout and open meeting selection');
         }
 
-        meetingSetResult = await submitMeetingSet({
-          athlete_id: athleteId,
-          athlete_main_id: athleteMainId,
-          meeting_name: meetingName,
-          meeting_timezone: meetingTimezone,
-          assigned_to: assignedTo,
-          open_event_id: openEventId,
-          task_description: taskDescription,
-          start_time: startTime,
-          meeting_length: meetingLength,
+        meetingSetInput = {
+          athleteId,
+          athleteMainId,
+          meetingName,
+          meetingTimezone,
+          assignedToLegacyUserId: assignedTo,
+          meetingForLegacyUserId: selectedScout?.meeting_for || assignedTo,
+          openEventId,
+          calendarOwnerId: selectedScout?.calendar_owner_id || null,
+          bookedMeetingAssignedOwner: selectedOpenMeeting?.assigned_owner || null,
+          taskDescription,
+          startTime,
+          startsAt: startsAt || startTime,
+          meetingLength,
+          headScout: String(preUpdateContext.resolved.head_scout || '').trim() || null,
+        };
+
+        const initialPlan = buildPostCallActionPlan({
+          athleteId,
+          athleteMainId,
+          athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
+          stageLabel,
+          tasks: preUpdateContext.tasks,
+          selectedTaskId: task.task_id,
+          meetingSet: meetingSetInput,
         });
-        meetingSetAssignedTo = assignedTo;
-        meetingSetOpenEventId = openEventId;
-        meetingSetName = meetingName;
-        meetingSetTimezone = meetingTimezone;
-        meetingSetStartTime = startsAt || startTime;
-        meetingSetAssignedOwner = selectedOpenMeeting?.assigned_owner || null;
+        if (!initialPlan.laravelMeetingSetSubmit) {
+          throw new Error('Meeting Set submit plan was not built');
+        }
+        meetingSetResult = await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
       }
+
+      const basePlan = buildPostCallActionPlan({
+        athleteId,
+        athleteMainId,
+        athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
+        stageLabel,
+        tasks: preUpdateContext.tasks,
+        selectedTaskId: task.task_id,
+        meetingSet: meetingSetInput,
+      });
 
       const salesStageResult = await updateSalesStage({
         athleteMainId,
         athleteId,
-        stage: stageLabel,
+        stage: basePlan.laravelSalesStageUpdate?.stage || stageLabel,
       });
 
       const syncContext = preUpdateContext;
-      if (stageLabel === MEETING_SET_LABEL && meetingSetResult) {
-        const selectedScout =
-          HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === meetingSetResult.assigned_to) ||
-          null;
-        const currentTask =
-          stripMoveThisTaskPrefix(
-            meetingSetResult.created_task?.title || salesStageResult.created_task?.title || '',
-          ) || 'Confirmation Call';
-        await recordMeetingSet({
-          athleteId,
-          athleteMainId,
-          athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
-          crmStage: stageLabel,
-          taskStatus: currentTask,
-          headScout:
-            String(syncContext.resolved.head_scout || '').trim() ||
-            meetingSetAssignedOwner ||
-            selectedScout?.scout_name ||
-            null,
-          currentTaskId:
-            String(
-              meetingSetResult.created_task?.task_id ||
-              salesStageResult.created_task?.task_id ||
-              '',
-            ).trim() || null,
-          currentTaskTitle: currentTask,
-          appointmentId: meetingSetResult.open_event_id || meetingSetOpenEventId,
-          sourceEventId: meetingSetResult.open_event_id || meetingSetOpenEventId,
-          startsAt: meetingSetStartTime,
-          meetingTimezone: meetingSetTimezone,
-          legacyAssignedTo: meetingSetResult.assigned_to || meetingSetAssignedTo,
-          meetingName: meetingSetResult.meeting_name || meetingSetName,
-          taskDueDate:
-            String(
-              meetingSetResult.created_task?.due_date ||
-              salesStageResult.created_task?.due_date ||
-              '',
-            ).trim() || null,
-        });
+      const actionPlan = buildPostCallActionPlan({
+        athleteId,
+        athleteMainId,
+        athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
+        stageLabel,
+        tasks: syncContext.tasks,
+        selectedTaskId: task.task_id,
+        meetingSet: meetingSetInput,
+        meetingSetResult,
+        salesStageCreatedTask: salesStageResult.created_task || null,
+      });
+
+      if (actionPlan.supabaseLifecycleWrite) {
+        await recordMeetingSet(actionPlan.supabaseLifecycleWrite.args);
       }
 
       let taskCompletionMessage: string | null = null;
-      const shouldClearPostCallTask =
-        shouldCompleteTopmostPostCallTask(stageLabel) || Boolean(resolvePostCallVoicemailVariant(stageLabel));
-      if (shouldClearPostCallTask) {
-        const postCallTask = resolvePostCallTaskToComplete(syncContext, stageLabel);
-        if (postCallTask?.task_id) {
-          try {
-            const result = await completeScoutPrepTaskAfterVoicemail({
-              athleteId,
-              athleteMainId,
-              contactTask: task.contact_id,
-              taskId: postCallTask.task_id,
-              taskTitle: getTaskDisplayTitle(postCallTask),
-              assignedOwner: postCallTask.assigned_owner,
-              description: postCallTask.description || getTaskDisplayTitle(postCallTask),
-            });
-            taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
-          } catch (error) {
-            logFailure(
-              'SCOUT_PREP_POST_CALL_TASK_COMPLETE',
-              'best-effort',
-              error instanceof Error ? error.message : String(error),
-              {
-                contactId: athleteId,
-                athleteMainId,
-                stageLabel,
-                taskId: postCallTask.task_id,
-              },
-            );
-          }
-        } else {
-          logInfo('SCOUT_PREP_POST_CALL_TASK_COMPLETE', 'best-effort', 'success', {
-            contactId: athleteId,
-            athleteMainId,
-            stageLabel,
-            skipped: 'missing_incomplete_task',
+      const taskCompletion = actionPlan.laravelTaskCompletion;
+      if (taskCompletion) {
+        try {
+          const result = await completeScoutPrepTaskAfterVoicemail({
+            athleteId: taskCompletion.athleteId,
+            athleteMainId: taskCompletion.athleteMainId,
+            contactTask: taskCompletion.contactTask,
+            taskId: taskCompletion.taskId,
+            taskTitle: taskCompletion.taskTitle,
+            assignedOwner: taskCompletion.assignedOwner,
+            description: taskCompletion.description,
           });
+          taskCompletionMessage = formatTaskIdLabel(result.task_id) || 'Task done';
+        } catch (error) {
+          logFailure(
+            'SCOUT_PREP_POST_CALL_TASK_COMPLETE',
+            'best-effort',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              stageLabel,
+              taskId: taskCompletion.taskId,
+            },
+          );
         }
       }
 
       toast.style = Toast.Style.Success;
       toast.title = taskCompletionMessage
         ? 'Stage saved + done'
-        : stageLabel === MEETING_SET_LABEL
+        : isMeetingSetStage(stageLabel)
           ? 'Meeting Set saved'
           : 'Stage saved';
       toast.message =
         taskCompletionMessage ||
-        (stageLabel === MEETING_SET_LABEL
+        (isMeetingSetStage(stageLabel)
           ? meetingSetResult?.email_sent
             ? 'Email sent'
             : 'Meeting Set saved'
@@ -2898,7 +2768,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         </Form.Dropdown>
       ) : null}
 
-      {selectedStageLabel === MEETING_SET_LABEL ? (
+      {isMeetingSetStage(selectedStageLabel) ? (
         <>
           {isLoadingMeetingTemplate ? (
             <Form.Description text="Loading Meeting Set template…" />

@@ -2,6 +2,7 @@ import { apiFetch } from './fastapi-client';
 import { searchLogger } from './logger';
 import { getNaturalZoneLabel, resolveTimezone } from './scout-prep-ai';
 import type { AppointmentTitlePrefix } from './head-scout-event-prefix';
+import { HEAD_SCOUT_ORDER } from '../domain/owners';
 
 const FEATURE = 'head-scout-schedules';
 export const HEAD_SCOUT_TIMEZONE = 'EST';
@@ -99,36 +100,7 @@ type TimezoneDisplay = {
   zoneLabel: string;
 };
 
-export const HEAD_SCOUT_ORDER = [
-  {
-    scout_name: 'Jeffrey Stein',
-    city: 'Wexford',
-    state: 'PA',
-    calendar_owner_id: 'OrJsV8nhBouEzKY',
-    meeting_for: '1418529',
-  },
-  {
-    scout_name: 'Luther Winfield',
-    city: 'Columbia',
-    state: 'SC',
-    calendar_owner_id: 'bMBrA26OElRUwPs',
-    meeting_for: '370959',
-  },
-  {
-    scout_name: 'Ryan Lietz',
-    city: 'Gilbert',
-    state: 'AZ',
-    calendar_owner_id: 'nhVvYOz8bAaL57c',
-    meeting_for: '1354049',
-  },
-  {
-    scout_name: 'James Holcomb',
-    city: 'Phoenix',
-    state: 'AZ',
-    calendar_owner_id: '56',
-    meeting_for: '56',
-  },
-] as const;
+export { HEAD_SCOUT_ORDER };
 
 function logInfo(
   event: string,
