@@ -33,7 +33,6 @@ const contactMadeOutcomes = new Set(['spoke_follow_up']);
 
 const state = {
   rows: [],
-  meetingSetRows: [],
   summary: null,
   activeFilter: 'meaningful',
   activePeriod: currentWeekPeriod(),
@@ -210,19 +209,12 @@ async function supabaseGet(path) {
 
 async function loadData() {
   $('statusText').textContent = 'Loading';
-  const [summaryRows, eventRows, meetingSetRows] = await Promise.all([
+  const [summaryRows, eventRows] = await Promise.all([
     supabaseGet('call_tracker_summary?select=*'),
     supabaseGet(
       [
-        'call_tracker_events?select=athlete_name,occurred_at,event_at,tracker_outcome,raw_crm_stage,raw_task_status,appointment_id,booked_event_title,revenue_cents',
+        'call_tracker_events_owner_context?select=athlete_name,occurred_at,event_at,tracker_outcome,raw_crm_stage,raw_task_status,raw_event_type,appointment_id,booked_event_title,revenue_cents,materialization_reason,resolved_owner_name',
         'order=event_at.desc',
-        'limit=250',
-      ].join('&'),
-    ),
-    supabaseGet(
-      [
-        'call_tracker_meeting_sets?select=athlete_name,occurred_at,event_at,tracker_outcome,raw_crm_stage,raw_task_status,raw_event_type,booked_event_title,appointment_starts_at',
-        'order=occurred_at.desc',
         'limit=250',
       ].join('&'),
     ),
@@ -230,7 +222,6 @@ async function loadData() {
 
   state.summary = summaryRows[0] || {};
   state.rows = Array.isArray(eventRows) ? eventRows : [];
-  state.meetingSetRows = Array.isArray(meetingSetRows) ? meetingSetRows : [];
   render();
 }
 
@@ -337,8 +328,7 @@ function isPostMeetingResult(row) {
 }
 
 function displayRows() {
-  const nonMeetingRows = state.rows.filter((row) => row.tracker_outcome !== 'meeting_set');
-  return dedupePipelineRows([...nonMeetingRows, ...state.meetingSetRows]).sort(
+  return dedupePipelineRows(state.rows).sort(
     (left, right) => new Date(right.event_at || right.occurred_at) - new Date(left.event_at || left.occurred_at),
   );
 }

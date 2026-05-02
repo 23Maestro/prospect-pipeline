@@ -2,6 +2,21 @@
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
+import { buildAthleteKey } from '../src/domain/athlete-identity.ts';
+import { buildCallActivityFact, buildMeetingSetFact } from '../src/domain/call-tracker-facts.ts';
+import {
+  insertMeetingSetEventsOnce,
+  readRows,
+  upsertAppointments,
+  upsertAthletePipelineState,
+  upsertAthletes,
+  upsertCallActivityEvents,
+} from '../src/domain/supabase-persistence.ts';
+import {
+  classifyScoutTask,
+  isDashboardCallActivityStatus,
+  stripMoveThisTaskPrefix,
+} from '../src/domain/scout-task-classifier.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -14,6 +29,11 @@ const {
   serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
   schema: SUPABASE_SCHEMA,
 } = resolveSupabaseCredentials();
+const SUPABASE_CONFIG = {
+  url: SUPABASE_URL,
+  key: SUPABASE_SERVICE_ROLE_KEY,
+  schema: SUPABASE_SCHEMA,
+};
 const RUN_ID = randomUUID();
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -32,16 +52,6 @@ if (projectRef && !SUPABASE_URL.includes(projectRef)) {
     `Supabase URL ${SUPABASE_URL} does not match linked project ref ${projectRef}. Refusing to write to the wrong project.`,
   );
   process.exit(1);
-}
-
-function buildAthleteKey(athleteId, athleteMainId) {
-  return `${String(athleteId || '').trim()}:${String(athleteMainId || '').trim()}`;
-}
-
-function stripMoveThisTaskPrefix(taskTitle) {
-  const trimmed = String(taskTitle || '').trim();
-  if (!trimmed) return '';
-  return trimmed.replace(/^\(SC Move This Task\)\s*/i, '').trim() || trimmed;
 }
 
 function parseLegacyTaskDate(value) {
@@ -103,66 +113,6 @@ function selectCurrentAndPreviousMeetings(events) {
   return { currentMeeting: null, previousMeeting: meetings[0] || null };
 }
 
-function mapPipelineTask(rawTitle, rawDescription) {
-  const strippedTitle = stripMoveThisTaskPrefix(rawTitle);
-  const normalizedTitle = strippedTitle.toLowerCase();
-  const normalizedDescription = String(rawDescription || '').trim().toLowerCase();
-
-  if (
-    normalizedTitle.includes('confirmation call') ||
-    normalizedDescription.includes('confirm the meeting set')
-  ) {
-    return {
-      taskStatus: 'confirmation_call',
-      taskPriority: 500,
-    };
-  }
-
-  if (normalizedTitle.includes('no show')) {
-    return {
-      taskStatus: 'no_show',
-      taskPriority: 450,
-    };
-  }
-
-  if (normalizedTitle.includes('call attempt 3')) {
-    return {
-      taskStatus: 'call_attempt_3',
-      taskPriority: 300,
-    };
-  }
-
-  if (
-    normalizedTitle.startsWith('spoke to') ||
-    normalizedTitle.includes('follow up') ||
-    normalizedDescription.includes('follow up')
-  ) {
-    return {
-      taskStatus: 'spoke_to_follow_up',
-      taskPriority: 350,
-    };
-  }
-
-  if (normalizedTitle.includes('call attempt 2')) {
-    return {
-      taskStatus: 'call_attempt_2',
-      taskPriority: 200,
-    };
-  }
-
-  if (normalizedTitle.includes('call attempt 1')) {
-    return {
-      taskStatus: 'call_attempt_1',
-      taskPriority: 100,
-    };
-  }
-
-  return {
-    taskStatus: 'needs_manual_review',
-    taskPriority: 0,
-  };
-}
-
 function getSelectedSalesStage(payload) {
   const options = Array.isArray(payload?.options) ? payload.options : [];
   const selected = options.find((option) => option?.selected);
@@ -192,55 +142,7 @@ async function apiFetch(path, options = {}) {
   }
 }
 
-async function supabaseWrite(table, rows, { onConflict } = {}) {
-  if (!rows.length) return;
-  const query = onConflict ? `?on_conflict=${encodeURIComponent(onConflict)}` : '';
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}${query}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      Prefer: onConflict ? 'resolution=merge-duplicates,return=minimal' : 'return=minimal',
-      'Accept-Profile': SUPABASE_SCHEMA,
-      'Content-Profile': SUPABASE_SCHEMA,
-    },
-    body: JSON.stringify(rows),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`${table} write failed: ${response.status} ${text.slice(0, 300)}`);
-  }
-}
-
-async function supabaseQuery(table, query) {
-  const response = await fetch(`${SUPABASE_URL}/rest/v1/${encodeURIComponent(table)}?${query}`, {
-    method: 'GET',
-    headers: {
-      apikey: SUPABASE_SERVICE_ROLE_KEY,
-      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-      'Accept-Profile': SUPABASE_SCHEMA,
-    },
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`${table} query failed: ${response.status} ${text.slice(0, 300)}`);
-  }
-
-  const payload = await response.json();
-  return Array.isArray(payload) ? payload : [];
-}
-
-const CALL_ACTIVITY_STATUSES = new Set([
-  'call_attempt_1',
-  'call_attempt_2',
-  'call_attempt_3',
-  'spoke_to_follow_up',
-]);
-
-function compareBackfillCandidates(left, right) {
+function compareCurrentPipelineCandidates(left, right) {
   if (right.taskPriority !== left.taskPriority) {
     return right.taskPriority - left.taskPriority;
   }
@@ -250,6 +152,21 @@ function compareBackfillCandidates(left, right) {
   const leftTaskId = Number.parseInt(String(left.taskId || '0'), 10);
   const rightTaskId = Number.parseInt(String(right.taskId || '0'), 10);
   return rightTaskId - leftTaskId;
+}
+
+function normalizeMeetingTitleKey(value) {
+  return String(value || '')
+    .trim()
+    .replace(/^Follow Up -\s*/i, '')
+    .replace(/^\([^)]*\)\s*/i, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function hasMeetingEnded(meeting) {
+  const parsed = parseLegacyTaskDate(meeting?.end || meeting?.start);
+  return Boolean(parsed && new Date(parsed).getTime() <= Date.now());
 }
 
 function shouldSkipStaleActiveCandidate(candidate, previousMeeting) {
@@ -276,12 +193,30 @@ function shouldSkipStaleActiveCandidate(candidate, previousMeeting) {
 
 const scoutTaskPayload = await apiFetch('/scout/tasks');
 const pipelineTasks = Array.isArray(scoutTaskPayload.tasks) ? scoutTaskPayload.tasks : [];
+const existingMeetingSetRows = await readRows(
+  SUPABASE_CONFIG,
+  'lifecycle_events',
+  'select=athlete_key,payload_json,created_at&event_type=eq.meeting_set',
+);
+const existingMeetingSetTransitions = new Map();
+for (const row of existingMeetingSetRows) {
+  const titleKey = normalizeMeetingTitleKey(
+    row?.payload_json?.meeting_name || row?.payload_json?.booked_title,
+  );
+  const athleteKey = String(row?.athlete_key || '').trim();
+  const createdAt = String(row?.created_at || '').trim();
+  if (!athleteKey || !titleKey || !createdAt) continue;
+  const key = `${athleteKey}:${titleKey}`;
+  const existing = existingMeetingSetTransitions.get(key);
+  if (!existing || new Date(createdAt).getTime() < new Date(existing).getTime()) {
+    existingMeetingSetTransitions.set(key, createdAt);
+  }
+}
 
 const athletesByKey = new Map();
 const appointmentsById = new Map();
-const lifecycleEvents = [];
 const callActivityRows = [];
-const meetingSetCandidates = [];
+const meetingSetRows = [];
 const stateCandidatesByAthlete = new Map();
 const failures = [];
 const staleSkipped = [];
@@ -336,14 +271,25 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
     const rawTaskDescription = String(
       taskFromList?.description || pipelineTask.description || '',
     ).trim();
-    const mapping = mapPipelineTask(rawTaskTitle, rawTaskDescription);
+    const mapping = classifyScoutTask({
+      title: rawTaskTitle,
+      description: rawTaskDescription,
+    });
     const dueAt = parseLegacyTaskDate(taskFromList?.due_date || pipelineTask.due_date);
-    const appointmentId = currentMeeting?.event_id
-      ? String(currentMeeting.event_id)
+    const selectedStageIsMeetingSet = String(selectedSalesStage || '').trim().toLowerCase() === 'meeting set';
+    const shouldMonitorEndedMeetingSet =
+      !currentMeeting &&
+      previousMeeting &&
+      selectedStageIsMeetingSet &&
+      mapping.taskStatus === 'confirmation_call' &&
+      hasMeetingEnded(previousMeeting);
+    const appointmentMeeting = currentMeeting || (shouldMonitorEndedMeetingSet ? previousMeeting : null);
+    const appointmentId = appointmentMeeting?.event_id
+      ? String(appointmentMeeting.event_id)
       : null;
     const headScout =
       String(resolvePayload.head_scout || '').trim() ||
-      String(currentMeeting?.assigned_owner || '').trim() ||
+      String(appointmentMeeting?.assigned_owner || '').trim() ||
       null;
     const athleteName =
       String(resolvePayload.athlete_name || '').trim() ||
@@ -352,12 +298,15 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
     const currentAppointmentStatus =
       mapping.taskStatus === 'no_show'
         ? 'no_show'
-        : mapping.taskStatus === 'confirmation_call'
+        : shouldMonitorEndedMeetingSet
+          ? 'awaiting_post_meeting_update'
+          : mapping.taskStatus === 'confirmation_call'
           ? 'scheduled'
-          : currentMeeting
+          : appointmentMeeting
             ? 'scheduled'
             : null;
     const ownership = resolveCallTrackerOwnership({
+      purpose: 'call_activity',
       trackedOwnerName: TRACKED_OWNER_NAME,
       athleteId,
       athleteMainId,
@@ -407,94 +356,111 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
         athlete_id: athleteId,
         athlete_main_id: athleteMainId,
         head_scout: headScout,
-        starts_at: String(currentMeeting.start || '').trim() || null,
+        starts_at: String(appointmentMeeting.start || '').trim() || null,
         status: currentAppointmentStatus,
         source_event_id: appointmentId,
         updated_at: new Date().toISOString(),
       });
     }
 
-    lifecycleEvents.push({
-      athlete_key: athleteKey,
-      athlete_id: athleteId,
-      athlete_main_id: athleteMainId,
-      event_type: 'pipeline_task_backfill_current',
-      crm_stage: selectedSalesStage,
-      task_status: mapping.taskStatus,
-      payload_json: {
-        backfill_run_id: RUN_ID,
-        source: 'scout_tasks_current_pipeline',
-        task_id: String(pipelineTask.task_id || '').trim() || null,
-        raw_task_title: rawTaskTitle || null,
-        stripped_task_title: strippedTaskTitle || null,
-        raw_task_description: rawTaskDescription || null,
-        selected_sales_stage: selectedSalesStage,
-        assigned_owner:
-          String(taskFromList?.assigned_owner || pipelineTask.assigned_owner || '').trim() || null,
-        due_at: dueAt,
-        task_admin_url: String(pipelineTask.athlete_task_url || '').trim() || null,
-        athlete_admin_url: String(pipelineTask.athlete_admin_url || '').trim() || null,
-        head_scout: headScout,
-        sport: String(resolvePayload.sport || '').trim() || null,
-        state: String(resolvePayload.state || '').trim() || null,
-        grad_year: String(pipelineTask.grad_year || '').trim() || null,
-        current_meeting: currentMeeting || null,
-        previous_meeting: previousMeeting || null,
-        current_appointment_id: appointmentId,
-      },
-    });
-
-    const taskId = String(pipelineTask.task_id || '').trim();
-    if (taskId && CALL_ACTIVITY_STATUSES.has(mapping.taskStatus)) {
-      callActivityRows.push({
-        athlete_key: athleteKey,
-        athlete_id: athleteId,
-        athlete_main_id: athleteMainId,
-        athlete_name: athleteName,
-        task_id: taskId,
-        task_title: strippedTaskTitle || rawTaskTitle || null,
-        task_description: rawTaskDescription || null,
-        activity_type: mapping.taskStatus,
-        occurred_at: dueAt || new Date().toISOString(),
-        source_owner: ownership.sourceOwner || 'unknown',
-        owner_proof: ownership.ownerProof || 'backfill_current_pipeline',
-        payload_json: {
-          backfill_run_id: RUN_ID,
-          source: 'scout_tasks_current_pipeline',
-          raw_task_title: rawTaskTitle || null,
-          due_at: dueAt,
-          head_scout: headScout,
-          selected_sales_stage: selectedSalesStage,
-        },
-        updated_at: new Date().toISOString(),
-      });
-    }
+    const sourcePayload = {
+      sync_run_id: RUN_ID,
+      source: 'scout_tasks_current_pipeline',
+      task_id: String(pipelineTask.task_id || '').trim() || null,
+      raw_task_title: rawTaskTitle || null,
+      stripped_task_title: strippedTaskTitle || null,
+      raw_task_description: rawTaskDescription || null,
+      selected_sales_stage: selectedSalesStage,
+      assigned_owner:
+        String(taskFromList?.assigned_owner || pipelineTask.assigned_owner || '').trim() || null,
+      due_at: dueAt,
+      task_admin_url: String(pipelineTask.athlete_task_url || '').trim() || null,
+      athlete_admin_url: String(pipelineTask.athlete_admin_url || '').trim() || null,
+      head_scout: headScout,
+      sport: String(resolvePayload.sport || '').trim() || null,
+      state: String(resolvePayload.state || '').trim() || null,
+      grad_year: String(pipelineTask.grad_year || '').trim() || null,
+      current_meeting: currentMeeting || null,
+      previous_meeting: previousMeeting || null,
+      current_appointment_id: appointmentId,
+      awaiting_post_meeting_update: shouldMonitorEndedMeetingSet,
+    };
 
     if (
-      currentMeeting &&
       appointmentId &&
-      (mapping.taskStatus === 'confirmation_call' || mapping.taskStatus === 'no_show')
+      currentMeeting &&
+      mapping.taskStatus === 'confirmation_call' &&
+      String(selectedSalesStage || '').trim().toLowerCase() === 'meeting set'
     ) {
-      meetingSetCandidates.push({
-        athlete_key: athleteKey,
-        athlete_id: athleteId,
-        athlete_main_id: athleteMainId,
-        athlete_name: athleteName,
-        appointment_id: appointmentId,
-        meeting_name: String(currentMeeting.title || '').trim() || athleteName,
-        starts_at: String(currentMeeting.start || '').trim() || null,
-        head_scout: headScout,
-        crm_stage: selectedSalesStage || 'Meeting Set',
-        task_status: mapping.taskStatus,
-      });
+      const titleKey = normalizeMeetingTitleKey(currentMeeting.title || athleteName);
+      const existingTransitionAt = existingMeetingSetTransitions.get(`${athleteKey}:${titleKey}`);
+      meetingSetRows.push(
+        buildMeetingSetFact({
+          athleteId,
+          athleteMainId,
+          crmStage: selectedSalesStage,
+          taskStatus: mapping.taskStatus,
+          payload: {
+            ...sourcePayload,
+            source: 'scout_tasks_current_pipeline',
+            appointment_id: appointmentId,
+            booked_event_id: appointmentId,
+            meeting_name: String(currentMeeting.title || '').trim() || athleteName,
+            starts_at: String(currentMeeting.start || '').trim() || null,
+            booked_start: String(currentMeeting.start || '').trim() || null,
+            booked_end: String(currentMeeting.end || '').trim() || null,
+            booked_owner: String(currentMeeting.assigned_owner || '').trim() || headScout,
+            operator_name: TRACKED_OWNER_NAME,
+          },
+          createdAt: existingTransitionAt || new Date().toISOString(),
+        }),
+      );
+    }
+
+    const taskId = String(pipelineTask.task_id || '').trim();
+    if (taskId && isDashboardCallActivityStatus(mapping.taskStatus)) {
+      callActivityRows.push(
+        buildCallActivityFact({
+          athleteId,
+          athleteMainId,
+          athleteName,
+          taskId,
+          taskTitle: strippedTaskTitle || rawTaskTitle || null,
+          taskDescription: rawTaskDescription || null,
+          activitySubtype: mapping.taskStatus,
+          occurredAt: dueAt || new Date().toISOString(),
+          ownerInput: {
+            purpose: 'call_activity',
+            athleteId,
+            athleteMainId,
+            athleteName,
+            tasks: athleteTasks,
+            currentTaskId: taskId,
+          },
+          ownerContext: ownership.context,
+          payload: {
+            sync_run_id: RUN_ID,
+            source: 'scout_tasks_current_pipeline',
+            raw_task_title: rawTaskTitle || null,
+            due_at: dueAt,
+            head_scout: headScout,
+            selected_sales_stage: selectedSalesStage,
+          },
+          updatedAt: new Date().toISOString(),
+        }),
+      );
     }
 
     const candidate = {
       athleteKey,
       athleteId,
       athleteMainId,
-      crmStage: selectedSalesStage,
-      taskStatus: mapping.taskStatus,
+      crmStage: shouldMonitorEndedMeetingSet
+        ? 'Meeting Set - Awaiting Post Meeting Result'
+        : selectedSalesStage,
+      taskStatus: shouldMonitorEndedMeetingSet
+        ? 'post_meeting_update_pending'
+        : mapping.taskStatus,
       headScout,
       currentTaskId: String(pipelineTask.task_id || '').trim() || null,
       currentTaskTitle: strippedTaskTitle || rawTaskTitle || null,
@@ -533,7 +499,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
 
 const athletePipelineStateRows = Array.from(stateCandidatesByAthlete.entries()).map(
   ([athleteKey, candidates]) => {
-    const [winner] = [...candidates].sort(compareBackfillCandidates);
+    const [winner] = [...candidates].sort(compareCurrentPipelineCandidates);
     return {
       athlete_key: athleteKey,
       athlete_id: winner.athleteId,
@@ -549,64 +515,11 @@ const athletePipelineStateRows = Array.from(stateCandidatesByAthlete.entries()).
   },
 );
 
-await supabaseWrite('athletes', [...athletesByKey.values()], { onConflict: 'athlete_key' });
-await supabaseWrite('appointments', [...appointmentsById.values()], { onConflict: 'id' });
-await supabaseWrite('lifecycle_events', lifecycleEvents);
-await supabaseWrite('athlete_pipeline_state', athletePipelineStateRows, {
-  onConflict: 'athlete_key',
-});
-await supabaseWrite('call_activity_events', callActivityRows, { onConflict: 'task_id' });
-
-const promotedMeetingSetEvents = [];
-if (meetingSetCandidates.length) {
-  const candidateKeys = [...new Set(meetingSetCandidates.map((c) => c.athlete_key))];
-  const existingMeetingSets = await supabaseQuery(
-    'lifecycle_events',
-    [
-      'select=athlete_key,payload_json',
-      'event_type=eq.meeting_set',
-      `athlete_key=in.(${candidateKeys.map(encodeURIComponent).join(',')})`,
-      'limit=500',
-    ].join('&'),
-  ).catch(() => []);
-
-  const existingKeyAppointmentPairs = new Set(
-    existingMeetingSets.map((row) => {
-      const appointmentId =
-        String(row.payload_json?.appointment_id || row.payload_json?.source_event_id || '').trim();
-      return `${row.athlete_key}::${appointmentId}`;
-    }),
-  );
-
-  for (const candidate of meetingSetCandidates) {
-    const pairKey = `${candidate.athlete_key}::${candidate.appointment_id}`;
-    if (existingKeyAppointmentPairs.has(pairKey)) {
-      continue;
-    }
-    existingKeyAppointmentPairs.add(pairKey);
-    promotedMeetingSetEvents.push({
-      athlete_key: candidate.athlete_key,
-      athlete_id: candidate.athlete_id,
-      athlete_main_id: candidate.athlete_main_id,
-      event_type: 'meeting_set',
-      crm_stage: candidate.crm_stage,
-      task_status: candidate.task_status,
-      payload_json: {
-        backfill_run_id: RUN_ID,
-        source: 'backfill_meeting_set_promotion',
-        meeting_name: candidate.meeting_name,
-        starts_at: candidate.starts_at,
-        appointment_id: candidate.appointment_id,
-        head_scout: candidate.head_scout,
-      },
-      created_at: new Date().toISOString(),
-    });
-  }
-
-  if (promotedMeetingSetEvents.length) {
-    await supabaseWrite('lifecycle_events', promotedMeetingSetEvents);
-  }
-}
+await upsertAthletes(SUPABASE_CONFIG, [...athletesByKey.values()]);
+await upsertAppointments(SUPABASE_CONFIG, [...appointmentsById.values()]);
+await upsertAthletePipelineState(SUPABASE_CONFIG, athletePipelineStateRows);
+await upsertCallActivityEvents(SUPABASE_CONFIG, callActivityRows);
+await insertMeetingSetEventsOnce(SUPABASE_CONFIG, meetingSetRows);
 
 console.log(
   JSON.stringify(
@@ -615,9 +528,8 @@ console.log(
       pipelineTaskCount: pipelineTasks.length,
       uniqueAthletes: athletesByKey.size,
       appointmentsUpserted: appointmentsById.size,
-      lifecycleEventsInserted: lifecycleEvents.length,
       callActivityEventsUpserted: callActivityRows.length,
-      meetingSetPromotions: promotedMeetingSetEvents.length,
+      meetingSetEventsInsertedOnce: meetingSetRows.length,
       athletePipelineStateUpserted: athletePipelineStateRows.length,
       staleSkipped,
       ownerSkipped,

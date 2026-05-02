@@ -2,6 +2,8 @@
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'node:crypto';
+import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';
+import { upsertPostMeetingOutcomeFacts } from '../src/domain/supabase-persistence.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -16,6 +18,11 @@ const {
   serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
   schema: SUPABASE_SCHEMA,
 } = resolveSupabaseCredentials();
+const SUPABASE_CONFIG = {
+  url: SUPABASE_URL,
+  key: SUPABASE_SERVICE_ROLE_KEY,
+  schema: SUPABASE_SCHEMA,
+};
 const RUN_ID = randomUUID();
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -60,6 +67,8 @@ function parseAppointmentTitleOutcome(title) {
   };
   if (!originalTitle) return active;
 
+  // Prospect ID win titles may be "(ENR)", "(ENR $99)", or "(ENR $99 - Post Date)".
+  // Any ENR prefix is a terminal close-won signal; the dollar amount is optional evidence.
   const enrollmentMatch = originalTitle.match(/^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?[^)]*\)\s*/i);
   if (enrollmentMatch) {
     const revenue = enrollmentMatch[1] ? Number.parseFloat(enrollmentMatch[1]) : Number.NaN;
@@ -342,6 +351,27 @@ function eventHasEnded(event, now = new Date()) {
   return Boolean(parsedEnd && parsedEnd.getTime() <= now.getTime());
 }
 
+function selectEndedMeetingForMonitoring(events, storedAppointmentId) {
+  const candidates = (Array.isArray(events) ? events : [])
+    .map((event) => {
+      const endedAt = parseMeetingEnd(event);
+      return {
+        event,
+        endedAt,
+        exactMatch:
+          storedAppointmentId &&
+          String(event?.event_id || '').trim() === String(storedAppointmentId || '').trim(),
+      };
+    })
+    .filter((entry) => entry.endedAt && entry.endedAt.getTime() <= Date.now());
+
+  if (!candidates.length) return null;
+  return candidates.sort((left, right) => {
+    if (left.exactMatch !== right.exactMatch) return left.exactMatch ? -1 : 1;
+    return right.endedAt.getTime() - left.endedAt.getTime();
+  })[0];
+}
+
 function outcomePriority(outcome) {
   switch (outcome) {
     case 'terminal_enrollment':
@@ -361,7 +391,19 @@ function outcomePriority(outcome) {
   }
 }
 
+function isPostMeetingLifecycleStage(stage) {
+  return new Set([
+    'closed_won',
+    'closed_lost',
+    'reschedule_pending',
+    'rescheduled',
+    'no_show',
+    'meeting_follow_up',
+  ]).has(stage);
+}
+
 function selectReconciliationEvent(events, storedAppointmentId, selectedStage) {
+  const selectedLifecycle = normalizeCrmSalesStage(selectedStage);
   const candidates = (Array.isArray(events) ? events : [])
     .map((event) => ({
       event,
@@ -375,16 +417,26 @@ function selectReconciliationEvent(events, storedAppointmentId, selectedStage) {
 
   if (!candidates.length) return null;
 
-  const exact = candidates.find((entry) => entry.exactMatch);
+  const exact = candidates.find(
+    (entry) =>
+      entry.exactMatch &&
+      (
+        outcomePriority(entry.parsedTitle.outcome) > 0 ||
+        isPostMeetingLifecycleStage(selectedLifecycle)
+      ),
+  );
   if (exact) {
     return { ...exact, matchStrategy: 'stored_event_id' };
   }
 
-  const selectedLifecycle = normalizeCrmSalesStage(selectedStage);
   const outcomeMatches = candidates
     .filter((entry) => outcomePriority(entry.parsedTitle.outcome) > 0)
     .sort((left, right) => outcomePriority(right.parsedTitle.outcome) - outcomePriority(left.parsedTitle.outcome));
 
+  // Post-meeting precedence:
+  // 1. Sales stage says Actual Meeting - Close Won.
+  // 2. Event/tab title can confirm it with an ENR prefix and optional price.
+  // 3. Commission sync can later enrich the same deduped fact with paid revenue.
   if (selectedLifecycle === 'closed_won') {
     const enrollment = outcomeMatches.find(
       (entry) => entry.parsedTitle.outcome === 'terminal_enrollment',
@@ -398,7 +450,11 @@ function selectReconciliationEvent(events, storedAppointmentId, selectedStage) {
     return { ...outcomeMatches[0], matchStrategy: 'outcome_prefix' };
   }
 
-  return { ...candidates[0], matchStrategy: 'ended_event_fallback' };
+  if (isPostMeetingLifecycleStage(selectedLifecycle)) {
+    return { ...candidates[0], matchStrategy: 'selected_stage_post_meeting' };
+  }
+
+  return null;
 }
 
 async function apiFetch(pathname, options = {}) {
@@ -517,18 +573,6 @@ async function fetchAthleteProfile(row) {
   return apiFetch(`/athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true`).catch(() => ({}));
 }
 
-function buildDedupeKey(args) {
-  return [
-    args.source,
-    args.athleteKey,
-    args.liveEventId || args.appointmentId || 'missing-event',
-    args.rawEventType,
-    args.outcome,
-  ]
-    .map((value) => String(value || '').trim())
-    .join(':');
-}
-
 const [stateRows, athleteRows] = await Promise.all([
   supabaseRequest(
     [
@@ -547,7 +591,7 @@ const athleteNameByKey = new Map(
   ]),
 );
 const lifecycleEvents = [];
-const callEvents = [];
+const postMeetingOutcomeFacts = [];
 const statePatches = [];
 const stateDeletes = [];
 const appointmentPatches = [];
@@ -583,6 +627,10 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       row.current_appointment_id,
       selectedStageLabel,
     );
+    const endedMeetingForMonitoring = selectEndedMeetingForMonitoring(
+      bookedMeetings,
+      row.current_appointment_id,
+    );
     const fallbackRetention = staleActiveStateDecision({
       row,
       selectedStageLabel,
@@ -612,8 +660,9 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
           athlete_key: row.athlete_key,
           athlete_name: athleteName,
           reason,
-          source_owner: trackerOwnership.sourceOwner,
-          owner_proof: trackerOwnership.ownerProof,
+          resolved_owner: trackerOwnership.context.resolvedOwnerName,
+          owner_source_field: trackerOwnership.context.resolvedFromField,
+          materialization_reason: trackerOwnership.materializationReason,
         });
         continue;
       }
@@ -626,6 +675,43 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
     }
 
     if (!reconciliationEvent) {
+      if (
+        trackerOwnership.isTrackedOwner &&
+        endedMeetingForMonitoring &&
+        normalizeCrmSalesStage(selectedStageLabel) === 'meeting_set'
+      ) {
+        const monitorEvent = endedMeetingForMonitoring.event;
+        const liveEventId = String(monitorEvent?.event_id || row.current_appointment_id || '').trim() || null;
+        statePatches.push({
+          athleteKey: row.athlete_key,
+          row: {
+            crm_stage: 'Meeting Set - Awaiting Post Meeting Result',
+            task_status: 'post_meeting_update_pending',
+            current_appointment_id: liveEventId || row.current_appointment_id || null,
+            updated_at: now,
+          },
+        });
+        if (liveEventId) {
+          appointmentPatches.push({
+            appointmentId: liveEventId,
+            row: {
+              status: 'awaiting_post_meeting_update',
+              starts_at: String(monitorEvent?.start || '').trim() || undefined,
+              updated_at: now,
+            },
+          });
+        }
+        cleaned.push({
+          athlete_key: row.athlete_key,
+          athlete_name: athleteName,
+          reason: 'awaiting_post_meeting_update',
+          selected_sales_stage: selectedStageLabel,
+          live_event_id: liveEventId,
+          booked_event_title: monitorEvent?.title || null,
+        });
+        continue;
+      }
+
       if (!trackerOwnership.isTrackedOwner || fallbackRetention.shouldArchive) {
         const reason = !trackerOwnership.isTrackedOwner ? 'not_tracked_owner' : fallbackRetention.reason;
         queueStateDelete(row.athlete_key, reason);
@@ -634,8 +720,9 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
           athlete_name: athleteName,
           reason,
           selected_sales_stage: selectedStageLabel,
-          source_owner: trackerOwnership.sourceOwner,
-          owner_proof: trackerOwnership.ownerProof,
+          resolved_owner: trackerOwnership.context.resolvedOwnerName,
+          owner_source_field: trackerOwnership.context.resolvedFromField,
+          materialization_reason: trackerOwnership.materializationReason,
           latest_task_owner: latestTask?.assigned_owner || null,
         });
         continue;
@@ -677,8 +764,9 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         athlete_key: row.athlete_key,
         athlete_name: athleteName,
         reason: 'not_tracked_owner',
-        source_owner: trackerOwnership.sourceOwner,
-        owner_proof: trackerOwnership.ownerProof,
+        resolved_owner: trackerOwnership.context.resolvedOwnerName,
+        owner_source_field: trackerOwnership.context.resolvedFromField,
+        materialization_reason: trackerOwnership.materializationReason,
         booked_event_owner: bookedMeeting?.assigned_owner || null,
         latest_task_owner: latestTask?.assigned_owner || null,
       });
@@ -706,15 +794,7 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       });
     }
 
-    const rawEventType = 'sales_stage_reconciled';
-    const dedupeKey = buildDedupeKey({
-      source: 'legacy_sales_stage_current',
-      athleteKey: row.athlete_key,
-      liveEventId,
-      appointmentId: row.current_appointment_id,
-      rawEventType,
-      outcome: appointmentStatus || nextTaskStatus,
-    });
+    const rawEventType = 'post_meeting_outcome';
 
     if (shouldArchiveActiveState || retentionDecision.shouldArchive) {
       queueStateDelete(
@@ -761,34 +841,45 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         latest_task_title: latestTask?.title || null,
         latest_task_owner: latestTask?.assigned_owner || null,
         tracker_owner: TRACKED_OWNER_NAME,
-        tracker_source_owner: trackerOwnership.sourceOwner,
-        tracker_owner_proof: trackerOwnership.ownerProof,
-        is_tracked_owner: trackerOwnership.isTrackedOwner,
+        resolved_owner: trackerOwnership.context.resolvedOwnerName,
+        owner_source_field: trackerOwnership.context.resolvedFromField,
+        materialization_status: trackerOwnership.materializationStatus,
+        materialization_reason: trackerOwnership.materializationReason,
         appointment_status: appointmentStatus,
         revenue_cents: revenueCents,
       },
       created_at: now,
     });
 
-    callEvents.push({
-      id: randomUUID(),
-      athlete_key: row.athlete_key,
-      athlete_id: row.athlete_id,
-      athlete_main_id: row.athlete_main_id,
-      athlete_name: athleteName || null,
-      occurred_at: now,
+    postMeetingOutcomeFacts.push(buildMeetingOutcomeFact({
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName: athleteName || null,
       source: 'legacy_sales_stage_current',
-      raw_crm_stage: nextCrmStage,
-      raw_task_status: nextTaskStatus,
-      raw_event_type: rawEventType,
-      appointment_id: row.current_appointment_id || null,
-      live_event_id: liveEventId,
-      booked_event_title: bookedTitle,
-      revenue_cents: revenueCents,
-      source_owner: trackerOwnership.sourceOwner,
-      is_tracked_owner: trackerOwnership.isTrackedOwner,
-      dedupe_key: dedupeKey,
-      payload_json: {
+      rawCrmStage: nextCrmStage,
+      rawTaskStatus: nextTaskStatus,
+      rawEventType,
+      dedupeOutcome: appointmentStatus || nextTaskStatus,
+      appointmentId: row.current_appointment_id || null,
+      liveEventId,
+      bookedEventTitle: bookedTitle,
+      revenueCents,
+      occurredAt: now,
+      ownerInput: {
+        purpose: 'meeting_outcome',
+        athleteId: row.athlete_id,
+        athleteMainId: row.athlete_main_id,
+        athleteName,
+        tasks,
+        currentTaskId: row.current_task_id,
+        bookedMeeting,
+        resolvedProfile,
+        pipelineState: row,
+        appointmentId: row.current_appointment_id,
+        liveEventId,
+      },
+      ownerContext: trackerOwnership.context,
+      payload: {
         reconcile_run_id: RUN_ID,
         match_strategy: reconciliationEvent.matchStrategy,
         previous_crm_stage: row.crm_stage,
@@ -801,11 +892,8 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         booked_event_outcome: parsedTitle.outcome,
         appointment_status: appointmentStatus,
         tracker_owner: TRACKED_OWNER_NAME,
-        tracker_source_owner: trackerOwnership.sourceOwner,
-        tracker_owner_proof: trackerOwnership.ownerProof,
-        is_tracked_owner: trackerOwnership.isTrackedOwner,
       },
-    });
+    }));
 
     updated.push({
       athlete_key: row.athlete_key,
@@ -820,9 +908,10 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       match_strategy: reconciliationEvent.matchStrategy,
       booked_event_title: bookedTitle,
       revenue_cents: revenueCents,
-      source_owner: trackerOwnership.sourceOwner,
-      owner_proof: trackerOwnership.ownerProof,
-      is_tracked_owner: trackerOwnership.isTrackedOwner,
+      resolved_owner: trackerOwnership.context.resolvedOwnerName,
+      owner_source_field: trackerOwnership.context.resolvedFromField,
+      materialization_status: trackerOwnership.materializationStatus,
+      materialization_reason: trackerOwnership.materializationReason,
     });
 
     if (shouldArchiveActiveState || retentionDecision.shouldArchive) {
@@ -860,7 +949,7 @@ for (const patch of appointmentPatches) {
 }
 
 await supabaseWrite('lifecycle_events', lifecycleEvents);
-await supabaseWrite('call_events', callEvents, { onConflict: 'dedupe_key' });
+await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, postMeetingOutcomeFacts);
 
 for (const deletion of stateDeletes) {
   await supabaseDelete('athlete_pipeline_state', 'athlete_key', deletion.athleteKey);
@@ -874,7 +963,7 @@ console.log(
       updatedCount: updated.length,
       unchangedCount: unchanged.length,
       lifecycleEventsInserted: lifecycleEvents.length,
-      callEventsInserted: callEvents.length,
+      postMeetingOutcomeFactsUpserted: postMeetingOutcomeFacts.length,
       activeStateDeleted: stateDeletes.length,
       failures,
       cleaned,

@@ -114,23 +114,24 @@ for (const row of Array.isArray(rows) ? rows : []) {
   try {
     const tasks = await fetchAthleteTasks(row);
     let owner;
-    try {
-      owner = resolveCallTrackerOwnership({
-        trackedOwnerName: TRACKED_OWNER_NAME,
-        athleteId: row.athlete_id,
-        athleteMainId: row.athlete_main_id,
-        athleteName: row.athlete_name,
-        tasks,
-        appointmentId: row.appointment_id,
-        liveEventId: row.live_event_id,
-      });
-    } catch (taskOnlyError) {
+    owner = resolveCallTrackerOwnership({
+      purpose: 'meeting_outcome',
+      trackedOwnerName: TRACKED_OWNER_NAME,
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName: row.athlete_name,
+      tasks,
+      appointmentId: row.appointment_id,
+      liveEventId: row.live_event_id,
+    });
+    if (!owner.sourceOwner || !owner.ownerProof) {
       const [resolvedProfile, bookedMeetings] = await Promise.all([
         fetchAthleteProfile(row),
         fetchAthleteBookedMeetings(row),
       ]);
       const bookedMeeting = findBookedMeeting(row, bookedMeetings);
       owner = resolveCallTrackerOwnership({
+        purpose: 'meeting_outcome',
         trackedOwnerName: TRACKED_OWNER_NAME,
         athleteId: row.athlete_id,
         athleteMainId: row.athlete_main_id,
@@ -141,6 +142,9 @@ for (const row of Array.isArray(rows) ? rows : []) {
         appointmentId: row.appointment_id,
         liveEventId: row.live_event_id,
       });
+    }
+    if (!owner.sourceOwner || !owner.ownerProof) {
+      throw new Error(owner.context?.reason || 'Unable to resolve call tracker owner proof');
     }
     repairs.push({
       id: row.id,

@@ -25,6 +25,7 @@ from app.routers.sales import router as sales_router
 from app.routers.calendar import router as calendar_router
 from app.routers.mobile import router as mobile_router
 from app.routers.call_tracker import router as call_tracker_router
+from app.routers.commissions import router as commissions_router
 
 LOG_DIR = Path(os.getenv("RAYCAST_LOG_DIR", "/Users/singleton23/raycast_logs"))
 LOG_FILE = LOG_DIR / "npid-api-layer.log"
@@ -193,3 +194,4 @@ app.include_router(sales_router, prefix="/api/v1/sales", tags=["sales"])
 app.include_router(calendar_router, prefix="/api/v1/calendar", tags=["calendar"])
 app.include_router(mobile_router, prefix="/api/v1/mobile", tags=["mobile"])
 app.include_router(call_tracker_router, prefix="/api/v1/call-tracker", tags=["call-tracker"])
+app.include_router(commissions_router, prefix="/api/v1/commissions", tags=["commissions"])

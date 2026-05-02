@@ -128,6 +128,49 @@ class AdminAthleteTableResponse(BaseModel):
     message: Optional[str] = None
 
 
+class CommissionLookupRequest(BaseModel):
+    """Request for legacy commission period lookup."""
+    commperiod: str = Field(..., description="Commission period, e.g. 2026-05-01~2026-05-15")
+    scout: Optional[str] = Field(default=None, description="Legacy scout filter; omit for all")
+
+
+class CommissionEntry(BaseModel):
+    """Normalized commission row from legacy commission endpoints."""
+    source: str
+    athlete_id: Optional[str] = None
+    athlete_main_id: Optional[str] = None
+    account_id: Optional[str] = None
+    athlete_name: Optional[str] = None
+    scout: Optional[str] = None
+    amount_cents: Optional[int] = None
+    amount_label: Optional[str] = None
+    plan_price_cents: Optional[int] = None
+    plan_price_label: Optional[str] = None
+    product: Optional[str] = None
+    subscription_name: Optional[str] = None
+    status: Optional[str] = None
+    paid_at: Optional[str] = None
+    parent_bill_date: Optional[str] = None
+    row_key: str
+    duplicate_key: str
+    possible_duplicate: bool = False
+    raw: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CommissionLookupResponse(BaseModel):
+    """Normalized response from legacy commission endpoints."""
+    success: bool
+    commperiod: str
+    scout: Optional[str] = None
+    source: str
+    count: int
+    duplicate_count: int
+    entries: List[CommissionEntry]
+    status_code: int
+    content_type: Optional[str] = None
+    body_preview: Optional[str] = None
+
+
 class VideoSubmitResponse(BaseModel):
     """Response from video submission."""
     success: bool

@@ -38,9 +38,12 @@ import {
 } from './lib/head-scout-schedules';
 import {
   APPOINTMENT_TITLE_PREFIXES,
-  resolveAppointmentTitleOutcome,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
+import {
+  buildWeeklyOperatorMeetingSetCandidates,
+  isActualSetMeetingTitle,
+} from './domain/booked-meeting-source';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
@@ -196,101 +199,6 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
   };
 }
 
-function isActualSetMeetingEvent(event?: Pick<BookedMeetingEvent, 'title'> | null): boolean {
-  const title = String(event?.title || '').trim();
-  if (!title) {
-    return false;
-  }
-
-  if (resolveAppointmentTitleOutcome(title) !== 'active') {
-    return false;
-  }
-
-  const normalized = title.toLowerCase();
-  if (normalized.startsWith('follow up -')) {
-    return false;
-  }
-  if (normalized.startsWith('(fu)')) {
-    return false;
-  }
-  if (normalized.startsWith('(cl)')) {
-    return false;
-  }
-  if (normalized.startsWith('(*)')) {
-    return false;
-  }
-
-  return true;
-}
-
-function cleanMeetingResolveTitle(title?: string | null): string {
-  return String(title || '')
-    .trim()
-    .replace(/^Follow Up -\s*/i, '')
-    .replace(/^\(NS\)\*2\s*/i, '')
-    .replace(/^\((?:ACF\*?2?|CF|RSP|CAN|FU|CL|NS|\*)\)\s*/i, '')
-    .trim();
-}
-
-function normalizeAthleteMatchKey(value?: string | null): string {
-  return String(value || '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
-
-function resolveAthleteDisplayName(taskName: string, eventTitle: string): string {
-  const cleanedTitle = cleanMeetingResolveTitle(eventTitle);
-  const normalizedTitle = cleanedTitle.toLowerCase();
-  const normalizedTaskName = String(taskName || '')
-    .trim()
-    .toLowerCase();
-  const startIndex = normalizedTitle.indexOf(normalizedTaskName);
-  if (startIndex >= 0) {
-    return cleanedTitle.slice(startIndex, startIndex + normalizedTaskName.length).trim();
-  }
-  return String(taskName || '').trim();
-}
-
-function pickJeramiConfirmationTask(tasks: ScoutPortalTask[] | Array<Record<string, unknown>>) {
-  const matches = tasks.filter((task) => {
-    const rawTask = task as Record<string, unknown>;
-    const title = String(task.title || '')
-      .trim()
-      .toLowerCase();
-    const description = String(task.description || '')
-      .trim()
-      .toLowerCase();
-    const assignedOwner = String(rawTask.assigned_owner || rawTask.assignedOwner || '')
-      .trim()
-      .toLowerCase();
-    const isConfirmation =
-      title.includes('confirmation call') || description.includes('confirm the meeting set');
-    return isConfirmation && assignedOwner === 'jerami singleton';
-  });
-
-  if (!matches.length) {
-    return null;
-  }
-
-  return [...matches].sort((left, right) => {
-    const rawLeft = left as Record<string, unknown>;
-    const rawRight = right as Record<string, unknown>;
-    const leftCompleted = String(left.completion_date || rawLeft.completionDate || '').trim();
-    const rightCompleted = String(right.completion_date || rawRight.completionDate || '').trim();
-    if (!leftCompleted && rightCompleted) return -1;
-    if (leftCompleted && !rightCompleted) return 1;
-    const leftDate = Date.parse(String(left.due_date || rawLeft.dueDate || '').trim());
-    const rightDate = Date.parse(String(right.due_date || rawRight.dueDate || '').trim());
-    if (!Number.isNaN(leftDate) && !Number.isNaN(rightDate) && leftDate !== rightDate) {
-      return rightDate - leftDate;
-    }
-    return String(right.task_id || rawRight.taskId || '').localeCompare(
-      String(left.task_id || rawLeft.taskId || ''),
-    );
-  })[0];
-}
-
 async function loadWeeklyJeramiMeetingCandidates(
   weekOffset: number,
 ): Promise<HeadScoutFollowUpCandidate[]> {
@@ -299,79 +207,43 @@ async function loadWeeklyJeramiMeetingCandidates(
     fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
 
-  const actualMeetings = (weekly.events || []).filter((event) => isActualSetMeetingEvent(event));
-  const filteredJeramiTasks = (jeramiTasks || []).filter((task) => {
-    const title = String(task.title || '')
-      .trim()
-      .toLowerCase();
-    const assignedOwner = String(task.assigned_owner || '')
-      .trim()
-      .toLowerCase();
-    return assignedOwner === 'jerami singleton' && title.includes('confirmation call');
-  });
-
-  const tasksByAthlete = new Map<string, ScoutPortalTask[]>();
-  for (const task of filteredJeramiTasks) {
-    const key = normalizeAthleteMatchKey(task.athlete_name);
-    if (!key) continue;
-    const existing = tasksByAthlete.get(key) || [];
-    existing.push(task);
-    tasksByAthlete.set(key, existing);
-  }
-
-  const resolved = actualMeetings.map((event) => {
-    const cleanedTitleKey = normalizeAthleteMatchKey(cleanMeetingResolveTitle(event.title));
-    const matchingTaskEntry = Array.from(tasksByAthlete.entries()).find(([athleteKey]) =>
-      cleanedTitleKey.includes(athleteKey),
-    );
-    if (!matchingTaskEntry) {
-      return null;
-    }
-
-    const [athleteKey, matchingTasks] = matchingTaskEntry;
-    const confirmationTask = pickJeramiConfirmationTask(matchingTasks);
-    if (!confirmationTask) {
-      return null;
-    }
-
-    tasksByAthlete.delete(athleteKey);
-
-    const athleteId = String(
-      confirmationTask.athlete_id || confirmationTask.contact_id || '',
-    ).trim();
-    const athleteMainId = String(confirmationTask.athlete_main_id || '').trim();
-    if (!athleteId || !athleteMainId) {
-      return null;
-    }
-
+  const resolved = buildWeeklyOperatorMeetingSetCandidates({
+    bookedMeetings: weekly.events || [],
+    tasks: jeramiTasks || [],
+    operatorName: 'Jerami Singleton',
+  }).map((candidate) => {
     return {
-      key: `${athleteId}:${athleteMainId}`,
-      athleteId,
-      athleteMainId,
-      athleteName: resolveAthleteDisplayName(
-        String(confirmationTask.athlete_name || '').trim(),
-        event.title,
-      ),
-      dueDate: String(confirmationTask.due_date || '').trim() || event.start,
+      key: candidate.athleteKey,
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      athleteName: candidate.athleteName,
+      dueDate: candidate.taskDueDate || candidate.bookedMeeting.start,
       stage: 'Meeting Set',
       currentTask:
-        stripMoveThisTaskPrefix(String(confirmationTask.title || '').trim()) || 'Confirmation Call',
-      taskId: String(confirmationTask.task_id || '').trim(),
-      adminUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}`,
-      taskUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}&tasktab=1`,
+        stripMoveThisTaskPrefix(candidate.taskTitle || '') || 'Confirmation Call',
+      taskId: candidate.taskId,
+      adminUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(candidate.athleteId)}&athlete_main_id=${encodeURIComponent(candidate.athleteMainId)}`,
+      taskUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(candidate.athleteId)}&athlete_main_id=${encodeURIComponent(candidate.athleteMainId)}&tasktab=1`,
       source: 'website' as const,
       crmSalesStage: 'Meeting Set',
-      headScoutName: event.assigned_owner || null,
-      bookedMeetingTitle: event.title,
-      bookedMeeting: event,
+      headScoutName: candidate.bookedMeeting.assignedOwner,
+      bookedMeetingTitle: candidate.bookedMeeting.title,
+      bookedMeeting: {
+        event_id: candidate.bookedMeeting.eventId,
+        title: candidate.bookedMeeting.title,
+        assigned_owner: candidate.bookedMeeting.assignedOwner || '',
+        start: candidate.bookedMeeting.start,
+        end: candidate.bookedMeeting.end || '',
+        date_time_label: candidate.bookedMeeting.dateTimeLabel || '',
+      },
       previousMeeting: null,
       followUpTask: {
-        taskId: String(confirmationTask.task_id || '').trim(),
-        title: String(confirmationTask.title || '').trim() || null,
-        description: String(confirmationTask.description || '').trim() || null,
-        dueDate: String(confirmationTask.due_date || '').trim() || null,
-        completionDate: String(confirmationTask.completion_date || '').trim() || null,
-        assignedOwner: String(confirmationTask.assigned_owner || '').trim() || null,
+        taskId: candidate.taskId,
+        title: candidate.taskTitle,
+        description: candidate.taskDescription,
+        dueDate: candidate.taskDueDate,
+        completionDate: candidate.taskCompletionDate,
+        assignedOwner: candidate.taskAssignedOwner,
       },
       lifecycleState: 'scheduled',
       needsConfirmationText: true,
@@ -379,7 +251,7 @@ async function loadWeeklyJeramiMeetingCandidates(
       reason: 'Weekly booked meeting assigned to Jerami confirmation queue.',
       operatorStatus: 'active_meeting_queue',
       badges: [],
-      currentMeetingLabel: event.date_time_label,
+      currentMeetingLabel: candidate.bookedMeeting.dateTimeLabel || '',
       oldFollowUpDateDetected: false,
       meetingTimezone: null,
     } satisfies HeadScoutFollowUpCandidate;
@@ -448,7 +320,7 @@ export function HeadScoutBookingsList({
           if (!currentMeeting || Number.isNaN(currentMeeting.getTime())) {
             return false;
           }
-          if (candidate.bookedMeeting && !isActualSetMeetingEvent(candidate.bookedMeeting)) {
+          if (candidate.bookedMeeting && !isActualSetMeetingTitle(candidate.bookedMeeting.title)) {
             return false;
           }
 

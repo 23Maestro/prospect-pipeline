@@ -3884,6 +3884,174 @@ class LegacyTranslator:
         return endpoint, params
 
     @staticmethod
+    def stripe_commissions_to_legacy(commperiod: str, scout: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        endpoint = "/admin/stripecommlist"
+        params = {
+            "scout": str(scout or "undefined"),
+            "commperiod": str(commperiod or "").strip(),
+        }
+        return endpoint, params
+
+    @staticmethod
+    def stripe_commission_payroll_to_legacy(commperiod: str, scout: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
+        endpoint = "/admin/stripecommpayrolllist"
+        params = {
+            "scout": str(scout or "undefined"),
+            "commperiod": str(commperiod or "").strip(),
+        }
+        return endpoint, params
+
+    @staticmethod
+    def _normalize_commission_amount(value: Any) -> Tuple[Optional[int], Optional[str]]:
+        label = str(value or "").strip()
+        if not label:
+            return None, None
+        match = re.search(r"-?\$?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)", label)
+        if not match:
+            return None, label
+        amount = float(match.group(1).replace(",", ""))
+        return int(round(amount * 100)), label
+
+    @staticmethod
+    def _normalize_commission_key(value: Any) -> str:
+        return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", str(value or "").lower())).strip()
+
+    @staticmethod
+    def _extract_commission_entries_from_json(payload: Any) -> List[Dict[str, Any]]:
+        if isinstance(payload, list):
+            return [item for item in payload if isinstance(item, dict)]
+        if not isinstance(payload, dict):
+            return []
+        for key in ("data", "rows", "commissions", "payroll", "aaData"):
+            value = payload.get(key)
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+        return [payload]
+
+    @staticmethod
+    def _extract_commission_entries_from_html(raw_response: str) -> List[Dict[str, Any]]:
+        parsed = LegacyTranslator.parse_admin_table_response(raw_response)
+        headers = [str(header or "").strip() for header in parsed.get("headers", [])]
+        entries: List[Dict[str, Any]] = []
+        for row in parsed.get("rows", []):
+            entry: Dict[str, Any] = {}
+            for index, cell in enumerate(row):
+                key = headers[index] if index < len(headers) and headers[index] else f"column_{index + 1}"
+                entry[key] = cell
+            if entry:
+                entries.append(entry)
+        return entries
+
+    @staticmethod
+    def _pick_commission_value(entry: Dict[str, Any], candidates: List[str]) -> Optional[str]:
+        lowered = {str(key or "").strip().lower(): value for key, value in entry.items()}
+        for candidate in candidates:
+            if candidate in lowered and str(lowered[candidate] or "").strip():
+                return str(lowered[candidate] or "").strip()
+        for candidate in candidates:
+            for key, value in lowered.items():
+                if candidate in key and str(value or "").strip():
+                    return str(value or "").strip()
+        return None
+
+    @staticmethod
+    def _normalize_commission_entry(entry: Dict[str, Any], source: str, index: int) -> Dict[str, Any]:
+        athlete_name = LegacyTranslator._pick_commission_value(
+            entry,
+            ["athletename", "athlete_name", "student athlete", "student", "player", "contact", "client", "name", "athlete"],
+        )
+        athlete_id = LegacyTranslator._pick_commission_value(entry, ["athlete_id", "contact_id", "contactid"])
+        athlete_main_id = LegacyTranslator._pick_commission_value(entry, ["athlete_main_id"])
+        account_id = LegacyTranslator._pick_commission_value(entry, ["account_id"])
+        scout = LegacyTranslator._pick_commission_value(entry, ["head_scout_name", "scoutcoord_name", "scout", "sales", "owner", "rep"])
+        paid_at = LegacyTranslator._pick_commission_value(entry, ["createddate", "created_date", "date", "paid", "created", "enroll"])
+        parent_bill_date = LegacyTranslator._pick_commission_value(entry, ["parent_bill_date", "bill_date"])
+        amount_value = LegacyTranslator._pick_commission_value(
+            entry,
+            ["afterdiscount", "amount", "payment", "revenue", "total"],
+        )
+        plan_price_value = LegacyTranslator._pick_commission_value(entry, ["planprice", "price"])
+        amount_cents, amount_label = LegacyTranslator._normalize_commission_amount(amount_value)
+        plan_price_cents, plan_price_label = LegacyTranslator._normalize_commission_amount(plan_price_value)
+        product = LegacyTranslator._pick_commission_value(entry, ["product"])
+        subscription_name = LegacyTranslator._pick_commission_value(entry, ["subscription_name", "subscription"])
+        status = LegacyTranslator._pick_commission_value(entry, ["status"])
+        athlete_key = LegacyTranslator._normalize_commission_key(athlete_id or athlete_main_id or athlete_name)
+        duplicate_key = "|".join([
+            athlete_key,
+            LegacyTranslator._normalize_commission_key(product),
+            LegacyTranslator._normalize_commission_key(subscription_name),
+            str(amount_cents if amount_cents is not None else plan_price_cents or ""),
+            LegacyTranslator._normalize_commission_key(parent_bill_date),
+        ])
+        if not duplicate_key.strip("|"):
+            duplicate_key = f"row:{index}"
+        return {
+            "source": source,
+            "athlete_id": athlete_id,
+            "athlete_main_id": athlete_main_id,
+            "account_id": account_id,
+            "athlete_name": athlete_name,
+            "scout": scout,
+            "amount_cents": amount_cents,
+            "amount_label": amount_label,
+            "plan_price_cents": plan_price_cents,
+            "plan_price_label": plan_price_label,
+            "product": product,
+            "subscription_name": subscription_name,
+            "status": status,
+            "paid_at": paid_at,
+            "parent_bill_date": parent_bill_date,
+            "row_key": f"{source}:{index}:{duplicate_key}",
+            "duplicate_key": duplicate_key,
+            "possible_duplicate": False,
+            "raw": entry,
+        }
+
+    @staticmethod
+    def parse_commission_lookup_response(
+        raw_response: str,
+        source: str,
+        commperiod: str,
+        scout: Optional[str] = None,
+        status_code: int = 200,
+        content_type: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        text = raw_response or ""
+        trimmed = text.strip()
+        raw_entries: List[Dict[str, Any]] = []
+        if trimmed.startswith("{") or trimmed.startswith("["):
+            try:
+                raw_entries = LegacyTranslator._extract_commission_entries_from_json(json.loads(trimmed))
+            except Exception:
+                raw_entries = []
+        if not raw_entries:
+            raw_entries = LegacyTranslator._extract_commission_entries_from_html(text)
+
+        entries = [
+            LegacyTranslator._normalize_commission_entry(entry, source, index)
+            for index, entry in enumerate(raw_entries)
+        ]
+        counts: Dict[str, int] = {}
+        for entry in entries:
+            counts[entry["duplicate_key"]] = counts.get(entry["duplicate_key"], 0) + 1
+        for entry in entries:
+            entry["possible_duplicate"] = counts.get(entry["duplicate_key"], 0) > 1
+
+        return {
+            "success": True,
+            "commperiod": commperiod,
+            "scout": scout,
+            "source": source,
+            "count": len(entries),
+            "duplicate_count": sum(1 for entry in entries if entry["possible_duplicate"]),
+            "entries": entries,
+            "status_code": status_code,
+            "content_type": content_type,
+            "body_preview": trimmed[:240],
+        }
+
+    @staticmethod
     def parse_admin_table_response(html_response: str) -> Dict[str, Any]:
         soup = BeautifulSoup(html_response or "", "html.parser")
         table = soup.select_one("table")

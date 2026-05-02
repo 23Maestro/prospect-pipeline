@@ -1,0 +1,360 @@
+#!/usr/bin/env node
+
+import fetch from 'node-fetch';
+import { randomUUID } from 'node:crypto';
+import { buildWeeklyOperatorMeetingSetCandidates } from '../src/domain/booked-meeting-source.ts';
+import {
+  buildAppointmentSnapshot,
+  buildAthleteSnapshot,
+  buildMeetingSetFact,
+  buildPipelineStateSnapshot,
+} from '../src/domain/call-tracker-facts.ts';
+import {
+  insertMeetingSetEventsOnce,
+  upsertAppointments,
+  upsertAthletePipelineState,
+  upsertAthletes,
+} from '../src/domain/supabase-persistence.ts';
+import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
+
+const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
+const {
+  projectRef,
+  url: SUPABASE_URL,
+  serviceRoleKey: SUPABASE_SERVICE_ROLE_KEY,
+  schema: SUPABASE_SCHEMA,
+} = resolveSupabaseCredentials();
+const RUN_ID = randomUUID();
+const TRACKED_OPERATOR_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const SUPABASE_CONFIG = {
+  url: SUPABASE_URL,
+  key: SUPABASE_SERVICE_ROLE_KEY,
+  schema: SUPABASE_SCHEMA,
+};
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.error(
+    [
+      'Missing Supabase credentials.',
+      'Set SUPABASE_URL and SUPABASE_SECRET_KEY, or authenticate the Supabase CLI so the linked project can provide them.',
+      `Linked project ref: ${projectRef || 'missing'}`,
+    ].join(' '),
+  );
+  process.exit(1);
+}
+
+if (projectRef && !SUPABASE_URL.includes(projectRef)) {
+  console.error(
+    `Supabase URL ${SUPABASE_URL} does not match linked project ref ${projectRef}. Refusing to write to the wrong project.`,
+  );
+  process.exit(1);
+}
+
+function normalizeIsoValue(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function buildWeekWindow(weekOffset = Number.parseInt(process.env.WEEK_OFFSET || '0', 10) || 0) {
+  const now = new Date();
+  const currentDay = now.getDay();
+  const diffToMonday = currentDay === 0 ? -6 : 1 - currentDay;
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() + diffToMonday + weekOffset * 7);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
+}
+
+function stripMoveThisTaskPrefix(taskTitle) {
+  const trimmed = String(taskTitle || '').trim();
+  if (!trimmed) return '';
+  return trimmed.replace(/^\(SC Move This Task\)\s*/i, '').trim() || trimmed;
+}
+
+function parseLegacyTaskDate(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  const direct = new Date(trimmed);
+  if (!Number.isNaN(direct.getTime())) {
+    return direct.toISOString();
+  }
+  return null;
+}
+
+function pickNewestTask(tasks, predicate) {
+  const matches = (Array.isArray(tasks) ? tasks : []).filter(predicate);
+  if (!matches.length) return null;
+
+  return [...matches].sort((left, right) => {
+    const rightDate = Date.parse(String(right.due_date || '').trim());
+    const leftDate = Date.parse(String(left.due_date || '').trim());
+    if (!Number.isNaN(rightDate) && !Number.isNaN(leftDate) && rightDate !== leftDate) {
+      return rightDate - leftDate;
+    }
+    const rightId = Number.parseInt(String(right.task_id || '0'), 10);
+    const leftId = Number.parseInt(String(left.task_id || '0'), 10);
+    return rightId - leftId;
+  })[0];
+}
+
+function isConfirmationTask(task) {
+  const title = String(task?.title || '').trim().toLowerCase();
+  const description = String(task?.description || '').trim().toLowerCase();
+  return title.includes('confirmation call') || description.includes('confirm the meeting set');
+}
+
+function getSelectedSalesStageLabel(payload) {
+  const options = Array.isArray(payload?.options) ? payload.options : [];
+  const selected = options.find((option) => option?.selected);
+  return String(selected?.label || '').trim() || null;
+}
+
+function inferCrmStage({ selectedStage, latestConfirmationTask }) {
+  const normalizedSelected = String(selectedStage || '').trim().toLowerCase();
+  if (normalizedSelected === 'meeting set') return 'Meeting Set';
+  if (normalizedSelected === 'rescheduled') return 'Rescheduled';
+  if (normalizedSelected === 'no show') return 'No Show';
+
+  const title = String(latestConfirmationTask?.title || '').trim().toLowerCase();
+  if (title.startsWith('(rsp)') || title.includes('rescheduled')) {
+    return 'Rescheduled';
+  }
+
+  return 'Meeting Set';
+}
+
+function inferTaskStatus({ crmStage }) {
+  const normalizedStage = String(crmStage || '').trim().toLowerCase();
+  if (normalizedStage === 'no show') {
+    return 'no_show';
+  }
+  return 'confirmation_call';
+}
+
+function buildCurrentTaskTitle(latestIncompleteConfirmationTask) {
+  if (!latestIncompleteConfirmationTask) {
+    return 'Confirmation Call';
+  }
+  const stripped = stripMoveThisTaskPrefix(latestIncompleteConfirmationTask.title);
+  return stripped || 'Confirmation Call';
+}
+
+async function apiFetch(pathname, options = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(`${API_BASE}${pathname}`, {
+      ...options,
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      throw new Error(`${pathname} -> HTTP ${response.status}: ${text.slice(0, 200)}`);
+    }
+    return response.json();
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error(`${pathname} -> request timed out after 20s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function verifyCandidateBookedMeeting(candidate) {
+  const athleteMeetings = await apiFetch(
+    `/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(candidate.athleteId)}&athlete_main_id=${encodeURIComponent(candidate.athleteMainId)}`,
+  ).catch(() => ({ events: [] }));
+
+  return (Array.isArray(athleteMeetings.events) ? athleteMeetings.events : []).find(
+    (meetingCandidate) =>
+      String(meetingCandidate?.event_id || '').trim() === candidate.bookedMeeting.eventId ||
+      (
+        String(meetingCandidate?.title || '').trim().toLowerCase() ===
+          candidate.bookedMeeting.title.trim().toLowerCase() &&
+        String(meetingCandidate?.start || '').trim() === candidate.bookedMeeting.start
+      ),
+  ) || null;
+}
+
+const weekWindow = buildWeekWindow();
+const [scoutTaskPayload, bookedMeetingsPayload] = await Promise.all([
+  apiFetch('/scout/tasks?range=thisWeek').catch(() => ({ tasks: [] })),
+  apiFetch(
+    `/calendar/booked-meetings?start=${encodeURIComponent(weekWindow.start)}&end=${encodeURIComponent(weekWindow.end)}`,
+  ),
+]);
+const weeklyTasks = Array.isArray(scoutTaskPayload.tasks) ? scoutTaskPayload.tasks : [];
+const weeklyBookedMeetings = Array.isArray(bookedMeetingsPayload.events) ? bookedMeetingsPayload.events : [];
+const meetingSetCandidates = buildWeeklyOperatorMeetingSetCandidates({
+  bookedMeetings: weeklyBookedMeetings,
+  tasks: weeklyTasks,
+  operatorName: TRACKED_OPERATOR_NAME,
+});
+
+const athletesByKey = new Map();
+const appointmentsById = new Map();
+const meetingSetEvents = [];
+const athletePipelineStateRows = [];
+const failures = [];
+
+for (const [index, candidate] of meetingSetCandidates.entries()) {
+  const event = {
+    event_id: candidate.bookedMeeting.eventId,
+    title: candidate.bookedMeeting.title,
+    assigned_owner: candidate.bookedMeeting.assignedOwner,
+    start: candidate.bookedMeeting.start,
+    end: candidate.bookedMeeting.end,
+    date_time_label: candidate.bookedMeeting.dateTimeLabel,
+  };
+  console.error(`[${index + 1}/${meetingSetCandidates.length}] ${event.title} :: ${event.start}`);
+  try {
+    const verifiedMeeting = await verifyCandidateBookedMeeting(candidate);
+    if (!verifiedMeeting) {
+      throw new Error('Candidate task athlete does not expose this booked meeting');
+    }
+
+    const tasksPayload = await apiFetch('/tasks/list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        athlete_id: candidate.athleteId,
+        athlete_main_id: candidate.athleteMainId,
+      }),
+    }).catch(() => ({ tasks: [] }));
+    const tasks = Array.isArray(tasksPayload.tasks) ? tasksPayload.tasks : [];
+    const latestIncompleteConfirmationTask = pickNewestTask(
+      tasks,
+      (task) => !String(task?.completion_date || '').trim() && isConfirmationTask(task),
+    );
+    const latestConfirmationTask =
+      latestIncompleteConfirmationTask ||
+      pickNewestTask(tasks, (task) => isConfirmationTask(task));
+    const stagePayload = await apiFetch(
+      `/sales/stages/${encodeURIComponent(candidate.athleteId)}`,
+    ).catch(() => ({ options: [] }));
+    const selectedStage = getSelectedSalesStageLabel(stagePayload);
+
+    const crmStage = inferCrmStage({
+      selectedStage,
+      latestConfirmationTask,
+    });
+    const taskStatus = inferTaskStatus({ crmStage });
+    const appointmentId = String(event.event_id || '').trim();
+    const startsAt = normalizeIsoValue(event.start);
+    const appointmentStatus = crmStage === 'Rescheduled' ? 'rescheduled' : 'scheduled';
+    const currentTaskId = String(latestIncompleteConfirmationTask?.task_id || '').trim() || null;
+    const currentTaskTitle = buildCurrentTaskTitle(latestIncompleteConfirmationTask);
+    const dueAt =
+      parseLegacyTaskDate(latestIncompleteConfirmationTask?.due_date) ||
+      parseLegacyTaskDate(latestConfirmationTask?.due_date);
+    const updatedAt = new Date().toISOString();
+
+    athletesByKey.set(candidate.athleteKey, buildAthleteSnapshot({
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      athleteName: candidate.athleteName,
+      updatedAt,
+    }));
+
+    appointmentsById.set(appointmentId, buildAppointmentSnapshot({
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      appointmentId,
+      sourceEventId: appointmentId,
+      headScout: candidate.bookedMeeting.assignedOwner,
+      startsAt,
+      status: appointmentStatus,
+      updatedAt,
+    }));
+
+    const basePayload = {
+      sync_run_id: RUN_ID,
+      source: candidate.evidence.source,
+      operator_name: TRACKED_OPERATOR_NAME,
+      booked_event_id: appointmentId,
+      appointment_id: appointmentId,
+      booked_title: event.title || null,
+      meeting_name: event.title || null,
+      booked_start: startsAt,
+      starts_at: startsAt,
+      booked_end: normalizeIsoValue(event.end),
+      booked_owner: candidate.bookedMeeting.assignedOwner,
+      head_scout: candidate.bookedMeeting.assignedOwner,
+      selected_sales_stage: selectedStage,
+      latest_confirmation_task_id: String(latestConfirmationTask?.task_id || '').trim() || null,
+      latest_confirmation_task_title:
+        String(latestConfirmationTask?.title || '').trim() || null,
+      latest_confirmation_task_due_at: dueAt,
+      matched_weekly_task_id: candidate.taskId || null,
+      matched_weekly_task_title: candidate.taskTitle,
+      matched_weekly_task_due_at: candidate.taskDueDate,
+      matched_weekly_task_assigned_owner: candidate.taskAssignedOwner,
+      matched_task_athlete_name: candidate.evidence.matchedTaskAthleteName,
+      verified_athlete_booked_meeting_id: String(verifiedMeeting.event_id || '').trim() || null,
+    };
+
+    // Clock contract: lifecycle_events.created_at is when this athlete became Meeting Set.
+    // Appointment start/end stay in payload_json as meeting evidence; sync reruns insert-once
+    // by dedupe_key so daily tracking never moves to the latest sync time.
+    meetingSetEvents.push(buildMeetingSetFact({
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      crmStage,
+      taskStatus,
+      payload: basePayload,
+      createdAt: updatedAt,
+    }));
+
+    athletePipelineStateRows.push(buildPipelineStateSnapshot({
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      crmStage,
+      taskStatus,
+      headScout: candidate.bookedMeeting.assignedOwner,
+      currentTaskId,
+      currentTaskTitle,
+      currentAppointmentId: appointmentId,
+      updatedAt,
+    }));
+  } catch (error) {
+    failures.push({
+      title: String(event?.title || '').trim(),
+      start: String(event?.start || '').trim(),
+      error: error instanceof Error ? error.message : String(error),
+    });
+    console.error(`  failed: ${failures[failures.length - 1].error}`);
+  }
+}
+
+await upsertAthletes(SUPABASE_CONFIG, [...athletesByKey.values()]);
+await upsertAppointments(SUPABASE_CONFIG, [...appointmentsById.values()]);
+await insertMeetingSetEventsOnce(SUPABASE_CONFIG, meetingSetEvents);
+await upsertAthletePipelineState(SUPABASE_CONFIG, athletePipelineStateRows);
+
+console.log(
+  JSON.stringify(
+    {
+      runId: RUN_ID,
+      weekWindow,
+      bookedMeetingCount: weeklyBookedMeetings.length,
+      meetingSetCandidateCount: meetingSetCandidates.length,
+      resolvedAthletes: athletesByKey.size,
+      appointmentsUpserted: appointmentsById.size,
+      meetingSetEventsInsertedOnce: meetingSetEvents.length,
+      athletePipelineStateUpserted: athletePipelineStateRows.length,
+      failures,
+    },
+    null,
+    2,
+  ),
+);

@@ -36,7 +36,7 @@ flowchart TD
   D --> E["bash scripts/sync-supabase-pipeline.sh"]
 
   E --> F["Step 1: backfill-current-pipeline-to-supabase.mjs"]
-  E --> G["Step 2: reconcile-booked-meetings-to-supabase.mjs"]
+  E --> G["Step 2: sync-booked-meetings-to-supabase.mjs"]
   E --> H["Step 3: reconcile-current-sales-stages-to-supabase.mjs"]
 
   F -->|writes| I["athletes\nappointments\nathlete_pipeline_state\nlifecycle_events"]
@@ -243,4 +243,4 @@ The `call_tracker_summary` view should add columns for `dials` and `contacts` th
 | [app.js](file:///Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/app/static/call-tracker/app.js) | Update `isDailyCallActivity` and `isDailyContact` to recognize activity events. |
 
 > [!NOTE]
-> No changes to `reconcile-current-sales-stages-to-supabase.mjs`, `reconcile-booked-meetings-to-supabase.mjs`, `call_tracker.py`, `call-tracker-sync.mjs`, or `supabase-lifecycle.ts`. The fix is upstream (backfill writes real facts) and downstream (views read from the right tables).
+> No changes to `reconcile-current-sales-stages-to-supabase.mjs`, `sync-booked-meetings-to-supabase.mjs`, `call_tracker.py`, `call-tracker-sync.mjs`, or `supabase-lifecycle.ts`. The fix is upstream (backfill writes real facts) and downstream (views read from the right tables).

@@ -51,6 +51,7 @@ create table if not exists lifecycle_events (
   athlete_id text not null,
   athlete_main_id text not null,
   event_type text not null,
+  dedupe_key text,
   previous_crm_stage text,
   previous_task_status text,
   crm_stage text,
@@ -64,6 +65,9 @@ create index if not exists lifecycle_events_athlete_key_idx
 
 create index if not exists lifecycle_events_athlete_event_created_idx
   on lifecycle_events (athlete_key, event_type, created_at desc);
+
+create unique index if not exists lifecycle_events_dedupe_key_unique_idx
+  on lifecycle_events (dedupe_key);
 
 create index if not exists lifecycle_events_transition_stage_idx
   on lifecycle_events (previous_crm_stage, crm_stage, created_at desc)

@@ -18,7 +18,8 @@ test('Jerami confirmation task resolves tracked ownership', () => {
 
   assert.equal(result.isTrackedOwner, true);
   assert.equal(result.sourceOwner, 'Jerami Singleton');
-  assert.equal(result.ownerProof, 'relevant_task_owner');
+  assert.equal(result.ownerProof, 'relevant_task.assigned_owner');
+  assert.equal(result.materializationStatus, 'operator_task');
 });
 
 test('non-Jerami relevant task resolves excluded ownership', () => {
@@ -37,10 +38,11 @@ test('non-Jerami relevant task resolves excluded ownership', () => {
 
   assert.equal(result.isTrackedOwner, false);
   assert.equal(result.sourceOwner, 'Logan Lord');
-  assert.equal(result.ownerProof, 'relevant_task_owner');
+  assert.equal(result.ownerProof, 'relevant_task.assigned_owner');
+  assert.equal(result.materializationStatus, 'not_operator_task');
 });
 
-test('booked event owner resolves only when athlete identity matches', () => {
+test('booked event owner resolves but does not count without active operator task proof', () => {
   const result = resolveCallTrackerOwnership({
     athleteId: '123',
     athleteMainId: '456',
@@ -52,37 +54,40 @@ test('booked event owner resolves only when athlete identity matches', () => {
     },
   });
 
-  assert.equal(result.isTrackedOwner, true);
+  assert.equal(result.isTrackedOwner, false);
   assert.equal(result.sourceOwner, 'Jerami Singleton');
-  assert.equal(result.ownerProof, 'booked_event_owner');
+  assert.equal(result.ownerProof, 'bookedMeeting.assigned_owner');
+  assert.equal(result.materializationStatus, 'not_operator_task');
+  assert.equal(result.materializationReason, 'missing_task_assigned_owner');
 });
 
-test('mismatched booked event identity throws instead of falling back', () => {
-  assert.throws(
-    () =>
-      resolveCallTrackerOwnership({
-        athleteId: '123',
-        athleteMainId: '456',
-        bookedMeeting: {
-          event_id: '777',
-          assigned_owner: 'Jerami Singleton',
-          athlete_id: '999',
-          athlete_main_id: '456',
-        },
-      }),
-    /Unable to resolve call tracker owner proof/,
-  );
+test('mismatched booked event identity returns review instead of guessing', () => {
+  const result = resolveCallTrackerOwnership({
+    athleteId: '123',
+    athleteMainId: '456',
+    bookedMeeting: {
+      event_id: '777',
+      assigned_owner: 'Jerami Singleton',
+      athlete_id: '999',
+      athlete_main_id: '456',
+    },
+  });
+
+  assert.equal(result.isTrackedOwner, false);
+  assert.equal(result.sourceOwner, null);
+  assert.equal(result.materializationStatus, 'not_operator_task');
+  assert.equal(result.materializationReason, 'mismatched_athlete_identity');
 });
 
-test('missing owner proof throws instead of returning review fallback', () => {
-  assert.throws(
-    () =>
-      resolveCallTrackerOwnership({
-        athleteId: '123',
-        athleteMainId: '456',
-        athleteName: 'Jordan Niles',
-      }),
-    /Unable to resolve call tracker owner proof/,
-  );
-});
+test('missing owner proof returns review fallback instead of throwing', () => {
+  const result = resolveCallTrackerOwnership({
+    athleteId: '123',
+    athleteMainId: '456',
+    athleteName: 'Jordan Niles',
+  });
 
+  assert.equal(result.isTrackedOwner, false);
+  assert.equal(result.sourceOwner, null);
+  assert.equal(result.materializationStatus, 'not_operator_task');
+  assert.equal(result.materializationReason, 'missing_task_assigned_owner');
+});
