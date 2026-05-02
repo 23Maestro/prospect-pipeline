@@ -59,6 +59,34 @@ test('Meeting Set submit builds Supabase writes only when active-operator proof 
   assert.equal(operatorPlan.ownerContext.materializationStatus, 'operator_task');
   assert.equal(operatorPlan.laravelMeetingSetSubmit?.open_event_id, '613999');
   assert.equal(operatorPlan.supabaseLifecycleWrite?.eventType, 'meeting_set');
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.owner_context?.materialization_status,
+    'operator_task',
+  );
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.owner_context?.materialization_reason,
+    'task_assigned_owner_matches_active_operator',
+  );
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.owner_context?.owner_proof,
+    'submittedMeetingPayload.assigned_to',
+  );
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.owner_context?.task_assigned_owner,
+    'Jerami Singleton',
+  );
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.materialization_proof?.task_assigned_owner,
+    'Jerami Singleton',
+  );
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.materialization_proof?.materialization_status,
+    'operator_task',
+  );
+  assert.equal(
+    operatorPlan.supabaseLifecycleWrite?.args.payload?.materialization_proof?.reason,
+    'task_assigned_owner_matches_active_operator',
+  );
   assert.equal(operatorPlan.supabaseFactWrite?.eventType, 'meeting_set');
 
   const timPlan = buildPostCallActionPlan({

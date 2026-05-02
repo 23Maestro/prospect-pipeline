@@ -2684,7 +2684,22 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       });
 
       if (actionPlan.supabaseLifecycleWrite) {
-        await recordMeetingSet(actionPlan.supabaseLifecycleWrite.args);
+        try {
+          await recordMeetingSet(actionPlan.supabaseLifecycleWrite.args);
+        } catch (error) {
+          logFailure(
+            'SCOUT_PREP_MEETING_SET_SYNC',
+            'supabase-write',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              stageLabel,
+              materializationStatus: actionPlan.ownerContext.materializationStatus,
+              ownerProof: actionPlan.ownerContext.ownerProof,
+            },
+          );
+        }
       }
 
       let taskCompletionMessage: string | null = null;

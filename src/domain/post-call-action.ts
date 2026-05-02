@@ -219,6 +219,38 @@ function buildMeetingSetWrites(args: {
     legacyAssignedTo: args.meetingPayload.assigned_to,
     meetingName,
     taskDueDate,
+    payload: {
+      owner_context: {
+        active_operator_key: args.ownerContext.activeOperator.operatorKey,
+        active_operator_name: args.ownerContext.activeOperator.personName,
+        task_assigned_owner: args.ownerContext.taskAssignedOwner,
+        appointment_setter_name: args.ownerContext.appointmentSetterName,
+        appointment_setter_legacy_user_id: args.ownerContext.appointmentSetterLegacyUserId,
+        meeting_for_legacy_user_id: args.ownerContext.meetingForLegacyUserId,
+        calendar_owner_id: args.ownerContext.calendarOwnerId,
+        booked_meeting_assigned_owner: args.ownerContext.bookedMeetingAssignedOwner,
+        resolved_owner_name: args.ownerContext.resolvedOwnerName,
+        resolved_owner_role: args.ownerContext.resolvedOwnerRole,
+        resolved_owner_legacy_user_id: args.ownerContext.resolvedOwnerLegacyUserId,
+        resolved_from_field: args.ownerContext.resolvedFromField,
+        resolved_from_value: args.ownerContext.resolvedFromValue,
+        owner_proof: args.ownerContext.ownerProof,
+        materialization_status: args.ownerContext.materializationStatus,
+        materialization_reason: args.ownerContext.materializationReason,
+        can_materialize_for_active_operator: args.ownerContext.canMaterializeForActiveOperator,
+        owner_status: args.ownerContext.status,
+      },
+      materialization_status: args.ownerContext.materializationStatus,
+      materialization_reason: args.ownerContext.materializationReason,
+      owner_proof: args.ownerContext.ownerProof,
+      task_assigned_owner: args.ownerContext.taskAssignedOwner,
+      materialization_proof: {
+        task_assigned_owner: args.ownerContext.taskAssignedOwner,
+        materialization_status: args.ownerContext.materializationStatus,
+        status: args.ownerContext.materializationStatus,
+        reason: args.ownerContext.materializationReason,
+      },
+    },
   };
 
   const factRow = buildMeetingSetFact({

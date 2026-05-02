@@ -79,6 +79,7 @@ export type MeetingSetWriteArgs = PipelineActor & {
   legacyAssignedTo?: string | null;
   meetingName?: string | null;
   taskDueDate?: string | null;
+  payload?: Record<string, unknown>;
 };
 
 type ConfirmationQueuedWriteArgs = PipelineActor & {
@@ -822,6 +823,7 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
       meeting_name: normalizeValue(args.meetingName),
       task_due_date: normalizeIsoValue(args.taskDueDate),
       starts_at: normalizeIsoValue(args.startsAt),
+      ...(args.payload || {}),
     },
     appointment: {
       appointmentId,
