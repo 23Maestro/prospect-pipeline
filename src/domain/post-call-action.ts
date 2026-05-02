@@ -12,6 +12,10 @@ import {
   classifyPostCallActivityStage,
   normalizeSalesStageLabelForLaravel,
 } from './sales-stage-contract';
+import {
+  resolvePostCallTaskToComplete,
+  stripMoveThisTaskPrefix,
+} from './scout-task-selection';
 
 type TaskInput = Partial<ScoutAthleteTask> & Record<string, unknown>;
 
@@ -71,27 +75,6 @@ function asString(value?: string | number | null): string {
   return String(value || '').trim();
 }
 
-function isIncompleteTaskValue(value?: string | null): boolean {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
-  return (
-    !normalized ||
-    normalized === '-' ||
-    normalized === '--' ||
-    normalized === 'n/a' ||
-    normalized === 'not completed' ||
-    normalized === 'incomplete'
-  );
-}
-
-function stripMoveThisTaskPrefix(taskTitle?: string | null): string | null {
-  const trimmed = String(taskTitle || '').trim();
-  if (!trimmed) return null;
-  const cleaned = trimmed.replace(/^\(SC Move This Task\)\s*/i, '').trim();
-  return cleaned || trimmed;
-}
-
 function taskId(task?: TaskInput | null): string {
   return asString(task?.task_id as string | undefined);
 }
@@ -102,64 +85,6 @@ function getTaskDisplayTitle(task?: TaskInput | null): string {
     asString(task?.description as string | undefined) ||
     'Untitled Task'
   );
-}
-
-function normalizePostCallTaskText(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^\(?sc move this task\)?\s*/i, '')
-    .replace(/[-_–—]+/g, ' ')
-    .replace(/[.,:]+/g, ' ')
-    .replace(/\s+/g, ' ');
-}
-
-function getIncompleteTasks(tasks: TaskInput[] = []): TaskInput[] {
-  return tasks
-    .filter((task) => isIncompleteTaskValue(task.completion_date as string | undefined) && taskId(task))
-    .sort((left, right) => {
-      const leftId = Number.parseInt(taskId(left) || '0', 10);
-      const rightId = Number.parseInt(taskId(right) || '0', 10);
-      return rightId - leftId || taskId(right).localeCompare(taskId(left));
-    });
-}
-
-function isBroadPostCallTaskMatch(task: TaskInput, stageLabel: string): boolean {
-  const text = normalizePostCallTaskText(
-    [task.title, task.description, task.row_text].filter(Boolean).join(' '),
-  );
-  const stage = normalizePostCallTaskText(stageLabel);
-  if (!text || !stage) return false;
-  if (text.includes(stage)) return true;
-  if (stage.includes('follow up')) return text.includes('scheduled follow up') || text.includes('need to follow up') || text.includes('follow up');
-  if (stage.includes('athlete not parent')) return text.includes('athlete not parent');
-  if (stage.includes('not interested')) return text.includes('not interested');
-  if (stage.includes('too young')) return text.includes('too young');
-  if (stage.includes('unable to leave vm')) return text.includes('unable to leave vm') || text.includes('unable to leave voicemail');
-  return false;
-}
-
-function voicemailTaskTitle(variant?: string | null): string | null {
-  if (variant === 'call_attempt_1') return 'Call Attempt 1';
-  if (variant === 'call_attempt_2') return 'Call Attempt 2';
-  if (variant === 'call_attempt_3') return 'Call Attempt 3';
-  return null;
-}
-
-function resolvePostCallTaskToComplete(tasks: TaskInput[], stageLabel: string): TaskInput | null {
-  const classification = classifyPostCallActivityStage(stageLabel);
-  if (!classification?.completesPostCallTask) return null;
-  const incompleteTasks = getIncompleteTasks(tasks);
-  const expectedVoicemailTitle = voicemailTaskTitle(classification.voicemailVariant);
-  if (expectedVoicemailTitle) {
-    const normalizedTitle = expectedVoicemailTitle.toLowerCase();
-    return (
-      incompleteTasks.find(
-        (task) => (stripMoveThisTaskPrefix(task.title as string | undefined) || '').toLowerCase() === normalizedTitle,
-      ) || incompleteTasks[0] || null
-    );
-  }
-  return incompleteTasks.find((task) => isBroadPostCallTaskMatch(task, stageLabel)) || incompleteTasks[0] || null;
 }
 
 function buildTaskCompletionPlan(input: PostCallActionPlanInput, normalizedStage: string): LaravelTaskCompletionPlan | null {

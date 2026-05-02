@@ -3,10 +3,17 @@ import assert from 'node:assert/strict';
 
 import {
   getConfirmationDayPhrase,
+  getConfirmationClockLabel,
   getConfirmationDatePhrase,
+  getConfirmationTimezoneLabel,
+  getGreetingForLocalTime,
+  getMeetingReminderPhrase,
+  getMeetingTimeOfDayPhrase,
   getMeetingTimeOfDayBucket,
   getReminderTimeLabel,
-} from './temporal-wording';
+  resolveIanaTimeZoneFromLegacyLabel,
+  resolveLegacyTimezoneLabelFromIana,
+} from './outreach-time-wording';
 
 test('same-day Friday evening meeting says tonight', () => {
   assert.equal(
@@ -109,4 +116,29 @@ test('date phrase and reminder label use the same meeting timezone helpers', () 
     'tomorrow evening 5/2',
   );
   assert.equal(getReminderTimeLabel({ meetingStart, meetingTimezone: 'EST' }), '7:00pm eastern');
+});
+
+test('requested API resolves legacy and IANA timezone labels', () => {
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('CST'), 'America/Chicago');
+  assert.equal(resolveLegacyTimezoneLabelFromIana('America/Los_Angeles'), 'PST');
+  assert.equal(resolveLegacyTimezoneLabelFromIana('America/Phoenix'), 'MST');
+});
+
+test('requested API builds greeting and meeting reminder phrases from meeting timezone', () => {
+  const now = new Date('2026-05-01T14:00:00.000Z');
+  const meetingStart = new Date('2026-05-01T23:00:00.000Z');
+
+  assert.equal(getGreetingForLocalTime({ now, meetingTimezone: 'EST' }), 'Good morning');
+  assert.equal(getMeetingTimeOfDayPhrase({ meetingStart, meetingTimezone: 'EST' }), 'evening');
+  assert.equal(
+    getMeetingReminderPhrase({ now, meetingStart, meetingTimezone: 'EST' }),
+    '7:00pm eastern tonight',
+  );
+});
+
+test('confirmation clock and timezone labels come from the same timezone resolver', () => {
+  const meetingStart = new Date('2026-04-26T19:00:00.000Z');
+
+  assert.equal(getConfirmationClockLabel({ meetingStart, meetingTimezone: 'CST' }), '2:00 PM');
+  assert.equal(getConfirmationTimezoneLabel('CST'), 'CT');
 });

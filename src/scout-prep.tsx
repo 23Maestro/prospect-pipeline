@@ -89,9 +89,14 @@ import {
 import { buildPostCallActionPlan } from './domain/post-call-action';
 import {
   classifyMeetingSetStage,
-  getSalesStageLabelForVoicemailVariant,
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './domain/sales-stage-contract';
+import {
+  getVoicemailLifecycleStageLabel,
+  getVoicemailLifecycleTaskTitle,
+  resolveVoicemailLifecycleTaskForCompletion,
+} from './domain/scout-task-selection';
+import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
 import { searchLogger } from './lib/logger';
 import {
   fetchOpenMeetings,
@@ -315,180 +320,15 @@ function getTaskDisplayTitle(
   );
 }
 
-function isIncompleteTaskValue(value?: string | null): boolean {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
-  return (
-    !normalized ||
-    normalized === '-' ||
-    normalized === '--' ||
-    normalized === 'n/a' ||
-    normalized === 'not completed' ||
-    normalized === 'incomplete'
-  );
-}
-
-function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): string | null {
-  if (variant === 'call_attempt_1') return 'Call Attempt 1';
-  if (variant === 'call_attempt_2') return 'Call Attempt 2';
-  if (variant === 'call_attempt_3') return 'Call Attempt 3';
-  if (variant === 'no_show') return 'No Show';
-  return null;
-}
-
-function getVoicemailLifecycleStageLabel(variant: VoicemailFollowUpVariant): string | null {
-  return getSalesStageLabelForVoicemailVariant(variant);
-}
-
-function normalizeTaskMatchText(task: Pick<ScoutAthleteTask, 'title' | 'description' | 'row_text'>): string {
-  return [task.title, task.description, task.row_text]
-    .map((value) => String(value || '').trim().toLowerCase())
-    .filter(Boolean)
-    .join(' ');
-}
-
-function isNoShowTaskMatch(task: Pick<ScoutAthleteTask, 'title' | 'description' | 'row_text'>): boolean {
-  const text = normalizeTaskMatchText(task).replace(/[-_]+/g, ' ');
-  return /\bno\s*show\b/.test(text) || /\bnoshow\b/.test(text);
-}
-
-function resolveVoicemailLifecycleTaskFromList(
-  context: ScoutPrepContext,
-  variant: VoicemailFollowUpVariant,
-): ScoutAthleteTask | null {
-  if (variant === 'no_show') {
-    return getIncompleteAthleteTasks(context.tasks).find((candidate) => isNoShowTaskMatch(candidate)) || null;
-  }
-
-  const expectedTaskTitle = getVoicemailLifecycleTaskTitle(variant);
-  if (!expectedTaskTitle) {
-    return null;
-  }
-
-  return (
-    findNewestIncompleteTaskByTitle(context.tasks, expectedTaskTitle) ||
-    getIncompleteAthleteTasks(context.tasks).find((candidate) =>
-      isVoicemailLifecycleTaskMatch(candidate, variant),
-    ) ||
-    null
-  );
-}
-
-function resolveVoicemailLifecycleTaskForCompletion(
-  context: ScoutPrepContext,
-  variant: VoicemailFollowUpVariant,
-): ScoutAthleteTask | null {
-  const matchedTask = resolveVoicemailLifecycleTaskFromList(context, variant);
-  if (matchedTask) {
-    return matchedTask;
-  }
-
-  if (
-    variant === 'call_attempt_1' ||
-    variant === 'call_attempt_2' ||
-    variant === 'call_attempt_3'
-  ) {
-    return getTopmostIncompleteAthleteTask(context.tasks);
-  }
-
-  return null;
-}
-
-function getIncompleteAthleteTasks(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask[] {
-  return tasks
-    .filter(
-      (task) => isIncompleteTaskValue(task.completion_date) && String(task.task_id || '').trim(),
-    )
-    .map((task) => ({
-      task_id: String(task.task_id || '').trim(),
-      title: task.title,
-      assigned_owner: task.assigned_owner,
-      due_date: task.due_date,
-      completion_date: task.completion_date,
-      description: task.description,
-      row_text: task.row_text,
-    }))
-    .sort((left, right) => {
-      const leftId = Number.parseInt(String(left.task_id || '0'), 10);
-      const rightId = Number.parseInt(String(right.task_id || '0'), 10);
-      return rightId - leftId;
-    });
-}
-
-function getTopmostIncompleteAthleteTask(tasks: ScoutPrepContext['tasks']): ScoutAthleteTask | null {
-  const task = tasks.find(
-    (candidate) =>
-      isIncompleteTaskValue(candidate.completion_date) && String(candidate.task_id || '').trim(),
-  );
-  return task
-    ? {
-        task_id: String(task.task_id || '').trim(),
-        title: task.title,
-        assigned_owner: task.assigned_owner,
-        due_date: task.due_date,
-        completion_date: task.completion_date,
-        description: task.description,
-        row_text: task.row_text,
-      }
-    : null;
-}
-
-function findNewestIncompleteTaskByTitle(
-  tasks: ScoutPrepContext['tasks'],
-  taskTitle: string,
-): ScoutAthleteTask | null {
-  const normalizedTarget = String(taskTitle || '')
-    .trim()
-    .toLowerCase();
-  if (!normalizedTarget) {
-    return null;
-  }
-
-  return (
-    getIncompleteAthleteTasks(tasks).find(
-      (candidate) =>
-        (stripMoveThisTaskPrefix(candidate.title) || '').trim().toLowerCase() === normalizedTarget,
-    ) || null
-  );
-}
-
-function isVoicemailLifecycleTaskMatch(
-  task: Pick<ScoutAthleteTask, 'title' | 'description'>,
-  variant: VoicemailFollowUpVariant,
-): boolean {
-  const title = (stripMoveThisTaskPrefix(task.title) || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[-_]+/g, ' ')
-    .replace(/\s+/g, ' ');
-  const description = String(task.description || '')
-    .trim()
-    .toLowerCase();
-
-  if (variant === 'call_attempt_1') {
-    return title === 'call attempt 1' || description.includes('first time');
-  }
-  if (variant === 'call_attempt_2') {
-    return (
-      title === 'call attempt 2' ||
-      (title === 'scheduled follow up' && description.includes('second time')) ||
-      description.includes('second time')
-    );
-  }
-  if (variant === 'call_attempt_3') {
-    return title === 'call attempt 3' || description.includes('third time');
-  }
-
-  return false;
-}
-
 async function completeSentTextTask(args: {
   context: ScoutPrepContext;
   task: ScoutPortalTask;
   variant: VoicemailFollowUpVariant;
 }): Promise<void> {
-  const matchedTask = resolveVoicemailLifecycleTaskForCompletion(args.context, args.variant);
+  const matchedTask = resolveVoicemailLifecycleTaskForCompletion(
+    args.context.tasks,
+    args.variant,
+  );
   const taskLabel = getVoicemailLifecycleTaskTitle(args.variant) || args.variant;
   if (!matchedTask?.task_id) {
     throw new Error(`Missing task list item for ${taskLabel}`);
@@ -1604,7 +1444,7 @@ function VoicemailFollowUpRecipientForm({
                 }
                 : async () => {
                   const followUpTask = resolveVoicemailLifecycleTaskForCompletion(
-                    context,
+                    context.tasks,
                     selectedVariant,
                   );
                   const athleteId = String(
@@ -2227,7 +2067,8 @@ function UpdateAthleteTaskPicker({
     };
   }, [initialContext, task]);
 
-  const incompleteTasks = context ? getIncompleteAthleteTasks(context.tasks) : [];
+  const commandContext = context ? buildScoutPrepCommandContext({ context }) : null;
+  const incompleteTasks = commandContext?.tasks || [];
 
   async function handleOpenTaskUpdate(selectedTask: ScoutAthleteTask) {
     const athleteMainId = String(

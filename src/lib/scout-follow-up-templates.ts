@@ -1,9 +1,13 @@
 import { resolveSalesLifecycle } from './sales-lifecycle';
 import {
+  getConfirmationClockLabel as resolveConfirmationClockLabel,
   getConfirmationDatePhrase as resolveConfirmationDatePhrase,
   getConfirmationDayPhrase as resolveConfirmationDayPhrase,
+  getConfirmationTimezoneLabel as resolveConfirmationTimezoneLabel,
+  getMeetingReminderPhrase as resolveMeetingReminderPhrase,
+  getTimeOfDayBucket,
   getReminderTimeLabel as resolveReminderTimeLabel,
-} from '../domain/temporal-wording';
+} from '../domain/outreach-time-wording';
 
 export const DEFAULT_FOLLOW_UP_SENDER_NAME = 'Jerami Singleton';
 
@@ -34,16 +38,6 @@ export type MinimalFollowUpQueueRecord = {
   messageVariant?: FollowUpMessageVariant | null;
 };
 
-const TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
-  EST: 'America/New_York',
-  CST: 'America/Chicago',
-  MST: 'America/Denver',
-  PST: 'America/Los_Angeles',
-  AKST: 'America/Anchorage',
-  HST: 'Pacific/Honolulu',
-  AST: 'America/Puerto_Rico',
-};
-
 function firstName(value?: string | null): string {
   return (
     String(value || '')
@@ -52,64 +46,8 @@ function firstName(value?: string | null): string {
   );
 }
 
-function resolveIanaTimeZone(timezoneLabel?: string | null): string | null {
-  return (
-    TIMEZONE_LABEL_TO_IANA[
-      String(timezoneLabel || '')
-        .trim()
-        .toUpperCase()
-    ] || null
-  );
-}
-
-function getHourForTimeZone(date: Date, timezoneLabel?: string | null): number {
-  const timeZone = resolveIanaTimeZone(timezoneLabel);
-  if (!timeZone) {
-    return date.getHours();
-  }
-
-  const hour = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: 'numeric',
-    hour12: false,
-  })
-    .formatToParts(date)
-    .find((part) => part.type === 'hour')?.value;
-
-  const parsed = Number.parseInt(hour || '', 10);
-  return Number.isNaN(parsed) ? date.getHours() : parsed;
-}
-
-function formatTimeLabel(date: Date, timezoneLabel?: string | null): string {
-  const timeZone = resolveIanaTimeZone(timezoneLabel);
-  if (!timeZone) {
-    const hours24 = date.getHours();
-    const hours12 = hours24 % 12 || 12;
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    const suffix = hours24 >= 12 ? 'pm' : 'am';
-    return `${hours12}:${minutes}${suffix}`;
-  }
-
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).formatToParts(date);
-  const hour = parts.find((part) => part.type === 'hour')?.value || '12';
-  const minute = parts.find((part) => part.type === 'minute')?.value || '00';
-  const dayPeriod = (parts.find((part) => part.type === 'dayPeriod')?.value || 'AM').toLowerCase();
-  return `${hour}:${minute}${dayPeriod}`;
-}
-
 function formatConfirmationClockLabel(date: Date, timezoneLabel?: string | null): string {
-  const timeZone = resolveIanaTimeZone(timezoneLabel);
-  return new Intl.DateTimeFormat('en-US', {
-    ...(timeZone ? { timeZone } : {}),
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).format(date);
+  return resolveConfirmationClockLabel({ meetingStart: date, meetingTimezone: timezoneLabel });
 }
 
 function getConfirmationDatePhrase(args: {
@@ -125,14 +63,7 @@ function getConfirmationDatePhrase(args: {
 }
 
 function getConfirmationTimezoneLabel(timezoneLabel?: string | null): string {
-  const normalized = String(timezoneLabel || '')
-    .trim()
-    .toUpperCase();
-  if (normalized === 'EST') return 'ET';
-  if (normalized === 'CST') return 'CT';
-  if (normalized === 'MST') return 'MT';
-  if (normalized === 'PST') return 'PT';
-  return normalized;
+  return resolveConfirmationTimezoneLabel(timezoneLabel);
 }
 
 function removeDayPeriod(timeLabel: string): string {
@@ -451,9 +382,9 @@ export function getTimeOfDayPhrase(
   date: Date,
   meetingTimezone?: string | null,
 ): 'this morning' | 'this afternoon' | 'this evening' {
-  const hour = getHourForTimeZone(date, meetingTimezone);
-  if (hour < 12) return 'this morning';
-  if (hour < 17) return 'this afternoon';
+  const bucket = getTimeOfDayBucket(date, meetingTimezone);
+  if (bucket === 'morning') return 'this morning';
+  if (bucket === 'afternoon') return 'this afternoon';
   return 'this evening';
 }
 
@@ -479,13 +410,11 @@ export function buildConfirmationMessage(args: {
   now?: Date;
 }): string {
   const coachName = getCoachReferenceName(args.headScoutName);
-  const confirmationDayPhrase = getConfirmationDayPhrase({
-    dueAt: args.dueAt,
+  const meetingReminderPhrase = resolveMeetingReminderPhrase({
+    meetingStart: args.dueAt,
     meetingTimezone: args.meetingTimezone,
     now: args.now,
   });
-  const meetingTimeLabel = getReminderTimeLabel(args.dueAt, args.meetingTimezone);
-  const callTimeLabel = formatTimeLabel(args.dueAt, args.meetingTimezone);
   const confirmationDatePhrase = getConfirmationDatePhrase({
     dueAt: args.dueAt,
     meetingTimezone: args.meetingTimezone,
@@ -510,7 +439,7 @@ export function buildConfirmationMessage(args: {
 
   if ((args.variant || 'confirmation_1') === 'confirmation_2') {
     return [
-      `Coach ${coachName} still has you down for ${meetingTimeLabel} ${confirmationDayPhrase}.`,
+      `Coach ${coachName} still has you down for ${meetingReminderPhrase}.`,
       '',
       'Please reply YES to confirm you’ll be able to attend',
     ].join('\n');
@@ -519,7 +448,7 @@ export function buildConfirmationMessage(args: {
   return [
     `${greeting.replace(/,$/, '!')} Prospect ID Zoom Meeting ${confirmationDatePhrase} at ${confirmationClockLabel}${confirmationTimezoneLabel ? ` ${confirmationTimezoneLabel}` : ''} with Coach ${coachName}.`,
     '',
-    `He’ll call your cell at ${removeDayPeriod(callTimeLabel)} with the Zoom code. Be on a laptop or tablet so he can share his screen.`,
+    `He’ll call your cell at ${removeDayPeriod(confirmationClockLabel)} with the Zoom code. Be on a laptop or tablet so he can share his screen.`,
     '',
     'Save his contact so you know it’s him calling.',
   ].join('\n');

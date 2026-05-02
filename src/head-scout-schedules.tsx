@@ -23,7 +23,6 @@ import {
 import {
   buildHeadScoutWeekWindow,
   buildHeadScoutScriptMarkdown,
-  easternLocalIsoToDate,
   fetchHeadScoutBookedMeetings,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
@@ -41,9 +40,11 @@ import {
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
 import {
-  buildWeeklyOperatorMeetingSetCandidates,
-  isActualSetMeetingTitle,
-} from './domain/booked-meeting-source';
+  buildMeetingDayLabel,
+  buildSetMeetingCandidatesFromBookedMeetings,
+  filterWeeklySetMeetingCandidates,
+} from './domain/set-meetings-candidate';
+import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
@@ -59,7 +60,6 @@ import {
 import {
   fetchScoutPortalTasks,
   loadScoutPrepContext,
-  stripMoveThisTaskPrefix,
 } from './lib/scout-prep';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
@@ -120,70 +120,6 @@ function getHeadScoutCountColor(scoutName: string): string | Color {
   }
 }
 
-function buildMeetingDayLabel(candidate: HeadScoutFollowUpCandidate): string {
-  const raw = candidate.bookedMeeting?.start || '';
-  const parsed = raw ? new Date(raw) : null;
-  if (parsed && !Number.isNaN(parsed.getTime())) {
-    return new Intl.DateTimeFormat('en-US', {
-      weekday: 'short',
-      month: 'numeric',
-      day: 'numeric',
-    }).format(parsed);
-  }
-
-  const fallback = candidate.bookedMeeting?.date_time_label || '';
-  const match = fallback.match(/^[A-Za-z]{3}\s+\d{2}\/\d{2}\/\d{2}/);
-  if (match) {
-    const value = new Date(match[0]);
-    if (!Number.isNaN(value.getTime())) {
-      return new Intl.DateTimeFormat('en-US', {
-        weekday: 'short',
-        month: 'numeric',
-        day: 'numeric',
-      }).format(value);
-    }
-  }
-
-  return 'No date';
-}
-
-function getMeetingSortValue(candidate: HeadScoutFollowUpCandidate): number {
-  const currentMeeting = candidate.bookedMeeting
-    ? easternLocalIsoToDate(candidate.bookedMeeting.start)
-    : null;
-  if (currentMeeting && !Number.isNaN(currentMeeting.getTime())) {
-    return currentMeeting.getTime();
-  }
-  const dueValue = Date.parse(String(candidate.dueDate || '').trim());
-  return Number.isNaN(dueValue) ? Number.POSITIVE_INFINITY : dueValue;
-}
-
-function getMeetingSortBucket(candidate: HeadScoutFollowUpCandidate, now = new Date()): number {
-  const currentMeeting = candidate.bookedMeeting
-    ? easternLocalIsoToDate(candidate.bookedMeeting.start)
-    : null;
-  const meetingTs = currentMeeting?.getTime() || Number.NaN;
-  const soonCutoff = now.getTime() + 72 * 60 * 60 * 1000;
-
-  if (!Number.isNaN(meetingTs) && meetingTs >= now.getTime() && meetingTs <= soonCutoff) {
-    return 0;
-  }
-  if (candidate.lifecycleState === 'rescheduled' && candidate.needsConfirmationText) {
-    return 1;
-  }
-  if (
-    candidate.needsManualReview ||
-    candidate.oldFollowUpDateDetected ||
-    candidate.lifecycleState === 'follow_up_due'
-  ) {
-    return 2;
-  }
-  if (!Number.isNaN(meetingTs) && meetingTs >= now.getTime()) {
-    return 3;
-  }
-  return 4;
-}
-
 function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalTask {
   return {
     contact_id: candidate.athleteId,
@@ -207,59 +143,13 @@ async function loadWeeklyJeramiMeetingCandidates(
     fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
 
-  const resolved = buildWeeklyOperatorMeetingSetCandidates({
-    bookedMeetings: weekly.events || [],
-    tasks: jeramiTasks || [],
-    operatorName: 'Jerami Singleton',
-  }).map((candidate) => {
-    return {
-      key: candidate.athleteKey,
-      athleteId: candidate.athleteId,
-      athleteMainId: candidate.athleteMainId,
-      athleteName: candidate.athleteName,
-      dueDate: candidate.taskDueDate || candidate.bookedMeeting.start,
-      stage: 'Meeting Set',
-      currentTask:
-        stripMoveThisTaskPrefix(candidate.taskTitle || '') || 'Confirmation Call',
-      taskId: candidate.taskId,
-      adminUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(candidate.athleteId)}&athlete_main_id=${encodeURIComponent(candidate.athleteMainId)}`,
-      taskUrl: `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(candidate.athleteId)}&athlete_main_id=${encodeURIComponent(candidate.athleteMainId)}&tasktab=1`,
-      source: 'website' as const,
-      crmSalesStage: 'Meeting Set',
-      headScoutName: candidate.bookedMeeting.assignedOwner,
-      bookedMeetingTitle: candidate.bookedMeeting.title,
-      bookedMeeting: {
-        event_id: candidate.bookedMeeting.eventId,
-        title: candidate.bookedMeeting.title,
-        assigned_owner: candidate.bookedMeeting.assignedOwner || '',
-        start: candidate.bookedMeeting.start,
-        end: candidate.bookedMeeting.end || '',
-        date_time_label: candidate.bookedMeeting.dateTimeLabel || '',
-      },
-      previousMeeting: null,
-      followUpTask: {
-        taskId: candidate.taskId,
-        title: candidate.taskTitle,
-        description: candidate.taskDescription,
-        dueDate: candidate.taskDueDate,
-        completionDate: candidate.taskCompletionDate,
-        assignedOwner: candidate.taskAssignedOwner,
-      },
-      lifecycleState: 'scheduled',
-      needsConfirmationText: true,
-      needsManualReview: false,
-      reason: 'Weekly booked meeting assigned to Jerami confirmation queue.',
-      operatorStatus: 'active_meeting_queue',
-      badges: [],
-      currentMeetingLabel: candidate.bookedMeeting.dateTimeLabel || '',
-      oldFollowUpDateDetected: false,
-      meetingTimezone: null,
-    } satisfies HeadScoutFollowUpCandidate;
-  });
-
-  return resolved
-    .filter((candidate): candidate is NonNullable<typeof candidate> => Boolean(candidate))
-    .sort((left, right) => getMeetingSortValue(left) - getMeetingSortValue(right));
+  return buildSetMeetingsCommandContext({
+    candidates: buildSetMeetingCandidatesFromBookedMeetings({
+      bookedMeetings: weekly.events || [],
+      tasks: jeramiTasks || [],
+      operatorName: 'Jerami Singleton',
+    }),
+  }).candidates;
 }
 
 export function HeadScoutBookingsList({
@@ -300,46 +190,21 @@ export function HeadScoutBookingsList({
               ).map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
             );
         if (cancelled) return;
-        const filteredCandidates = enriched.filter((candidate) => {
-          if (
-            scoutName &&
-            String(candidate.headScoutName || '')
-              .trim()
-              .toLowerCase() !== scoutName.trim().toLowerCase()
-          ) {
-            return false;
-          }
-
-          if (!weeklyMeetingsOnly) {
-            return true;
-          }
-
-          const currentMeeting = candidate.bookedMeeting
-            ? easternLocalIsoToDate(candidate.bookedMeeting.start)
-            : null;
-          if (!currentMeeting || Number.isNaN(currentMeeting.getTime())) {
-            return false;
-          }
-          if (candidate.bookedMeeting && !isActualSetMeetingTitle(candidate.bookedMeeting.title)) {
-            return false;
-          }
-
-          const meetingDate = currentMeeting.toISOString().slice(0, 10);
-          return meetingDate >= weekWindow.start && meetingDate < weekWindow.end;
+        const filteredCandidates = filterWeeklySetMeetingCandidates({
+          candidates: enriched,
+          scoutName,
+          weeklyMeetingsOnly,
+          weekStart: weekWindow.start,
+          weekEnd: weekWindow.end,
         });
 
         setCandidates(
-          filteredCandidates.sort((left, right) => {
-            const bucketDiff = getMeetingSortBucket(left) - getMeetingSortBucket(right);
-            if (bucketDiff !== 0) {
-              return bucketDiff;
-            }
-            const timeDiff = getMeetingSortValue(left) - getMeetingSortValue(right);
-            if (timeDiff !== 0) {
-              return timeDiff;
-            }
-            return left.athleteName.localeCompare(right.athleteName);
-          }),
+          buildSetMeetingsCommandContext({
+            candidates: filteredCandidates,
+            weekWindow,
+            weekLabel,
+            selectedScout: scoutName || null,
+          }).candidates,
         );
       } catch (error) {
         if (!cancelled) {

@@ -22,6 +22,8 @@ export type ScoutTaskClassification = {
   activitySubtype: ScoutTaskStatus | null;
 };
 
+export { isIncompleteTaskValue } from './scout-task-selection';
+
 function normalizeText(value?: string | null): string {
   return String(value || '')
     .trim()
@@ -40,18 +42,6 @@ export function stripMoveThisTaskPrefix(taskTitle?: string | null): string {
   const trimmed = String(taskTitle || '').trim();
   if (!trimmed) return '';
   return trimmed.replace(/^\(SC Move This Task\)\s*/i, '').trim() || trimmed;
-}
-
-export function isIncompleteTaskValue(value?: string | null): boolean {
-  const normalized = String(value || '').trim().toLowerCase();
-  return (
-    !normalized ||
-    normalized === '-' ||
-    normalized === '--' ||
-    normalized === 'n/a' ||
-    normalized === 'not completed' ||
-    normalized === 'incomplete'
-  );
 }
 
 export function activityKindForTaskStatus(taskStatus?: string | null): ActivityKind | null {

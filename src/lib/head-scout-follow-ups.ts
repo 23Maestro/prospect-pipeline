@@ -7,12 +7,14 @@ import {
   fetchAthleteTasks,
   fetchScoutPortalTaskBuckets,
   fetchScoutRecentProfiles,
+  type ScoutTaskRange,
+} from './scout-prep';
+import {
   findNewestIncompleteConfirmationTask,
   findNewestIncompleteFollowUpTask,
   isConfirmationCallTask,
-  type ScoutTaskRange,
   stripMoveThisTaskPrefix,
-} from './scout-prep';
+} from '../domain/scout-task-selection';
 import { fetchCuratedSalesStageOptions } from './sales-stage';
 import {
   getSelectedSalesStageLabel,

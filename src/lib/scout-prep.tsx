@@ -15,7 +15,14 @@ import type {
 import type { AthleteTaskSummary } from '../types/athlete-workflows';
 import { searchLogger } from './logger';
 import type { VoicemailFollowUpVariant } from './scout-follow-up-templates';
-import { getActiveOperator, isActiveOperatorTaskAssignedOwner } from '../domain/owners';
+import { getActiveOperator } from '../domain/owners';
+import {
+  findNewestIncompleteConfirmationTask,
+  findNewestIncompleteFollowUpTask,
+  isConfirmationCallTask,
+  isFollowUpScoutTask,
+  stripMoveThisTaskPrefix,
+} from '../domain/scout-task-selection';
 import {
   getCachedScoutPrepContactInfo,
   getCachedScoutPrepMeasurables,
@@ -227,91 +234,13 @@ export async function fetchScoutPrepAthleteDetails(
   return payload;
 }
 
-export function isFollowUpScoutTask(task?: Partial<ScoutAthleteTask> | null): boolean {
-  const title = String(task?.title || '')
-    .trim()
-    .toLowerCase();
-  const description = String(task?.description || '')
-    .trim()
-    .toLowerCase();
-  const owner = String(task?.assigned_owner || '')
-    .trim();
-  const completionDate = String(task?.completion_date || '').trim();
-  return (
-    isIncompleteTaskValue(completionDate) &&
-    isActiveOperatorTaskAssignedOwner(owner) &&
-    (title.startsWith('call attempt') || description.includes('call the family'))
-  );
-}
-
-function isIncompleteTaskValue(value?: string | null): boolean {
-  const normalized = String(value || '')
-    .trim()
-    .toLowerCase();
-  return (
-    !normalized ||
-    normalized === '-' ||
-    normalized === '--' ||
-    normalized === 'n/a' ||
-    normalized === 'not completed' ||
-    normalized === 'incomplete'
-  );
-}
-
-export function findNewestIncompleteFollowUpTask(
-  tasks: Array<Partial<ScoutAthleteTask>>,
-): ScoutAthleteTask | null {
-  const candidates = tasks.filter(isFollowUpScoutTask);
-  if (!candidates.length) return null;
-
-  const sorted = [...candidates].sort((left, right) => {
-    const leftId = String(left.task_id || '').trim();
-    const rightId = String(right.task_id || '').trim();
-    const leftNum = /^\d+$/.test(leftId) ? Number.parseInt(leftId, 10) : -1;
-    const rightNum = /^\d+$/.test(rightId) ? Number.parseInt(rightId, 10) : -1;
-    return rightNum - leftNum || rightId.localeCompare(leftId);
-  });
-
-  return sorted[0] as ScoutAthleteTask;
-}
-
-export function isConfirmationCallTask(
-  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
-): boolean {
-  const title = String(task?.title || '')
-    .trim()
-    .toLowerCase();
-  const description = String(task?.description || '')
-    .trim()
-    .toLowerCase();
-  return title.includes('confirmation call') || description.includes('confirm the meeting set');
-}
-
-export function findNewestIncompleteConfirmationTask(
-  tasks: Array<Partial<ScoutAthleteTask>>,
-): ScoutAthleteTask | null {
-  const candidates = tasks.filter((task) => {
-    return isIncompleteTaskValue(task.completion_date) && isConfirmationCallTask(task);
-  });
-  if (!candidates.length) return null;
-
-  const sorted = [...candidates].sort((left, right) => {
-    const leftId = String(left.task_id || '').trim();
-    const rightId = String(right.task_id || '').trim();
-    const leftNum = /^\d+$/.test(leftId) ? Number.parseInt(leftId, 10) : -1;
-    const rightNum = /^\d+$/.test(rightId) ? Number.parseInt(rightId, 10) : -1;
-    return rightNum - leftNum || rightId.localeCompare(leftId);
-  });
-
-  return sorted[0] as ScoutAthleteTask;
-}
-
-export function stripMoveThisTaskPrefix(taskTitle?: string | null): string | null {
-  const trimmed = String(taskTitle || '').trim();
-  if (!trimmed) return null;
-  const cleaned = trimmed.replace(/^\(SC Move This Task\)\s*/i, '').trim();
-  return cleaned || trimmed;
-}
+export {
+  findNewestIncompleteConfirmationTask,
+  findNewestIncompleteFollowUpTask,
+  isConfirmationCallTask,
+  isFollowUpScoutTask,
+  stripMoveThisTaskPrefix,
+} from '../domain/scout-task-selection';
 
 function formatLegacyTaskDate(date: Date): string {
   const month = String(date.getMonth() + 1).padStart(2, '0');

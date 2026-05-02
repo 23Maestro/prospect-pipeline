@@ -18,15 +18,64 @@ const TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
   AST: 'America/Puerto_Rico',
 };
 
+const IANA_TO_TIMEZONE_LABEL: Record<string, string> = Object.fromEntries(
+  Object.entries(TIMEZONE_LABEL_TO_IANA).map(([label, iana]) => [iana, label]),
+);
+IANA_TO_TIMEZONE_LABEL['America/Phoenix'] = 'MST';
+
+const TIMEZONE_LABEL_TO_CONFIRMATION_ABBREVIATION: Record<string, string> = {
+  EST: 'ET',
+  CST: 'CT',
+  MST: 'MT',
+  PST: 'PT',
+};
+
 type TemporalInput = Date | string | number;
+type TimeOfDayBucket = 'morning' | 'afternoon' | 'evening';
 
 function toDate(value: TemporalInput): Date {
   return value instanceof Date ? value : new Date(value);
 }
 
+export function resolveIanaTimeZoneFromLegacyLabel(timezoneLabel?: string | null): string {
+  const trimmed = String(timezoneLabel || '').trim();
+  if (!trimmed) {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+  }
+  const normalized = trimmed.toUpperCase();
+  if (TIMEZONE_LABEL_TO_IANA[normalized]) {
+    return TIMEZONE_LABEL_TO_IANA[normalized];
+  }
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: trimmed }).format(new Date());
+    return trimmed;
+  } catch {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+  }
+}
+
+export function resolveLegacyTimezoneLabelFromIana(timezone?: string | null): string | null {
+  const trimmed = String(timezone || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  const upper = trimmed.toUpperCase();
+  if (TIMEZONE_LABEL_TO_IANA[upper]) {
+    return upper;
+  }
+  return IANA_TO_TIMEZONE_LABEL[trimmed] || null;
+}
+
 function resolveIanaTimeZone(timezoneLabel?: string | null): string {
-  const normalized = String(timezoneLabel || '').trim().toUpperCase();
-  return TIMEZONE_LABEL_TO_IANA[normalized] || Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/New_York';
+  return resolveIanaTimeZoneFromLegacyLabel(timezoneLabel);
+}
+
+function resolveLegacyTimezoneLabel(timezone?: string | null): string | null {
+  const trimmed = String(timezone || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  return resolveLegacyTimezoneLabelFromIana(trimmed) || trimmed.toUpperCase();
 }
 
 function getParts(dateInput: TemporalInput, timezoneLabel?: string | null) {
@@ -107,14 +156,38 @@ function formatTimeLabel(meetingStart: TemporalInput, meetingTimezone?: string |
   return `${hour}:${minute}${dayPeriod}`;
 }
 
-export function getMeetingTimeOfDayBucket(
+export function getTimeOfDayBucket(
   meetingStart: TemporalInput,
   meetingTimezone?: string | null,
-): 'morning' | 'afternoon' | 'evening' {
+): TimeOfDayBucket {
   const hour = getParts(meetingStart, meetingTimezone).hour;
   if (hour < 12) return 'morning';
   if (hour < 17) return 'afternoon';
   return 'evening';
+}
+
+export function getMeetingTimeOfDayBucket(
+  meetingStart: TemporalInput,
+  meetingTimezone?: string | null,
+): TimeOfDayBucket {
+  return getTimeOfDayBucket(meetingStart, meetingTimezone);
+}
+
+export function getMeetingTimeOfDayPhrase(args: {
+  meetingStart: TemporalInput;
+  meetingTimezone?: string | null;
+}): TimeOfDayBucket {
+  return getTimeOfDayBucket(args.meetingStart, args.meetingTimezone);
+}
+
+export function getGreetingForLocalTime(args: {
+  now?: TemporalInput;
+  meetingTimezone?: string | null;
+}): 'Good morning' | 'Good afternoon' | 'Good evening' {
+  const parts = getParts(args.now || new Date(), args.meetingTimezone);
+  if (parts.hour < 12) return 'Good morning';
+  if (parts.hour < 17) return 'Good afternoon';
+  return 'Good evening';
 }
 
 export function getRelativeMeetingDayPhrase(args: {
@@ -123,7 +196,7 @@ export function getRelativeMeetingDayPhrase(args: {
   meetingTimezone?: string | null;
 }): string {
   const now = args.now || new Date();
-  const bucket = getMeetingTimeOfDayBucket(args.meetingStart, args.meetingTimezone);
+  const bucket = getTimeOfDayBucket(args.meetingStart, args.meetingTimezone);
   const dayDiff = dayDiffInMeetingTimeZone({
     meetingStart: args.meetingStart,
     now,
@@ -160,16 +233,42 @@ export function getConfirmationDatePhrase(args: {
   return `${getRelativeMeetingDayPhrase(args)} ${formatDateLabel(args.meetingStart, args.meetingTimezone)}`;
 }
 
+export function getConfirmationClockLabel(args: {
+  meetingStart: TemporalInput;
+  meetingTimezone?: string | null;
+}): string {
+  const date = toDate(args.meetingStart);
+  const timeZone = resolveIanaTimeZone(args.meetingTimezone);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).format(date);
+}
+
+export function getConfirmationTimezoneLabel(timezone?: string | null): string {
+  const legacy = resolveLegacyTimezoneLabel(timezone);
+  if (!legacy) {
+    return '';
+  }
+  return TIMEZONE_LABEL_TO_CONFIRMATION_ABBREVIATION[legacy] || legacy;
+}
+
 export function getReminderTimeLabel(args: {
   meetingStart: TemporalInput;
   meetingTimezone?: string | null;
 }): string {
   const timeLabel = formatTimeLabel(args.meetingStart, args.meetingTimezone);
-  const zoneWord =
-    TIMEZONE_LABEL_TO_WORD[
-      String(args.meetingTimezone || '')
-        .trim()
-        .toUpperCase()
-    ] || '';
+  const legacy = resolveLegacyTimezoneLabel(args.meetingTimezone);
+  const zoneWord = legacy ? TIMEZONE_LABEL_TO_WORD[legacy] || '' : '';
   return zoneWord ? `${timeLabel} ${zoneWord}` : timeLabel;
+}
+
+export function getMeetingReminderPhrase(args: {
+  meetingStart: TemporalInput;
+  now?: TemporalInput;
+  meetingTimezone?: string | null;
+}): string {
+  return `${getReminderTimeLabel(args)} ${getRelativeMeetingDayPhrase(args)}`;
 }
