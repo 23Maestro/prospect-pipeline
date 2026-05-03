@@ -3,12 +3,12 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
   version: 3,
   generatedFrom: 'src/domain/call-tracker-vercel-contract.ts',
   purpose:
-    'Single Vercel-readable Call Tracker contract. The browser reads one event feed plus one optional summary helper; reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
+    'Single generated Call Tracker artifact contract. The materializer reads the Supabase views, writes the summary/events/UI snapshot into data-contract.json, and the browser reads only that artifact. Reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
   browserContract: {
     eventFeed: {
       supabaseView: 'call_tracker_events_owner_context',
       plainEnglish:
-        'This is the one row-by-row feed for Vercel. Supabase can build it from multiple source tables, but the browser treats every row the same: proof fields plus count booleans.',
+        'This is the source view the materializer reads. Supabase can build it from multiple source tables, but data-contract.json stores every row the same way: proof fields plus count booleans.',
       requiredFields: [
         'athlete_name',
         'occurred_at',
@@ -40,7 +40,7 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     summaryHelper: {
       supabaseView: 'call_tracker_summary',
       plainEnglish:
-        'This is only a convenience helper for totals. Dials and contacts must mirror the same event-feed booleans.',
+        'This is the source summary the materializer reads. Dials and contacts must mirror the same event-feed booleans before they are written into data-contract.json.',
       requiredFields: [
         'dials',
         'contacts',
@@ -190,6 +190,6 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     packageScript: 'npm run materialize:call-tracker-contract',
     output: 'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
     plainEnglish:
-      'Run this with the call tracker cron/sync so Vercel always carries the same contract the domain code expects.',
+      'Run this with the call tracker cron/sync so Vercel only serves a ready-to-render artifact instead of recomputing Supabase business meaning in the browser.',
   },
 } as const;

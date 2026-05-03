@@ -269,5 +269,7 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
   assert.match(appText, /row\.counts_as_contact === true/);
   assert.doesNotMatch(appText, /supabaseGet/);
   assert.doesNotMatch(appText, /\/rest\/v1\//);
+  assert.doesNotMatch(appText, /call-tracker-sync/);
+  assert.doesNotMatch(appText, /CALL_TRACKER_CONFIG/);
   assert.doesNotMatch(appText, /contactMadeOutcomes|callActivityOutcomes|isDailyCallActivity|isDailyContact/);
 });

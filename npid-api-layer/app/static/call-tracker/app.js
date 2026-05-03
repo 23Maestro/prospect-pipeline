@@ -1,4 +1,3 @@
-const STORAGE_KEY = 'call-tracker:supabase-config';
 const CONTRACT_URL = '/prospect-call-tracker/data-contract.json';
 const TIME_ZONE = 'America/New_York';
 const COMMISSION_RATE = 0.175;
@@ -167,25 +166,6 @@ function addMonths(year, month, offset) {
   };
 }
 
-function getConfig() {
-  const generated = window.CALL_TRACKER_CONFIG || {};
-  const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
-  return {
-    supabaseUrl: generated.supabaseUrl || stored.supabaseUrl || '',
-    anonKey: generated.anonKey || stored.anonKey || '',
-    schema: generated.schema || stored.schema || 'public',
-    syncEndpoint: generated.syncEndpoint || stored.syncEndpoint || defaultSyncEndpoint(),
-  };
-}
-
-function defaultSyncEndpoint() {
-  return '/api/call-tracker-sync';
-}
-
-function saveConfig(config) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-}
-
 async function getDataContract() {
   if (state.contract) return state.contract;
   const response = await fetch(CONTRACT_URL, {
@@ -210,50 +190,7 @@ async function loadData() {
   render();
 }
 
-async function syncSourceData() {
-  const config = getConfig();
-  if (!config.syncEndpoint) return null;
-  $('statusText').textContent = 'Syncing';
-  const response = await fetch(config.syncEndpoint, {
-    method: 'POST',
-    headers: { accept: 'application/json' },
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const detail = payload.detail || payload.error || payload.message || `HTTP ${response.status}`;
-    throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-  }
-  if (payload.status === 'started' || payload.status === 'already_running' || payload.running) {
-    return pollSyncStatus(config.syncEndpoint);
-  }
-  return payload;
-}
-
-async function pollSyncStatus(syncEndpoint) {
-  for (let attempt = 0; attempt < 90; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const response = await fetch(syncEndpoint, {
-      method: 'GET',
-      headers: { accept: 'application/json' },
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const detail = payload.detail || payload.error || payload.message || `HTTP ${response.status}`;
-      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-    }
-    if (!payload.running && payload.status !== 'running' && payload.status !== 'started') {
-      if (payload.success === false || payload.status === 'failed') {
-        throw new Error(payload.message || 'Sync failed');
-      }
-      return payload;
-    }
-    $('statusText').textContent = 'Syncing';
-  }
-  throw new Error('Sync timed out');
-}
-
 async function refreshAllData() {
-  await syncSourceData();
   state.contract = null;
   await loadData();
 }
@@ -632,26 +569,6 @@ function render() {
   $('statusText').textContent = 'Live';
 }
 
-function openConfig() {
-  const config = getConfig();
-  $('supabaseUrlInput').value = config.supabaseUrl;
-  $('anonKeyInput').value = config.anonKey;
-  $('configDialog').showModal();
-}
-
-function wireConfigForm() {
-  $('configForm').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    saveConfig({
-      supabaseUrl: $('supabaseUrlInput').value.trim(),
-      anonKey: $('anonKeyInput').value.trim(),
-      schema: 'public',
-    });
-    $('configDialog').close();
-    await loadData().catch(handleLoadError);
-  });
-}
-
 function handleLoadError(error) {
   $('statusText').textContent = 'Error';
   console.error(error);
@@ -659,7 +576,6 @@ function handleLoadError(error) {
 
 function bootCallTracker() {
   state.activePeriod = currentWeekPeriod();
-  wireConfigForm();
   $('refreshButton').addEventListener('click', () => refreshAllData().catch(handleLoadError));
   document.querySelectorAll('[data-period]').forEach((button) => {
     button.addEventListener('click', () => {

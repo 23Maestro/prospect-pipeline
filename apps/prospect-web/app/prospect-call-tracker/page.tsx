@@ -3,13 +3,6 @@ import Script from 'next/script';
 export const dynamic = 'force-static';
 
 export default function ProspectCallTrackerPage() {
-  const callTrackerConfig = {
-    supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://udwqtwppbtrtvvsgqwml.supabase.co',
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'sb_publishable_eb2cW09R2jhQGxe85_2itQ_Tvv15_G5',
-    schema: process.env.NEXT_PUBLIC_SUPABASE_SCHEMA || 'public',
-    syncEndpoint: '/api/call-tracker-sync',
-  };
-
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -157,29 +150,6 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-
-      <dialog id="configDialog">
-        <form method="dialog" id="configForm" className="config-form">
-          <h2>Connect Supabase</h2>
-          <label>
-            Project URL
-            <input id="supabaseUrlInput" name="supabaseUrl" placeholder="https://project-ref.supabase.co" required />
-          </label>
-          <label>
-            Anon key
-            <input id="anonKeyInput" name="anonKey" type="password" required />
-          </label>
-          <button type="submit">Save</button>
-        </form>
-      </dialog>
-
-      <Script
-        id="call-tracker-config"
-        strategy="beforeInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `window.CALL_TRACKER_CONFIG=${JSON.stringify(callTrackerConfig)};`,
-        }}
-      />
       <Script src="/prospect-call-tracker/app.js?v=20260503-dashboard" strategy="afterInteractive" />
     </>
   );
