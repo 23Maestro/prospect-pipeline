@@ -105,10 +105,8 @@ export function upsertCallActivityEvents(config: SupabasePersistenceConfig, rows
   return writeRows(config, 'call_activity_events', rows, 'task_id');
 }
 
-// Compatibility storage: the Supabase table is still named call_events, but
-// domain code must treat these rows as post-meeting outcome facts only.
 export function upsertPostMeetingOutcomeFacts(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'call_events', rows, 'dedupe_key');
+  return writeRows(config, 'meeting_events', rows, 'dedupe_key');
 }
 
 export function upsertReminders(config: SupabasePersistenceConfig, rows: unknown[]) {

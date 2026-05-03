@@ -476,8 +476,8 @@ function renderSummary() {
   const summary = state.summary || {};
   setText('moneyEarned', money(summary.money_earned_cents));
   setText('closedWon', summary.closed_won || 0);
-  setText('spokeWith', summary.spoke_with || 0);
-  setText('totalEvents', summary.total_events || 0);
+  setText('spokeWith', summary.contacts || 0);
+  setText('totalEvents', summary.dials || 0);
   setText('voicemailOnly', summary.voicemail_only || 0);
   setText('appointmentsTracked', summary.appointments_tracked || 0);
 

@@ -34,6 +34,17 @@ test('current pipeline meeting-set facts reuse older legacy transition time by a
   assert.match(source, /createdAt: existingTransitionAt \|\| new Date\(\)\.toISOString\(\)/);
 });
 
+test('current pipeline meeting-set facts write materialization proof and reporting flags at the source', () => {
+  assert.match(source, /materialization_proof:\s*{/);
+  assert.match(source, /owner_context:\s*{/);
+  assert.match(source, /task_assigned_owner: ownership\.context\.taskAssignedOwner/);
+  assert.match(source, /owner_proof: ownership\.context\.ownerProof/);
+  assert.match(source, /counts_as_dial: true/);
+  assert.match(source, /counts_as_contact: true/);
+  assert.match(source, /counts_as_meeting_set: true/);
+  assert.match(source, /counts_as_post_meeting_outcome: false/);
+});
+
 test('current pipeline keeps ended active meeting sets in post-meeting polling state', () => {
   assert.match(source, /shouldMonitorEndedMeetingSet/);
   assert.match(source, /hasMeetingEnded\(previousMeeting\)/);

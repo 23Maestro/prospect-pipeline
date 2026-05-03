@@ -100,7 +100,7 @@ function findBookedMeeting(row, meetings) {
 
 const rows = await supabaseRequest(
   [
-    'call_events?select=id,athlete_key,athlete_id,athlete_main_id,athlete_name,appointment_id,live_event_id,booked_event_title,source_owner,owner_proof,is_tracked_owner,payload_json',
+    'meeting_events?select=id,athlete_key,athlete_id,athlete_main_id,athlete_name,appointment_id,live_event_id,booked_event_title,source_owner,owner_proof,is_tracked_owner,payload_json',
     'or=(source_owner.is.null,source_owner.eq.,owner_proof.is.null,owner_proof.eq.)',
     'order=occurred_at.desc',
     'limit=1000',
@@ -174,7 +174,7 @@ if (failures.length) {
 
 if (!DRY_RUN) {
   for (const repair of repairs) {
-    await supabaseRequest(`call_events?id=eq.${encodeURIComponent(repair.id)}`, {
+    await supabaseRequest(`meeting_events?id=eq.${encodeURIComponent(repair.id)}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',

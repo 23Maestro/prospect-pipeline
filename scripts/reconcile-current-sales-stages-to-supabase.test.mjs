@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const source = readFileSync(new URL('./reconcile-current-sales-stages-to-supabase.mjs', import.meta.url), 'utf8');
 
-test('current sales-stage reconciler stores post-meeting outcomes in compatibility call_events table', () => {
+test('current sales-stage reconciler stores post-meeting outcomes through meeting-events domain writer', () => {
   assert.match(source, /buildMeetingOutcomeFact/);
   assert.match(source, /upsertPostMeetingOutcomeFacts/);
   assert.match(source, /rawEventType = 'post_meeting_outcome'/);
@@ -12,6 +12,7 @@ test('current sales-stage reconciler stores post-meeting outcomes in compatibili
   assert.doesNotMatch(source, /callEvents\.push\(\{\s*id:\s*randomUUID\(\)/s);
   assert.doesNotMatch(source, /upsertCallEvents/);
   assert.doesNotMatch(source, /await supabaseWrite\('call_events'/);
+  assert.doesNotMatch(source, /await supabaseWrite\('meeting_events'/);
 });
 
 test('current sales-stage reconciler does not turn ended active meetings into post-meeting outcomes', () => {

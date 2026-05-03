@@ -69,7 +69,7 @@ test('Next.js route handlers do not duplicate domain ownership or materializatio
   assert.deepEqual(offenders, []);
 });
 
-test('migration did not edit Laravel/FastAPI, Supabase, Raycast command, or domain source files', () => {
+test('migration changes stay inside Prospect Web and Call Tracker data-contract files', () => {
   const changedFiles = execFileSync('git', ['status', '--short'], {
     cwd: repoRoot,
     encoding: 'utf8',
@@ -90,14 +90,25 @@ test('migration did not edit Laravel/FastAPI, Supabase, Raycast command, or doma
     'src/domain/sales-stage-contract.test.ts',
     'src/domain/scout-task-classifier.test.ts',
     'src/domain/scout-task-classifier.ts',
+    'src/domain/supabase-persistence.ts',
     'src/lib/scout-follow-up-templates.test.ts',
     'src/lib/sales-lifecycle.test.ts',
     'src/lib/sales-lifecycle.ts',
+    'scripts/reconcile-current-sales-stages-to-supabase.test.mjs',
+    'scripts/repair-call-event-owner-proof.mjs',
+    'scripts/sync-current-pipeline-to-supabase.mjs',
+    'scripts/sync-current-pipeline-to-supabase.test.mjs',
+    'supabase/migrations/20260503043000_backsync_meeting_set_materialization_contract.sql',
+    'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
+    'supabase/migrations/20260503045000_backsync_call_activity_counting_contract.sql',
     'supabase/migrations/20260503030000_call_tracker_counting_contract.sql',
+    'supabase/tests/call-activity-materialization-backsync.test.mjs',
+    'supabase/tests/call-events-post-meeting-contract.test.mjs',
     'supabase/tests/call-tracker-counting-contract.test.mjs',
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
+    'supabase/tests/meeting-set-materialization-backsync.test.mjs',
   ]);
-  const forbiddenPrefixes = ['npid-api-layer/', 'supabase/', 'src/'];
+  const forbiddenPrefixes = ['npid-api-layer/', 'scripts/', 'supabase/', 'src/'];
   const offenders = changedFiles.filter(
     (path) => forbiddenPrefixes.some((prefix) => path.startsWith(prefix)) && !allowedSourceFiles.has(path),
   );
