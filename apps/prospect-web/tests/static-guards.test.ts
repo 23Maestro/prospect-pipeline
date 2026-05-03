@@ -95,9 +95,11 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/lib/sales-lifecycle.test.ts',
     'src/lib/sales-lifecycle.ts',
     'scripts/reconcile-current-sales-stages-to-supabase.test.mjs',
+    'scripts/materialize-call-tracker-data-contract.mjs',
     'scripts/repair-call-event-owner-proof.mjs',
     'scripts/sync-current-pipeline-to-supabase.mjs',
     'scripts/sync-current-pipeline-to-supabase.test.mjs',
+    'src/domain/call-tracker-vercel-contract.ts',
     'supabase/migrations/20260503043000_backsync_meeting_set_materialization_contract.sql',
     'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
     'supabase/migrations/20260503045000_backsync_call_activity_counting_contract.sql',
@@ -159,11 +161,51 @@ test('call tracker public contract documents count flags as the reporting source
   const contractText = readFileSync(contractPath, 'utf8');
   const contract = JSON.parse(contractText);
 
-  assert.match(contract.purpose, /activity_kind is not the reporting source of truth/i);
+  assert.match(contract.purpose, /activity_kind/i);
+  assert.match(contract.purpose, /never from activity_kind alone/i);
   assert.match(contract.purpose, /countsAsDial/i);
   assert.match(contract.purpose, /countsAsContact/i);
   assert.match(contract.purpose, /countsAsMeetingSet/i);
   assert.match(contract.purpose, /countsAsPostMeetingOutcome/i);
+  assert.equal(contract.generatedFrom, 'src/domain/call-tracker-vercel-contract.ts');
+  assert.equal(contract.browserContract.eventFeed.supabaseView, 'call_tracker_events_owner_context');
+  assert.equal(contract.browserContract.summaryHelper.supabaseView, 'call_tracker_summary');
+  assert.equal(contract.browserContract.summaryHelper.deprecatedAliases.total_events, 'Do not display as Dials. Use dials.');
+  assert.equal(contract.browserContract.summaryHelper.deprecatedAliases.spoke_with, 'Do not display as Contacts. Use contacts.');
+  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_dial'));
+  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_contact'));
+  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_meeting_set'));
+  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_post_meeting_outcome'));
+  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('materialization_status'));
+  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('resolved_owner_source_field'));
+  assert.equal(contract.cronMaterialization.packageScript, 'npm run materialize:call-tracker-contract');
+  assert.ok(contract.data.generatedAt);
+  assert.equal(contract.data.supabaseReads.summaryView, 'call_tracker_summary');
+  assert.equal(contract.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
+  assert.equal(typeof contract.data.summary.dials, 'number');
+  assert.equal(typeof contract.data.summary.contacts, 'number');
+  assert.equal(typeof contract.data.summary.meetings_set, 'number');
+  assert.ok(Array.isArray(contract.data.events));
+  assert.ok(contract.data.events.length > 0);
+  assert.equal(typeof contract.data.ui.summaryCards.dials, 'number');
+  assert.equal(typeof contract.data.ui.summaryCards.contacts, 'number');
+  assert.equal(typeof contract.data.ui.summaryCards.closeRate, 'number');
+  assert.equal(typeof contract.data.ui.paycheck.totalCents, 'number');
+  assert.equal(typeof contract.data.ui.activePeriod, 'string');
+  assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].dials, 'number');
+  assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].contacts, 'number');
+  assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].meetingsSet, 'number');
+  assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].filterCounts.meaningful, 'number');
+  assert.ok('counts_as_dial' in contract.data.events[0]);
+  assert.ok('counts_as_contact' in contract.data.events[0]);
+
+  const sourceTables = contract.sourceFamilies.map((source: { sourceTable: string }) => source.sourceTable);
+  assert.deepEqual(sourceTables, ['call_activity_events', 'lifecycle_events', 'meeting_events']);
+
+  const totalDials = contract.cardBindings.find((binding: { domId: string }) => binding.domId === 'totalEvents');
+  const totalContacts = contract.cardBindings.find((binding: { domId: string }) => binding.domId === 'spokeWith');
+  assert.match(totalDials.countRule, /call_tracker_summary\.dials/);
+  assert.match(totalContacts.countRule, /call_tracker_summary\.contacts/);
 
   const meetingSet = contract.domainOutcomeRules.find((rule: { domainStatus: string }) => rule.domainStatus === 'meeting_set');
   assert.equal(meetingSet.countsAsDial, true);
@@ -212,10 +254,20 @@ test('Vercel public dashboard assets are tracked in git despite public ignore ru
 
 test('call tracker daily cards consume Supabase boolean count fields only', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
+  assert.match(appText, /CONTRACT_URL/);
+  assert.match(appText, /data-contract\.json/);
+  assert.match(appText, /state\.summary = data\.summary/);
+  assert.match(appText, /state\.rows = Array\.isArray\(data\.events\)/);
+  assert.match(appText, /state\.ui = data\.ui/);
+  assert.match(appText, /state\.ui\?\.summaryCards/);
+  assert.match(appText, /state\.ui\?\.periods/);
+  assert.match(appText, /state\.ui\?\.paycheck/);
   assert.match(appText, /counts_as_dial/);
   assert.match(appText, /counts_as_contact/);
   assert.match(appText, /counts_as_meeting_set/);
   assert.match(appText, /row\.counts_as_dial === true/);
   assert.match(appText, /row\.counts_as_contact === true/);
+  assert.doesNotMatch(appText, /supabaseGet/);
+  assert.doesNotMatch(appText, /\/rest\/v1\//);
   assert.doesNotMatch(appText, /contactMadeOutcomes|callActivityOutcomes|isDailyCallActivity|isDailyContact/);
 });

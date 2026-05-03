@@ -1,4 +1,5 @@
 const STORAGE_KEY = 'call-tracker:supabase-config';
+const CONTRACT_URL = '/prospect-call-tracker/data-contract.json';
 const TIME_ZONE = 'America/New_York';
 const COMMISSION_RATE = 0.175;
 
@@ -33,6 +34,8 @@ const hiddenDefaultOutcomes = new Set(['voicemail', 'spoke_follow_up', 'unable_t
 const state = {
   rows: [],
   summary: null,
+  ui: null,
+  contract: null,
   activeFilter: 'meaningful',
   activePeriod: currentWeekPeriod(),
 };
@@ -183,42 +186,27 @@ function saveConfig(config) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
-async function supabaseGet(path) {
-  const config = getConfig();
-  if (!config.supabaseUrl || !config.anonKey) {
-    throw new Error('missing_config');
-  }
-
-  const response = await fetch(`${config.supabaseUrl.replace(/\/+$/, '')}/rest/v1/${path}`, {
-    headers: {
-      apikey: config.anonKey,
-      Authorization: `Bearer ${config.anonKey}`,
-      'Accept-Profile': config.schema,
-    },
+async function getDataContract() {
+  if (state.contract) return state.contract;
+  const response = await fetch(CONTRACT_URL, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
   });
-
   if (!response.ok) {
-    throw new Error(`${response.status} ${await response.text()}`);
+    throw new Error(`contract ${response.status}`);
   }
-
-  return response.json();
+  state.contract = await response.json();
+  return state.contract;
 }
 
 async function loadData() {
   $('statusText').textContent = 'Loading';
-  const [summaryRows, eventRows] = await Promise.all([
-    supabaseGet('call_tracker_summary?select=*'),
-    supabaseGet(
-      [
-        'call_tracker_events_owner_context?select=athlete_name,occurred_at,event_at,tracker_outcome,raw_crm_stage,raw_task_status,raw_event_type,appointment_id,booked_event_title,revenue_cents,counts_as_dial,counts_as_contact,counts_as_meeting_set,counts_as_post_meeting_outcome,materialization_reason,resolved_owner_name',
-        'order=event_at.desc',
-        'limit=250',
-      ].join('&'),
-    ),
-  ]);
-
-  state.summary = summaryRows[0] || {};
-  state.rows = Array.isArray(eventRows) ? eventRows : [];
+  const contract = await getDataContract();
+  const data = contract?.data || {};
+  state.summary = data.summary || {};
+  state.rows = Array.isArray(data.events) ? data.events : [];
+  state.ui = data.ui || null;
+  if (state.ui?.activePeriod) state.activePeriod = state.ui.activePeriod;
   render();
 }
 
@@ -266,6 +254,7 @@ async function pollSyncStatus(syncEndpoint) {
 
 async function refreshAllData() {
   await syncSourceData();
+  state.contract = null;
   await loadData();
 }
 
@@ -391,6 +380,20 @@ function rowQuality(row) {
 }
 
 function renderPeriod() {
+  const materializedPeriod = state.ui?.periods?.[state.activePeriod];
+  if (materializedPeriod) {
+    setText('periodTitle', materializedPeriod.label);
+    setText('todayLabel', 'Local ET');
+    setText('todayCalls', materializedPeriod.dials);
+    setText('todayContacts', materializedPeriod.contacts);
+    setText('todayMeetingsSet', materializedPeriod.meetingsSet);
+    setText('todaySetRate', `${materializedPeriod.setRate}%`);
+    document.querySelectorAll('[data-period]').forEach((button) => {
+      button.classList.toggle('active', button.dataset.period === state.activePeriod);
+    });
+    return;
+  }
+
   const rows = scopedActivityRows();
   const meetingsSet = rows.filter(countsAsMeetingSet).length;
   const calls = rows.filter(countsAsDial).length;
@@ -460,6 +463,14 @@ function monthlySubscriptionCommissionCents(payDate, now = new Date()) {
 }
 
 function renderPaycheck() {
+  if (state.ui?.paycheck) {
+    setText('payDateLabel', state.ui.paycheck.payDateLabel);
+    setText('nextPaycheck', money(state.ui.paycheck.totalCents));
+    setText('basePayLine', `Base ${money(state.ui.paycheck.baseCents)}`);
+    setText('commissionPayLine', `Commission ${money(state.ui.paycheck.commissionCents)}`);
+    return;
+  }
+
   const now = new Date();
   const payDate = nextPayDate();
   const baseCents = basePayForDate(payDate);
@@ -474,18 +485,17 @@ function renderPaycheck() {
 
 function renderSummary() {
   const summary = state.summary || {};
-  setText('moneyEarned', money(summary.money_earned_cents));
-  setText('closedWon', summary.closed_won || 0);
-  setText('spokeWith', summary.contacts || 0);
-  setText('totalEvents', summary.dials || 0);
-  setText('voicemailOnly', summary.voicemail_only || 0);
-  setText('appointmentsTracked', summary.appointments_tracked || 0);
-
-  setText('rangeLabel', currentWeekRangeLabel());
-
-  const denominator = Number(summary.meeting_outcomes_total) || 0;
-  const rate = denominator ? Math.round((Number(summary.closed_won || 0) / denominator) * 100) : 0;
-  setText('closeRate', `${rate}%`);
+  const cards = state.ui?.summaryCards;
+  setText('moneyEarned', money(cards?.moneyEarnedCents ?? summary.money_earned_cents));
+  setText('closedWon', cards?.closedWon ?? summary.closed_won ?? 0);
+  setText('spokeWith', cards?.contacts ?? summary.contacts ?? 0);
+  setText('totalEvents', cards?.dials ?? summary.dials ?? 0);
+  setText('voicemailOnly', cards?.voicemailOnly ?? summary.voicemail_only ?? 0);
+  setText('appointmentsTracked', cards?.appointmentsTracked ?? summary.appointments_tracked ?? 0);
+  setText('rangeLabel', state.ui?.rangeLabel || currentWeekRangeLabel());
+  const fallbackDenominator = Number(summary.meeting_outcomes_total) || 0;
+  const fallbackRate = fallbackDenominator ? Math.round((Number(summary.closed_won || 0) / fallbackDenominator) * 100) : 0;
+  setText('closeRate', `${cards?.closeRate ?? fallbackRate}%`);
 }
 
 function outcomeCounts() {
@@ -496,7 +506,7 @@ function outcomeCounts() {
 }
 
 function renderBars() {
-  const counts = outcomeCounts();
+  const counts = state.ui?.periods?.[state.activePeriod]?.outcomeCounts || outcomeCounts();
   const entries = Object.entries(counts).sort((left, right) => right[1] - left[1]);
   const max = Math.max(1, ...entries.map(([, count]) => count));
 
@@ -515,7 +525,7 @@ function renderBars() {
 }
 
 function renderClosedWon() {
-  const closed = state.rows
+  const closed = state.ui?.closedWonRows || state.rows
     .filter((row) => row.tracker_outcome === 'closed_won')
     .sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0));
 
@@ -537,18 +547,19 @@ function renderClosedWon() {
 }
 
 function renderFilters() {
-  const counts = outcomeCounts();
+  const counts = state.ui?.periods?.[state.activePeriod]?.outcomeCounts || outcomeCounts();
+  const materializedFilterCounts = state.ui?.periods?.[state.activePeriod]?.filterCounts || null;
   const rows = scopedRows();
   $('filters').innerHTML = tableFilters
     .map((outcome) => {
       const count =
-        outcome === 'all_calls'
+        materializedFilterCounts?.[outcome] ?? (outcome === 'all_calls'
           ? rows.length
           : outcome === 'meaningful'
             ? rows.filter(isMeaningfulEvent).length
           : outcome === 'meetings'
             ? rows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length
-            : counts[outcome] || 0;
+            : counts[outcome] || 0);
       const active = state.activeFilter === outcome ? 'active' : '';
       return `<button type="button" class="${active}" data-outcome="${outcome}">${labels[outcome] || outcome} ${count}</button>`;
     })
@@ -642,11 +653,6 @@ function wireConfigForm() {
 }
 
 function handleLoadError(error) {
-  if (String(error?.message || '') === 'missing_config') {
-    openConfig();
-    $('statusText').textContent = 'Config';
-    return;
-  }
   $('statusText').textContent = 'Error';
   console.error(error);
 }
