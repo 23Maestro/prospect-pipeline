@@ -558,10 +558,9 @@ function renderTable() {
           <td>${shortDate(row.event_at || row.occurred_at)}</td>
           <td class="name-cell">${row.athlete_name || ''}</td>
           <td><span class="pill ${row.tracker_outcome}">${labels[row.tracker_outcome] || row.tracker_outcome}</span></td>
-          <td>${row.raw_crm_stage || row.raw_task_status || ''}</td>
+          <td>${displayStage(row)}</td>
           <td class="event-title" title="${eventTitle(row)}">
             <span>${eventTitle(row)}</span>
-            <small class="proof-line">${proofLine(row)}</small>
           </td>
           <td class="money-cell">${Number(row.revenue_cents || 0) ? money(row.revenue_cents) : ''}</td>
         </tr>
@@ -570,22 +569,23 @@ function renderTable() {
     .join('');
 }
 
+function titleCaseLabel(value) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function displayStage(row) {
+  return titleCaseLabel(row.raw_crm_stage || row.raw_task_status || row.raw_event_type || '');
+}
+
 function eventTitle(row) {
   if (row.tracker_outcome === 'meeting_set' && row.appointment_starts_at) {
     return `${row.booked_event_title || 'Meeting Set'} • ${shortDate(row.appointment_starts_at)}`;
   }
   return row.booked_event_title || row.appointment_id || '';
-}
-
-function proofLine(row) {
-  const flags = [
-    row.counts_as_dial === true ? 'dial' : null,
-    row.counts_as_contact === true ? 'contact' : null,
-    row.counts_as_meeting_set === true ? 'set' : null,
-    row.counts_as_post_meeting_outcome === true ? 'post' : null,
-  ].filter(Boolean);
-  const owner = row.resolved_owner_name || row.materialization_reason || '';
-  return [flags.join(' + '), owner].filter(Boolean).join(' | ');
 }
 
 function render() {
