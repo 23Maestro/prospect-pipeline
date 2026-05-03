@@ -2,11 +2,64 @@ import Script from 'next/script';
 
 export const dynamic = 'force-static';
 
+function Icon({ name }: { name: 'refresh' | 'phone' | 'user' | 'calendar' | 'trend' | 'trophy' | 'check' | 'clock' | 'dollar' }) {
+  const paths = {
+    refresh: (
+      <>
+        <path d="M20 6v5h-5" />
+        <path d="M4 18v-5h5" />
+        <path d="M18.5 9a7 7 0 0 0-11.8-2.6L4 9" />
+        <path d="M5.5 15a7 7 0 0 0 11.8 2.6L20 15" />
+      </>
+    ),
+    phone: <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 2 .7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.5c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2.1z" />,
+    user: (
+      <>
+        <path d="M20 21a8 8 0 0 0-16 0" />
+        <circle cx="12" cy="7" r="4" />
+      </>
+    ),
+    calendar: (
+      <>
+        <rect x="3" y="4" width="18" height="18" rx="2" />
+        <path d="M16 2v4M8 2v4M3 10h18M9 15l2 2 4-5" />
+      </>
+    ),
+    trend: <path d="M3 17 9 11l4 4 8-8M15 7h6v6" />,
+    trophy: (
+      <>
+        <path d="M8 21h8M12 17v4" />
+        <path d="M7 4h10v5a5 5 0 0 1-10 0V4z" />
+        <path d="M5 5H3v2a4 4 0 0 0 4 4M19 5h2v2a4 4 0 0 1-4 4" />
+      </>
+    ),
+    check: <path d="M20 6 9 17l-5-5" />,
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 7v5l3 2" />
+      </>
+    ),
+    dollar: (
+      <>
+        <path d="M12 2v20" />
+        <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7H14a3.5 3.5 0 0 1 0 7H6" />
+      </>
+    ),
+  } as const;
+
+  return (
+    <svg className="ui-icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      {paths[name]}
+    </svg>
+  );
+}
+
 export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-donut-center" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-polish" />
       <main className="shell">
         <header className="topbar">
           <a className="brand-row" href="/">
@@ -15,8 +68,8 @@ export default function ProspectCallTrackerPage() {
           </a>
           <div className="topbar-actions">
             <span className="status-pill health">Health OK</span>
-            <span className="status-pill">Sync Complete</span>
-            <span id="payDateLabel">Next check</span>
+            <span className="status-pill"><Icon name="check" />Sync Complete</span>
+            <span className="status-pill muted"><Icon name="clock" /><span id="payDateLabel">Next check</span></span>
           </div>
         </header>
 
@@ -26,6 +79,7 @@ export default function ProspectCallTrackerPage() {
             <span id="rangeLabel">Loading</span>
           </div>
           <button id="refreshButton" type="button">
+            <Icon name="refresh" />
             Refresh Data
           </button>
         </section>
@@ -56,24 +110,24 @@ export default function ProspectCallTrackerPage() {
               <span id="todayLabel">Local</span>
           </div>
           <div className="daily-cards">
-            <article className="daily-card">
-              <span>Total Calls</span>
+            <article className="daily-card blue-card">
+              <div className="card-top"><span>Total Calls</span><Icon name="phone" /></div>
               <strong id="todayCalls">0</strong>
             </article>
-            <article className="daily-card">
-              <span>Contacts Made</span>
+            <article className="daily-card green-card">
+              <div className="card-top"><span>Contacts Made</span><Icon name="user" /></div>
               <strong id="todayContacts">0</strong>
             </article>
-            <article className="daily-card">
-              <span>Meetings Set</span>
+            <article className="daily-card green-card">
+              <div className="card-top"><span>Meetings Set</span><Icon name="calendar" /></div>
               <strong id="todayMeetingsSet">0</strong>
             </article>
-            <article className="daily-card">
-              <span>Set Rate</span>
+            <article className="daily-card purple-card">
+              <div className="card-top"><span>Set Rate</span><Icon name="trend" /></div>
               <strong id="todaySetRate">0%</strong>
             </article>
-            <article className="daily-card">
-              <span>Closed Won</span>
+            <article className="daily-card amber-card">
+              <div className="card-top"><span>Closed Won</span><Icon name="trophy" /></div>
               <strong id="closedWon">0</strong>
             </article>
           </div>
@@ -81,7 +135,7 @@ export default function ProspectCallTrackerPage() {
 
         <section className="metrics" aria-label="Tracker totals">
           <article className="paycheck-panel" aria-label="Next paycheck pending">
-            <span>Next Paycheck</span>
+            <div className="card-top"><span>Next Paycheck</span><Icon name="clock" /></div>
             <strong id="nextPaycheck">$0</strong>
             <div className="pay-lines">
               <span id="basePayLine">Base $0</span>
@@ -89,7 +143,7 @@ export default function ProspectCallTrackerPage() {
             </div>
           </article>
           <article className="metric primary">
-            <span>Money</span>
+            <div className="card-top"><span>Money</span><Icon name="dollar" /></div>
             <strong id="moneyEarned">$0</strong>
           </article>
         </section>
@@ -134,7 +188,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260503-donut-center" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260503-polish" strategy="afterInteractive" />
     </>
   );
 }
