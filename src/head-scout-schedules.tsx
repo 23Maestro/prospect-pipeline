@@ -45,6 +45,7 @@ import {
   filterWeeklySetMeetingCandidates,
 } from './domain/set-meetings-candidate';
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
+import { getActiveOperator } from './domain/owners';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
@@ -135,10 +136,10 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
   };
 }
 
-async function loadWeeklyJeramiMeetingCandidates(
+async function loadWeeklyOperatorMeetingCandidates(
   weekOffset: number,
 ): Promise<HeadScoutFollowUpCandidate[]> {
-  const [weekly, jeramiTasks] = await Promise.all([
+  const [weekly, operatorTasks] = await Promise.all([
     fetchHeadScoutBookedMeetings(weekOffset),
     fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
@@ -146,8 +147,8 @@ async function loadWeeklyJeramiMeetingCandidates(
   return buildSetMeetingsCommandContext({
     candidates: buildSetMeetingCandidatesFromBookedMeetings({
       bookedMeetings: weekly.events || [],
-      tasks: jeramiTasks || [],
-      operatorName: 'Jerami Singleton',
+      tasks: operatorTasks || [],
+      operatorName: getActiveOperator().taskAssignedOwnerName,
     }),
   }).candidates;
 }
@@ -175,7 +176,7 @@ export function HeadScoutBookingsList({
       setIsLoading(true);
       try {
         const enriched = weeklyMeetingsOnly
-          ? await loadWeeklyJeramiMeetingCandidates(weekOffset)
+          ? await loadWeeklyOperatorMeetingCandidates(weekOffset)
           : await Promise.all(
               Array.from(
                 new Map(

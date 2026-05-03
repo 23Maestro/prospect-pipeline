@@ -10,6 +10,7 @@ import {
   getVoicemailFollowUpRecipients,
   type VoicemailFollowUpRecipient,
 } from './scout-contact-selection';
+import { getActiveOperator } from './owners';
 
 export type ConfirmationMessageContext = {
   greeting: string;
@@ -39,6 +40,10 @@ export type MeetingReminderMessageContext = ConfirmationMessageContext;
 
 function athleteNameFromContext(context: ScoutPrepContext): string {
   return context.contactInfo.studentAthlete.name || context.task.athlete_name || '';
+}
+
+function senderNameFromDomain(value?: string | null): string {
+  return String(value || '').trim() || getActiveOperator().senderName;
 }
 
 export function buildConfirmationMessageContext(args: {
@@ -71,7 +76,7 @@ export function buildConfirmationMessageContext(args: {
       meetingTimezone,
       now: args.now,
     }),
-    senderName: String(args.senderName || '').trim() || 'Jerami Singleton',
+    senderName: senderNameFromDomain(args.senderName),
   };
 }
 
@@ -101,7 +106,7 @@ export function buildVoicemailFollowUpMessageContext(args: {
     athleteName: athleteNameFromContext(args.context),
     sport: args.context.resolved.sport || null,
     gradYear: String(args.context.task.grad_year || '').trim() || null,
-    senderName: String(args.senderName || '').trim() || 'Jerami Singleton',
+    senderName: senderNameFromDomain(args.senderName),
   };
 }
 
@@ -118,7 +123,7 @@ export function buildClientMessageContext(args: {
     athleteName: athleteNameFromContext(args.context),
     sport: args.context.resolved.sport || null,
     gradYear: String(args.context.task.grad_year || '').trim() || null,
-    senderName: String(args.senderName || '').trim() || 'Jerami Singleton',
+    senderName: senderNameFromDomain(args.senderName),
   };
 }
 

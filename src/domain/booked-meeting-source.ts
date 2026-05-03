@@ -1,4 +1,5 @@
 import { buildAthleteKey } from './athlete-identity';
+import { getActiveOperator } from './owners';
 
 export type BookedMeetingSourceEvent = {
   event_id?: string | number | null;
@@ -162,7 +163,7 @@ export function buildWeeklyOperatorMeetingSetCandidates(args: {
   tasks: BookedMeetingSourceTask[];
   operatorName?: string;
 }): WeeklyOperatorMeetingSetCandidate[] {
-  const operatorName = normalizeText(args.operatorName) || 'Jerami Singleton';
+  const operatorName = normalizeText(args.operatorName) || getActiveOperator().taskAssignedOwnerName;
   const tasksByAthlete = new Map<string, BookedMeetingSourceTask[]>();
 
   for (const task of args.tasks || []) {
