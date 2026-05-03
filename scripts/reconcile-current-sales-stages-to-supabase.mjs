@@ -123,14 +123,10 @@ function normalizeCrmSalesStage(rawCrmStage) {
     return 'call_attempt';
   }
   if (includesAny(normalized, ['closed won', 'close won'])) return 'closed_won';
-  if (
-    includesAny(normalized, ['closed lost', 'close lost']) ||
-    normalized === 'spoke to not interested' ||
-    normalized === 'not interested'
-  ) {
+  if (includesAny(normalized, ['closed lost', 'close lost'])) {
     return 'closed_lost';
   }
-  if (includesAny(normalized, ['inactive', 'dead lead', 'archived', 'too young'])) return 'inactive';
+  if (includesAny(normalized, ['inactive', 'dead lead', 'archived', 'not interested', 'too young'])) return 'inactive';
   if (includesAny(normalized, ['no show', 'noshow'])) return 'no_show';
   if (
     includesAny(normalized, [

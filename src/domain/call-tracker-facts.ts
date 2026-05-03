@@ -5,7 +5,11 @@ import {
   type OwnerResolutionInput,
   type OwnerResolutionResult,
 } from './owner-resolution';
-import { activityKindForTaskStatus, type ActivityKind } from './scout-task-classifier';
+import {
+  activityKindForTaskStatus,
+  classifyCallTrackerReporting,
+  type ActivityKind,
+} from './scout-task-classifier';
 
 function normalizeValue(value?: string | number | null): string | null {
   const trimmed = String(value || '').trim();
@@ -259,6 +263,7 @@ export function buildCallActivityFact(args: {
 }): CallActivityFactRow {
   const identity = validateAthleteIdentity(args);
   const activityKind = activityKindForTaskStatus(args.activitySubtype);
+  const reporting = classifyCallTrackerReporting(args.activitySubtype);
   if (!activityKind) {
     throw new Error(`Task status ${args.activitySubtype} is not a dashboard call activity fact.`);
   }
@@ -281,6 +286,11 @@ export function buildCallActivityFact(args: {
       ...(args.payload || {}),
       activity_kind: activityKind,
       activity_subtype: args.activitySubtype,
+      counts_as_dial: reporting.countsAsDial,
+      counts_as_contact: reporting.countsAsContact,
+      counts_as_meeting_set: reporting.countsAsMeetingSet,
+      counts_as_post_meeting_outcome: reporting.countsAsPostMeetingOutcome,
+      tracker_outcome: reporting.trackerOutcome,
       active_operator_key: owner.activeOperator.operatorKey,
       active_operator_name: owner.activeOperator.personName,
       task_assigned_owner: owner.taskAssignedOwner,

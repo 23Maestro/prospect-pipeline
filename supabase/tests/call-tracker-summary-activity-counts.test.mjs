@@ -2,23 +2,21 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const sql = readFileSync(new URL('../migrations/20260502001000_call_tracker_summary_activity_counts.sql', import.meta.url), 'utf8');
+const sql = readFileSync(new URL('../migrations/20260503030000_call_tracker_counting_contract.sql', import.meta.url), 'utf8');
 
-test('summary exposes dials and contacts from call activity rows', () => {
+test('summary exposes dials and contacts from explicit count flags', () => {
   assert.match(sql, /as dials\b/i);
-  assert.match(sql, /raw_event_type = 'call_activity'[\s\S]*tracker_outcome in \('voicemail', 'spoke_follow_up'\)/i);
+  assert.match(sql, /count\(\*\) filter \(where counts_as_dial\)::integer as dials/i);
   assert.match(sql, /as contacts\b/i);
-  assert.match(sql, /raw_event_type = 'call_activity'[\s\S]*tracker_outcome = 'spoke_follow_up'/i);
+  assert.match(sql, /count\(\*\) filter \(where counts_as_contact\)::integer as contacts/i);
 });
 
-test('summary treats meeting set as contact evidence without making dials depend on meetings', () => {
-  const dialsExpression = sql.match(
-    /count\(\*\) filter \(\s*where raw_event_type = 'call_activity'[\s\S]*?\)::integer as dials/i,
-  )?.[0] || '';
-  const contactsExpression = sql.match(
-    /count\(\*\) filter \(\s*where \([\s\S]*?\)::integer as contacts/i,
-  )?.[0] || '';
+test('summary treats meeting set as dial contact and meeting evidence through flags', () => {
+  assert.match(sql, /count\(\*\) filter \(where counts_as_meeting_set\)::integer as meetings_set/i);
+  assert.match(sql, /when unified_events\.tracker_outcome = 'meeting_set' then true/i);
+});
 
-  assert.doesNotMatch(dialsExpression, /meeting_set/i);
-  assert.match(contactsExpression, /tracker_outcome = 'meeting_set'/i);
+test('summary does not let post-meeting outcomes inflate dials or contacts', () => {
+  assert.match(sql, /count\(\*\) filter \(where counts_as_post_meeting_outcome\)::integer as meeting_outcomes_total/i);
+  assert.match(sql, /tracker_outcome in \('closed_won', 'closed_lost', 'reschedule_pending', 'rescheduled', 'canceled', 'no_show'\) then true/i);
 });

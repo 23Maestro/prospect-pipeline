@@ -33,6 +33,19 @@ test('post-call activity classification owns voicemail and topmost task completi
     voicemailVariant: null,
     completesPostCallTask: true,
   });
+
+  for (const stage of [
+    'Called - Unable to Leave VM',
+    'Spoke to - Not Interested',
+    'Spoke to - Athlete, not Parent',
+    'Spoke to - Too Young',
+    'Spoke to - I Need To Follow Up',
+  ]) {
+    const classification = classifyPostCallActivityStage(stage);
+    assert.equal(classification?.kind, 'call_activity', stage);
+    assert.equal(classification?.completesPostCallTask, true, stage);
+    assert.equal(classifyPostMeetingOutcomeStage(stage), null, stage);
+  }
 });
 
 test('meeting-set and post-meeting classifications are separate from post-call activity', () => {

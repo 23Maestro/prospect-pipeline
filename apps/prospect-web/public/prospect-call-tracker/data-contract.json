@@ -1,0 +1,449 @@
+{
+  "contract": "prospect-call-tracker",
+  "version": 2,
+  "purpose": "Public Vercel-readable Call Tracker contract. activity_kind is not the reporting source of truth. Reporting uses explicit countsAsDial, countsAsContact, countsAsMeetingSet, and countsAsPostMeetingOutcome flags from Supabase views.",
+  "sourceOfTruth": {
+    "refreshButton": "The page refresh button calls the sync endpoint, then rereads Supabase.",
+    "browserReads": [
+      "call_tracker_summary",
+      "call_tracker_events_owner_context"
+    ],
+    "cronOrRefreshShouldWriteThrough": [
+      "src/domain/call-tracker-facts.ts#buildCallActivityFact",
+      "src/domain/call-tracker-facts.ts#buildMeetingOutcomeFact",
+      "src/domain/call-tracker-facts.ts#buildMeetingSetFact",
+      "src/domain/supabase-persistence.ts#upsertCallActivityEvents",
+      "src/domain/supabase-persistence.ts#insertMeetingSetEventsOnce"
+    ],
+    "plainEnglish": "FastAPI/cron gathers website facts, normalizes them with the domain contract, writes Supabase rows, then Vercel reads Supabase views. Reporting must count dial/contact from domain count flags, not guess from old raw Laravel strings."
+  },
+  "pageZones": [
+    {
+      "zone": "Top money and totals cards",
+      "domIds": [
+        "moneyEarned",
+        "closedWon",
+        "spokeWith",
+        "totalEvents",
+        "voicemailOnly",
+        "appointmentsTracked",
+        "closeRate"
+      ],
+      "supabaseRead": "call_tracker_summary?select=*",
+      "simpleMeaning": "These cards are the weekly scoreboard. Supabase already counted the event rows for the page.",
+      "sourceRowsBehindView": [
+        "call_events for post-meeting outcomes",
+        "call_activity_events for dial/contact activity",
+        "lifecycle_events where event_type = meeting_set for meeting sets"
+      ],
+      "importantFields": [
+        "money_earned_cents",
+        "closed_won",
+        "spoke_with",
+        "total_events",
+        "voicemail_only",
+        "appointments_tracked",
+        "meeting_outcomes_total"
+      ]
+    },
+    {
+      "zone": "Day/week activity cards",
+      "domIds": [
+        "todayCalls",
+        "todayContacts",
+        "todayMeetingsSet",
+        "todaySetRate"
+      ],
+      "supabaseRead": "call_tracker_events_owner_context",
+      "simpleMeaning": "This is the daily work count. Calls means outbound attempts. Contacts means meaningful human/business contact. Meeting Set counts in both calls and contacts.",
+      "logicInPage": {
+        "calls": "rows with counts_as_dial=true from Supabase",
+        "contacts": "rows with counts_as_contact=true from Supabase",
+        "meetingsSet": "rows with counts_as_meeting_set=true from Supabase",
+        "setRate": "meetingsSet divided by contacts"
+      },
+      "dateField": "occurred_at for call activity and meeting_set rows"
+    },
+    {
+      "zone": "Outcome bars",
+      "domIds": [
+        "outcomeBars"
+      ],
+      "supabaseRead": "call_tracker_events_owner_context",
+      "simpleMeaning": "This is a grouped count of the visible rows by outcome label.",
+      "groupBy": "tracker_outcome"
+    },
+    {
+      "zone": "Closed won list and next paycheck",
+      "domIds": [
+        "closedWonList",
+        "nextPaycheck",
+        "basePayLine",
+        "commissionPayLine"
+      ],
+      "supabaseRead": "call_tracker_events_owner_context",
+      "simpleMeaning": "These only use closed_won rows and revenue_cents.",
+      "requiredOutcome": "closed_won",
+      "requiredFields": [
+        "athlete_name",
+        "booked_event_title",
+        "raw_crm_stage",
+        "revenue_cents",
+        "event_at",
+        "occurred_at"
+      ]
+    },
+    {
+      "zone": "Filter buttons",
+      "domIds": [
+        "filters"
+      ],
+      "supabaseRead": "call_tracker_events_owner_context",
+      "simpleMeaning": "Buttons count the same rows as the table, then filter by tracker_outcome.",
+      "filters": [
+        "meaningful",
+        "all_calls",
+        "meetings",
+        "closed_won",
+        "closed_lost",
+        "reschedule_pending",
+        "no_show",
+        "canceled"
+      ],
+      "hiddenFromMeaningful": [
+        "voicemail",
+        "spoke_follow_up",
+        "unable_to_leave_vm"
+      ]
+    },
+    {
+      "zone": "Main event table",
+      "domIds": [
+        "eventsBody"
+      ],
+      "supabaseRead": "call_tracker_events_owner_context?select=athlete_name,occurred_at,event_at,tracker_outcome,raw_crm_stage,raw_task_status,raw_event_type,appointment_id,booked_event_title,revenue_cents,counts_as_dial,counts_as_contact,counts_as_meeting_set,counts_as_post_meeting_outcome,materialization_reason,resolved_owner_name",
+      "simpleMeaning": "This is the row-by-row proof list. Each row is already normalized by the Supabase reporting view.",
+      "columns": [
+        {
+          "label": "Date",
+          "field": "event_at || occurred_at"
+        },
+        {
+          "label": "Name",
+          "field": "athlete_name"
+        },
+        {
+          "label": "Outcome",
+          "field": "tracker_outcome"
+        },
+        {
+          "label": "Stage or task",
+          "field": "raw_crm_stage || raw_task_status"
+        },
+        {
+          "label": "Event title",
+          "field": "booked_event_title || appointment_id"
+        },
+        {
+          "label": "Money",
+          "field": "revenue_cents"
+        }
+      ]
+    }
+  ],
+  "domainOutcomeRules": [
+    {
+      "domainStatus": "call_attempt_1",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "voicemail",
+      "plainEnglish": "Call attempt 1 is an outbound dial but not a contact."
+    },
+    {
+      "domainStatus": "call_attempt_2",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "voicemail",
+      "plainEnglish": "Call attempt 2 is an outbound dial but not a contact."
+    },
+    {
+      "domainStatus": "call_attempt_3",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "voicemail",
+      "plainEnglish": "Call attempt 3 is an outbound dial but not a contact."
+    },
+    {
+      "domainStatus": "unable_to_leave_vm",
+      "laravelText": "Called - unable to leave vm",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "unable_to_leave_vm",
+      "plainEnglish": "You attempted the outbound call but did not make contact, so it counts as dial only."
+    },
+    {
+      "domainStatus": "spoke_to_not_interested",
+      "laravelText": "Spoke to - Not Interested",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "not_interested",
+      "plainEnglish": "You called and reached a real outcome, so it counts as both dial and contact."
+    },
+    {
+      "domainStatus": "spoke_to_athlete_not_parent",
+      "laravelText": "Spoke to - Athlete, not Parent",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "spoke_follow_up",
+      "plainEnglish": "You called and reached the athlete, so it counts as both dial and contact."
+    },
+    {
+      "domainStatus": "spoke_to_too_young",
+      "laravelText": "Spoke to - Too Young",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "spoke_follow_up",
+      "plainEnglish": "You called and got a real qualification outcome, so it counts as both dial and contact."
+    },
+    {
+      "domainStatus": "spoke_to_follow_up",
+      "laravelText": "Spoke to - I Need To Follow Up",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "spoke_follow_up",
+      "plainEnglish": "You called and spoke to someone, so it counts as both dial and contact."
+    },
+    {
+      "domainStatus": "meeting_set",
+      "laravelText": "Meeting Set",
+      "activityKind": null,
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": true,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "meeting_set",
+      "plainEnglish": "Meeting Set counts as an outbound call, a contact, and a meeting. It still lives in lifecycle_events as the canonical meeting-set fact."
+    },
+    {
+      "domainStatus": "closed_won",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "closed_won",
+      "plainEnglish": "Closed won is a post-meeting result, not a fresh dial/contact activity row."
+    },
+    {
+      "domainStatus": "closed_lost",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "closed_lost",
+      "plainEnglish": "Closed lost is a post-meeting result, not a fresh dial/contact activity row."
+    },
+    {
+      "domainStatus": "reschedule_pending",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "reschedule_pending",
+      "plainEnglish": "Reschedule pending is a post-meeting result, not a fresh dial/contact activity row."
+    },
+    {
+      "domainStatus": "no_show",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "no_show",
+      "plainEnglish": "No show is a post-meeting result, not a fresh dial/contact activity row."
+    },
+    {
+      "domainStatus": "canceled",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "canceled",
+      "plainEnglish": "Canceled is a post-meeting result, not a fresh dial/contact activity row."
+    }
+  ],
+  "laravelStageMatches": [
+    {
+      "laravelText": "Left Voice Mail 1 or Left Voicemail 1",
+      "domainStatus": "call_attempt_1",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "voicemail"
+    },
+    {
+      "laravelText": "Left Voice Mail 2 or Left Voicemail 2",
+      "domainStatus": "call_attempt_2",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "voicemail"
+    },
+    {
+      "laravelText": "Never Spoke To",
+      "domainStatus": "call_attempt_3",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "voicemail"
+    },
+    {
+      "laravelText": "Called - unable to leave vm",
+      "domainStatus": "unable_to_leave_vm",
+      "activityKind": "dial",
+      "countsAsDial": true,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "unable_to_leave_vm"
+    },
+    {
+      "laravelText": "Spoke to - Not Interested",
+      "domainStatus": "spoke_to_not_interested",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "not_interested"
+    },
+    {
+      "laravelText": "Spoke to - Athlete, not Parent",
+      "domainStatus": "spoke_to_athlete_not_parent",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "spoke_follow_up"
+    },
+    {
+      "laravelText": "Spoke to - Too Young",
+      "domainStatus": "spoke_to_too_young",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "spoke_follow_up"
+    },
+    {
+      "laravelText": "Spoke to - I Need To Follow Up",
+      "domainStatus": "spoke_to_follow_up",
+      "activityKind": "contact",
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "spoke_follow_up"
+    },
+    {
+      "laravelText": "Meeting Set",
+      "domainStatus": "meeting_set",
+      "activityKind": null,
+      "countsAsDial": true,
+      "countsAsContact": true,
+      "countsAsMeetingSet": true,
+      "countsAsPostMeetingOutcome": false,
+      "trackerOutcome": "meeting_set"
+    },
+    {
+      "laravelText": "Close Won / Closed Won or calendar title starts with (ENR)",
+      "domainStatus": "closed_won",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "closed_won"
+    },
+    {
+      "laravelText": "Close Lost / Closed Lost or calendar title starts with (CL)",
+      "domainStatus": "closed_lost",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "closed_lost"
+    },
+    {
+      "laravelText": "Reschedule Pending / Res. Pending or calendar title starts with (RSP)",
+      "domainStatus": "reschedule_pending",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "reschedule_pending"
+    },
+    {
+      "laravelText": "No Show or calendar title starts with (NS)",
+      "domainStatus": "no_show",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "no_show"
+    },
+    {
+      "laravelText": "Canceled or calendar title starts with (CAN)",
+      "domainStatus": "canceled",
+      "activityKind": null,
+      "countsAsDial": false,
+      "countsAsContact": false,
+      "countsAsMeetingSet": false,
+      "countsAsPostMeetingOutcome": true,
+      "trackerOutcome": "canceled"
+    }
+  ],
+  "knownActivityQuirk": {
+    "problem": "Older rows from 2026-04-27 through 2026-04-30 have activity_kind null and legacy activity_type values like call_attempt or spoke_follow_up.",
+    "whyItMatters": "The reporting view must normalize old vocabulary and always expose counts_as_dial, counts_as_contact, counts_as_meeting_set, and counts_as_post_meeting_outcome.",
+    "lawGoingForward": "The stable contract needs separate reporting flags: countsAsDial, countsAsContact, countsAsMeetingSet, and countsAsPostMeetingOutcome. activity_kind can stay a simple storage bucket, but reporting cannot infer counts from that single column."
+  }
+}

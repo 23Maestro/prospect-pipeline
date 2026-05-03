@@ -18,6 +18,7 @@ function walk(dir: string): string[] {
 test('prospect-call-tracker and prospect-mobile static assets are served from Vercel public tree', () => {
   [
     'public/prospect-call-tracker/app.js',
+    'public/prospect-call-tracker/data-contract.json',
     'public/prospect-call-tracker/styles.css',
     'public/prospect-call-tracker/prospect-pipeline.png',
     'public/prospect-mobile/app.js',
@@ -82,8 +83,19 @@ test('migration did not edit Laravel/FastAPI, Supabase, Raycast command, or doma
     'npid-api-layer/test_mobile_booked_meetings.py',
     'npid-api-layer/app/static/call-tracker/app.js',
     'npid-api-layer/app/static/call-tracker/config.example.js',
+    'npid-api-layer/app/static/call-tracker/styles.css',
     'src/domain/architecture-contract.test.ts',
+    'src/domain/call-tracker-facts.test.ts',
+    'src/domain/call-tracker-facts.ts',
+    'src/domain/sales-stage-contract.test.ts',
+    'src/domain/scout-task-classifier.test.ts',
+    'src/domain/scout-task-classifier.ts',
     'src/lib/scout-follow-up-templates.test.ts',
+    'src/lib/sales-lifecycle.test.ts',
+    'src/lib/sales-lifecycle.ts',
+    'supabase/migrations/20260503030000_call_tracker_counting_contract.sql',
+    'supabase/tests/call-tracker-counting-contract.test.mjs',
+    'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
   ]);
   const forbiddenPrefixes = ['npid-api-layer/', 'supabase/', 'src/'];
   const offenders = changedFiles.filter(
@@ -129,4 +141,52 @@ test('Netlify files and deploy instructions are removed after Vercel migration',
       : [];
   });
   assert.deepEqual([...new Set(offenders)].sort(), []);
+});
+
+test('call tracker public contract documents count flags as the reporting source of truth', () => {
+  const contractPath = join(appRoot, 'public/prospect-call-tracker/data-contract.json');
+  const contractText = readFileSync(contractPath, 'utf8');
+  const contract = JSON.parse(contractText);
+
+  assert.match(contract.purpose, /activity_kind is not the reporting source of truth/i);
+  assert.match(contract.purpose, /countsAsDial/i);
+  assert.match(contract.purpose, /countsAsContact/i);
+  assert.match(contract.purpose, /countsAsMeetingSet/i);
+  assert.match(contract.purpose, /countsAsPostMeetingOutcome/i);
+
+  const meetingSet = contract.domainOutcomeRules.find((rule: { domainStatus: string }) => rule.domainStatus === 'meeting_set');
+  assert.equal(meetingSet.countsAsDial, true);
+  assert.equal(meetingSet.countsAsContact, true);
+  assert.equal(meetingSet.countsAsMeetingSet, true);
+  assert.equal(meetingSet.countsAsPostMeetingOutcome, false);
+
+  const postMeetingRules = contract.domainOutcomeRules.filter((rule: { domainStatus: string }) =>
+    ['closed_won', 'closed_lost', 'reschedule_pending', 'no_show', 'canceled'].includes(rule.domainStatus),
+  );
+  assert.equal(postMeetingRules.length, 5);
+  for (const rule of postMeetingRules) {
+    assert.equal(rule.countsAsDial, false, rule.domainStatus);
+    assert.equal(rule.countsAsContact, false, rule.domainStatus);
+    assert.equal(rule.countsAsPostMeetingOutcome, true, rule.domainStatus);
+  }
+});
+
+test('Vercel public call tracker data contract is tracked in git despite public ignore rule', () => {
+  const trackedFiles = execFileSync('git', ['ls-files', 'apps/prospect-web/public/prospect-call-tracker/data-contract.json'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+    .split('\n')
+    .filter(Boolean);
+  assert.deepEqual(trackedFiles, ['apps/prospect-web/public/prospect-call-tracker/data-contract.json']);
+});
+
+test('call tracker daily cards consume Supabase boolean count fields only', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
+  assert.match(appText, /counts_as_dial/);
+  assert.match(appText, /counts_as_contact/);
+  assert.match(appText, /counts_as_meeting_set/);
+  assert.match(appText, /row\.counts_as_dial === true/);
+  assert.match(appText, /row\.counts_as_contact === true/);
+  assert.doesNotMatch(appText, /contactMadeOutcomes|callActivityOutcomes|isDailyCallActivity|isDailyContact/);
 });

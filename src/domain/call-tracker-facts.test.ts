@@ -35,11 +35,88 @@ test('call activity facts preserve compatibility fields and explicit operator co
   assert.equal(row.athlete_key, '123:456');
   assert.equal(row.activity_kind, 'dial');
   assert.equal(row.activity_subtype, 'call_attempt_1');
+  assert.equal(row.payload_json.counts_as_dial, true);
+  assert.equal(row.payload_json.counts_as_contact, false);
+  assert.equal(row.payload_json.counts_as_meeting_set, false);
+  assert.equal(row.payload_json.counts_as_post_meeting_outcome, false);
+  assert.equal(row.payload_json.tracker_outcome, 'voicemail');
   assert.equal(row.source_owner, 'Jerami Singleton');
   assert.equal(row.owner_proof, 'task.assigned_owner');
   assert.equal(row.payload_json.active_operator_key, 'jerami_singleton');
   assert.equal(row.payload_json.materialization_status, 'operator_task');
   assert.equal(row.payload_json.materialization_reason, 'task_assigned_owner_matches_active_operator');
+});
+
+test('contact activity facts count as both dial and contact', () => {
+  const ownerContext = resolveOwnerContext({
+    purpose: 'call_activity',
+    athleteId: '123',
+    athleteMainId: '456',
+    tasks: [
+      {
+        task_id: '901',
+        title: 'Spoke to - I Need To Follow Up',
+        assigned_owner: 'Jerami Singleton',
+        completion_date: '',
+      },
+    ],
+    currentTaskId: '901',
+  });
+
+  const row = buildCallActivityFact({
+    athleteId: '123',
+    athleteMainId: '456',
+    athleteName: 'Sample Athlete',
+    taskId: '901',
+    taskTitle: 'Spoke to - I Need To Follow Up',
+    activitySubtype: 'spoke_to_follow_up',
+    ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
+    ownerContext,
+    occurredAt: '2026-05-02T12:00:00-04:00',
+  });
+
+  assert.equal(row.activity_kind, 'contact');
+  assert.equal(row.activity_type, 'spoke_to_follow_up');
+  assert.equal(row.payload_json.counts_as_dial, true);
+  assert.equal(row.payload_json.counts_as_contact, true);
+  assert.equal(row.payload_json.counts_as_meeting_set, false);
+  assert.equal(row.payload_json.counts_as_post_meeting_outcome, false);
+  assert.equal(row.payload_json.tracker_outcome, 'spoke_follow_up');
+});
+
+test('unable to leave voicemail activity facts remain dial-only', () => {
+  const ownerContext = resolveOwnerContext({
+    purpose: 'call_activity',
+    athleteId: '123',
+    athleteMainId: '456',
+    tasks: [
+      {
+        task_id: '902',
+        title: 'Called - Unable to Leave VM',
+        assigned_owner: 'Jerami Singleton',
+        completion_date: '',
+      },
+    ],
+    currentTaskId: '902',
+  });
+
+  const row = buildCallActivityFact({
+    athleteId: '123',
+    athleteMainId: '456',
+    athleteName: 'Sample Athlete',
+    taskId: '902',
+    taskTitle: 'Called - Unable to Leave VM',
+    activitySubtype: 'unable_to_leave_vm',
+    ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
+    ownerContext,
+    occurredAt: '2026-05-02T12:00:00-04:00',
+  });
+
+  assert.equal(row.activity_kind, 'dial');
+  assert.equal(row.activity_type, 'unable_to_leave_vm');
+  assert.equal(row.payload_json.counts_as_dial, true);
+  assert.equal(row.payload_json.counts_as_contact, false);
+  assert.equal(row.payload_json.tracker_outcome, 'unable_to_leave_vm');
 });
 
 test('meeting outcome facts can carry a non-operator event owner but block Tim-owned task materialization', () => {

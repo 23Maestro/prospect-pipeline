@@ -116,6 +116,15 @@ test('spoke to too young drops from working queue', () => {
   assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
 });
 
+test('spoke to not interested drops from working queue as inactive, not close lost', () => {
+  const lifecycle = resolveSalesLifecycle('Spoke to - Not Interested');
+  assert.equal(lifecycle.normalizedStage, 'inactive');
+  assert.equal(lifecycle.operatorStatus, 'inactive');
+  assert.equal(lifecycle.meetingLifecycle, 'inactive');
+  assert.equal(lifecycle.isTerminal, true);
+  assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
+});
+
 test('meeting result canceled resolves to awaiting reschedule', () => {
   const lifecycle = resolveSalesLifecycle('Meeting Result - Canceled');
   assert.equal(lifecycle.normalizedStage, 'reschedule_pending');

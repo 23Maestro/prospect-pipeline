@@ -176,7 +176,7 @@ function getConfig() {
 }
 
 function defaultSyncEndpoint() {
-  return '/api/v1/call-tracker/sync';
+  return '/api/call-tracker-sync';
 }
 
 function saveConfig(config) {
@@ -651,7 +651,7 @@ function handleLoadError(error) {
   console.error(error);
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function bootCallTracker() {
   state.activePeriod = currentWeekPeriod();
   wireConfigForm();
   $('refreshButton').addEventListener('click', () => refreshAllData().catch(handleLoadError));
@@ -662,4 +662,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
   loadData().catch(handleLoadError);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootCallTracker);
+} else {
+  bootCallTracker();
+}
