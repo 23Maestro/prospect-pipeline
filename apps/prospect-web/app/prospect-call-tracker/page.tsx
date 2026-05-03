@@ -6,7 +6,7 @@ export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-dashboard" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-donut" />
       <main className="shell">
         <header className="topbar">
           <a className="brand-row" href="/">
@@ -113,7 +113,7 @@ export default function ProspectCallTrackerPage() {
         <section className="split">
           <div className="panel">
             <div className="panel-head">
-              <h2>Outcomes</h2>
+              <h2>All-Time Tracker</h2>
               <span id="statusText">Live</span>
             </div>
             <div id="outcomeBars" className="bars" />
@@ -150,7 +150,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260503-dashboard" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260503-donut" strategy="afterInteractive" />
     </>
   );
 }

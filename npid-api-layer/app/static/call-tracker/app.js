@@ -443,20 +443,47 @@ function outcomeCounts() {
 }
 
 function renderBars() {
-  const counts = state.ui?.periods?.[state.activePeriod]?.outcomeCounts || outcomeCounts();
-  const entries = Object.entries(counts).sort((left, right) => right[1] - left[1]);
-  const max = Math.max(1, ...entries.map(([, count]) => count));
+  const cards = state.ui?.summaryCards || {};
+  const entries = [
+    ['Spoke With', Number(cards.contacts ?? state.summary?.contacts ?? 0), 'green'],
+    ['Dials', Number(cards.dials ?? state.summary?.dials ?? 0), 'blue'],
+    ['Voicemail', Number(cards.voicemailOnly ?? state.summary?.voicemail_only ?? 0), 'purple'],
+    ['Appointments', Number(cards.appointmentsTracked ?? state.summary?.appointments_tracked ?? 0), 'amber'],
+  ];
+  const total = Math.max(1, entries.reduce((sum, [, count]) => sum + count, 0));
+  let cursor = 0;
+  const segments = entries.map(([, count, color]) => {
+    const start = cursor;
+    cursor += (count / total) * 100;
+    return `var(--chart-${color}) ${start}% ${cursor}%`;
+  });
 
   $('outcomeBars').innerHTML = entries
-    .map(([outcome, count]) => {
-      const width = Math.round((count / max) * 100);
-      return `
-        <div class="bar-row">
-          <span>${labels[outcome] || outcome}</span>
-          <div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div>
+    .map(([label, count, color], index) => {
+      const percent = total ? Math.round((count / total) * 100) : 0;
+      if (index === 0) {
+        return `
+          <div class="donut-wrap">
+            <div class="donut" style="--donut:${segments.join(', ')}">
+              <span>${total}</span>
+              <small>Total</small>
+            </div>
+            <div class="donut-legend">
+              <div class="legend-row">
+                <span><i class="${color}"></i>${label}</span>
+                <b>${count}</b>
+                <em>${percent}%</em>
+              </div>
+        `;
+      }
+      const row = `
+        <div class="legend-row">
+          <span><i class="${color}"></i>${label}</span>
           <b>${count}</b>
+          <em>${percent}%</em>
         </div>
       `;
+      return index === entries.length - 1 ? `${row}</div></div>` : row;
     })
     .join('');
 }
