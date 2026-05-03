@@ -13,28 +13,32 @@ export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260501-sync-report" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-dashboard" />
       <main className="shell">
-          <header className="topbar">
-            <div className="brand-row">
-              <img src="/prospect-call-tracker/prospect-pipeline.png" alt="" className="app-mark" />
-              <div>
-                <h1>Call Tracker</h1>
-                <p id="rangeLabel">Loading</p>
-              </div>
-            </div>
-            <div className="topbar-actions">
-              <span className="sync-status">Sync Complete</span>
-              <span id="payDateLabel">Next check</span>
-              <button id="refreshButton" type="button">
-                Refresh
-              </button>
-            </div>
-          </header>
+        <header className="topbar">
+          <a className="brand-row" href="/">
+            <span className="vercel-mark" aria-hidden="true" />
+            <strong>Prospect Web</strong>
+          </a>
+          <div className="topbar-actions">
+            <span className="status-pill health">Health OK</span>
+            <span className="status-pill">Sync Complete</span>
+            <span id="payDateLabel">Next check</span>
+          </div>
+        </header>
 
-        <section className="daily-grid" aria-label="Current day">
-          <div className="daily-panel">
-            <div className="daily-head">
+        <section className="page-head">
+          <div>
+            <h1>Prospect Call Tracker</h1>
+            <span id="rangeLabel">Loading</span>
+          </div>
+          <button id="refreshButton" type="button">
+            Refresh Data
+          </button>
+        </section>
+
+        <section className="daily-panel" aria-label="Current day">
+          <div className="daily-head">
               <div className="period-toggle" aria-label="Current work week">
                 <button type="button" data-period="week-0" className="active">
                   Mon
@@ -57,27 +61,32 @@ export default function ProspectCallTrackerPage() {
               </div>
               <h2 id="periodTitle">Current Day</h2>
               <span id="todayLabel">Local</span>
-            </div>
-            <div className="daily-cards">
-              <article className="daily-card">
-                <span>Total Calls</span>
-                <strong id="todayCalls">0</strong>
-              </article>
-              <article className="daily-card">
-                <span>Contacts Made</span>
-                <strong id="todayContacts">0</strong>
-              </article>
-              <article className="daily-card">
-                <span>Meetings Set</span>
-                <strong id="todayMeetingsSet">0</strong>
-              </article>
-              <article className="daily-card">
-                <span>Set Rate</span>
-                <strong id="todaySetRate">0%</strong>
-              </article>
-            </div>
           </div>
+          <div className="daily-cards">
+            <article className="daily-card">
+              <span>Total Calls</span>
+              <strong id="todayCalls">0</strong>
+            </article>
+            <article className="daily-card">
+              <span>Contacts Made</span>
+              <strong id="todayContacts">0</strong>
+            </article>
+            <article className="daily-card">
+              <span>Meetings Set</span>
+              <strong id="todayMeetingsSet">0</strong>
+            </article>
+            <article className="daily-card">
+              <span>Set Rate</span>
+              <strong id="todaySetRate">0%</strong>
+            </article>
+            <article className="daily-card">
+              <span>Closed Won</span>
+              <strong id="closedWon">0</strong>
+            </article>
+          </div>
+        </section>
 
+        <section className="metrics" aria-label="Tracker totals">
           <article className="paycheck-panel" aria-label="Next paycheck pending">
             <span>Next Paycheck</span>
             <strong id="nextPaycheck">$0</strong>
@@ -86,16 +95,9 @@ export default function ProspectCallTrackerPage() {
               <span id="commissionPayLine">Commission $0</span>
             </div>
           </article>
-        </section>
-
-        <section className="metrics" aria-label="Tracker totals">
           <article className="metric primary">
             <span>Money</span>
             <strong id="moneyEarned">$0</strong>
-          </article>
-          <article className="metric">
-            <span>Closed Won</span>
-            <strong id="closedWon">0</strong>
           </article>
           <article className="metric">
             <span>Spoke With</span>
@@ -178,7 +180,7 @@ export default function ProspectCallTrackerPage() {
           __html: `window.CALL_TRACKER_CONFIG=${JSON.stringify(callTrackerConfig)};`,
         }}
       />
-      <Script src="/prospect-call-tracker/app.js?v=20260501-sync-report" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260503-dashboard" strategy="afterInteractive" />
     </>
   );
 }

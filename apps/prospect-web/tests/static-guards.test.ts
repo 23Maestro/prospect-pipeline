@@ -171,14 +171,32 @@ test('call tracker public contract documents count flags as the reporting source
   }
 });
 
-test('Vercel public call tracker data contract is tracked in git despite public ignore rule', () => {
-  const trackedFiles = execFileSync('git', ['ls-files', 'apps/prospect-web/public/prospect-call-tracker/data-contract.json'], {
+test('Vercel public dashboard assets are tracked in git despite public ignore rule', () => {
+  const trackedFiles = execFileSync('git', ['ls-files',
+    'apps/prospect-web/public/prospect-call-tracker/app.js',
+    'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
+    'apps/prospect-web/public/prospect-call-tracker/prospect-pipeline.png',
+    'apps/prospect-web/public/prospect-call-tracker/styles.css',
+    'apps/prospect-web/public/prospect-mobile/app.js',
+    'apps/prospect-web/public/prospect-mobile/assets/prospect-pipeline.png',
+    'apps/prospect-web/public/prospect-mobile/set-meetings-utils.mjs',
+    'apps/prospect-web/public/prospect-mobile/styles.css',
+  ], {
     cwd: repoRoot,
     encoding: 'utf8',
   })
     .split('\n')
     .filter(Boolean);
-  assert.deepEqual(trackedFiles, ['apps/prospect-web/public/prospect-call-tracker/data-contract.json']);
+  assert.deepEqual(trackedFiles, [
+    'apps/prospect-web/public/prospect-call-tracker/app.js',
+    'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
+    'apps/prospect-web/public/prospect-call-tracker/prospect-pipeline.png',
+    'apps/prospect-web/public/prospect-call-tracker/styles.css',
+    'apps/prospect-web/public/prospect-mobile/app.js',
+    'apps/prospect-web/public/prospect-mobile/assets/prospect-pipeline.png',
+    'apps/prospect-web/public/prospect-mobile/set-meetings-utils.mjs',
+    'apps/prospect-web/public/prospect-mobile/styles.css',
+  ]);
 });
 
 test('call tracker daily cards consume Supabase boolean count fields only', () => {

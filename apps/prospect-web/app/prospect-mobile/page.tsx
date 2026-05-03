@@ -8,15 +8,12 @@ export default function ProspectMobilePage() {
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="theme-color" content="#070816" />
       <link rel="icon" href="/prospect-mobile/assets/prospect-pipeline.png" />
-      <link rel="stylesheet" href="/prospect-mobile/styles.css" />
+      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260503-dashboard" />
       <main className="app-shell">
         <header className="topbar">
           <div className="brand-lockup">
             <img className="brand-mark" src="/prospect-mobile/assets/prospect-pipeline.png" alt="" />
-            <div>
-              <p className="eyeline">Prospect Pipeline</p>
-              <h1 id="page-title">Set Meetings</h1>
-            </div>
+            <h1 id="page-title">Prospect Mobile</h1>
           </div>
           <button className="icon-button" id="refresh-button" type="button" aria-label="Refresh">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -27,13 +24,16 @@ export default function ProspectMobilePage() {
 
         <nav className="tabbar" aria-label="Mobile workflows">
           <a href="/prospect-mobile/set-meetings" data-route="/set-meetings">
-            Set
+            <span className="tab-icon calendar" aria-hidden="true" />
+            <span>Set Meetings</span>
           </a>
           <a href="/prospect-mobile/scout-schedules" data-route="/scout-schedules">
-            Schedules
+            <span className="tab-icon users" aria-hidden="true" />
+            <span>Scout Schedules</span>
           </a>
           <a href="/prospect-mobile/contact-reminder" data-route="/contact-reminder">
-            Reminder
+            <span className="tab-icon bell" aria-hidden="true" />
+            <span>Reminder</span>
           </a>
         </nav>
 
@@ -51,7 +51,7 @@ export default function ProspectMobilePage() {
         <section className="status-line" id="status-line" aria-live="polite" />
         <section className="content" id="content" />
       </main>
-      <Script type="module" src="/prospect-mobile/app.js" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260503-dashboard" strategy="afterInteractive" />
     </>
   );
 }
