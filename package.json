@@ -258,6 +258,7 @@
     "sync:supabase-pipeline": "bash scripts/sync-supabase-pipeline.sh",
     "sync:call-tracker-config": "node scripts/write-call-tracker-config.mjs",
     "materialize:call-tracker-contract": "tsx scripts/materialize-call-tracker-data-contract.mjs",
+    "archive:call-tracker-week": "node scripts/archive-call-tracker-week.mjs",
     "rotate:supabase-server-key": "node scripts/rotate-supabase-server-key.mjs",
     "sync:current-pipeline-supabase": "tsx scripts/sync-current-pipeline-to-supabase.mjs",
     "sync:booked-meetings-supabase": "tsx scripts/sync-booked-meetings-to-supabase.mjs",

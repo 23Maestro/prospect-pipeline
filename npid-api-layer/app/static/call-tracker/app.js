@@ -51,6 +51,27 @@ function money(cents) {
   }).format((Number(cents) || 0) / 100);
 }
 
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function cleanClosedWonTitle(row) {
+  const athleteName = String(row.athlete_name || '').trim();
+  const rawTitle = String(row.booked_event_title || row.raw_crm_stage || athleteName || 'Closed Won').trim();
+  const withoutOutcome = rawTitle.replace(/^\((?:ENR|FU|CL|RSP|NS|CAN)(?:\s+\$?\d+)?\)\s*/i, '').trim();
+  if (!athleteName) return withoutOutcome || rawTitle;
+  const duplicated = `${athleteName} ${athleteName}`;
+  if (withoutOutcome.toLowerCase().startsWith(duplicated.toLowerCase())) {
+    return `${athleteName}${withoutOutcome.slice(duplicated.length)}`.trim();
+  }
+  return withoutOutcome || athleteName;
+}
+
 function shortDate(value) {
   if (!value) return '';
   return new Intl.DateTimeFormat('en-US', {
@@ -445,8 +466,11 @@ function outcomeCounts() {
 
 function renderBars() {
   const cards = state.ui?.summaryCards || {};
+  const contacts = Number(cards.contacts ?? state.summary?.contacts ?? 0);
+  const meetingsSet = Number(state.summary?.meetings_set ?? 0);
+  const setRate = contacts ? Math.round((meetingsSet / contacts) * 100) : 0;
   const entries = [
-    ['Spoke With', Number(cards.contacts ?? state.summary?.contacts ?? 0), 'green'],
+    ['Spoke With', contacts, 'green'],
     ['Dials', Number(cards.dials ?? state.summary?.dials ?? 0), 'blue'],
     ['Voicemail', Number(cards.voicemailOnly ?? state.summary?.voicemail_only ?? 0), 'purple'],
     ['Appointments', Number(cards.appointmentsTracked ?? state.summary?.appointments_tracked ?? 0), 'amber'],
@@ -461,7 +485,6 @@ function renderBars() {
 
   $('outcomeBars').innerHTML = entries
     .map(([label, count, color], index) => {
-      const percent = total ? Math.round((count / total) * 100) : 0;
       if (index === 0) {
         return `
           <div class="donut-wrap">
@@ -475,7 +498,6 @@ function renderBars() {
               <div class="legend-row">
                 <span><i class="${color}"></i>${label}</span>
                 <b>${count}</b>
-                <em>${percent}%</em>
               </div>
         `;
       }
@@ -483,10 +505,17 @@ function renderBars() {
         <div class="legend-row">
           <span><i class="${color}"></i>${label}</span>
           <b>${count}</b>
-          <em>${percent}%</em>
         </div>
       `;
-      return index === entries.length - 1 ? `${row}</div></div>` : row;
+      if (index === entries.length - 1) {
+        return `${row}
+          <div class="all-time-set-rate">
+            <span>All-Time Set Rate</span>
+            <strong>${setRate}%</strong>
+          </div>
+        </div></div>`;
+      }
+      return row;
     })
     .join('');
 }
@@ -501,11 +530,8 @@ function renderClosedWon() {
         .map(
           (row) => `
             <div class="closed-item">
-              <div>
-                <strong>${row.athlete_name || 'Unknown'}</strong>
-                <span>${row.booked_event_title || row.raw_crm_stage || ''}</span>
-              </div>
-              <b>${money(row.revenue_cents)}</b>
+              <strong>${escapeHtml(cleanClosedWonTitle(row))}</strong>
+              <b>- ${money(row.revenue_cents)}</b>
             </div>
           `,
         )

@@ -96,6 +96,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/lib/sales-lifecycle.ts',
     'scripts/reconcile-current-sales-stages-to-supabase.test.mjs',
     'scripts/materialize-call-tracker-data-contract.mjs',
+    'scripts/archive-call-tracker-week.mjs',
     'scripts/repair-call-event-owner-proof.mjs',
     'scripts/sync-current-pipeline-to-supabase.mjs',
     'scripts/sync-current-pipeline-to-supabase.test.mjs',

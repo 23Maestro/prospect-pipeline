@@ -59,7 +59,7 @@ export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-table-polish" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-set-rate" />
       <main className="shell">
         <header className="topbar">
           <a className="brand-row" href="/">
@@ -188,7 +188,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260503-table-polish" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260503-set-rate" strategy="afterInteractive" />
     </>
   );
 }

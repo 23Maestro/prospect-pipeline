@@ -1,0 +1,16 @@
+{
+  "generatedAt": "2026-05-03T23:20:42.371Z",
+  "weeks": [
+    {
+      "archivedAt": "2026-05-03T23:20:42.371Z",
+      "file": "2026-04-27_to_2026-05-01.json",
+      "startDate": "2026-04-27",
+      "endDate": "2026-05-01",
+      "label": "This Week, Apr 27 - May 3",
+      "dials": 125,
+      "contacts": 29,
+      "meetingsSet": 16,
+      "setRate": 55
+    }
+  ]
+}
