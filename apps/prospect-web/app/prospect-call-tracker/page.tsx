@@ -6,7 +6,7 @@ export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-donut" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-donut-center" />
       <main className="shell">
         <header className="topbar">
           <a className="brand-row" href="/">
@@ -92,22 +92,6 @@ export default function ProspectCallTrackerPage() {
             <span>Money</span>
             <strong id="moneyEarned">$0</strong>
           </article>
-          <article className="metric">
-            <span>Spoke With</span>
-            <strong id="spokeWith">0</strong>
-          </article>
-          <article className="metric">
-            <span>Dials</span>
-            <strong id="totalEvents">0</strong>
-          </article>
-          <article className="metric">
-            <span>Voicemail</span>
-            <strong id="voicemailOnly">0</strong>
-          </article>
-          <article className="metric">
-            <span>Appointments</span>
-            <strong id="appointmentsTracked">0</strong>
-          </article>
         </section>
 
         <section className="split">
@@ -150,7 +134,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260503-donut" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260503-donut-center" strategy="afterInteractive" />
     </>
   );
 }

@@ -196,7 +196,8 @@ async function refreshAllData() {
 }
 
 function setText(id, value) {
-  $(id).textContent = value;
+  const element = $(id);
+  if (element) element.textContent = value;
 }
 
 function countsAsDial(row) {
@@ -465,8 +466,10 @@ function renderBars() {
         return `
           <div class="donut-wrap">
             <div class="donut" style="--donut:${segments.join(', ')}">
-              <span>${total}</span>
-              <small>Total</small>
+              <div class="donut-center">
+                <span>${total}</span>
+                <small>Total</small>
+              </div>
             </div>
             <div class="donut-legend">
               <div class="legend-row">
