@@ -188,7 +188,9 @@ test('buildVoicemailFollowUpMessage renders attempt 3 copy', () => {
   assert.match(message, /Jerami Singleton\nFootball Scouting Coordinator\nProspect ID/);
 });
 
-test('buildCallAttempt2Message fills athlete and recipient names', () => {
+test('buildCallAttempt2Message fills athlete and recipient names', (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-04-23T20:00:00Z') });
+
   const message = buildCallAttempt2Message({
     recipientName: 'Mr. Brown',
     athleteName: 'Grayson Brown',

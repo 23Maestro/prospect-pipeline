@@ -1,7 +1,7 @@
 """
 Mobile API router for externally reachable workflow calls.
 
-These endpoints are intended for Netlify/Tailscale access and require a shared
+These endpoints are intended for Vercel/Tailscale access and require a shared
 bearer token. Existing Raycast-local routes remain unchanged.
 """
 

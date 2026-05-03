@@ -177,9 +177,7 @@ function getConfig() {
 }
 
 function defaultSyncEndpoint() {
-  return window.location.hostname.endsWith('.netlify.app')
-    ? '/api/call-tracker-sync'
-    : '/api/v1/call-tracker/sync';
+  return '/api/v1/call-tracker/sync';
 }
 
 function saveConfig(config) {

@@ -149,8 +149,21 @@ test('Supabase reporting views materialize only domain facts or explicit compati
   assert.doesNotMatch(migration, /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\)/);
 });
 
-test('new architecture docs do not introduce Netlify-to-Vercel migration scope', () => {
+test('Netlify-to-Vercel architecture docs keep hosting adapter scope separate from domain meaning', () => {
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
   const matches = architectureDocs.filter((path) => /vercel|netlify migration/i.test(readRepoFile(path)));
-  assert.deepEqual(matches, []);
+  assert.deepEqual(matches.sort(), [
+    'docs/architecture/netlify-to-vercel-migration.md',
+    'docs/architecture/prospect-web-hosting-adapter.md',
+    'docs/architecture/vercel-live-verification.md',
+  ]);
+
+  for (const path of matches) {
+    const doc = readRepoFile(path);
+    assert.match(doc, /FastAPI remains/i);
+    assert.match(doc, /Supabase remains/i);
+    assert.match(doc, /Domain modules remain|Next\.js routes must not own/i);
+    assert.doesNotMatch(doc, /Next\.js.*materialization source of truth/i);
+    assert.doesNotMatch(doc, /Vercel.*domain ownership/i);
+  }
 });
