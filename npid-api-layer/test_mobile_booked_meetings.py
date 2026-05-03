@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent))
 
 from app.routers.mobile import (
+    build_mobile_set_meetings_response,
     is_actual_set_meeting_event,
     is_meeting_visible_until_end,
     is_visible_set_meeting_event,
@@ -73,3 +74,72 @@ def test_completed_confirmation_task_can_still_provide_mobile_context():
 
     assert selected is not None
     assert selected["task_id"] == "626239"
+
+
+def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_end_time_filter():
+    payload = build_mobile_set_meetings_response(
+        calendar_result={
+            "success": True,
+            "week_start": "2026-04-27",
+            "week_end": "2026-05-04",
+            "count": 3,
+            "events": [
+                {
+                    "event_id": "evt-ended",
+                    "title": "(ACF) Matthew Lindsey Football 2027 NV",
+                    "assigned_owner": "Ryan Lietz",
+                    "start": "2026-04-28T19:00:00-04:00",
+                    "end": "2026-04-28T20:00:00-04:00",
+                    "date_time_label": "Tue 04/28/26 7:00 PM - 8:00 PM",
+                },
+                {
+                    "event_id": "evt-other-owner",
+                    "title": "(CF) Other Athlete Football 2027 NV",
+                    "assigned_owner": "Ryan Lietz",
+                    "start": "2026-04-29T19:00:00-04:00",
+                    "end": "2026-04-29T20:00:00-04:00",
+                    "date_time_label": "Wed 04/29/26 7:00 PM - 8:00 PM",
+                },
+                {
+                    "event_id": "evt-follow-up",
+                    "title": "(FU) Matthew Lindsey Football 2027 NV",
+                    "assigned_owner": "Ryan Lietz",
+                    "start": "2026-04-30T19:00:00-04:00",
+                    "end": "2026-04-30T20:00:00-04:00",
+                    "date_time_label": "Thu 04/30/26 7:00 PM - 8:00 PM",
+                },
+            ],
+        },
+        tasks=[
+            {
+                "task_id": "626239",
+                "athlete_id": "1491000",
+                "athlete_main_id": "952900",
+                "athlete_name": "Matthew Lindsey",
+                "assigned_owner": "Jerami Singleton",
+                "title": "Confirmation Call",
+                "description": "Confirm the meeting set",
+                "completion_date": "",
+                "due_date": "2026-04-28T09:00:00-04:00",
+            },
+            {
+                "task_id": "626240",
+                "athlete_id": "1491001",
+                "athlete_main_id": "952901",
+                "athlete_name": "Other Athlete",
+                "assigned_owner": "Tim Risner",
+                "title": "Confirmation Call",
+                "description": "Confirm the meeting set",
+                "completion_date": "",
+                "due_date": "2026-04-29T09:00:00-04:00",
+            },
+        ],
+    )
+
+    assert payload["success"] is True
+    assert payload["raw_booked_count"] == 3
+    assert payload["count"] == 1
+    assert payload["events"][0]["event_id"] == "evt-ended"
+    assert payload["events"][0]["athlete_name"] == "Matthew Lindsey"
+    assert payload["events"][0]["operator_status"] == "active_meeting_queue"
+    assert payload["events"][0]["confirmation_recipient"] is None

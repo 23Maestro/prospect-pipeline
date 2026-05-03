@@ -8,6 +8,7 @@ bearer token. Existing Raycast-local routes remain unchanged.
 from datetime import datetime, timezone
 import hmac
 import os
+import re
 from typing import Optional
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
@@ -21,6 +22,8 @@ from app.translators.legacy import LegacyTranslator
 
 router = APIRouter(tags=["mobile"])
 HEAD_SCOUT_TIMEZONE = ZoneInfo("America/New_York")
+ACTIVE_OPERATOR_NAME = "Jerami Singleton"
+DASHBOARD_BASE_URL = "https://dashboard.nationalpid.com"
 
 
 def require_mobile_token(authorization: Optional[str]) -> None:
@@ -79,8 +82,6 @@ async def get_mobile_head_scout_slots(
 
 
 def clean_meeting_title(value: str | None) -> str:
-    import re
-
     return re.sub(
         r"^\((?:ACF\*?2?|CF|RSP|CAN|FU|CL|NS|\*)\)\s*",
         "",
@@ -90,8 +91,6 @@ def clean_meeting_title(value: str | None) -> str:
 
 
 def resolve_appointment_title_outcome(value: str | None) -> str:
-    import re
-
     title = (value or "").strip()
     if re.match(r"^\s*\(ENR(?:\s+\$?[0-9]+(?:\.[0-9]{1,2})?)?[^)]*\)\s*", title, flags=re.IGNORECASE):
         return "terminal_enrollment"
@@ -116,9 +115,9 @@ def is_actual_set_meeting_event(event: dict | None) -> bool:
         return False
     normalized = title.lower()
     return not (
-        normalized.startswith("follow up -")
-        or normalized.startswith("(fu)")
-        or normalized.startswith("(cl)")
+        normalized == "open"
+        or normalized == "coaching session"
+        or normalized.startswith("follow up -")
         or normalized.startswith("(*)")
     )
 
@@ -153,8 +152,6 @@ def is_visible_set_meeting_event(event: dict | None, now: datetime | None = None
 
 
 def normalize_match_key(value: str | None) -> str:
-    import re
-
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
 
 
@@ -163,7 +160,7 @@ def is_confirmation_task(task: dict) -> bool:
     description = str(task.get("description") or "").strip().lower()
     assigned_owner = str(task.get("assigned_owner") or "").strip().lower()
     return (
-        assigned_owner == "jerami singleton"
+        assigned_owner == ACTIVE_OPERATOR_NAME.lower()
         and ("confirmation call" in title or "confirm the meeting set" in description)
     )
 
@@ -206,6 +203,95 @@ async def fetch_scout_tasks(session: NPIDSession, translator: LegacyTranslator, 
     response = await session.get(endpoint, params=params)
     result = translator.parse_portal_tasks_response(response.text)
     return list(result.get("tasks", []))
+
+
+def strip_move_this_task_prefix(value: str | None) -> str:
+    text = str(value or "").strip()
+    cleaned = re.sub(r"^\(SC Move This Task\)\s*", "", text, flags=re.IGNORECASE).strip()
+    return cleaned or text
+
+
+def build_dashboard_admin_url(athlete_id: str, athlete_main_id: str) -> str:
+    query = urlencode({"contactid": athlete_id, "athlete_main_id": athlete_main_id})
+    return f"{DASHBOARD_BASE_URL}/admin/athletes?{query}"
+
+
+def build_dashboard_task_url(athlete_id: str, athlete_main_id: str) -> str:
+    query = urlencode({"contactid": athlete_id, "athlete_main_id": athlete_main_id, "tasktab": "1"})
+    return f"{DASHBOARD_BASE_URL}/admin/athletes?{query}"
+
+
+def build_mobile_set_meetings_response(calendar_result: dict, tasks: list[dict]) -> dict:
+    tasks_by_athlete: dict[str, list[dict]] = {}
+    for task in tasks:
+        if not is_confirmation_task(task):
+            continue
+        key = normalize_match_key(task.get("athlete_name"))
+        if key:
+            tasks_by_athlete.setdefault(key, []).append(task)
+
+    materialized_events = []
+    for event in calendar_result.get("events", []) or []:
+        if not is_actual_set_meeting_event(event):
+            continue
+
+        event_id = str((event or {}).get("event_id") or "").strip()
+        start = str((event or {}).get("start") or "").strip()
+        title = str((event or {}).get("title") or "").strip()
+        if not event_id or not start or not title:
+            continue
+
+        title_key = normalize_match_key(clean_meeting_title(title))
+        matching_key = next((key for key in tasks_by_athlete if key and key in title_key), None)
+        matched_task = pick_confirmation_task(tasks_by_athlete.get(matching_key, [])) if matching_key else None
+        if not matching_key or not matched_task:
+            continue
+        tasks_by_athlete.pop(matching_key, None)
+
+        athlete_id = str((matched_task or {}).get("athlete_id") or (matched_task or {}).get("contact_id") or "").strip()
+        athlete_main_id = str((matched_task or {}).get("athlete_main_id") or "").strip()
+        athlete_name = str((matched_task or {}).get("athlete_name") or "").strip()
+        if not athlete_id or not athlete_main_id or not athlete_name:
+            continue
+
+        materialized_events.append(
+            {
+                **event,
+                "key": f"{athlete_id}:{athlete_main_id}",
+                "athlete_id": athlete_id,
+                "athlete_main_id": athlete_main_id,
+                "athlete_name": athlete_name,
+                "stage": "Meeting Set",
+                "current_task": strip_move_this_task_prefix(matched_task.get("title")) or "Confirmation Call",
+                "task_id": str((matched_task or {}).get("task_id") or "").strip() or None,
+                "head_scout_name": event.get("assigned_owner"),
+                "booked_meeting_title": title,
+                "current_meeting_label": event.get("date_time_label"),
+                "admin_url": build_dashboard_admin_url(athlete_id, athlete_main_id),
+                "task_url": build_dashboard_task_url(athlete_id, athlete_main_id),
+                "confirmation_recipient": None,
+                "source": "website",
+                "crm_sales_stage": "Meeting Set",
+                "lifecycle_state": "scheduled",
+                "needs_confirmation_text": True,
+                "needs_manual_review": False,
+                "reason": "Weekly booked meeting assigned to Jerami confirmation queue.",
+                "operator_status": "active_meeting_queue",
+                "badges": [],
+            }
+        )
+
+    return {
+        "success": True,
+        "week_start": calendar_result.get("week_start"),
+        "week_end": calendar_result.get("week_end"),
+        "count": len(materialized_events),
+        "raw_booked_count": calendar_result.get("count", 0),
+        "events": sorted(
+            materialized_events,
+            key=lambda event: (str(event.get("start") or ""), str(event.get("athlete_name") or "")),
+        ),
+    }
 
 
 async def fetch_contact_info(session: NPIDSession, translator: LegacyTranslator, contact_id: str, athlete_main_id: str) -> dict | None:
@@ -262,69 +348,26 @@ async def get_mobile_booked_meetings(
             translator,
             "nextWeek" if task_range == "nextWeek" else "thisWeek",
         )
-        tasks_by_athlete = {}
-        for task in tasks:
-            if not is_confirmation_task(task):
-                continue
-            key = normalize_match_key(task.get("athlete_name"))
-            if key:
-                tasks_by_athlete.setdefault(key, []).append(task)
-
-        materialized_events = []
-        actual_events = [event for event in result.get("events", []) if is_visible_set_meeting_event(event)]
-        for event in actual_events:
-            title_key = normalize_match_key(clean_meeting_title(event.get("title")))
-            matching_key = next((key for key in tasks_by_athlete if key and key in title_key), None)
-            matched_task = pick_confirmation_task(tasks_by_athlete.get(matching_key, [])) if matching_key else None
-            if not matching_key or not matched_task:
-                continue
-            tasks_by_athlete.pop(matching_key, None)
-
-            athlete_id = str((matched_task or {}).get("athlete_id") or (matched_task or {}).get("contact_id") or "").strip()
-            athlete_main_id = str((matched_task or {}).get("athlete_main_id") or "").strip()
-            if not athlete_id or not athlete_main_id:
-                continue
-
-            contact_info = (
-                await fetch_contact_info(session, translator, athlete_id, athlete_main_id)
-                if athlete_id and athlete_main_id
-                else None
-            )
-            admin_query = urlencode({"contactid": athlete_id, "athlete_main_id": athlete_main_id})
-            task_query = urlencode({"contactid": athlete_id, "athlete_main_id": athlete_main_id, "tasktab": "1"})
-            materialized_events.append(
-                {
-                    **event,
-                    "key": f"{athlete_id}:{athlete_main_id}",
-                    "athlete_id": athlete_id,
-                    "athlete_main_id": athlete_main_id,
-                    "athlete_name": (matched_task or {}).get("athlete_name"),
-                    "stage": "Meeting Set",
-                    "current_task": str((matched_task or {}).get("title") or "").replace("Move this Task:", "").strip() or "Confirmation Call",
-                    "task_id": str((matched_task or {}).get("task_id") or "").strip() or None,
-                    "head_scout_name": event.get("assigned_owner"),
-                    "booked_meeting_title": event.get("title"),
-                    "current_meeting_label": event.get("date_time_label"),
-                    "admin_url": f"https://dashboard.nationalpid.com/admin/athletes?{admin_query}",
-                    "task_url": f"https://dashboard.nationalpid.com/admin/athletes?{task_query}",
-                    "confirmation_recipient": resolve_confirmation_recipient(contact_info),
-                    "source": "website",
-                    "operator_status": "active_meeting_queue",
-                }
-            )
-
-        return {
-            "success": True,
-            "week_start": result.get("week_start"),
-            "week_end": result.get("week_end"),
-            "count": len(materialized_events),
-            "raw_booked_count": result.get("count", 0),
-            "events": sorted(materialized_events, key=lambda event: str(event.get("start") or "")),
-        }
+        return build_mobile_set_meetings_response(result, tasks)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/set-meetings")
+async def get_mobile_set_meetings(
+    request: Request,
+    start: str,
+    end: str,
+    task_range: str = "thisWeek",
+):
+    return await get_mobile_booked_meetings(
+        request=request,
+        start=start,
+        end=end,
+        task_range=task_range,
+    )
 
 
 @router.post("/contact-reminder-intake")

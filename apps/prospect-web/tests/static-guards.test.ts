@@ -79,6 +79,7 @@ test('migration did not edit Laravel/FastAPI, Supabase, Raycast command, or doma
 
   const allowedSourceFiles = new Set([
     'npid-api-layer/app/routers/mobile.py',
+    'npid-api-layer/test_mobile_booked_meetings.py',
     'npid-api-layer/app/static/call-tracker/app.js',
     'npid-api-layer/app/static/call-tracker/config.example.js',
     'src/domain/architecture-contract.test.ts',

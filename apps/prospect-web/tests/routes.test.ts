@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
+import { GET as setMeetingsGET } from '../app/api/set-meetings/route';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -98,4 +99,28 @@ test('/api/call-tracker-sync rejects unsupported methods with old shape', async 
     success: false,
     error: 'Method DELETE not allowed',
   });
+});
+
+test('/api/set-meetings is only a Vercel adapter for the FastAPI command contract', async () => {
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json({
+      success: true,
+      week_start: '2026-04-27',
+      week_end: '2026-05-04',
+      count: 1,
+      raw_booked_count: 60,
+      events: [],
+    });
+  };
+
+  const response = await setMeetingsGET(new Request('https://example.test/api/set-meetings?week=this'));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).raw_booked_count, 60);
+  assert.match(calls[0].url, /^https:\/\/tailnet\.example\/api\/v1\/mobile\/set-meetings\?/);
+  assert.equal(calls[0].url.includes('/api/v1/mobile/calendar/booked-meetings'), false);
+  assert.equal(calls[0].url.includes('task_range=thisWeek'), true);
 });
