@@ -444,6 +444,18 @@ function normalizeLegacyDateTime(date?: string | null, time?: string | null): st
   return normalizeIsoValue(candidate);
 }
 
+function payloadOwnerProof(payload?: Record<string, unknown> | null): string | null {
+  if (!payload) return null;
+  const ownerContext = payload.owner_context as Record<string, unknown> | undefined;
+  const materializationProof = payload.materialization_proof as Record<string, unknown> | undefined;
+  return (
+    normalizeValue(payload.owner_proof as string | undefined) ||
+    normalizeValue(ownerContext?.owner_proof as string | undefined) ||
+    normalizeValue(materializationProof?.owner_proof as string | undefined) ||
+    null
+  );
+}
+
 function lifecycleMutationEventType(sourcePost: LifecycleMutationSourcePost): string {
   if (sourcePost === '/sales/stage') return 'sales_stage_changed';
   if (sourcePost === '/tasks/complete') return 'task_completed';
@@ -536,7 +548,10 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
     selectedTaskId: taskId || undefined,
   });
   const canCount = ownerContext.materializationStatus === 'operator_task';
-  const ownerProof = ownerContext.ownerProof || null;
+  const ownerProof =
+    ownerContext.ownerProof ||
+    payloadOwnerProof(args.payload) ||
+    (canCount && normalizeValue(args.taskAssignedOwner) ? 'task.assigned_owner' : null);
   if (isCountableActivity && canCount && !ownerProof) {
     throw new Error('Lifecycle mutation countable activity requires owner proof.');
   }

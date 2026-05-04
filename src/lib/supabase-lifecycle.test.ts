@@ -187,6 +187,29 @@ test('lifecycle mutation event logs spoke to too young as dial and contact', () 
   assert.equal(event.payload.counts_as_contact, true);
 });
 
+test('meeting set lifecycle mutation derives owner proof from task assignment when payload proof is absent', () => {
+  const event = buildLifecycleMutationEvent({
+    sourcePost: '/sales/meeting-set',
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    crmStage: 'Meeting Set',
+    taskId: '9907',
+    taskTitle: 'Confirmation Call',
+    taskAssignedOwner: 'Jerami Singleton',
+    occurredAt: '2026-05-01T19:30:00.000Z',
+    appointmentId: '613999',
+  });
+
+  assert.equal(event.eventType, 'meeting_set');
+  assert.equal(event.payload.counts_as_dial, true);
+  assert.equal(event.payload.counts_as_contact, true);
+  assert.equal(event.payload.counts_as_meeting_set, true);
+  assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
+  assert.equal(event.payload.owner_proof, 'task.assigned_owner');
+  assert.equal((event.payload.owner_context as Record<string, unknown>).owner_proof, 'task.assigned_owner');
+});
+
 test('lifecycle mutation event rejects missing occurrence clock for countable activity', () => {
   assert.throws(
     () =>

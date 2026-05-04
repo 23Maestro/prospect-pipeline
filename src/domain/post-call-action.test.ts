@@ -69,7 +69,7 @@ test('Meeting Set submit builds Supabase writes only when active-operator proof 
   );
   assert.equal(
     operatorPlan.supabaseLifecycleWrite?.args.payload?.owner_context?.owner_proof,
-    'submittedMeetingPayload.assigned_to',
+    'raycast_operator_context',
   );
   assert.equal(
     operatorPlan.supabaseLifecycleWrite?.args.payload?.owner_context?.task_assigned_owner,
@@ -166,6 +166,12 @@ test('Meeting Set submit keeps Laravel payload clean while Supabase carries Rayc
   );
   assert.equal(
     plan.supabaseLifecycleWrite?.args.payload?.owner_context?.owner_proof,
-    'submittedMeetingPayload.operator_owner',
+    'raycast_operator_context',
+  );
+  assert.equal(plan.supabaseLifecycleWrite?.args.payload?.operator_owner, 'Jerami Singleton');
+  assert.equal(plan.supabaseLifecycleWrite?.args.payload?.operator_owner_key, 'jerami_singleton');
+  assert.equal(
+    plan.supabaseLifecycleWrite?.args.payload?.booked_meeting_assigned_owner,
+    'Ryan Lietz',
   );
 });

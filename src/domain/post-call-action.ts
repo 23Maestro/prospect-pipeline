@@ -133,6 +133,7 @@ function buildMeetingSetWrites(args: {
     asString(args.input.meetingSet?.bookedMeetingAssignedOwner) ||
     args.ownerContext.bookedMeetingAssignedOwner ||
     null;
+  const ownerProof = 'raycast_operator_context';
 
   const lifecycleArgs: MeetingSetWriteArgs = {
     athleteId: args.input.athleteId,
@@ -165,7 +166,7 @@ function buildMeetingSetWrites(args: {
         resolved_owner_legacy_user_id: args.ownerContext.resolvedOwnerLegacyUserId,
         resolved_from_field: args.ownerContext.resolvedFromField,
         resolved_from_value: args.ownerContext.resolvedFromValue,
-        owner_proof: args.ownerContext.ownerProof,
+        owner_proof: ownerProof,
         materialization_status: args.ownerContext.materializationStatus,
         materialization_reason: args.ownerContext.materializationReason,
         can_materialize_for_active_operator: args.ownerContext.canMaterializeForActiveOperator,
@@ -173,13 +174,15 @@ function buildMeetingSetWrites(args: {
       },
       materialization_status: args.ownerContext.materializationStatus,
       materialization_reason: args.ownerContext.materializationReason,
-      owner_proof: args.ownerContext.ownerProof,
+      owner_proof: ownerProof,
       operator_owner: args.ownerContext.activeOperator.personName,
       operator_owner_key: args.ownerContext.activeOperator.operatorKey,
       operator_legacy_user_id: args.ownerContext.activeOperator.legacyUserId,
       task_assigned_owner: args.ownerContext.taskAssignedOwner,
+      booked_meeting_assigned_owner: bookedMeetingAssignedOwner,
       materialization_proof: {
         task_assigned_owner: args.ownerContext.taskAssignedOwner,
+        owner_proof: ownerProof,
         materialization_status: args.ownerContext.materializationStatus,
         status: args.ownerContext.materializationStatus,
         reason: args.ownerContext.materializationReason,
@@ -199,6 +202,7 @@ function buildMeetingSetWrites(args: {
       starts_at: startsAt,
       task_assigned_owner: args.ownerContext.taskAssignedOwner,
       booked_meeting_assigned_owner: bookedMeetingAssignedOwner,
+      owner_proof: ownerProof,
       materialization_status: args.ownerContext.materializationStatus,
       materialization_reason: args.ownerContext.materializationReason,
     },
