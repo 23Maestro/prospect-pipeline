@@ -30,7 +30,7 @@
 
 ```mermaid
 flowchart TD
-  A["Refresh Button\n(Call Tracker UI)"] --> B["Netlify /api/call-tracker-sync"]
+  A["Refresh Button\n(Call Tracker UI)"] --> B["Prospect Web /api/call-tracker-sync"]
   B --> C["Tailscale Funnel → FastAPI"]
   C --> D["POST /api/v1/call-tracker/sync"]
   D --> E["bash scripts/sync-supabase-pipeline.sh"]
@@ -215,7 +215,7 @@ The `call_tracker_summary` view should add columns for `dials` and `contacts` th
 - `athlete_pipeline_state` remains the mutable current-state snapshot — no changes.
 - `lifecycle_events` remains the audit trail — no changes to its structure.
 - The sync pipeline order (backfill → reconcile meetings → reconcile stages) remains the same.
-- The Refresh button → Netlify → FastAPI → bash pipeline remains the same.
+- The Refresh button → Prospect Web → FastAPI → bash pipeline remains the same.
 - Thursday's numbers remain accurate (the `call_events` rows from the reconcile script are unchanged).
 
 ---
@@ -240,7 +240,7 @@ The `call_tracker_summary` view should add columns for `dials` and `contacts` th
 | [backfill-current-pipeline-to-supabase.mjs](file:///Users/singleton23/Raycast/prospect-pipeline/scripts/backfill-current-pipeline-to-supabase.mjs) | Add `call_activity_events` writes for dial/contact tasks. Add `meeting_set` lifecycle event promotion for athletes with meeting evidence but no existing event. |
 | [call_tracker_events view](file:///Users/singleton23/Raycast/prospect-pipeline/supabase/migrations/20260501012000_call_tracker_suppress_changed_event_ids.sql) | New migration to `UNION ALL` `call_activity_events` into the view. |
 | [call_tracker_summary view](file:///Users/singleton23/Raycast/prospect-pipeline/supabase/migrations/20260501012000_call_tracker_suppress_changed_event_ids.sql) | Add `dials` and `contacts` counters. |
-| [app.js](file:///Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/app/static/call-tracker/app.js) | Update `isDailyCallActivity` and `isDailyContact` to recognize activity events. |
+| [app.js](file:///Users/singleton23/Raycast/prospect-pipeline/apps/prospect-web/public/prospect-call-tracker/app.js) | Update `isDailyCallActivity` and `isDailyContact` to recognize activity events. |
 
 > [!NOTE]
 > No changes to `reconcile-current-sales-stages-to-supabase.mjs`, `sync-booked-meetings-to-supabase.mjs`, `call_tracker.py`, `call-tracker-sync.mjs`, or `supabase-lifecycle.ts`. The fix is upstream (backfill writes real facts) and downstream (views read from the right tables).

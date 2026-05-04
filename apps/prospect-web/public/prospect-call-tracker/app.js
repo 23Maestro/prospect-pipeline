@@ -63,13 +63,28 @@ function escapeHtml(value) {
 function cleanClosedWonTitle(row) {
   const athleteName = String(row.athlete_name || '').trim();
   const rawTitle = String(row.booked_event_title || row.raw_crm_stage || athleteName || 'Closed Won').trim();
-  const withoutOutcome = rawTitle.replace(/^\((?:ENR|FU|CL|RSP|NS|CAN)(?:\s+\$?\d+)?\)\s*/i, '').trim();
+  const withoutOutcome = rawTitle.replace(/^\((?:ENR|FU|CL|RSP|NS|CAN)(?:\s+\$?\d+(?:\.\d{1,2})?)?(?:\s*-[^)]+)?\)\s*/i, '').trim();
   if (!athleteName) return withoutOutcome || rawTitle;
   const duplicated = `${athleteName} ${athleteName}`;
   if (withoutOutcome.toLowerCase().startsWith(duplicated.toLowerCase())) {
     return `${athleteName}${withoutOutcome.slice(duplicated.length)}`.trim();
   }
   return withoutOutcome || athleteName;
+}
+
+function closedWonDisplay(row) {
+  const title = cleanClosedWonTitle(row);
+  const athleteName = String(row.athlete_name || '').trim();
+  if (!athleteName) return { name: title, subtitle: '' };
+  const normalizedTitle = title.toLowerCase();
+  const normalizedName = athleteName.toLowerCase();
+  if (!normalizedTitle.startsWith(normalizedName)) {
+    return { name: athleteName, subtitle: title };
+  }
+  return {
+    name: athleteName,
+    subtitle: title.slice(athleteName.length).trim(),
+  };
 }
 
 function shortDate(value) {
@@ -470,11 +485,11 @@ function renderBars() {
   const meetingsSet = Number(state.summary?.meetings_set ?? 0);
   const setRate = contacts ? Math.round((meetingsSet / contacts) * 100) : 0;
   const entries = [
-    ['Spoke With', contacts, 'green'],
     ['Dials', Number(cards.dials ?? state.summary?.dials ?? 0), 'blue'],
     ['Voicemail', Number(cards.voicemailOnly ?? state.summary?.voicemail_only ?? 0), 'purple'],
+    ['Spoke With', contacts, 'green'],
     ['Appointments', Number(cards.appointmentsTracked ?? state.summary?.appointments_tracked ?? 0), 'amber'],
-  ];
+  ].sort((left, right) => Number(right[1]) - Number(left[1]));
   const total = Math.max(1, entries.reduce((sum, [, count]) => sum + count, 0));
   let cursor = 0;
   const segments = entries.map(([, count, color]) => {
@@ -527,14 +542,18 @@ function renderClosedWon() {
 
   $('closedWonList').innerHTML = closed.length
     ? closed
-        .map(
-          (row) => `
+        .map((row) => {
+          const display = closedWonDisplay(row);
+          return `
             <div class="closed-item">
-              <strong>${escapeHtml(cleanClosedWonTitle(row))}</strong>
+              <span class="closed-copy">
+                <strong>${escapeHtml(display.name)}</strong>
+                ${display.subtitle ? `<em>${escapeHtml(display.subtitle)}</em>` : ''}
+              </span>
               <b>- ${money(row.revenue_cents)}</b>
             </div>
-          `,
-        )
+          `;
+        })
         .join('')
     : '<p class="empty">No closes yet.</p>';
 }

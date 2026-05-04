@@ -1,7 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse
 import hmac
 import logging
 import os
@@ -54,9 +53,7 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NPID API Bridge", version="1.0")
 
-STATIC_DIR = Path(__file__).parent / "app" / "static"
 DEFAULT_ALLOWED_ORIGINS = "https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8888,http://127.0.0.1:8888"
-STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _parse_allowed_origins() -> list[str]:
@@ -167,17 +164,12 @@ async def auth_reload():
 
 
 @app.get("/")
-def portal_home():
-    portal_file = STATIC_DIR / "index.html"
-    if portal_file.exists():
-        return FileResponse(portal_file)
+def api_home():
     return {
         "status": "ok",
-        "message": "Portal UI not found. Ensure app/static/index.html exists."
+        "service": "NPID API Bridge",
+        "surface": "api",
     }
-
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 # MOUNT THESE – this is what you were missing

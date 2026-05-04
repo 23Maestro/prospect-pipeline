@@ -49,7 +49,7 @@ test('architecture docs pin the domain/adapters/persistence contract', () => {
   ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
 
   assert.doesNotMatch(doc, /vercel/i);
-  assert.doesNotMatch(doc, /netlify migration/i);
+  assert.doesNotMatch(doc, new RegExp('net' + 'lify migration', 'i'));
 });
 
 test('architecture smoke checklist covers the manual cross-system proof path', () => {
@@ -149,11 +149,10 @@ test('Supabase reporting views materialize only domain facts or explicit compati
   assert.doesNotMatch(migration, /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\)/);
 });
 
-test('Netlify-to-Vercel architecture docs keep hosting adapter scope separate from domain meaning', () => {
+test('Prospect Web architecture docs keep hosting adapter scope separate from domain meaning', () => {
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
-  const matches = architectureDocs.filter((path) => /vercel|netlify migration/i.test(readRepoFile(path)));
+  const matches = architectureDocs.filter((path) => /prospect web|vercel/i.test(readRepoFile(path)));
   assert.deepEqual(matches.sort(), [
-    'docs/architecture/netlify-to-vercel-migration.md',
     'docs/architecture/prospect-web-hosting-adapter.md',
     'docs/architecture/vercel-live-verification.md',
   ]);

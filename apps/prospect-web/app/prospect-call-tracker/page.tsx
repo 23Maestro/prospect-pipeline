@@ -59,11 +59,12 @@ export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260503-set-rate" />
+      <link rel="icon" href="/prospect-call-tracker/prospect-pipeline.png" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260504-brand" />
       <main className="shell">
         <header className="topbar">
           <a className="brand-row" href="/">
-            <span className="vercel-mark" aria-hidden="true" />
+            <img className="app-mark" src="/prospect-call-tracker/prospect-pipeline.png" alt="" />
             <strong>Prospect Web</strong>
           </a>
           <div className="topbar-actions">
@@ -188,7 +189,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260503-set-rate" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260504-brand" strategy="afterInteractive" />
     </>
   );
 }

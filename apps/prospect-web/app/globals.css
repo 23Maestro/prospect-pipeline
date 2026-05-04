@@ -69,11 +69,11 @@ a {
 }
 
 .home-mark {
-  width: 0;
-  height: 0;
-  border-left: 10px solid transparent;
-  border-right: 10px solid transparent;
-  border-bottom: 18px solid #fff;
+  width: 34px;
+  height: 41px;
+  border-radius: 9px;
+  object-fit: cover;
+  flex: 0 0 auto;
 }
 
 .home-status {

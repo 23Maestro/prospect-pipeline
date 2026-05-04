@@ -16,7 +16,7 @@ export default function HomePage() {
     <main className="home-shell">
       <header className="home-topbar">
         <a className="home-brand" href="/">
-          <span className="home-mark" aria-hidden="true" />
+          <img className="home-mark" src="/prospect-call-tracker/prospect-pipeline.png" alt="" />
           <span>Prospect Web</span>
         </a>
         <div className="home-status" aria-label="Deployment status">

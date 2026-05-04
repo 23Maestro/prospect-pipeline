@@ -449,19 +449,15 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
 
     const taskId = String(pipelineTask.task_id || '').trim();
     if (taskId && isDashboardCallActivityStatus(mapping.taskStatus)) {
-      const activityOccurredAt = completionAt || dueAt;
-      const activityOccurredAtSource = completionAt
-        ? 'task.completion_date'
-        : dueAt
-          ? 'task.due_date'
-          : null;
+      const activityOccurredAt = completionAt;
+      const activityOccurredAtSource = completionAt ? 'task.completion_date' : null;
       if (!activityOccurredAt) {
         clockSkipped.push({
           athlete_key: athleteKey,
           athlete_name: athleteName,
           task_id: taskId,
           task_status: mapping.taskStatus,
-          reason: 'missing_completion_or_due_date',
+          reason: 'missing_completion_date_for_call_activity',
         });
       } else {
         callActivityRows.push(

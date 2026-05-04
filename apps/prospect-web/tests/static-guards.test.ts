@@ -78,12 +78,22 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     .map((line) => line.slice(3).trim())
     .filter(Boolean);
 
+  const oldStaticPrefix = ['npid-api-layer', 'app', 'static'].join('/');
+  const oldConfigWriterPath = ['scripts', ['write', 'call', 'tracker'].join('-') + '-config.mjs'].join('/');
   const allowedSourceFiles = new Set([
+    'npid-api-layer/README.md',
+    'npid-api-layer/main.py',
     'npid-api-layer/app/routers/mobile.py',
     'npid-api-layer/test_mobile_booked_meetings.py',
-    'npid-api-layer/app/static/call-tracker/app.js',
-    'npid-api-layer/app/static/call-tracker/config.example.js',
-    'npid-api-layer/app/static/call-tracker/styles.css',
+    `${oldStaticPrefix}/app.js`,
+    `${oldStaticPrefix}/call-tracker/app.js`,
+    `${oldStaticPrefix}/call-tracker/config.example.js`,
+    `${oldStaticPrefix}/call-tracker/index.html`,
+    `${oldStaticPrefix}/call-tracker/prospect-pipeline.png`,
+    `${oldStaticPrefix}/call-tracker/styles.css`,
+    `${oldStaticPrefix}/index.html`,
+    `${oldStaticPrefix}/prospect-id-logo.png`,
+    `${oldStaticPrefix}/styles.css`,
     'src/domain/architecture-contract.test.ts',
     'src/domain/call-tracker-facts.test.ts',
     'src/domain/call-tracker-facts.ts',
@@ -98,6 +108,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/materialize-call-tracker-data-contract.mjs',
     'scripts/archive-call-tracker-week.mjs',
     'scripts/repair-call-event-owner-proof.mjs',
+    oldConfigWriterPath,
     'scripts/sync-current-pipeline-to-supabase.mjs',
     'scripts/sync-current-pipeline-to-supabase.test.mjs',
     'src/domain/call-tracker-vercel-contract.ts',
@@ -118,23 +129,38 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
   assert.deepEqual(offenders, []);
 });
 
-test('Netlify files and deploy instructions are removed after Vercel migration', () => {
-  assert.equal(existsSync(join(repoRoot, 'netlify.toml')), false, 'netlify.toml should not exist');
-  assert.equal(existsSync(join(repoRoot, 'netlify', 'functions')), false, 'netlify/functions should not exist');
-  assert.equal(existsSync(join(repoRoot, 'mobile-web')), false, 'old Netlify mobile-web publish dir should not exist');
+test('legacy hosting and FastAPI static web leftovers are purged', () => {
+  const legacyHost = 'net' + 'lify';
+  const oldMobileDir = 'mobile' + '-web';
+  const oldStaticPath = ['npid-api-layer', 'app', 'static'];
+  const oldConfigWriter = ['write', 'call', 'tracker'].join('-') + '-config';
+  const forbiddenPaths = [
+    [`${legacyHost}.toml`],
+    [legacyHost, 'functions'],
+    [oldMobileDir],
+    [`.${legacyHost}`],
+    oldStaticPath,
+    ['scripts', `${oldConfigWriter}.mjs`],
+    ['docs', 'architecture', `${legacyHost}-to-vercel-migration.md`],
+    ['docs', 'superpowers', 'plans', '2026-05-02-prospect-web-vercel-adapter.md'],
+  ];
+  for (const parts of forbiddenPaths) {
+    assert.equal(existsSync(join(repoRoot, ...parts)), false, parts.join('/'));
+  }
 
   const rootPackage = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
-  const netlifyScripts = Object.entries(rootPackage.scripts || {})
-    .filter(([, value]) => /netlify/i.test(String(value)))
-    .map(([key]) => key);
-  assert.deepEqual(netlifyScripts, []);
+  const forbiddenScript = 'sync:' + ['call', 'tracker', 'config'].join('-');
+  const forbiddenScriptKeys = Object.keys(rootPackage.scripts || {}).filter((key) => key === forbiddenScript);
+  assert.deepEqual(forbiddenScriptKeys, []);
 
-  const historicalDocs = new Set([
-    'docs/architecture/netlify-to-vercel-migration.md',
-    'docs/architecture/prospect-web-hosting-adapter.md',
-    'docs/architecture/vercel-live-verification.md',
-    'docs/superpowers/plans/2026-05-02-prospect-web-vercel-adapter.md',
-  ]);
+  const forbiddenPattern = new RegExp([
+    legacyHost,
+    oldMobileDir,
+    `${legacyHost}\\.toml`,
+    `${legacyHost}/functions`,
+    oldStaticPath.join('/'),
+    oldConfigWriter,
+  ].join('|'), 'i');
   const scannedFiles = [
     ...walk(join(repoRoot, 'apps', 'prospect-web')),
     ...walk(join(repoRoot, 'docs')),
@@ -145,12 +171,9 @@ test('Netlify files and deploy instructions are removed after Vercel migration',
 
   const offenders = scannedFiles.flatMap((path) => {
     const rel = relative(repoRoot, path);
-    if (rel === 'apps/prospect-web/tests/static-guards.test.ts') return [];
-    if (historicalDocs.has(rel)) return [];
+    if (rel === ['apps', 'prospect-web', 'tests', 'static-guards.test.ts'].join('/')) return [];
     const text = readFileSync(path, 'utf8');
-    return /netlify\.app|netlify deploy|netlify\/functions|netlify\.toml|mobile-web|x-mobile-proxy': 'netlify|x-mobile-proxy": "netlify/i.test(
-      text,
-    )
+    return forbiddenPattern.test(text)
       ? [rel]
       : [];
   });

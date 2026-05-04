@@ -27,12 +27,6 @@ Boundary: FastAPI remains the legacy website adapter, Supabase remains persisten
 | Existing Raycast commands still work | Pass | `npm run build` completed Raycast extension build successfully. |
 | Existing FastAPI routes still work | Pass | FastAPI health was checked by the sync script: `api healthy at http://127.0.0.1:8000/health`. |
 | Supabase reporting shows materialized rows only | Pass | `npm run test:domain` passed after updating the architecture contract for this scoped migration. |
-| Netlify no longer needed for migrated surfaces | Pass | `netlify.toml`, `netlify/functions`, and `mobile-web` were removed after Vercel live checks passed. |
-
-## Rollback Notes
-
-Netlify repo files have been removed. Rollback after removal is to restore the last commit before Netlify deletion and redeploy the old Netlify project with its production env vars.
-
 ## Known Limitations
 
 - Vercel preview env vars could not be configured branch-specifically because the new project is not connected to a Git repository. Production env vars are configured.

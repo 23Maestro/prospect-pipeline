@@ -186,16 +186,9 @@ Set `LOG_LEVEL=DEBUG` in `.env` for verbose output including all request/respons
 
 Update your Raycast extension to call `http://localhost:8000/api/v1/...` instead of the Python scripts that hit Laravel directly. The response format is guaranteed stable even when Laravel changes underneath.
 
-## External Portal
+## API Root
 
-A lightweight web portal is served at the FastAPI root path (`/`) and uses existing JSON endpoints for:
-
-- Athlete search and ID resolution
-- Video progress summary
-- Contact info
-- Notes list and add
-
-Static assets are located in `app/static/`.
+The FastAPI root path (`/`) returns a small JSON status response. Browser UI is served by Prospect Web.
 
 ## CORS Configuration
 

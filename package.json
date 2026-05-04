@@ -256,7 +256,6 @@
     "test:domain": "node --import tsx --test src/domain/*.test.ts",
     "sync:supabase-env": "node scripts/sync-supabase-env.mjs",
     "sync:supabase-pipeline": "bash scripts/sync-supabase-pipeline.sh",
-    "sync:call-tracker-config": "node scripts/write-call-tracker-config.mjs",
     "materialize:call-tracker-contract": "tsx scripts/materialize-call-tracker-data-contract.mjs",
     "archive:call-tracker-week": "node scripts/archive-call-tracker-week.mjs",
     "rotate:supabase-server-key": "node scripts/rotate-supabase-server-key.mjs",
