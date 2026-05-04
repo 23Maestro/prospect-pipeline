@@ -213,7 +213,10 @@ export function resolveVoicemailFollowUpVariant(args: {
         value.includes('no-show') ||
         value.includes('left voice mail 2') ||
         value.includes('left voicemail 2') ||
-        value.includes('call attempt 2'),
+        value.includes('call attempt 2') ||
+        value.includes('second time') ||
+        value.includes('second voicemail') ||
+        value.includes('follow-up voicemail'),
     )
   ) {
     if (rawCandidates.some((value) => value.includes('no show') || value.includes('no-show'))) {
@@ -284,21 +287,21 @@ export function buildVoicemailFollowUpMessage(args: {
         ]
       : recipientType === 'student_athlete' && args.variant === 'call_attempt_3'
         ? [
-            `${greeting} this is ${senderName} with Prospect ID. Just checking one last time on your college ${scoutLabel} goals.`,
+            `${greeting} this is ${senderName} with Prospect ID. Last follow-up on your college ${scoutLabel} profile.`,
             '',
-            'If this is something you still want to pursue, have one of your parents give me a quick call or text so we can connect.',
+            'If playing in college is still a real goal, have one of your parents reach out. If not, no worries.',
           ]
         : recipientType === 'student_athlete' && args.variant === 'call_attempt_2'
           ? [
-              `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I received your info and wanted to learn a little more about your goals for playing in college.`,
+              `${greeting} this is ${senderName} with Prospect ID. Following up on your college ${scoutLabel} goals.`,
               '',
-              'If that’s something you’re serious about, have one of your parents give me a quick call or text.',
+              'If this is still something you want to pursue, have one of your parents call or text me so we can connect.',
             ]
           : recipientType === 'student_athlete'
             ? [
-                `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I received your info and wanted to learn a little more about your goals for playing in college.`,
+                `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID. I received your info and wanted to ask a few quick questions about your college ${scoutLabel} goals.`,
                 '',
-                'If that’s something you’re serious about, have one of your parents give me a quick call or text.',
+                'If you’re serious about playing in college, have one of your parents call or text me.',
               ]
             : args.variant === 'no_show'
               ? [
@@ -312,27 +315,28 @@ export function buildVoicemailFollowUpMessage(args: {
                 ? [
                     `${greeting} this is ${senderName} with Prospect ID.`,
                     '',
-                    `I’ve tried a few times about ${args.athleteName.trim() || 'your athlete'}’s college ${scoutLabel} profile. If this is still something your family wants to learn more about, you can grab a quick time here:`,
+                    `I wanted to check one last time on ${args.athleteName.trim() || 'your athlete'}’s college ${scoutLabel} profile.`,
                     '',
+                    'If recruiting help isn’t needed right now, no worries. Otherwise, a short 10-minute call today or tomorrow would be the easiest next step.',
+                    '',
+                    'You can also pick a time here:',
                     CAL_BOOKING_URL,
-                    '',
-                    'If not, no worries. I’ll close this out for now.',
                   ]
                 : args.variant === 'call_attempt_2'
                   ? [
                       `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID.`,
                       '',
-                      `I just tried you again about ${args.athleteName.trim() || 'your athlete'}’s profile. If playing college ${scoutLabel} is still a serious goal, I’d like to connect for a few quick questions.`,
+                      `Following up on ${args.athleteName.trim() || 'your athlete'}’s college ${scoutLabel} profile. Do you have 10 minutes later today or tomorrow?`,
                       '',
-                      'You can grab a time that works here:',
+                      'If it’s easier, you can grab a time here:',
                       CAL_BOOKING_URL,
                     ]
                   : [
                       `${greeting} this is ${senderName} with Prospect ID.`,
                       '',
-                      `I’m reaching out because I received ${args.athleteName.trim() || 'your athlete'}’s profile and wanted to ask a few quick questions about ${pronouns.possessive} college ${scoutLabel} goals.`,
+                      `${args.athleteName.trim() || 'Your athlete'}’s profile came through, and I wanted to ask a few quick questions about ${pronouns.possessive} college ${scoutLabel} goals.`,
                       '',
-                      'Would later today or tomorrow be better for a quick call?',
+                      'Would later today or tomorrow work for a quick 10-minute call?',
                     ];
 
   if (args.variant === 'no_show') {

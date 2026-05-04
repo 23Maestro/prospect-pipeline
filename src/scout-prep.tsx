@@ -3071,6 +3071,15 @@ function ScoutPrepDetail({
       }
 
       const parentName = getScoutPrepParentOptions(activeContext)[0]?.name || 'Parent';
+      const selectedCrmStage = await getSelectedCrmStageLabel(task.contact_id).catch(() => null);
+      const followUpTask = findNewestIncompleteFollowUpTask(activeContext.tasks);
+      const currentVoicemailTask = [
+        stripMoveThisTaskPrefix(followUpTask?.title) || task.title || null,
+        followUpTask?.description || task.description || null,
+      ]
+        .map((value) => String(value || '').trim())
+        .filter(Boolean)
+        .join(' ');
       const athleteGender = await resolveAthleteGenderWithRayAI({
         athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
         sport: activeContext.resolved.sport,
@@ -3080,6 +3089,8 @@ function ScoutPrepDetail({
         athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
         sport: activeContext.resolved.sport,
         athleteGender,
+        crmStage: selectedCrmStage,
+        currentTask: currentVoicemailTask || task.title || null,
       });
 
       const [scriptResult, voicemailResult] = await Promise.all([

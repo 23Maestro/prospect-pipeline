@@ -57,6 +57,13 @@ test('resolveVoicemailFollowUpVariant prefers no-show and later attempt states b
     'call_attempt_1',
   );
   assert.equal(
+    resolveVoicemailFollowUpVariant({
+      crmStage: null,
+      currentTask: 'Scheduled Follow Up Call the family second time and leave follow-up voicemail.',
+    }),
+    'call_attempt_2',
+  );
+  assert.equal(
     resolveVoicemailFollowUpVariant({ crmStage: 'Meeting Set', currentTask: 'Something Else' }),
     'call_attempt_1',
   );
@@ -93,10 +100,10 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
   );
   assert.match(
     message,
-    /I’m reaching out because I received Wylie’s profile and wanted to ask a few quick questions about his college soccer goals\./,
+    /Wylie’s profile came through, and I wanted to ask a few quick questions about his college soccer goals\./,
   );
   assert.doesNotMatch(message, /I just left you a voicemail/);
-  assert.match(message, /Would later today or tomorrow be better for a quick call\?/);
+  assert.match(message, /Would later today or tomorrow work for a quick 10-minute call\?/);
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /Enjoy the rest of your week\./);
   assert.match(message, /Jerami Singleton\nProspect ID/);
@@ -113,7 +120,7 @@ test('buildVoicemailFollowUpMessage uses female pronouns for softball templates'
 
   assert.match(
     message,
-    /I’m reaching out because I received Ava’s profile and wanted to ask a few quick questions about her college softball goals\./,
+    /Ava’s profile came through, and I wanted to ask a few quick questions about her college softball goals\./,
   );
   assert.doesNotMatch(message, /serious goal for him/);
 });
@@ -132,9 +139,14 @@ test('buildVoicemailFollowUpMessage renders attempt 2 Cal booking copy', () => {
     now: new Date('2026-04-23T23:30:00Z'),
   });
 
-  assert.match(message, /I just tried you again about Grayson Brown’s profile\./);
+  assert.match(
+    message,
+    /Following up on Grayson Brown’s college football profile\. Do you have 10 minutes later today or tomorrow\?/,
+  );
+  assert.match(message, /If it’s easier, you can grab a time here:/);
   assert.match(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
+  assert.doesNotMatch(message, /I just tried you again/);
   assert.doesNotMatch(message, /today or in the next few days/);
   assert.doesNotMatch(message, /trying to get a better feel/);
   assert.doesNotMatch(message, /learn his goals/);
@@ -173,12 +185,48 @@ test('buildVoicemailFollowUpMessage renders attempt 3 copy', () => {
   });
 
   assert.match(message, /^Good afternoon Ms\. Bowden, this is Jerami Singleton with Prospect ID\./);
-  assert.match(message, /I’ve tried a few times about Andrajhez’s college football profile\./);
+  assert.match(message, /I wanted to check one last time on Andrajhez’s college football profile\./);
+  assert.match(
+    message,
+    /If recruiting help isn’t needed right now, no worries\. Otherwise, a short 10-minute call today or tomorrow would be the easiest next step\./,
+  );
+  assert.match(message, /You can also pick a time here:/);
   assert.match(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
-  assert.match(message, /I’ll close this out for now\./);
+  assert.doesNotMatch(message, /I’ve tried a few times/);
+  assert.doesNotMatch(message, /I’ll close this out for now\./);
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /Enjoy the rest of your week\./);
   assert.match(message, /Jerami Singleton\nProspect ID/);
+});
+
+test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', () => {
+  const attempt1 = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_1',
+    greeting: 'Good afternoon Joenny,',
+    athleteName: 'Joenny',
+    recipientType: 'student_athlete',
+    sport: 'Football',
+  });
+  const attempt2 = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_2',
+    greeting: 'Good afternoon Joenny,',
+    athleteName: 'Joenny',
+    recipientType: 'student_athlete',
+    sport: 'Football',
+  });
+  const attempt3 = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_3',
+    greeting: 'Good afternoon Joenny,',
+    athleteName: 'Joenny',
+    recipientType: 'student_athlete',
+    sport: 'Football',
+  });
+
+  assert.match(attempt1, /wanted to ask a few quick questions about your college football goals/);
+  assert.match(attempt2, /Following up on your college football goals/);
+  assert.match(attempt3, /Last follow-up on your college football profile/);
+  assert.notEqual(attempt1, attempt2);
+  assert.notEqual(attempt2, attempt3);
 });
 
 test('buildCallAttempt2Message fills athlete and recipient names', (t) => {
@@ -198,10 +246,12 @@ test('buildCallAttempt2Message fills athlete and recipient names', (t) => {
   );
   assert.match(
     message,
-    /I just tried you again about Grayson Brown’s profile\. If playing college football is still a serious goal, I’d like to connect for a few quick questions\./,
+    /Following up on Grayson Brown’s college football profile\. Do you have 10 minutes later today or tomorrow\?/,
   );
+  assert.match(message, /If it’s easier, you can grab a time here:/);
   assert.match(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
+  assert.doesNotMatch(message, /I just tried you again/);
   assert.doesNotMatch(message, /trying to get a better feel/);
   assert.doesNotMatch(message, /learn his goals/);
 });

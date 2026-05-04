@@ -232,24 +232,39 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
   athleteName: string;
   sport?: string | null;
   athleteGender?: AthleteGender | null;
+  crmStage?: string | null;
+  currentTask?: string | null;
 }): string {
   const parentFirstName = firstName(args.parentName) || args.parentName || 'Parent';
   const athleteFirstName = firstName(args.athleteName) || args.athleteName || 'your athlete';
   const sport = sportLabel(args.sport).toLowerCase();
   const gender = args.athleteGender || resolveAthleteGenderFromSport(args.sport) || 'male';
-  const childLabel = gender === 'female' ? 'daughter' : 'son';
   const possessive = gender === 'female' ? 'her' : 'his';
+  const selectedVariant = resolveVoicemailFollowUpVariant({
+    crmStage: args.crmStage,
+    currentTask: args.currentTask,
+  });
+
+  if (selectedVariant === 'call_attempt_2' || selectedVariant === 'call_attempt_3') {
+    return [
+      `Hi ${parentFirstName}, this is Jerami Singleton with Prospect ID.`,
+      '',
+      `Quick follow-up on ${athleteFirstName}’s college ${sport} profile. If playing at the next level is still a serious goal, call or text me back when you can.`,
+      '',
+      'My number is 407-473-3637.',
+    ].join('\n');
+  }
 
   return [
-    `Hi ${parentFirstName}, this is Jerami Singleton, college ${sport} scout with National Prospect ID.`,
+    `Hi ${parentFirstName}, this is Jerami Singleton, college ${sport} scout with Prospect ID.`,
     '',
-    `The reason why I’m calling is because I had some information come across my desk today about your ${childLabel} ${athleteFirstName}.`,
+    `I’m calling about ${athleteFirstName}’s college ${sport} profile and wanted to see if playing at the next level is still a serious goal.`,
     '',
-    `I had some questions I wanted to ask you about ${possessive} desire to play college ${sport}, and I wanted to learn more about ${possessive} academics and ${sport} talent.`,
+    `I had a few quick questions about ${possessive} academics and ${sport} talent.`,
     '',
-    'Please give me a call back today, my number here is 407-473-3637.',
+    'You can call or text me back at 407-473-3637.',
     '',
-    `Thanks ${parentFirstName}, talk to you soon. Bye, Bye.`,
+    'Again, this is Jerami with Prospect ID, 407-473-3637.',
   ].join('\n');
 }
 
