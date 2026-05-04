@@ -732,7 +732,7 @@ test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and a
   assert.match(body, /his academics and football talent/);
   assert.match(body, /407-473-3637/);
   assert.doesNotMatch(body, /came across my desk/);
-  assert.match(body, /Again, this is Jerami with Prospect ID, 407-473-3637\.$/);
+  assert.doesNotMatch(body, /Again, this is Jerami with Prospect ID/);
 });
 
 test('buildScoutPrepLeavingVoicemailBody: uses the provided sport for non-football athletes', () => {

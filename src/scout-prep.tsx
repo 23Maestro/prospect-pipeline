@@ -14,8 +14,8 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { useForm } from '@raycast/utils';
-import { spawn } from 'child_process';
 import { useEffect, useRef, useState } from 'react';
+import { saveProspectContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import {
@@ -633,76 +633,11 @@ async function createProspectContact(
     phone: activeCandidate.phone,
   });
   const [firstName, lastName, phone] = payload.split('\n');
-  const result = await runOsaScript(
-    [
-      'on run argv',
-      'set firstName to item 1 of argv',
-      'set lastName to item 2 of argv',
-      'set phoneValue to item 3 of argv',
-      'tell application "Contacts"',
-      'set matchingPeople to every person whose first name is firstName and last name is lastName',
-      'set targetPerson to missing value',
-      'set actionStatus to "created"',
-      'repeat with matchingPerson in matchingPeople',
-      'repeat with existingPhone in phones of matchingPerson',
-      'if value of existingPhone is phoneValue then',
-      'set targetPerson to matchingPerson',
-      'set actionStatus to "exists"',
-      'exit repeat',
-      'end if',
-      'end repeat',
-      'if targetPerson is not missing value then exit repeat',
-      'if targetPerson is missing value then set targetPerson to matchingPerson',
-      'set actionStatus to "updated"',
-      'end repeat',
-      'if targetPerson is missing value then',
-      'set targetPerson to make new person with properties {first name:firstName, last name:lastName}',
-      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
-      'else if actionStatus is "updated" then',
-      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
-      'end if',
-      'set preferredGroup to missing value',
-      'repeat with existingGroup in every group',
-      'if (name of existingGroup) is "ID Contacts" then',
-      'set preferredGroup to existingGroup',
-      'exit repeat',
-      'end if',
-      'end repeat',
-      'if preferredGroup is missing value then',
-      'repeat with existingGroup in every group',
-      'set groupNameText to name of existingGroup',
-      'ignoring case',
-      'if (groupNameText contains "prospect" and groupNameText contains "id") or groupNameText contains "id contacts" or (groupNameText contains "client" and groupNameText contains "id") then',
-      'set preferredGroup to existingGroup',
-      'exit repeat',
-      'end if',
-      'end ignoring',
-      'end repeat',
-      'end if',
-      'set matchedGroupName to ""',
-      'if preferredGroup is not missing value then',
-      'set matchedGroupName to name of preferredGroup',
-      'set targetPersonId to id of targetPerson',
-      'set memberIds to id of every person of preferredGroup',
-      'if memberIds does not contain targetPersonId then add targetPerson to preferredGroup',
-      'end if',
-      'save',
-      'return actionStatus & "|" & matchedGroupName',
-      'end tell',
-      'end run',
-    ],
-    [firstName || '', lastName || '', phone || ''],
-  );
-
-  const [statusValue, groupNameValue] = result.split('|');
-  const status =
-    statusValue === 'exists' || statusValue === 'updated' || statusValue === 'created'
-      ? statusValue
-      : 'created';
+  const [result] = await saveProspectContacts([firstName || ''], [lastName || ''], [phone || '']);
 
   return {
-    status,
-    groupName: String(groupNameValue || '').trim() || null,
+    status: result?.status || 'created',
+    groupName: result?.groupName || null,
   };
 }
 
@@ -730,113 +665,27 @@ async function createProspectContactsBatch(
     return [firstName || '', lastName || '', phone || ''];
   });
 
-  const output = await runOsaScript(
-    [
-      'on findPreferredGroup()',
-      'tell application "Contacts"',
-      'set preferredGroup to missing value',
-      'repeat with existingGroup in every group',
-      'if (name of existingGroup) is "ID Contacts" then',
-      'set preferredGroup to existingGroup',
-      'exit repeat',
-      'end if',
-      'end repeat',
-      'if preferredGroup is missing value then',
-      'repeat with existingGroup in every group',
-      'set groupNameText to name of existingGroup',
-      'ignoring case',
-      'if (groupNameText contains "prospect" and groupNameText contains "id") or groupNameText contains "id contacts" or (groupNameText contains "client" and groupNameText contains "id") then',
-      'set preferredGroup to existingGroup',
-      'exit repeat',
-      'end if',
-      'end ignoring',
-      'end repeat',
-      'end if',
-      'return preferredGroup',
-      'end tell',
-      'end findPreferredGroup',
-      '',
-      'on joinLines(values)',
-      "set previousDelimiters to AppleScript's text item delimiters",
-      "set AppleScript's text item delimiters to linefeed",
-      'set joinedText to values as text',
-      "set AppleScript's text item delimiters to previousDelimiters",
-      'return joinedText',
-      'end joinLines',
-      '',
-      'on run argv',
-      'set resultLines to {}',
-      'tell application "Contacts"',
-      'set preferredGroup to my findPreferredGroup()',
-      'repeat with index from 1 to (count of argv) by 3',
-      'if index + 2 is greater than (count of argv) then exit repeat',
-      'set firstName to item index of argv',
-      'set lastName to item (index + 1) of argv',
-      'set phoneValue to item (index + 2) of argv',
-      'set matchingPeople to every person whose first name is firstName and last name is lastName',
-      'set targetPerson to missing value',
-      'set actionStatus to "created"',
-      'repeat with matchingPerson in matchingPeople',
-      'repeat with existingPhone in phones of matchingPerson',
-      'if value of existingPhone is phoneValue then',
-      'set targetPerson to matchingPerson',
-      'set actionStatus to "exists"',
-      'exit repeat',
-      'end if',
-      'end repeat',
-      'if targetPerson is not missing value then exit repeat',
-      'if targetPerson is missing value then set targetPerson to matchingPerson',
-      'set actionStatus to "updated"',
-      'end repeat',
-      'if targetPerson is missing value then',
-      'set targetPerson to make new person with properties {first name:firstName, last name:lastName}',
-      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
-      'else if actionStatus is "updated" then',
-      'make new phone at end of phones of targetPerson with properties {label:"mobile", value:phoneValue}',
-      'end if',
-      'set matchedGroupName to ""',
-      'if preferredGroup is not missing value then',
-      'set matchedGroupName to name of preferredGroup',
-      'set targetPersonId to id of targetPerson',
-      'set memberIds to id of every person of preferredGroup',
-      'if memberIds does not contain targetPersonId then add targetPerson to preferredGroup',
-      'end if',
-      'end if',
-      'set resultLine to actionStatus & "|" & matchedGroupName & "|" & firstName & " " & lastName & "|" & phoneValue',
-      'copy resultLine to end of resultLines',
-      'end repeat',
-      'save',
-      'return my joinLines(resultLines)',
-      'end tell',
-      'end run',
-    ],
-    args,
+  const savedContacts = await saveProspectContacts(
+    args.filter((_, index) => index % 3 === 0),
+    args.filter((_, index) => index % 3 === 1),
+    args.filter((_, index) => index % 3 === 2),
   );
 
   const candidateByKey = new Map(
     uniqueCandidates.map((candidate) => [`${candidate.name}|${candidate.phone}`, candidate]),
   );
-  const results = output
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [statusValue, groupNameValue, nameValue, phoneValue] = line.split('|');
-      const status =
-        statusValue === 'exists' || statusValue === 'updated' || statusValue === 'created'
-          ? statusValue
-          : 'created';
+  const results = savedContacts
+    .map((savedContact) => {
       const candidate =
-        candidateByKey.get(
-          `${String(nameValue || '').trim()}|${String(phoneValue || '').trim()}`,
-        ) || uniqueCandidates.find((item) => item.phone === String(phoneValue || '').trim());
+        candidateByKey.get(`${savedContact.name}|${savedContact.phone}`) ||
+        uniqueCandidates.find((item) => item.phone === savedContact.phone);
       if (!candidate) {
         return null;
       }
       return {
         candidate,
-        status,
-        groupName: String(groupNameValue || '').trim() || null,
+        status: savedContact.status,
+        groupName: savedContact.groupName,
       };
     })
     .filter(
@@ -859,35 +708,6 @@ async function createProspectContactsBatch(
     existingCount: results.filter((result) => result.status === 'exists').length,
     groupNames,
   };
-}
-
-async function runOsaScript(lines: string[], args: string[] = []) {
-  return await new Promise<string>((resolve, reject) => {
-    const child = spawn('osascript', [...lines.flatMap((line) => ['-e', line]), ...args], {
-      shell: false,
-    });
-
-    let stderr = '';
-    let stdout = '';
-    child.stdout.on('data', (data) => {
-      stdout += data.toString();
-    });
-    child.stderr.on('data', (data) => {
-      stderr += data.toString();
-    });
-
-    child.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout.trim());
-        return;
-      }
-      reject(new Error(stderr.trim() || `osascript exited with code ${code}`));
-    });
-
-    child.on('error', (error) => {
-      reject(error);
-    });
-  });
 }
 
 async function collectBatchProspectContactCandidates(tasks: ScoutPortalTask[]): Promise<{

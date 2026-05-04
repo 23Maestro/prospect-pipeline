@@ -263,8 +263,6 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
     `I had a few quick questions about ${possessive} academics and ${sport} talent.`,
     '',
     'You can call or text me back at 407-473-3637.',
-    '',
-    'Again, this is Jerami with Prospect ID, 407-473-3637.',
   ].join('\n');
 }
 
