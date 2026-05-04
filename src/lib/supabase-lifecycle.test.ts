@@ -116,6 +116,7 @@ test('lifecycle mutation event logs left voicemail as dial-only operator activit
 
   assert.equal(event.eventType, 'task_completed');
   assert.equal(event.payload.source_post, '/tasks/complete');
+  assert.equal(event.payload.athlete_name, 'Avery Jones');
   assert.equal(event.payload.task_id, '9901');
   assert.equal(event.payload.activity_subtype, 'call_attempt_1');
   assert.equal(event.payload.activity_kind, 'dial');
@@ -128,6 +129,24 @@ test('lifecycle mutation event logs left voicemail as dial-only operator activit
   assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
   assert.equal(event.payload.owner_proof, 'task.assigned_owner');
   assert.equal(event.payload.materialization_status, 'operator_task');
+});
+
+test('lifecycle mutation countable activity requires athlete name', () => {
+  assert.throws(
+    () =>
+      buildLifecycleMutationEvent({
+        sourcePost: '/tasks/complete',
+        athleteId: '1489000',
+        athleteMainId: '951000',
+        athleteName: '',
+        crmStage: 'Left Voice Mail 1',
+        taskId: '9901',
+        taskTitle: 'Call Attempt 1',
+        taskAssignedOwner: 'Jerami Singleton',
+        completedAt: '2026-05-01T14:30:00.000Z',
+      }),
+    /requires athleteName/,
+  );
 });
 
 test('lifecycle mutation event keeps unable to leave voicemail dial-only', () => {

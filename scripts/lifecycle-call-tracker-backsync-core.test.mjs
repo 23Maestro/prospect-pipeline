@@ -98,6 +98,25 @@ test('Spoke to - Too Young lifecycle row becomes dial plus contact', () => {
   assert.equal(row.payload_json.counts_as_contact, true);
 });
 
+test('lifecycle promotion preserves athlete name from payload or row snapshot', () => {
+  const payloadNamedRow = buildCallActivityEventFromLifecycle(lifecycle({
+    crm_stage: 'Spoke to - Not Interested',
+    payload_json: {
+      materialization_status: 'operator_task',
+      task_assigned_owner: 'Jerami Singleton',
+      owner_proof: 'payload.task_assigned_owner',
+      athlete_name: 'Payload Prospect',
+    },
+  }));
+  const rowNamedRow = buildCallActivityEventFromLifecycle(lifecycle({
+    crm_stage: 'Spoke to - Not Interested',
+    athlete_name: 'Row Prospect',
+  }));
+
+  assert.equal(payloadNamedRow.athlete_name, 'Payload Prospect');
+  assert.equal(rowNamedRow.athlete_name, 'Row Prospect');
+});
+
 test('lifecycle row without active-operator proof is excluded', () => {
   const candidate = classifyLifecycleActivityCandidate(lifecycle({
     crm_stage: 'Left Voice Mail 1',

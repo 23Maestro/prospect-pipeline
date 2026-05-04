@@ -344,6 +344,7 @@ async function completeSentTextTask(args: {
   await completeScoutPrepTaskAfterVoicemail({
     athleteId,
     athleteMainId,
+    athleteName: args.context.contactInfo.studentAthlete.name || args.task.athlete_name,
     contactTask: args.task.contact_id,
     taskId: matchedTask.task_id,
     taskTitle: getTaskDisplayTitle(matchedTask),
@@ -367,6 +368,7 @@ async function completeConfirmation2Task(args: {
   await completeScoutPrepTaskAfterVoicemail({
     athleteId,
     athleteMainId,
+    athleteName: args.activeContext.contactInfo.studentAthlete.name || args.task.athlete_name,
     contactTask: args.task.contact_id,
     taskId: args.confirmationTask.task_id,
     taskTitle: getTaskDisplayTitle(args.confirmationTask),
@@ -1466,6 +1468,8 @@ function VoicemailFollowUpRecipientForm({
                   const result = await recordVoicemailFollowUpMessageSent({
                     athleteId,
                     athleteMainId,
+                    athleteName:
+                      context.contactInfo.studentAthlete.name || task.athlete_name || athleteId,
                     taskId: followUpTask.task_id,
                     variant: selectedVariant,
                     taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || undefined,
@@ -1730,6 +1734,7 @@ function RescheduleConfirmationCallForm({
         taskId: confirmationTask.task_id,
         contactTask,
         athleteMainId,
+        athleteName: task.athlete_name,
         taskTitle: nextTaskTitle,
         description: popupData?.taskdescription || confirmationTask.description || '',
         dueDate: nextDueDate,
@@ -1904,6 +1909,7 @@ function UpdateAthleteTaskForm({
         taskId: selectedTask.task_id,
         contactTask,
         athleteMainId,
+        athleteName: task.athlete_name,
         dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
         dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
       });
@@ -1932,6 +1938,7 @@ function UpdateAthleteTaskForm({
       await completeScoutPrepTaskAfterVoicemail({
         athleteId: contactTask,
         athleteMainId,
+        athleteName: task.athlete_name,
         contactTask,
         taskTitle: currentTaskTitle,
         assignedOwner: selectedTask.assigned_owner,
@@ -1963,6 +1970,7 @@ function UpdateAthleteTaskForm({
         taskId: selectedTask.task_id,
         contactTask,
         athleteMainId,
+        athleteName: task.athlete_name,
         taskTitle: 'SCHEDULED FOLLOW-UP',
         description: selectedTask.description || currentTaskTitle,
         dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
@@ -2115,6 +2123,7 @@ function UpdateAthleteTaskPicker({
       await completeScoutPrepTaskAfterVoicemail({
         athleteId: contactTask,
         athleteMainId,
+        athleteName: task.athlete_name,
         contactTask,
         taskTitle: getTaskDisplayTitle(selectedTask),
         assignedOwner: selectedTask.assigned_owner,
@@ -2507,6 +2516,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       const salesStageResult = await updateSalesStage({
         athleteMainId,
         athleteId,
+        athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
         stage: basePlan.laravelSalesStageUpdate?.stage || stageLabel,
       });
 
@@ -2549,6 +2559,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           const result = await completeScoutPrepTaskAfterVoicemail({
             athleteId: taskCompletion.athleteId,
             athleteMainId: taskCompletion.athleteMainId,
+            athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
             contactTask: taskCompletion.contactTask,
             taskId: taskCompletion.taskId,
             taskTitle: taskCompletion.taskTitle,

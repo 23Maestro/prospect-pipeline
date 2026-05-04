@@ -255,6 +255,14 @@ function requireFactOccurredAt(factType: string, value?: string | null): string 
   return occurredAt;
 }
 
+function requireFactAthleteName(factType: string, value?: string | null): string {
+  const athleteName = normalizeValue(value);
+  if (!athleteName) {
+    throw new Error(`${factType} facts require athleteName.`);
+  }
+  return athleteName;
+}
+
 export function buildCallActivityFact(args: {
   athleteId: string | number;
   athleteMainId: string | number;
@@ -277,11 +285,12 @@ export function buildCallActivityFact(args: {
   }
   const owner = requireResolvedOwner(args.ownerInput, args.ownerContext);
   const occurredAt = requireFactOccurredAt('call_activity', args.occurredAt);
+  const athleteName = requireFactAthleteName('call_activity', args.athleteName);
   return {
     athlete_key: identity.athleteKey,
     athlete_id: identity.athleteId,
     athlete_main_id: identity.athleteMainId,
-    athlete_name: normalizeValue(args.athleteName),
+    athlete_name: athleteName,
     task_id: String(args.taskId).trim(),
     task_title: normalizeValue(args.taskTitle),
     task_description: normalizeValue(args.taskDescription),

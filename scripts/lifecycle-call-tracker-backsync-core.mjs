@@ -239,7 +239,7 @@ export function buildCallActivityEventFromLifecycle(row, options = {}) {
     athlete_key: row.athlete_key,
     athlete_id: String(row.athlete_id),
     athlete_main_id: String(row.athlete_main_id),
-    athlete_name: firstValue(row, [['athlete_name'], ['name']]) || null,
+    athlete_name: firstValue(row, [['athlete_name'], ['name'], ['$row', 'athlete_name']]) || null,
     task_id: candidate.taskId,
     task_title: taskTitle(row, activity),
     task_description: taskDescription(row),

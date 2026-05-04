@@ -151,6 +151,39 @@ test('call activity facts reject missing occurrence clocks', () => {
   );
 });
 
+test('call activity facts reject missing athlete names', () => {
+  const ownerContext = resolveOwnerContext({
+    purpose: 'call_activity',
+    athleteId: '123',
+    athleteMainId: '456',
+    tasks: [
+      {
+        task_id: '904',
+        title: 'Call Attempt 1',
+        assigned_owner: 'Jerami Singleton',
+        completion_date: '',
+      },
+    ],
+    currentTaskId: '904',
+  });
+
+  assert.throws(
+    () =>
+      buildCallActivityFact({
+        athleteId: '123',
+        athleteMainId: '456',
+        athleteName: '',
+        taskId: '904',
+        taskTitle: 'Call Attempt 1',
+        activitySubtype: 'call_attempt_1',
+        ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
+        ownerContext,
+        occurredAt: '2026-05-02T12:00:00-04:00',
+      }),
+    /require athleteName/,
+  );
+});
+
 test('meeting outcome facts can carry a non-operator event owner but block Tim-owned task materialization', () => {
   const ownerContext = resolveOwnerContext({
     purpose: 'meeting_outcome',

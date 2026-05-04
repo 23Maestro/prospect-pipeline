@@ -507,6 +507,9 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
   if (isCountableActivity && !taskId) {
     throw new Error('Lifecycle mutation countable activity requires taskId.');
   }
+  if (isCountableActivity && !actor.athleteName) {
+    throw new Error('Lifecycle mutation countable activity requires athleteName.');
+  }
   if (isCountableActivity && !normalizeValue(args.taskAssignedOwner)) {
     throw new Error('Lifecycle mutation countable activity requires taskAssignedOwner for owner proof.');
   }
@@ -541,6 +544,7 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
   const payload = {
     ...(args.payload || {}),
     source_post: args.sourcePost,
+    athlete_name: actor.athleteName,
     task_id: taskId,
     activity_subtype: reporting.activityKind ? activitySubtype : null,
     activity_kind: reporting.activityKind,
