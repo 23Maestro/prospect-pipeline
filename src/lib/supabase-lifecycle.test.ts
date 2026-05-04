@@ -252,6 +252,14 @@ test('Laravel POST wrappers call the shared lifecycle mutation writer after succ
   assert.match(salesStageSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/sales\/stage'/);
 });
 
+test('sales stage wrapper does not let generic lifecycle sync block Meeting Set task completion', () => {
+  const salesStageSource = fs.readFileSync('src/lib/sales-stage.ts', 'utf8');
+
+  assert.match(salesStageSource, /classifyMeetingSetStage\(resolvedStage\)/);
+  assert.match(salesStageSource, /SALES_STAGE_LIFECYCLE_SYNC/);
+  assert.match(salesStageSource, /catch \(error\)/);
+});
+
 test('Laravel POST wrappers do not hand-build lifecycle mutation payload keys', () => {
   const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
   const salesStageSource = fs.readFileSync('src/lib/sales-stage.ts', 'utf8');

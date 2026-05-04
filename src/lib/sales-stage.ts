@@ -11,6 +11,7 @@ import type {
 } from '../features/scout-prep/types';
 import {
   CURATED_SALES_STAGE_LABELS,
+  classifyMeetingSetStage,
   isCuratedSalesStageLabel,
   normalizeSalesStageLabelForLaravel,
 } from '../domain/sales-stage-contract';
@@ -214,20 +215,37 @@ export async function updateSalesStage(args: {
     statusCode: payload.status_code,
   });
   const createdTask = payload.created_task || null;
-  await recordLifecycleMutation({
-    sourcePost: '/sales/stage',
-    athleteId,
-    athleteMainId,
-    athleteName: args.athleteName || '',
-    crmStage: payload.stage || stage,
-    taskId: createdTask?.task_id || null,
-    taskTitle: createdTask?.title || null,
-    taskDescription: createdTask?.description || null,
-    activitySubtype: createdTask?.task_id ? undefined : 'needs_manual_review',
-    taskAssignedOwner: createdTask?.assigned_owner || getActiveOperator().taskAssignedOwnerName,
-    dueAt: createdTask?.due_date || null,
-    occurredAt: new Date().toISOString(),
-  });
+  const resolvedStage = payload.stage || stage;
+  if (!classifyMeetingSetStage(resolvedStage)) {
+    try {
+      await recordLifecycleMutation({
+        sourcePost: '/sales/stage',
+        athleteId,
+        athleteMainId,
+        athleteName: args.athleteName || '',
+        crmStage: resolvedStage,
+        taskId: createdTask?.task_id || null,
+        taskTitle: createdTask?.title || null,
+        taskDescription: createdTask?.description || null,
+        activitySubtype: createdTask?.task_id ? undefined : 'needs_manual_review',
+        taskAssignedOwner: createdTask?.assigned_owner || getActiveOperator().taskAssignedOwnerName,
+        dueAt: createdTask?.due_date || null,
+        occurredAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      logFailure(
+        'SALES_STAGE_LIFECYCLE_SYNC',
+        'supabase-write',
+        error instanceof Error ? error.message : String(error),
+        {
+          athleteId,
+          athleteMainId,
+          stage: resolvedStage,
+          createdTaskId: createdTask?.task_id || null,
+        },
+      );
+    }
+  }
   return payload;
 }
 
