@@ -5,6 +5,13 @@ import path from 'path';
 import { resolveAppointmentTitleOutcome } from './head-scout-event-prefix';
 import { searchLogger } from './logger';
 import { resolveSalesLifecycle } from './sales-lifecycle';
+import {
+  classifyCallTrackerReporting,
+  classifyCrmStage,
+  classifyScoutTask,
+  type ScoutTaskStatus,
+} from '../domain/scout-task-classifier';
+import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner-resolution';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
@@ -63,6 +70,44 @@ type LifecycleWriteArgs = {
   appointment?: AppointmentSnapshot | null;
   reminder?: ReminderSnapshot | null;
   previousState?: Pick<PipelineStateSnapshot, 'crmStage' | 'taskStatus'> | null;
+  state: PipelineStateSnapshot;
+};
+
+export type LifecycleMutationSourcePost =
+  | '/sales/stage'
+  | '/tasks/complete'
+  | '/sales/meeting-set'
+  | '/tasks/update'
+  | '/tasks/call-attempt-3-sent'
+  | '/tasks/follow-up-message-sent';
+
+export type LifecycleMutationEventArgs = PipelineActor & {
+  sourcePost: LifecycleMutationSourcePost;
+  crmStage?: string | null;
+  taskStatus?: string | null;
+  taskId?: string | null;
+  taskTitle?: string | null;
+  taskDescription?: string | null;
+  activitySubtype?: ScoutTaskStatus | null;
+  dueAt?: string | null;
+  dueDate?: string | null;
+  dueTime?: string | null;
+  completedAt?: string | null;
+  completedDate?: string | null;
+  completedTime?: string | null;
+  occurredAt?: string | null;
+  taskAssignedOwner?: string | null;
+  materializationStatus?: MaterializationStatus | null;
+  materializationReason?: string | null;
+  appointmentId?: string | null;
+  confirmationTaskId?: string | null;
+  payload?: Record<string, unknown>;
+};
+
+export type LifecycleMutationEvent = {
+  athlete: PipelineActor;
+  eventType: string;
+  payload: Record<string, unknown>;
   state: PipelineStateSnapshot;
 };
 
@@ -379,6 +424,173 @@ function normalizeIsoValue(value?: string | null): string | null {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
+}
+
+function normalizeLegacyDateTime(date?: string | null, time?: string | null): string | null {
+  const dateValue = normalizeValue(date);
+  const timeValue = normalizeValue(time);
+  if (!dateValue) return null;
+  const normalizedDate = dateValue.includes('/')
+    ? (() => {
+        const [month, day, year] = dateValue.split('/');
+        return month && day && year
+          ? `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`
+          : dateValue;
+      })()
+    : dateValue;
+  const candidate = timeValue
+    ? `${normalizedDate}T${timeValue.length === 5 ? `${timeValue}:00` : timeValue}`
+    : normalizedDate;
+  return normalizeIsoValue(candidate);
+}
+
+function lifecycleMutationEventType(sourcePost: LifecycleMutationSourcePost): string {
+  if (sourcePost === '/sales/stage') return 'sales_stage_changed';
+  if (sourcePost === '/tasks/complete') return 'task_completed';
+  if (sourcePost === '/sales/meeting-set') return 'meeting_set';
+  if (sourcePost === '/tasks/update') return 'task_updated';
+  if (sourcePost === '/tasks/call-attempt-3-sent') return 'call_attempt_3_sent';
+  if (sourcePost === '/tasks/follow-up-message-sent') return 'follow_up_message_sent';
+  return 'laravel_post_mutation';
+}
+
+function resolveMutationActivitySubtype(args: LifecycleMutationEventArgs): ScoutTaskStatus {
+  if (args.activitySubtype) return args.activitySubtype;
+  const stageStatus = classifyCrmStage(args.crmStage);
+  if (stageStatus !== 'needs_manual_review') return stageStatus;
+  return classifyScoutTask({
+    title: args.taskTitle,
+    description: args.taskDescription,
+    rowText: args.taskStatus || args.crmStage,
+  }).taskStatus;
+}
+
+function resolveMutationOccurredAt(args: LifecycleMutationEventArgs): {
+  occurredAt: string | null;
+  completedAt: string | null;
+  dueAt: string | null;
+  source: string | null;
+} {
+  const completedAt =
+    normalizeIsoValue(args.completedAt) ||
+    normalizeLegacyDateTime(args.completedDate, args.completedTime);
+  const dueAt =
+    normalizeIsoValue(args.dueAt) ||
+    normalizeLegacyDateTime(args.dueDate, args.dueTime);
+  const explicitOccurredAt = normalizeIsoValue(args.occurredAt);
+  if (explicitOccurredAt) {
+    return { occurredAt: explicitOccurredAt, completedAt, dueAt, source: 'input.occurred_at' };
+  }
+  if (completedAt) {
+    return { occurredAt: completedAt, completedAt, dueAt, source: 'input.completed_at' };
+  }
+  if (dueAt) {
+    return { occurredAt: dueAt, completedAt, dueAt, source: 'input.due_at' };
+  }
+  return { occurredAt: null, completedAt, dueAt, source: null };
+}
+
+export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): LifecycleMutationEvent {
+  const actor: PipelineActor = {
+    athleteId: normalizeValue(args.athleteId) || '',
+    athleteMainId: normalizeValue(args.athleteMainId) || '',
+    athleteName: normalizeValue(args.athleteName) || '',
+  };
+  if (!actor.athleteId || !actor.athleteMainId) {
+    throw new Error('Lifecycle mutation events require athleteId and athleteMainId.');
+  }
+
+  const activitySubtype = resolveMutationActivitySubtype(args);
+  const reporting = classifyCallTrackerReporting(activitySubtype);
+  const isCountableActivity = reporting.countsAsDial || reporting.countsAsContact;
+  const taskId = normalizeValue(args.taskId);
+  if (isCountableActivity && !taskId) {
+    throw new Error('Lifecycle mutation countable activity requires taskId.');
+  }
+  if (isCountableActivity && !normalizeValue(args.taskAssignedOwner)) {
+    throw new Error('Lifecycle mutation countable activity requires taskAssignedOwner for owner proof.');
+  }
+
+  const clock = resolveMutationOccurredAt(args);
+  if (isCountableActivity && !clock.occurredAt) {
+    throw new Error('Lifecycle mutation countable activity requires completedAt, occurredAt, or dueAt.');
+  }
+
+  const ownerContext = resolveOwnerContext({
+    purpose: reporting.countsAsMeetingSet ? 'meeting_set' : 'call_activity',
+    athleteId: actor.athleteId,
+    athleteMainId: actor.athleteMainId,
+    tasks: taskId || args.taskAssignedOwner
+      ? [
+          {
+            task_id: taskId,
+            title: normalizeValue(args.taskTitle),
+            description: normalizeValue(args.taskDescription),
+            assigned_owner: normalizeValue(args.taskAssignedOwner),
+          },
+        ]
+      : [],
+    selectedTaskId: taskId || undefined,
+  });
+  const canCount = ownerContext.materializationStatus === 'operator_task';
+  const ownerProof = ownerContext.ownerProof || null;
+  if (isCountableActivity && canCount && !ownerProof) {
+    throw new Error('Lifecycle mutation countable activity requires owner proof.');
+  }
+
+  const payload = {
+    ...(args.payload || {}),
+    source_post: args.sourcePost,
+    task_id: taskId,
+    activity_subtype: reporting.activityKind ? activitySubtype : null,
+    activity_kind: reporting.activityKind,
+    due_at: clock.dueAt,
+    completed_at: clock.completedAt,
+    occurred_at: clock.occurredAt,
+    occurred_at_source: clock.source,
+    task_assigned_owner: ownerContext.taskAssignedOwner || normalizeValue(args.taskAssignedOwner),
+    owner_proof: ownerProof,
+    materialization_status: ownerContext.materializationStatus,
+    materialization_reason: ownerContext.materializationReason,
+    athlete_id: actor.athleteId,
+    athlete_main_id: actor.athleteMainId,
+    tracker_outcome: reporting.trackerOutcome,
+    counts_as_dial: canCount ? reporting.countsAsDial : false,
+    counts_as_contact: canCount ? reporting.countsAsContact : false,
+    counts_as_meeting_set: canCount ? reporting.countsAsMeetingSet : false,
+    counts_as_post_meeting_outcome: canCount ? reporting.countsAsPostMeetingOutcome : false,
+    appointment_id: normalizeValue(args.appointmentId),
+    confirmation_task_id: normalizeValue(args.confirmationTaskId),
+    owner_context: {
+      active_operator_key: ownerContext.activeOperator.operatorKey,
+      active_operator_name: ownerContext.activeOperator.personName,
+      task_assigned_owner: ownerContext.taskAssignedOwner,
+      owner_proof: ownerProof,
+      materialization_status: ownerContext.materializationStatus,
+      materialization_reason: ownerContext.materializationReason,
+      can_materialize_for_active_operator: ownerContext.canMaterializeForActiveOperator,
+      owner_status: ownerContext.status,
+    },
+    materialization_proof: {
+      task_assigned_owner: ownerContext.taskAssignedOwner,
+      materialization_status: ownerContext.materializationStatus,
+      status: ownerContext.materializationStatus,
+      reason: ownerContext.materializationReason,
+    },
+  };
+
+  return {
+    athlete: actor,
+    eventType: lifecycleMutationEventType(args.sourcePost),
+    payload,
+    state: {
+      crmStage: normalizeValue(args.crmStage),
+      taskStatus: normalizeValue(args.taskStatus) || normalizeValue(args.taskTitle) || activitySubtype,
+      currentTaskId: taskId,
+      currentTaskTitle: normalizeValue(args.taskTitle),
+      currentAppointmentId: normalizeValue(args.appointmentId),
+    },
+  };
 }
 
 export function buildAthleteKey(athleteId: string, athleteMainId: string): string {
@@ -812,8 +1024,42 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
   return { enabled: true };
 }
 
+export async function recordLifecycleMutation(
+  args: LifecycleMutationEventArgs,
+): Promise<{ enabled: boolean }> {
+  const event = buildLifecycleMutationEvent(args);
+  return writeLifecycle({
+    athlete: event.athlete,
+    eventType: event.eventType,
+    payload: event.payload,
+    state: event.state,
+  });
+}
+
 export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ enabled: boolean }> {
   const appointmentId = buildAppointmentId(args);
+  const existingPayload = args.payload || {};
+  const meetingSetTaskOwner =
+    normalizeValue(existingPayload.task_assigned_owner as string | undefined) ||
+    normalizeValue((existingPayload.owner_context as Record<string, unknown> | undefined)?.task_assigned_owner as string | undefined) ||
+    normalizeValue((existingPayload.materialization_proof as Record<string, unknown> | undefined)?.task_assigned_owner as string | undefined);
+  const mutationPayload = meetingSetTaskOwner
+    ? buildLifecycleMutationEvent({
+        sourcePost: '/sales/meeting-set',
+        athleteId: args.athleteId,
+        athleteMainId: args.athleteMainId,
+        athleteName: args.athleteName,
+        crmStage: args.crmStage,
+        taskStatus: args.taskStatus,
+        taskId: args.currentTaskId,
+        taskTitle: args.currentTaskTitle,
+        taskAssignedOwner: meetingSetTaskOwner,
+        dueAt: args.taskDueDate,
+        occurredAt: args.startsAt || args.taskDueDate,
+        appointmentId,
+        payload: existingPayload,
+      }).payload
+    : existingPayload;
   return writeLifecycle({
     athlete: args,
     eventType: 'meeting_set',
@@ -823,7 +1069,7 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
       meeting_name: normalizeValue(args.meetingName),
       task_due_date: normalizeIsoValue(args.taskDueDate),
       starts_at: normalizeIsoValue(args.startsAt),
-      ...(args.payload || {}),
+      ...mutationPayload,
     },
     appointment: {
       appointmentId,

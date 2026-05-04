@@ -247,6 +247,14 @@ function requireResolvedOwner(input: OwnerResolutionInput, context?: OwnerResolu
   return assertOwnerResolved(input, context);
 }
 
+function requireFactOccurredAt(factType: string, value?: string | null): string {
+  const occurredAt = normalizeIsoValue(value);
+  if (!occurredAt) {
+    throw new Error(`${factType} facts require an explicit occurredAt reporting clock.`);
+  }
+  return occurredAt;
+}
+
 export function buildCallActivityFact(args: {
   athleteId: string | number;
   athleteMainId: string | number;
@@ -268,6 +276,7 @@ export function buildCallActivityFact(args: {
     throw new Error(`Task status ${args.activitySubtype} is not a dashboard call activity fact.`);
   }
   const owner = requireResolvedOwner(args.ownerInput, args.ownerContext);
+  const occurredAt = requireFactOccurredAt('call_activity', args.occurredAt);
   return {
     athlete_key: identity.athleteKey,
     athlete_id: identity.athleteId,
@@ -279,7 +288,7 @@ export function buildCallActivityFact(args: {
     activity_type: args.activitySubtype,
     activity_kind: activityKind,
     activity_subtype: args.activitySubtype,
-    occurred_at: normalizeIsoValue(args.occurredAt) || new Date().toISOString(),
+    occurred_at: occurredAt,
     source_owner: owner.resolvedOwnerName || '',
     owner_proof: owner.resolvedFromField || '',
     payload_json: {
@@ -291,6 +300,7 @@ export function buildCallActivityFact(args: {
       counts_as_meeting_set: reporting.countsAsMeetingSet,
       counts_as_post_meeting_outcome: reporting.countsAsPostMeetingOutcome,
       tracker_outcome: reporting.trackerOutcome,
+      occurred_at_source: args.payload?.occurred_at_source || 'input.occurredAt',
       active_operator_key: owner.activeOperator.operatorKey,
       active_operator_name: owner.activeOperator.personName,
       task_assigned_owner: owner.taskAssignedOwner,
@@ -354,6 +364,7 @@ export function buildMeetingOutcomeFact(args: {
 }): MeetingOutcomeFactRow {
   const identity = validateAthleteIdentity(args);
   const owner = requireResolvedOwner(args.ownerInput, args.ownerContext);
+  const occurredAt = requireFactOccurredAt('meeting_outcome', args.occurredAt);
   const dedupeKey = buildMeetingOutcomeDedupeKey({
     source: args.source,
     athleteKey: identity.athleteKey,
@@ -368,7 +379,7 @@ export function buildMeetingOutcomeFact(args: {
     athlete_id: identity.athleteId,
     athlete_main_id: identity.athleteMainId,
     athlete_name: normalizeValue(args.athleteName),
-    occurred_at: normalizeIsoValue(args.occurredAt) || new Date().toISOString(),
+    occurred_at: occurredAt,
     source: args.source,
     raw_crm_stage: normalizeValue(args.rawCrmStage),
     raw_task_status: normalizeValue(args.rawTaskStatus),
@@ -400,6 +411,7 @@ export function buildMeetingOutcomeFact(args: {
       tracker_source_owner: owner.resolvedOwnerName,
       tracker_owner_proof: owner.resolvedFromField,
       is_tracked_owner: owner.canMaterializeForActiveOperator,
+      occurred_at_source: args.payload?.occurred_at_source || 'input.occurredAt',
     },
   };
 }

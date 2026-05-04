@@ -110,6 +110,7 @@ const entry = {
   contacts: weekTotal.contacts,
   meetingsSet: weekTotal.meetingsSet,
   setRate: weekTotal.setRate,
+  allTimeAtArchive: snapshot.allTimeAtArchive,
 };
 const weeks = [entry, ...previousWeeks.filter((week) => week.file !== filename)];
 writeFileSync(indexPath, `${JSON.stringify({ generatedAt: archivedAt, weeks }, null, 2)}\n`);

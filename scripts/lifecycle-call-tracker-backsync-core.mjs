@@ -177,6 +177,20 @@ function taskDescription(row) {
   return firstValue(row, [['task_description'], ['taskDescription'], ['description'], ['current_task_description']]) || null;
 }
 
+function lifecycleOccurredAt(row, fallbackNow) {
+  const sourceFields = [
+    { source: 'payload.completion_date', paths: [['completion_date'], ['completed_at'], ['completedAt'], ['task_completed_at'], ['taskCompletedAt']] },
+    { source: 'payload.occurred_at', paths: [['occurred_at'], ['occurredAt'], ['activity_occurred_at'], ['activityOccurredAt']] },
+    { source: 'payload.due_at', paths: [['due_at'], ['dueAt'], ['task_due_at'], ['taskDueAt'], ['due_date'], ['dueDate']] },
+    { source: 'lifecycle.created_at', paths: [['$row', 'created_at']] },
+  ];
+  for (const field of sourceFields) {
+    const value = firstValue(row, field.paths);
+    if (value) return { value, source: field.source };
+  }
+  return { value: fallbackNow, source: 'backsync.updated_at' };
+}
+
 export function classifyLifecycleActivityCandidate(row, options = {}) {
   if (!row?.id) return { eligible: false, reason: 'missing_lifecycle_event_id' };
   if (!stringValue(row.athlete_id) || !stringValue(row.athlete_main_id) || !stringValue(row.athlete_key)) {
@@ -220,6 +234,7 @@ export function buildCallActivityEventFromLifecycle(row, options = {}) {
   if (!candidate.eligible) return null;
   const now = options.updatedAt || new Date().toISOString();
   const activity = candidate.activity;
+  const occurrence = lifecycleOccurredAt(row, now);
   return {
     athlete_key: row.athlete_key,
     athlete_id: String(row.athlete_id),
@@ -231,14 +246,17 @@ export function buildCallActivityEventFromLifecycle(row, options = {}) {
     activity_type: activity.activitySubtype,
     activity_kind: activity.activityKind,
     activity_subtype: activity.activitySubtype,
-    occurred_at: row.created_at || now,
+    occurred_at: occurrence.value,
     source_owner: candidate.sourceOwner,
     owner_proof: candidate.ownerProof,
     payload_json: {
       ...payload(row),
       lifecycle_event_id: row.id,
       lifecycle_event_type: row.event_type,
+      lifecycle_created_at: row.created_at || null,
       lifecycle_dedupe_key: row.dedupe_key || null,
+      occurred_at_source: occurrence.source,
+      supabase_synced_at: now,
       source_table: 'lifecycle_events',
       activity_kind: activity.activityKind,
       activity_subtype: activity.activitySubtype,

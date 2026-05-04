@@ -16,6 +16,7 @@ import type { AthleteTaskSummary } from '../types/athlete-workflows';
 import { searchLogger } from './logger';
 import type { VoicemailFollowUpVariant } from './scout-follow-up-templates';
 import { getActiveOperator } from '../domain/owners';
+import { recordLifecycleMutation } from './supabase-lifecycle';
 import {
   findNewestIncompleteConfirmationTask,
   findNewestIncompleteFollowUpTask,
@@ -257,6 +258,7 @@ function formatLegacyTaskTime(date: Date): string {
 export async function completeScoutPrepTaskAfterVoicemail(args: {
   athleteId: string;
   athleteMainId: string;
+  athleteName?: string | null;
   contactTask?: string | null;
   taskId?: string | null;
   taskTitle?: string | null;
@@ -327,6 +329,19 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     taskId: result.task_id || null,
     message: result.message || null,
   });
+  await recordLifecycleMutation({
+    sourcePost: '/tasks/complete',
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    athleteName: args.athleteName || '',
+    crmStage: args.taskTitle || null,
+    taskId: result.task_id || args.taskId || null,
+    taskTitle: args.taskTitle || 'Call Attempt 1',
+    taskDescription: args.description || args.taskTitle || 'Call Attempt 1',
+    taskAssignedOwner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
+    completedDate,
+    completedTime,
+  });
   return result;
 }
 
@@ -359,10 +374,12 @@ export async function updateScoutPrepTask(args: {
   taskId: string;
   contactTask: string;
   athleteMainId: string;
+  athleteName?: string | null;
   taskTitle?: string | null;
   description?: string | null;
   dueDate?: string | null;
   dueTime?: string | null;
+  assignedOwner?: string | null;
 }): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
   const response = await apiFetch('/tasks/update', {
     method: 'POST',
@@ -383,16 +400,31 @@ export async function updateScoutPrepTask(args: {
     throw new Error(errorText.slice(0, 200) || `Task update HTTP ${response.status}`);
   }
 
-  return (await response.json()) as {
+  const result = (await response.json()) as {
     success?: boolean;
     task_id?: string | null;
     message?: string | null;
   };
+  await recordLifecycleMutation({
+    sourcePost: '/tasks/update',
+    athleteId: args.contactTask,
+    athleteMainId: args.athleteMainId,
+    athleteName: args.athleteName || '',
+    taskId: result.task_id || args.taskId,
+    taskTitle: args.taskTitle || null,
+    taskDescription: args.description || null,
+    taskAssignedOwner: args.assignedOwner || null,
+    dueDate: args.dueDate,
+    dueTime: args.dueTime,
+    activitySubtype: 'needs_manual_review',
+  });
+  return result;
 }
 
 export async function recordCallAttempt3MessageSent(args: {
   athleteId: string;
   athleteMainId: string;
+  athleteName?: string | null;
   taskId: string;
 }): Promise<{
   success?: boolean;
@@ -421,12 +453,27 @@ export async function recordCallAttempt3MessageSent(args: {
     throw new Error(errorText.slice(0, 200) || `Call Attempt 3 HTTP ${response.status}`);
   }
 
-  return (await response.json()) as {
+  const result = (await response.json()) as {
     success?: boolean;
     task_id?: string | null;
     stage?: string | null;
     message?: string | null;
   };
+  await recordLifecycleMutation({
+    sourcePost: '/tasks/call-attempt-3-sent',
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    athleteName: args.athleteName || '',
+    crmStage: result.stage || 'Never Spoke To',
+    taskId: result.task_id || args.taskId,
+    taskTitle: 'Call Attempt 3',
+    taskDescription: FOLLOW_UP_DESCRIPTION_BY_VARIANT.call_attempt_3,
+    activitySubtype: 'call_attempt_3',
+    taskAssignedOwner: getActiveOperator().taskAssignedOwnerName,
+    completedDate,
+    completedTime,
+  });
+  return result;
 }
 
 const FOLLOW_UP_STAGE_BY_VARIANT: Partial<Record<VoicemailFollowUpVariant, string>> = {
@@ -451,6 +498,7 @@ const FOLLOW_UP_TASK_TITLE_BY_VARIANT: Partial<Record<VoicemailFollowUpVariant, 
 export async function recordVoicemailFollowUpMessageSent(args: {
   athleteId: string;
   athleteMainId: string;
+  athleteName?: string | null;
   taskId: string;
   variant: VoicemailFollowUpVariant;
   taskTitle?: string | null;
@@ -502,12 +550,27 @@ export async function recordVoicemailFollowUpMessageSent(args: {
     throw new Error(errorText.slice(0, 200) || `Follow-up update HTTP ${response.status}`);
   }
 
-  return (await response.json()) as {
+  const result = (await response.json()) as {
     success?: boolean;
     task_id?: string | null;
     stage?: string | null;
     message?: string | null;
   };
+  await recordLifecycleMutation({
+    sourcePost: '/tasks/follow-up-message-sent',
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    athleteName: args.athleteName || '',
+    crmStage: result.stage || stage,
+    taskId: result.task_id || args.taskId,
+    taskTitle,
+    taskDescription: description,
+    activitySubtype: args.variant,
+    taskAssignedOwner: getActiveOperator().taskAssignedOwnerName,
+    completedDate,
+    completedTime,
+  });
+  return result;
 }
 
 export function resolveGradeLabel(gradYear?: string | null): ScoutPrepGrade {

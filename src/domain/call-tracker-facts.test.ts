@@ -119,6 +119,38 @@ test('unable to leave voicemail activity facts remain dial-only', () => {
   assert.equal(row.payload_json.tracker_outcome, 'unable_to_leave_vm');
 });
 
+test('call activity facts reject missing occurrence clocks', () => {
+  const ownerContext = resolveOwnerContext({
+    purpose: 'call_activity',
+    athleteId: '123',
+    athleteMainId: '456',
+    tasks: [
+      {
+        task_id: '903',
+        title: 'Call Attempt 1',
+        assigned_owner: 'Jerami Singleton',
+        completion_date: '',
+      },
+    ],
+    currentTaskId: '903',
+  });
+
+  assert.throws(
+    () =>
+      buildCallActivityFact({
+        athleteId: '123',
+        athleteMainId: '456',
+        athleteName: 'Sample Athlete',
+        taskId: '903',
+        taskTitle: 'Call Attempt 1',
+        activitySubtype: 'call_attempt_1',
+        ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
+        ownerContext,
+      }),
+    /explicit occurredAt reporting clock/,
+  );
+});
+
 test('meeting outcome facts can carry a non-operator event owner but block Tim-owned task materialization', () => {
   const ownerContext = resolveOwnerContext({
     purpose: 'meeting_outcome',
@@ -152,6 +184,7 @@ test('meeting outcome facts can carry a non-operator event owner but block Tim-o
     appointmentId: '777',
     liveEventId: '777',
     bookedEventTitle: '(ENR $99) Sample Athlete Football 2026 PA',
+    occurredAt: '2026-05-02T12:00:00-04:00',
     ownerInput: { purpose: 'meeting_outcome', athleteId: '123', athleteMainId: '456' },
     ownerContext,
   });
@@ -197,6 +230,7 @@ test('meeting outcome facts are post-meeting outcomes, not call activity or meet
     appointmentId: '778',
     liveEventId: '778',
     bookedEventTitle: '(NS) Sample Athlete Football 2026 PA',
+    occurredAt: '2026-05-02T12:00:00-04:00',
     ownerInput: { purpose: 'meeting_outcome', athleteId: '123', athleteMainId: '456' },
     ownerContext,
   });
@@ -240,6 +274,7 @@ test('post-meeting outcomes dedupe across stage title and commission evidence fo
     appointmentId: '613323',
     liveEventId: '613323',
     bookedEventTitle: 'Marcus Garcia Baseball 2027 NM',
+    occurredAt: '2026-05-02T12:00:00-04:00',
     ownerInput: { purpose: 'meeting_outcome', athleteId: '1489625', athleteMainId: '951462' },
     ownerContext,
   });
@@ -256,6 +291,7 @@ test('post-meeting outcomes dedupe across stage title and commission evidence fo
     liveEventId: '613323',
     bookedEventTitle: 'Marcus Garcia Baseball 2027 NM',
     revenueCents: 9900,
+    occurredAt: '2026-05-02T12:00:00-04:00',
     ownerInput: { purpose: 'meeting_outcome', athleteId: '1489625', athleteMainId: '951462' },
     ownerContext,
   });

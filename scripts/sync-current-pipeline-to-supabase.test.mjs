@@ -52,3 +52,12 @@ test('current pipeline keeps ended active meeting sets in post-meeting polling s
   assert.match(source, /post_meeting_update_pending/);
   assert.match(source, /awaiting_post_meeting_update/);
 });
+
+test('current pipeline activity facts use source occurrence clocks instead of sync time', () => {
+  assert.match(source, /const completionAt = parseLegacyTaskDate\(taskFromList\?\.completion_date \|\| pipelineTask\.completion_date\)/);
+  assert.match(source, /const activityOccurredAt = completionAt \|\| dueAt/);
+  assert.match(source, /occurredAt: activityOccurredAt/);
+  assert.match(source, /occurred_at_source: activityOccurredAtSource/);
+  assert.match(source, /missing_completion_or_due_date/);
+  assert.doesNotMatch(source, /occurredAt: dueAt \|\| new Date\(\)\.toISOString\(\)/);
+});

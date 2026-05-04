@@ -221,6 +221,7 @@ const stateCandidatesByAthlete = new Map();
 const failures = [];
 const staleSkipped = [];
 const ownerSkipped = [];
+const clockSkipped = [];
 
 for (const [index, pipelineTask] of pipelineTasks.entries()) {
   const athleteId = String(
@@ -276,6 +277,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       description: rawTaskDescription,
     });
     const dueAt = parseLegacyTaskDate(taskFromList?.due_date || pipelineTask.due_date);
+    const completionAt = parseLegacyTaskDate(taskFromList?.completion_date || pipelineTask.completion_date);
     const selectedStageIsMeetingSet = String(selectedSalesStage || '').trim().toLowerCase() === 'meeting set';
     const shouldMonitorEndedMeetingSet =
       !currentMeeting &&
@@ -447,36 +449,54 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
 
     const taskId = String(pipelineTask.task_id || '').trim();
     if (taskId && isDashboardCallActivityStatus(mapping.taskStatus)) {
-      callActivityRows.push(
-        buildCallActivityFact({
-          athleteId,
-          athleteMainId,
-          athleteName,
-          taskId,
-          taskTitle: strippedTaskTitle || rawTaskTitle || null,
-          taskDescription: rawTaskDescription || null,
-          activitySubtype: mapping.taskStatus,
-          occurredAt: dueAt || new Date().toISOString(),
-          ownerInput: {
-            purpose: 'call_activity',
+      const activityOccurredAt = completionAt || dueAt;
+      const activityOccurredAtSource = completionAt
+        ? 'task.completion_date'
+        : dueAt
+          ? 'task.due_date'
+          : null;
+      if (!activityOccurredAt) {
+        clockSkipped.push({
+          athlete_key: athleteKey,
+          athlete_name: athleteName,
+          task_id: taskId,
+          task_status: mapping.taskStatus,
+          reason: 'missing_completion_or_due_date',
+        });
+      } else {
+        callActivityRows.push(
+          buildCallActivityFact({
             athleteId,
             athleteMainId,
             athleteName,
-            tasks: athleteTasks,
-            currentTaskId: taskId,
-          },
-          ownerContext: ownership.context,
-          payload: {
-            sync_run_id: RUN_ID,
-            source: 'scout_tasks_current_pipeline',
-            raw_task_title: rawTaskTitle || null,
-            due_at: dueAt,
-            head_scout: headScout,
-            selected_sales_stage: selectedSalesStage,
-          },
-          updatedAt: new Date().toISOString(),
-        }),
-      );
+            taskId,
+            taskTitle: strippedTaskTitle || rawTaskTitle || null,
+            taskDescription: rawTaskDescription || null,
+            activitySubtype: mapping.taskStatus,
+            occurredAt: activityOccurredAt,
+            ownerInput: {
+              purpose: 'call_activity',
+              athleteId,
+              athleteMainId,
+              athleteName,
+              tasks: athleteTasks,
+              currentTaskId: taskId,
+            },
+            ownerContext: ownership.context,
+            payload: {
+              sync_run_id: RUN_ID,
+              source: 'scout_tasks_current_pipeline',
+              raw_task_title: rawTaskTitle || null,
+              completion_at: completionAt,
+              due_at: dueAt,
+              occurred_at_source: activityOccurredAtSource,
+              head_scout: headScout,
+              selected_sales_stage: selectedSalesStage,
+            },
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+      }
     }
 
     const candidate = {
@@ -556,12 +576,13 @@ console.log(
       pipelineTaskCount: pipelineTasks.length,
       uniqueAthletes: athletesByKey.size,
       appointmentsUpserted: appointmentsById.size,
-      callActivityEventsUpserted: callActivityRows.length,
-      meetingSetEventsInsertedOnce: meetingSetRows.length,
-      athletePipelineStateUpserted: athletePipelineStateRows.length,
-      staleSkipped,
-      ownerSkipped,
-      failures,
+          callActivityEventsUpserted: callActivityRows.length,
+          meetingSetEventsInsertedOnce: meetingSetRows.length,
+          athletePipelineStateUpserted: athletePipelineStateRows.length,
+          staleSkipped,
+          ownerSkipped,
+          clockSkipped,
+          failures,
       distinctCurrentStatuses: [
         ...new Set(athletePipelineStateRows.map((row) => row.task_status).filter(Boolean)),
       ].sort(),

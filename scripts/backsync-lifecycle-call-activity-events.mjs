@@ -11,6 +11,7 @@ const repoRoot = resolve(new URL('..', import.meta.url).pathname);
 const credentials = resolveSupabaseCredentials(repoRoot);
 const PAGE_SIZE = Number(process.env.CALL_TRACKER_BACKSYNC_PAGE_SIZE || 1000);
 const dryRun = process.argv.includes('--dry-run') || process.env.CALL_TRACKER_BACKSYNC_DRY_RUN === '1';
+const repairExisting = process.argv.includes('--repair-existing') || process.env.CALL_TRACKER_BACKSYNC_REPAIR_EXISTING === '1';
 
 if (!credentials.url || !credentials.serviceRoleKey) {
   throw new Error('Missing Supabase credentials for lifecycle call activity backsync.');
@@ -72,31 +73,46 @@ export async function runBacksync() {
       'id,athlete_key,athlete_id,athlete_main_id,event_type,dedupe_key,crm_stage,task_status,payload_json,created_at',
       'order=created_at.asc',
     ),
-    getPaged('call_activity_events', 'task_id'),
+    getPaged('call_activity_events', 'task_id,payload_json'),
   ]);
-  const existingTaskIds = new Set(callActivityRows.map((row) => row.task_id).filter(Boolean));
+  const existingByTaskId = new Map(callActivityRows.map((row) => [row.task_id, row]).filter(([taskId]) => taskId));
+  const existingTaskIds = new Set(existingByTaskId.keys());
   const excludedRowsByReason = {};
   const rowsToUpsert = [];
+  const queuedTaskIds = new Set();
+  let repairedExistingRows = 0;
 
   for (const row of lifecycleRows) {
     const candidate = classifyLifecycleActivityCandidate(row);
+    if (queuedTaskIds.has(candidate.taskId)) continue;
     if (!candidate.eligible) {
       increment(excludedRowsByReason, candidate.reason);
       continue;
     }
-    if (existingTaskIds.has(candidate.taskId)) continue;
+    const existing = existingByTaskId.get(candidate.taskId);
+    if (existing) {
+      const existingPayload = existing.payload_json && typeof existing.payload_json === 'object' ? existing.payload_json : {};
+      const lifecycleDerived = existingPayload.source_table === 'lifecycle_events' || Boolean(existingPayload.lifecycle_event_id);
+      if (!repairExisting || !lifecycleDerived) continue;
+    }
     const activityRow = buildCallActivityEventFromLifecycle(row);
     if (!activityRow) continue;
     rowsToUpsert.push(activityRow);
+    queuedTaskIds.add(activityRow.task_id);
+    if (existing) repairedExistingRows += 1;
     existingTaskIds.add(activityRow.task_id);
+    existingByTaskId.set(activityRow.task_id, activityRow);
   }
 
   await upsertCallActivityEvents(rowsToUpsert);
   return {
     dryRun,
-    promotedLifecycleRows: rowsToUpsert.length,
-    promotedContacts: rowsToUpsert.filter((row) => row.payload_json.counts_as_contact === true).length,
-    promotedDials: rowsToUpsert.filter((row) => row.payload_json.counts_as_dial === true).length,
+    repairExisting,
+    promotedLifecycleRows: rowsToUpsert.length - repairedExistingRows,
+    repairedExistingRows,
+    upsertedLifecycleRows: rowsToUpsert.length,
+    upsertedContacts: rowsToUpsert.filter((row) => row.payload_json.counts_as_contact === true).length,
+    upsertedDials: rowsToUpsert.filter((row) => row.payload_json.counts_as_dial === true).length,
     excludedRowsByReason,
     taskIds: rowsToUpsert.map((row) => row.task_id),
   };

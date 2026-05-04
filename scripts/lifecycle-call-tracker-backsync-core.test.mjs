@@ -37,6 +37,39 @@ test('Left Voice Mail 1 lifecycle row becomes dial only call activity', () => {
   assert.equal(row.payload_json.counts_as_contact, false);
 });
 
+test('lifecycle activity uses due_at as occurrence time before lifecycle sync time', () => {
+  const row = buildCallActivityEventFromLifecycle(lifecycle({
+    crm_stage: 'Left Voice Mail 1',
+    created_at: '2026-05-01T20:30:00.000Z',
+    payload_json: {
+      materialization_status: 'operator_task',
+      task_assigned_owner: 'Jerami Singleton',
+      owner_proof: 'payload.task_assigned_owner',
+      due_at: '2026-04-29T14:15:00.000Z',
+    },
+  }));
+
+  assert.equal(row.occurred_at, '2026-04-29T14:15:00.000Z');
+  assert.equal(row.payload_json.lifecycle_created_at, '2026-05-01T20:30:00.000Z');
+  assert.equal(row.payload_json.occurred_at_source, 'payload.due_at');
+});
+
+test('lifecycle activity uses completion_date before due_at when present', () => {
+  const row = buildCallActivityEventFromLifecycle(lifecycle({
+    crm_stage: 'Spoke to - Not Interested',
+    payload_json: {
+      materialization_status: 'operator_task',
+      task_assigned_owner: 'Jerami Singleton',
+      owner_proof: 'payload.task_assigned_owner',
+      due_at: '2026-04-29T14:15:00.000Z',
+      completion_date: '2026-04-30T18:45:00.000Z',
+    },
+  }));
+
+  assert.equal(row.occurred_at, '2026-04-30T18:45:00.000Z');
+  assert.equal(row.payload_json.occurred_at_source, 'payload.completion_date');
+});
+
 test('Called - Unable to Leave VM lifecycle row stays dial only', () => {
   const row = buildCallActivityEventFromLifecycle(lifecycle({ crm_stage: 'Called - Unable to Leave VM' }));
 

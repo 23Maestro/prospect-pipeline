@@ -14,6 +14,8 @@ import {
   isCuratedSalesStageLabel,
   normalizeSalesStageLabelForLaravel,
 } from '../domain/sales-stage-contract';
+import { getActiveOperator } from '../domain/owners';
+import { recordLifecycleMutation } from './supabase-lifecycle';
 
 const FEATURE = 'sales-stage';
 const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
@@ -166,6 +168,7 @@ export async function fetchMeetingSetTemplate(
 export async function updateSalesStage(args: {
   athleteMainId: string;
   athleteId: string;
+  athleteName?: string | null;
   stage: string;
 }): Promise<SalesStageUpdateResponse> {
   const athleteMainId = args.athleteMainId.trim();
@@ -209,6 +212,21 @@ export async function updateSalesStage(args: {
     athleteMainId,
     stage: payload.stage,
     statusCode: payload.status_code,
+  });
+  const createdTask = payload.created_task || null;
+  await recordLifecycleMutation({
+    sourcePost: '/sales/stage',
+    athleteId,
+    athleteMainId,
+    athleteName: args.athleteName || '',
+    crmStage: payload.stage || stage,
+    taskId: createdTask?.task_id || null,
+    taskTitle: createdTask?.title || null,
+    taskDescription: createdTask?.description || null,
+    activitySubtype: createdTask?.task_id ? undefined : 'needs_manual_review',
+    taskAssignedOwner: createdTask?.assigned_owner || getActiveOperator().taskAssignedOwnerName,
+    dueAt: createdTask?.due_date || null,
+    occurredAt: new Date().toISOString(),
   });
   return payload;
 }

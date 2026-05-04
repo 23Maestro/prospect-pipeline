@@ -41,5 +41,6 @@ npm run sync:current-pipeline-supabase
 npm run sync:booked-meetings-supabase
 npm run reconcile:current-sales-stages-supabase
 npm run sync:commissions-supabase
+npm run materialize:call-tracker-contract
 
 echo "[$(timestamp)] sync complete"
