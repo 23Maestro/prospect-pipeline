@@ -8,6 +8,9 @@ import logging
 
 from app.models.schemas import (
     AthleteBookedMeetingsResponse,
+    BookedMeetingDescriptionUpdateRequest,
+    BookedMeetingDescriptionUpdateResponse,
+    BookedMeetingDetailsResponse,
     BookedMeetingLookupResponse,
     BookedMeetingTitleUpdateRequest,
     BookedMeetingTitleUpdateResponse,
@@ -111,6 +114,98 @@ async def get_head_scout_slots(
                 "context": {
                     "start": start,
                     "end": end,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/booked-meeting/description", response_model=BookedMeetingDescriptionUpdateResponse)
+async def update_booked_meeting_description(
+    request: Request,
+    payload: BookedMeetingDescriptionUpdateRequest,
+):
+    """
+    Update a booked Meeting Set description by exact event id.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "BOOKED_MEETING_DESCRIPTION_UPDATE %s",
+        {
+            "event": "BOOKED_MEETING_DESCRIPTION_UPDATE",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "eventId": payload.event_id,
+                "eventDate": payload.event_date,
+                "descriptionLength": len(payload.description or ""),
+            },
+        },
+    )
+
+    try:
+        popup_endpoint, popup_params = translator.booked_meeting_popup_to_legacy(
+            event_id=payload.event_id,
+            event_date=payload.event_date,
+        )
+        popup_response = await session.get(popup_endpoint, params=popup_params)
+        popup_result = translator.parse_booked_meeting_popup_response(popup_response.text)
+        form_data = popup_result.get("form_data", {})
+
+        original_description = str(form_data.get("taskdescription") or "")
+        updated_description = str(payload.description or "")
+
+        if updated_description != original_description:
+            updated_form_data = translator.apply_booked_meeting_description_update(
+                form_data=form_data,
+                event_id=payload.event_id,
+                description=updated_description,
+            )
+            endpoint, final_form_data = translator.booked_meeting_title_update_to_legacy(updated_form_data)
+            update_response = await session.post(endpoint, data=final_form_data)
+            update_result = translator.parse_task_update_response(update_response.text)
+            if not update_result.get("success"):
+                raise HTTPException(
+                    status_code=400,
+                    detail=update_result.get("message", "Booked meeting description update failed"),
+                )
+
+            verify_popup_response = await session.get(popup_endpoint, params=popup_params)
+            verify_popup_result = translator.parse_booked_meeting_popup_response(verify_popup_response.text)
+            verified_description = str(
+                verify_popup_result.get("form_data", {}).get("taskdescription") or ""
+            )
+            if verified_description != updated_description:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Booked meeting description save did not stick.",
+                )
+
+        return BookedMeetingDescriptionUpdateResponse(
+            success=True,
+            event_id=payload.event_id,
+            original_description=original_description,
+            updated_description=updated_description,
+            message="Booked meeting description updated",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "BOOKED_MEETING_DESCRIPTION_UPDATE %s",
+            {
+                "event": "BOOKED_MEETING_DESCRIPTION_UPDATE",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "eventId": payload.event_id,
+                    "eventDate": payload.event_date,
+                    "descriptionLength": len(payload.description or ""),
                 },
             },
         )
@@ -430,6 +525,72 @@ async def get_booked_meeting(
                     "title": title,
                     "start": start,
                     "end": end,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/booked-meeting/details", response_model=BookedMeetingDetailsResponse)
+async def get_booked_meeting_details(
+    request: Request,
+    event_id: str,
+    event_date: str,
+):
+    """
+    Fetch booked Meeting Set popup title and description by exact event id.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "BOOKED_MEETING_DETAILS %s",
+        {
+            "event": "BOOKED_MEETING_DETAILS",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "eventId": event_id,
+                "eventDate": event_date,
+            },
+        },
+    )
+
+    try:
+        popup_endpoint, popup_params = translator.booked_meeting_popup_to_legacy(
+            event_id=event_id,
+            event_date=event_date,
+        )
+        popup_response = await session.get(popup_endpoint, params=popup_params)
+        popup_result = translator.parse_booked_meeting_popup_response(popup_response.text)
+        form_data = popup_result.get("form_data", {})
+        title = str(form_data.get("tasktitle") or "").strip()
+        description = str(form_data.get("taskdescription") or "")
+
+        if not title:
+            raise HTTPException(status_code=400, detail="Booked meeting title not found in popup form")
+
+        return BookedMeetingDetailsResponse(
+            success=True,
+            event_id=event_id,
+            title=title,
+            description=description,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "BOOKED_MEETING_DETAILS %s",
+            {
+                "event": "BOOKED_MEETING_DETAILS",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "eventId": event_id,
+                    "eventDate": event_date,
                 },
             },
         )

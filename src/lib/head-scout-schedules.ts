@@ -94,6 +94,21 @@ export type BookedMeetingTitleUpdateResponse = {
   message: string;
 };
 
+export type BookedMeetingDetailsResponse = {
+  success: boolean;
+  event_id: string;
+  title: string;
+  description: string;
+};
+
+export type BookedMeetingDescriptionUpdateResponse = {
+  success: boolean;
+  event_id: string;
+  original_description: string;
+  updated_description: string;
+  message: string;
+};
+
 type TimezoneDisplay = {
   dateLabel: string;
   timeRangeLabel: string;
@@ -426,6 +441,85 @@ export async function updateBookedMeetingTitlePrefix(args: {
     prefix: args.prefix,
     originalTitle: payload.original_title,
     updatedTitle: payload.updated_title,
+  });
+  return payload;
+}
+
+export async function fetchBookedMeetingDetails(args: {
+  eventId: string;
+  eventDate: string;
+}): Promise<BookedMeetingDetailsResponse> {
+  logInfo('BOOKED_MEETING_DETAILS', 'request', 'start', {
+    eventId: args.eventId,
+    eventDate: args.eventDate,
+  });
+
+  const params = new URLSearchParams({
+    event_id: args.eventId,
+    event_date: args.eventDate,
+  });
+  const response = await apiFetch(`/calendar/booked-meeting/details?${params.toString()}`);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Booked meeting details HTTP ${response.status}`;
+    logFailure('BOOKED_MEETING_DETAILS', 'request', message, {
+      eventId: args.eventId,
+      eventDate: args.eventDate,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as BookedMeetingDetailsResponse;
+  logInfo('BOOKED_MEETING_DETAILS', 'response', 'success', {
+    eventId: args.eventId,
+    title: payload.title,
+    descriptionLength: payload.description.length,
+  });
+  return payload;
+}
+
+export async function updateBookedMeetingDescription(args: {
+  eventId: string;
+  eventDate: string;
+  description: string;
+}): Promise<BookedMeetingDescriptionUpdateResponse> {
+  logInfo('BOOKED_MEETING_DESCRIPTION_UPDATE', 'request', 'start', {
+    eventId: args.eventId,
+    eventDate: args.eventDate,
+    descriptionLength: args.description.length,
+  });
+
+  const response = await apiFetch('/calendar/booked-meeting/description', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event_id: args.eventId,
+      event_date: args.eventDate,
+      description: args.description,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message =
+      errorText.slice(0, 200) || `Booked meeting description update HTTP ${response.status}`;
+    logFailure('BOOKED_MEETING_DESCRIPTION_UPDATE', 'request', message, {
+      eventId: args.eventId,
+      eventDate: args.eventDate,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as BookedMeetingDescriptionUpdateResponse;
+  logInfo('BOOKED_MEETING_DESCRIPTION_UPDATE', 'response', 'success', {
+    eventId: args.eventId,
+    originalDescriptionLength: payload.original_description.length,
+    updatedDescriptionLength: payload.updated_description.length,
   });
   return payload;
 }

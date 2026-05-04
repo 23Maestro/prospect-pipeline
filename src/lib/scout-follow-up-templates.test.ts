@@ -100,13 +100,13 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
   );
   assert.match(
     message,
-    /Wylie’s profile came through, and I wanted to ask a few quick questions about his college soccer goals\./,
+    /Wylie’s profile came through and I wanted to ask a few quick questions about his college soccer goals\./,
   );
   assert.doesNotMatch(message, /I just left you a voicemail/);
   assert.match(message, /Would later today or tomorrow work for a quick 10-minute call\?/);
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /Enjoy the rest of your week\./);
-  assert.match(message, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage uses female pronouns for softball templates', () => {
@@ -120,7 +120,7 @@ test('buildVoicemailFollowUpMessage uses female pronouns for softball templates'
 
   assert.match(
     message,
-    /Ava’s profile came through, and I wanted to ask a few quick questions about her college softball goals\./,
+    /Ava’s profile came through and I wanted to ask a few quick questions about her college softball goals\./,
   );
   assert.doesNotMatch(message, /serious goal for him/);
 });
@@ -130,7 +130,7 @@ test('isPastTextTodayCutoff identifies the eastern evening cutoff', () => {
   assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T23:30:00Z')), true);
 });
 
-test('buildVoicemailFollowUpMessage renders attempt 2 Cal booking copy', () => {
+test('buildVoicemailFollowUpMessage renders attempt 2 calendar permission copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'call_attempt_2',
     greeting: 'Good evening Mr. Brown,',
@@ -139,17 +139,15 @@ test('buildVoicemailFollowUpMessage renders attempt 2 Cal booking copy', () => {
     now: new Date('2026-04-23T23:30:00Z'),
   });
 
-  assert.match(
-    message,
-    /Following up on Grayson Brown’s college football profile\. Do you have 10 minutes later today or tomorrow\?/,
-  );
-  assert.match(message, /If it’s easier, you can grab a time here:/);
-  assert.match(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(message, /^Good evening Mr\. Brown, any updates or questions on this\?/);
+  assert.match(message, /If I send you a calendar link, would that be more convenient\?/);
+  assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /I just tried you again/);
   assert.doesNotMatch(message, /today or in the next few days/);
   assert.doesNotMatch(message, /trying to get a better feel/);
   assert.doesNotMatch(message, /learn his goals/);
+  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage renders no show copy with simple next best day logic', () => {
@@ -173,7 +171,7 @@ test('buildVoicemailFollowUpMessage renders no show copy with simple next best d
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('buildVoicemailFollowUpMessage renders attempt 3 copy', () => {
+test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'call_attempt_3',
     greeting: 'Good afternoon Ms. Bowden,',
@@ -184,19 +182,35 @@ test('buildVoicemailFollowUpMessage renders attempt 3 copy', () => {
     closingLine: 'Enjoy the rest of your week.',
   });
 
-  assert.match(message, /^Good afternoon Ms\. Bowden, this is Jerami Singleton with Prospect ID\./);
-  assert.match(message, /I wanted to check one last time on Andrajhez’s college football profile\./);
   assert.match(
     message,
-    /If recruiting help isn’t needed right now, no worries\. Otherwise, a short 10-minute call today or tomorrow would be the easiest next step\./,
+    /^Good afternoon Ms\. Bowden, choose what’s most relevant so I can be helpful:/,
   );
-  assert.match(message, /You can also pick a time here:/);
-  assert.match(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(message, /1 - not interested whatsoever/);
+  assert.match(message, /2 - interested but bad timing/);
+  assert.match(message, /3 - interested and ready to learn about next steps/);
+  assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /I’ve tried a few times/);
   assert.doesNotMatch(message, /I’ll close this out for now\./);
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /Enjoy the rest of your week\./);
-  assert.match(message, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
+});
+
+test('buildVoicemailFollowUpMessage renders simple Cal link reply without signature', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'send_cal_link',
+    greeting: 'Good afternoon Ms. Bowden,',
+    athleteName: 'Andrajhez',
+    senderName: 'Jerami Singleton',
+    sport: 'Football',
+  });
+
+  assert.equal(
+    message,
+    ['Great! Here’s the link to schedule a quick call:', CAL_BOOKING_URL].join('\n'),
+  );
+  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', () => {
@@ -222,9 +236,17 @@ test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', 
     sport: 'Football',
   });
 
-  assert.match(attempt1, /wanted to ask a few quick questions about your college football goals/);
-  assert.match(attempt2, /Following up on your college football goals/);
+  assert.match(attempt1, /I received your info about playing college football/);
+  assert.match(attempt1, /If you’re serious about this, have one of your parents call or text me/);
+  assert.match(attempt2, /Any updates or questions on playing college football/);
+  assert.match(attempt2, /If this is still something you want, have one of your parents call or text me/);
   assert.match(attempt3, /Last follow-up on your college football profile/);
+  assert.doesNotMatch(attempt1, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(attempt2, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(attempt3, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(attempt1, /football scouting coordinator\nProspect ID/);
+  assert.doesNotMatch(attempt2, /football scouting coordinator\nProspect ID/);
+  assert.doesNotMatch(attempt3, /football scouting coordinator\nProspect ID/);
   assert.notEqual(attempt1, attempt2);
   assert.notEqual(attempt2, attempt3);
 });
@@ -240,16 +262,9 @@ test('buildCallAttempt2Message fills athlete and recipient names', (t) => {
     gradYear: '2027',
   });
 
-  assert.match(
-    message,
-    /Good morning Mr\. Brown, this is Coach Risner, college football scout with Prospect ID\./,
-  );
-  assert.match(
-    message,
-    /Following up on Grayson Brown’s college football profile\. Do you have 10 minutes later today or tomorrow\?/,
-  );
-  assert.match(message, /If it’s easier, you can grab a time here:/);
-  assert.match(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(message, /Good morning Mr\. Brown, any updates or questions on this\?/);
+  assert.match(message, /If I send you a calendar link, would that be more convenient\?/);
+  assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /I just tried you again/);
   assert.doesNotMatch(message, /trying to get a better feel/);

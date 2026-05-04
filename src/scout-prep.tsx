@@ -1444,6 +1444,10 @@ function VoicemailFollowUpRecipientForm({
                   });
                 }
                 : async () => {
+                  if (selectedVariant === 'send_cal_link') {
+                    return;
+                  }
+
                   const followUpTask = resolveVoicemailLifecycleTaskForCompletion(
                     context.tasks,
                     selectedVariant,
@@ -1512,11 +1516,13 @@ function VoicemailFollowUpRecipientForm({
         variant: variant || defaultVariant,
       });
       try {
-        await completeSentTextTask({
-          context,
-          task,
-          variant: selectedVariant,
-        });
+        if (selectedVariant !== 'send_cal_link') {
+          await completeSentTextTask({
+            context,
+            task,
+            variant: selectedVariant,
+          });
+        }
       } catch (error) {
         await showToast({
           style: Toast.Style.Failure,

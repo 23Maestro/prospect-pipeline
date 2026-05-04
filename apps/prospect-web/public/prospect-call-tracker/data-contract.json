@@ -327,7 +327,7 @@
     "plainEnglish": "Run this with the call tracker cron/sync so Vercel only serves a ready-to-render artifact instead of recomputing Supabase business meaning in the browser."
   },
   "data": {
-    "generatedAt": "2026-05-04T20:28:18.451Z",
+    "generatedAt": "2026-05-04T21:06:18.104Z",
     "eventLimit": 1000,
     "supabaseReads": {
       "summaryView": "call_tracker_summary",

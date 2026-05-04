@@ -800,3 +800,27 @@ class BookedMeetingTitleUpdateResponse(BaseModel):
     original_title: str
     updated_title: str
     message: str
+
+
+class BookedMeetingDetailsResponse(BaseModel):
+    """Booked meeting popup details for editing."""
+    success: bool
+    event_id: str
+    title: str
+    description: str
+
+
+class BookedMeetingDescriptionUpdateRequest(BaseModel):
+    """Update a booked meeting description by specific event id."""
+    event_id: str
+    event_date: str
+    description: str
+
+
+class BookedMeetingDescriptionUpdateResponse(BaseModel):
+    """Booked meeting description update result."""
+    success: bool
+    event_id: str
+    original_description: str
+    updated_description: str
+    message: str

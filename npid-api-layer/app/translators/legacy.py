@@ -463,6 +463,21 @@ class LegacyTranslator:
         return updated
 
     @staticmethod
+    def apply_booked_meeting_description_update(
+        form_data: Dict[str, Any],
+        event_id: str,
+        description: str,
+    ) -> Dict[str, Any]:
+        """
+        Apply description-only update to Meeting Set event form data.
+        """
+        updated = dict(form_data)
+        updated["taskdescription"] = str(description or "")
+        if not str(updated.get("existingtask") or "").strip():
+            updated["existingtask"] = str(event_id or "").strip()
+        return updated
+
+    @staticmethod
     def booked_meeting_title_update_to_legacy(form_data: Dict[str, Any]) -> Tuple[str, Dict[str, Any]]:
         """
         Convert updated Meeting Set form data to legacy request.

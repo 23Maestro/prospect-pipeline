@@ -3,6 +3,7 @@ import {
   ActionPanel,
   Clipboard,
   Color,
+  Form,
   Icon,
   type KeyEquivalent,
   List,
@@ -10,6 +11,7 @@ import {
   showHUD,
   showToast,
   Toast,
+  useNavigation,
 } from '@raycast/api';
 import { setTimeout } from 'timers/promises';
 import { useEffect, useMemo, useState } from 'react';
@@ -24,11 +26,13 @@ import {
   buildHeadScoutWeekWindow,
   buildHeadScoutScriptMarkdown,
   fetchHeadScoutBookedMeetings,
+  fetchBookedMeetingDetails,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
   formatHeadScoutSlotForTimezone,
   formatHeadScoutWeekLabel,
   resolveAthleteTimezone,
+  updateBookedMeetingDescription,
   updateBookedMeetingTitlePrefix,
   type BookedMeetingEvent,
   type HeadScoutSchedule,
@@ -58,10 +62,7 @@ import {
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
-import {
-  fetchScoutPortalTasks,
-  loadScoutPrepContext,
-} from './lib/scout-prep';
+import { fetchScoutPortalTasks, loadScoutPrepContext } from './lib/scout-prep';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
 type HeadScoutSchedulesRootProps = {
@@ -99,10 +100,13 @@ const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
 async function showLoadingToast(title: string, message?: string) {
   return showToast({
     style: Toast.Style.Animated,
-    title: String(title || '').trim().slice(0, 24),
-    message: String(message || '')
+    title: String(title || '')
       .trim()
-      .slice(0, 28) || undefined,
+      .slice(0, 24),
+    message:
+      String(message || '')
+        .trim()
+        .slice(0, 28) || undefined,
   });
 }
 
@@ -134,6 +138,117 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
     athlete_admin_url: candidate.adminUrl,
     athlete_task_url: candidate.taskUrl,
   };
+}
+
+function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string {
+  return String(meeting?.start || '').split('T')[0] || '';
+}
+
+function MeetingDetailsForm({
+  candidate,
+  onSaved,
+}: {
+  candidate: HeadScoutFollowUpCandidate;
+  onSaved: () => void;
+}) {
+  const { pop } = useNavigation();
+  const meeting = candidate.bookedMeeting;
+  const eventDate = getBookedMeetingEventDate(meeting);
+  const [isLoading, setIsLoading] = useState(true);
+  const [title, setTitle] = useState(meeting?.title || candidate.athleteName);
+  const [description, setDescription] = useState('');
+  const [currentDescription, setCurrentDescription] = useState('');
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadDetails() {
+      if (!meeting?.event_id || !eventDate) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const details = await fetchBookedMeetingDetails({
+          eventId: meeting.event_id,
+          eventDate,
+        });
+        if (!isActive) return;
+        setTitle(details.title);
+        setDescription(details.description);
+        setCurrentDescription(details.description);
+      } catch (error) {
+        if (!isActive) return;
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Details failed',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      } finally {
+        if (isActive) setIsLoading(false);
+      }
+    }
+
+    void loadDetails();
+    return () => {
+      isActive = false;
+    };
+  }, [eventDate, meeting?.event_id]);
+
+  async function handleSubmit() {
+    if (!meeting?.event_id || !eventDate) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No meeting',
+        message: 'Missing event id.',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Saving', 'Meeting Details');
+    try {
+      await updateBookedMeetingDescription({
+        eventId: meeting.event_id,
+        eventDate,
+        description,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Saved';
+      toast.message = 'Meeting Details';
+      onSaved();
+      pop();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Save failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return (
+    <Form
+      isLoading={isLoading}
+      navigationTitle="Meeting Details"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Save Meeting Details"
+            icon={Icon.Pencil}
+            onSubmit={handleSubmit}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Description title="Meeting" text={title} />
+      <Form.TextArea
+        id="description"
+        title="Meeting Details"
+        value={description}
+        placeholder="Add meeting details"
+        onChange={setDescription}
+      />
+      {currentDescription ? <Form.Description title="Current" text={currentDescription} /> : null}
+    </Form>
+  );
 }
 
 async function loadWeeklyOperatorMeetingCandidates(
@@ -340,7 +455,7 @@ export function HeadScoutBookingsList({
     prefix: AppointmentTitlePrefix,
   ) {
     const meeting = candidate.bookedMeeting;
-    const eventDate = String(meeting?.start || '').split('T')[0] || '';
+    const eventDate = getBookedMeetingEventDate(meeting);
     if (!meeting?.event_id || !eventDate) {
       await showToast({
         style: Toast.Style.Failure,
@@ -436,7 +551,9 @@ export function HeadScoutBookingsList({
                     <ActionPanel>
                       {candidate.athleteId && candidate.athleteMainId ? (
                         <Action.Push
-                          title={sendingTextKey === candidate.key ? 'Opening…' : 'Send Confirmation'}
+                          title={
+                            sendingTextKey === candidate.key ? 'Opening…' : 'Send Confirmation'
+                          }
                           icon={Icon.Message}
                           shortcut={{ modifiers: ['cmd'], key: 'm' }}
                           target={buildConfirmationTextForm(candidate)}
@@ -459,6 +576,19 @@ export function HeadScoutBookingsList({
                               onAction={() => void handleMarkMeeting(candidate, prefix)}
                             />
                           ))}
+                          {weeklyMeetingsOnly ? (
+                            <Action.Push
+                              title="Meeting Details"
+                              icon={Icon.Pencil}
+                              shortcut={{ modifiers: ['cmd'], key: 'e' }}
+                              target={
+                                <MeetingDetailsForm
+                                  candidate={candidate}
+                                  onSaved={() => setRefreshTick((current) => current + 1)}
+                                />
+                              }
+                            />
+                          ) : null}
                         </>
                       ) : null}
                       {weeklyMeetingsOnly ? (

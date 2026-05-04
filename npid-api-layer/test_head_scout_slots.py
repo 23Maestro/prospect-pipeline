@@ -256,6 +256,24 @@ def test_parse_booked_meeting_popup_response_extracts_title_and_existingtask():
     assert result["form_data"]["taskdescription"] == "Notes"
 
 
+def test_apply_booked_meeting_description_update_preserves_title_and_sets_existingtask():
+    result = LegacyTranslator.apply_booked_meeting_description_update(
+        form_data={
+            "tasktitle": "(CF) Victor Williams Football 2027 FL",
+            "taskdescription": "Old notes",
+            "existingtask": "",
+            "assignedto": "nhVvYOz8bAaL57c",
+        },
+        event_id="586540",
+        description="Updated notes",
+    )
+
+    assert result["tasktitle"] == "(CF) Victor Williams Football 2027 FL"
+    assert result["taskdescription"] == "Updated notes"
+    assert result["existingtask"] == "586540"
+    assert result["assignedto"] == "nhVvYOz8bAaL57c"
+
+
 if __name__ == "__main__":
     test_parse_head_scout_slots_response_filters_and_orders_slots()
     test_head_scout_slots_request_preserves_selected_owner_ids_and_fields()
@@ -268,4 +286,5 @@ if __name__ == "__main__":
     test_apply_booked_meeting_title_prefix_replaces_known_prefix()
     test_apply_booked_meeting_title_prefix_preserves_unknown_prefix()
     test_parse_booked_meeting_popup_response_extracts_title_and_existingtask()
+    test_apply_booked_meeting_description_update_preserves_title_and_sets_existingtask()
     print("✅ Head scout slot parser test passed")
