@@ -11,6 +11,7 @@ const target = resolve(repoRoot, 'apps/prospect-web/public/prospect-call-tracker
 const eventLimit = Number(process.env.CALL_TRACKER_CONTRACT_EVENT_LIMIT || 1000);
 const TIME_ZONE = 'America/New_York';
 const COMMISSION_RATE = 0.175;
+const HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT = 13;
 const hiddenDefaultOutcomes = new Set(['voicemail', 'spoke_follow_up', 'unable_to_leave_vm']);
 const meetingOutcomes = new Set([
   'meeting_set',
@@ -270,6 +271,8 @@ function paycheck(rows, now) {
 function buildUiData(summary, events, generatedAt) {
   const now = new Date(generatedAt);
   const rows = displayRows(events);
+  const rawAllTimeContacts = Number(summary.contacts) || 0;
+  const correctedAllTimeContacts = rawAllTimeContacts + HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT;
   const periods = {};
   for (const period of ['week-0', 'week-1', 'week-2', 'week-3', 'week-4', 'week-total']) {
     const scoped = rowsForPeriod(rows, now, period);
@@ -295,11 +298,20 @@ function buildUiData(summary, events, generatedAt) {
     summaryCards: {
       moneyEarnedCents: Number(summary.money_earned_cents) || 0,
       closedWon: Number(summary.closed_won) || 0,
-      contacts: Number(summary.contacts) || 0,
+      contacts: correctedAllTimeContacts,
+      rawContacts: rawAllTimeContacts,
+      historicalContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
       dials: Number(summary.dials) || 0,
       voicemailOnly: Number(summary.voicemail_only) || 0,
       appointmentsTracked: Number(summary.appointments_tracked) || 0,
       closeRate,
+    },
+    manualCorrections: {
+      allTimeContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
+      rawAllTimeContacts,
+      correctedAllTimeContacts,
+      reason:
+        'Historical manual correction for contacts lost during mid-tracking implementation. Supabase facts remain strict; this adjusts all-time Vercel UI contacts/set-rate only.',
     },
     paycheck: paycheck(rows, now),
     periods,

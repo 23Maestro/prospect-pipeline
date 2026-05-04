@@ -123,6 +123,8 @@ test('lifecycle mutation event logs left voicemail as dial-only operator activit
   assert.equal(event.payload.counts_as_contact, false);
   assert.equal(event.payload.completed_at, '2026-05-01T14:30:00.000Z');
   assert.equal(event.payload.occurred_at, '2026-05-01T14:30:00.000Z');
+  assert.equal(event.payload.operator_owner, 'Jerami Singleton');
+  assert.equal(event.payload.operator_owner_key, 'jerami_singleton');
   assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
   assert.equal(event.payload.owner_proof, 'task.assigned_owner');
   assert.equal(event.payload.materialization_status, 'operator_task');

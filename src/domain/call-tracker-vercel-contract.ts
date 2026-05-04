@@ -40,7 +40,7 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     summaryHelper: {
       supabaseView: 'call_tracker_summary',
       plainEnglish:
-        'This is the source summary the materializer reads. Dials and contacts must mirror the same event-feed booleans before they are written into data-contract.json.',
+        'This is the source summary the materializer reads. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment in data.ui.summaryCards while Supabase facts remain strict.',
       requiredFields: [
         'dials',
         'contacts',
@@ -156,8 +156,8 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
       card: 'Contacts Total',
       domId: 'spokeWith',
       source: 'summaryHelper',
-      countRule: 'display call_tracker_summary.contacts',
-      forbiddenRule: 'Do not display call_tracker_summary.spoke_with as Contacts.',
+      countRule: 'display data.ui.summaryCards.contacts, including any explicit historical all-time contacts adjustment',
+      forbiddenRule: 'Do not display call_tracker_summary.spoke_with as Contacts; it includes post-meeting outcomes.',
     },
   ],
   domainOutcomeRules: [

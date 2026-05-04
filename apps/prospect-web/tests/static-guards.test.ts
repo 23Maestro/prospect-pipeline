@@ -107,11 +107,21 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/reconcile-current-sales-stages-to-supabase.test.mjs',
     'scripts/materialize-call-tracker-data-contract.mjs',
     'scripts/archive-call-tracker-week.mjs',
+    'scripts/backsync-lifecycle-call-activity-events.mjs',
+    'scripts/lifecycle-call-tracker-backsync-core.test.mjs',
     'scripts/repair-call-event-owner-proof.mjs',
+    'scripts/sync-supabase-pipeline.sh',
+    'scripts/sync-supabase-pipeline.test.mjs',
     oldConfigWriterPath,
     'scripts/sync-current-pipeline-to-supabase.mjs',
     'scripts/sync-current-pipeline-to-supabase.test.mjs',
     'src/domain/call-tracker-vercel-contract.ts',
+    'src/domain/owner-resolution.ts',
+    'src/domain/owner-resolution.test.ts',
+    'src/domain/post-call-action.ts',
+    'src/domain/post-call-action.test.ts',
+    'src/lib/supabase-lifecycle.ts',
+    'src/lib/supabase-lifecycle.test.ts',
     'supabase/migrations/20260503043000_backsync_meeting_set_materialization_contract.sql',
     'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
     'supabase/migrations/20260503045000_backsync_call_activity_counting_contract.sql',
@@ -213,6 +223,13 @@ test('call tracker public contract documents count flags as the reporting source
   assert.ok(contract.data.events.length > 0);
   assert.equal(typeof contract.data.ui.summaryCards.dials, 'number');
   assert.equal(typeof contract.data.ui.summaryCards.contacts, 'number');
+  assert.equal(typeof contract.data.ui.summaryCards.rawContacts, 'number');
+  assert.equal(typeof contract.data.ui.summaryCards.historicalContactsAdjustment, 'number');
+  assert.equal(typeof contract.data.ui.manualCorrections.allTimeContactsAdjustment, 'number');
+  assert.equal(
+    contract.data.ui.summaryCards.contacts,
+    contract.data.ui.summaryCards.rawContacts + contract.data.ui.summaryCards.historicalContactsAdjustment,
+  );
   assert.equal(typeof contract.data.ui.summaryCards.closeRate, 'number');
   assert.equal(typeof contract.data.ui.paycheck.totalCents, 'number');
   assert.equal(typeof contract.data.ui.activePeriod, 'string');
@@ -229,7 +246,8 @@ test('call tracker public contract documents count flags as the reporting source
   const totalDials = contract.cardBindings.find((binding: { domId: string }) => binding.domId === 'totalEvents');
   const totalContacts = contract.cardBindings.find((binding: { domId: string }) => binding.domId === 'spokeWith');
   assert.match(totalDials.countRule, /call_tracker_summary\.dials/);
-  assert.match(totalContacts.countRule, /call_tracker_summary\.contacts/);
+  assert.match(totalContacts.countRule, /data\.ui\.summaryCards\.contacts/);
+  assert.match(totalContacts.forbiddenRule, /post-meeting outcomes/i);
 
   const meetingSet = contract.domainOutcomeRules.find((rule: { domainStatus: string }) => rule.domainStatus === 'meeting_set');
   assert.equal(meetingSet.countsAsDial, true);

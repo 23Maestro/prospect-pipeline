@@ -122,3 +122,50 @@ test('Meeting Set submit builds Supabase writes only when active-operator proof 
   assert.equal(timPlan.supabaseLifecycleWrite, null);
   assert.equal(timPlan.supabaseFactWrite, null);
 });
+
+test('Meeting Set submit keeps Laravel payload clean while Supabase carries Raycast operator ownership', () => {
+  const plan = buildPostCallActionPlan({
+    athleteId: '1490499',
+    athleteMainId: '952328',
+    athleteName: 'Elia Imani',
+    stageLabel: 'Meeting Set',
+    tasks: [],
+    selectedTaskId: '626651',
+    meetingSet: {
+      meetingName: 'Elia Imani Football 2029 TX',
+      meetingTimezone: 'CST',
+      assignedToLegacyUserId: '1354049',
+      meetingForLegacyUserId: '1354049',
+      openEventId: '588339',
+      calendarOwnerId: 'nhVvYOz8bAaL57c',
+      bookedMeetingAssignedOwner: 'Ryan Lietz',
+      taskDescription: 'Main Number:\nOther Details:',
+      startTime: '15:00',
+      startsAt: '2026-05-04T15:00:00-04:00',
+      meetingLength: '01:00',
+    },
+  });
+
+  assert.equal(plan.ownerContext.taskAssignedOwner, 'Jerami Singleton');
+  assert.equal(plan.ownerContext.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(plan.ownerContext.ownerProof, 'submittedMeetingPayload.operator_owner');
+  assert.equal(plan.ownerContext.materializationStatus, 'operator_task');
+  assert.equal(plan.ownerContext.materializationReason, 'meeting_set_submitted_by_active_operator');
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(plan.laravelMeetingSetSubmit || {}, 'operator_owner'),
+    false,
+  );
+  assert.equal(plan.supabaseLifecycleWrite?.eventType, 'meeting_set');
+  assert.equal(
+    plan.supabaseLifecycleWrite?.args.payload?.owner_context?.task_assigned_owner,
+    'Jerami Singleton',
+  );
+  assert.equal(
+    plan.supabaseLifecycleWrite?.args.payload?.owner_context?.booked_meeting_assigned_owner,
+    'Ryan Lietz',
+  );
+  assert.equal(
+    plan.supabaseLifecycleWrite?.args.payload?.owner_context?.owner_proof,
+    'submittedMeetingPayload.operator_owner',
+  );
+});

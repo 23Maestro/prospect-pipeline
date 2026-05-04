@@ -121,6 +121,76 @@ test('missing task owner is a binary not-operator task with explicit reason', ()
   assert.equal(result.isTrackedOwner, false);
 });
 
+test('Meeting Set submit keeps Jerami operator ownership from internal Raycast operator context', () => {
+  const result = resolveOwnerContext({
+    purpose: 'meeting_set',
+    athleteId: '123',
+    athleteMainId: '456',
+    submittedMeetingPayload: {
+      assigned_to: '1354049',
+      meeting_for: '1354049',
+      open_event_id: '588339',
+      operator_owner: 'Jerami Singleton',
+      operator_owner_key: 'jerami_singleton',
+      operator_legacy_user_id: '1408164',
+    },
+  });
+
+  assert.equal(result.taskAssignedOwner, 'Jerami Singleton');
+  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.resolvedFromField, 'submittedMeetingPayload.assigned_to');
+  assert.equal(result.ownerProof, 'submittedMeetingPayload.operator_owner');
+  assert.equal(result.materializationStatus, 'operator_task');
+  assert.equal(result.materializationReason, 'meeting_set_submitted_by_active_operator');
+  assert.equal(result.canMaterializeForActiveOperator, true);
+});
+
+test('Meeting Set submit without internal operator context does not infer Jerami from head scout payload', () => {
+  const result = resolveOwnerContext({
+    purpose: 'meeting_set',
+    athleteId: '123',
+    athleteMainId: '456',
+    submittedMeetingPayload: {
+      assigned_to: '1354049',
+      meeting_for: '1354049',
+      open_event_id: '588339',
+    },
+  });
+
+  assert.equal(result.taskAssignedOwner, null);
+  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.materializationStatus, 'not_operator_task');
+  assert.equal(result.materializationReason, 'missing_task_assigned_owner');
+  assert.equal(result.canMaterializeForActiveOperator, false);
+});
+
+test('Meeting Set submit does not override an explicit non-Jerami task owner', () => {
+  const result = resolveOwnerContext({
+    purpose: 'meeting_set',
+    athleteId: '123',
+    athleteMainId: '456',
+    tasks: [
+      {
+        task_id: '906',
+        title: 'Call Attempt 1',
+        assigned_owner: 'Tim Risner',
+      },
+    ],
+    selectedTaskId: '906',
+    submittedMeetingPayload: {
+      assigned_to: '1354049',
+      meeting_for: '1354049',
+      open_event_id: '588340',
+    },
+  });
+
+  assert.equal(result.taskAssignedOwner, 'Tim Risner');
+  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.materializationStatus, 'not_operator_task');
+  assert.equal(result.materializationReason, 'task_assigned_owner_is_other_owner');
+  assert.equal(result.canMaterializeForActiveOperator, false);
+});
+
 test('mismatched booked meeting identity blocks materialization with explicit reason', () => {
   const result = resolveOwnerContext({
     purpose: 'meeting_outcome',

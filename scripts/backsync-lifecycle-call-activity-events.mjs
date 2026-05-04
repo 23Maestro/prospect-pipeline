@@ -62,6 +62,15 @@ async function upsertCallActivityEvents(rows) {
   });
 }
 
+function isSuppressedOpenQueuePlaceholder(row) {
+  const body = row?.payload_json && typeof row.payload_json === 'object' ? row.payload_json : {};
+  return (
+    body.suppressed_from_call_activity_reporting === true ||
+    body.queue_item_status === 'open_queue_item' ||
+    body.materialization_reason === 'open_new_opportunity_queue_item_not_call_activity'
+  );
+}
+
 function increment(target, key) {
   target[key] = (target[key] || 0) + 1;
 }
@@ -93,7 +102,7 @@ export async function runBacksync() {
     if (existing) {
       const existingPayload = existing.payload_json && typeof existing.payload_json === 'object' ? existing.payload_json : {};
       const lifecycleDerived = existingPayload.source_table === 'lifecycle_events' || Boolean(existingPayload.lifecycle_event_id);
-      if (!repairExisting || !lifecycleDerived) continue;
+      if (!isSuppressedOpenQueuePlaceholder(existing) && (!repairExisting || !lifecycleDerived)) continue;
     }
     const activityRow = buildCallActivityEventFromLifecycle(row);
     if (!activityRow) continue;

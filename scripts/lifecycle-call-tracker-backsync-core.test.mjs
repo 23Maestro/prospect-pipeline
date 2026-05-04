@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import {
   buildCallActivityEventFromLifecycle,
   classifyLifecycleActivityCandidate,
@@ -173,4 +174,14 @@ test('meeting_set lifecycle rows are not promoted into call activity', () => {
 
   assert.equal(candidate.eligible, false);
   assert.equal(candidate.reason, 'meeting_set_lifecycle_event');
+});
+
+test('backsync replaces suppressed open queue placeholders when completed lifecycle facts arrive', () => {
+  const source = readFileSync(new URL('./backsync-lifecycle-call-activity-events.mjs', import.meta.url), 'utf8');
+
+  assert.match(source, /function isSuppressedOpenQueuePlaceholder/);
+  assert.match(source, /suppressed_from_call_activity_reporting === true/);
+  assert.match(source, /queue_item_status === 'open_queue_item'/);
+  assert.match(source, /open_new_opportunity_queue_item_not_call_activity/);
+  assert.match(source, /!isSuppressedOpenQueuePlaceholder\(existing\)/);
 });

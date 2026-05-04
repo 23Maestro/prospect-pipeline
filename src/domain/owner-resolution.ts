@@ -18,6 +18,7 @@ export type OwnerResolutionStatus = 'resolved' | 'not_tracked' | 'needs_owner_re
 export type MaterializationStatus = 'operator_task' | 'not_operator_task';
 export type MaterializationReason =
   | 'task_assigned_owner_matches_active_operator'
+  | 'meeting_set_submitted_by_active_operator'
   | 'task_assigned_owner_is_other_owner'
   | 'missing_task_assigned_owner'
   | 'mismatched_athlete_identity';
@@ -208,6 +209,69 @@ function resolveAppointmentSetter(input: OwnerResolutionInput): {
   };
 }
 
+function submittedMeetingOperator(input: OwnerResolutionInput): {
+  owner: OwnerDirectoryEntry | null;
+  ownerName: string | null;
+  resolvedFromField: string | null;
+  resolvedFromValue: string | null;
+} {
+  const payload = input.submittedMeetingPayload || {};
+  const operatorName =
+    asString(payload.operator_owner) ||
+    asString(payload.operatorOwner) ||
+    asString(payload.operator_name) ||
+    asString(payload.operatorName) ||
+    asString(payload.raycast_operator_name) ||
+    asString(payload.raycastOperatorName) ||
+    null;
+  const operatorKey =
+    asString(payload.operator_owner_key) ||
+    asString(payload.operatorOwnerKey) ||
+    asString(payload.raycast_operator_key) ||
+    asString(payload.raycastOperatorKey) ||
+    null;
+  const operatorLegacyId =
+    asString(payload.operator_legacy_user_id) ||
+    asString(payload.operatorLegacyUserId) ||
+    asString(payload.raycast_operator_legacy_user_id) ||
+    asString(payload.raycastOperatorLegacyUserId) ||
+    null;
+  const owner =
+    resolveOwnerByName(operatorName) ||
+    resolveOwnerByAnyId(operatorLegacyId) ||
+    null;
+
+  if (!owner) {
+    return { owner: null, ownerName: operatorName, resolvedFromField: null, resolvedFromValue: null };
+  }
+
+  if (operatorName) {
+    return {
+      owner,
+      ownerName: operatorName,
+      resolvedFromField: 'submittedMeetingPayload.operator_owner',
+      resolvedFromValue: operatorName,
+    };
+  }
+  if (operatorLegacyId) {
+    return {
+      owner,
+      ownerName: owner.personName,
+      resolvedFromField: 'submittedMeetingPayload.operator_legacy_user_id',
+      resolvedFromValue: operatorLegacyId,
+    };
+  }
+  if (operatorKey) {
+    return {
+      owner,
+      ownerName: owner.personName,
+      resolvedFromField: 'submittedMeetingPayload.operator_owner_key',
+      resolvedFromValue: operatorKey,
+    };
+  }
+  return { owner, ownerName: owner.personName, resolvedFromField: null, resolvedFromValue: null };
+}
+
 function resolveBookedOwner(input: OwnerResolutionInput): {
   owner: OwnerDirectoryEntry | null;
   bookedMeetingAssignedOwner: string | null;
@@ -304,6 +368,7 @@ function resultFromSource(args: {
   resolvedOwnerLegacyUserId?: string | null;
   resolvedFromField?: string | null;
   resolvedFromValue?: string | null;
+  ownerProof?: string | null;
   reason?: string | null;
 }): OwnerResolutionResult {
   const trackedDashboardOwner = args.materializationStatus === 'operator_task'
@@ -316,6 +381,7 @@ function resultFromSource(args: {
       ? 'not_tracked'
       : 'needs_owner_review';
   const resolvedFromField = args.resolvedFromField || null;
+  const ownerProof = args.ownerProof || resolvedFromField;
   const resolvedFromValue = args.resolvedFromValue || args.resolvedOwnerName || null;
 
   return {
@@ -345,7 +411,7 @@ function resultFromSource(args: {
     sourceOwner: args.resolvedOwnerName || null,
     sourceOwnerRole: args.resolvedOwnerRole || null,
     sourceOwnerId: args.resolvedOwnerLegacyUserId || null,
-    ownerProof: resolvedFromField,
+    ownerProof,
     status,
     reason:
       args.reason ||
@@ -366,6 +432,7 @@ export function resolveOwnerContext(input: OwnerResolutionInput): OwnerResolutio
   const activeOperator = input.activeOperator || getActiveOperator();
   const task = resolveTaskOwner(input);
   const appointmentSetter = resolveAppointmentSetter(input);
+  const meetingOperator = submittedMeetingOperator(input);
   const booked = resolveBookedOwner(input);
   const headScout = resolveProfileHeadScout(input);
   const calendarOwner =
@@ -376,6 +443,19 @@ export function resolveOwnerContext(input: OwnerResolutionInput): OwnerResolutio
     taskAssignedOwner: task.taskAssignedOwner,
     bookedMeetingIdentityMismatch: booked.identityMismatch,
   });
+  const meetingSetOperatorFallback =
+    input.purpose === 'meeting_set' &&
+    materialization.reason === 'missing_task_assigned_owner' &&
+    meetingOperator.owner?.ownerKey === activeOperator.operatorKey &&
+    appointmentSetter.owner
+      ? {
+          status: 'operator_task' as const,
+          reason: 'meeting_set_submitted_by_active_operator' as const,
+          taskAssignedOwner: meetingOperator.owner.personName,
+          taskOwner: meetingOperator.owner,
+          ownerProof: meetingOperator.resolvedFromField || 'submittedMeetingPayload.operator_owner',
+        }
+      : null;
 
   if (input.purpose === 'call_activity' && task.taskAssignedOwner) {
     return resultFromSource({
@@ -404,10 +484,10 @@ export function resolveOwnerContext(input: OwnerResolutionInput): OwnerResolutio
     return resultFromSource({
       input,
       activeOperator,
-      materializationStatus: materialization.status,
-      materializationReason: materialization.reason,
-      taskAssignedOwner: task.taskAssignedOwner,
-      taskOwner: task.owner,
+      materializationStatus: meetingSetOperatorFallback?.status || materialization.status,
+      materializationReason: meetingSetOperatorFallback?.reason || materialization.reason,
+      taskAssignedOwner: meetingSetOperatorFallback?.taskAssignedOwner || task.taskAssignedOwner,
+      taskOwner: meetingSetOperatorFallback?.taskOwner || task.owner,
       appointmentSetter: appointmentSetter.owner,
       headScout,
       calendarOwner,
@@ -420,6 +500,7 @@ export function resolveOwnerContext(input: OwnerResolutionInput): OwnerResolutio
       resolvedOwnerLegacyUserId: appointmentSetter.owner.legacyUserId || null,
       resolvedFromField: appointmentSetter.resolvedFromField,
       resolvedFromValue: appointmentSetter.resolvedFromValue,
+      ownerProof: meetingSetOperatorFallback?.ownerProof || appointmentSetter.resolvedFromField,
     });
   }
 

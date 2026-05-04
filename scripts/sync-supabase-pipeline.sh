@@ -40,6 +40,7 @@ fi
 npm run sync:current-pipeline-supabase
 npm run sync:booked-meetings-supabase
 npm run reconcile:current-sales-stages-supabase
+node scripts/backsync-lifecycle-call-activity-events.mjs
 npm run sync:commissions-supabase
 npm run materialize:call-tracker-contract
 

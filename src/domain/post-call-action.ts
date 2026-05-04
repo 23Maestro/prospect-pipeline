@@ -6,6 +6,7 @@ import {
   type MeetingSetLaravelPayload,
   type MeetingSetLaravelPayloadInput,
 } from './meeting-set-contract';
+import { getActiveOperator } from './owners';
 import { resolveOwnerContext, type MaterializationStatus, type OwnerResolutionResult } from './owner-resolution';
 import {
   classifyMeetingSetStage,
@@ -124,8 +125,13 @@ function buildMeetingSetWrites(args: {
   const headScout =
     asString(args.input.meetingSet?.headScout) ||
     args.ownerContext.profileHeadScout ||
+    asString(args.input.meetingSet?.bookedMeetingAssignedOwner) ||
     args.ownerContext.bookedMeetingAssignedOwner ||
     args.ownerContext.appointmentSetterName ||
+    null;
+  const bookedMeetingAssignedOwner =
+    asString(args.input.meetingSet?.bookedMeetingAssignedOwner) ||
+    args.ownerContext.bookedMeetingAssignedOwner ||
     null;
 
   const lifecycleArgs: MeetingSetWriteArgs = {
@@ -153,7 +159,7 @@ function buildMeetingSetWrites(args: {
         appointment_setter_legacy_user_id: args.ownerContext.appointmentSetterLegacyUserId,
         meeting_for_legacy_user_id: args.ownerContext.meetingForLegacyUserId,
         calendar_owner_id: args.ownerContext.calendarOwnerId,
-        booked_meeting_assigned_owner: args.ownerContext.bookedMeetingAssignedOwner,
+        booked_meeting_assigned_owner: bookedMeetingAssignedOwner,
         resolved_owner_name: args.ownerContext.resolvedOwnerName,
         resolved_owner_role: args.ownerContext.resolvedOwnerRole,
         resolved_owner_legacy_user_id: args.ownerContext.resolvedOwnerLegacyUserId,
@@ -168,6 +174,9 @@ function buildMeetingSetWrites(args: {
       materialization_status: args.ownerContext.materializationStatus,
       materialization_reason: args.ownerContext.materializationReason,
       owner_proof: args.ownerContext.ownerProof,
+      operator_owner: args.ownerContext.activeOperator.personName,
+      operator_owner_key: args.ownerContext.activeOperator.operatorKey,
+      operator_legacy_user_id: args.ownerContext.activeOperator.legacyUserId,
       task_assigned_owner: args.ownerContext.taskAssignedOwner,
       materialization_proof: {
         task_assigned_owner: args.ownerContext.taskAssignedOwner,
@@ -189,7 +198,7 @@ function buildMeetingSetWrites(args: {
       meeting_name: meetingName,
       starts_at: startsAt,
       task_assigned_owner: args.ownerContext.taskAssignedOwner,
-      booked_meeting_assigned_owner: args.ownerContext.bookedMeetingAssignedOwner,
+      booked_meeting_assigned_owner: bookedMeetingAssignedOwner,
       materialization_status: args.ownerContext.materializationStatus,
       materialization_reason: args.ownerContext.materializationReason,
     },
@@ -207,6 +216,15 @@ export function buildPostCallActionPlan(input: PostCallActionPlanInput): PostCal
   const laravelMeetingSetSubmit = meetingSetClassification && input.meetingSet
     ? buildMeetingSetLaravelPayload(input.meetingSet)
     : null;
+  const activeOperator = getActiveOperator();
+  const ownerResolutionMeetingPayload = laravelMeetingSetSubmit
+    ? {
+        ...laravelMeetingSetSubmit,
+        operator_owner: activeOperator.personName,
+        operator_owner_key: activeOperator.operatorKey,
+        operator_legacy_user_id: activeOperator.legacyUserId,
+      }
+    : null;
   const selectedTask = resolvePostCallTaskToComplete(input.tasks || [], normalizedStage);
   const ownerContext = resolveOwnerContext({
     purpose: meetingSetClassification ? 'meeting_set' : 'call_activity',
@@ -214,7 +232,7 @@ export function buildPostCallActionPlan(input: PostCallActionPlanInput): PostCal
     athleteMainId: input.athleteMainId,
     tasks: input.tasks as Array<Record<string, unknown>>,
     selectedTaskId: input.selectedTaskId || selectedTask?.task_id || undefined,
-    submittedMeetingPayload: laravelMeetingSetSubmit,
+    submittedMeetingPayload: ownerResolutionMeetingPayload,
     selectedOpenMeeting: input.meetingSet
       ? {
           meeting_for: input.meetingSet.meetingForLegacyUserId,
