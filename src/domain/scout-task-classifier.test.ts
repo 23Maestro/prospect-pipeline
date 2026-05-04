@@ -75,6 +75,7 @@ test('post-meeting outcomes are not dial or contact activity', () => {
 });
 
 test('confirmed Laravel contact labels classify to contact activity statuses', () => {
+  assert.equal(classifyCrmStage('New Opportunity'), 'new_opportunity');
   assert.equal(classifyCrmStage('Called - unable to leave vm'), 'unable_to_leave_vm');
   assert.equal(classifyCrmStage('Spoke to - Not Interested'), 'spoke_to_not_interested');
   assert.equal(classifyCrmStage('Spoke to - Athlete, not Parent'), 'spoke_to_athlete_not_parent');
@@ -82,6 +83,17 @@ test('confirmed Laravel contact labels classify to contact activity statuses', (
   assert.equal(classifyCrmStage('Spoke to - I Need To Follow Up'), 'spoke_to_follow_up');
   assert.equal(classifyCrmStage('Meeting Set'), 'meeting_set');
   assert.equal(classifyCrmStage('Meeting Result - Canceled'), 'canceled');
+});
+
+test('new opportunity is active pipeline state, not call activity', () => {
+  assert.equal(activityKindForTaskStatus('new_opportunity'), null);
+  assert.deepEqual(activityCountFlagsForTaskStatus('new_opportunity'), {
+    countsAsDial: false,
+    countsAsContact: false,
+    countsAsMeetingSet: false,
+    countsAsPostMeetingOutcome: false,
+  });
+  assert.equal(trackerOutcomeForTaskStatus('new_opportunity'), 'needs_review');
 });
 
 test('task titles classify legacy call attempts from the task text', () => {

@@ -241,7 +241,6 @@ async function copyToClipboardWithToast(content: string, title: string) {
 }
 
 async function triggerMaxPrepsSearch(searchLabel: string) {
-  await Clipboard.copy(searchLabel);
   await open(
     `kmtrigger://macro=B4784B2F-FC2A-46C1-A8D3-24D1A5A97896&value=${encodeURIComponent(searchLabel)}`,
   );

@@ -8,6 +8,7 @@ export const SALES_STAGE_LABEL_ALIASES = new Map<string, string>([
 ]);
 
 export const CURATED_SALES_STAGE_LABELS = [
+  'New Opportunity',
   'Left Voice Mail 1',
   'Left Voice Mail 2',
   'Never Spoke To',
@@ -28,6 +29,7 @@ export const CURATED_SALES_STAGE_LABELS = [
 ] as const;
 
 export const POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS = [
+  'New Opportunity',
   'Actual Meeting - Follow Up',
   'Actual Meeting - Close Lost',
   'Actual Meeting - Close Won',

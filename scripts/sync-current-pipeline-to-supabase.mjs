@@ -119,6 +119,21 @@ function getSelectedSalesStage(payload) {
   return String(selected?.label || selected?.value || '').trim() || null;
 }
 
+function normalizeSalesStageKey(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function isOpenNewOpportunityQueueItem(args) {
+  return (
+    normalizeSalesStageKey(args.selectedSalesStage) === 'new opportunity' &&
+    isDashboardCallActivityStatus(args.taskStatus) &&
+    !args.completionAt
+  );
+}
+
 async function apiFetch(path, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20000);
@@ -448,7 +463,12 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
     }
 
     const taskId = String(pipelineTask.task_id || '').trim();
-    if (taskId && isDashboardCallActivityStatus(mapping.taskStatus)) {
+    const openNewOpportunityQueueItem = isOpenNewOpportunityQueueItem({
+      selectedSalesStage,
+      taskStatus: mapping.taskStatus,
+      completionAt,
+    });
+    if (taskId && isDashboardCallActivityStatus(mapping.taskStatus) && !openNewOpportunityQueueItem) {
       const activityOccurredAt = completionAt;
       const activityOccurredAtSource = completionAt ? 'task.completion_date' : null;
       if (!activityOccurredAt) {

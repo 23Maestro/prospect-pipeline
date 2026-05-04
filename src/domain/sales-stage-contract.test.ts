@@ -5,6 +5,7 @@ import {
   classifyMeetingSetStage,
   classifyPostCallActivityStage,
   classifyPostMeetingOutcomeStage,
+  isCuratedSalesStageLabel,
   normalizeSalesStageLabelForLaravel,
 } from './sales-stage-contract';
 
@@ -59,4 +60,11 @@ test('meeting-set and post-meeting classifications are separate from post-call a
     outcome: 'closed_won',
   });
   assert.equal(classifyPostCallActivityStage('Actual Meeting - Close Won'), null);
+});
+
+test('new opportunity is recognized but not a completed post-call outcome', () => {
+  assert.equal(isCuratedSalesStageLabel('New Opportunity'), true);
+  assert.equal(classifyPostCallActivityStage('New Opportunity'), null);
+  assert.equal(classifyMeetingSetStage('New Opportunity'), null);
+  assert.equal(classifyPostMeetingOutcomeStage('New Opportunity'), null);
 });

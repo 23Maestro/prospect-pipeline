@@ -1,4 +1,5 @@
 export type ScoutTaskStatus =
+  | 'new_opportunity'
   | 'call_attempt_1'
   | 'call_attempt_2'
   | 'call_attempt_3'
@@ -280,6 +281,7 @@ export function classifyScoutTask(args: {
 export function classifyCrmStage(rawCrmStage?: string | null): ScoutTaskStatus {
   const normalized = normalizeText(rawCrmStage);
   if (!normalized) return 'needs_manual_review';
+  if (normalized === 'new opportunity') return 'new_opportunity';
   if (normalized === 'left voice mail 1' || normalized === 'left voicemail 1') return 'call_attempt_1';
   if (normalized === 'left voice mail 2' || normalized === 'left voicemail 2') return 'call_attempt_2';
   if (normalized === 'never spoke to') return 'call_attempt_3';
