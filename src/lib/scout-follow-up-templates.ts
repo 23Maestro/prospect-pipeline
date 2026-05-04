@@ -10,6 +10,7 @@ import {
 } from '../domain/outreach-time-wording';
 
 export const DEFAULT_FOLLOW_UP_SENDER_NAME = 'Jerami Singleton';
+export const CAL_BOOKING_URL = 'https://cal.com/jsingleton-prospectid/prospect-id-call';
 
 export type FollowUpMessageType = 'call_attempt_2' | 'confirmation';
 export type VoicemailFollowUpVariant =
@@ -141,11 +142,6 @@ function athletePronouns(args: { sport?: string | null; athleteGender?: AthleteG
     : { subject: 'he', object: 'him', possessive: 'his', child: 'son' };
 }
 
-function buildAthleteProfileLabel(athleteName: string): string {
-  const trimmed = athleteName.trim() || 'your athlete';
-  return `${trimmed}'s recruiting profile`;
-}
-
 function buildNoShowNextBestDayLabel(now: Date): string {
   const candidate = new Date(now);
   candidate.setDate(candidate.getDate() + 2);
@@ -176,22 +172,6 @@ function getEasternTimeParts(date: Date): { hour: number; minute: number } {
 export function isPastTextTodayCutoff(now: Date): boolean {
   const { hour, minute } = getEasternTimeParts(now);
   return hour > 19 || (hour === 19 && minute >= 30);
-}
-
-function buildAttempt1AvailabilityLine(now: Date): string {
-  if (isPastTextTodayCutoff(now)) {
-    return 'Would tomorrow or the next day work better?';
-  }
-
-  return 'Would later today or tomorrow work better?';
-}
-
-function buildAttempt2AvailabilityLine(now: Date): string {
-  if (isPastTextTodayCutoff(now)) {
-    return 'When would you have a 10 min gap tomorrow? I can be flexible on time.';
-  }
-
-  return 'When would you have a 10 min gap today or in the next few days? I can be flexible on time.';
 }
 
 export function buildFollowUpTitle(messageType: FollowUpMessageType, athleteName: string): string {
@@ -284,7 +264,6 @@ export function buildVoicemailFollowUpMessage(args: {
   now?: Date;
 }): string {
   const greeting = String(args.greeting || '').trim() || 'Good morning there,';
-  const athleteProfile = buildAthleteProfileLabel(args.athleteName);
   const senderName = String(args.senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
   const scoutLabel = sportScoutLabel(args.sport);
   const signOffTitle =
@@ -331,30 +310,40 @@ export function buildVoicemailFollowUpMessage(args: {
                 ]
               : args.variant === 'call_attempt_3'
                 ? [
-                    `${greeting} ${firstName(senderName) || senderName} with Prospect ID. Checking back on ${args.athleteName.trim() || 'your athlete'}’s ${scoutLabel} recruiting.`,
+                    `${greeting} this is ${senderName} with Prospect ID.`,
                     '',
-                    `If college ${scoutLabel} is still a serious goal, I can help. If you don’t need support right now, should I close this out for now?`,
+                    `I’ve tried a few times about ${args.athleteName.trim() || 'your athlete'}’s college ${scoutLabel} profile. If this is still something your family wants to learn more about, you can grab a quick time here:`,
+                    '',
+                    CAL_BOOKING_URL,
+                    '',
+                    'If not, no worries. I’ll close this out for now.',
                   ]
                 : args.variant === 'call_attempt_2'
                   ? [
                       `${greeting} this is ${senderName}, college ${scoutLabel} scout with Prospect ID.`,
                       '',
-                      `I received ${args.athleteName.trim() || 'your athlete'}'s info and I’m trying to get a better feel for ${pronouns.object} as a student athlete and learn ${pronouns.possessive} goals for playing college ${scoutLabel}.`,
+                      `I just tried you again about ${args.athleteName.trim() || 'your athlete'}’s profile. If playing college ${scoutLabel} is still a serious goal, I’d like to connect for a few quick questions.`,
                       '',
-                      buildAttempt2AvailabilityLine(now),
+                      'You can grab a time that works here:',
+                      CAL_BOOKING_URL,
                     ]
                   : [
-                      `${greeting} this is ${senderName} with Prospect ID. Following up on ${athleteProfile.replace(/'s recruiting profile$/, "'s recruiting plan")}.`,
+                      `${greeting} this is ${senderName} with Prospect ID.`,
                       '',
-                      `If playing college ${scoutLabel} is still a serious goal for ${pronouns.object}, I’d like to get a quick 10-minute call scheduled while timing still matters.`,
+                      `I’m reaching out because I received ${args.athleteName.trim() || 'your athlete'}’s profile and wanted to ask a few quick questions about ${pronouns.possessive} college ${scoutLabel} goals.`,
                       '',
-                      buildAttempt1AvailabilityLine(now),
+                      'Would later today or tomorrow be better for a quick call?',
                     ];
 
   if (args.variant === 'no_show') {
     lines.push('', senderName);
   } else {
-    lines.push('', senderName, signOffTitle, 'Prospect ID');
+    const signOffLines =
+      recipientType === 'parent' &&
+      ['call_attempt_1', 'call_attempt_2', 'call_attempt_3'].includes(args.variant)
+        ? [senderName, 'Prospect ID']
+        : [senderName, signOffTitle, 'Prospect ID'];
+    lines.push('', ...signOffLines);
   }
   return lines.join('\n');
 }

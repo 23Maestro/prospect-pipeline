@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types.js';
 import { buildScoutPrepCard } from '../features/scout-prep/content.js';
+import { CAL_BOOKING_URL } from './scout-follow-up-templates.js';
 import {
   buildMeetingTemplateDefaults,
   buildMessagesComposeUrlForRecipients,
@@ -336,18 +337,17 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
     new Date('2026-04-17T09:00:00Z'),
   );
   const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
+  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\./);
   assert.match(
     body,
-    /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\. Following up on Bryson's recruiting plan\./,
+    /I’m reaching out because I received Bryson’s profile and wanted to ask a few quick questions about his college football goals\./,
   );
-  assert.match(
-    body,
-    /If playing college football is still a serious goal for him, I’d like to get a quick 10-minute call scheduled while timing still matters\./,
-  );
-  assert.match(body, /Would later today or tomorrow work better\?/);
+  assert.doesNotMatch(body, /I just left you a voicemail/);
+  assert.match(body, /Would later today or tomorrow be better for a quick call\?/);
+  assert.doesNotMatch(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(body, /Enjoy the rest of your weekend\./);
   assert.match(url, /^sms:651-555-1212\?body=/);
-  assert.match(url, /Bryson's%20recruiting%20plan/);
+  assert.match(url, /I%E2%80%99m%20reaching%20out/);
 });
 
 test('buildVoicemailFollowUpBody: group text still uses parent template without nicety closing', () => {
@@ -366,11 +366,11 @@ test('buildVoicemailFollowUpBody: group text still uses parent template without 
     new Date('2026-04-15T09:00:00Z'),
   );
 
-  assert.match(
-    body,
-    /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\. Following up on Bryson's recruiting plan\./,
-  );
-  assert.match(body, /Would later today or tomorrow work better\?/);
+  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /I’m reaching out because I received Bryson’s profile/);
+  assert.doesNotMatch(body, /I just left you a voicemail/);
+  assert.match(body, /Would later today or tomorrow be better for a quick call\?/);
+  assert.doesNotMatch(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(body, /Enjoy the rest of your week\./);
 });
 
@@ -411,10 +411,9 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(
-    body,
-    /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\. Following up on Jaylin's recruiting plan\./,
-  );
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /I’m reaching out because I received Jaylin’s profile/);
+  assert.doesNotMatch(body, /I just left you a voicemail/);
 });
 
 test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
@@ -460,12 +459,56 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
   );
   assert.match(
     body,
-    /I received Jaylin's info and I’m trying to get a better feel for him as a student athlete and learn his goals for playing college football\./,
+    /I just tried you again about Jaylin’s profile\. If playing college football is still a serious goal, I’d like to connect for a few quick questions\./,
   );
-  assert.match(
-    body,
-    /When would you have a 10 min gap today or in the next few days\? I can be flexible on time\./,
+  assert.match(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.doesNotMatch(body, /just left (you )?a voicemail/i);
+  assert.doesNotMatch(body, /trying to get a better feel/);
+  assert.doesNotMatch(body, /learn his goals/);
+});
+
+test('buildVoicemailFollowUpBody: attempt 3 includes Cal booking and closes the loop', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Jaylin Bailey',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        city: 'Los Angeles',
+        state: 'CA',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jaylin Bailey',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'parent1',
+    'call_attempt_3',
+    'Never Spoke To',
+    'Call Attempt 3',
+    new Date('2026-04-17T19:28:00Z'),
   );
+
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /I’ve tried a few times about Jaylin’s college football profile\./);
+  assert.match(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(body, /I’ll close this out for now\./);
+  assert.doesNotMatch(body, /just left (you )?a voicemail/i);
 });
 
 test('buildVoicemailFollowUpBody: student athlete attempt 2 uses shorter action-oriented copy', () => {

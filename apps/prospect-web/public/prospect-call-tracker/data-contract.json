@@ -327,7 +327,7 @@
     "plainEnglish": "Run this with the call tracker cron/sync so Vercel only serves a ready-to-render artifact instead of recomputing Supabase business meaning in the browser."
   },
   "data": {
-    "generatedAt": "2026-05-04T14:34:23.888Z",
+    "generatedAt": "2026-05-04T15:08:23.796Z",
     "eventLimit": 1000,
     "supabaseReads": {
       "summaryView": "call_tracker_summary",
@@ -342,7 +342,7 @@
       "closed_won": 3,
       "money_earned_cents": 26700,
       "first_event_at": "2026-04-15T21:03:00+00:00",
-      "last_event_at": "2026-05-04T14:05:04.147+00:00",
+      "last_event_at": "2026-05-04T15:04:53.834+00:00",
       "appointments_tracked": 27,
       "meeting_outcomes_total": 15,
       "rescheduled": 0,
@@ -355,7 +355,7 @@
     "events": [
       {
         "athlete_name": "Ethann Filain",
-        "occurred_at": "2026-05-04T14:05:04.147+00:00",
+        "occurred_at": "2026-05-04T15:04:53.834+00:00",
         "event_at": "2026-05-03T13:00:00+00:00",
         "tracker_outcome": "canceled",
         "raw_crm_stage": "Meeting Result - Canceled",
@@ -544,7 +544,7 @@
       },
       {
         "athlete_name": "Ancel Bynaum jr",
-        "occurred_at": "2026-05-04T14:05:04.147+00:00",
+        "occurred_at": "2026-05-04T15:04:53.834+00:00",
         "event_at": "2026-05-02T00:00:00+00:00",
         "tracker_outcome": "no_show",
         "raw_crm_stage": "Meeting Result - No Show",
@@ -1327,7 +1327,7 @@
       },
       {
         "athlete_name": "Jordan Niles",
-        "occurred_at": "2026-05-04T14:05:04.147+00:00",
+        "occurred_at": "2026-05-04T15:04:53.834+00:00",
         "event_at": "2026-04-30T23:00:00+00:00",
         "tracker_outcome": "reschedule_pending",
         "raw_crm_stage": "Meeting Result - Res. Pending",
