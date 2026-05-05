@@ -161,6 +161,62 @@ test('/api/call-tracker-data reads live Supabase reporting views for the browser
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
 });
 
+test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([{ dials: 2, contacts: 2, meetings_set: 2, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 1 }]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      const base = {
+        athlete_name: 'Carson visser',
+        occurred_at: '2026-05-05T18:22:20+00:00',
+        event_at: '2026-05-05T18:22:20+00:00',
+        tracker_outcome: 'meeting_set',
+        raw_crm_stage: 'Meeting Set',
+        raw_event_type: 'lifecycle_meeting_set',
+        appointment_id: '588133',
+        live_event_id: null,
+        booked_event_title: "Carson Visser Men's Basketball 2026 UT",
+        revenue_cents: null,
+        active_operator_name: 'Jerami Singleton',
+        task_assigned_owner: 'Jerami Singleton',
+        counts_as_dial: true,
+        counts_as_contact: true,
+        counts_as_meeting_set: true,
+        counts_as_post_meeting_outcome: false,
+        materialization_status: 'operator_task',
+        materialization_reason: 'task_assigned_owner_matches_active_operator',
+        resolved_owner_name: 'Jerami Singleton',
+        resolved_owner_source_field: 'task.assigned_owner',
+        can_materialize_for_active_operator: true,
+        created_at: '2026-05-05T18:22:20+00:00',
+      };
+      return Response.json([
+        { ...base, source: 'lifecycle_meeting_set', raw_task_status: 'SCHEDULED FOLLOW-UP', dedupe_key: null },
+        { ...base, source: 'scout_tasks_current_pipeline', raw_task_status: 'confirmation_call', dedupe_key: 'meeting_set:1490749:952575:588133' },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const carsonMeetingSets = payload.data.events.filter(
+    (row: { athlete_name?: string; tracker_outcome?: string }) =>
+      row.athlete_name?.toLowerCase() === 'carson visser' && row.tracker_outcome === 'meeting_set',
+  );
+  assert.equal(carsonMeetingSets.length, 1);
+  assert.equal(carsonMeetingSets[0].dedupe_key, 'meeting_set:1490749:952575:588133');
+});
+
 test('/api/set-meetings is only a Vercel adapter for the FastAPI command contract', async () => {
   process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
   process.env.PROSPECT_API_TOKEN = 'secret';

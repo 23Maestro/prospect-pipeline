@@ -190,6 +190,7 @@ function normalizeKey(value: unknown) {
 
 function rowQuality(row: Record<string, any>) {
   return (
+    (row.dedupe_key ? 8 : 0) +
     (row.booked_event_title ? 4 : 0) +
     (row.appointment_id ? 2 : 0) +
     (row.event_at ? 1 : 0) +
@@ -224,6 +225,19 @@ function displayRows(rows: Array<Record<string, any>>) {
     }
   });
   return results.sort((left, right) => new Date(right.event_at || right.occurred_at).getTime() - new Date(left.event_at || left.occurred_at).getTime());
+}
+
+function eventIdentityKey(row: Record<string, any>) {
+  if (row.tracker_outcome === 'meeting_set') {
+    if (row.appointment_id) return `meeting_set:appointment:${row.appointment_id}`;
+    return [
+      'meeting_set',
+      normalizeKey(row.athlete_name),
+      normalizeKey(row.booked_event_title),
+      localDateKey(row.event_at || row.occurred_at),
+    ].join('|');
+  }
+  return row.dedupe_key || `${row.source}:${row.athlete_name}:${row.tracker_outcome}:${row.event_at || row.occurred_at}`;
 }
 
 function rowsForPeriod(rows: Array<Record<string, any>>, now: Date, period: string) {
@@ -378,7 +392,7 @@ function lifecycleActivityToEvent(row: Record<string, any>) {
 function mergeEventRows(viewRows: Array<Record<string, any>>, lifecycleRows: Array<Record<string, any>>) {
   const byKey = new Map<string, Record<string, any>>();
   for (const row of [...viewRows, ...lifecycleRows]) {
-    const key = row.dedupe_key || `${row.source}:${row.athlete_name}:${row.tracker_outcome}:${row.event_at || row.occurred_at}`;
+    const key = eventIdentityKey(row);
     const previous = byKey.get(key);
     if (!previous || rowQuality(row) > rowQuality(previous)) byKey.set(key, row);
   }
