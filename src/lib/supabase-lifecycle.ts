@@ -12,6 +12,7 @@ import {
   type ScoutTaskStatus,
 } from '../domain/scout-task-classifier';
 import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner-resolution';
+import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
@@ -567,13 +568,12 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
     completed_at: clock.completedAt,
     occurred_at: clock.occurredAt,
     occurred_at_source: clock.source,
-    operator_owner: ownerContext.activeOperator.personName,
-    operator_owner_key: ownerContext.activeOperator.operatorKey,
-    operator_legacy_user_id: ownerContext.activeOperator.legacyUserId,
-    task_assigned_owner: ownerContext.taskAssignedOwner || normalizeValue(args.taskAssignedOwner),
-    owner_proof: ownerProof,
-    materialization_status: ownerContext.materializationStatus,
-    materialization_reason: ownerContext.materializationReason,
+    ...buildOwnerProofPayload({
+      ownerContext,
+      ownerProof,
+      taskAssignedOwner: args.taskAssignedOwner,
+      basePayload: args.payload,
+    }),
     athlete_id: actor.athleteId,
     athlete_main_id: actor.athleteMainId,
     tracker_outcome: reporting.trackerOutcome,
@@ -583,22 +583,6 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
     counts_as_post_meeting_outcome: canCount ? reporting.countsAsPostMeetingOutcome : false,
     appointment_id: normalizeValue(args.appointmentId),
     confirmation_task_id: normalizeValue(args.confirmationTaskId),
-    owner_context: {
-      active_operator_key: ownerContext.activeOperator.operatorKey,
-      active_operator_name: ownerContext.activeOperator.personName,
-      task_assigned_owner: ownerContext.taskAssignedOwner,
-      owner_proof: ownerProof,
-      materialization_status: ownerContext.materializationStatus,
-      materialization_reason: ownerContext.materializationReason,
-      can_materialize_for_active_operator: ownerContext.canMaterializeForActiveOperator,
-      owner_status: ownerContext.status,
-    },
-    materialization_proof: {
-      task_assigned_owner: ownerContext.taskAssignedOwner,
-      materialization_status: ownerContext.materializationStatus,
-      status: ownerContext.materializationStatus,
-      reason: ownerContext.materializationReason,
-    },
   };
 
   return {

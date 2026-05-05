@@ -7,6 +7,8 @@ const source = readFileSync(new URL('./sync-booked-meetings-to-supabase.mjs', im
 test('booked meeting sync uses the shared weekly source resolver and fact builders', () => {
   assert.match(source, /buildWeeklyOperatorMeetingSetCandidates/);
   assert.match(source, /buildMeetingSetFact/);
+  assert.match(source, /buildOwnerProofPayload/);
+  assert.match(source, /resolveOwnerContext/);
   assert.match(source, /insertMeetingSetEventsOnce/);
   assert.match(source, /\/scout\/tasks\?range=thisWeek/);
   assert.match(source, /\/calendar\/booked-meetings\?/);
@@ -27,4 +29,10 @@ test('booked meeting sync preserves lifecycle transition time across reruns', ()
   assert.doesNotMatch(source, /upsertMeetingSetEvents/);
   assert.doesNotMatch(source, /resolution=merge-duplicates[\s\S]*meetingSet/);
   assert.match(source, /meetingSetEventsInsertedOnce/);
+});
+
+test('booked meeting sync writes materialized owner proof before inserting meeting-set rows', () => {
+  assert.match(source, /legacy_compatibility_proof: 'weekly_operator_task_assigned_owner'/);
+  assert.match(source, /ownerProof: 'payload\.matched_weekly_task_assigned_owner'/);
+  assert.match(source, /payload,\s*createdAt: updatedAt/s);
 });

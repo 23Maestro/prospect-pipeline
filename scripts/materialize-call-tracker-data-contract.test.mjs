@@ -10,8 +10,12 @@ const artifact = JSON.parse(
   ),
 );
 
-test('artifact summary cards mirror all-time summary values', () => {
-  assert.equal(artifact.data.summary.contacts, artifact.data.ui.summaryCards.contacts);
+test('artifact summary cards keep raw all-time contacts separate from visible correction', () => {
+  assert.equal(artifact.data.summary.contacts, artifact.data.ui.summaryCards.rawContacts);
+  assert.equal(
+    artifact.data.ui.summaryCards.contacts,
+    artifact.data.summary.contacts + artifact.data.ui.summaryCards.historicalContactsAdjustment,
+  );
   assert.equal(artifact.data.summary.dials, artifact.data.ui.summaryCards.dials);
 });
 
@@ -20,7 +24,16 @@ test('period cards are scoped from event booleans, not all-time summary totals',
   assert.match(source, /const scoped = rowsForPeriod\(rows, now, period\)/);
   assert.match(source, /const dials = scoped\.filter\(\(row\) => row\.counts_as_dial === true\)\.length/);
   assert.match(source, /const contacts = scoped\.filter\(\(row\) => row\.counts_as_contact === true\)\.length/);
-  assert.match(source, /summaryCards:\s*{[\s\S]*contacts: Number\(summary\.contacts\) \|\| 0,[\s\S]*dials: Number\(summary\.dials\) \|\| 0/);
+  assert.match(source, /contacts: correctedAllTimeContacts/);
+  assert.match(source, /rawContacts: rawAllTimeContacts/);
+  assert.match(source, /dials: Number\(summary\.dials\) \|\| 0/);
+});
+
+test('materializer reads lifecycle task facts directly instead of depending on backsync writes', () => {
+  assert.match(source, /buildCallActivityEventFromLifecycle/);
+  assert.match(source, /lifecycle_events\?select=/);
+  assert.match(source, /lifecycle_call_activity/);
+  assert.match(source, /mergeEventRows\(viewEvents, lifecycleEvents\)/);
 });
 
 test('materialized event rows carry non-null count booleans with key outcome invariants', () => {

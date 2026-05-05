@@ -8,7 +8,6 @@ test('hourly Supabase sync materializes the call tracker JSON artifact after wri
   const currentPipelineIndex = source.indexOf('npm run sync:current-pipeline-supabase');
   const bookedMeetingsIndex = source.indexOf('npm run sync:booked-meetings-supabase');
   const reconcileIndex = source.indexOf('npm run reconcile:current-sales-stages-supabase');
-  const backsyncIndex = source.indexOf('node scripts/backsync-lifecycle-call-activity-events.mjs');
   const commissionsIndex = source.indexOf('npm run sync:commissions-supabase');
   const materializeIndex = source.indexOf('npm run materialize:call-tracker-contract');
   const completeIndex = source.indexOf('sync complete');
@@ -16,8 +15,8 @@ test('hourly Supabase sync materializes the call tracker JSON artifact after wri
   assert.ok(currentPipelineIndex > -1);
   assert.ok(bookedMeetingsIndex > currentPipelineIndex);
   assert.ok(reconcileIndex > bookedMeetingsIndex);
-  assert.ok(backsyncIndex > reconcileIndex);
-  assert.ok(commissionsIndex > backsyncIndex);
+  assert.equal(source.includes('backsync-lifecycle-call-activity-events.mjs'), false);
+  assert.ok(commissionsIndex > reconcileIndex);
   assert.ok(materializeIndex > commissionsIndex);
   assert.ok(completeIndex > materializeIndex);
 });

@@ -35,10 +35,9 @@ test('current pipeline meeting-set facts reuse older legacy transition time by a
 });
 
 test('current pipeline meeting-set facts write materialization proof and reporting flags at the source', () => {
-  assert.match(source, /materialization_proof:\s*{/);
-  assert.match(source, /owner_context:\s*{/);
-  assert.match(source, /task_assigned_owner: ownership\.context\.taskAssignedOwner/);
-  assert.match(source, /owner_proof: ownership\.context\.ownerProof/);
+  assert.match(source, /buildOwnerProofPayload/);
+  assert.match(source, /ownerContext: ownership\.context/);
+  assert.match(source, /ownerProof: ownership\.context\.ownerProof/);
   assert.match(source, /counts_as_dial: true/);
   assert.match(source, /counts_as_contact: true/);
   assert.match(source, /counts_as_meeting_set: true/);

@@ -9,6 +9,8 @@ import {
   buildMeetingSetFact,
   buildPipelineStateSnapshot,
 } from '../src/domain/call-tracker-facts.ts';
+import { buildOwnerProofPayload } from '../src/domain/owner-proof-payload.ts';
+import { resolveOwnerContext } from '../src/domain/owner-resolution.ts';
 import {
   insertMeetingSetEventsOnce,
   upsertAppointments,
@@ -302,6 +304,39 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       matched_task_athlete_name: candidate.evidence.matchedTaskAthleteName,
       verified_athlete_booked_meeting_id: String(verifiedMeeting.event_id || '').trim() || null,
     };
+    const ownerContext = resolveOwnerContext({
+      purpose: 'meeting_set',
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      athleteName: candidate.athleteName,
+      tasks: [
+        {
+          task_id: candidate.taskId,
+          title: candidate.taskTitle,
+          description: candidate.taskDescription,
+          assigned_owner: candidate.taskAssignedOwner,
+        },
+      ],
+      currentTaskId: candidate.taskId,
+      appointmentSetterName: candidate.bookedMeeting.assignedOwner,
+      bookedMeeting: {
+        event_id: appointmentId,
+        assigned_owner: candidate.bookedMeeting.assignedOwner,
+        athlete_id: candidate.athleteId,
+        athlete_main_id: candidate.athleteMainId,
+      },
+      appointmentId,
+    });
+    const payload = {
+      ...basePayload,
+      legacy_compatibility_proof: 'weekly_operator_task_assigned_owner',
+      ...buildOwnerProofPayload({
+        ownerContext,
+        ownerProof: 'payload.matched_weekly_task_assigned_owner',
+        bookedMeetingAssignedOwner: candidate.bookedMeeting.assignedOwner,
+        basePayload,
+      }),
+    };
 
     // Clock contract: lifecycle_events.created_at is when this athlete became Meeting Set.
     // Appointment start/end stay in payload_json as meeting evidence; sync reruns insert-once
@@ -311,7 +346,7 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       athleteMainId: candidate.athleteMainId,
       crmStage,
       taskStatus,
-      payload: basePayload,
+      payload,
       createdAt: updatedAt,
     }));
 

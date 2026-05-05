@@ -589,5 +589,27 @@ export function assertOwnerResolved(
   input: OwnerResolutionInput,
   context = resolveOwnerContext(input),
 ): OwnerResolutionResult {
+  if (
+    input.purpose === 'call_activity' &&
+    (
+      !context.canMaterializeForActiveOperator ||
+      !context.resolvedOwnerName ||
+      !(context.ownerProof || context.resolvedFromField)
+    )
+  ) {
+    throw new OwnerResolutionContractError(
+      'Call activity facts require active-operator owner proof.',
+      {
+        ...context,
+        purpose: input.purpose,
+        athleteId: input.athleteId,
+        athleteMainId: input.athleteMainId,
+        athleteName: input.athleteName,
+        currentTaskId: input.currentTaskId,
+        appointmentId: input.appointmentId,
+        liveEventId: input.liveEventId,
+      },
+    );
+  }
   return context;
 }

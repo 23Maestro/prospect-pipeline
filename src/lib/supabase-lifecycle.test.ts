@@ -210,6 +210,44 @@ test('meeting set lifecycle mutation derives owner proof from task assignment wh
   assert.equal((event.payload.owner_context as Record<string, unknown>).owner_proof, 'task.assigned_owner');
 });
 
+test('meeting set lifecycle mutation preserves existing owner proof mirrors while normalizing canonical fields', () => {
+  const event = buildLifecycleMutationEvent({
+    sourcePost: '/sales/meeting-set',
+    athleteId: '1490499',
+    athleteMainId: '952328',
+    athleteName: 'Elia Imani',
+    crmStage: 'Meeting Set',
+    taskId: '626651',
+    taskTitle: 'Confirmation Call',
+    taskAssignedOwner: 'Jerami Singleton',
+    occurredAt: '2026-05-04T19:00:00.000Z',
+    appointmentId: '588339',
+    payload: {
+      owner_proof: 'raycast_operator_context',
+      booked_meeting_assigned_owner: 'Ryan Lietz',
+      owner_context: {
+        booked_meeting_assigned_owner: 'Ryan Lietz',
+        resolved_owner_name: 'Ryan Lietz',
+        appointment_setter_legacy_user_id: '1354049',
+      },
+      materialization_proof: {
+        owner_proof: 'raycast_operator_context',
+      },
+    },
+  });
+
+  const ownerContext = event.payload.owner_context as Record<string, unknown>;
+  const materializationProof = event.payload.materialization_proof as Record<string, unknown>;
+  assert.equal(event.payload.owner_proof, 'raycast_operator_context');
+  assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
+  assert.equal(event.payload.booked_meeting_assigned_owner, 'Ryan Lietz');
+  assert.equal(ownerContext.booked_meeting_assigned_owner, 'Ryan Lietz');
+  assert.equal(ownerContext.resolved_owner_name, 'Ryan Lietz');
+  assert.equal(ownerContext.appointment_setter_legacy_user_id, '1354049');
+  assert.equal(materializationProof.owner_proof, 'raycast_operator_context');
+  assert.equal(materializationProof.materialization_status, 'operator_task');
+});
+
 test('lifecycle mutation event rejects missing occurrence clock for countable activity', () => {
   assert.throws(
     () =>

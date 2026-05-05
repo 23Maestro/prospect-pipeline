@@ -315,6 +315,13 @@ function staleActiveStateDecision(args) {
     };
   }
 
+  if (includesAny(stageText, ['canceled', 'cancelled']) || row.task_status === 'canceled') {
+    return {
+      shouldArchive: eventAge >= 10 || taskAge >= 10,
+      reason: eventAge >= 10 || taskAge >= 10 ? 'stale_canceled_10_days' : 'keep_canceled_under_10_days',
+    };
+  }
+
   if (stageText.includes('follow up') || row.task_status === 'meeting_follow_up') {
     return {
       shouldArchive: eventAge >= 7 || taskAge >= 7,

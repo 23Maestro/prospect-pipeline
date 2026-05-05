@@ -41,3 +41,10 @@ test('current sales-stage reconciler keeps ended active meetings in soft archive
   assert.match(source, /awaiting_post_meeting_update/);
   assert.doesNotMatch(source, /queueStateDelete\(row\.athlete_key, 'awaiting_post_meeting_update'\)/);
 });
+
+test('current sales-stage reconciler deletes canceled active state after ten days', () => {
+  assert.match(source, /includesAny\(stageText, \['canceled', 'cancelled'\]\)/);
+  assert.match(source, /row\.task_status === 'canceled'/);
+  assert.match(source, /stale_canceled_10_days/);
+  assert.match(source, /keep_canceled_under_10_days/);
+});

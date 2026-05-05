@@ -3,12 +3,12 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
   version: 3,
   generatedFrom: 'src/domain/call-tracker-vercel-contract.ts',
   purpose:
-    'Single generated Call Tracker artifact contract. The materializer reads the Supabase views, writes the summary/events/UI snapshot into data-contract.json, and the browser reads only that artifact. Reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
+    'Single generated Call Tracker artifact contract. The materializer reads Supabase reporting views plus lifecycle_events task facts, writes the summary/events/UI snapshot into data-contract.json, and the browser reads only that artifact. Reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
   browserContract: {
     eventFeed: {
       supabaseView: 'call_tracker_events_owner_context',
       plainEnglish:
-        'This is the source view the materializer reads. Supabase can build it from multiple source tables, but data-contract.json stores every row the same way: proof fields plus count booleans.',
+        'This is the compatibility event view the materializer reads alongside lifecycle_events. data-contract.json stores every row the same way: proof fields plus count booleans.',
       requiredFields: [
         'athlete_name',
         'occurred_at',
@@ -75,8 +75,8 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     },
     {
       sourceTable: 'lifecycle_events',
-      rawMeaning: 'Pipeline lifecycle transitions. Meeting Set lives here so it does not disappear after the meeting moves forward.',
-      feedsEventFeedAs: 'raw_event_type = lifecycle_meeting_set',
+      rawMeaning: 'Pipeline lifecycle transitions. Meeting Set and task activity facts live here so proof sticks at ingest instead of being repaired later.',
+      feedsEventFeedAs: 'raw_event_type = lifecycle_meeting_set or lifecycle_call_activity',
       ownsCounts: ['countsAsDial', 'countsAsContact', 'countsAsMeetingSet'],
       mustCarry: [
         'event_type = meeting_set',

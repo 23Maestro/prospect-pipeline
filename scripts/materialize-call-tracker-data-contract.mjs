@@ -4,6 +4,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CALL_TRACKER_VERCEL_CONTRACT } from '../src/domain/call-tracker-vercel-contract.ts';
+import { buildCallActivityEventFromLifecycle } from './lifecycle-call-tracker-backsync-core.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -49,6 +50,21 @@ async function supabaseGet(path) {
 
 function eventSelect() {
   return [...new Set(CALL_TRACKER_VERCEL_CONTRACT.browserContract.eventFeed.requiredFields)].join(',');
+}
+
+function lifecycleSelect() {
+  return [
+    'id',
+    'athlete_key',
+    'athlete_id',
+    'athlete_main_id',
+    'event_type',
+    'dedupe_key',
+    'crm_stage',
+    'task_status',
+    'payload_json',
+    'created_at',
+  ].join(',');
 }
 
 function localParts(value) {
@@ -212,6 +228,69 @@ function filterCounts(rows) {
   };
 }
 
+function lifecycleActivityToEvent(row) {
+  const activity = buildCallActivityEventFromLifecycle(row);
+  if (!activity) return null;
+  const payload = activity.payload_json || {};
+  return {
+    athlete_name: activity.athlete_name,
+    occurred_at: activity.occurred_at,
+    event_at: activity.occurred_at,
+    tracker_outcome: payload.tracker_outcome,
+    raw_crm_stage: null,
+    raw_task_status: activity.activity_subtype,
+    raw_event_type: 'lifecycle_call_activity',
+    source: 'lifecycle_events',
+    appointment_id: null,
+    live_event_id: null,
+    booked_event_title: activity.task_title,
+    revenue_cents: null,
+    dedupe_key: `activity:${activity.task_id}`,
+    active_operator_name: payload.active_operator_name || payload.owner_context?.active_operator_name || null,
+    task_assigned_owner: payload.task_assigned_owner || payload.owner_context?.task_assigned_owner || null,
+    counts_as_dial: payload.counts_as_dial === true,
+    counts_as_contact: payload.counts_as_contact === true,
+    counts_as_meeting_set: false,
+    counts_as_post_meeting_outcome: false,
+    materialization_status: payload.materialization_status || payload.materialization_proof?.materialization_status || null,
+    materialization_reason: payload.materialization_reason || payload.materialization_proof?.reason || null,
+    resolved_owner_name: payload.source_owner || payload.owner_context?.resolved_owner_name || null,
+    resolved_owner_source_field: payload.owner_proof || payload.owner_context?.owner_proof || null,
+    can_materialize_for_active_operator: true,
+    created_at: row.created_at,
+  };
+}
+
+function mergeEventRows(viewRows, lifecycleRows) {
+  const byKey = new Map();
+  for (const row of [...viewRows, ...lifecycleRows]) {
+    const key = row.dedupe_key || `${row.source}:${row.athlete_name}:${row.tracker_outcome}:${row.event_at || row.occurred_at}`;
+    const previous = byKey.get(key);
+    if (!previous || rowQuality(row) > rowQuality(previous)) {
+      byKey.set(key, row);
+    }
+  }
+  return [...byKey.values()].sort((left, right) =>
+    new Date(right.event_at || right.occurred_at) - new Date(left.event_at || left.occurred_at),
+  );
+}
+
+function addLifecycleDeltasToSummary(fallback, lifecycleRows) {
+  return {
+    ...fallback,
+    dials: (Number(fallback.dials) || 0) + lifecycleRows.filter((row) => row.counts_as_dial === true).length,
+    contacts: (Number(fallback.contacts) || 0) + lifecycleRows.filter((row) => row.counts_as_contact === true).length,
+    meetings_set: Number(fallback.meetings_set) || 0,
+    meeting_outcomes_total: Number(fallback.meeting_outcomes_total) || 0,
+    closed_won: Number(fallback.closed_won) || 0,
+    money_earned_cents: Number(fallback.money_earned_cents) || 0,
+    voicemail_only:
+      (Number(fallback.voicemail_only) || 0) +
+      lifecycleRows.filter((row) => row.tracker_outcome === 'voicemail').length,
+    appointments_tracked: Number(fallback.appointments_tracked) || 0,
+  };
+}
+
 function addMonths(year, month, offset) {
   const date = new Date(Date.UTC(year, month - 1 + offset, 1));
   return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
@@ -324,7 +403,7 @@ function buildUiData(summary, events, generatedAt) {
 async function materialize() {
   const summaryView = CALL_TRACKER_VERCEL_CONTRACT.browserContract.summaryHelper.supabaseView;
   const eventView = CALL_TRACKER_VERCEL_CONTRACT.browserContract.eventFeed.supabaseView;
-  const [summaryRows, events] = await Promise.all([
+  const [summaryRows, events, lifecycleRows] = await Promise.all([
     supabaseGet(`${summaryView}?select=*`),
     supabaseGet(
       [
@@ -333,11 +412,24 @@ async function materialize() {
         `limit=${eventLimit}`,
       ].join('&'),
     ),
+    supabaseGet(
+      [
+        `lifecycle_events?select=${encodeURIComponent(lifecycleSelect())}`,
+        'order=created_at.desc',
+        `limit=${eventLimit}`,
+      ].join('&'),
+    ),
   ]);
 
   const generatedAt = new Date().toISOString();
-  const summary = summaryRows[0] || {};
-  const materializedEvents = Array.isArray(events) ? events : [];
+  const viewEvents = Array.isArray(events) ? events : [];
+  const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : [])
+    .map(lifecycleActivityToEvent)
+    .filter(Boolean);
+  const viewDedupeKeys = new Set(viewEvents.map((row) => row.dedupe_key).filter(Boolean));
+  const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
+  const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
+  const summary = addLifecycleDeltasToSummary(summaryRows[0] || {}, lifecycleDeltaEvents);
   return {
     ...CALL_TRACKER_VERCEL_CONTRACT,
     data: {
@@ -346,6 +438,7 @@ async function materialize() {
       supabaseReads: {
         summaryView,
         eventView,
+        lifecycleSourceTable: 'lifecycle_events',
       },
       summary,
       events: materializedEvents,
