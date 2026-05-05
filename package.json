@@ -250,21 +250,6 @@
       "description": "Numeric Cal event type ID used for Client Messages follow-up bookings.",
       "type": "textfield",
       "required": false
-    },
-    {
-      "name": "calFallbackAttendeeEmail",
-      "title": "Cal Fallback Attendee Email",
-      "description": "Optional attendee email used when Client Messages only has a phone number.",
-      "type": "textfield",
-      "required": false
-    },
-    {
-      "name": "calFollowUpLengthMinutes",
-      "title": "Cal Follow Up Length",
-      "description": "Optional booking length in minutes when the Cal event type supports variable lengths.",
-      "type": "textfield",
-      "placeholder": "15",
-      "required": false
     }
   ],
   "scripts": {

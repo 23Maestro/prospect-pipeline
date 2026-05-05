@@ -7,8 +7,6 @@ const CAL_API_VERSION = '2026-02-25';
 type CalPreferences = {
   calApiKey?: string;
   calFollowUpEventTypeId?: string;
-  calFallbackAttendeeEmail?: string;
-  calFollowUpLengthMinutes?: string;
 };
 
 export type CalFollowUpBookingInput = {
@@ -41,7 +39,6 @@ type CalBookingPayload = {
   metadata: Record<string, string>;
   allowConflicts: true;
   allowBookingOutOfBounds: true;
-  lengthInMinutes?: number;
 };
 
 function clean(value?: string | null): string {
@@ -66,15 +63,9 @@ export function normalizePhoneToE164(phone?: string | null): string | null {
 }
 
 export function buildCalFallbackEmail(args: {
-  configuredEmail?: string | null;
   phone?: string | null;
   contactName?: string | null;
 }): string {
-  const configured = clean(args.configuredEmail);
-  if (configured.includes('@')) {
-    return configured;
-  }
-
   const digits = clean(args.phone).replace(/\D/g, '');
   if (digits) {
     return `followup+${digits}@example.com`;
@@ -111,14 +102,12 @@ export function buildCalFollowUpBookingPayload(
   const contactId = clean(input.contactId);
   const athleteMainId = clean(input.athleteMainId);
   const dashboardUrl = contactId ? buildReminderAdminUrl(contactId, athleteMainId) : '';
-  const lengthInMinutes = parsePositiveInteger(prefs.calFollowUpLengthMinutes);
 
   return {
     start: input.start.toISOString(),
     attendee: {
       name: contactName,
       email: buildCalFallbackEmail({
-        configuredEmail: prefs.calFallbackAttendeeEmail,
         phone: input.phone,
         contactName,
       }),
@@ -138,7 +127,6 @@ export function buildCalFollowUpBookingPayload(
     },
     allowConflicts: true,
     allowBookingOutOfBounds: true,
-    ...(lengthInMinutes ? { lengthInMinutes } : {}),
   };
 }
 

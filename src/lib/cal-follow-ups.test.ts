@@ -12,21 +12,19 @@ test('normalizePhoneToE164 formats US callback numbers', () => {
   assert.equal(normalizePhoneToE164('+44 20 7946 0958'), '+442079460958');
 });
 
-test('buildCalFallbackEmail prefers configured email and otherwise creates stable phone email', () => {
-  assert.equal(
-    buildCalFallbackEmail({
-      configuredEmail: 'callbacks@example.com',
-      phone: '615-555-1212',
-      contactName: 'Tiffany Rawls',
-    }),
-    'callbacks@example.com',
-  );
+test('buildCalFallbackEmail creates a stable email from phone or contact name', () => {
   assert.equal(
     buildCalFallbackEmail({
       phone: '615-555-1212',
       contactName: 'Tiffany Rawls',
     }),
     'followup+6155551212@example.com',
+  );
+  assert.equal(
+    buildCalFallbackEmail({
+      contactName: 'Tiffany Rawls',
+    }),
+    'followup+tiffany-rawls@example.com',
   );
 });
 
@@ -43,13 +41,11 @@ test('buildCalFollowUpBookingPayload forces exact-time Cal booking with metadata
     },
     {
       calFollowUpEventTypeId: '789',
-      calFollowUpLengthMinutes: '15',
     },
   );
 
   assert.equal(payload.start, '2026-05-05T20:30:00.000Z');
   assert.equal(payload.eventTypeId, 789);
-  assert.equal(payload.lengthInMinutes, 15);
   assert.equal(payload.attendee.name, 'Tiffany Rawls');
   assert.equal(payload.attendee.email, 'followup+6155551212@example.com');
   assert.equal(payload.attendee.phoneNumber, '+16155551212');
