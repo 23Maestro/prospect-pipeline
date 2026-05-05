@@ -21,6 +21,7 @@ import {
   resolveClientReminderTarget,
   type ReminderContactOption,
 } from './lib/reminders';
+import { createAppleCalendarFollowUpEvent } from './lib/apple-calendar-follow-ups';
 import { createCalFollowUpBooking } from './lib/cal-follow-ups';
 import {
   type ClientInboxChat,
@@ -314,6 +315,76 @@ export default function ClientMessageInboxCommand() {
     );
   }
 
+  async function handleCreateAppleCalendarFollowUp(chat: ClientInboxChat) {
+    const { options, immediateOption } = resolveClientReminderTarget({
+      isGroup: chat.is_group,
+      matchedPhones: chat.matchedPhones,
+      associatedClients: [],
+      fallbackContact: {
+        id: 'matchedContact',
+        label: 'Contact',
+        name: chat.displayName,
+        phone: chat.matchedPhones[0] || chat.chat_identifier,
+      },
+    });
+
+    if (!options.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No follow-up contact found',
+      });
+      return;
+    }
+
+    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
+      if (!remindAt) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Pick a follow-up time',
+        });
+        return;
+      }
+
+      const toast = await showToast({
+        style: Toast.Style.Animated,
+        title: 'Creating event',
+        message: `${option.name} • ${chat.clientMatch.athleteName || chat.displayName}`,
+      });
+      try {
+        await createAppleCalendarFollowUpEvent({
+          start: remindAt,
+          athleteName: chat.clientMatch.athleteName || chat.displayName,
+          contactName: option.name,
+          phone: option.phone,
+          contactId: String(chat.clientMatch.contactId || '').trim(),
+          athleteMainId: String(chat.clientMatch.athleteMainId || '').trim(),
+        });
+        toast.hide();
+        await showHUD(`Calendar: ${option.name}`);
+        await popToRoot({ clearSearchBar: true });
+      } catch (error) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Event failed';
+        toast.message = error instanceof Error ? error.message : String(error);
+      }
+    };
+
+    push(
+      <ReminderRecipientForm
+        navigationTitle={`Calendar Follow Up • ${chat.displayName}`}
+        options={immediateOption ? [immediateOption] : options}
+        actionTitle="Create Event"
+        onSubmit={async (values) => {
+          const availableOptions = immediateOption ? [immediateOption] : options;
+          const selected =
+            availableOptions.find((option) => option.id === values.recipientId) ||
+            availableOptions[0];
+          await createForOption(selected, values.remindAt);
+        }}
+      />,
+    );
+  }
+
   return (
     <List
       navigationTitle="Client Message Inbox"
@@ -361,6 +432,12 @@ export default function ClientMessageInboxCommand() {
                 icon={Icon.Phone}
                 shortcut={{ modifiers: ['cmd'], key: '3' }}
                 onAction={() => void handleCreateCalFollowUp(chat)}
+              />
+              <Action
+                title="Calendar: Text Follow Up"
+                icon={Icon.Calendar}
+                shortcut={{ modifiers: ['cmd'], key: '4' }}
+                onAction={() => void handleCreateAppleCalendarFollowUp(chat)}
               />
               {chat.is_group ? (
                 <Action.Open
