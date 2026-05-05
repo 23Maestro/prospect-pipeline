@@ -1,4 +1,4 @@
-const CONTRACT_URL = '/prospect-call-tracker/data-contract.json';
+const CONTRACT_URL = '/api/call-tracker-data';
 const TIME_ZONE = 'America/New_York';
 const COMMISSION_RATE = 0.175;
 

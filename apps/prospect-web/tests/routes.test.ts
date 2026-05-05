@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { GET as callTrackerDataGET } from '../app/api/call-tracker-data/route';
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
 import { GET as setMeetingsGET } from '../app/api/set-meetings/route';
@@ -99,6 +100,65 @@ test('/api/call-tracker-sync rejects unsupported methods with old shape', async 
     success: false,
     error: 'Method DELETE not allowed',
   });
+});
+
+test('/api/call-tracker-data reads live Supabase reporting views for the browser contract', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([{ dials: 1, contacts: 1, meetings_set: 0, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 0 }]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      return Response.json([
+        {
+          athlete_name: 'Live Athlete',
+          occurred_at: '2026-05-05T17:00:00+00:00',
+          event_at: '2026-05-05T17:00:00+00:00',
+          tracker_outcome: 'spoke_follow_up',
+          raw_crm_stage: 'Spoke to - Follow Up',
+          raw_task_status: 'Spoke to - Follow Up',
+          raw_event_type: 'call_activity',
+          source: 'call_activity',
+          appointment_id: null,
+          live_event_id: null,
+          booked_event_title: 'Spoke to - Follow Up',
+          revenue_cents: null,
+          dedupe_key: 'activity:live-1',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_dial: true,
+          counts_as_contact: true,
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: false,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Jerami Singleton',
+          resolved_owner_source_field: 'task.assigned_owner',
+          can_materialize_for_active_operator: true,
+          created_at: '2026-05-05T17:00:00+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+  const payload = await response.json();
+  assert.equal(payload.data.summary.dials, 1);
+  assert.equal(payload.data.events[0].athlete_name, 'Live Athlete');
+  assert.equal(payload.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
+  assert.equal(calls.length, 3);
+  assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
 });
 
 test('/api/set-meetings is only a Vercel adapter for the FastAPI command contract', async () => {

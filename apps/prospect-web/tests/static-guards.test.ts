@@ -305,7 +305,8 @@ test('Vercel public dashboard assets are tracked in git despite public ignore ru
 test('call tracker daily cards consume Supabase boolean count fields only', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
   assert.match(appText, /CONTRACT_URL/);
-  assert.match(appText, /data-contract\.json/);
+  assert.match(appText, /const CONTRACT_URL = '\/api\/call-tracker-data'/);
+  assert.doesNotMatch(appText, /\/prospect-call-tracker\/data-contract\.json/);
   assert.match(appText, /state\.summary = data\.summary/);
   assert.match(appText, /state\.rows = Array\.isArray\(data\.events\)/);
   assert.match(appText, /state\.ui = data\.ui/);
