@@ -282,7 +282,7 @@ export function buildVoicemailFollowUpMessage(args: {
       ? ['Great! Here’s the link to schedule a quick call:', CAL_BOOKING_URL]
       : recipientType === 'student_athlete' && args.variant === 'no_show'
         ? [
-            `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your'}’s meeting with our Head Scout.`,
+            `${greeting} looks like we missed you for your meeting with our Head Scout.`,
             '',
             'Choose what’s most relevant so I can be helpful:',
             '',

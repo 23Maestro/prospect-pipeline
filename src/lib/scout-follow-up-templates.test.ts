@@ -184,7 +184,7 @@ test('buildVoicemailFollowUpMessage uses no show triage for student athletes', (
 
   assert.match(
     message,
-    /^Hi Aiden, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
+    /^Hi Aiden, looks like we missed you for your meeting with our Head Scout\./,
   );
   assert.match(message, /Choose what’s most relevant so I can be helpful:/);
   assert.match(message, /1 - still interested, just need to reschedule/);

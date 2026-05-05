@@ -13,6 +13,7 @@ import {
 } from '../domain/scout-task-classifier';
 import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner-resolution';
 import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
+import { buildCallActivityFact } from '../domain/call-tracker-facts';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
@@ -526,6 +527,9 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
   if (isCountableActivity && !normalizeValue(args.taskAssignedOwner)) {
     throw new Error('Lifecycle mutation countable activity requires taskAssignedOwner for owner proof.');
   }
+  if (isCountableActivity && !normalizeValue(args.crmStage)) {
+    throw new Error('Lifecycle mutation countable activity requires raw crmStage.');
+  }
 
   const clock = resolveMutationOccurredAt(args);
   if (isCountableActivity && !clock.occurredAt) {
@@ -1034,12 +1038,67 @@ export async function recordLifecycleMutation(
   args: LifecycleMutationEventArgs,
 ): Promise<{ enabled: boolean }> {
   const event = buildLifecycleMutationEvent(args);
-  return writeLifecycle({
+  const result = await writeLifecycle({
     athlete: event.athlete,
     eventType: event.eventType,
     payload: event.payload,
     state: event.state,
   });
+  if (!result.enabled) return result;
+
+  const activitySubtype = normalizeValue(event.payload.activity_subtype as string | null);
+  const taskId = normalizeValue(event.payload.task_id as string | null);
+  const occurredAt = normalizeValue(event.payload.occurred_at as string | null);
+  const taskAssignedOwner = normalizeValue(event.payload.task_assigned_owner as string | null);
+  const countsAsCallActivity =
+    event.payload.counts_as_dial === true || event.payload.counts_as_contact === true;
+
+  if (!countsAsCallActivity || !activitySubtype || !taskId || !occurredAt || !taskAssignedOwner) {
+    return result;
+  }
+
+  const config = getConfig();
+  if (!config) return result;
+
+  const row = buildCallActivityFact({
+    athleteId: event.athlete.athleteId,
+    athleteMainId: event.athlete.athleteMainId,
+    athleteName: event.athlete.athleteName,
+    taskId,
+    taskTitle: event.state.currentTaskTitle,
+    taskDescription: normalizeValue(args.taskDescription),
+    rawCrmStage: event.state.crmStage,
+    rawTaskStatus: event.state.taskStatus,
+    activitySubtype,
+    occurredAt,
+    ownerInput: {
+      purpose: 'call_activity',
+      athleteId: event.athlete.athleteId,
+      athleteMainId: event.athlete.athleteMainId,
+      athleteName: event.athlete.athleteName,
+      tasks: [
+        {
+          task_id: taskId,
+          title: event.state.currentTaskTitle,
+          description: normalizeValue(args.taskDescription),
+          assigned_owner: taskAssignedOwner,
+        },
+      ],
+      currentTaskId: taskId,
+    },
+    payload: {
+      ...event.payload,
+      source: 'raycast_laravel_update',
+      lifecycle_event_type: event.eventType,
+    },
+  });
+
+  await request(config, 'call_activity_events', {
+    rows: [row],
+    onConflict: 'task_id',
+  });
+
+  return result;
 }
 
 export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ enabled: boolean }> {

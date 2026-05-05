@@ -26,6 +26,8 @@ test('call activity facts preserve compatibility fields and explicit operator co
     athleteName: 'Sample Athlete',
     taskId: '900',
     taskTitle: 'Call Attempt 1',
+    rawCrmStage: 'New Opportunity',
+    rawTaskStatus: 'call_attempt_1',
     activitySubtype: 'call_attempt_1',
     ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
     ownerContext,
@@ -35,6 +37,10 @@ test('call activity facts preserve compatibility fields and explicit operator co
   assert.equal(row.athlete_key, '123:456');
   assert.equal(row.activity_kind, 'dial');
   assert.equal(row.activity_subtype, 'call_attempt_1');
+  assert.equal(row.raw_crm_stage, 'New Opportunity');
+  assert.equal(row.raw_task_status, 'call_attempt_1');
+  assert.equal(row.payload_json.raw_crm_stage, 'New Opportunity');
+  assert.equal(row.payload_json.raw_task_status, 'call_attempt_1');
   assert.equal(row.payload_json.counts_as_dial, true);
   assert.equal(row.payload_json.counts_as_contact, false);
   assert.equal(row.payload_json.counts_as_meeting_set, false);
@@ -69,6 +75,8 @@ test('contact activity facts count as both dial and contact', () => {
     athleteName: 'Sample Athlete',
     taskId: '901',
     taskTitle: 'Spoke to - I Need To Follow Up',
+    rawCrmStage: 'Spoke to - I Need To Follow Up',
+    rawTaskStatus: 'spoke_to_follow_up',
     activitySubtype: 'spoke_to_follow_up',
     ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
     ownerContext,
@@ -77,6 +85,10 @@ test('contact activity facts count as both dial and contact', () => {
 
   assert.equal(row.activity_kind, 'contact');
   assert.equal(row.activity_type, 'spoke_to_follow_up');
+  assert.equal(
+    (row.payload_json.call_tracker_event as Record<string, unknown>).raw_crm_stage,
+    'Spoke to - I Need To Follow Up',
+  );
   assert.equal(row.payload_json.counts_as_dial, true);
   assert.equal(row.payload_json.counts_as_contact, true);
   assert.equal(row.payload_json.counts_as_meeting_set, false);
@@ -106,6 +118,8 @@ test('unable to leave voicemail activity facts remain dial-only', () => {
     athleteName: 'Sample Athlete',
     taskId: '902',
     taskTitle: 'Called - Unable to Leave VM',
+    rawCrmStage: 'Called - Unable to Leave VM',
+    rawTaskStatus: 'unable_to_leave_vm',
     activitySubtype: 'unable_to_leave_vm',
     ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
     ownerContext,
@@ -143,6 +157,7 @@ test('call activity facts reject missing occurrence clocks', () => {
         athleteName: 'Sample Athlete',
         taskId: '903',
         taskTitle: 'Call Attempt 1',
+        rawCrmStage: 'New Opportunity',
         activitySubtype: 'call_attempt_1',
         ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
         ownerContext,
@@ -175,6 +190,7 @@ test('call activity facts reject missing athlete names', () => {
         athleteName: '',
         taskId: '904',
         taskTitle: 'Call Attempt 1',
+        rawCrmStage: 'New Opportunity',
         activitySubtype: 'call_attempt_1',
         ownerInput: { purpose: 'call_activity', athleteId: '123', athleteMainId: '456' },
         ownerContext,

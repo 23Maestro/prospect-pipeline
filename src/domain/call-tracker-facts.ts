@@ -23,6 +23,45 @@ function normalizeIsoValue(value?: string | null): string | null {
   return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
 }
 
+export type CallTrackerEventEnvelope = {
+  raw_crm_stage: string | null;
+  raw_task_status: string | null;
+  raw_event_type: string;
+  tracker_outcome: string | null;
+  occurred_at: string | null;
+  source: string;
+  appointment_id: string | null;
+  live_event_id: string | null;
+  booked_event_title: string | null;
+  revenue_cents: number | null;
+};
+
+export function buildCallTrackerEventEnvelope(args: {
+  rawCrmStage: string | null;
+  rawTaskStatus: string | null;
+  rawEventType: string;
+  trackerOutcome?: string | null;
+  occurredAt?: string | null;
+  source: string;
+  appointmentId?: string | null;
+  liveEventId?: string | null;
+  bookedEventTitle?: string | null;
+  revenueCents?: number | null;
+}): CallTrackerEventEnvelope {
+  return {
+    raw_crm_stage: normalizeValue(args.rawCrmStage),
+    raw_task_status: normalizeValue(args.rawTaskStatus),
+    raw_event_type: normalizeValue(args.rawEventType) || 'unknown',
+    tracker_outcome: normalizeValue(args.trackerOutcome),
+    occurred_at: normalizeIsoValue(args.occurredAt),
+    source: normalizeValue(args.source) || 'unknown',
+    appointment_id: normalizeValue(args.appointmentId),
+    live_event_id: normalizeValue(args.liveEventId),
+    booked_event_title: normalizeValue(args.bookedEventTitle),
+    revenue_cents: args.revenueCents ?? null,
+  };
+}
+
 export type AthleteSnapshotRow = {
   athlete_key: string;
   athlete_id: string;
@@ -79,6 +118,8 @@ export type CallActivityFactRow = {
   task_id: string;
   task_title: string | null;
   task_description: string | null;
+  raw_crm_stage: string | null;
+  raw_task_status: string | null;
   activity_type: string;
   activity_kind: ActivityKind;
   activity_subtype: string;
@@ -270,6 +311,8 @@ export function buildCallActivityFact(args: {
   taskId: string | number;
   taskTitle?: string | null;
   taskDescription?: string | null;
+  rawCrmStage: string | null;
+  rawTaskStatus?: string | null;
   activitySubtype: string;
   occurredAt?: string | null;
   ownerInput: OwnerResolutionInput;
@@ -286,6 +329,15 @@ export function buildCallActivityFact(args: {
   const owner = requireResolvedOwner(args.ownerInput, args.ownerContext);
   const occurredAt = requireFactOccurredAt('call_activity', args.occurredAt);
   const athleteName = requireFactAthleteName('call_activity', args.athleteName);
+  const envelope = buildCallTrackerEventEnvelope({
+    rawCrmStage: args.rawCrmStage,
+    rawTaskStatus: normalizeValue(args.rawTaskStatus) || args.activitySubtype,
+    rawEventType: 'call_activity',
+    trackerOutcome: reporting.trackerOutcome,
+    occurredAt,
+    source: 'call_activity',
+    bookedEventTitle: args.taskTitle,
+  });
   return {
     athlete_key: identity.athleteKey,
     athlete_id: identity.athleteId,
@@ -294,6 +346,8 @@ export function buildCallActivityFact(args: {
     task_id: String(args.taskId).trim(),
     task_title: normalizeValue(args.taskTitle),
     task_description: normalizeValue(args.taskDescription),
+    raw_crm_stage: envelope.raw_crm_stage,
+    raw_task_status: envelope.raw_task_status,
     activity_type: args.activitySubtype,
     activity_kind: activityKind,
     activity_subtype: args.activitySubtype,
@@ -302,6 +356,8 @@ export function buildCallActivityFact(args: {
     owner_proof: owner.resolvedFromField || '',
     payload_json: {
       ...(args.payload || {}),
+      ...envelope,
+      call_tracker_event: envelope,
       activity_kind: activityKind,
       activity_subtype: args.activitySubtype,
       counts_as_dial: reporting.countsAsDial,
@@ -374,6 +430,18 @@ export function buildMeetingOutcomeFact(args: {
   const identity = validateAthleteIdentity(args);
   const owner = requireResolvedOwner(args.ownerInput, args.ownerContext);
   const occurredAt = requireFactOccurredAt('meeting_outcome', args.occurredAt);
+  const envelope = buildCallTrackerEventEnvelope({
+    rawCrmStage: args.rawCrmStage || null,
+    rawTaskStatus: args.rawTaskStatus || null,
+    rawEventType: args.rawEventType,
+    trackerOutcome: args.dedupeOutcome || args.rawTaskStatus || args.rawCrmStage,
+    occurredAt,
+    source: args.source,
+    appointmentId: args.appointmentId,
+    liveEventId: args.liveEventId,
+    bookedEventTitle: args.bookedEventTitle,
+    revenueCents: args.revenueCents,
+  });
   const dedupeKey = buildMeetingOutcomeDedupeKey({
     source: args.source,
     athleteKey: identity.athleteKey,
@@ -389,20 +457,22 @@ export function buildMeetingOutcomeFact(args: {
     athlete_main_id: identity.athleteMainId,
     athlete_name: normalizeValue(args.athleteName),
     occurred_at: occurredAt,
-    source: args.source,
-    raw_crm_stage: normalizeValue(args.rawCrmStage),
-    raw_task_status: normalizeValue(args.rawTaskStatus),
-    raw_event_type: args.rawEventType,
-    appointment_id: normalizeValue(args.appointmentId),
-    live_event_id: normalizeValue(args.liveEventId),
-    booked_event_title: normalizeValue(args.bookedEventTitle),
-    revenue_cents: args.revenueCents ?? null,
+    source: envelope.source,
+    raw_crm_stage: envelope.raw_crm_stage,
+    raw_task_status: envelope.raw_task_status,
+    raw_event_type: envelope.raw_event_type,
+    appointment_id: envelope.appointment_id,
+    live_event_id: envelope.live_event_id,
+    booked_event_title: envelope.booked_event_title,
+    revenue_cents: envelope.revenue_cents,
     source_owner: owner.resolvedOwnerName || '',
     is_tracked_owner: owner.canMaterializeForActiveOperator,
     owner_proof: owner.resolvedFromField || '',
     dedupe_key: dedupeKey,
     payload_json: {
       ...(args.payload || {}),
+      ...envelope,
+      call_tracker_event: envelope,
       active_operator_key: owner.activeOperator.operatorKey,
       active_operator_name: owner.activeOperator.personName,
       task_assigned_owner: owner.taskAssignedOwner,
@@ -434,9 +504,24 @@ export function buildMeetingSetFact(args: MeetingSetFactInput): MeetingSetFactRo
   if (!appointmentId) {
     throw new Error('Meeting set facts require a booked meeting appointment_id/event_id.');
   }
+  const envelope = buildCallTrackerEventEnvelope({
+    rawCrmStage: args.crmStage || 'Meeting Set',
+    rawTaskStatus: args.taskStatus || null,
+    rawEventType: 'lifecycle_meeting_set',
+    trackerOutcome: 'meeting_set',
+    occurredAt: args.createdAt || null,
+    source: String(args.payload?.source || 'lifecycle_meeting_set'),
+    appointmentId,
+    bookedEventTitle: normalizeValue(args.payload?.meeting_name as string | number | null | undefined),
+  });
 
   return buildLifecycleAuditEvent({
     ...args,
+    payload: {
+      ...(args.payload || {}),
+      ...envelope,
+      call_tracker_event: envelope,
+    },
     eventType: 'meeting_set',
     dedupeKey: `meeting_set:${identity.athleteKey}:${appointmentId}`,
   });

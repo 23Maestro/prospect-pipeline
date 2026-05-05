@@ -470,6 +470,8 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
             taskId,
             taskTitle: strippedTaskTitle || rawTaskTitle || null,
             taskDescription: rawTaskDescription || null,
+            rawCrmStage: selectedSalesStage,
+            rawTaskStatus: mapping.taskStatus,
             activitySubtype: mapping.taskStatus,
             occurredAt: activityOccurredAt,
             ownerInput: {

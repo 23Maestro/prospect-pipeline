@@ -46,6 +46,7 @@ export type LaravelSalesStageUpdatePlan = {
 export type LaravelTaskCompletionPlan = {
   athleteId: string;
   athleteMainId: string;
+  crmStage: string;
   contactTask: string;
   taskId: string;
   taskTitle: string;
@@ -96,6 +97,7 @@ function buildTaskCompletionPlan(input: PostCallActionPlanInput, normalizedStage
   return {
     athleteId: asString(input.athleteId),
     athleteMainId: asString(input.athleteMainId),
+    crmStage: normalizedStage,
     contactTask: asString(input.athleteId),
     taskId: taskId(task),
     taskTitle,

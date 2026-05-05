@@ -1035,6 +1035,8 @@ function SingleRecipientMessageForm({
   initialMessage,
   onMessageSent,
   onMessageSentLabel,
+  onMessageSentToastTitle,
+  onMessageSentFailureTitle,
 }: {
   title: string;
   recipientName: string;
@@ -1042,6 +1044,8 @@ function SingleRecipientMessageForm({
   initialMessage: string;
   onMessageSent?: () => Promise<void>;
   onMessageSentLabel?: string;
+  onMessageSentToastTitle?: string;
+  onMessageSentFailureTitle?: string;
 }) {
   const { itemProps, handleSubmit } = useForm<{ message: string }>({
     initialValues: { message: initialMessage },
@@ -1057,13 +1061,16 @@ function SingleRecipientMessageForm({
       }
 
       if (onMessageSent) {
-        const toast = await showLoadingToast('Saving', onMessageSentLabel || 'Follow-up');
+        const toast = await showLoadingToast(
+          onMessageSentToastTitle || 'Saving',
+          onMessageSentLabel || 'Follow-up',
+        );
         try {
           await onMessageSent();
           toast.hide();
         } catch (error) {
           toast.style = Toast.Style.Failure;
-          toast.title = 'Sent, save failed';
+          toast.title = onMessageSentFailureTitle || 'Sent, save failed';
           toast.message = error instanceof Error ? error.message : String(error);
           return;
         }
@@ -1253,7 +1260,17 @@ function VoicemailFollowUpRecipientForm({
             recipientName={recipient.name}
             phone={recipient.phones[0]}
             initialMessage={body}
-            onMessageSentLabel={selectedVariant.replace(/_/g, ' ')}
+            onMessageSentLabel={
+              selectedVariant === 'no_show'
+                ? 'No sales stage change'
+                : selectedVariant.replace(/_/g, ' ')
+            }
+            onMessageSentToastTitle={
+              selectedVariant === 'no_show' ? 'Completing No Show Task' : undefined
+            }
+            onMessageSentFailureTitle={
+              selectedVariant === 'no_show' ? 'Sent, task not completed' : undefined
+            }
             onMessageSent={
               selectedVariant === 'no_show'
                 ? async () => {
@@ -1346,7 +1363,10 @@ function VoicemailFollowUpRecipientForm({
       } catch (error) {
         await showToast({
           style: Toast.Style.Failure,
-          title: 'Draft open, save failed',
+          title:
+            selectedVariant === 'no_show'
+              ? 'Draft open, task not completed'
+              : 'Draft open, save failed',
           message: error instanceof Error ? error.message : String(error),
         });
         return;

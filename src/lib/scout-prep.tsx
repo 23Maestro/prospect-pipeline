@@ -261,6 +261,7 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
   athleteName?: string | null;
   contactTask?: string | null;
   taskId?: string | null;
+  crmStage?: string | null;
   taskTitle?: string | null;
   assignedOwner?: string | null;
   description?: string | null;
@@ -334,7 +335,7 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
     athleteName: args.athleteName || '',
-    crmStage: args.taskTitle || null,
+    crmStage: args.crmStage || args.taskTitle || null,
     taskId: result.task_id || args.taskId || null,
     taskTitle: args.taskTitle || 'Call Attempt 1',
     taskDescription: args.description || args.taskTitle || 'Call Attempt 1',

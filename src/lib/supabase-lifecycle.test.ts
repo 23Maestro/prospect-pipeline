@@ -265,6 +265,23 @@ test('lifecycle mutation event rejects missing occurrence clock for countable ac
   );
 });
 
+test('lifecycle mutation event rejects missing raw CRM stage for countable activity', () => {
+  assert.throws(
+    () =>
+      buildLifecycleMutationEvent({
+        sourcePost: '/tasks/complete',
+        athleteId: '1489000',
+        athleteMainId: '951000',
+        athleteName: 'Avery Jones',
+        taskId: '9904',
+        taskTitle: 'Call Attempt 1',
+        taskAssignedOwner: 'Jerami Singleton',
+        completedAt: '2026-05-01T17:30:00.000Z',
+      }),
+    /requires raw crmStage/,
+  );
+});
+
 test('lifecycle mutation event rejects missing owner proof for countable activity', () => {
   assert.throws(
     () =>
@@ -311,6 +328,16 @@ test('Laravel POST wrappers call the shared lifecycle mutation writer after succ
   assert.match(scoutPrepSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/tasks\/call-attempt-3-sent'/);
   assert.match(scoutPrepSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/tasks\/follow-up-message-sent'/);
   assert.match(salesStageSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/sales\/stage'/);
+});
+
+test('shared lifecycle mutation writer upserts call activity facts at action time', () => {
+  const source = fs.readFileSync('src/lib/supabase-lifecycle.ts', 'utf8');
+
+  assert.match(source, /buildCallActivityFact/);
+  assert.match(source, /request\(config, 'call_activity_events'/);
+  assert.match(source, /onConflict: 'task_id'/);
+  assert.match(source, /rawCrmStage: event\.state\.crmStage/);
+  assert.match(source, /rawTaskStatus: event\.state\.taskStatus/);
 });
 
 test('sales stage wrapper does not let generic lifecycle sync block Meeting Set task completion', () => {

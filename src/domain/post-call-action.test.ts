@@ -20,6 +20,7 @@ test('Tim Risner tasks can update Laravel but do not materialize Jerami dashboar
   });
 
   assert.equal(plan.laravelSalesStageUpdate?.stage, 'Spoke to - I Need To Follow Up');
+  assert.equal(plan.laravelTaskCompletion?.crmStage, 'Spoke to - I Need To Follow Up');
   assert.equal(plan.laravelTaskCompletion?.taskId, '9901');
   assert.equal(plan.ownerContext.taskAssignedOwner, 'Tim Risner');
   assert.equal(plan.ownerContext.materializationStatus, 'not_operator_task');

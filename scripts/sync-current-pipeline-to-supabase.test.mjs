@@ -59,6 +59,8 @@ test('current pipeline activity facts require task completion clocks instead of 
   assert.match(source, /&& !openNewOpportunityQueueItem\)/);
   assert.match(source, /const activityOccurredAt = completionAt/);
   assert.match(source, /occurredAt: activityOccurredAt/);
+  assert.match(source, /rawCrmStage: selectedSalesStage/);
+  assert.match(source, /rawTaskStatus: mapping\.taskStatus/);
   assert.match(source, /occurred_at_source: activityOccurredAtSource/);
   assert.match(source, /missing_completion_date_for_call_activity/);
   assert.doesNotMatch(source, /const activityOccurredAt = completionAt \|\| dueAt/);
