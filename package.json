@@ -236,6 +236,35 @@
       "type": "textfield",
       "placeholder": "Jerami Singleton",
       "required": false
+    },
+    {
+      "name": "calApiKey",
+      "title": "Cal API Key",
+      "description": "Used by Client Messages to book Cal follow-up calls.",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "calFollowUpEventTypeId",
+      "title": "Cal Follow Up Event Type ID",
+      "description": "Numeric Cal event type ID used for Client Messages follow-up bookings.",
+      "type": "textfield",
+      "required": false
+    },
+    {
+      "name": "calFallbackAttendeeEmail",
+      "title": "Cal Fallback Attendee Email",
+      "description": "Optional attendee email used when Client Messages only has a phone number.",
+      "type": "textfield",
+      "required": false
+    },
+    {
+      "name": "calFollowUpLengthMinutes",
+      "title": "Cal Follow Up Length",
+      "description": "Optional booking length in minutes when the Cal event type supports variable lengths.",
+      "type": "textfield",
+      "placeholder": "15",
+      "required": false
     }
   ],
   "scripts": {
@@ -248,6 +277,7 @@
     "test:scout-prep-time": "rm -rf /tmp/scout-prep-time-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-time-tests src/lib/scout-prep-ai.ts src/lib/scout-prep-ai.test.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts src/lib/logger.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-prep-time-tests/lib/scout-prep-ai.test.js",
     "test:scout-task-filters": "rm -rf /tmp/scout-task-filter-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-task-filter-tests src/lib/scout-task-filters.ts src/lib/scout-task-filters.test.ts src/features/scout-prep/types.ts src/lib/scout-prep-follow-up-index.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-task-filter-tests/lib/scout-task-filters.test.js",
     "test:scout-follow-up-templates": "rm -rf /tmp/scout-follow-up-template-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-follow-up-template-tests src/lib/scout-follow-up-templates.ts src/lib/scout-follow-up-templates.test.ts && NODE_PATH=$PWD/node_modules node --test /tmp/scout-follow-up-template-tests/lib/scout-follow-up-templates.test.js",
+    "test:cal-follow-ups": "rm -rf /tmp/cal-follow-up-tests && tsc --skipLibCheck --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/cal-follow-up-tests src/lib/reminders.ts src/lib/cal-follow-ups.ts src/lib/cal-follow-ups.test.ts && mkdir -p /tmp/cal-follow-up-tests/node_modules/@raycast/api /tmp/cal-follow-up-tests/node_modules/@raycast/utils && printf \"exports.getPreferenceValues = () => ({});\\n\" > /tmp/cal-follow-up-tests/node_modules/@raycast/api/index.js && printf \"exports.runAppleScript = async () => '';\\n\" > /tmp/cal-follow-up-tests/node_modules/@raycast/utils/index.js && NODE_PATH=/tmp/cal-follow-up-tests/node_modules:$PWD/node_modules node --test /tmp/cal-follow-up-tests/cal-follow-ups.test.js",
     "test:reminders": "rm -rf /tmp/reminder-tests && tsc --skipLibCheck --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/reminder-tests src/lib/reminders.ts src/lib/reminders.test.ts && mkdir -p /tmp/reminder-tests/node_modules/@raycast/utils && printf \"exports.runAppleScript = async () => '';\\n\" > /tmp/reminder-tests/node_modules/@raycast/utils/index.js && NODE_PATH=/tmp/reminder-tests/node_modules:$PWD/node_modules node --test /tmp/reminder-tests/reminders.test.js",
     "test:sales-lifecycle": "rm -rf /tmp/sales-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/sales-lifecycle-tests src/lib/sales-lifecycle.ts src/lib/sales-lifecycle.test.ts && NODE_PATH=$PWD/node_modules node --test /tmp/sales-lifecycle-tests/sales-lifecycle.test.js",
     "test:head-scout-lifecycle": "rm -rf /tmp/head-scout-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --resolveJsonModule --outDir /tmp/head-scout-lifecycle-tests src/lib/head-scout-appointment-lifecycle.ts src/lib/head-scout-appointment-lifecycle.test.ts src/lib/head-scout-schedules.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/python-env.ts src/lib/logger.ts src/lib/scout-prep-ai.ts src/lib/scout-prep-contact.ts src/lib/scout-follow-up-templates.ts src/lib/sales-lifecycle.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts && mkdir -p /tmp/head-scout-lifecycle-tests/node_modules/@raycast/api && printf \"const path = require('path');\\nexports.environment = { assetsPath: path.dirname(require.resolve('sql.js/dist/sql-wasm.wasm')) };\\n\" > /tmp/head-scout-lifecycle-tests/node_modules/@raycast/api/index.js && NODE_PATH=/tmp/head-scout-lifecycle-tests/node_modules:$PWD/node_modules node --test /tmp/head-scout-lifecycle-tests/src/lib/head-scout-appointment-lifecycle.test.js",
