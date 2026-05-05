@@ -102,15 +102,23 @@ function ReminderRecipientForm({
   navigationTitle,
   options,
   actionTitle,
+  includeDuration = false,
   onSubmit,
 }: {
   navigationTitle: string;
   options: ReminderContactOption[];
   actionTitle: string;
-  onSubmit: (values: { recipientId?: string; remindAt?: Date }) => Promise<void>;
+  includeDuration?: boolean;
+  onSubmit: (values: {
+    recipientId?: string;
+    remindAt?: Date;
+    durationMinutes?: number;
+  }) => Promise<void>;
 }) {
   const [recipientId, setRecipientId] = useState(options[0]?.id);
   const [remindAt, setRemindAt] = useState<Date | null>(buildDefaultReminderDate());
+  const [durationMinutes, setDurationMinutes] = useState('15');
+  const selectedOption = options.find((option) => option.id === recipientId) || options[0];
 
   return (
     <Form
@@ -120,11 +128,20 @@ function ReminderRecipientForm({
           <Action.SubmitForm
             title={actionTitle}
             icon={Icon.Calendar}
-            onSubmit={() => onSubmit({ recipientId, remindAt: remindAt ?? undefined })}
+            onSubmit={() =>
+              onSubmit({
+                recipientId,
+                remindAt: remindAt ?? undefined,
+                durationMinutes: includeDuration ? Number.parseInt(durationMinutes, 10) : undefined,
+              })
+            }
           />
         </ActionPanel>
       }
     >
+      {includeDuration ? (
+        <Form.Description title="Title" text={`Follow Up: ${selectedOption?.name || 'Contact'}`} />
+      ) : null}
       <Form.Dropdown id="recipientId" title="Contact" value={recipientId} onChange={setRecipientId}>
         {options.map((option) => (
           <Form.Dropdown.Item
@@ -141,6 +158,15 @@ function ReminderRecipientForm({
         value={remindAt}
         onChange={setRemindAt}
       />
+      {includeDuration ? (
+        <Form.TextField
+          id="durationMinutes"
+          title="Duration"
+          placeholder="15"
+          value={durationMinutes}
+          onChange={setDurationMinutes}
+        />
+      ) : null}
     </Form>
   );
 }
@@ -266,11 +292,22 @@ export default function ClientMessageInboxCommand() {
       return;
     }
 
-    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
+    const createForOption = async (
+      option: ReminderContactOption,
+      remindAt?: Date,
+      durationMinutes?: number,
+    ) => {
       if (!remindAt) {
         await showToast({
           style: Toast.Style.Failure,
           title: 'Pick a follow-up time',
+        });
+        return;
+      }
+      if (!Number.isFinite(durationMinutes) || Number(durationMinutes) <= 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Enter duration',
         });
         return;
       }
@@ -358,6 +395,7 @@ export default function ClientMessageInboxCommand() {
           phone: option.phone,
           contactId: String(chat.clientMatch.contactId || '').trim(),
           athleteMainId: String(chat.clientMatch.athleteMainId || '').trim(),
+          durationMinutes,
         });
         toast.hide();
         await showHUD(`Calendar: ${option.name}`);
@@ -373,13 +411,14 @@ export default function ClientMessageInboxCommand() {
       <ReminderRecipientForm
         navigationTitle={`Calendar Follow Up • ${chat.displayName}`}
         options={immediateOption ? [immediateOption] : options}
-        actionTitle="Create Event"
+        actionTitle="Create Calendar Event"
+        includeDuration
         onSubmit={async (values) => {
           const availableOptions = immediateOption ? [immediateOption] : options;
           const selected =
             availableOptions.find((option) => option.id === values.recipientId) ||
             availableOptions[0];
-          await createForOption(selected, values.remindAt);
+          await createForOption(selected, values.remindAt, values.durationMinutes);
         }}
       />,
     );
@@ -428,13 +467,13 @@ export default function ClientMessageInboxCommand() {
                 onAction={() => push(<FollowUpDraftForm chat={chat} />)}
               />
               <Action
-                title="Cal: Follow Up"
+                title="Cal Follow-Up"
                 icon={Icon.Phone}
                 shortcut={{ modifiers: ['cmd'], key: '3' }}
                 onAction={() => void handleCreateCalFollowUp(chat)}
               />
               <Action
-                title="Calendar: Text Follow Up"
+                title="Calendar Follow-Up"
                 icon={Icon.Calendar}
                 shortcut={{ modifiers: ['cmd'], key: '4' }}
                 onAction={() => void handleCreateAppleCalendarFollowUp(chat)}

@@ -12,6 +12,7 @@ export type AppleCalendarFollowUpInput = {
   athleteName: string;
   contactId?: string | null;
   athleteMainId?: string | null;
+  durationMinutes?: number | null;
 };
 
 export type AppleCalendarFollowUpEventDraft = {
@@ -35,6 +36,12 @@ function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
+function normalizeDurationMinutes(value?: number | null): number {
+  return Number.isFinite(value) && Number(value) > 0
+    ? Math.round(Number(value))
+    : DEFAULT_EVENT_LENGTH_MINUTES;
+}
+
 function appleScriptDateAssignment(variableName: string, date: Date): string {
   return `
     set ${variableName} to (current date)
@@ -55,15 +62,16 @@ export function buildAppleCalendarFollowUpEventDraft(
   const phone = clean(input.phone);
   const contactId = clean(input.contactId);
   const athleteMainId = clean(input.athleteMainId);
+  const durationMinutes = normalizeDurationMinutes(input.durationMinutes);
   const url = contactId ? buildReminderAdminUrl(contactId, athleteMainId) : '';
   const notes = [`SA:${athleteName} - ${phone}`, url].filter(Boolean).join('\n');
 
   return {
-    title: `Text ${contactName}`,
+    title: `Follow Up: ${contactName}`,
     notes,
     url,
     start: input.start,
-    end: addMinutes(input.start, DEFAULT_EVENT_LENGTH_MINUTES),
+    end: addMinutes(input.start, durationMinutes),
     alertMinutesBefore: DEFAULT_ALERT_MINUTES_BEFORE,
   };
 }
