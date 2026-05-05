@@ -327,7 +327,7 @@
     "plainEnglish": "Run this with the call tracker cron/sync so Vercel only serves a ready-to-render artifact instead of recomputing Supabase business meaning in the browser."
   },
   "data": {
-    "generatedAt": "2026-05-05T02:04:56.708Z",
+    "generatedAt": "2026-05-05T14:05:27.969Z",
     "eventLimit": 1000,
     "supabaseReads": {
       "summaryView": "call_tracker_summary",
@@ -335,23 +335,23 @@
       "lifecycleSourceTable": "lifecycle_events"
     },
     "summary": {
-      "total_events": 242,
+      "total_events": 241,
       "spoke_with": 58,
       "voicemail_only": 177,
-      "meetings_set": 25,
+      "meetings_set": 24,
       "reschedule_pending": 3,
       "closed_won": 3,
       "money_earned_cents": 26700,
       "first_event_at": "2026-04-15T21:03:00+00:00",
-      "last_event_at": "2026-05-05T02:00:00+00:00",
+      "last_event_at": "2026-05-05T14:01:57.705+00:00",
       "appointments_tracked": 29,
       "meeting_outcomes_total": 16,
       "rescheduled": 0,
       "canceled": 4,
       "no_show": 6,
       "needs_review": 0,
-      "dials": 222,
-      "contacts": 44
+      "dials": 221,
+      "contacts": 43
     },
     "events": [
       {
@@ -463,42 +463,15 @@
         "created_at": "2026-05-04T13:04:36.031646+00:00"
       },
       {
-        "athlete_name": "Javiion Knight",
-        "occurred_at": "2026-05-04T23:01:52.763+00:00",
-        "event_at": "2026-05-04T23:01:52.763+00:00",
-        "tracker_outcome": "meeting_set",
-        "raw_crm_stage": "Meeting Set",
-        "raw_task_status": "confirmation_call",
-        "raw_event_type": "lifecycle_meeting_set",
-        "source": "weekly_booked_meetings_with_operator_confirmation_task",
-        "appointment_id": "588236",
-        "live_event_id": null,
-        "booked_event_title": "Javiion Knight Football 2027 NJ",
-        "revenue_cents": null,
-        "dedupe_key": "meeting_set:1490376:952205:588236",
-        "active_operator_name": "Jerami Singleton",
-        "task_assigned_owner": "Jerami Singleton",
-        "counts_as_dial": true,
-        "counts_as_contact": true,
-        "counts_as_meeting_set": true,
-        "counts_as_post_meeting_outcome": false,
-        "materialization_status": "operator_task",
-        "materialization_reason": "manual_artifact_patch_for_legacy_owner_proof_gap",
-        "resolved_owner_name": "Ryan Lietz",
-        "resolved_owner_source_field": "payload.matched_weekly_task_assigned_owner",
-        "can_materialize_for_active_operator": true,
-        "created_at": "2026-05-04T23:01:52.763+00:00"
-      },
-      {
         "athlete_name": "Bryce Hill",
-        "occurred_at": "2026-05-05T00:01:36.862+00:00",
+        "occurred_at": "2026-05-05T14:01:57.705+00:00",
         "event_at": "2026-05-04T23:00:00+00:00",
         "tracker_outcome": "no_show",
         "raw_crm_stage": "Meeting Result - No Show",
         "raw_task_status": "no_show",
         "raw_event_type": "post_meeting_outcome",
         "source": "legacy_sales_stage_current",
-        "appointment_id": "587223",
+        "appointment_id": null,
         "live_event_id": "587223",
         "booked_event_title": "(NS) Bryce Hill Football 2025 NY",
         "revenue_cents": null,
@@ -6917,15 +6890,15 @@
       }
     ],
     "ui": {
-      "activePeriod": "week-0",
+      "activePeriod": "week-1",
       "rangeLabel": "May 4 - May 10",
       "summaryCards": {
         "moneyEarnedCents": 26700,
         "closedWon": 3,
-        "contacts": 57,
-        "rawContacts": 44,
+        "contacts": 56,
+        "rawContacts": 43,
         "historicalContactsAdjustment": 13,
-        "dials": 222,
+        "dials": 221,
         "voicemailOnly": 177,
         "appointmentsTracked": 29,
         "closeRate": 19
@@ -6947,21 +6920,21 @@
         "week-0": {
           "label": "Monday, May 4, 2026",
           "localDateKey": "2026-05-04",
-          "dials": 28,
-          "contacts": 7,
-          "meetingsSet": 3,
-          "setRate": 43,
+          "dials": 27,
+          "contacts": 6,
+          "meetingsSet": 2,
+          "setRate": 33,
           "outcomeCounts": {
             "voicemail": 21,
             "no_show": 1,
-            "meeting_set": 3,
+            "meeting_set": 2,
             "not_interested": 2,
             "spoke_follow_up": 2
           },
           "filterCounts": {
-            "meaningful": 6,
-            "all_calls": 29,
-            "meetings": 4,
+            "meaningful": 5,
+            "all_calls": 28,
+            "meetings": 3,
             "closed_won": 0,
             "closed_lost": 0,
             "reschedule_pending": 0,

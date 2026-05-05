@@ -150,7 +150,7 @@ test('buildVoicemailFollowUpMessage renders attempt 2 calendar permission copy',
   assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
 });
 
-test('buildVoicemailFollowUpMessage renders no show copy with simple next best day logic', () => {
+test('buildVoicemailFollowUpMessage renders no show triage copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'no_show',
     greeting: 'Hi Jamie,',
@@ -163,12 +163,34 @@ test('buildVoicemailFollowUpMessage renders no show copy with simple next best d
     message,
     /^Hi Jamie, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
   );
+  assert.match(message, /Choose what’s most relevant so I can be helpful:/);
+  assert.match(message, /1 - still interested, just need to reschedule/);
+  assert.match(message, /2 - interested, but timing is bad right now/);
+  assert.match(message, /3 - no longer interested/);
+  assert.doesNotMatch(message, /No worries, things come up/);
+  assert.doesNotMatch(message, /Would tomorrow or Monday work better\?/);
+  assert.doesNotMatch(message, /calendar link/);
+  assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('buildVoicemailFollowUpMessage uses no show triage for student athletes', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'no_show',
+    recipientType: 'student_athlete',
+    greeting: 'Hi Aiden,',
+    athleteName: 'Aiden Reed',
+    sport: 'Football',
+  });
+
   assert.match(
     message,
-    /No worries, things come up\. If playing college football is still a serious goal for him, let’s get you back on the schedule while timing still matters\./,
+    /^Hi Aiden, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
   );
-  assert.match(message, /Would tomorrow or Monday work better\?/);
-  assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  assert.match(message, /Choose what’s most relevant so I can be helpful:/);
+  assert.match(message, /1 - still interested, just need to reschedule/);
+  assert.match(message, /2 - interested, but timing is bad right now/);
+  assert.match(message, /3 - no longer interested/);
+  assert.doesNotMatch(message, /have one of your parents call or text me back/);
 });
 
 test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {
@@ -239,7 +261,10 @@ test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', 
   assert.match(attempt1, /I received your info about playing college football/);
   assert.match(attempt1, /If you’re serious about this, have one of your parents call or text me/);
   assert.match(attempt2, /Any updates or questions on playing college football/);
-  assert.match(attempt2, /If this is still something you want, have one of your parents call or text me/);
+  assert.match(
+    attempt2,
+    /If this is still something you want, have one of your parents call or text me/,
+  );
   assert.match(attempt3, /Last follow-up on your college football profile/);
   assert.doesNotMatch(attempt1, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(attempt2, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

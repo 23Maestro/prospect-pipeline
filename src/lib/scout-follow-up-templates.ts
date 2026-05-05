@@ -282,9 +282,13 @@ export function buildVoicemailFollowUpMessage(args: {
       ? ['Great! Here’s the link to schedule a quick call:', CAL_BOOKING_URL]
       : recipientType === 'student_athlete' && args.variant === 'no_show'
         ? [
-            `${greeting} this is ${senderName} with Prospect ID. Looks like we missed your meeting with our Head Scout.`,
+            `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your'}’s meeting with our Head Scout.`,
             '',
-            `If playing college ${scoutLabel} is still a serious goal for you, have one of your parents call or text me back so we can get it rescheduled.`,
+            'Choose what’s most relevant so I can be helpful:',
+            '',
+            '1 - still interested, just need to reschedule',
+            '2 - interested, but timing is bad right now',
+            '3 - no longer interested',
           ]
         : recipientType === 'student_athlete' && args.variant === 'call_attempt_3'
           ? [
@@ -308,9 +312,11 @@ export function buildVoicemailFollowUpMessage(args: {
                 ? [
                     `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
                     '',
-                    `No worries, things come up. If playing college ${scoutLabel} is still a serious goal for ${pronouns.object}, let’s get you back on the schedule while timing still matters.`,
+                    'Choose what’s most relevant so I can be helpful:',
                     '',
-                    `Would tomorrow or ${buildNoShowNextBestDayLabel(now)} work better?`,
+                    '1 - still interested, just need to reschedule',
+                    '2 - interested, but timing is bad right now',
+                    '3 - no longer interested',
                   ]
                 : args.variant === 'call_attempt_3'
                   ? [

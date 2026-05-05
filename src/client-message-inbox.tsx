@@ -147,7 +147,7 @@ function ReminderRecipientForm({
           <Form.Dropdown.Item
             key={`${option.id}-${option.phone}`}
             value={option.id}
-            title={`${option.label}: ${option.name}`}
+            title={option.name}
           />
         ))}
       </Form.Dropdown>
@@ -161,7 +161,7 @@ function ReminderRecipientForm({
       {includeDuration ? (
         <Form.TextField
           id="durationMinutes"
-          title="Duration"
+          title="Duration Minutes"
           placeholder="15"
           value={durationMinutes}
           onChange={setDurationMinutes}
@@ -292,22 +292,11 @@ export default function ClientMessageInboxCommand() {
       return;
     }
 
-    const createForOption = async (
-      option: ReminderContactOption,
-      remindAt?: Date,
-      durationMinutes?: number,
-    ) => {
+    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
       if (!remindAt) {
         await showToast({
           style: Toast.Style.Failure,
           title: 'Pick a follow-up time',
-        });
-        return;
-      }
-      if (!Number.isFinite(durationMinutes) || Number(durationMinutes) <= 0) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: 'Enter duration',
         });
         return;
       }
@@ -373,11 +362,22 @@ export default function ClientMessageInboxCommand() {
       return;
     }
 
-    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
+    const createForOption = async (
+      option: ReminderContactOption,
+      remindAt?: Date,
+      durationMinutes?: number,
+    ) => {
       if (!remindAt) {
         await showToast({
           style: Toast.Style.Failure,
           title: 'Pick a follow-up time',
+        });
+        return;
+      }
+      if (!Number.isFinite(durationMinutes) || Number(durationMinutes) <= 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: 'Enter duration',
         });
         return;
       }

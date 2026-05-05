@@ -304,15 +304,9 @@ test('buildVoicemailFollowUpBody: duplicate parent and athlete phone uses studen
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(
-    body,
-    /^Good afternoon Jaylin, this is Jerami Singleton with Prospect ID\./,
-  );
+  assert.match(body, /^Good afternoon Jaylin, this is Jerami Singleton with Prospect ID\./);
   assert.match(body, /I received your info about playing college football\./);
-  assert.match(
-    body,
-    /If you’re serious about this, have one of your parents call or text me\./,
-  );
+  assert.match(body, /If you’re serious about this, have one of your parents call or text me\./);
   assert.doesNotMatch(body, /football scouting coordinator\nProspect ID/);
   assert.doesNotMatch(body, /Following up on Jaylin's recruiting plan/);
 });
@@ -457,10 +451,7 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(
-    body,
-    /^Good afternoon Mr\. Bailey, any updates or questions on this\?/,
-  );
+  assert.match(body, /^Good afternoon Mr\. Bailey, any updates or questions on this\?/);
   assert.match(body, /If I send you a calendar link, would that be more convenient\?/);
   assert.doesNotMatch(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(body, /just left (you )?a voicemail/i);
@@ -677,6 +668,10 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
     body,
     /^Hi Jamie, looks like we missed you for Aiden’s meeting with our Head Scout\./,
   );
+  assert.match(body, /Choose what’s most relevant so I can be helpful:/);
+  assert.match(body, /1 - still interested, just need to reschedule/);
+  assert.match(body, /2 - interested, but timing is bad right now/);
+  assert.match(body, /3 - no longer interested/);
   assert.doesNotMatch(body, /^Hi Ms\./);
 });
 
