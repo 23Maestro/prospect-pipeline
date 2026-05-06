@@ -113,6 +113,21 @@ export function upsertReminders(config: SupabasePersistenceConfig, rows: unknown
   return writeRows(config, 'reminders', rows, 'dedupe_key');
 }
 
+export function upsertPendingClientWatchlistRows(
+  config: SupabasePersistenceConfig,
+  rows: unknown[],
+) {
+  return writeRows(config, 'pending_client_watchlist', rows, 'source_event_id');
+}
+
+export function patchPendingClientWatchlistRow(
+  config: SupabasePersistenceConfig,
+  sourceEventId: string,
+  row: Record<string, unknown>,
+) {
+  return patchRow(config, 'pending_client_watchlist', 'source_event_id', sourceEventId, row);
+}
+
 export async function patchRow(
   config: SupabasePersistenceConfig,
   table: string,

@@ -40,6 +40,11 @@ import {
   type HeadScoutSlotsResponse,
 } from './lib/head-scout-schedules';
 import {
+  loadPendingClientWatchlist,
+  markPendingClientResolved,
+  type PendingClientWatchlistLoadResult,
+} from './lib/pending-client-watchlist';
+import {
   APPOINTMENT_TITLE_PREFIXES,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
@@ -266,6 +271,165 @@ async function loadWeeklyOperatorMeetingCandidates(
       operatorName: getActiveOperator().taskAssignedOwnerName,
     }),
   }).candidates;
+}
+
+function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows'][number]): string {
+  const scout = row.head_scout || 'Scout unresolved';
+  const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown date';
+  const signals = row.matched_signals?.length ? row.matched_signals.join(', ') : 'no signals';
+  return [
+    `${row.athlete_name || 'Unknown Athlete'} • ${scout} • ${eventDate}`,
+    row.event_title,
+    `Signals: ${signals}`,
+    row.description,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
+function PendingClientsWatchlist() {
+  const [result, setResult] = useState<PendingClientWatchlistLoadResult | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setIsLoading(true);
+      try {
+        const loaded = await loadPendingClientWatchlist();
+        if (!cancelled) {
+          setResult(loaded);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          await showToast({
+            style: Toast.Style.Failure,
+            title: 'Watchlist failed',
+            message: error instanceof Error ? error.message : String(error),
+          });
+          setResult({ rows: [], scannedCount: 0, confirmedCount: 0, aiUnavailableCount: 0 });
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshTick]);
+
+  async function handleMarkResolved(sourceEventId: string) {
+    setResolvingId(sourceEventId);
+    const toast = await showLoadingToast('Resolving', 'Pending Client');
+    try {
+      await markPendingClientResolved(sourceEventId);
+      toast.style = Toast.Style.Success;
+      toast.title = 'Resolved';
+      toast.message = 'Hidden from watchlist';
+      setRefreshTick((current) => current + 1);
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Resolve failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      setResolvingId((current) => (current === sourceEventId ? null : current));
+    }
+  }
+
+  const rows = result?.rows || [];
+
+  return (
+    <List
+      isLoading={isLoading || Boolean(resolvingId)}
+      navigationTitle="Pending Clients"
+      searchBarPlaceholder="Search athlete, scout, signal, or note"
+    >
+      {rows.length ? (
+        <List.Section
+          title="Pending Clients"
+          subtitle={`${rows.length}${result ? ` • ${result.scannedCount} scanned` : ''}`}
+        >
+          {rows.map((row) => {
+            const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : null;
+            const signals = row.matched_signals || [];
+            return (
+              <List.Item
+                key={row.source_event_id}
+                icon={Icon.Eye}
+                title={row.athlete_name || cleanPendingClientTitle(row.event_title)}
+                subtitle={row.head_scout || 'Scout unresolved'}
+                keywords={[
+                  row.athlete_name || '',
+                  row.head_scout || '',
+                  row.event_title || '',
+                  row.description || '',
+                  ...signals,
+                ]}
+                accessories={[
+                  ...(signals[0] ? [{ tag: signals[0] }] : []),
+                  ...(eventDate ? [{ text: eventDate }] : []),
+                ]}
+                actions={
+                  <ActionPanel>
+                    <Action
+                      title={resolvingId === row.source_event_id ? 'Resolving…' : 'Mark Resolved'}
+                      icon={Icon.CheckCircle}
+                      onAction={() => void handleMarkResolved(row.source_event_id)}
+                    />
+                    <Action.CopyToClipboard
+                      title="Copy Watchlist Summary"
+                      icon={Icon.Clipboard}
+                      shortcut={{ modifiers: ['cmd'], key: 'c' }}
+                      content={buildPendingClientSummary(row)}
+                    />
+                    <Action.CopyToClipboard title="Copy Note" content={row.description} />
+                    <Action
+                      title="Refresh"
+                      icon={Icon.ArrowClockwise}
+                      shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                      onAction={() => setRefreshTick((current) => current + 1)}
+                    />
+                  </ActionPanel>
+                }
+              />
+            );
+          })}
+        </List.Section>
+      ) : (
+        <List.EmptyView
+          title="No Pending Clients"
+          description={
+            result?.aiUnavailableCount
+              ? 'Ray AI did not confirm any deterministic matches.'
+              : 'No active payment or enrollment watchlist rows found.'
+          }
+          actions={
+            <ActionPanel>
+              <Action
+                title="Refresh"
+                icon={Icon.ArrowClockwise}
+                onAction={() => setRefreshTick((current) => current + 1)}
+              />
+            </ActionPanel>
+          }
+        />
+      )}
+    </List>
+  );
+}
+
+function cleanPendingClientTitle(title: string): string {
+  return title
+    .replace(/^Follow Up -\s*/i, '')
+    .replace(/^\(FU\)(?:\*\d+)?\s*/i, '')
+    .trim();
 }
 
 export function HeadScoutBookingsList({
@@ -592,18 +756,26 @@ export function HeadScoutBookingsList({
                         </>
                       ) : null}
                       {weeklyMeetingsOnly ? (
-                        <Action.Push
-                          title="Next Week"
-                          icon={Icon.ArrowRight}
-                          shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
-                          target={
-                            <HeadScoutBookingsList
-                              scoutName={scoutName}
-                              weekOffset={weekOffset + 1}
-                              weeklyMeetingsOnly
-                            />
-                          }
-                        />
+                        <>
+                          <Action.Push
+                            title="Pending Clients"
+                            icon={Icon.Eye}
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+                            target={<PendingClientsWatchlist />}
+                          />
+                          <Action.Push
+                            title="Next Week"
+                            icon={Icon.ArrowRight}
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
+                            target={
+                              <HeadScoutBookingsList
+                                scoutName={scoutName}
+                                weekOffset={weekOffset + 1}
+                                weeklyMeetingsOnly
+                              />
+                            }
+                          />
+                        </>
                       ) : null}
                       {candidate.adminUrl ? (
                         <Action.OpenInBrowser
@@ -656,6 +828,12 @@ export function HeadScoutBookingsList({
           actions={
             weeklyMeetingsOnly ? (
               <ActionPanel>
+                <Action.Push
+                  title="Pending Clients"
+                  icon={Icon.Eye}
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+                  target={<PendingClientsWatchlist />}
+                />
                 <Action.Push
                   title="Next Week"
                   icon={Icon.ArrowRight}

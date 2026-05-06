@@ -1,4 +1,8 @@
 import { AI, environment } from '@raycast/api';
+import {
+  normalizePendingClientAIVerdict,
+  type PendingClientAIVerdict,
+} from '../domain/pending-client-watchlist';
 import type { ParentHonorific } from './scout-prep-contact';
 import { resolveAthleteGenderFromSport, type AthleteGender } from './scout-follow-up-templates';
 
@@ -33,7 +37,9 @@ export async function resolveParentHonorificWithRayAI(args: {
 }
 
 function normalizeAthleteGender(value: string): AthleteGender | null {
-  const normalized = String(value || '').trim().toLowerCase();
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase();
   if (normalized === 'female') return 'female';
   if (normalized === 'male') return 'male';
   return null;
@@ -65,4 +71,29 @@ export async function resolveAthleteGenderWithRayAI(args: {
   );
 
   return normalizeAthleteGender(answer);
+}
+
+export async function confirmPendingClientWithRayAI(args: {
+  title?: string | null;
+  description?: string | null;
+  matchedSignals?: string[];
+}): Promise<PendingClientAIVerdict | null> {
+  if (!environment.canAccess(AI)) {
+    return null;
+  }
+
+  const answer = await AI.ask(
+    [
+      'Return exactly pending_client or an empty string.',
+      'Return pending_client only when this note means the family should be watched because payment or enrollment may be coming soon.',
+      'Accept direct payment/enrollment intent, invoice/payment timing, full-payment/package language, or upgrade/payment-plan language.',
+      'Reject generic interest, generic follow-up, call-back reminders, or notes like follow up with dad.',
+      `Title: ${String(args.title || '').trim()}`,
+      `Matched deterministic signals: ${(args.matchedSignals || []).join(', ') || 'none'}`,
+      `Description: ${String(args.description || '').trim()}`,
+    ].join('\n'),
+    { creativity: 'none' },
+  );
+
+  return normalizePendingClientAIVerdict(answer);
 }

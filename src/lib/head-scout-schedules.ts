@@ -368,23 +368,31 @@ export async function fetchHeadScoutBookedMeetings(
   now = new Date(),
 ): Promise<HeadScoutBookedMeetingsResponse> {
   const week = buildHeadScoutWeekWindow(weekOffset, now);
+  return fetchHeadScoutBookedMeetingsWindow({ ...week, weekOffset });
+}
+
+export async function fetchHeadScoutBookedMeetingsWindow(args: {
+  start: string;
+  end: string;
+  weekOffset?: number;
+}): Promise<HeadScoutBookedMeetingsResponse> {
   logInfo('HEAD_SCOUT_BOOKED_MEETINGS_LOOKUP', 'request', 'start', {
-    start: week.start,
-    end: week.end,
-    weekOffset,
+    start: args.start,
+    end: args.end,
+    weekOffset: args.weekOffset ?? null,
   });
 
   const response = await apiFetch(
-    `/calendar/booked-meetings?start=${encodeURIComponent(week.start)}&end=${encodeURIComponent(week.end)}`,
+    `/calendar/booked-meetings?start=${encodeURIComponent(args.start)}&end=${encodeURIComponent(args.end)}`,
   );
 
   if (!response.ok) {
     const errorText = await response.text();
     const message = errorText.slice(0, 200) || `Head scout booked meetings HTTP ${response.status}`;
     logFailure('HEAD_SCOUT_BOOKED_MEETINGS_LOOKUP', 'request', message, {
-      start: week.start,
-      end: week.end,
-      weekOffset,
+      start: args.start,
+      end: args.end,
+      weekOffset: args.weekOffset ?? null,
       statusCode: response.status,
       responsePreview: errorText.slice(0, 120),
     });
