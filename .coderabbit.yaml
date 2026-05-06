@@ -1,127 +1,229 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
-
 language: "en-US"
-
+early_access: false
+tone_instructions: "Be direct. Focus on bugs, contracts, security, data correctness, and architecture drift."
 reviews:
-  # "chill" reduces noise. Use "assertive" if you want stricter reviews.
-  profile: "chill"
-
+  profile: "assertive"
+  request_changes_workflow: false
   high_level_summary: true
-  poem: true   # Set to false to disable the whimsical poem
-
+  poem: false
+  review_status: true
+  collapse_walkthrough: false
+  enable_prompt_for_ai_agents: true
   auto_review:
     enabled: true
-    drafts: false # Automatically skip draft PRs until they are ready
-
-# Global instructions for the bot
-instructions: |
-  - Act as a senior software engineer.
-  - Focus on logic errors, security, and performance over styling nits.
-  - If suggesting code changes, ensure they are complete and copy-pasteable.
-  - Verify that no hardcoded paths are used; suggest environment variables instead.
-  - This is a Raycast extension + Python backend for student-athlete video editing workflow.
-  - Verify NPID API calls follow patterns in src/python/npid_api_client.py
-  - Check that session management uses ~/.npid_session.pkl pattern
-  - Ensure BeautifulSoup parsing is robust (HTML responses, not JSON from some endpoints)
-
-# Specific instructions based on your file structure
-path_instructions:
-  # Raycast Extension & React Code
-  - path: "src/**/*.tsx"
-    instructions: |
-      - Ensure React hooks are used correctly according to Raycast best practices.
-      - Check that async operations (API calls) handle loading states and errors in the UI.
-      - Prefer functional components and proper TypeScript typing.
-      - Verify Raycast List/Detail components have proper key props and item selection handling.
-      - Check that API error messages are user-friendly and actionable.
-      - Ensure no hardcoded API URLs; all endpoints should use environment variables or config.
-
-  # Python Scripts (NPID Integration)
-  - path: "src/python/**/*.py"
-    instructions: |
-      - Follow PEP 8 standards.
-      - Ensure all network requests (requests lib) have timeouts and proper error handling.
-      - Use type hints for all function arguments and return values.
-      - Verify that Beautiful Soup parsing logic is robust against missing elements.
-      - Check NPID API contract compliance: verify athlete_main_id handling per CLAUDE.md
-      - Ensure X-Requested-With: XMLHttpRequest header is included for NPID API calls
-      - Validate response types (HTML vs JSON) match actual endpoint behavior
-      - Check session pickle file handling for proper serialization/deserialization
-
-  # TypeScript Libraries and Tools
-  - path: "src/lib/**/*.ts"
-    instructions: |
-      - Use TypeScript strict mode throughout.
-      - Add proper error handling with typed Error classes.
-      - Ensure utilities are reusable and well-documented.
-      - Check that type definitions are exported for consumer modules.
-
-  # Tools and Utilities
-  - path: "src/tools/**/*.ts"
-    instructions: |
-      - Verify tools export the correct contract for Raycast integration.
-      - Check that tool output is properly formatted for consumption.
-      - Ensure no side effects outside of intended tool behavior.
-
-  # Type Definitions
-  - path: "src/types/**/*.ts"
-    instructions: |
-      - Keep types focused and minimal.
-      - Document complex type unions with comments.
-      - Ensure types don't drift from actual API contracts.
-
-  # Next.js Web Dashboard (if applicable)
-  - path: "web/**/*.tsx"
-    instructions: |
-      - Adhere to Next.js 15 App Router patterns (explicit 'use client' vs server components).
-      - Ensure Tailwind CSS classes are valid and efficient.
-      - Check that data fetching patterns are appropriate (server vs client).
-
-  # MCP Servers
-  - path: "mcp-servers/**/*.ts"
-    instructions: |
-      - Verify MCP protocol compliance.
-      - Check resource and tool definitions are properly typed.
-      - Ensure error handling is robust for tool failures.
-
-  # GitHub Actions and Scripts
-  - path: ".github/**/*.yml"
-    instructions: |
-      - Verify workflow triggers and conditions are appropriate.
-      - Check that environment variables are properly scoped.
-      - Ensure secrets are not logged or exposed.
-
-# Exclude build artifacts and auto-generated files from review
-path_filters:
-  - "!**/node_modules/**"
-  - "!**/.next/**"
-  - "!**/dist/**"
-  - "!**/out/**"
-  - "!**/package-lock.json"
-  - "!**/supabase/**"
-  - "!**/__pycache__/**"
-  - "!**/*.pyc"
-  - "!**/venv/**"
-  - "!**/.DS_Store"
-  - "!**/files.zip"
-
-# Review rules for specific file patterns
-rules:
-  - type: pattern
-    pattern: "src/python/**/*.py"
-    rules:
-      - type: error
-        message: "Missing type hints on function"
-        regex: "^def \\w+\\([^)]*\\)(?!.*->):"
-
-  - type: pattern
-    pattern: "src/**/*.tsx"
-    rules:
-      - type: warning
-        message: "Consider adding error boundary"
-        regex: "async\\s+\\w+.*=>|useEffect.*\\[\\]"
-
-# Notification preferences
-notifications:
-  auto_mention_author: true
-  comment_on_change: true
+    drafts: false
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 5
+    ignore_title_keywords:
+      - "wip"
+      - "draft"
+  path_filters:
+    - "!**/node_modules/**"
+    - "!**/.next/**"
+    - "!**/dist/**"
+    - "!**/out/**"
+    - "!**/.cache/**"
+    - "!**/.temp/**"
+    - "!**/__pycache__/**"
+    - "!**/*.pyc"
+    - "!**/venv/**"
+    - "!**/.DS_Store"
+    - "!**/files.zip"
+    - "!**/package-lock.json"
+    - "!**/*.png"
+    - "!**/*.jpg"
+    - "!**/*.jpeg"
+    - "!**/*.gif"
+    - "!**/*.ico"
+    - "!**/*.pdf"
+  path_instructions:
+    - path: "**/*"
+      instructions: |
+        MUST-NOT-BREAK CONTRACT:
+        - This repo is a Prospect ID workflow extension.
+        - Laravel / Prospect ID executes real website state changes.
+        - Raycast is the operator UI.
+        - FastAPI is the legacy website adapter.
+        - Supabase is extension persistence/reporting.
+        - Vercel / Next.js is the web adapter.
+        - Domain modules define ownership, operator context, athlete identity, task meaning, meeting meaning, outreach wording, materialization, and reporting meaning.
+        - Do not let any adapter layer redefine domain meaning.
+        - Preserve Laravel field names exactly at adapter boundaries: assigned_owner, assigned_to, meeting_for, meetingfor, calendar_owner_id, head_scout, scouting_coordinator.
+        - Preserve config/prospect-id-owners.json as the owner source of truth.
+        - Flag hardcoded "Jerami Singleton", "1408164", head scout IDs, calendar owner IDs, or meeting_for IDs outside config, tests, or intentional message copy.
+        - Never materialize Tim/other-coordinator rows as Jerami-owned facts.
+        - Never infer active-operator ownership from head_scout or calendar_owner alone.
+        - Never count athlete_pipeline_state snapshots as dashboard facts.
+        - Never count lifecycle_events wholesale.
+        - Never weaken Supabase active-operator materialization gates.
+        - Never expose Supabase service role keys, internal FastAPI/Tailscale URLs, or private secrets to browser code.
+        - Avoid style-only comments unless they prevent a real bug.
+    - path: "docs/architecture/**"
+      instructions: |
+        Review architecture docs as source-of-truth guidance for this repo.
+        Check that docs preserve the boundaries:
+        - Laravel / Prospect ID = external command/source system.
+        - Raycast = operator UI.
+        - FastAPI = legacy website adapter.
+        - Supabase = extension persistence/reporting.
+        - Vercel / Next.js = web adapter.
+        - Domain layer = meaning and contracts.
+        Flag docs that blur facts, snapshots, audit rows, or domain/adaptor responsibilities.
+    - path: "config/prospect-id-owners.json"
+      instructions: |
+        This is the shared owner source of truth.
+        Verify activeOperatorKey, owner profiles, legacy user IDs, calendar owner IDs, meeting_for IDs, roles, and dashboardTrackingEligible remain consistent.
+        Flag changes that:
+        - make Tim Risner dashboardTrackingEligible
+        - confuse calendar access user with active operator
+        - remove Jerami Singleton as active operator without an explicit architecture update
+        - move owner identity into other files
+    - path: "src/domain/**"
+      instructions: |
+        Domain modules own business meaning.
+        Check for meaningful names:
+        activeOperator, ownerContext, taskAssignedOwner, assignedToLegacyUserId, meetingForLegacyUserId, calendarOwnerId, bookedMeetingAssignedOwner, profileHeadScout, scoutingCoordinator, materializationStatus.
+        Flag domain code that treats Supabase compatibility names like source_owner / owner_proof as business vocabulary.
+        Check tests whenever classifier, materialization, task selection, outreach wording, Set Meetings, Call Tracker, or Supabase fact logic changes.
+        Do not allow duplicate owner, task, meeting, or counting contracts to appear outside the domain layer.
+    - path: "src/scout-prep.tsx"
+      instructions: |
+        This file should remain a Raycast UI/action adapter.
+        Flag inline ownership resolution, task classification, contact selection, meeting wording, materialization, or reporting logic.
+        It should call domain modules for:
+        - post-call planning
+        - task selection
+        - contact selection
+        - message context
+        - outreach wording
+        - command pipeline payloads
+        Preserve current user-facing workflow and ActionPanel order unless the PR explicitly targets UI behavior.
+    - path: "src/head-scout-schedules.tsx"
+      instructions: |
+        This file should render Head Scout / Set Meetings UI and execute actions.
+        It should delegate candidate shaping, sorting, active-operator logic, and meeting meaning to domain modules.
+        Flag hardcoded active operator names, head scout owner lists, calendar owner IDs, meeting_for IDs, or duplicated Set Meetings filtering logic.
+    - path: "src/view-set-meetings.tsx"
+      instructions: |
+        This file should remain a thin wrapper around HeadScoutBookingsList / Set Meetings UI.
+        Flag any expansion into independent filtering, owner resolution, candidate shaping, or API logic.
+    - path: "src/lib/sales-stage.ts"
+      instructions: |
+        This is a Laravel/FastAPI adapter.
+        Preserve Laravel payload shape and field names.
+        Do not let this file own sales-stage labels, post-call classification, or activity counting.
+        It should delegate label/meaning logic to domain contracts.
+    - path: "src/lib/supabase-lifecycle.ts"
+      instructions: |
+        Supabase writes must carry domain proof where relevant.
+        Meeting Set writes should include owner_context and materialization_proof when available.
+        Supabase failures should not block a successful Laravel command unless explicitly intended.
+        Do not make lifecycle_events a countable dashboard source without materialization proof.
+    - path: "src/lib/reminders.ts"
+      instructions: |
+        Apple Reminders workflow is an internal callback safety net.
+        Preserve AppleScript reminder behavior unless tests cover the change.
+        Do not replace Reminders with Cal.com.
+        Cal links may be optional SMS copy only.
+    - path: "src/lib/scout-follow-up-templates.ts"
+      instructions: |
+        Review SMS templates against the call → voicemail → text workflow.
+        Attempt 1 should not include Cal link.
+        Attempt 2 and Attempt 3 may include Cal link.
+        Do not add Cal API, Cal webhooks, or booking creation here.
+        Keep outreach wording concise and preserve existing dynamic values.
+    - path: "src/lib/head-scout-schedules.ts"
+      instructions: |
+        This is a FastAPI/Raycast adapter helper for calendar data.
+        It should not own head scout identity directly.
+        Head scout order, calendar owner IDs, and meeting_for IDs should come from the owner directory/config.
+    - path: "src/lib/scout-prep-contact.ts"
+      instructions: |
+        Contact/message helper logic should delegate core contact selection and outreach wording to domain modules.
+        Do not duplicate phone normalization, reminder recipient selection, or time-of-day phrase logic if domain helpers already exist.
+    - path: "npid-api-layer/app/**/*.py"
+      instructions: |
+        FastAPI is the legacy Laravel website adapter.
+        Preserve Laravel field names and legacy HTML/JSON parsing quirks.
+        Use shared owner config for calendar/head-scout identity.
+        Do not invent ownership, materialization, task meaning, or meeting meaning inside routes.
+        Check request timeouts, session handling, BeautifulSoup parsing robustness, and safe error responses.
+        Preserve the behavior of legacy routes unless the PR explicitly changes that route and has tests.
+    - path: "apps/prospect-web/app/**"
+      instructions: |
+        Vercel / Next.js is the web adapter.
+        Route handlers should validate, proxy, read Supabase, or serve web surfaces.
+        Do not duplicate domain ownership, materialization, task meaning, meeting meaning, or Call Tracker counting logic here.
+        Keep server-only env vars out of client components and browser bundles.
+    - path: "apps/prospect-web/public/prospect-call-tracker/**"
+      instructions: |
+        This is a deployable browser artifact.
+        Call Tracker top-line counts must use:
+        - counts_as_dial
+        - counts_as_contact
+        - counts_as_meeting_set
+        - counts_as_post_meeting_outcome
+        Do not derive dashboard counts from activity_kind alone.
+        Meeting Set counts as dial + contact + meeting_set.
+        unable_to_leave_vm counts as dial only.
+        Post-meeting outcomes must not inflate dials or contacts.
+        Avoid style-only comments unless they affect data clarity or correctness.
+    - path: "apps/prospect-web/public/prospect-mobile/**"
+      instructions: |
+        Prospect Mobile should mirror the reliable Set Meetings pipeline.
+        Do not show all raw calendar rows by default.
+        Do not reintroduce Tim/other-coordinator bleed.
+        Do not invent mobile-only ownership rules.
+        Keep route response shapes compatible with the browser code.
+    - path: "supabase/migrations/**"
+      instructions: |
+        Supabase migrations are critical.
+        Protect active-operator materialization gates.
+        Do not count athlete_pipeline_state snapshots as facts.
+        Do not count lifecycle_events wholesale.
+        Meeting Set lifecycle rows count only with explicit operator proof.
+        Call activity facts should count from explicit booleans or backward-compatible CASE logic.
+        Post-meeting outcomes should not inflate dials or contacts.
+        New migrations should be additive and backward-compatible unless explicitly marked destructive.
+        Flag migration order problems and view/table rename risks.
+    - path: "supabase/tests/**"
+      instructions: |
+        Tests should prove:
+        - old-row compatibility
+        - materialization gating
+        - no Tim/non-operator bleed
+        - Call Tracker count parity
+        - meeting_set counting
+        - post-meeting outcomes not inflating activity
+        Prefer fixture tests that model actual view behavior over regex-only tests when practical.
+    - path: "scripts/**/*.mjs"
+      instructions: |
+        Scripts are operational adapters.
+        Check they use domain builders where available.
+        Check Supabase writes target the correct tables:
+        - call_activity_events for daily dial/contact activity
+        - meeting_events for post-meeting outcomes
+        - lifecycle_events for audit and materialized meeting_set history
+        Flag hardcoded owner IDs unless they come from config or are intentional legacy compatibility.
+        Check scripts do not silently write to the wrong Supabase project.
+    - path: ".github/**/*.yml"
+      instructions: |
+        Verify workflows do not expose secrets.
+        Check they run relevant tests/builds for touched areas.
+        Avoid unnecessary deploy triggers.
+        Ensure deploy jobs do not leak Supabase service keys or internal FastAPI/Tailscale URLs.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "docs/architecture/scout-prep-domain-contract.md"
+      - "docs/architecture/code-review-boundaries.md"
+      - "docs/architecture/scout-prep-smoke-test-checklist.md"
+  learnings:
+    scope: "local"
+  web_search:
+    enabled: true
+chat:
+  auto_reply: true
+  art: false
