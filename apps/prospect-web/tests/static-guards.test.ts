@@ -129,6 +129,11 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/lib/supabase-lifecycle.ts',
     'src/lib/supabase-lifecycle.test.ts',
     'src/scout-prep.tsx',
+    'src/domain/set-meeting-reminder-cache.ts',
+    'src/domain/set-meeting-reminder-cache.test.ts',
+    'src/head-scout-schedules.tsx',
+    'supabase/migrations/20260510090000_expand_reminders_set_meeting_cache.sql',
+    'supabase/tests/reminders-set-meeting-cache-columns.test.mjs',
     'supabase/migrations/20260503043000_backsync_meeting_set_materialization_contract.sql',
     'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
     'supabase/migrations/20260503045000_backsync_call_activity_counting_contract.sql',
@@ -323,4 +328,11 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
   assert.doesNotMatch(appText, /call-tracker-sync/);
   assert.doesNotMatch(appText, /CALL_TRACKER_CONFIG/);
   assert.doesNotMatch(appText, /contactMadeOutcomes|callActivityOutcomes|isDailyCallActivity|isDailyContact/);
+});
+
+test('prospect mobile set meetings uses cached confirmation messages', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  assert.match(appText, /event\.confirmation_1_message/);
+  assert.match(appText, /event\.confirmation_2_message/);
+  assert.doesNotMatch(appText, /function buildConfirmationText\(/);
 });

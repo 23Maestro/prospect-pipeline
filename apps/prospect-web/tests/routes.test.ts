@@ -217,26 +217,25 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
   assert.equal(carsonMeetingSets[0].dedupe_key, 'meeting_set:1490749:952575:588133');
 });
 
-test('/api/set-meetings is only a Vercel adapter for the FastAPI command contract', async () => {
-  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
-  process.env.PROSPECT_API_TOKEN = 'secret';
-  const calls: Array<{ url: string; init?: RequestInit }> = [];
-  globalThis.fetch = async (url, init) => {
-    calls.push({ url: String(url), init });
-    return Response.json({
-      success: true,
-      week_start: '2026-04-27',
-      week_end: '2026-05-04',
-      count: 1,
-      raw_booked_count: 60,
-      events: [],
-    });
+test('/api/set-meetings reads Supabase reminders cache and groups confirmations', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  const calls: string[] = [];
+  globalThis.fetch = async (url) => {
+    calls.push(String(url));
+    return Response.json([
+      { appointment_id: 'apt-1', athlete_id: 'a1', athlete_main_id: 'm1', athlete_name: 'Athlete', recipient_name: 'Mom', recipient_phone: '1555', head_scout_name: 'Scout', meeting_starts_at: '2026-05-12T18:00:00-04:00', meeting_timezone: 'America/New_York', message_body: 'c1', admin_url: 'a', task_url: 't', kind: 'confirmation_1' },
+      { appointment_id: 'apt-1', athlete_id: 'a1', athlete_main_id: 'm1', athlete_name: 'Athlete', recipient_name: 'Mom', recipient_phone: '1555', head_scout_name: 'Scout', meeting_starts_at: '2026-05-12T18:00:00-04:00', meeting_timezone: 'America/New_York', message_body: 'c2', admin_url: 'a', task_url: 't', kind: 'confirmation_2' },
+    ]);
   };
-
   const response = await setMeetingsGET(new Request('https://example.test/api/set-meetings?week=this'));
+  const payload = await response.json();
   assert.equal(response.status, 200);
-  assert.equal((await response.json()).raw_booked_count, 60);
-  assert.match(calls[0].url, /^https:\/\/tailnet\.example\/api\/v1\/mobile\/set-meetings\?/);
-  assert.equal(calls[0].url.includes('/api/v1/mobile/calendar/booked-meetings'), false);
-  assert.equal(calls[0].url.includes('task_range=thisWeek'), true);
+  assert.equal(payload.source, 'supabase_reminders_cache');
+  assert.equal(payload.backend_required, false);
+  assert.equal(payload.events.length, 1);
+  assert.equal(payload.events[0].confirmation_1_message, 'c1');
+  assert.equal(payload.events[0].confirmation_2_message, 'c2');
+  assert.equal(calls[0].includes('/rest/v1/reminders?'), true);
+  assert.equal(calls[0].includes('/api/v1/mobile/set-meetings'), false);
 });

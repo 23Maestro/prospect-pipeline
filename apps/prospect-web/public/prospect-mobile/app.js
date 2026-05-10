@@ -110,8 +110,8 @@ async function renderSetMeetings(payload) {
       const task = event.current_task || 'Confirmation Call';
       const time = event.current_meeting_label || event.date_time_label || formatMeetingTime(event.start, event.end);
       const copyText = `${title} - ${owner} - ${time}`;
-      const firstConfirmation = buildConfirmationText(event, 'confirmation_1');
-      const secondConfirmation = buildConfirmationText(event, 'confirmation_2');
+      const firstConfirmation = String(event.confirmation_1_message || '');
+      const secondConfirmation = String(event.confirmation_2_message || '');
       const recipientPhone = event.confirmation_recipient?.phone || '';
       const recipientLabel = event.confirmation_recipient?.name
         ? `Text ${event.confirmation_recipient.name}`
@@ -378,62 +378,6 @@ function formatSlotRange(start, end) {
 
 function formatMeetingTime(start, end) {
   return `${formatSlotDate(start)}, ${formatSlotRange(start, end)}`;
-}
-
-function buildConfirmationText(event, variant) {
-  const coachName = getCoachReferenceName(event.head_scout_name || event.assigned_owner || '');
-  const datePhrase = buildConfirmationDatePhrase(event.start);
-  const clockLabel = formatConfirmationClock(event.start);
-
-  if (variant === 'confirmation_2') {
-    return [
-      `Coach ${coachName} still has you down for ${clockLabel} ${datePhrase}.`,
-      '',
-      "Please reply YES to confirm you'll be able to attend",
-    ].join('\n');
-  }
-
-  return [
-    `Good morning! Prospect ID Zoom Meeting ${datePhrase} at ${clockLabel} with Coach ${coachName}.`,
-    '',
-    `He'll call your cell at ${clockLabel} with the Zoom code. Be on a laptop or tablet so he can share his screen.`,
-    '',
-    "Save his contact so you know it's him calling.",
-  ].join('\n');
-}
-
-function getCoachReferenceName(value) {
-  const parts = String(value || '')
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-  return parts.length ? parts[parts.length - 1] : 'your scout';
-}
-
-function buildConfirmationDatePhrase(value) {
-  const date = parseEasternLocal(value);
-  if (!date) return 'for your scheduled time';
-  const today = new Date();
-  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  const meetingStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-  const dayDiff = Math.round((meetingStart.getTime() - todayStart.getTime()) / 86_400_000);
-  const timeOfDay = date.getHours() >= 17 ? 'evening' : date.getHours() >= 12 ? 'afternoon' : 'morning';
-  if (dayDiff === 0) return `this ${timeOfDay}`;
-  if (dayDiff === 1) return `tomorrow ${timeOfDay}`;
-  return new Intl.DateTimeFormat('en-US', {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
-}
-
-function formatConfirmationClock(value) {
-  const date = parseEasternLocal(value);
-  if (!date) return 'the scheduled time';
-  return new Intl.DateTimeFormat('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(date);
 }
 
 function normalizePhoneForSms(value) {

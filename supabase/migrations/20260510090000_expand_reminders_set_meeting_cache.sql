@@ -1,0 +1,16 @@
+alter table if exists reminders
+  add column if not exists athlete_key text,
+  add column if not exists athlete_id text,
+  add column if not exists athlete_main_id text,
+  add column if not exists athlete_name text,
+  add column if not exists recipient_name text,
+  add column if not exists recipient_phone text,
+  add column if not exists head_scout_name text,
+  add column if not exists meeting_starts_at timestamptz,
+  add column if not exists meeting_timezone text,
+  add column if not exists message_body text,
+  add column if not exists admin_url text,
+  add column if not exists task_url text,
+  add column if not exists source text,
+  add column if not exists generated_at timestamptz,
+  add column if not exists payload_json jsonb not null default '{}'::jsonb;
