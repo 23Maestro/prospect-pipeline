@@ -54,6 +54,7 @@ import {
   filterWeeklySetMeetingCandidates,
 } from './domain/set-meetings-candidate';
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
+import { buildSetMeetingReminderCacheRows } from './domain/set-meeting-reminder-cache';
 import { getActiveOperator } from './domain/owners';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
@@ -68,8 +69,16 @@ import {
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
 import { fetchScoutPortalTasks, loadScoutPrepContext } from './lib/scout-prep';
+import { upsertReminders, type SupabasePersistenceConfig } from './domain/supabase-persistence';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 
+
+function getReminderSupabaseConfig(): SupabasePersistenceConfig | null {
+  const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '').trim().replace(/\/+$/, '');
+  const key = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const schema = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
+  return url && key ? { url, key, schema } : null;
+}
 type HeadScoutSchedulesRootProps = {
   initialWeekOffset?: number;
   syncContext?: {
@@ -540,6 +549,66 @@ export function HeadScoutBookingsList({
       });
       if (!prepared.canDraft) {
         throw new Error(prepared.resolvedAppointment.reason);
+      }
+
+      const confirmation1 =
+        variant === 'confirmation_1'
+          ? prepared.message
+          : (
+              await prepareConfirmationFollowUp({
+                athleteId: candidate.athleteId,
+                athleteMainId: candidate.athleteMainId,
+                athleteName: candidate.athleteName,
+                dueDate: candidate.dueDate || null,
+                dueTime: null,
+                headScoutName: candidate.headScoutName || context.resolved.head_scout || null,
+                recipientNames: reminderRecipient.recipientNames,
+                greetingOverride: buildTimeOfDayGreeting(context),
+                sport: context.resolved.sport || null,
+                gradYear: task.grad_year || null,
+                state: context.resolved.state || null,
+                reminderVariant: 'confirmation_1',
+              })
+            ).message;
+      const confirmation2 =
+        variant === 'confirmation_2'
+          ? prepared.message
+          : (
+              await prepareConfirmationFollowUp({
+                athleteId: candidate.athleteId,
+                athleteMainId: candidate.athleteMainId,
+                athleteName: candidate.athleteName,
+                dueDate: candidate.dueDate || null,
+                dueTime: null,
+                headScoutName: candidate.headScoutName || context.resolved.head_scout || null,
+                recipientNames: reminderRecipient.recipientNames,
+                greetingOverride: buildTimeOfDayGreeting(context),
+                sport: context.resolved.sport || null,
+                gradYear: task.grad_year || null,
+                state: context.resolved.state || null,
+                reminderVariant: 'confirmation_2',
+              })
+            ).message;
+      const supabaseConfig = getReminderSupabaseConfig();
+      if (supabaseConfig && candidate.bookedMeeting?.event_id) {
+        const rows = buildSetMeetingReminderCacheRows({
+          appointmentId: candidate.bookedMeeting.event_id,
+          athleteId: candidate.athleteId,
+          athleteMainId: candidate.athleteMainId,
+          athleteName: candidate.athleteName,
+          recipientName: reminderRecipient.recipientNames[0] || '',
+          recipientPhone: reminderRecipient.phones[0] || '',
+          headScoutName: prepared.headScoutName || candidate.headScoutName || '',
+          meetingStartsAt: candidate.bookedMeeting.start || null,
+          meetingTimezone: 'America/New_York',
+          confirmation1Message: confirmation1,
+          confirmation2Message: confirmation2,
+          adminUrl: candidate.adminUrl || '',
+          taskUrl: candidate.taskUrl || '',
+          generatedAt: new Date().toISOString(),
+          source: 'set_meetings_confirmation',
+        });
+        await upsertReminders(supabaseConfig, rows);
       }
 
       let composeMode: 'draft' | 'clipboard-fallback' = 'draft';
