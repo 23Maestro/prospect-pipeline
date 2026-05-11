@@ -97,19 +97,6 @@ class LegacyTranslator:
         return bool(re.match(r"^\d{2}:\d{2}$", value))
 
     @staticmethod
-    def _legacy_dow_for_date(value: datetime.date) -> int:
-        return (value.weekday() + 1) % 7
-
-    @staticmethod
-    def _is_head_scout_open_slot(title: str, open_slot: str) -> bool:
-        normalized_title = re.sub(r"\s+", " ", str(title or "").strip()).lower()
-        normalized_open_slot = str(open_slot or "").strip().lower()
-        return (
-            normalized_open_slot == "openslot"
-            and normalized_title == "open"
-        ) or normalized_title.startswith("open for interview")
-
-    @staticmethod
     def _build_calendar_date_time_label(start: str, end: str) -> str:
         if not (
             LegacyTranslator._is_iso_local_datetime(start)
@@ -506,7 +493,7 @@ class LegacyTranslator:
         week_end: str,
     ) -> Dict[str, Any]:
         """
-        Parse legacy calendar events and keep open rows for configured head scouts.
+        Parse legacy calendar events and keep only explicit OPEN rows for configured head scouts.
         """
         text = (raw_response or "").strip()
         events: List[Dict[str, Any]] = []
@@ -528,20 +515,6 @@ class LegacyTranslator:
         }
         week_start_floor = f"{week_start}T00:00"
         week_end_floor = f"{week_end}T00:00"
-        week_start_date = datetime.datetime.strptime(week_start, "%Y-%m-%d").date()
-        week_end_date = datetime.datetime.strptime(week_end, "%Y-%m-%d").date()
-
-        def add_slot(scout_name: str, event_id: str, start: str, end: str) -> None:
-            if start < week_start_floor or start >= week_end_floor:
-                return
-            slot = {
-                "id": event_id,
-                "start": start,
-                "end": end,
-                "scout_name": scout_name,
-            }
-            dedupe_key = (slot["start"], slot["end"])
-            slots_by_scout[scout_name][dedupe_key] = slot
 
         for event in events:
             scout_name = str(event.get("user") or "").strip()
@@ -553,38 +526,27 @@ class LegacyTranslator:
 
             if scout_name not in scout_names:
                 continue
-            if not LegacyTranslator._is_head_scout_open_slot(title, open_slot):
+            if open_slot != "openslot" or title.upper() != "OPEN":
                 continue
             if not start or not end or not event_id:
                 continue
 
-            if (
+            if not (
                 LegacyTranslator._is_iso_local_datetime(start)
                 and LegacyTranslator._is_iso_local_datetime(end)
             ):
-                add_slot(scout_name, event_id, start, end)
+                continue
+            if start < week_start_floor or start >= week_end_floor:
                 continue
 
-            if not (
-                LegacyTranslator._is_time_only(start)
-                and LegacyTranslator._is_time_only(end)
-            ):
-                continue
-
-            dows = set(LegacyTranslator._parse_weekday_list(event.get("dow")))
-            if not dows:
-                continue
-
-            current_date = week_start_date
-            while current_date < week_end_date:
-                if LegacyTranslator._legacy_dow_for_date(current_date) in dows:
-                    start_iso = f"{current_date.isoformat()}T{start}"
-                    end_date = current_date
-                    if end <= start:
-                        end_date = current_date + datetime.timedelta(days=1)
-                    end_iso = f"{end_date.isoformat()}T{end}"
-                    add_slot(scout_name, f"{event_id}:{current_date.isoformat()}", start_iso, end_iso)
-                current_date += datetime.timedelta(days=1)
+            slot = {
+                "id": event_id,
+                "start": start,
+                "end": end,
+                "scout_name": scout_name,
+            }
+            dedupe_key = (slot["start"], slot["end"])
+            slots_by_scout[scout_name][dedupe_key] = slot
 
         scouts: List[Dict[str, Any]] = []
         for config in LegacyTranslator.HEAD_SCOUT_CONFIG:
@@ -606,6 +568,55 @@ class LegacyTranslator:
             "week_end": week_end,
             "timezone_label": "EST",
             "scouts": scouts,
+        }
+
+    @staticmethod
+    def build_head_scout_schedule_from_open_meetings(
+        config: Dict[str, str],
+        open_meetings_result: Dict[str, Any],
+        week_start: str,
+        week_end: str,
+    ) -> Dict[str, Any]:
+        """
+        Convert concrete Meeting Set open rows into the Scout Schedules slot shape.
+        """
+        week_start_floor = f"{week_start}T00:00"
+        week_end_floor = f"{week_end}T00:00"
+        slots_by_time: Dict[Tuple[str, str], Dict[str, str]] = {}
+
+        for slot in open_meetings_result.get("slots", []):
+            date_time_label = str(slot.get("date_time_label") or "").strip()
+            open_event_id = str(slot.get("open_event_id") or "").strip()
+            if not date_time_label or not open_event_id:
+                continue
+
+            try:
+                parsed_start = datetime.datetime.strptime(date_time_label, "%a %m/%d/%y %I:%M %p")
+            except ValueError:
+                continue
+
+            start = parsed_start.strftime("%Y-%m-%dT%H:%M")
+            if start < week_start_floor or start >= week_end_floor:
+                continue
+
+            end = (parsed_start + datetime.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M")
+            normalized_slot = {
+                "id": open_event_id,
+                "start": start,
+                "end": end,
+                "scout_name": config["scout_name"],
+            }
+            slots_by_time[(start, end)] = normalized_slot
+
+        slots = sorted(slots_by_time.values(), key=lambda item: item["start"])
+        return {
+            "scout_name": config["scout_name"],
+            "city": config["city"],
+            "state": config["state"],
+            "calendar_owner_id": config["calendar_owner_id"],
+            "meeting_for": config["meeting_for"],
+            "slot_count": len(slots),
+            "slots": slots,
         }
 
     @staticmethod

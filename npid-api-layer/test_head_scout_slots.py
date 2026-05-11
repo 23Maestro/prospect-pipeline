@@ -15,8 +15,8 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
       {"id": 7, "start": "16:00", "end": "17:00", "user": "Luther Winfield", "title": "OPEN", "openslot": "openslot", "dow": "[1,3]"},
       {"id": 4, "start": "2026-04-16T16:30", "end": "2026-04-16T17:00", "user": "Luther Winfield", "title": "Follow Up", "openslot": ""},
       {"id": 5, "start": "2026-04-16T19:00", "end": "2026-04-16T20:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
-      {"id": 6, "start": "17:00", "end": "17:30", "user": "Logan Lord", "title": "Open for Interview", "openslot": "", "dow": "[1,3,4,5]"},
-      {"id": 12, "start": "09:00", "end": "10:00", "user": "Kenton Manis", "title": "OPEN", "openslot": "openslot", "dow": "[6]"},
+      {"id": 6, "start": "2026-04-16T20:00", "end": "2026-04-16T21:00", "user": "Logan Lord", "title": "OPEN", "openslot": "openslot"},
+      {"id": 12, "start": "2026-04-17T18:00", "end": "2026-04-17T19:00", "user": "Kenton Manis", "title": "OPEN", "openslot": "openslot"},
       {"id": 8, "start": "2026-04-20T17:00", "end": "2026-04-20T18:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
       {"id": 9, "start": "2026-04-12T17:00", "end": "2026-04-12T18:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
       {"id": 10, "start": "2026-04-16T17:00", "end": "2026-04-16T18:00", "user": "Jeffrey Stein", "title": "open", "openslot": "openslot"},
@@ -61,20 +61,18 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert kenton["city"] == "Prosper"
     assert kenton["state"] == "TX"
     assert jeffrey["slot_count"] == 1
-    assert luther["slot_count"] == 3
+    assert luther["slot_count"] == 1
     assert ryan["slot_count"] == 1
     assert james["slot_count"] == 0
-    assert logan["slot_count"] == 4
+    assert logan["slot_count"] == 1
     assert kenton["slot_count"] == 1
 
     assert jeffrey["slots"][0]["id"] in {"1", "10", "11"}
     assert jeffrey["slots"][0]["start"] == "2026-04-16T17:00"
-    assert luther["slots"][0]["id"] == "7:2026-04-13"
+    assert luther["slots"][0]["id"] == "3"
     assert ryan["slots"][0]["id"] == "5"
-    assert logan["slots"][0]["id"] == "6:2026-04-13"
-    assert logan["slots"][0]["start"] == "2026-04-13T17:00"
-    assert kenton["slots"][0]["id"] == "12:2026-04-18"
-    assert kenton["slots"][0]["start"] == "2026-04-18T09:00"
+    assert logan["slots"][0]["id"] == "6"
+    assert kenton["slots"][0]["id"] == "12"
 
 
 def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
@@ -104,6 +102,71 @@ def test_open_meetings_request_preserves_meetingfor_field_unchanged():
 
     assert endpoint == "/template/template/openmeetings"
     assert params == {"meetingfor": "1354049"}
+
+
+def test_build_head_scout_schedule_from_open_meetings_uses_concrete_slots():
+    config = {
+        "scout_name": "Kenton Manis",
+        "city": "Prosper",
+        "state": "TX",
+        "calendar_owner_id": "1486538",
+        "meeting_for": "1486538",
+    }
+    open_meetings_result = {
+        "success": True,
+        "count": 3,
+        "slots": [
+            {
+                "open_event_id": "624048",
+                "date_time_label": "Sun 05/17/26 2:30 PM",
+                "title": "OPEN",
+                "assigned_owner": "Kenton Manis",
+                "start_time": "14:30",
+            },
+            {
+                "open_event_id": "624049",
+                "date_time_label": "Sun 05/17/26 4:00 PM",
+                "title": "OPEN",
+                "assigned_owner": "Kenton Manis",
+                "start_time": "16:00",
+            },
+            {
+                "open_event_id": "624050",
+                "date_time_label": "Mon 05/18/26 2:30 PM",
+                "title": "OPEN",
+                "assigned_owner": "Kenton Manis",
+                "start_time": "14:30",
+            },
+        ],
+    }
+
+    result = LegacyTranslator.build_head_scout_schedule_from_open_meetings(
+        config=config,
+        open_meetings_result=open_meetings_result,
+        week_start="2026-05-11",
+        week_end="2026-05-18",
+    )
+
+    assert result["scout_name"] == "Kenton Manis"
+    assert result["city"] == "Prosper"
+    assert result["state"] == "TX"
+    assert result["calendar_owner_id"] == "1486538"
+    assert result["meeting_for"] == "1486538"
+    assert result["slot_count"] == 2
+    assert result["slots"] == [
+        {
+            "id": "624048",
+            "start": "2026-05-17T14:30",
+            "end": "2026-05-17T15:30",
+            "scout_name": "Kenton Manis",
+        },
+        {
+            "id": "624049",
+            "start": "2026-05-17T16:00",
+            "end": "2026-05-17T17:00",
+            "scout_name": "Kenton Manis",
+        },
+    ]
 
 
 def test_booked_meeting_lookup_request_preserves_calendar_access_fields():
@@ -147,22 +210,8 @@ def test_parse_head_scout_slots_response_uses_strict_monday_sunday_week_bounds()
     current_ryan = next(scout for scout in current_week["scouts"] if scout["scout_name"] == "Ryan Lietz")
     next_ryan = next(scout for scout in next_week["scouts"] if scout["scout_name"] == "Ryan Lietz")
 
-    assert [slot["id"] for slot in current_ryan["slots"]] == [
-        "102:2026-04-20",
-        "102:2026-04-21",
-        "102:2026-04-22",
-        "102:2026-04-23",
-        "102:2026-04-24",
-        "100",
-    ]
-    assert [slot["id"] for slot in next_ryan["slots"]] == [
-        "102:2026-04-27",
-        "101",
-        "102:2026-04-28",
-        "102:2026-04-29",
-        "102:2026-04-30",
-        "102:2026-05-01",
-    ]
+    assert [slot["id"] for slot in current_ryan["slots"]] == ["100"]
+    assert [slot["id"] for slot in next_ryan["slots"]] == ["101"]
 
 
 def test_parse_open_meetings_response_extracts_openeventid_and_start_time():

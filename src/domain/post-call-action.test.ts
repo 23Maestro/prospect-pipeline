@@ -176,3 +176,57 @@ test('Meeting Set submit keeps Laravel payload clean while Supabase carries Rayc
     'Ryan Lietz',
   );
 });
+
+test('Meeting Set submit supports Logan and Kenton through the same head scout fields', () => {
+  const owners = [
+    {
+      name: 'Logan Lord',
+      id: '2254',
+      calendarOwnerId: '2254',
+      openEventId: '624180',
+      startTime: '17:00',
+      startsAt: '2026-05-11T17:00:00-04:00',
+    },
+    {
+      name: 'Kenton Manis',
+      id: '1486538',
+      calendarOwnerId: '1486538',
+      openEventId: '624048',
+      startTime: '14:30',
+      startsAt: '2026-05-17T14:30:00-04:00',
+    },
+  ];
+
+  for (const owner of owners) {
+    const plan = buildPostCallActionPlan({
+      athleteId: '1490499',
+      athleteMainId: '952328',
+      athleteName: 'Elia Imani',
+      stageLabel: 'Meeting Set',
+      tasks: [],
+      meetingSet: {
+        meetingName: `Elia Imani Football 2029 TX`,
+        meetingTimezone: 'EST',
+        assignedToLegacyUserId: owner.id,
+        meetingForLegacyUserId: owner.id,
+        openEventId: owner.openEventId,
+        calendarOwnerId: owner.calendarOwnerId,
+        bookedMeetingAssignedOwner: owner.name,
+        taskDescription: 'Main Number:\nOther Details:',
+        startTime: owner.startTime,
+        startsAt: owner.startsAt,
+        meetingLength: '01:00',
+      },
+    });
+
+    assert.equal(plan.laravelMeetingSetSubmit?.assigned_to, owner.id);
+    assert.equal(plan.laravelMeetingSetSubmit?.meeting_for, owner.id);
+    assert.equal(plan.laravelMeetingSetSubmit?.meetingfor, owner.id);
+    assert.equal(plan.laravelMeetingSetSubmit?.calendar_owner_id, owner.calendarOwnerId);
+    assert.equal(plan.laravelMeetingSetSubmit?.booked_meeting_assigned_owner, owner.name);
+    assert.equal(plan.laravelMeetingSetSubmit?.open_event_id, owner.openEventId);
+    assert.equal(plan.ownerContext.resolvedOwnerName, owner.name);
+    assert.equal(plan.ownerContext.materializationStatus, 'operator_task');
+    assert.equal(plan.supabaseLifecycleWrite?.args.payload?.booked_meeting_assigned_owner, owner.name);
+  }
+});

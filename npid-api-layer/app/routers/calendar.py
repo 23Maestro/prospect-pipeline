@@ -59,31 +59,46 @@ async def get_head_scout_slots(
     )
 
     try:
-        endpoint, params = translator.head_scout_slots_to_legacy(start=start, end=end)
-        response = await session.get(endpoint, params=params)
-        logger.info(
-            "HEAD_SCOUT_SLOTS_FETCH %s",
-            {
-                "event": "HEAD_SCOUT_SLOTS_FETCH",
-                "step": "response",
-                "status": "success",
-                "feature": FEATURE,
-                "context": {
-                    "start": start,
-                    "end": end,
-                    "endpoint": endpoint,
-                    "statusCode": response.status_code,
-                    "contentType": response.headers.get("content-type"),
-                    "bodyLength": len(response.text or ""),
-                    "bodyPreview": (response.text or "")[:120],
+        scouts = []
+        for config in translator.HEAD_SCOUT_CONFIG:
+            endpoint, params = translator.open_meetings_to_legacy(meeting_for=config["meeting_for"])
+            response = await session.get(endpoint, params=params)
+            logger.info(
+                "HEAD_SCOUT_SLOTS_FETCH %s",
+                {
+                    "event": "HEAD_SCOUT_SLOTS_FETCH",
+                    "step": "response",
+                    "status": "success",
+                    "feature": FEATURE,
+                    "context": {
+                        "start": start,
+                        "end": end,
+                        "scoutName": config["scout_name"],
+                        "meetingFor": config["meeting_for"],
+                        "endpoint": endpoint,
+                        "statusCode": response.status_code,
+                        "contentType": response.headers.get("content-type"),
+                        "bodyLength": len(response.text or ""),
+                        "bodyPreview": (response.text or "")[:120],
+                    },
                 },
-            },
-        )
-        result = translator.parse_head_scout_slots_response(
-            raw_response=response.text,
-            week_start=start,
-            week_end=end,
-        )
+            )
+            open_meetings_result = translator.parse_open_meetings_response(response.text)
+            scouts.append(
+                translator.build_head_scout_schedule_from_open_meetings(
+                    config=config,
+                    open_meetings_result=open_meetings_result,
+                    week_start=start,
+                    week_end=end,
+                )
+            )
+        result = {
+            "success": True,
+            "week_start": start,
+            "week_end": end,
+            "timezone_label": "EST",
+            "scouts": scouts,
+        }
         logger.info(
             "HEAD_SCOUT_SLOTS_GROUP %s",
             {
