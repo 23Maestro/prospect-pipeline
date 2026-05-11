@@ -3,12 +3,12 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
   version: 3,
   generatedFrom: 'src/domain/call-tracker-vercel-contract.ts',
   purpose:
-    'Single generated Call Tracker artifact contract. The materializer reads Supabase reporting views plus lifecycle_events task facts, writes the summary/events/UI snapshot into data-contract.json, and the browser reads only that artifact. Reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
+    'Call Tracker browser contract for live Vercel Supabase reads. Supabase owns the reporting views and count booleans; Vercel reads those low-maintenance API views at request time so call-tracker data can change without redeploying the static app. Reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
   browserContract: {
     eventFeed: {
       supabaseView: 'call_tracker_events_owner_context',
       plainEnglish:
-        'This is the compatibility event view the materializer reads alongside lifecycle_events. data-contract.json stores every row the same way: proof fields plus count booleans.',
+        'This is the live event view the Vercel API reads. It must carry proof fields plus count booleans so the browser never recomputes business meaning.',
       requiredFields: [
         'athlete_name',
         'occurred_at',
@@ -40,7 +40,7 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     summaryHelper: {
       supabaseView: 'call_tracker_summary',
       plainEnglish:
-        'This is the source summary the materializer reads. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment in data.ui.summaryCards while Supabase facts remain strict.',
+        'This is the live summary view the Vercel API reads. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.',
       requiredFields: [
         'dials',
         'contacts',
@@ -185,11 +185,11 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     trackerOutcome,
     plainEnglish,
   })),
-  cronMaterialization: {
-    script: 'scripts/materialize-call-tracker-data-contract.mjs',
-    packageScript: 'npm run materialize:call-tracker-contract',
-    output: 'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
+  liveSupabaseApi: {
+    route: 'apps/prospect-web/app/api/call-tracker-data/route.ts',
+    browserUrl: '/api/call-tracker-data',
+    workflowCron: 'scripts/sync-supabase-pipeline.sh',
     plainEnglish:
-      'Run this with the call tracker cron/sync so Vercel only serves a ready-to-render artifact instead of recomputing Supabase business meaning in the browser.',
+      'The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads Supabase live, so call-tracker reporting updates do not require redeploying data-contract.json.',
   },
 } as const;

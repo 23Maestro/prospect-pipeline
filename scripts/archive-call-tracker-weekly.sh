@@ -26,6 +26,5 @@ trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
 cd "${PROJECT_ROOT}"
 
 echo "[$(timestamp)] weekly archive start"
-npm run materialize:call-tracker-contract
 npm run archive:call-tracker-week
 echo "[$(timestamp)] weekly archive complete"

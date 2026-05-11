@@ -109,6 +109,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
 	    'scripts/materialize-call-tracker-data-contract.mjs',
 	    'scripts/materialize-call-tracker-data-contract.test.mjs',
 	    'scripts/archive-call-tracker-week.mjs',
+	    'scripts/archive-call-tracker-weekly.sh',
     'scripts/backsync-lifecycle-call-activity-events.mjs',
     'scripts/lifecycle-call-tracker-backsync-core.mjs',
     'scripts/lifecycle-call-tracker-backsync-core.test.mjs',
@@ -224,7 +225,8 @@ test('call tracker public contract documents count flags as the reporting source
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_post_meeting_outcome'));
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('materialization_status'));
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('resolved_owner_source_field'));
-  assert.equal(contract.cronMaterialization.packageScript, 'npm run materialize:call-tracker-contract');
+  assert.equal(contract.liveSupabaseApi.browserUrl, '/api/call-tracker-data');
+  assert.equal(contract.liveSupabaseApi.workflowCron, 'scripts/sync-supabase-pipeline.sh');
   assert.ok(contract.data.generatedAt);
   assert.equal(contract.data.supabaseReads.summaryView, 'call_tracker_summary');
   assert.equal(contract.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
