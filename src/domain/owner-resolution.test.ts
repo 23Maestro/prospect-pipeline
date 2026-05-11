@@ -34,8 +34,30 @@ test('Tim Risner is a known owner profile but not the active operator', () => {
 test('head scout order keeps the visible calendar owners available', () => {
   assert.deepEqual(
     HEAD_SCOUT_ORDER.map((scout) => scout.scout_name),
-    ['Jeffrey Stein', 'Luther Winfield', 'Ryan Lietz', 'James Holcomb'],
+    ['Jeffrey Stein', 'Luther Winfield', 'Ryan Lietz', 'James Holcomb', 'Logan Lord', 'Kenton Manis'],
   );
+});
+
+test('new Meeting Set owners resolve from live legacy ids', () => {
+  const logan = resolveOwnerByName('Logan Lord');
+  const kenton = resolveOwnerByName('Kenton Manis');
+
+  assert.equal(logan?.ownerKey, 'logan_lord');
+  assert.equal(logan?.assignedToLegacyUserId, '2254');
+  assert.equal(logan?.meetingForLegacyUserId, '2254');
+  assert.equal(logan?.calendarOwnerId, '2254');
+  assert.equal(logan?.city, 'Chandler');
+  assert.equal(logan?.state, 'AZ');
+  assert.equal(logan?.roles.includes('head_scout'), true);
+
+  assert.equal(kenton?.ownerKey, 'kenton_manis');
+  assert.equal(kenton?.personName, 'Kenton Manis');
+  assert.equal(kenton?.assignedToLegacyUserId, '1486538');
+  assert.equal(kenton?.meetingForLegacyUserId, '1486538');
+  assert.equal(kenton?.calendarOwnerId, '1486538');
+  assert.equal(kenton?.city, 'Prosper');
+  assert.equal(kenton?.state, 'TX');
+  assert.equal(kenton?.roles.includes('head_scout'), true);
 });
 
 test('Jerami task assignment allows active-operator materialization even when booked owner is Ryan', () => {

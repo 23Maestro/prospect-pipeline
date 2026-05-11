@@ -74,11 +74,25 @@
       "ownerKey": "logan_lord",
       "personName": "Logan Lord",
       "aliases": ["Logan Lord", "Logan"],
-      "assignedToLegacyUserId": null,
-      "meetingForLegacyUserId": null,
-      "calendarOwnerId": null,
-      "roles": ["task_owner", "appointment_setter"],
-      "dashboardTrackingEligible": false
+      "assignedToLegacyUserId": "2254",
+      "meetingForLegacyUserId": "2254",
+      "calendarOwnerId": "2254",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter", "task_owner"],
+      "dashboardTrackingEligible": false,
+      "city": "Chandler",
+      "state": "AZ"
+    },
+    {
+      "ownerKey": "kenton_manis",
+      "personName": "Kenton Manis",
+      "aliases": ["Kenton Manis", "Kenton"],
+      "assignedToLegacyUserId": "1486538",
+      "meetingForLegacyUserId": "1486538",
+      "calendarOwnerId": "1486538",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Prosper",
+      "state": "TX"
     }
   ]
 }

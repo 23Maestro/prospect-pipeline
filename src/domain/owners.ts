@@ -15,7 +15,8 @@ export type OwnerKey =
   | 'luther_winfield'
   | 'ryan_lietz'
   | 'james_holcomb'
-  | 'logan_lord';
+  | 'logan_lord'
+  | 'kenton_manis';
 
 export type OwnerProfile = {
   ownerKey: OwnerKey;

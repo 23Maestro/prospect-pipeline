@@ -330,6 +330,17 @@ test('Laravel POST wrappers call the shared lifecycle mutation writer after succ
   assert.match(salesStageSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/sales\/stage'/);
 });
 
+test('task completion wrapper never promotes a task title into raw CRM stage', () => {
+  const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
+
+  assert.doesNotMatch(scoutPrepSource, /crmStage:\s*args\.crmStage\s*\|\|\s*args\.taskTitle/);
+  assert.match(scoutPrepSource, /crmStage:\s*args\.crmStage\s*\|\|\s*null/);
+  assert.match(
+    scoutPrepSource,
+    /activitySubtype:\s*args\.crmStage\s*\?\s*undefined\s*:\s*'needs_manual_review'/,
+  );
+});
+
 test('shared lifecycle mutation writer upserts call activity facts at action time', () => {
   const source = fs.readFileSync('src/lib/supabase-lifecycle.ts', 'utf8');
 

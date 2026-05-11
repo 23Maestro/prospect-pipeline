@@ -54,6 +54,8 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
   const luther = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Luther Winfield');
   const ryan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Ryan Lietz');
   const james = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'James Holcomb');
+  const logan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Logan Lord');
+  const kenton = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Kenton Manis');
 
   assert.deepEqual(
     {
@@ -89,6 +91,24 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: '56',
       meeting_for: '56',
     },
+  );
+  assert.deepEqual(
+    {
+      city: logan?.city,
+      state: logan?.state,
+      calendar_owner_id: logan?.calendar_owner_id,
+      meeting_for: logan?.meeting_for,
+    },
+    { city: 'Chandler', state: 'AZ', calendar_owner_id: '2254', meeting_for: '2254' },
+  );
+  assert.deepEqual(
+    {
+      city: kenton?.city,
+      state: kenton?.state,
+      calendar_owner_id: kenton?.calendar_owner_id,
+      meeting_for: kenton?.meeting_for,
+    },
+    { city: 'Prosper', state: 'TX', calendar_owner_id: '1486538', meeting_for: '1486538' },
   );
 });
 

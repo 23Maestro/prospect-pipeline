@@ -16,6 +16,7 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
       {"id": 4, "start": "2026-04-16T16:30", "end": "2026-04-16T17:00", "user": "Luther Winfield", "title": "Follow Up", "openslot": ""},
       {"id": 5, "start": "2026-04-16T19:00", "end": "2026-04-16T20:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
       {"id": 6, "start": "2026-04-16T20:00", "end": "2026-04-16T21:00", "user": "Logan Lord", "title": "OPEN", "openslot": "openslot"},
+      {"id": 12, "start": "2026-04-17T18:00", "end": "2026-04-17T19:00", "user": "Kenton Manis", "title": "OPEN", "openslot": "openslot"},
       {"id": 8, "start": "2026-04-20T17:00", "end": "2026-04-20T18:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
       {"id": 9, "start": "2026-04-12T17:00", "end": "2026-04-12T18:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
       {"id": 10, "start": "2026-04-16T17:00", "end": "2026-04-16T18:00", "user": "Jeffrey Stein", "title": "open", "openslot": "openslot"},
@@ -36,9 +37,11 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
         "Luther Winfield",
         "Ryan Lietz",
         "James Holcomb",
+        "Logan Lord",
+        "Kenton Manis",
     ]
 
-    jeffrey, luther, ryan, james = result["scouts"]
+    jeffrey, luther, ryan, james, logan, kenton = result["scouts"]
     assert jeffrey["calendar_owner_id"] == "OrJsV8nhBouEzKY"
     assert jeffrey["meeting_for"] == "1418529"
     assert luther["calendar_owner_id"] == "bMBrA26OElRUwPs"
@@ -49,15 +52,27 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert james["meeting_for"] == "56"
     assert james["city"] == "Phoenix"
     assert james["state"] == "AZ"
+    assert logan["calendar_owner_id"] == "2254"
+    assert logan["meeting_for"] == "2254"
+    assert logan["city"] == "Chandler"
+    assert logan["state"] == "AZ"
+    assert kenton["calendar_owner_id"] == "1486538"
+    assert kenton["meeting_for"] == "1486538"
+    assert kenton["city"] == "Prosper"
+    assert kenton["state"] == "TX"
     assert jeffrey["slot_count"] == 1
     assert luther["slot_count"] == 1
     assert ryan["slot_count"] == 1
     assert james["slot_count"] == 0
+    assert logan["slot_count"] == 1
+    assert kenton["slot_count"] == 1
 
     assert jeffrey["slots"][0]["id"] in {"1", "10", "11"}
     assert jeffrey["slots"][0]["start"] == "2026-04-16T17:00"
     assert luther["slots"][0]["id"] == "3"
     assert ryan["slots"][0]["id"] == "5"
+    assert logan["slots"][0]["id"] == "6"
+    assert kenton["slots"][0]["id"] == "12"
 
 
 def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
@@ -74,6 +89,8 @@ def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
         ("selectedowner[]", "bMBrA26OElRUwPs"),
         ("selectedowner[]", "nhVvYOz8bAaL57c"),
         ("selectedowner[]", "56"),
+        ("selectedowner[]", "2254"),
+        ("selectedowner[]", "1486538"),
         ("selectedowner[]", "avdhyXjQ8bFweEf"),
         ("start", "2026-04-13"),
         ("end", "2026-04-20"),
@@ -196,7 +213,7 @@ def test_parse_head_scout_booked_meetings_response_keeps_real_meetings_in_week()
       {"id": "101", "start": "2026-04-27T15:00", "end": "2026-04-27T16:00", "user": "Ryan Lietz", "title": "Outside Week Football 2027 MN", "openslot": "meetingset"},
       {"id": "102", "start": "2026-04-26T15:00", "end": "2026-04-26T16:00", "user": "Ryan Lietz", "title": "August Nyakeoga Football 2027 MN", "openslot": "meetingset"},
       {"id": "103", "start": "2026-04-24T18:00", "end": "2026-04-24T19:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
-      {"id": "104", "start": "2026-04-24T18:00", "end": "2026-04-24T19:00", "user": "Logan Lord", "title": "Ignore Me Football 2027 FL", "openslot": "meetingset"}
+      {"id": "104", "start": "2026-04-24T18:00", "end": "2026-04-24T19:00", "user": "Logan Lord", "title": "Logan Lord Meeting Football 2027 FL", "openslot": "meetingset"}
     ]
     """
 
@@ -207,9 +224,10 @@ def test_parse_head_scout_booked_meetings_response_keeps_real_meetings_in_week()
     )
 
     assert result["success"] is True
-    assert result["count"] == 2
+    assert result["count"] == 3
     assert [event["title"] for event in result["events"]] == [
         "Victor Williams Football 2028 TX",
+        "Logan Lord Meeting Football 2027 FL",
         "August Nyakeoga Football 2027 MN",
     ]
 

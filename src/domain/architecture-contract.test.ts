@@ -138,6 +138,14 @@ test('outreach time wording is resolved through the domain module', () => {
   assert.doesNotMatch(templates, /tomorrow \$\{bucket\}/);
 });
 
+test('post-call task completion carries selected stage into lifecycle tracking', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  assert.match(
+    scoutPrep,
+    /completeScoutPrepTaskAfterVoicemail\(\{\s*athleteId:\s*taskCompletion\.athleteId,[\s\S]*?crmStage:\s*taskCompletion\.crmStage,[\s\S]*?taskTitle:\s*taskCompletion\.taskTitle,/,
+  );
+});
+
 test('Supabase reporting views materialize only domain facts or explicit compatibility proof', () => {
   const migration = readRepoFile('supabase/migrations/20260502011000_call_tracker_active_operator_materialization_gate.sql');
 

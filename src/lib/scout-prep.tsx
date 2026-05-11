@@ -335,13 +335,14 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
     athleteName: args.athleteName || '',
-    crmStage: args.crmStage || args.taskTitle || null,
+    crmStage: args.crmStage || null,
     taskId: result.task_id || args.taskId || null,
     taskTitle: args.taskTitle || 'Call Attempt 1',
     taskDescription: args.description || args.taskTitle || 'Call Attempt 1',
     taskAssignedOwner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
     completedDate,
     completedTime,
+    activitySubtype: args.crmStage ? undefined : 'needs_manual_review',
   });
   return result;
 }
