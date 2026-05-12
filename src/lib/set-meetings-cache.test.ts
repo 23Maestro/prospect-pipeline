@@ -4,6 +4,7 @@ import {
   getCachedSetMeetings,
   isSetMeetingsCacheDueForHourlyRefresh,
   setCachedSetMeetings,
+  shouldRenderCachedSetMeetingsSnapshot,
 } from './set-meetings-cache';
 
 function createMemoryStorage() {
@@ -83,4 +84,25 @@ test('set meetings cache is scoped by selected week', async () => {
   });
 
   assert.equal(cached, null);
+});
+
+test('set meetings cache does not render stale empty snapshots while live refresh runs', async () => {
+  const storage = createMemoryStorage();
+  await setCachedSetMeetings({
+    weekStart: '2026-05-11',
+    weekEnd: '2026-05-17',
+    candidates: [],
+    cachedAt: new Date('2026-05-11T20:15:00-04:00'),
+    storage,
+  });
+
+  const cached = await getCachedSetMeetings({
+    weekStart: '2026-05-11',
+    weekEnd: '2026-05-17',
+    now: new Date('2026-05-11T21:01:00-04:00'),
+    storage,
+  });
+
+  assert.equal(cached?.isDueForHourlyRefresh, true);
+  assert.equal(shouldRenderCachedSetMeetingsSnapshot(cached), false);
 });

@@ -1,6 +1,7 @@
 import { apiFetch } from './fastapi-client';
 import { resolveAndCacheAthleteMainId } from './athlete-id-service';
 import { logger, searchLogger } from './logger';
+import { normalizeProspectSearchTerm } from './prospect-search-term';
 
 export interface ProspectResult {
   athlete_id: string;
@@ -28,6 +29,8 @@ interface ProspectSearchResponse {
   results: ProspectResult[];
   sources?: Array<Record<string, unknown>>;
 }
+
+export { normalizeProspectSearchTerm } from './prospect-search-term';
 
 const MIN_GRAD_YEAR = 2026;
 
@@ -144,14 +147,15 @@ export async function runProspectRawSearch(
   term: string,
   options?: { searchingFor?: 'Parent' },
 ): Promise<ProspectResult[]> {
-  const isEmail = term.includes('@');
+  const normalizedTerm = normalizeProspectSearchTerm(term);
+  const isEmail = normalizedTerm.includes('@');
   const response = await apiFetch('/athlete/raw-search', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      term,
+      term: normalizedTerm,
       searching_for: options?.searchingFor,
-      email: isEmail ? term : undefined,
+      email: isEmail ? normalizedTerm : undefined,
       include_admin_search: options?.searchingFor === 'Parent' ? false : true,
       include_recent_search: false,
     }),

@@ -81,6 +81,12 @@ import {
   type ProspectResult,
 } from './lib/prospect-search';
 import {
+  addPersonalFollowUp,
+  listPersonalFollowUps,
+  removePersonalFollowUp,
+  type PersonalFollowUpEntry,
+} from './lib/personal-follow-up-cache';
+import {
   fetchCuratedSalesStageOptions,
   fetchMeetingSetTemplate,
   submitMeetingSet,
@@ -1420,7 +1426,7 @@ function VoicemailFollowUpRecipientForm({
   );
 }
 
-type ViewMode = 'tasks' | 'recent' | 'prospect';
+type ViewMode = 'tasks' | 'recent' | 'prospect' | 'personalFollowUps';
 
 function cycleTaskListSort(current: TaskListSort, key: TaskListSortKey): TaskListSort {
   if (!current || current.key !== key) {
@@ -3172,6 +3178,7 @@ function ScoutPrepTaskItem({
   visibleTasks,
   taskListSort,
   onToggleProspectSearchMode,
+  onShowPersonalFollowUps,
   onSelectTaskListFilter,
   onCycleTaskListSort,
   onReturnToRootList,
@@ -3180,6 +3187,7 @@ function ScoutPrepTaskItem({
   visibleTasks: ScoutPortalTask[];
   taskListSort: TaskListSort;
   onToggleProspectSearchMode: () => void;
+  onShowPersonalFollowUps: () => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onCycleTaskListSort: (key: TaskListSortKey) => void;
   onReturnToRootList: () => void;
@@ -3603,6 +3611,12 @@ function ScoutPrepTaskItem({
               onAction={() => onSelectTaskListFilter('all')}
             />
             <Action
+              title="Personal Follow-Ups"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              onAction={onShowPersonalFollowUps}
+            />
+            <Action
               title="Prospect Search"
               icon={Icon.MagnifyingGlass}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
@@ -3636,6 +3650,7 @@ function ProspectSearchListItem({
   searchMode,
   onToggleProspectSearchModeType,
   onToggleProspectSearchMode,
+  onAddPersonalFollowUp,
   onReturnToRootList,
 }: {
   result: ProspectResult;
@@ -3643,6 +3658,7 @@ function ProspectSearchListItem({
   searchMode: ProspectSearchMode;
   onToggleProspectSearchModeType: () => void;
   onToggleProspectSearchMode: () => void;
+  onAddPersonalFollowUp: (result: ProspectResult, searchMode: ProspectSearchMode) => void;
   onReturnToRootList: () => void;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
@@ -3715,6 +3731,12 @@ function ProspectSearchListItem({
                   : `https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`
             }
           />
+          <Action
+            title="Save Follow-Up"
+            icon={Icon.Clock}
+            shortcut={{ modifiers: ['cmd'], key: '5' }}
+            onAction={() => onAddPersonalFollowUp(result, searchMode)}
+          />
           <ActionPanel.Section title="Navigation">
             <Action
               title={isParentMode ? 'Switch to Athlete Search' : 'Switch to Parent Search'}
@@ -3728,6 +3750,120 @@ function ProspectSearchListItem({
               onAction={onToggleProspectSearchMode}
             />
             <SupabaseLifecycleStatusAction />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+function PersonalFollowUpListItem({
+  entry,
+  onRemove,
+  onExit,
+  onReturnToRootList,
+}: {
+  entry: PersonalFollowUpEntry;
+  onRemove: (entry: PersonalFollowUpEntry) => void;
+  onExit: () => void;
+  onReturnToRootList: () => void;
+}) {
+  const { result, searchMode } = entry;
+  const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
+  const isParentMode = searchMode === 'parent';
+  const parentName = result.parent_name || (isParentMode ? result.name : null);
+  const parentEmail = result.parent_email || (isParentMode ? result.email : null);
+  const parentPhone = result.parent_phone || (isParentMode ? result.phone : null);
+  const location = [result.city, result.state].filter(Boolean).join(', ');
+  const addedAt = new Date(entry.addedAt);
+  const addedLabel = Number.isNaN(addedAt.getTime())
+    ? null
+    : addedAt.toLocaleString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  const markdown = [
+    `# ${isParentMode ? parentName || result.name : result.name || `Athlete ${result.athlete_id}`}`,
+    '',
+    `- Saved: ${addedLabel || 'N/A'}`,
+    `- Search Type: ${isParentMode ? 'Parent' : 'Athlete'}`,
+    ...(isParentMode
+      ? [
+        `- Parent: ${parentName || 'N/A'}`,
+        `- Parent Email: ${parentEmail || 'N/A'}`,
+        `- Parent Phone: ${parentPhone || 'N/A'}`,
+      ]
+      : []),
+    `- Athlete: ${result.name || 'N/A'}`,
+    `- Athlete ID: ${result.athlete_id || 'N/A'}`,
+    `- Athlete Main ID: ${result.athlete_main_id || 'N/A'}`,
+    `- Grad Year: ${result.grad_year || 'N/A'}`,
+    `- Sport: ${result.sport || 'N/A'}`,
+    `- High School: ${result.high_school || 'N/A'}`,
+    `- Location: ${location || 'N/A'}`,
+  ].join('\n');
+
+  return (
+    <List.Item
+      key={entry.id}
+      icon={isParentMode ? Icon.Person : Icon.Clock}
+      title={
+        isParentMode
+          ? parentName || result.name || `Parent ${result.athlete_id}`
+          : result.name || `Athlete ${result.athlete_id}`
+      }
+      subtitle={
+        isParentMode
+          ? [result.name, parentPhone].filter(Boolean).join(' • ') || 'Personal follow-up'
+          : [result.grad_year ? `Class ${result.grad_year}` : null, result.sport, result.high_school]
+            .filter(Boolean)
+            .join(' • ') || 'Personal follow-up'
+      }
+      accessories={addedLabel ? [{ text: addedLabel }] : undefined}
+      detail={<List.Item.Detail markdown={markdown} />}
+      actions={
+        <ActionPanel>
+          {scoutPrepTask ? (
+            <Action.Push
+              title="Build Scout Prep"
+              icon={Icon.Wand}
+              target={
+                <ScoutPrepDetail task={scoutPrepTask} onReturnToRootList={onReturnToRootList} />
+              }
+            />
+          ) : null}
+          <Action.OpenInBrowser
+            title="Open Prospect Profile"
+            icon={Icon.Globe}
+            url={
+              result.url?.startsWith('http')
+                ? result.url
+                : result.url
+                  ? `${DASHBOARD_BASE_URL}${result.url}`
+                  : `${DASHBOARD_BASE_URL}/athlete/profile/${result.athlete_id}`
+            }
+          />
+          {parentPhone ? (
+            <Action.CopyToClipboard title="Copy Phone" icon={Icon.Phone} content={parentPhone} />
+          ) : null}
+          {parentEmail ? (
+            <Action.CopyToClipboard title="Copy Email" icon={Icon.Envelope} content={parentEmail} />
+          ) : null}
+          <Action
+            title="Remove Follow-Up"
+            icon={Icon.Trash}
+            style={Action.Style.Destructive}
+            onAction={() => onRemove(entry)}
+          />
+          <ActionPanel.Section title="Navigation">
+            <Action
+              title="Exit Personal Follow-Ups"
+              icon={Icon.Clock}
+              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              onAction={onExit}
+            />
           </ActionPanel.Section>
         </ActionPanel>
       }
@@ -3822,6 +3958,8 @@ export default function ScoutPrepCommand() {
   const [isProspectSearching, setIsProspectSearching] = useState(false);
   const [recentProfiles, setRecentProfiles] = useState<RecentProfileRow[]>([]);
   const [isRecentFollowUpsLoading, setIsRecentFollowUpsLoading] = useState(false);
+  const [personalFollowUps, setPersonalFollowUps] = useState<PersonalFollowUpEntry[]>([]);
+  const [isPersonalFollowUpsLoading, setIsPersonalFollowUpsLoading] = useState(false);
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
@@ -4077,6 +4215,28 @@ export default function ScoutPrepCommand() {
     };
   }, [viewMode]);
 
+  async function loadPersonalFollowUps() {
+    setIsPersonalFollowUpsLoading(true);
+    try {
+      setPersonalFollowUps(await listPersonalFollowUps());
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Follow-ups failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsPersonalFollowUpsLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (viewMode !== 'personalFollowUps') {
+      return;
+    }
+    void loadPersonalFollowUps();
+  }, [viewMode]);
+
   function toggleRecentMode() {
     setViewMode((current) => {
       if (current === 'recent') {
@@ -4089,8 +4249,25 @@ export default function ScoutPrepCommand() {
       setProspectSearchText('');
       setProspectResults([]);
       setIsProspectSearching(false);
+      setPersonalFollowUps([]);
+      setIsPersonalFollowUpsLoading(false);
       return 'recent';
     });
+  }
+
+  function showPersonalFollowUps() {
+    setViewMode('personalFollowUps');
+    setProspectSearchText('');
+    setProspectResults([]);
+    setIsProspectSearching(false);
+    setRecentProfiles([]);
+    setIsRecentFollowUpsLoading(false);
+  }
+
+  function exitPersonalFollowUps() {
+    setViewMode('tasks');
+    setPersonalFollowUps([]);
+    setIsPersonalFollowUpsLoading(false);
   }
 
   function toggleProspectSearchMode() {
@@ -4106,6 +4283,8 @@ export default function ScoutPrepCommand() {
       // Enter prospect from anywhere
       setRecentProfiles([]);
       setIsRecentFollowUpsLoading(false);
+      setPersonalFollowUps([]);
+      setIsPersonalFollowUpsLoading(false);
       return 'prospect';
     });
   }
@@ -4116,15 +4295,49 @@ export default function ScoutPrepCommand() {
     setIsProspectSearching(false);
   }
 
+  async function handleAddPersonalFollowUp(result: ProspectResult, searchMode: ProspectSearchMode) {
+    const saved = await addPersonalFollowUp(result, searchMode);
+    if (!saved) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing athlete ID',
+      });
+      return;
+    }
+
+    setPersonalFollowUps(await listPersonalFollowUps());
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Saved',
+      message:
+        searchMode === 'parent'
+          ? result.parent_name || result.name || 'Personal follow-up'
+          : result.name || 'Personal follow-up',
+    });
+  }
+
+  async function handleRemovePersonalFollowUp(entry: PersonalFollowUpEntry) {
+    await removePersonalFollowUp(entry.id);
+    setPersonalFollowUps(await listPersonalFollowUps());
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Removed',
+    });
+  }
+
   function cycleSort(key: TaskListSortKey) {
     setTaskListSort((current) => cycleTaskListSort(current, key));
   }
 
   return (
     <List
-      isLoading={isLoading || isProspectSearching || isRecentFollowUpsLoading}
+      isLoading={
+        isLoading || isProspectSearching || isRecentFollowUpsLoading || isPersonalFollowUpsLoading
+      }
       navigationTitle={
-        viewMode === 'recent'
+        viewMode === 'personalFollowUps'
+          ? 'Scout Prep — Personal Follow-Ups'
+          : viewMode === 'recent'
           ? 'Scout Prep — Recent Items'
           : viewMode === 'prospect'
             ? 'Scout Prep Search'
@@ -4148,6 +4361,8 @@ export default function ScoutPrepCommand() {
       searchBarPlaceholder={
         viewMode === 'recent'
           ? 'Recent Profiles'
+          : viewMode === 'personalFollowUps'
+            ? 'Personal Follow-Ups'
           : viewMode === 'prospect'
             ? prospectSearchMode === 'parent'
               ? 'Parent Search — Enter parent name, email, or phone'
@@ -4157,7 +4372,48 @@ export default function ScoutPrepCommand() {
       searchText={viewMode === 'prospect' ? prospectSearchText : undefined}
       onSearchTextChange={viewMode === 'prospect' ? setProspectSearchText : undefined}
     >
-      {viewMode === 'recent' ? (
+      {viewMode === 'personalFollowUps' ? (
+        <List.Section title="Personal Follow-Ups" subtitle={String(personalFollowUps.length)}>
+          {personalFollowUps.length > 0 ? (
+            personalFollowUps.map((entry) => (
+              <PersonalFollowUpListItem
+                key={entry.id}
+                entry={entry}
+                onRemove={handleRemovePersonalFollowUp}
+                onExit={exitPersonalFollowUps}
+                onReturnToRootList={() => undefined}
+              />
+            ))
+          ) : (
+            <List.Item
+              icon={Icon.Clock}
+              title={isPersonalFollowUpsLoading ? 'Loading Follow-Ups' : 'No Personal Follow-Ups'}
+              subtitle={
+                isPersonalFollowUpsLoading
+                  ? 'Loading'
+                  : 'Save a prospect search result when you need to call back'
+              }
+              actions={
+                <ActionPanel>
+                  <Action
+                    title="Exit Personal Follow-Ups"
+                    icon={Icon.Clock}
+                    shortcut={{ modifiers: ['cmd'], key: '5' }}
+                    onAction={exitPersonalFollowUps}
+                  />
+                  <Action
+                    title="Prospect Search"
+                    icon={Icon.MagnifyingGlass}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
+                    onAction={toggleProspectSearchMode}
+                  />
+                  <SupabaseLifecycleStatusAction />
+                </ActionPanel>
+              }
+            />
+          )}
+        </List.Section>
+      ) : viewMode === 'recent' ? (
         <List.Section title="Recent Profiles" subtitle={String(recentProfiles.length)}>
           {recentProfiles.length > 0 ? (
             recentProfiles.map((item) => (
@@ -4204,6 +4460,7 @@ export default function ScoutPrepCommand() {
                 searchMode={prospectSearchMode}
                 onToggleProspectSearchModeType={toggleProspectSearchModeType}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
+                onAddPersonalFollowUp={handleAddPersonalFollowUp}
                 onReturnToRootList={() => undefined}
               />
             ))
@@ -4235,6 +4492,12 @@ export default function ScoutPrepCommand() {
                     icon={Icon.Person}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                     onAction={toggleProspectSearchModeType}
+                  />
+                  <Action
+                    title="Personal Follow-Ups"
+                    icon={Icon.Clock}
+                    shortcut={{ modifiers: ['cmd'], key: '5' }}
+                    onAction={showPersonalFollowUps}
                   />
                   <Action
                     title="Exit Prospect Search"
@@ -4284,6 +4547,12 @@ export default function ScoutPrepCommand() {
                   onAction={() => setTaskListFilter('all')}
                 />
                 <Action
+                  title="Personal Follow-Ups"
+                  icon={Icon.Clock}
+                  shortcut={{ modifiers: ['cmd'], key: '5' }}
+                  onAction={showPersonalFollowUps}
+                />
+                <Action
                   title="Prospect Search"
                   icon={Icon.MagnifyingGlass}
                   shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
@@ -4322,6 +4591,7 @@ export default function ScoutPrepCommand() {
               visibleTasks={selectedTaskRows.map((item) => item.task)}
               taskListSort={taskListSort}
               onToggleProspectSearchMode={toggleProspectSearchMode}
+              onShowPersonalFollowUps={showPersonalFollowUps}
               onSelectTaskListFilter={setTaskListFilter}
               onCycleTaskListSort={cycleSort}
               onReturnToRootList={() => undefined}

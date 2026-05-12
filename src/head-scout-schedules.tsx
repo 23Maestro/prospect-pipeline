@@ -71,7 +71,11 @@ import {
 import { fetchScoutPortalTasks, loadScoutPrepContext } from './lib/scout-prep';
 import { upsertReminders, type SupabasePersistenceConfig } from './domain/supabase-persistence';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
-import { getCachedSetMeetings, setCachedSetMeetings } from './lib/set-meetings-cache';
+import {
+  getCachedSetMeetings,
+  setCachedSetMeetings,
+  shouldRenderCachedSetMeetingsSnapshot,
+} from './lib/set-meetings-cache';
 
 function getReminderSupabaseConfig(): SupabasePersistenceConfig | null {
   const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
@@ -499,7 +503,7 @@ export function HeadScoutBookingsList({
     async function load() {
       const shouldUseCache = weeklyMeetingsOnly;
       let renderedCachedCandidates = false;
-      setIsLoading(!shouldUseCache);
+      setIsLoading(true);
       try {
         if (shouldUseCache && !refreshRequest.forceLive) {
           const cached = await getCachedSetMeetings<HeadScoutFollowUpCandidate>({
@@ -508,7 +512,7 @@ export function HeadScoutBookingsList({
             scoutName,
           });
           if (cancelled) return;
-          if (cached?.snapshot) {
+          if (shouldRenderCachedSetMeetingsSnapshot(cached)) {
             setCandidates(cached.snapshot.candidates);
             renderedCachedCandidates = true;
             if (!cached.isDueForHourlyRefresh) {
@@ -518,7 +522,7 @@ export function HeadScoutBookingsList({
           }
         }
 
-        setIsLoading(!renderedCachedCandidates);
+        setIsLoading(true);
         const liveCandidates = await loadLive();
         if (cancelled) return;
         setCandidates(liveCandidates);

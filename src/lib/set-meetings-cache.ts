@@ -54,6 +54,15 @@ export function isSetMeetingsCacheDueForHourlyRefresh(cachedAt: string, now = ne
   return getLocalHourBucket(cachedDate) !== getLocalHourBucket(now);
 }
 
+export function shouldRenderCachedSetMeetingsSnapshot<TCandidate>(
+  cached: SetMeetingsCacheReadResult<TCandidate>,
+): cached is NonNullable<SetMeetingsCacheReadResult<TCandidate>> {
+  if (!cached) {
+    return false;
+  }
+  return !cached.isDueForHourlyRefresh || cached.snapshot.candidates.length > 0;
+}
+
 export async function getCachedSetMeetings<TCandidate = unknown>(args: {
   weekStart: string;
   weekEnd: string;
