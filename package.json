@@ -112,7 +112,7 @@
     "@raycast/eslint-config": "^2.1.1",
     "@types/node": "^20.19.39",
     "@types/react": "^19.2.14",
-    "@typescript-eslint/eslint-plugin": "^8.59.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.3",
     "@typescript-eslint/parser": "^8.59.0",
     "concurrently": "^9.2.1",
     "eslint": "^10.2.1",
