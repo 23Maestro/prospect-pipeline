@@ -789,7 +789,7 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(card, /\*\*If Unaware, Say:\*\*/);
   assert.match(
     card,
-    /> No problem\. He filled out some info with us online, so I’m just following up with you to see if this is something the family supports\./,
+    /> No problem, let me take a few steps back\.  \n> Prospect ID is a recruiting platform where student-athletes can create an online recruiting resume to help streamline getting connected with college coaches\.  \n> We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport\./,
   );
   assert.match(card, /### Confirm Interest/);
   assert.match(card, /### Scout Notes/);
@@ -799,16 +799,18 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.equal((card.match(/^### /gm) || []).length, 6);
   assert.match(
     card,
-    /> Hi Jamie, I’m Jerami Singleton with Prospect ID\. How are you today\?  \n> Prospect ID is a recruiting service where Bryson made a profile to connect with college coaches and play college football\. Did he mention that to you\?/,
+    /> Hi Jamie, I’m Jerami Singleton with Prospect ID\. How are you today\?  \n> I’m following up on Bryson\. Bryson made a profile to connect with college coaches and is showing clear interest in playing college football\. Did Bryson mention this to you, or is this kind of a blindside\?/,
   );
   assert.doesNotMatch(card, /\\n/);
   assert.doesNotMatch(card, /^>$/m);
   assert.match(
     card,
-    /- Do you support Bryson taking this step\?\n- Is Bryson looking to play college football\?/,
+    /- Are you comfortable with Bryson taking steps to get in front of college coaches\?\n- When it comes to college football, is this something Bryson is serious about, or still just exploring\?/,
   );
   assert.match(card, /We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport/);
-  assert.match(card, /Some athletes do not make the cut, whether it is character, grades, or fit/);
+  assert.match(card, /Some athletes do not make the cut, whether it is grades, character, talent, or fit/);
+  assert.doesNotMatch(card, /Is Bryson looking to play college football/);
+  assert.doesNotMatch(card, /This call is to see if Bryson fits for football/);
   assert.match(card, /For football, June 15 is when coaches can start calling juniors/);
   assert.match(card, /The goal is to use this window before June 15/);
   assert.match(card, /The goal is to use this window before June 15/);
@@ -862,8 +864,8 @@ test('buildScoutPrepCard: uses resolved sport in live script copy', () => {
     }),
   ).markdown;
 
-  assert.match(card, /Prospect ID is a recruiting service where Jason made a profile to connect with college coaches/);
-  assert.match(card, /looking to play college men's basketball/);
+  assert.match(card, /Jason made a profile to connect with college coaches and is showing clear interest in playing college men's basketball/);
+  assert.match(card, /When it comes to college men's basketball, is this something Jason is serious about, or still just exploring/);
   assert.match(card, /serious about men's basketball/);
   assert.match(card, /For men's basketball, June 15 after sophomore year is the date to be ready for/);
   assert.doesNotMatch(card, /college football/);
@@ -879,7 +881,7 @@ test('buildScoutPrepCard: branches football prompts by position group', () => {
   };
 
   const olCard = buildScoutPrepCard(baseValues, buildContext()).markdown;
-  assert.match(olCard, /What’s his size and frame looking like right now\?/);
+  assert.match(olCard, /On the line, is Bryson's separator size, strength, feet, or how physical he is\?/);
   assert.doesNotMatch(olCard, /squat, bench/);
   assert.doesNotMatch(olCard, /quick is he off the ball/);
 
@@ -887,21 +889,101 @@ test('buildScoutPrepCard: branches football prompts by position group', () => {
     baseValues,
     buildContext({ resolved: { positions: 'WR / RB' } }),
   ).markdown;
-  assert.match(skillCard, /production did he have/);
+  assert.match(skillCard, /Is Bryson's separator speed, production, ball skills, or what he does after contact\?/);
   assert.doesNotMatch(skillCard, /explosive does he look in space/);
 
   const qbCard = buildScoutPrepCard(
     baseValues,
     buildContext({ resolved: { positions: 'QB' } }),
   ).markdown;
-  assert.match(qbCard, /How does he lead the group when things get tight\?/);
+  assert.match(qbCard, /At quarterback, is Bryson's separator arm talent, decision-making, leadership, or production\?/);
   assert.doesNotMatch(qbCard, /arm talent, accuracy, and decision-making/);
 
   const dbCard = buildScoutPrepCard(
     baseValues,
     buildContext({ resolved: { positions: 'LB / DB' } }),
   ).markdown;
-  assert.match(dbCard, /tackles, coverage plays, turnovers/);
+  assert.match(dbCard, /At linebacker, is Bryson's separator instincts, physicality, coverage, or sideline-to-sideline speed\?/);
+});
+
+test('buildScoutPrepCard: uses sport and position map for baseball scout notes', () => {
+  const card = buildScoutPrepCard(
+    {
+      athleteName: 'Cavion Jones',
+      parent1Name: 'Jamie Jones',
+      gradYear: 'Junior',
+      sport: 'Baseball',
+    },
+    buildContext({
+      resolved: {
+        sport: 'Baseball',
+        positions: 'SS',
+        gpa: '3.2',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Cavion Jones',
+          email: null,
+          phone: null,
+        },
+        parent1: {
+          name: 'Jamie Jones',
+          relationship: 'Mother',
+          email: null,
+          phone: null,
+        },
+        parent2: null,
+      },
+    }),
+  ).markdown;
+
+  assert.match(
+    card,
+    /At shortstop, is Cavion more of a defensive anchor, bat-first, or both\?/,
+  );
+  assert.match(card, /Any 60 time or arm strength numbers\?/);
+  assert.doesNotMatch(card, /Where does he fit best right now/);
+  assert.doesNotMatch(card, /Are there any numbers that really stand out right now/);
+});
+
+test('buildScoutPrepCard: uses sport and position map for basketball scout notes', () => {
+  const card = buildScoutPrepCard(
+    {
+      athleteName: 'Jason Torres',
+      parent1Name: 'Amy Torres',
+      gradYear: 'Sophomore',
+      sport: "Men's Basketball",
+    },
+    buildContext({
+      resolved: {
+        sport: "Men's Basketball",
+        positions: 'PG',
+        gpa: '3.4',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jason Torres',
+          email: null,
+          phone: null,
+        },
+        parent1: {
+          name: 'Amy Torres',
+          relationship: 'Mother',
+          email: null,
+          phone: null,
+        },
+        parent2: null,
+      },
+    }),
+  ).markdown;
+
+  assert.match(
+    card,
+    /At point guard, is Jason's separator handle, decision-making, shooting, or ability to defend\?/,
+  );
+  assert.match(card, /varsity role, AAU level, production, shooting, handle, defense/);
 });
 
 test('buildScoutPrepCard: grad year changes deficit and GPA changes tone only', () => {

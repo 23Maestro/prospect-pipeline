@@ -36,6 +36,12 @@ type RecruitingTimelineReference = {
   contactDateLabel: string;
 };
 
+type PositionQuestionRule = {
+  sportPatterns: RegExp[];
+  positionPatterns: RegExp[];
+  buildQuestion: (athleteFirst: string, position: string) => string;
+};
+
 const DEFAULT_RECRUITING_TIMELINE: RecruitingTimelineReference = {
   patterns: [],
   label: 'this sport',
@@ -101,6 +107,129 @@ const RECRUITING_TIMELINE_REFERENCES: RecruitingTimelineReference[] = [
     contactMonth: 1,
     contactDay: 1,
     contactDateLabel: 'January 1',
+  },
+];
+
+const POSITION_QUESTION_RULES: PositionQuestionRule[] = [
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bqb\b|\bquarterback\b/],
+    buildQuestion: (athleteFirst) =>
+      `At quarterback, is ${athleteFirst}'s separator arm talent, decision-making, leadership, or production?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\brb\b|\brunning back\b|\bwr\b|\bwide receiver\b|\bte\b|\btight end\b|\bret\b|\breturner\b/],
+    buildQuestion: (athleteFirst) =>
+      `Is ${athleteFirst}'s separator speed, production, ball skills, or what he does after contact?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bot\b|\bog\b|\bol\b|\boffensive tackle\b|\boffensive guard\b|\boffensive line\b|\bls\b|\blong snapper\b/],
+    buildQuestion: (athleteFirst) =>
+      `On the line, is ${athleteFirst}'s separator size, strength, feet, or how physical he is?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bde\b|\bdt\b|\bdl\b|\bdefensive end\b|\bdefensive tackle\b|\bdefensive line\b/],
+    buildQuestion: (athleteFirst) =>
+      `Up front defensively, is ${athleteFirst}'s separator get-off, strength, motor, or production?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bolb\b|\bilb\b|\blb\b|\boutside linebacker\b|\binside linebacker\b|\blinebacker\b/],
+    buildQuestion: (athleteFirst) =>
+      `At linebacker, is ${athleteFirst}'s separator instincts, physicality, coverage, or sideline-to-sideline speed?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bcb\b|\bs\b|\bdb\b|\bcornerback\b|\bsafety\b|\bdefensive back\b/],
+    buildQuestion: (athleteFirst) =>
+      `In the secondary, is ${athleteFirst}'s separator coverage, ball skills, speed, or tackling?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bk\b|\bkicker\b|\bp\b|\bpunter\b/],
+    buildQuestion: (athleteFirst) =>
+      `Special teams-wise, what are ${athleteFirst}'s best verified numbers and game-pressure results?`,
+  },
+  {
+    sportPatterns: [/\bfootball\b/],
+    positionPatterns: [/\bath\b|\bathlete\b/],
+    buildQuestion: (athleteFirst) =>
+      `As an athlete, is ${athleteFirst}'s separator speed, versatility, physicality, or production?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\bss\b|\bshortstop\b/],
+    buildQuestion: (athleteFirst) =>
+      `At shortstop, is ${athleteFirst} more of a defensive anchor, bat-first, or both?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\bp\b|\bpitcher\b|\brhp\b|\blhp\b/],
+    buildQuestion: (athleteFirst) =>
+      `On the mound, what does ${athleteFirst} usually sit velocity-wise, and what is his best secondary pitch?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\bc\b|\bcatcher\b/],
+    buildQuestion: (athleteFirst) =>
+      `Behind the plate, how is ${athleteFirst}'s arm strength, receiving, and ability to control the game?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\b1b\b|\bfirst base\b|\b3b\b|\bthird base\b/],
+    buildQuestion: (athleteFirst) =>
+      `At the corner, is ${athleteFirst} more power bat, run producer, glove, or arm?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\b2b\b|\bsecond base\b/],
+    buildQuestion: (athleteFirst) =>
+      `At second base, is ${athleteFirst}'s separator glove, bat-to-ball, speed, or baseball IQ?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\bof\b|\boutfield\b|\bcf\b|\blf\b|\brf\b/],
+    buildQuestion: (athleteFirst) =>
+      `In the outfield, is ${athleteFirst}'s separator speed, arm strength, reads, or the bat?`,
+  },
+  {
+    sportPatterns: [/\bbaseball\b/],
+    positionPatterns: [/\bdh\b|\bdesignated hitter\b|\butil\b|\butility\b/],
+    buildQuestion: (athleteFirst) =>
+      `Is ${athleteFirst}'s biggest baseball value the bat, versatility, athleticism, or a specific defensive spot?`,
+  },
+  {
+    sportPatterns: [/\bbasketball\b/],
+    positionPatterns: [/\bpg\b|\bpoint guard\b/],
+    buildQuestion: (athleteFirst) =>
+      `At point guard, is ${athleteFirst}'s separator handle, decision-making, shooting, or ability to defend?`,
+  },
+  {
+    sportPatterns: [/\bbasketball\b/],
+    positionPatterns: [/\bsg\b|\bshooting guard\b|\bguard\b/],
+    buildQuestion: (athleteFirst) =>
+      `At guard, is ${athleteFirst}'s separator shooting, handle, downhill ability, or defense?`,
+  },
+  {
+    sportPatterns: [/\bbasketball\b/],
+    positionPatterns: [/\bsf\b|\bsmall forward\b|\bwing\b/],
+    buildQuestion: (athleteFirst) =>
+      `On the wing, is ${athleteFirst}'s separator shooting, slashing, defense, or versatility?`,
+  },
+  {
+    sportPatterns: [/\bbasketball\b/],
+    positionPatterns: [/\bpf\b|\bpower forward\b|\bpost\b/],
+    buildQuestion: (athleteFirst) =>
+      `In the frontcourt, is ${athleteFirst}'s separator size, rebounding, skill, or defensive versatility?`,
+  },
+  {
+    sportPatterns: [/\bbasketball\b/],
+    positionPatterns: [/\bc\b|\bcenter\b/],
+    buildQuestion: (athleteFirst) =>
+      `At center, is ${athleteFirst}'s separator size, rim protection, rebounding, touch, or mobility?`,
   },
 ];
 
@@ -309,12 +438,18 @@ function buildPositionSpecificPrompts(
 ): string[] {
   const sport = getSportFamily(context?.resolved.sport || values.sport);
   const position = cleanPositions(context?.resolved.positions);
+  const positionQuestion = findPositionQuestion(values, context);
+
+  if (positionQuestion) {
+    return [
+      positionQuestion,
+      'What do coaches usually notice first when they watch him?',
+    ];
+  }
 
   if (sport !== 'football') {
     return [
-      position
-        ? `I see ${athleteFirstName(values, context)} plays ${position}. Where does he fit best right now?`
-        : 'What role is he playing the most right now?',
+      buildSportRoleQuestion(values, context),
       'What do coaches usually notice first when they watch him?',
     ];
   }
@@ -375,6 +510,46 @@ function buildSummaryLine(values: ScoutPrepFormValues, context?: ScoutPrepContex
 
 function isSportMatch(sport: string, patterns: RegExp[]): boolean {
   return patterns.some((pattern) => pattern.test(sport));
+}
+
+function findPositionQuestion(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): string | null {
+  const sport = sportLabel(values, context).toLowerCase();
+  const position = cleanPositions(context?.resolved.positions);
+  if (!position) return null;
+
+  const normalizedPosition = position.toLowerCase();
+  const rule = POSITION_QUESTION_RULES.find(
+    (candidate) =>
+      isSportMatch(sport, candidate.sportPatterns) &&
+      isSportMatch(normalizedPosition, candidate.positionPatterns),
+  );
+
+  return rule?.buildQuestion(athleteFirstName(values, context), position) || null;
+}
+
+function buildSportRoleQuestion(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
+  const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const athleteFirst = athleteFirstName(values, context);
+  const position = cleanPositions(context?.resolved.positions);
+
+  if (sport === 'baseball') {
+    return position
+      ? `Where does ${athleteFirst} project best long-term in baseball: ${position}, another spot, or more as a bat?`
+      : `What is ${athleteFirst}'s main baseball role right now: position, bat, arm, or overall athlete?`;
+  }
+
+  if (sport === 'basketball') {
+    return position
+      ? `How is ${athleteFirst} being used right now, and what does that position ask him to do best?`
+      : `What role is ${athleteFirst} playing most right now: primary ball-handler, scorer, defender, shooter, or inside presence?`;
+  }
+
+  return position
+    ? `I see ${athleteFirst} plays ${position}. What does he do best there?`
+    : `What role is ${athleteFirst} playing the most right now?`;
 }
 
 function resolveRecruitingTimelineReference(
@@ -473,6 +648,18 @@ function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrep
       'Any updated strength numbers or offseason testing numbers?',
     ];
   }
+  if (sport === 'baseball') {
+    return [
+      'Any 60 time or arm strength numbers?',
+      'Any recent stats, varsity role, travel ball level, or coach feedback that stands out?',
+    ];
+  }
+  if (sport === 'basketball') {
+    return [
+      'What proof does he have right now: varsity role, AAU level, production, shooting, handle, defense, or coach feedback?',
+      'Any stats, film moments, or coach feedback that usually gets people interested?',
+    ];
+  }
   return [
     'Are there any numbers that really stand out right now?',
     'What measurables do coaches usually react to first?',
@@ -527,20 +714,21 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '',
       blockQuote([
         `Hi ${parent1First}, I’m Jerami Singleton with Prospect ID. How are you today?`,
-        `Prospect ID is a recruiting service where ${athleteFirst} made a profile to connect with college coaches and play ${collegeSport}. Did he mention that to you?`,
+        `I’m following up on ${athleteFirst}. ${athleteFirst} made a profile to connect with college coaches and is showing clear interest in playing ${collegeSport}. Did ${athleteFirst} mention this to you, or is this kind of a blindside?`,
       ]),
       '',
       '**If Unaware, Say:**',
       blockQuote([
-        'No problem. He filled out some info with us online, so I’m just following up with you to see if this is something the family supports.',
+        'No problem, let me take a few steps back.',
+        'Prospect ID is a recruiting platform where student-athletes can create an online recruiting resume to help streamline getting connected with college coaches.',
+        `We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport. Some athletes do not make the cut, whether it is grades, character, talent, or fit, so this call is really to see if ${athleteFirst} belongs in that group.`,
       ]),
     ].join('\n'),
     [
       '### Confirm Interest',
       '',
-      `- Do you support ${athleteFirst} taking this step?`,
-      `- Is ${athleteFirst} looking to play ${collegeSport}?`,
-      `- We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport. This call is to see if ${athleteFirst} fits for ${sportLabel(values, context).toLowerCase()}. Some athletes do not make the cut, whether it is character, grades, or fit, so we keep it tight-knit and nobody's time is wasted.`,
+      `- Are you comfortable with ${athleteFirst} taking steps to get in front of college coaches?`,
+      `- When it comes to ${collegeSport}, is this something ${athleteFirst} is serious about, or still just exploring?`,
     ].join('\n'),
     [
       '### Scout Notes',

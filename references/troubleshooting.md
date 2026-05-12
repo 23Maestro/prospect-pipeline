@@ -34,3 +34,6 @@
 - Scout Prep and Video Progress share the same saved cookie file but run through different local session-manager paths, so a backend role change can break one or both until the saved session is fully rewritten.
 - If recent views go empty while the site still shows rows, reconnect with `bash scripts/npid-session-recover.sh` and retest `/admin/portal`, `/template/template/topviews?scout_id=1408164`, and `/api/v1/scout/recent-profiles`.
 - If a video task exists upstream but is missing locally, inspect cache merge rules before blaming auth. A stale `date_completed` can pin a reassigned task to `Done` even when the live server stage is back to `In Queue`.
+
+## 2026-05-12 Scout Prep Call Card
+- For live-call Scout Notes, prefer short opposition-style recruiting questions such as defensive anchor vs bat-first vs both. Keep measurable prompts narrow to the numbers the caller can actually say out loud.
