@@ -1,0 +1,5 @@
+root: ./docs/gitbook/prospect-id-workflow-sdk
+
+structure:
+  readme: 1_overview.md
+  summary: SUMMARY.md

@@ -37,3 +37,6 @@
 
 ## 2026-05-12 Scout Prep Call Card
 - For live-call Scout Notes, prefer short opposition-style recruiting questions such as defensive anchor vs bat-first vs both. Keep measurable prompts narrow to the numbers the caller can actually say out loud.
+
+## 2026-05-12 Workflow SDK GitBook
+- When selling the workflow SDK direction, frame it as a website/API upgrade that lets selected workflows accept and return stable JSON. Keep app keys, local sessions, and Raycast-specific mechanics out of the core pitch unless they are needed for implementation detail.

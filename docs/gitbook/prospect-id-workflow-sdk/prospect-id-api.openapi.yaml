@@ -1,0 +1,537 @@
+openapi: 3.1.0
+info:
+  title: Prospect ID Workflow Contracts
+  version: 0.1.0
+  summary: Proposed JSON contracts for high-value Prospect ID workflows.
+  description: |
+    Neutral first proposal for selected Prospect ID website endpoints that
+    accept application/json requests and return predictable JSON responses.
+    The goal is to modernize workflow contracts around appointment setting,
+    video progress, and customer video requests without requiring a broad
+    site rebuild.
+servers:
+  - url: https://dashboard.nationalpid.com
+    description: Prospect ID website
+tags:
+  - name: Workflow
+    description: Shared workflow identity, status, and next-action resolution.
+  - name: Calendar
+    description: Open slots and meeting context.
+  - name: Meetings
+    description: Meeting set and confirmation workflows.
+  - name: Sales
+    description: Sales-stage workflow updates.
+  - name: Videos
+    description: Video submit, edit, and progress workflows.
+  - name: Customer
+    description: Structured customer video-request intake.
+paths:
+  /api/workflow/resolve:
+    post:
+      tags: [Workflow]
+      summary: Resolve workflow context
+      description: Resolve stable identity, workflow status, and next actions before creating or routing work.
+      operationId: resolveWorkflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowResolveRequest"
+            examples:
+              meetingSet:
+                value:
+                  athlete_id: "123"
+                  athlete_main_id: "456"
+                  workflow_type: meeting_set
+                  source: website
+      responses:
+        "200":
+          description: Workflow context resolved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+              examples:
+                ready:
+                  value:
+                    success: true
+                    workflow_key: meeting_set:athlete_123:main_456:football
+                    status: ready
+                    data:
+                      athlete_id: "123"
+                      athlete_main_id: "456"
+                      sport_id: football
+                      workflow_type: meeting_set
+                    next_actions: [open_slots, set_meeting, copy_confirmation]
+                    errors: []
+        "422":
+          $ref: "#/components/responses/NeedsReview"
+  /api/calendar/open-slots:
+    get:
+      tags: [Calendar]
+      summary: List open meeting slots
+      description: Return filtered open meeting slots without requiring manual calendar navigation.
+      operationId: listOpenSlots
+      parameters:
+        - name: scout_id
+          in: query
+          schema:
+            type: string
+          description: Optional scout or meeting owner identifier.
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Optional target date.
+        - name: timezone
+          in: query
+          schema:
+            type: string
+          description: IANA timezone for display and filtering.
+      responses:
+        "200":
+          description: Open slots returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OpenSlotsResponse"
+  /api/meetings/context:
+    get:
+      tags: [Meetings]
+      summary: Get meeting context
+      description: Return parent, athlete, scout, date, time, timezone, and approved confirmation copy.
+      operationId: getMeetingContext
+      parameters:
+        - name: athlete_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: athlete_main_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: meeting_id
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Meeting context returned.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeetingContextResponse"
+  /api/meetings/set:
+    post:
+      tags: [Meetings]
+      summary: Set meeting
+      description: Submit selected appointment details and return updated task, stage, meeting, and confirmation state.
+      operationId: setMeeting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetMeetingRequest"
+      responses:
+        "200":
+          description: Meeting submitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+              examples:
+                meetingSet:
+                  value:
+                    success: true
+                    workflow_key: meeting_set:athlete_1462822:main_941787:event_123
+                    status: meeting_set
+                    data:
+                      sales_stage: Meeting Set
+                      task_status: completed
+                      meeting_event_id: event_123
+                      confirmation_text: "Hi [Parent Name], this is Prospect ID confirming [Athlete Name]'s evaluation with [Scout Name] for [Day] at [Time] [Timezone]. Please reply YES to confirm."
+                    next_actions: [copy_confirmation, record_follow_up]
+                    errors: []
+        "422":
+          $ref: "#/components/responses/NeedsReview"
+  /api/sales/stage:
+    post:
+      tags: [Sales]
+      summary: Update sales stage
+      description: Update the official sales stage from a JSON body and return the resulting workflow state.
+      operationId: updateSalesStage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SalesStageUpdateRequest"
+      responses:
+        "200":
+          description: Sales stage updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+  /api/videos/submit:
+    post:
+      tags: [Videos]
+      summary: Submit video
+      description: Submit a video and return athlete, video, stage, and next-action state.
+      operationId: submitVideo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoSubmitRequest"
+      responses:
+        "200":
+          description: Video submitted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+  /api/videos/progress-stage:
+    post:
+      tags: [Videos]
+      summary: Update video progress stage
+      description: Update video progress stage from a JSON body.
+      operationId: updateVideoProgressStage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoProgressStageRequest"
+      responses:
+        "200":
+          description: Stage updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+  /api/videos/progress-status:
+    post:
+      tags: [Videos]
+      summary: Update video progress status
+      description: Update video progress status from a JSON body.
+      operationId: updateVideoProgressStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoProgressStatusRequest"
+      responses:
+        "200":
+          description: Status updated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+  /api/videos/progress-action:
+    post:
+      tags: [Videos]
+      summary: Run video progress action
+      description: Run the full submit/edit progress update chain from one action.
+      operationId: runVideoProgressAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoProgressActionRequest"
+      responses:
+        "200":
+          description: Video progress action completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+              examples:
+                submitted:
+                  value:
+                    success: true
+                    workflow_key: video_progress:athlete_1462822:main_941787:football:message_11875
+                    status: updated
+                    data:
+                      stage: Done
+                      video_status: HUDL
+                      handled_state: video_submitted
+                    next_actions: [prepare_customer_update]
+                    errors: []
+        "422":
+          $ref: "#/components/responses/NeedsReview"
+  /api/customer/video-action:
+    post:
+      tags: [Customer]
+      summary: Ingest customer video action
+      description: Convert a customer-selected video action into a structured work item.
+      operationId: ingestCustomerVideoAction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CustomerVideoActionRequest"
+      responses:
+        "200":
+          description: Customer video action ingested.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowEnvelope"
+        "422":
+          $ref: "#/components/responses/NeedsReview"
+components:
+  responses:
+    NeedsReview:
+      description: Request needs manual review.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/WorkflowEnvelope"
+          examples:
+            missingAthlete:
+              value:
+                success: false
+                workflow_key: null
+                status: needs_review
+                data: {}
+                next_actions: [review_manually]
+                errors:
+                  - code: missing_athlete_identity
+                    message: The request could not be matched to a single athlete.
+  schemas:
+    WorkflowEnvelope:
+      type: object
+      required: [success, status, data, next_actions, errors]
+      properties:
+        success:
+          type: boolean
+        workflow_key:
+          type:
+            - string
+            - "null"
+        status:
+          type: string
+          examples: [ready, updated, meeting_set, needs_review]
+        data:
+          type: object
+          additionalProperties: true
+        next_actions:
+          type: array
+          items:
+            type: string
+        errors:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowError"
+    WorkflowError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+    WorkflowResolveRequest:
+      type: object
+      required: [workflow_type]
+      properties:
+        athlete_id:
+          type: string
+        athlete_main_id:
+          type: string
+        sport_id:
+          type: string
+        contact_id:
+          type: string
+        workflow_type:
+          type: string
+          examples: [meeting_set, video_progress, customer_video]
+        source:
+          type: string
+          examples: [website]
+    OpenSlotsResponse:
+      allOf:
+        - $ref: "#/components/schemas/WorkflowEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [slots]
+              properties:
+                slots:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/OpenSlot"
+    OpenSlot:
+      type: object
+      required: [slot_id, start_time, end_time]
+      properties:
+        slot_id:
+          type: string
+        scout_id:
+          type: string
+        scout_name:
+          type: string
+        start_time:
+          type: string
+          format: date-time
+        end_time:
+          type: string
+          format: date-time
+        timezone:
+          type: string
+    MeetingContextResponse:
+      allOf:
+        - $ref: "#/components/schemas/WorkflowEnvelope"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                athlete_name:
+                  type: string
+                parent_name:
+                  type: string
+                scout_name:
+                  type: string
+                meeting_time:
+                  type: string
+                  format: date-time
+                meeting_timezone:
+                  type: string
+                confirmation_text:
+                  type: string
+    SetMeetingRequest:
+      type: object
+      required: [athlete_id, athlete_main_id, meeting_name, meeting_timezone, open_event_id, start_time]
+      properties:
+        athlete_id:
+          type: string
+        athlete_main_id:
+          type: string
+        meeting_name:
+          type: string
+        meeting_timezone:
+          type: string
+        assigned_to:
+          type: string
+        open_event_id:
+          type: string
+        task_description:
+          type: string
+        start_time:
+          type: string
+        meeting_length:
+          type: string
+          examples: ["01:00"]
+        template_id:
+          type: string
+    SalesStageUpdateRequest:
+      type: object
+      required: [athlete_id, athlete_main_id, stage]
+      properties:
+        athlete_id:
+          type: string
+        athlete_main_id:
+          type: string
+        stage:
+          type: string
+          examples: [Meeting Set]
+    VideoSubmitRequest:
+      type: object
+      required: [athlete_id, athlete_main_id, video_url, video_type, season]
+      properties:
+        athlete_id:
+          type: string
+        athlete_main_id:
+          type: string
+        video_url:
+          type: string
+          format: uri
+        video_type:
+          type: string
+          examples: [Full Season Highlight]
+        season:
+          type: string
+          examples: [highschool:16137]
+        season_type:
+          type: string
+        source:
+          type: string
+          examples: [youtube, hudl]
+        auto_approve:
+          type: boolean
+        sport:
+          type: string
+    VideoProgressStageRequest:
+      type: object
+      required: [video_message_id, stage]
+      properties:
+        video_message_id:
+          type: string
+        stage:
+          type: string
+          examples: [On Hold, Awaiting Client, In Queue, Done]
+    VideoProgressStatusRequest:
+      type: object
+      required: [video_message_id, video_status]
+      properties:
+        video_message_id:
+          type: string
+        video_status:
+          type: string
+          examples: [Revisions, HUDL, Dropbox, External Links, Not Approved]
+    VideoProgressActionRequest:
+      type: object
+      required: [action, athlete_id, athlete_main_id]
+      properties:
+        action:
+          type: string
+          examples: [video_submitted, revision_submitted, video_updated, no_edit_needed]
+        athlete_id:
+          type: string
+        athlete_main_id:
+          type: string
+        video_message_id:
+          type: string
+        video_url:
+          type: string
+          format: uri
+        video_type:
+          type: string
+        season:
+          type: string
+        sport_id:
+          type: string
+    CustomerVideoActionRequest:
+      type: object
+      required: [action, athlete_id, athlete_main_id]
+      properties:
+        action:
+          type: string
+          examples: [on_hold, hudl, dropbox, external_links, revisions, no_edit_needed]
+        athlete_id:
+          type: string
+        athlete_main_id:
+          type: string
+        contact_id:
+          type: string
+        sport_id:
+          type: string
+        notes:
+          type: string
+        links:
+          type: array
+          items:
+            type: string
+            format: uri
