@@ -71,11 +71,15 @@ import {
 import { fetchScoutPortalTasks, loadScoutPrepContext } from './lib/scout-prep';
 import { upsertReminders, type SupabasePersistenceConfig } from './domain/supabase-persistence';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
-
+import { getCachedSetMeetings, setCachedSetMeetings } from './lib/set-meetings-cache';
 
 function getReminderSupabaseConfig(): SupabasePersistenceConfig | null {
-  const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '').trim().replace(/\/+$/, '');
-  const key = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '').trim();
+  const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const key = String(
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  ).trim();
   const schema = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
   return url && key ? { url, key, schema } : null;
 }
@@ -450,7 +454,7 @@ export function HeadScoutBookingsList({
   const [isLoading, setIsLoading] = useState(true);
   const [sendingTextKey, setSendingTextKey] = useState<string | null>(null);
   const [updatingMeetingKey, setUpdatingMeetingKey] = useState<string | null>(null);
-  const [refreshTick, setRefreshTick] = useState(0);
+  const [refreshRequest, setRefreshRequest] = useState({ tick: 0, forceLive: false });
   const weekWindow = useMemo(() => buildHeadScoutWeekWindow(weekOffset), [weekOffset]);
   const weekLabel = useMemo(
     () => formatHeadScoutWeekLabel(weekWindow.start, weekWindow.end),
@@ -460,46 +464,77 @@ export function HeadScoutBookingsList({
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      setIsLoading(true);
-      try {
-        const enriched = weeklyMeetingsOnly
-          ? await loadWeeklyOperatorMeetingCandidates(weekOffset)
-          : await Promise.all(
-              Array.from(
-                new Map(
-                  [
-                    ...(await loadHeadScoutWeeklyMeetingCandidates({
-                      weekStart: weekWindow.start,
-                      weekEnd: weekWindow.end,
-                    })),
-                    ...(await loadHeadScoutFollowUpCandidates()),
-                  ].map((candidate) => [candidate.key, candidate]),
-                ).values(),
-              ).map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
-            );
-        if (cancelled) return;
-        const filteredCandidates = filterWeeklySetMeetingCandidates({
-          candidates: enriched,
-          scoutName,
-          weeklyMeetingsOnly,
-          weekStart: weekWindow.start,
-          weekEnd: weekWindow.end,
-        });
+    async function loadLive() {
+      const enriched = weeklyMeetingsOnly
+        ? await loadWeeklyOperatorMeetingCandidates(weekOffset)
+        : await Promise.all(
+            Array.from(
+              new Map(
+                [
+                  ...(await loadHeadScoutWeeklyMeetingCandidates({
+                    weekStart: weekWindow.start,
+                    weekEnd: weekWindow.end,
+                  })),
+                  ...(await loadHeadScoutFollowUpCandidates()),
+                ].map((candidate) => [candidate.key, candidate]),
+              ).values(),
+            ).map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
+          );
+      const filteredCandidates = filterWeeklySetMeetingCandidates({
+        candidates: enriched,
+        scoutName,
+        weeklyMeetingsOnly,
+        weekStart: weekWindow.start,
+        weekEnd: weekWindow.end,
+      });
 
-        setCandidates(
-          buildSetMeetingsCommandContext({
-            candidates: filteredCandidates,
-            weekWindow,
-            weekLabel,
-            selectedScout: scoutName || null,
-          }).candidates,
-        );
+      return buildSetMeetingsCommandContext({
+        candidates: filteredCandidates,
+        weekWindow,
+        weekLabel,
+        selectedScout: scoutName || null,
+      }).candidates;
+    }
+
+    async function load() {
+      const shouldUseCache = weeklyMeetingsOnly;
+      let renderedCachedCandidates = false;
+      setIsLoading(!shouldUseCache);
+      try {
+        if (shouldUseCache && !refreshRequest.forceLive) {
+          const cached = await getCachedSetMeetings<HeadScoutFollowUpCandidate>({
+            weekStart: weekWindow.start,
+            weekEnd: weekWindow.end,
+            scoutName,
+          });
+          if (cancelled) return;
+          if (cached?.snapshot) {
+            setCandidates(cached.snapshot.candidates);
+            renderedCachedCandidates = true;
+            if (!cached.isDueForHourlyRefresh) {
+              setIsLoading(false);
+              return;
+            }
+          }
+        }
+
+        setIsLoading(!renderedCachedCandidates);
+        const liveCandidates = await loadLive();
+        if (cancelled) return;
+        setCandidates(liveCandidates);
+        if (shouldUseCache) {
+          await setCachedSetMeetings({
+            weekStart: weekWindow.start,
+            weekEnd: weekWindow.end,
+            scoutName,
+            candidates: liveCandidates,
+          });
+        }
       } catch (error) {
         if (!cancelled) {
           await showToast({
             style: Toast.Style.Failure,
-            title: 'Failed to load bookings',
+            title: renderedCachedCandidates ? 'Refresh failed' : 'Failed to load bookings',
             message: error instanceof Error ? error.message : String(error),
           });
         }
@@ -514,7 +549,16 @@ export function HeadScoutBookingsList({
     return () => {
       cancelled = true;
     };
-  }, [refreshTick, scoutName, weekOffset, weekWindow.end, weekWindow.start, weeklyMeetingsOnly]);
+  }, [
+    refreshRequest,
+    scoutName,
+    weekLabel,
+    weekOffset,
+    weekWindow,
+    weekWindow.end,
+    weekWindow.start,
+    weeklyMeetingsOnly,
+  ]);
 
   async function sendConfirmationText(
     candidate: HeadScoutFollowUpCandidate,
@@ -709,7 +753,7 @@ export function HeadScoutBookingsList({
       toast.style = Toast.Style.Success;
       toast.title = 'Saved';
       toast.message = result.updated_title;
-      setRefreshTick((current) => current + 1);
+      setRefreshRequest((current) => ({ tick: current.tick + 1, forceLive: true }));
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Save failed';
@@ -717,6 +761,10 @@ export function HeadScoutBookingsList({
     } finally {
       setUpdatingMeetingKey((current) => (current === candidate.key ? null : current));
     }
+  }
+
+  function refreshLive() {
+    setRefreshRequest((current) => ({ tick: current.tick + 1, forceLive: true }));
   }
 
   return (
@@ -815,10 +863,7 @@ export function HeadScoutBookingsList({
                               icon={Icon.Pencil}
                               shortcut={{ modifiers: ['cmd'], key: 'e' }}
                               target={
-                                <MeetingDetailsForm
-                                  candidate={candidate}
-                                  onSaved={() => setRefreshTick((current) => current + 1)}
-                                />
+                                <MeetingDetailsForm candidate={candidate} onSaved={refreshLive} />
                               }
                             />
                           ) : null}
@@ -831,6 +876,12 @@ export function HeadScoutBookingsList({
                             icon={Icon.Eye}
                             shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
                             target={<PendingClientsWatchlist />}
+                          />
+                          <Action
+                            title="Refresh Live"
+                            icon={Icon.ArrowClockwise}
+                            shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                            onAction={refreshLive}
                           />
                           <Action.Push
                             title="Next Week"
@@ -902,6 +953,12 @@ export function HeadScoutBookingsList({
                   icon={Icon.Eye}
                   shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
                   target={<PendingClientsWatchlist />}
+                />
+                <Action
+                  title="Refresh Live"
+                  icon={Icon.ArrowClockwise}
+                  shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                  onAction={refreshLive}
                 />
                 <Action.Push
                   title="Next Week"
