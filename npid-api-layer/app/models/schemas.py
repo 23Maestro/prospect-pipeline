@@ -410,6 +410,26 @@ class TaskUpdateResponse(BaseModel):
     raw_response: Optional[str] = None
 
 
+class TaskCreateCompletedRequest(BaseModel):
+    athlete_id: str
+    athlete_main_id: str
+    contact_task: Optional[str] = None
+    task_title: str
+    description: str
+    due_date: str
+    due_time: str = "00:00"
+    completed_date: str
+    completed_time: str
+    assigned_to: str = Field(default="1408164")
+
+
+class TaskCreateCompletedResponse(BaseModel):
+    success: bool
+    task_id: Optional[str] = None
+    message: Optional[str] = None
+    raw_response: Optional[str] = None
+
+
 class TaskCompleteRequest(BaseModel):
     athlete_id: str
     athlete_main_id: str
@@ -753,6 +773,7 @@ class BookedMeetingEvent(BaseModel):
     start: str
     end: str
     date_time_label: str
+    description: Optional[str] = None
 
 
 class BookedMeetingLookupResponse(BaseModel):

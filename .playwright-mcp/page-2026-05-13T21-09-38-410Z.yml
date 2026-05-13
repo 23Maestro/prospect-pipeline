@@ -1,0 +1,26 @@
+- generic [ref=e4]:
+  - banner:
+    - generic [ref=e6]:
+      - link "logo" [ref=e8] [cursor=pointer]:
+        - /url: https://nationalpid.com
+        - img "logo" [ref=e9]
+      - link "Get Started" [ref=e11] [cursor=pointer]:
+        - /url: https://nationalpid.com/get-started
+        - generic [ref=e14]: Get Started
+  - main [ref=e15]:
+    - article [ref=e16]:
+      - generic [ref=e21]:
+        - heading "Log in" [level=2] [ref=e25]
+        - generic [ref=e27]:
+          - list [ref=e29]:
+            - listitem [ref=e30]:
+              - generic [ref=e31]: Email
+              - textbox "Email" [ref=e33]
+            - listitem [ref=e34]:
+              - generic [ref=e35]: Password
+              - textbox "Password" [ref=e37]
+          - generic [ref=e39]: Remember me
+          - button "Log in" [ref=e41] [cursor=pointer]
+        - separator [ref=e42]
+        - link "Forgot Password?" [ref=e44] [cursor=pointer]:
+          - /url: https://dashboard.nationalpid.com/forgot-password

@@ -26,6 +26,11 @@ type ScoutPrepCardResult = {
 type GpaBand = 'high' | 'medium' | 'low' | 'unknown';
 type SportFamily = 'football' | 'basketball' | 'baseball' | 'generic';
 type FootballPositionGroup = 'ol_dl' | 'skill' | 'qb' | 'lb_db' | 'generic';
+type AthletePronouns = {
+  subject: 'he' | 'she';
+  object: 'him' | 'her';
+  possessive: 'his' | 'her';
+};
 
 type RecruitingTimelineReference = {
   patterns: RegExp[];
@@ -119,25 +124,33 @@ const POSITION_QUESTION_RULES: PositionQuestionRule[] = [
   },
   {
     sportPatterns: [/\bfootball\b/],
-    positionPatterns: [/\brb\b|\brunning back\b|\bwr\b|\bwide receiver\b|\bte\b|\btight end\b|\bret\b|\breturner\b/],
+    positionPatterns: [
+      /\brb\b|\brunning back\b|\bwr\b|\bwide receiver\b|\bte\b|\btight end\b|\bret\b|\breturner\b/,
+    ],
     buildQuestion: (athleteFirst) =>
       `Is ${athleteFirst}'s separator speed, production, ball skills, or what he does after contact?`,
   },
   {
     sportPatterns: [/\bfootball\b/],
-    positionPatterns: [/\bot\b|\bog\b|\bol\b|\boffensive tackle\b|\boffensive guard\b|\boffensive line\b|\bls\b|\blong snapper\b/],
+    positionPatterns: [
+      /\bot\b|\bog\b|\bol\b|\boffensive tackle\b|\boffensive guard\b|\boffensive line\b|\bls\b|\blong snapper\b/,
+    ],
     buildQuestion: (athleteFirst) =>
       `On the line, is ${athleteFirst}'s separator size, strength, feet, or how physical he is?`,
   },
   {
     sportPatterns: [/\bfootball\b/],
-    positionPatterns: [/\bde\b|\bdt\b|\bdl\b|\bdefensive end\b|\bdefensive tackle\b|\bdefensive line\b/],
+    positionPatterns: [
+      /\bde\b|\bdt\b|\bdl\b|\bdefensive end\b|\bdefensive tackle\b|\bdefensive line\b/,
+    ],
     buildQuestion: (athleteFirst) =>
       `Up front defensively, is ${athleteFirst}'s separator get-off, strength, motor, or production?`,
   },
   {
     sportPatterns: [/\bfootball\b/],
-    positionPatterns: [/\bolb\b|\bilb\b|\blb\b|\boutside linebacker\b|\binside linebacker\b|\blinebacker\b/],
+    positionPatterns: [
+      /\bolb\b|\bilb\b|\blb\b|\boutside linebacker\b|\binside linebacker\b|\blinebacker\b/,
+    ],
     buildQuestion: (athleteFirst) =>
       `At linebacker, is ${athleteFirst}'s separator instincts, physicality, coverage, or sideline-to-sideline speed?`,
   },
@@ -302,6 +315,25 @@ function getSportFamily(value?: string | null): SportFamily {
   return 'generic';
 }
 
+function resolveAthletePronouns(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): AthletePronouns {
+  const sport = normalizeSport(context?.resolved.sport || values.sport)
+    .replace(/[’']/g, '')
+    .replace(/[^a-z\s-]/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  const isFemaleSport =
+    /\b(womens|women|girls|female)\b/.test(sport) ||
+    /\b(softball|volleyball|field hockey|gymnastics|cheer|dance)\b/.test(sport);
+  if (isFemaleSport) {
+    return { subject: 'she', object: 'her', possessive: 'her' };
+  }
+
+  return { subject: 'he', object: 'him', possessive: 'his' };
+}
+
 function getFootballPositionGroup(value?: string | null): FootballPositionGroup {
   const normalized = String(value || '')
     .toUpperCase()
@@ -377,11 +409,12 @@ export function buildDeterministicRapportCues(
   const cityState = formatCityState(context?.resolved.city, context?.resolved.state);
   const athleteFirst = athleteFirstName(values, context);
   const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const pronouns = resolveAthletePronouns(values, context);
 
   if (state) {
     const followUp =
       sport === 'football'
-        ? `What about ${athleteFirst}, is he big into following football too?`
+        ? `What about ${athleteFirst}, is ${pronouns.subject} big into following football too?`
         : `Is ${athleteFirst} pretty locked in on ${sportLabel(values, context).toLowerCase()} right now?`;
     return [`You guys are up in ${state}, right?`, followUp];
   }
@@ -397,18 +430,19 @@ function buildRapportQuestions(values: ScoutPrepFormValues, context?: ScoutPrepC
   const first = athleteFirstName(values, context);
   const state = titleCase(context?.resolved.state);
   const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const pronouns = resolveAthletePronouns(values, context);
 
   if (sport === 'football') {
     return [
       state ? `You guys are up in ${state}, right?` : 'Is football pretty big around your area?',
-      `What about ${first}, is he big into following football too?`,
+      `What about ${first}, is ${pronouns.subject} big into following football too?`,
     ].slice(0, state ? 2 : 1);
   }
 
   return [
     state
       ? `You guys are up in ${state}, right?`
-      : `Is ${sportLabel(values, context).toLowerCase()} pretty big for him right now?`,
+      : `Is ${sportLabel(values, context).toLowerCase()} pretty big for ${pronouns.object} right now?`,
   ];
 }
 
@@ -439,18 +473,19 @@ function buildPositionSpecificPrompts(
   const sport = getSportFamily(context?.resolved.sport || values.sport);
   const position = cleanPositions(context?.resolved.positions);
   const positionQuestion = findPositionQuestion(values, context);
+  const pronouns = resolveAthletePronouns(values, context);
 
   if (positionQuestion) {
     return [
       positionQuestion,
-      'What do coaches usually notice first when they watch him?',
+      `What do coaches usually notice first when they watch ${pronouns.object}?`,
     ];
   }
 
   if (sport !== 'football') {
     return [
       buildSportRoleQuestion(values, context),
-      'What do coaches usually notice first when they watch him?',
+      `What do coaches usually notice first when they watch ${pronouns.object}?`,
     ];
   }
 
@@ -458,37 +493,37 @@ function buildPositionSpecificPrompts(
   const group = getFootballPositionGroup(position);
   if (group === 'ol_dl') {
     return [
-      `${prefix} What’s his size and frame looking like right now?`.trim(),
-      'Where is he strength-wise: squat, bench, or anything coaches ask about?',
-      'How quick is he off the ball, and what kind of varsity role does he have?',
+      `${prefix} What’s ${pronouns.possessive} size and frame looking like right now?`.trim(),
+      `Where is ${pronouns.subject} strength-wise: squat, bench, or anything coaches ask about?`,
+      `How quick is ${pronouns.subject} off the ball, and what kind of varsity role does ${pronouns.subject} have?`,
     ];
   }
   if (group === 'skill') {
     return [
-      `${prefix} What kind of production did he have this season?`.trim(),
-      'What are his speed numbers, and how explosive does he look in space?',
-      'Is he a main option, rotation guy, returner, or used in multiple roles?',
+      `${prefix} What kind of production did ${pronouns.subject} have this season?`.trim(),
+      `What are ${pronouns.possessive} speed numbers, and how explosive does ${pronouns.subject} look in space?`,
+      `Is ${pronouns.subject} a main option, rotation player, returner, or used in multiple roles?`,
     ];
   }
   if (group === 'qb') {
     return [
-      `${prefix} How does he lead the group when things get tight?`.trim(),
-      'How would you describe his arm talent, accuracy, and decision-making?',
-      'What does his coach say he does best as a quarterback?',
+      `${prefix} How does ${pronouns.subject} lead the group when things get tight?`.trim(),
+      `How would you describe ${pronouns.possessive} arm talent, accuracy, and decision-making?`,
+      `What does ${pronouns.possessive} coach say ${pronouns.subject} does best as a quarterback?`,
     ];
   }
   if (group === 'lb_db') {
     return [
-      `${prefix} What kind of production does he have: tackles, coverage plays, turnovers?`.trim(),
-      'How is his speed, instincts, and ability to play in space?',
-      'Can he play multiple spots, or is he locked into one role?',
+      `${prefix} What kind of production does ${pronouns.subject} have: tackles, coverage plays, turnovers?`.trim(),
+      `How is ${pronouns.possessive} speed, instincts, and ability to play in space?`,
+      `Can ${pronouns.subject} play multiple spots, or is ${pronouns.subject} locked into one role?`,
     ];
   }
   return [
     position
-      ? `I see ${athleteFirstName(values, context)} plays ${position}. What does he do best there?`
-      : 'What position is he playing the most right now?',
-    'What do you feel coaches would notice first about him on the field?',
+      ? `I see ${athleteFirstName(values, context)} plays ${position}. What does ${pronouns.subject} do best there?`
+      : `What position is ${pronouns.subject} playing the most right now?`,
+    `What do you feel coaches would notice first about ${pronouns.object} on the field?`,
   ];
 }
 
@@ -496,16 +531,17 @@ function buildSummaryLine(values: ScoutPrepFormValues, context?: ScoutPrepContex
   const sport = sportLabel(values, context);
   const first = athleteFirstName(values, context);
   const gpaBand = getGpaBand(context?.resolved.gpa);
+  const pronouns = resolveAthletePronouns(values, context);
 
   if (gpaBand === 'high') {
-    return `“So from what I’m hearing, you’ve got a high-academic kid, serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who he is.”`;
+    return `“So from what I’m hearing, you’ve got a high-academic kid, serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who ${pronouns.subject} is.”`;
   }
 
   if (values.gradYear === 'Senior') {
     return `“So from what I’m hearing, ${first} is serious about ${sport.toLowerCase()}, and now it’s about getting clear on what is real right now.”`;
   }
 
-  return `“So from what I’m hearing, ${first} is serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who he is.”`;
+  return `“So from what I’m hearing, ${first} is serious about ${sport.toLowerCase()}, and now it’s about making sure the right coaches actually know who ${pronouns.subject} is.”`;
 }
 
 function isSportMatch(sport: string, patterns: RegExp[]): boolean {
@@ -534,6 +570,7 @@ function buildSportRoleQuestion(values: ScoutPrepFormValues, context?: ScoutPrep
   const sport = getSportFamily(context?.resolved.sport || values.sport);
   const athleteFirst = athleteFirstName(values, context);
   const position = cleanPositions(context?.resolved.positions);
+  const pronouns = resolveAthletePronouns(values, context);
 
   if (sport === 'baseball') {
     return position
@@ -548,7 +585,7 @@ function buildSportRoleQuestion(values: ScoutPrepFormValues, context?: ScoutPrep
   }
 
   return position
-    ? `I see ${athleteFirst} plays ${position}. What does he do best there?`
+    ? `I see ${athleteFirst} plays ${position}. What does ${pronouns.subject} do best there?`
     : `What role is ${athleteFirst} playing the most right now?`;
 }
 
@@ -558,16 +595,17 @@ function resolveRecruitingTimelineReference(
 ): RecruitingTimelineReference {
   const sport = sportLabel(values, context).toLowerCase();
   return (
-    RECRUITING_TIMELINE_REFERENCES.find((reference) =>
-      isSportMatch(sport, reference.patterns),
-    ) || {
+    RECRUITING_TIMELINE_REFERENCES.find((reference) => isSportMatch(sport, reference.patterns)) || {
       ...DEFAULT_RECRUITING_TIMELINE,
       label: sport || DEFAULT_RECRUITING_TIMELINE.label,
     }
   );
 }
 
-function hasCoachContactWindowOpened(reference: RecruitingTimelineReference, now = new Date()): boolean {
+function hasCoachContactWindowOpened(
+  reference: RecruitingTimelineReference,
+  now = new Date(),
+): boolean {
   const currentMonth = now.getMonth() + 1;
   const currentDay = now.getDate();
   if (currentMonth > reference.contactMonth) return true;
@@ -606,12 +644,13 @@ function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepConte
   const reference = resolveRecruitingTimelineReference(values, context);
   const sport = reference.label;
   const contactDateLine = recruitingTimelineLine(values, context);
+  const pronouns = resolveAthletePronouns(values, context);
 
   if (values.gradYear === 'Junior') {
     if (!hasCoachContactWindowOpened(reference)) {
       return [
         contactDateLine,
-        `The goal is to use this window before ${reference.contactDateLabel} to make sure the right coaches know who he is.`,
+        `The goal is to use this window before ${reference.contactDateLabel} to make sure the right coaches know who ${pronouns.subject} is.`,
       ];
     }
     return [
@@ -623,7 +662,7 @@ function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepConte
   if (values.gradYear === 'Freshman') {
     return [
       contactDateLine,
-      'Early does not mean rushed; it means coaches know who he is before everyone else catches up.',
+      `Early does not mean rushed; it means coaches know who ${pronouns.subject} is before everyone else catches up.`,
     ];
   }
 
@@ -642,6 +681,7 @@ function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepConte
 
 function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const pronouns = resolveAthletePronouns(values, context);
   if (sport === 'football') {
     return [
       'Height, weight, 40, shuttle, anything like that you feel coaches usually react to?',
@@ -656,7 +696,7 @@ function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrep
   }
   if (sport === 'basketball') {
     return [
-      'What proof does he have right now: varsity role, AAU level, production, shooting, handle, defense, or coach feedback?',
+      `What proof does ${pronouns.subject} have right now: varsity role, AAU level, production, shooting, handle, defense, or coach feedback?`,
       'Any stats, film moments, or coach feedback that usually gets people interested?',
     ];
   }
@@ -668,10 +708,11 @@ function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrep
 
 function buildAcademicScoutNote(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
   const gpaTone = buildGpaToneLine(values, context);
+  const pronouns = resolveAthletePronouns(values, context);
   if (String(context?.resolved.gpa || '').trim()) {
-    return `${gpaTone} Does ${athleteFirstName(values, context)} know what he may want to major in?`;
+    return `${gpaTone} Does ${athleteFirstName(values, context)} know what ${pronouns.subject} may want to major in?`;
   }
-  return `${gpaTone} Does he know what he may want to major in?`;
+  return `${gpaTone} Does ${pronouns.subject} know what ${pronouns.subject} may want to major in?`;
 }
 
 function selectSinglePrompt(prompts: string[]): string | null {
@@ -688,9 +729,7 @@ function selectStrongestDeficitLines(
 }
 
 function blockQuote(lines: string[]): string {
-  return lines
-    .map((line, index) => `> ${line}${index < lines.length - 1 ? '  ' : ''}`)
-    .join('\n');
+  return lines.map((line, index) => `> ${line}${index < lines.length - 1 ? '  ' : ''}`).join('\n');
 }
 
 function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
@@ -748,8 +787,8 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '### Set Meeting',
       '',
       blockQuote([
-        `So the next step is getting you, ${athleteFirst}, and mom on a Zoom with one of our scouts so he can evaluate where ${athleteFirst} is and what needs to happen next.`,
-        'He has [Day/Time Option 1] or [Day/Time Option 2]. Which works better?',
+        `So the next step is getting you, ${athleteFirst}, and mom on a Zoom with one of our scouts so they can evaluate where ${athleteFirst} is and what needs to happen next.`,
+        'They have [Day/Time Option 1] or [Day/Time Option 2]. Which works better?',
       ]),
     ].join('\n'),
     [

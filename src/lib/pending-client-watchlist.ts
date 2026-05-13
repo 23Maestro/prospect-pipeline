@@ -8,7 +8,9 @@ import {
   cleanPendingClientAthleteName,
   filterPendingClientCandidateEvents,
   findPendingClientSignals,
+  hasPendingClientWatchNote,
   PENDING_CLIENT_LIST_LIMIT,
+  selectLatestPendingClientReviewEvent,
   type PendingClientWatchlistRow,
 } from '../domain/pending-client-watchlist';
 import {
@@ -19,7 +21,7 @@ import {
 } from '../domain/supabase-persistence';
 import { confirmPendingClientWithRayAI } from './raycast-ai';
 import {
-  fetchBookedMeetingDetails,
+  fetchAthleteBookedMeetings,
   fetchHeadScoutBookedMeetingsWindow,
   type BookedMeetingEvent,
 } from './head-scout-schedules';
@@ -159,38 +161,49 @@ async function buildConfirmedRows(events: BookedMeetingEvent[]): Promise<{
     const eventDate = getEventDate(event);
     if (!event.event_id || !eventDate) continue;
 
-    const details = await fetchBookedMeetingDetails({
-      eventId: event.event_id,
-      eventDate,
-    });
-    const description = details.description || '';
-    const matchedSignals = findPendingClientSignals(description);
-    if (!matchedSignals.length) continue;
+    const resolvedAthlete = await resolvePendingClientAthlete(event.title || '');
+    if (!resolvedAthlete?.athlete_id || !resolvedAthlete?.athlete_main_id) continue;
 
-    const aiVerdict = await confirmPendingClientWithRayAI({
-      title: details.title || event.title,
-      description,
-      matchedSignals,
+    const athleteMeetings = await fetchAthleteBookedMeetings({
+      athleteId: resolvedAthlete.athlete_id,
+      athleteMainId: resolvedAthlete.athlete_main_id,
     });
-    if (!aiVerdict) {
-      aiUnavailableCount += 1;
-      continue;
+    const reviewEvent = selectLatestPendingClientReviewEvent(event, athleteMeetings.events || []);
+    if (!reviewEvent) continue;
+
+    const description = reviewEvent.description || '';
+    const matchedSignals = findPendingClientSignals(description);
+    if (!hasPendingClientWatchNote(description)) continue;
+
+    let aiVerdict: 'pending_client' | null = 'pending_client';
+    if (matchedSignals.length) {
+      aiVerdict = await confirmPendingClientWithRayAI({
+        title: reviewEvent.title || event.title,
+        description,
+        matchedSignals,
+      });
+      if (!aiVerdict) {
+        aiUnavailableCount += 1;
+        continue;
+      }
     }
 
-    const resolvedAthlete = await resolvePendingClientAthlete(details.title || event.title);
     rows.push(
       buildPendingClientWatchlistRow({
         event: {
           ...event,
-          title: details.title || event.title,
+          title: reviewEvent.title || event.title,
+          event_id: reviewEvent.event_id || event.event_id,
+          start: reviewEvent.start || event.start,
+          end: reviewEvent.end || event.end,
+          date_time_label: reviewEvent.date_time_label || event.date_time_label,
         },
         description,
         matchedSignals,
         aiVerdict,
         athleteId: resolvedAthlete?.athlete_id || null,
         athleteMainId: resolvedAthlete?.athlete_main_id || null,
-        athleteName:
-          resolvedAthlete?.name || cleanPendingClientAthleteName(details.title || event.title),
+        athleteName: resolvedAthlete?.name || cleanPendingClientAthleteName(event.title),
       }),
     );
   }

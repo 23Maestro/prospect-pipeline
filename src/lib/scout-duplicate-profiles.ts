@@ -10,9 +10,12 @@ import {
   updateScoutPrepTask,
 } from './scout-prep';
 import type { AthleteTaskSummary } from '../types/athlete-workflows';
+import { getActiveOperator } from '../domain/owners';
 
 const FEATURE = 'scout-duplicate-profiles';
 const REPEAT_PROFILE_MARKER = 'Repeat Profile';
+const REPEAT_TASK_TITLE = 'REPEAT';
+const REPEAT_TASK_DESCRIPTION = 'REPEAT';
 
 type RawAthleteSearchResult = {
   athlete_id: string;
@@ -60,6 +63,15 @@ type DuplicateProfileResolutionDeps = {
   fetchTasks: (athleteId: string, athleteMainId: string) => Promise<Array<Partial<ScoutAthleteTask>>>;
   updateTask: typeof updateScoutPrepTask;
   completeTask: typeof completeScoutPrepTaskAfterVoicemail;
+  createCompletedTask: (args: {
+    athleteId: string;
+    athleteMainId: string;
+    contactTask?: string | null;
+    taskTitle: string;
+    description: string;
+    assignedTo: string;
+    completedAt: Date;
+  }) => Promise<{ success?: boolean; task_id?: string | null; message?: string | null }>;
 };
 
 function logInfo(event: string, step: string, context?: Record<string, unknown>) {
@@ -248,6 +260,59 @@ async function replaySelectedProfile(contactId: string, athleteMainId: string): 
   await fetchContactInfo(contactId, athleteMainId);
 }
 
+function formatLegacyTaskDate(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}/${day}/${date.getFullYear()}`;
+}
+
+function formatLegacyTaskTime(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+}
+
+async function createCompletedDuplicateRepeatTask(args: {
+  athleteId: string;
+  athleteMainId: string;
+  contactTask?: string | null;
+  taskTitle: string;
+  description: string;
+  assignedTo: string;
+  completedAt: Date;
+}): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
+  const completedDate = formatLegacyTaskDate(args.completedAt);
+  const completedTime = formatLegacyTaskTime(args.completedAt);
+
+  const response = await apiFetch('/tasks/create-completed', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      athlete_id: args.athleteId,
+      athlete_main_id: args.athleteMainId,
+      contact_task: args.contactTask || args.athleteId,
+      task_title: args.taskTitle,
+      description: args.description,
+      due_date: completedDate,
+      due_time: '00:00',
+      completed_date: completedDate,
+      completed_time: completedTime,
+      assigned_to: args.assignedTo,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => '');
+    throw new Error(errorText.slice(0, 200) || `Task create HTTP ${response.status}`);
+  }
+
+  return (await response.json().catch(() => ({}))) as {
+    success?: boolean;
+    task_id?: string | null;
+    message?: string | null;
+  };
+}
+
 function createDefaultDeps(): DuplicateProfileResolutionDeps {
   return {
     searchRows: searchDuplicateRows,
@@ -256,6 +321,7 @@ function createDefaultDeps(): DuplicateProfileResolutionDeps {
     fetchTasks: fetchAthleteTasks,
     updateTask: updateScoutPrepTask,
     completeTask: completeScoutPrepTaskAfterVoicemail,
+    createCompletedTask: createCompletedDuplicateRepeatTask,
   };
 }
 
@@ -354,9 +420,21 @@ export async function runDuplicateProfileResolutionForTask(
       const duplicateTasks = await activeDeps.fetchTasks(candidate.athleteId, athleteMainId);
       const duplicateTask = selectDuplicateCallAttempt1Task(duplicateTasks);
       if (!duplicateTask) {
-        result.skipped.push({
+        const createdTask = await activeDeps.createCompletedTask({
           athleteId: candidate.athleteId,
-          reason: 'No incomplete Call Attempt 1 task on duplicate profile',
+          athleteMainId,
+          contactTask: candidate.athleteId,
+          taskTitle: REPEAT_TASK_TITLE,
+          description: REPEAT_TASK_DESCRIPTION,
+          assignedTo: getActiveOperator().legacyUserId,
+          completedAt: new Date(),
+        });
+        result.completed.push({
+          athleteId: candidate.athleteId,
+          athleteMainId,
+          athleteName: candidate.fullName,
+          taskId: createdTask.task_id || '',
+          taskTitle: REPEAT_TASK_TITLE,
         });
         continue;
       }

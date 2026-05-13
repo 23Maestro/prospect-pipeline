@@ -45,7 +45,7 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(logan?.ownerKey, 'logan_lord');
   assert.equal(logan?.assignedToLegacyUserId, '2254');
   assert.equal(logan?.meetingForLegacyUserId, '2254');
-  assert.equal(logan?.calendarOwnerId, '2254');
+  assert.equal(logan?.calendarOwnerId, 'd9UDl0bRSqQ1owt');
   assert.equal(logan?.city, 'Chandler');
   assert.equal(logan?.state, 'AZ');
   assert.equal(logan?.roles.includes('head_scout'), true);
@@ -54,7 +54,7 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(kenton?.personName, 'Kenton Manis');
   assert.equal(kenton?.assignedToLegacyUserId, '1486538');
   assert.equal(kenton?.meetingForLegacyUserId, '1486538');
-  assert.equal(kenton?.calendarOwnerId, '1486538');
+  assert.equal(kenton?.calendarOwnerId, 'A4H3xiZJdyrEh2X');
   assert.equal(kenton?.city, 'Prosper');
   assert.equal(kenton?.state, 'TX');
   assert.equal(kenton?.roles.includes('head_scout'), true);

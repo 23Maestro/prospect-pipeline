@@ -18,6 +18,7 @@ export type PendingClientEventInput = {
   start?: string | null;
   end?: string | null;
   date_time_label?: string | null;
+  description?: string | null;
 };
 
 export type PendingClientOwnerSnapshot = {
@@ -74,6 +75,9 @@ const SIGNALS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'package', pattern: /\bpackages?\b/i },
   { label: 'invoice', pattern: /\binvoices?\b/i },
   { label: 'post date', pattern: /\bpost\s+date\b/i },
+  { label: 'elite', pattern: /\belite\b/i },
+  { label: 'icon', pattern: /\bicon\b/i },
+  { label: 'legend', pattern: /\blegend\b/i },
 ];
 
 const SPORT_BOUNDARY_PATTERN =
@@ -149,6 +153,41 @@ export function findPendingClientSignals(description?: string | null): string[] 
   const text = normalizeText(description);
   if (!text) return [];
   return SIGNALS.filter((signal) => signal.pattern.test(text)).map((signal) => signal.label);
+}
+
+export function hasPendingClientWatchNote(description?: string | null): boolean {
+  return Boolean(normalizeText(description));
+}
+
+export function selectLatestPendingClientReviewEvent<T extends PendingClientEventInput>(
+  meeting: PendingClientEventInput,
+  athleteEvents: T[],
+): T | null {
+  const meetingEnd = normalizeText(meeting.end) || normalizeText(meeting.start);
+  if (!meetingEnd) return null;
+
+  const meetingEventId = normalizeText(meeting.event_id);
+  const meetingOwner = normalizeText(meeting.assigned_owner).toLowerCase();
+
+  return (
+    (Array.isArray(athleteEvents) ? athleteEvents : [])
+      .filter((event) => {
+        const eventId = normalizeText(event.event_id);
+        const title = normalizeText(event.title);
+        const owner = normalizeText(event.assigned_owner).toLowerCase();
+        const start = normalizeText(event.start);
+        return (
+          eventId !== meetingEventId &&
+          /^Follow Up -/i.test(title) &&
+          hasPendingClientWatchNote(event.description) &&
+          start > meetingEnd &&
+          (!meetingOwner || owner === meetingOwner)
+        );
+      })
+      .sort((left, right) =>
+        normalizeText(right.start).localeCompare(normalizeText(left.start)),
+      )[0] || null
+  );
 }
 
 export function normalizePendingClientAIVerdict(

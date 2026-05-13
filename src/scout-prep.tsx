@@ -1468,14 +1468,14 @@ type ProspectSearchMode = 'athlete' | 'parent';
 function buildScoutPrepTaskFromProspect(result: ProspectResult): ScoutPortalTask | null {
   const athleteId = String(result.athlete_id || '').trim();
   const athleteMainId = String(result.athlete_main_id || '').trim();
-  if (!athleteId || !athleteMainId) {
+  if (!athleteId) {
     return null;
   }
 
   return {
     contact_id: athleteId,
     athlete_id: athleteId,
-    athlete_main_id: athleteMainId,
+    athlete_main_id: athleteMainId || null,
     athlete_name: result.name || `Athlete ${athleteId}`,
     sport: result.sport || null,
     high_school: result.high_school || null,
@@ -3445,16 +3445,6 @@ function ScoutPrepTaskItem({
         return;
       }
 
-      const duplicateHadNoTask = result.skipped.some((item) =>
-        /No incomplete Call Attempt 1 task on duplicate profile/i.test(item.reason),
-      );
-      if (!result.completed.length && duplicateHadNoTask) {
-        toast.style = Toast.Style.Success;
-        toast.title = 'Duplicate found';
-        toast.message = 'Other profile has no task. Keep this one.';
-        return;
-      }
-
       if (!result.completed.length && result.skipped.length) {
         toast.style = Toast.Style.Failure;
         toast.title = 'Duplicate unresolved';
@@ -3837,6 +3827,7 @@ function PersonalFollowUpListItem({
           <Action.OpenInBrowser
             title="Open Prospect Profile"
             icon={Icon.Globe}
+            shortcut={{ modifiers: ['cmd'], key: 'o' }}
             url={
               result.url?.startsWith('http')
                 ? result.url

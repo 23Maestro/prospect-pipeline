@@ -35,6 +35,61 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
         self.assertEqual(updated["completed_time"], "")
         self.assertNotIn("taskcompleted", updated)
 
+    def test_create_completed_task_sets_repeat_payload(self):
+        form_data = {
+            "_token": "abc123",
+            "existingtask": "628893",
+            "tasktitle": "",
+            "taskdescription": "",
+            "contact_task": "",
+            "athlete_main_id": "",
+            "duedate": "",
+            "duetime": "",
+            "completedate": "",
+            "completed_time": "",
+            "assignedto": "",
+        }
+
+        updated = LegacyTranslator.apply_completed_task_create(
+            form_data=form_data,
+            athlete_id="1490821",
+            athlete_main_id="952646",
+            task_title="REPEAT",
+            description="REPEAT",
+            due_date="05/13/2026",
+            due_time="00:00",
+            completed_date="05/13/2026",
+            completed_time="13:40",
+            assigned_to="1408164",
+        )
+
+        self.assertEqual(updated["existingtask"], "628893")
+        self.assertEqual(updated["tasktitle"], "REPEAT")
+        self.assertEqual(updated["taskdescription"], "REPEAT")
+        self.assertEqual(updated["contact_task"], "1490821")
+        self.assertEqual(updated["athlete_main_id"], "952646")
+        self.assertEqual(updated["duedate"], "05/13/2026")
+        self.assertEqual(updated["duetime"], "00:00")
+        self.assertEqual(updated["completedate"], "05/13/2026")
+        self.assertEqual(updated["completed_time"], "13:40")
+        self.assertEqual(updated["assignedto"], "1408164")
+
+    def test_create_task_popup_uses_adminathlete_contract(self):
+        endpoint, params = LegacyTranslator.task_create_popup_to_legacy(
+            adminathlete="1490821",
+            athlete_main_id="952646",
+        )
+
+        self.assertEqual(endpoint, "/template/template/taskpopup")
+        self.assertEqual(
+            params,
+            {
+                "cal_date": "",
+                "adminathlete": "1490821",
+                "athlete_main_id": "952646",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

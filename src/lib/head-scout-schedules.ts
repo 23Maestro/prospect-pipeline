@@ -56,6 +56,7 @@ export type BookedMeetingEvent = {
   start: string;
   end: string;
   date_time_label: string;
+  description?: string | null;
 };
 
 export type BookedMeetingLookupResponse = {

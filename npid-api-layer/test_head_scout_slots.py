@@ -52,11 +52,11 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert james["meeting_for"] == "56"
     assert james["city"] == "Phoenix"
     assert james["state"] == "AZ"
-    assert logan["calendar_owner_id"] == "2254"
+    assert logan["calendar_owner_id"] == "d9UDl0bRSqQ1owt"
     assert logan["meeting_for"] == "2254"
     assert logan["city"] == "Chandler"
     assert logan["state"] == "AZ"
-    assert kenton["calendar_owner_id"] == "1486538"
+    assert kenton["calendar_owner_id"] == "A4H3xiZJdyrEh2X"
     assert kenton["meeting_for"] == "1486538"
     assert kenton["city"] == "Prosper"
     assert kenton["state"] == "TX"
@@ -89,8 +89,8 @@ def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
         ("selectedowner[]", "bMBrA26OElRUwPs"),
         ("selectedowner[]", "nhVvYOz8bAaL57c"),
         ("selectedowner[]", "56"),
-        ("selectedowner[]", "2254"),
-        ("selectedowner[]", "1486538"),
+        ("selectedowner[]", "d9UDl0bRSqQ1owt"),
+        ("selectedowner[]", "A4H3xiZJdyrEh2X"),
         ("selectedowner[]", "avdhyXjQ8bFweEf"),
         ("start", "2026-04-13"),
         ("end", "2026-04-20"),
@@ -109,7 +109,7 @@ def test_build_head_scout_schedule_from_open_meetings_uses_concrete_slots():
         "scout_name": "Kenton Manis",
         "city": "Prosper",
         "state": "TX",
-        "calendar_owner_id": "1486538",
+        "calendar_owner_id": "A4H3xiZJdyrEh2X",
         "meeting_for": "1486538",
     }
     open_meetings_result = {
@@ -150,7 +150,7 @@ def test_build_head_scout_schedule_from_open_meetings_uses_concrete_slots():
     assert result["scout_name"] == "Kenton Manis"
     assert result["city"] == "Prosper"
     assert result["state"] == "TX"
-    assert result["calendar_owner_id"] == "1486538"
+    assert result["calendar_owner_id"] == "A4H3xiZJdyrEh2X"
     assert result["meeting_for"] == "1486538"
     assert result["slot_count"] == 2
     assert result["slots"] == [

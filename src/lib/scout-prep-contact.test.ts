@@ -789,7 +789,7 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(card, /\*\*If Unaware, Say:\*\*/);
   assert.match(
     card,
-    /> No problem, let me take a few steps back\.  \n> Prospect ID is a recruiting platform where student-athletes can create an online recruiting resume to help streamline getting connected with college coaches\.  \n> We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport\./,
+    /> No problem, let me take a few steps back\. {2}\n> Prospect ID is a recruiting platform where student-athletes can create an online recruiting resume to help streamline getting connected with college coaches\. {2}\n> We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport\./,
   );
   assert.match(card, /### Confirm Interest/);
   assert.match(card, /### Scout Notes/);
@@ -799,7 +799,7 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.equal((card.match(/^### /gm) || []).length, 6);
   assert.match(
     card,
-    /> Hi Jamie, I’m Jerami Singleton with Prospect ID\. How are you today\?  \n> I’m following up on Bryson\. Bryson made a profile to connect with college coaches and is showing clear interest in playing college football\. Did Bryson mention this to you, or is this kind of a blindside\?/,
+    /> Hi Jamie, I’m Jerami Singleton with Prospect ID\. How are you today\? {2}\n> I’m following up on Bryson\. Bryson made a profile to connect with college coaches and is showing clear interest in playing college football\. Did Bryson mention this to you, or is this kind of a blindside\?/,
   );
   assert.doesNotMatch(card, /\\n/);
   assert.doesNotMatch(card, /^>$/m);
@@ -807,8 +807,14 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
     card,
     /- Are you comfortable with Bryson taking steps to get in front of college coaches\?\n- When it comes to college football, is this something Bryson is serious about, or still just exploring\?/,
   );
-  assert.match(card, /We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport/);
-  assert.match(card, /Some athletes do not make the cut, whether it is grades, character, talent, or fit/);
+  assert.match(
+    card,
+    /We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport/,
+  );
+  assert.match(
+    card,
+    /Some athletes do not make the cut, whether it is grades, character, talent, or fit/,
+  );
   assert.doesNotMatch(card, /Is Bryson looking to play college football/);
   assert.doesNotMatch(card, /This call is to see if Bryson fits for football/);
   assert.match(card, /For football, June 15 is when coaches can start calling juniors/);
@@ -816,12 +822,16 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(card, /The goal is to use this window before June 15/);
   assert.match(
     card,
-    /> So the next step is getting you, Bryson, and mom on a Zoom with one of our scouts so he can evaluate where Bryson is and what needs to happen next\./,
+    /> So the next step is getting you, Bryson, and mom on a Zoom with one of our scouts so they can evaluate where Bryson is and what needs to happen next\./,
   );
-  assert.match(card, /> He has \[Day\/Time Option 1\] or \[Day\/Time Option 2\]\. Which works better\?/);
+  assert.match(
+    card,
+    /> They have \[Day\/Time Option 1\] or \[Day\/Time Option 2\]\. Which works better\?/,
+  );
   assert.match(card, /- Full family on the call: parent, athlete, and mom\/dad\./);
   assert.match(card, /- Scout will call your cell with the Zoom code\./);
-  const deficitSection = card.match(/### Summary \/ Deficit\n\n[\s\S]*?\n\n### Set Meeting/)?.[0] || '';
+  const deficitSection =
+    card.match(/### Summary \/ Deficit\n\n[\s\S]*?\n\n### Set Meeting/)?.[0] || '';
   assert.equal((deficitSection.match(/^- /gm) || []).length, 2);
   assert.doesNotMatch(card, /### Connect the Dots/);
   assert.doesNotMatch(card, /### Qualify/);
@@ -831,6 +841,55 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.doesNotMatch(card, /We don’t want to waste your time/);
   assert.doesNotMatch(card, /team of all-star scouts/i);
   assert.doesNotMatch(card, /Top 500 team/i);
+});
+
+test('buildScoutPrepCard: uses female athlete pronouns for womens volleyball', () => {
+  const card = buildScoutPrepCard(
+    {
+      athleteName: 'Jamiya Turner',
+      parent1Name: 'Tonia Turner',
+      gradYear: 'Junior',
+      sport: "Women's Volleyball",
+    },
+    buildContext({
+      resolved: {
+        sport: "Women's Volleyball",
+        positions: 'L | DS',
+        gpa: '3.09',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jamiya Turner',
+          email: null,
+          phone: null,
+        },
+        parent1: {
+          name: 'Tonia Turner',
+          relationship: 'Mother',
+          email: null,
+          phone: null,
+        },
+        parent2: null,
+      },
+    }),
+  ).markdown;
+
+  assert.match(card, /Does Jamiya know what she may want to major in\?/);
+  assert.match(card, /I see Jamiya plays L \| DS\. What does she do best there\?/);
+  assert.match(card, /making sure the right coaches actually know who she is/);
+  assert.match(
+    card,
+    /The goal is to use this window before June 15 to make sure the right coaches know who she is/,
+  );
+  assert.match(card, /so they can evaluate where Jamiya is/);
+  assert.match(
+    card,
+    /> They have \[Day\/Time Option 1\] or \[Day\/Time Option 2\]\. Which works better\?/,
+  );
+  assert.doesNotMatch(card, /what he may want to major in/);
+  assert.doesNotMatch(card, /What does he do best there/);
+  assert.doesNotMatch(card, /who he is/);
 });
 
 test('buildScoutPrepCard: uses resolved sport in live script copy', () => {
@@ -864,10 +923,19 @@ test('buildScoutPrepCard: uses resolved sport in live script copy', () => {
     }),
   ).markdown;
 
-  assert.match(card, /Jason made a profile to connect with college coaches and is showing clear interest in playing college men's basketball/);
-  assert.match(card, /When it comes to college men's basketball, is this something Jason is serious about, or still just exploring/);
+  assert.match(
+    card,
+    /Jason made a profile to connect with college coaches and is showing clear interest in playing college men's basketball/,
+  );
+  assert.match(
+    card,
+    /When it comes to college men's basketball, is this something Jason is serious about, or still just exploring/,
+  );
   assert.match(card, /serious about men's basketball/);
-  assert.match(card, /For men's basketball, June 15 after sophomore year is the date to be ready for/);
+  assert.match(
+    card,
+    /For men's basketball, June 15 after sophomore year is the date to be ready for/,
+  );
   assert.doesNotMatch(card, /college football/);
   assert.doesNotMatch(card, /grad year for football/);
 });
@@ -881,7 +949,10 @@ test('buildScoutPrepCard: branches football prompts by position group', () => {
   };
 
   const olCard = buildScoutPrepCard(baseValues, buildContext()).markdown;
-  assert.match(olCard, /On the line, is Bryson's separator size, strength, feet, or how physical he is\?/);
+  assert.match(
+    olCard,
+    /On the line, is Bryson's separator size, strength, feet, or how physical he is\?/,
+  );
   assert.doesNotMatch(olCard, /squat, bench/);
   assert.doesNotMatch(olCard, /quick is he off the ball/);
 
@@ -889,21 +960,30 @@ test('buildScoutPrepCard: branches football prompts by position group', () => {
     baseValues,
     buildContext({ resolved: { positions: 'WR / RB' } }),
   ).markdown;
-  assert.match(skillCard, /Is Bryson's separator speed, production, ball skills, or what he does after contact\?/);
+  assert.match(
+    skillCard,
+    /Is Bryson's separator speed, production, ball skills, or what he does after contact\?/,
+  );
   assert.doesNotMatch(skillCard, /explosive does he look in space/);
 
   const qbCard = buildScoutPrepCard(
     baseValues,
     buildContext({ resolved: { positions: 'QB' } }),
   ).markdown;
-  assert.match(qbCard, /At quarterback, is Bryson's separator arm talent, decision-making, leadership, or production\?/);
+  assert.match(
+    qbCard,
+    /At quarterback, is Bryson's separator arm talent, decision-making, leadership, or production\?/,
+  );
   assert.doesNotMatch(qbCard, /arm talent, accuracy, and decision-making/);
 
   const dbCard = buildScoutPrepCard(
     baseValues,
     buildContext({ resolved: { positions: 'LB / DB' } }),
   ).markdown;
-  assert.match(dbCard, /At linebacker, is Bryson's separator instincts, physicality, coverage, or sideline-to-sideline speed\?/);
+  assert.match(
+    dbCard,
+    /At linebacker, is Bryson's separator instincts, physicality, coverage, or sideline-to-sideline speed\?/,
+  );
 });
 
 test('buildScoutPrepCard: uses sport and position map for baseball scout notes', () => {
@@ -938,10 +1018,7 @@ test('buildScoutPrepCard: uses sport and position map for baseball scout notes',
     }),
   ).markdown;
 
-  assert.match(
-    card,
-    /At shortstop, is Cavion more of a defensive anchor, bat-first, or both\?/,
-  );
+  assert.match(card, /At shortstop, is Cavion more of a defensive anchor, bat-first, or both\?/);
   assert.match(card, /Any 60 time or arm strength numbers\?/);
   assert.doesNotMatch(card, /Where does he fit best right now/);
   assert.doesNotMatch(card, /Are there any numbers that really stand out right now/);
@@ -996,7 +1073,10 @@ test('buildScoutPrepCard: grad year changes deficit and GPA changes tone only', 
     },
     buildContext({ resolved: { gpa: '3.8' } }),
   ).markdown;
-  assert.match(junior, /With a 3\.8, academics can be a real strength in the recruiting conversation\./);
+  assert.match(
+    junior,
+    /With a 3\.8, academics can be a real strength in the recruiting conversation\./,
+  );
   assert.match(junior, /Does Bryson know what he may want to major in\?/);
   assert.match(junior, /For football, June 15 is when coaches can start calling juniors/);
   assert.match(junior, /The goal is to use this window before June 15/);

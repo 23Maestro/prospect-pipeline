@@ -59,14 +59,14 @@ def test_head_scout_config_preserves_legacy_shape_and_order():
             "scout_name": "Logan Lord",
             "city": "Chandler",
             "state": "AZ",
-            "calendar_owner_id": "2254",
+            "calendar_owner_id": "d9UDl0bRSqQ1owt",
             "meeting_for": "2254",
         },
         {
             "scout_name": "Kenton Manis",
             "city": "Prosper",
             "state": "TX",
-            "calendar_owner_id": "1486538",
+            "calendar_owner_id": "A4H3xiZJdyrEh2X",
             "meeting_for": "1486538",
         },
     ]
@@ -78,8 +78,8 @@ def test_head_scout_calendar_owner_ids_match_current_legacy_behavior():
         "bMBrA26OElRUwPs",
         "nhVvYOz8bAaL57c",
         "56",
-        "2254",
-        "1486538",
+        "d9UDl0bRSqQ1owt",
+        "A4H3xiZJdyrEh2X",
     ]
 
 

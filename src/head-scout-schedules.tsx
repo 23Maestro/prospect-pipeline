@@ -25,10 +25,12 @@ import {
 import {
   buildHeadScoutWeekWindow,
   buildHeadScoutScriptMarkdown,
+  fetchAthleteBookedMeetings,
   fetchHeadScoutBookedMeetings,
   fetchBookedMeetingDetails,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
+  formatHeadScoutSlotDate,
   formatHeadScoutSlotForTimezone,
   formatHeadScoutWeekLabel,
   resolveAthleteTimezone,
@@ -280,14 +282,86 @@ async function loadWeeklyOperatorMeetingCandidates(
     fetchHeadScoutBookedMeetings(weekOffset),
     fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
-
-  return buildSetMeetingsCommandContext({
-    candidates: buildSetMeetingCandidatesFromBookedMeetings({
+  const operatorName = getActiveOperator().taskAssignedOwnerName;
+  const weeklyCandidates = await hydrateWeeklyCandidatesFromAthleteMeetings(
+    buildSetMeetingCandidatesFromBookedMeetings({
       bookedMeetings: weekly.events || [],
       tasks: operatorTasks || [],
-      operatorName: getActiveOperator().taskAssignedOwnerName,
+      operatorName,
     }),
+    weekly.week_start,
+    weekly.week_end,
+  );
+
+  return buildSetMeetingsCommandContext({
+    candidates: weeklyCandidates,
   }).candidates;
+}
+
+function normalizeMeetingMatchText(value?: string | null): string {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function getMeetingEventStartValue(event: BookedMeetingEvent): number {
+  const parsed = Date.parse(String(event.start || '').trim());
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function getMeetingEventIdValue(event: BookedMeetingEvent): number {
+  const parsed = Number.parseInt(String(event.event_id || '').trim(), 10);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function pickNewestMeetingEvent(events: BookedMeetingEvent[]): BookedMeetingEvent | null {
+  if (!events.length) return null;
+  return [...events].sort((left, right) => {
+    const startDiff = getMeetingEventStartValue(right) - getMeetingEventStartValue(left);
+    if (startDiff !== 0) return startDiff;
+    return getMeetingEventIdValue(right) - getMeetingEventIdValue(left);
+  })[0];
+}
+
+async function hydrateWeeklyCandidatesFromAthleteMeetings(
+  candidates: HeadScoutFollowUpCandidate[],
+  weekStart: string,
+  weekEnd: string,
+): Promise<HeadScoutFollowUpCandidate[]> {
+  return Promise.all(
+    candidates.map(async (candidate) => {
+      if (!candidate.athleteId || !candidate.athleteMainId || !candidate.bookedMeeting?.title) {
+        return candidate;
+      }
+      const result = await fetchAthleteBookedMeetings({
+        athleteId: candidate.athleteId,
+        athleteMainId: candidate.athleteMainId,
+      }).catch(() => null);
+      const athleteNameKey = normalizeMeetingMatchText(candidate.athleteName);
+      const currentTitleKey = normalizeMeetingMatchText(candidate.bookedMeeting?.title);
+      const preferred = pickNewestMeetingEvent((result?.events || []).filter((event) => {
+        const meetingDay = String(event.start || '').slice(0, 10);
+        const eventTitleKey = normalizeMeetingMatchText(event.title);
+        return (
+          meetingDay >= weekStart &&
+          meetingDay < weekEnd &&
+          eventTitleKey.includes(athleteNameKey) &&
+          eventTitleKey === currentTitleKey
+        );
+      }));
+      if (!preferred || preferred.event_id === candidate.bookedMeeting.event_id) {
+        return candidate;
+      }
+      return {
+        ...candidate,
+        headScoutName: preferred.assigned_owner || candidate.headScoutName,
+        bookedMeetingTitle: preferred.title,
+        bookedMeeting: preferred,
+        currentMeetingLabel: preferred.date_time_label || candidate.currentMeetingLabel,
+      };
+    }),
+  );
 }
 
 function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows'][number]): string {
@@ -302,6 +376,25 @@ function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows']
   ]
     .filter(Boolean)
     .join('\n');
+}
+
+function buildPendingClientDetailMarkdown(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string {
+  const scout = row.head_scout || 'Scout unresolved';
+  const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown date';
+  const signals = row.matched_signals?.length ? row.matched_signals.join(', ') : 'No payment tags';
+  return [
+    `# ${row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Unknown Athlete'}`,
+    '',
+    `**Scout:** ${scout}`,
+    `**Meeting:** ${eventDate}`,
+    `**Tags:** ${signals}`,
+    '',
+    '## Event Note',
+    '',
+    row.description || '_No event description found._',
+  ].join('\n');
 }
 
 function PendingClientsWatchlist() {
@@ -365,6 +458,7 @@ function PendingClientsWatchlist() {
   return (
     <List
       isLoading={isLoading || Boolean(resolvingId)}
+      isShowingDetail
       navigationTitle="Pending Clients"
       searchBarPlaceholder="Search athlete, scout, signal, or note"
     >
@@ -393,6 +487,7 @@ function PendingClientsWatchlist() {
                   ...(signals[0] ? [{ tag: signals[0] }] : []),
                   ...(eventDate ? [{ text: eventDate }] : []),
                 ]}
+                detail={<List.Item.Detail markdown={buildPendingClientDetailMarkdown(row)} />}
                 actions={
                   <ActionPanel>
                     <Action

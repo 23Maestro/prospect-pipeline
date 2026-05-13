@@ -99,7 +99,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: logan?.calendar_owner_id,
       meeting_for: logan?.meeting_for,
     },
-    { city: 'Chandler', state: 'AZ', calendar_owner_id: '2254', meeting_for: '2254' },
+    { city: 'Chandler', state: 'AZ', calendar_owner_id: 'd9UDl0bRSqQ1owt', meeting_for: '2254' },
   );
   assert.deepEqual(
     {
@@ -108,7 +108,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: kenton?.calendar_owner_id,
       meeting_for: kenton?.meeting_for,
     },
-    { city: 'Prosper', state: 'TX', calendar_owner_id: '1486538', meeting_for: '1486538' },
+    { city: 'Prosper', state: 'TX', calendar_owner_id: 'A4H3xiZJdyrEh2X', meeting_for: '1486538' },
   );
 });
 

@@ -14,6 +14,8 @@ from app.models.schemas import (
     TaskPopupResponse,
     TaskUpdateRequest,
     TaskUpdateResponse,
+    TaskCreateCompletedRequest,
+    TaskCreateCompletedResponse,
     TaskCompleteRequest,
     TaskCompleteResponse,
     TaskCallAttempt3SentRequest,
@@ -411,6 +413,111 @@ async def update_task(request: Request, payload: TaskUpdateRequest):
         raise
     except Exception as exc:
         logger.error(f"❌ Task update error: {exc}")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/create-completed", response_model=TaskCreateCompletedResponse)
+async def create_completed_task(request: Request, payload: TaskCreateCompletedRequest):
+    """
+    Create a custom legacy task from the new-task popup and immediately mark it completed.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+    contact_task = payload.contact_task or payload.athlete_id
+
+    logger.info(
+        "➕ Creating completed task athlete_id=%s athlete_main_id=%s contact_task=%s task_title=%s assigned_to=%s completed_date=%s completed_time=%s",
+        payload.athlete_id,
+        payload.athlete_main_id,
+        contact_task,
+        payload.task_title,
+        payload.assigned_to,
+        payload.completed_date,
+        payload.completed_time,
+    )
+
+    try:
+        endpoint, params = translator.task_create_popup_to_legacy(
+            adminathlete=contact_task,
+            athlete_main_id=payload.athlete_main_id,
+        )
+        popup_response = await session.get(endpoint, params=params)
+        logger.info(
+            "📥 Create task popup response status=%s content_type=%s",
+            popup_response.status_code,
+            popup_response.headers.get("content-type"),
+        )
+        popup_result = translator.parse_task_popup_response(popup_response.text)
+        form_data = popup_result.get("form_data", {})
+
+        created_form_data = translator.apply_completed_task_create(
+            form_data=form_data,
+            athlete_id=contact_task,
+            athlete_main_id=payload.athlete_main_id,
+            task_title=payload.task_title,
+            description=payload.description,
+            due_date=payload.due_date,
+            due_time=payload.due_time,
+            completed_date=payload.completed_date,
+            completed_time=payload.completed_time,
+            assigned_to=payload.assigned_to,
+        )
+
+        required_fields = [
+            "existingtask",
+            "tasktitle",
+            "taskdescription",
+            "contact_task",
+            "athlete_main_id",
+            "completedate",
+            "completed_time",
+            "assignedto",
+        ]
+        missing_fields = [field for field in required_fields if not str(created_form_data.get(field) or "").strip()]
+        changed_fields = _diff_form_data(form_data, created_form_data)
+
+        if missing_fields:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required task fields: {', '.join(missing_fields)}",
+            )
+
+        logger.info("🧾 Create task form summary=%s", _sanitize_form_data(created_form_data))
+        logger.info("🧾 Create task changed fields=%s", _sanitize_form_data(changed_fields))
+
+        endpoint, final_form_data = translator.task_update_to_legacy(created_form_data)
+        create_response = await session.post(endpoint, data=final_form_data)
+        logger.info(
+            "📥 Create task response status=%s content_type=%s",
+            create_response.status_code,
+            create_response.headers.get("content-type"),
+        )
+        create_result = translator.parse_task_update_response(create_response.text)
+
+        if not create_result.get("success"):
+            raise HTTPException(status_code=400, detail=create_result.get("message", "Task create failed"))
+
+        list_endpoint, list_params = translator.tasks_list_to_legacy(contact_task, payload.athlete_main_id)
+        list_response = await session.get(list_endpoint, params=list_params)
+        tasks_result = translator.parse_tasks_list_response(list_response.text)
+        tasks: List[Dict[str, Any]] = tasks_result.get("tasks", [])
+        matching_tasks = [
+            task for task in tasks
+            if _normalize_text(task.get("title", "")) == _normalize_text(payload.task_title)
+            and _normalize_text(task.get("description", "")) == _normalize_text(payload.description)
+        ]
+        task_id = str(matching_tasks[0].get("task_id") or "").strip() if matching_tasks else None
+
+        return TaskCreateCompletedResponse(
+            success=True,
+            task_id=task_id,
+            message=create_result.get("message", "Task created"),
+            raw_response=create_result.get("raw"),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"❌ Task create error: {exc}")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

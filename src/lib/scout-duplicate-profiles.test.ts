@@ -183,7 +183,8 @@ test('runDuplicateProfileResolutionForTask updates and completes duplicate-side 
   assert.equal(String(completions[0]?.taskId), '2500');
 });
 
-test('runDuplicateProfileResolutionForTask reports duplicate profiles with no matching call attempt task', async () => {
+test('runDuplicateProfileResolutionForTask creates completed repeat task when duplicate profile has no call attempt task', async () => {
+  const createdTasks: Array<Record<string, string | Date | null | undefined>> = [];
   const result = await runDuplicateProfileResolutionForTask(buildTask(), {
     searchRows: async () => [
       {
@@ -204,9 +205,17 @@ test('runDuplicateProfileResolutionForTask reports duplicate profiles with no ma
     resolveAthleteMainId: async () => '951499',
     loadSelectedProfile: async () => undefined,
     fetchTasks: async () => [],
+    createCompletedTask: async (payload) => {
+      createdTasks.push(payload);
+      return { success: true, task_id: '2600' };
+    },
   });
 
-  assert.equal(result.completed.length, 0);
-  assert.equal(result.skipped.length, 1);
-  assert.match(result.skipped[0]?.reason || '', /No incomplete Call Attempt 1 task/);
+  assert.equal(result.completed.length, 1);
+  assert.deepEqual(result.skipped, []);
+  assert.equal(createdTasks[0]?.taskTitle, 'REPEAT');
+  assert.equal(createdTasks[0]?.description, 'REPEAT');
+  assert.equal(createdTasks[0]?.assignedTo, '1408164');
+  assert.equal(result.completed[0]?.taskId, '2600');
+  assert.equal(result.completed[0]?.taskTitle, 'REPEAT');
 });

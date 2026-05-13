@@ -182,7 +182,7 @@ test('Meeting Set submit supports Logan and Kenton through the same head scout f
     {
       name: 'Logan Lord',
       id: '2254',
-      calendarOwnerId: '2254',
+      calendarOwnerId: 'd9UDl0bRSqQ1owt',
       openEventId: '624180',
       startTime: '17:00',
       startsAt: '2026-05-11T17:00:00-04:00',
@@ -190,7 +190,7 @@ test('Meeting Set submit supports Logan and Kenton through the same head scout f
     {
       name: 'Kenton Manis',
       id: '1486538',
-      calendarOwnerId: '1486538',
+      calendarOwnerId: 'A4H3xiZJdyrEh2X',
       openEventId: '624048',
       startTime: '14:30',
       startsAt: '2026-05-17T14:30:00-04:00',

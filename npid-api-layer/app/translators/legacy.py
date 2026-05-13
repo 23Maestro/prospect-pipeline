@@ -341,6 +341,7 @@ class LegacyTranslator:
             end_label = cells[1].get_text(" ", strip=True) if len(cells) > 1 else ""
             assigned_owner = cells[2].get_text(" ", strip=True) if len(cells) > 2 else ""
             title = cells[3].get_text(" ", strip=True) if len(cells) > 3 else ""
+            description = cells[4].get_text("\n", strip=True) if len(cells) > 4 else ""
 
             start = parse_label_to_iso(start_label)
             end = parse_label_to_iso(end_label)
@@ -355,6 +356,7 @@ class LegacyTranslator:
                     "start": start,
                     "end": end,
                     "date_time_label": start_label if start_label and end_label else start,
+                    "description": description,
                 }
             )
 
@@ -4702,6 +4704,24 @@ class LegacyTranslator:
         return endpoint, params
 
     @staticmethod
+    def task_create_popup_to_legacy(
+        adminathlete: str,
+        athlete_main_id: str,
+        cal_date: str = "",
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for a new task popup form.
+        GET /template/template/taskpopup?cal_date=&adminathlete=...&athlete_main_id=...
+        """
+        endpoint = "/template/template/taskpopup"
+        params = {
+            "cal_date": cal_date,
+            "adminathlete": adminathlete,
+            "athlete_main_id": athlete_main_id,
+        }
+        return endpoint, params
+
+    @staticmethod
     def parse_task_popup_response(html_response: str) -> Dict[str, Any]:
         """
         Parse task popup form into form data payload.
@@ -4818,6 +4838,36 @@ class LegacyTranslator:
             updated["contact_task"] = athlete_id
         if not str(updated.get("existingtask") or "").strip():
             updated["existingtask"] = str(form_data.get("existingtask") or "").strip()
+
+        return updated
+
+    @staticmethod
+    def apply_completed_task_create(
+        form_data: Dict[str, Any],
+        athlete_id: str,
+        athlete_main_id: str,
+        task_title: str,
+        description: str,
+        due_date: str,
+        due_time: str,
+        completed_date: str,
+        completed_time: str,
+        assigned_to: str,
+    ) -> Dict[str, Any]:
+        """
+        Apply a custom task create payload to the new task popup form.
+        """
+        updated = dict(form_data)
+        updated["tasktitle"] = task_title
+        updated["taskdescription"] = description
+        updated["duedate"] = due_date
+        updated["duetime"] = due_time
+        updated["completedate"] = completed_date
+        updated["completed_time"] = completed_time
+        updated["athlete_main_id"] = athlete_main_id
+        updated["contact_task"] = athlete_id
+        updated["contact"] = str(updated.get("contact") or "")
+        updated["assignedto"] = assigned_to
 
         return updated
 

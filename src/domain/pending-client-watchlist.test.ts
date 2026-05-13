@@ -8,8 +8,10 @@ import {
   cleanPendingClientAthleteName,
   filterPendingClientCandidateEvents,
   findPendingClientSignals,
+  hasPendingClientWatchNote,
   normalizePendingClientAIVerdict,
   pendingClientExpiresAt,
+  selectLatestPendingClientReviewEvent,
 } from './pending-client-watchlist';
 
 test('pending client event filter keeps recent follow-up rows across all scouts', () => {
@@ -68,14 +70,77 @@ test('pending client signal matcher is broad but excludes generic interest notes
     findPendingClientSignals(
       'Keep in contact. They are coming aboard in full payment without discount on ICON.',
     ),
-    ['coming aboard', 'full payment', 'discount', 'payment'],
+    ['coming aboard', 'full payment', 'discount', 'payment', 'icon'],
   );
+  assert.deepEqual(findPendingClientSignals('Need a few days on Elite or Legend.'), [
+    'elite',
+    'legend',
+  ]);
   assert.deepEqual(findPendingClientSignals('Come aboard with $179 12 month upgrade.'), [
     'upgrade',
     '$',
   ]);
   assert.deepEqual(findPendingClientSignals('Follow up on interest.'), []);
   assert.deepEqual(findPendingClientSignals('Follow up with the dad.'), []);
+});
+
+test('pending client watch note keeps real follow-up descriptions without payment signals', () => {
+  const description = [
+    'Main Number: (862) 832-1192',
+    'Spoke To: Wallache (Dad)',
+    'About The Athlete:',
+    'DE | ILB',
+    'Deficit: sq1, exposure',
+  ].join('\n');
+
+  assert.equal(hasPendingClientWatchNote(description), true);
+  assert.equal(hasPendingClientWatchNote(''), false);
+  assert.equal(hasPendingClientWatchNote('   \n  '), false);
+});
+
+test('pending client review note chooses latest follow-up event after the meeting', () => {
+  const meeting = {
+    event_id: '612634',
+    title: '(FU) Javiion Knight Football 2027 NJ',
+    assigned_owner: 'Luther Winfield',
+    start: '2026-05-12T20:00',
+    end: '2026-05-12T21:00',
+    date_time_label: 'Tue 05/12/26 8:00 PM',
+    description: 'Original prep notes',
+  };
+  const review = selectLatestPendingClientReviewEvent(meeting, [
+    meeting,
+    {
+      event_id: '628744',
+      title: 'Follow Up - Javiion Knight Football 2027 NJ',
+      assigned_owner: 'Luther Winfield',
+      start: '2026-05-16T19:00',
+      end: '2026-05-16T19:30',
+      date_time_label: 'Sat 05/16/26 7:00 PM',
+      description: 'Family wanted a few days (Elite)',
+    },
+    {
+      event_id: '628111',
+      title: 'Follow Up - Javiion Knight Football 2027 NJ',
+      assigned_owner: 'Luther Winfield',
+      start: '2026-05-14T19:00',
+      end: '2026-05-14T19:30',
+      date_time_label: 'Thu 05/14/26 7:00 PM',
+      description: 'Older review note (Icon)',
+    },
+    {
+      event_id: '628745',
+      title: 'Follow Up - Blank Note Football 2027 NJ',
+      assigned_owner: 'Luther Winfield',
+      start: '2026-05-17T19:00',
+      end: '2026-05-17T19:30',
+      date_time_label: 'Sun 05/17/26 7:00 PM',
+      description: '   ',
+    },
+  ]);
+
+  assert.equal(review?.event_id, '628744');
+  assert.equal(review?.description, 'Family wanted a few days (Elite)');
 });
 
 test('pending client AI verdict accepts exactly pending_client', () => {
