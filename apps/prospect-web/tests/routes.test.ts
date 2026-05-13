@@ -217,6 +217,68 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
   assert.equal(carsonMeetingSets[0].dedupe_key, 'meeting_set:1490749:952575:588133');
 });
 
+test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity without exposing ids', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([
+        { dials: 2, contacts: 2, meetings_set: 2, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 2 },
+      ]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      const base = {
+        athlete_key: '1491040:952861',
+        athlete_id: '1491040',
+        athlete_main_id: '952861',
+        athlete_name: 'Jamiya Turner',
+        event_at: '2026-05-13T20:06:25.123+00:00',
+        tracker_outcome: 'meeting_set',
+        raw_task_status: 'confirmation_call',
+        raw_event_type: 'lifecycle_meeting_set',
+        booked_event_title: "Jamiya Turner Women's Volleyball 2027 NC",
+        active_operator_name: 'Jerami Singleton',
+        task_assigned_owner: 'Jerami Singleton',
+        counts_as_dial: true,
+        counts_as_contact: true,
+        counts_as_meeting_set: true,
+        counts_as_post_meeting_outcome: false,
+        materialization_status: 'operator_task',
+        resolved_owner_name: 'Jerami Singleton',
+        resolved_owner_source_field: 'task.assigned_owner',
+        can_materialize_for_active_operator: true,
+      };
+      return Response.json([
+        { ...base, occurred_at: '2026-05-13T22:01:56.559+00:00', appointment_id: '624183', dedupe_key: 'meeting_set:1491040:952861:624183', created_at: '2026-05-13T22:01:56.559+00:00' },
+        { ...base, occurred_at: '2026-05-13T20:06:25.123+00:00', appointment_id: '620950', dedupe_key: null, created_at: '2026-05-13T20:06:25.123+00:00' },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const rows = payload.data.events.filter(
+    (row: { athlete_name?: string; tracker_outcome?: string }) =>
+      row.athlete_name === 'Jamiya Turner' && row.tracker_outcome === 'meeting_set',
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].appointment_id, '624183');
+  assert.equal(rows[0].athlete_key, undefined);
+  assert.equal(rows[0].athlete_id, undefined);
+  assert.equal(rows[0].athlete_main_id, undefined);
+  assert.equal(payload.data.summary.meetings_set, 1);
+  assert.equal(payload.data.summary.appointments_tracked, 1);
+  assert.equal(payload.data.summary.dials, 1);
+  assert.equal(payload.data.summary.contacts, 1);
+});
+
 test('/api/set-meetings reads Supabase reminders cache and groups confirmations', async () => {
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';

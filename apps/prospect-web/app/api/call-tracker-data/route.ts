@@ -49,6 +49,9 @@ const eventFields = [
   'created_at',
 ];
 
+const internalEventFields = ['athlete_key', 'athlete_id', 'athlete_main_id', ...eventFields];
+const internalIdentityFields = new Set(['athlete_key', 'athlete_id', 'athlete_main_id']);
+
 const lifecycleFields = [
   'id',
   'athlete_key',
@@ -229,6 +232,12 @@ function displayRows(rows: Array<Record<string, any>>) {
 
 function eventIdentityKey(row: Record<string, any>) {
   if (row.tracker_outcome === 'meeting_set') {
+    const athleteIdentity =
+      normalizeKey(row.athlete_key) ||
+      [normalizeKey(row.athlete_id), normalizeKey(row.athlete_main_id)].filter(Boolean).join(':') ||
+      normalizeKey(row.athlete_name);
+    const meetingTitle = normalizeKey(row.booked_event_title);
+    if (athleteIdentity && meetingTitle) return `meeting_set:athlete:${athleteIdentity}:title:${meetingTitle}`;
     if (row.appointment_id) return `meeting_set:appointment:${row.appointment_id}`;
     return [
       'meeting_set',
@@ -238,6 +247,10 @@ function eventIdentityKey(row: Record<string, any>) {
     ].join('|');
   }
   return row.dedupe_key || `${row.source}:${row.athlete_name}:${row.tracker_outcome}:${row.event_at || row.occurred_at}`;
+}
+
+function publicRow(row: Record<string, any>) {
+  return Object.fromEntries(Object.entries(row).filter(([key]) => !internalIdentityFields.has(key)));
 }
 
 function rowsForPeriod(rows: Array<Record<string, any>>, now: Date, period: string) {
@@ -413,6 +426,25 @@ function addLifecycleDeltasToSummary(fallback: Record<string, any>, lifecycleRow
   };
 }
 
+function resolveMeetingSetSummary(
+  fallback: Record<string, any>,
+  rawRows: Array<Record<string, any>>,
+  resolvedRows: Array<Record<string, any>>,
+) {
+  const rawMeetingSets = rawRows.filter((row) => row.counts_as_meeting_set === true).length;
+  const resolvedMeetingSets = resolvedRows.filter((row) => row.counts_as_meeting_set === true).length;
+  const removedDuplicates = Math.max(0, rawMeetingSets - resolvedMeetingSets);
+  return {
+    ...fallback,
+    total_events: Math.max(0, (Number(fallback.total_events) || 0) - removedDuplicates),
+    spoke_with: Math.max(0, (Number(fallback.spoke_with) || 0) - removedDuplicates),
+    meetings_set: resolvedMeetingSets,
+    appointments_tracked: resolvedMeetingSets,
+    dials: Math.max(0, (Number(fallback.dials) || 0) - removedDuplicates),
+    contacts: Math.max(0, (Number(fallback.contacts) || 0) - removedDuplicates),
+  };
+}
+
 function addMonths(year: number, month: number, offset: number) {
   const date = new Date(Date.UTC(year, month - 1 + offset, 1));
   return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1 };
@@ -527,7 +559,7 @@ async function buildLiveContract() {
   const eventView = 'call_tracker_events_owner_context';
   const [summaryRows, events, lifecycleRows] = await Promise.all([
     supabaseGet(`${summaryView}?select=*`),
-    supabaseGet([`${eventView}?select=${encodeURIComponent(eventFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
+    supabaseGet([`${eventView}?select=${encodeURIComponent(internalEventFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
     supabaseGet([`lifecycle_events?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=created_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
   ]);
 
@@ -537,7 +569,16 @@ async function buildLiveContract() {
   const viewDedupeKeys = new Set(viewEvents.map((row: Record<string, any>) => row.dedupe_key).filter(Boolean));
   const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
   const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
-  const summary = addLifecycleDeltasToSummary((Array.isArray(summaryRows) ? summaryRows[0] : {}) || {}, lifecycleDeltaEvents);
+  const summary = resolveMeetingSetSummary(
+    addLifecycleDeltasToSummary((Array.isArray(summaryRows) ? summaryRows[0] : {}) || {}, lifecycleDeltaEvents),
+    [...viewEvents, ...lifecycleDeltaEvents],
+    materializedEvents,
+  );
+  const publicEvents = materializedEvents.map(publicRow);
+  const ui = buildUiData(summary, materializedEvents, generatedAt);
+  if (Array.isArray(ui.closedWonRows)) {
+    ui.closedWonRows = ui.closedWonRows.map(publicRow);
+  }
   return {
     contract: 'prospect-call-tracker',
     version: 4,
@@ -551,8 +592,8 @@ async function buildLiveContract() {
         lifecycleSourceTable: 'lifecycle_events',
       },
       summary,
-      events: materializedEvents,
-      ui: buildUiData(summary, materializedEvents, generatedAt),
+      events: publicEvents,
+      ui,
     },
   };
 }
