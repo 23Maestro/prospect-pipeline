@@ -55,6 +55,13 @@
       "icon": "prospect-search.png"
     },
     {
+      "name": "code-index",
+      "title": "Code Index",
+      "description": "Search generated code inventory for functions, routes, and API calls",
+      "mode": "view",
+      "icon": "prospect-pipeline.png"
+    },
+    {
       "name": "scout-prep",
       "title": "Scout Prep",
       "description": "Prep a live scouting call with voicemail and deficit guidance",
@@ -256,6 +263,7 @@
     "build": "ray build",
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
+    "index:code": "node scripts/generate-code-index.mjs",
     "lint": "ray lint",
     "test:craft-reminder-date": "rm -rf /tmp/craft-reminder-tests && tsc --target ES2022 --module NodeNext --moduleResolution NodeNext --outDir /tmp/craft-reminder-tests src/lib/craft-reminder-date.ts src/lib/craft-reminder-date.test.ts && node --test /tmp/craft-reminder-tests/craft-reminder-date.test.js",
     "test:scout-prep-contact": "rm -rf /tmp/scout-prep-contact-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-contact-tests src/lib/scout-prep-contact.ts src/lib/scout-prep-contact.test.ts src/lib/scout-prep-ai.ts src/features/scout-prep/types.ts src/lib/logger.ts src/features/scout-prep/content.ts && mkdir -p /tmp/scout-prep-contact-tests/node_modules/@raycast/api && printf \"const path = require('path');\\nexports.environment = { assetsPath: path.dirname(require.resolve('sql.js/dist/sql-wasm.wasm')), canAccess: () => false };\\nexports.AI = {};\\n\" > /tmp/scout-prep-contact-tests/node_modules/@raycast/api/index.js && NODE_PATH=/tmp/scout-prep-contact-tests/node_modules:$PWD/node_modules node --test /tmp/scout-prep-contact-tests/lib/scout-prep-contact.test.js",
@@ -271,6 +279,7 @@
     "test:head-scout-schedules": "rm -rf /tmp/head-scout-schedules-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --resolveJsonModule --outDir /tmp/head-scout-schedules-tests src/lib/head-scout-schedules.ts src/lib/head-scout-schedules.test.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/python-env.ts src/lib/logger.ts src/lib/scout-prep-ai.ts src/features/scout-prep/content.ts src/features/scout-prep/types.ts && NODE_PATH=$PWD/node_modules node --test /tmp/head-scout-schedules-tests/src/lib/head-scout-schedules.test.js",
     "test:supabase-lifecycle": "rm -rf /tmp/supabase-lifecycle-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --resolveJsonModule --outDir /tmp/supabase-lifecycle-tests src/lib/supabase-lifecycle.ts src/lib/supabase-lifecycle.test.ts src/lib/logger.ts && mkdir -p /tmp/supabase-lifecycle-tests/node_modules/@raycast/api && printf \"exports.getPreferenceValues = () => ({});\\n\" > /tmp/supabase-lifecycle-tests/node_modules/@raycast/api/index.js && NODE_PATH=/tmp/supabase-lifecycle-tests/node_modules:$PWD/node_modules node --test /tmp/supabase-lifecycle-tests/src/lib/supabase-lifecycle.test.js",
     "test:domain": "node --import tsx --test src/domain/*.test.ts",
+    "test:code-index": "node --test scripts/generate-code-index.test.mjs",
     "sync:supabase-env": "node scripts/sync-supabase-env.mjs",
     "sync:supabase-pipeline": "bash scripts/sync-supabase-pipeline.sh",
     "materialize:call-tracker-contract": "tsx scripts/materialize-call-tracker-data-contract.mjs",
