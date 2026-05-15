@@ -99,6 +99,7 @@ import {
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './domain/sales-stage-contract';
 import {
+  isConfirmationCallTask,
   getVoicemailLifecycleStageLabel,
   getVoicemailLifecycleTaskTitle,
   resolveVoicemailLifecycleTaskForCompletion,
@@ -134,12 +135,12 @@ import {
 } from './lib/supabase-lifecycle';
 import { syncAthleteContactCacheFromScoutPrepContext } from './lib/athlete-contact-cache';
 import { syncMeetingSetReminderCacheFromScoutPrep } from './lib/set-meeting-reminder-cache-sync';
-import { buildAssociatedClientsFromContactInfo } from './lib/client-message-export';
 import { sendClientMessage } from './lib/client-message-sandbox';
 import {
   isCallAttempt1PortalTask,
   runDuplicateProfileResolutionForTask,
 } from './lib/scout-duplicate-profiles';
+import { upsertConfirmationTaskWatchItem } from './lib/confirmation-task-watch';
 
 const FEATURE = 'scout-prep';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
@@ -746,18 +747,7 @@ async function collectBatchProspectContactCandidates(tasks: ScoutPortalTask[]): 
   for (const task of tasks) {
     try {
       const context = await loadScoutPrepContext(task);
-      const candidates = buildAssociatedClientsFromContactInfo({
-        athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
-        contactInfo: context.contactInfo,
-      })
-        .map((associate) => ({
-          id: associate.role,
-          label: associate.relationshipLabel,
-          name:
-            String(associate.name || '').trim() ||
-            (associate.role === 'studentAthlete' ? task.athlete_name : associate.relationshipLabel),
-          phone: associate.normalizedPhoneNumber.replace(/(\d{3})(\d{3})(\d{4})/, '$1-$2-$3'),
-        }))
+      const candidates = getProspectContactShortcutCandidates(context)
         .sort(
           (left, right) =>
             ['parent1', 'studentAthlete', 'parent2'].indexOf(left.id) -
@@ -1491,6 +1481,18 @@ function formatTimeForLegacyInput(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
+function buildMorningConfirmationDate(meetingDate: Date): Date {
+  return new Date(
+    meetingDate.getFullYear(),
+    meetingDate.getMonth(),
+    meetingDate.getDate(),
+    9,
+    0,
+    0,
+    0,
+  );
+}
+
 function buildDefaultConfirmationDate(
   dueDate?: string | null,
   dueTime?: string | null,
@@ -1508,6 +1510,77 @@ function buildDefaultConfirmationDate(
   const minute = timeMatch ? Number.parseInt(timeMatch[2], 10) : 0;
   const date = new Date(year, month, day, hour, minute);
   return Number.isNaN(date.getTime()) ? undefined : date;
+}
+
+function resolveConfirmationTaskForMorningAction(
+  selectedTask: ScoutPortalTask,
+  activeContext: ScoutPrepContext,
+): ScoutAthleteTask | null {
+  const selectedTaskId = String(selectedTask.task_id || '').trim();
+  const selectedTaskComplete = Boolean(String(selectedTask.completion_date || '').trim());
+  if (selectedTaskId && !selectedTaskComplete && isConfirmationCallTask(selectedTask)) {
+    return {
+      task_id: selectedTaskId,
+      title: selectedTask.title || null,
+      assigned_owner: selectedTask.assigned_owner || null,
+      due_date: selectedTask.due_date || null,
+      completion_date: selectedTask.completion_date || null,
+      description: selectedTask.description || null,
+    };
+  }
+
+  return findNewestIncompleteConfirmationTask(activeContext.tasks);
+}
+
+async function updateConfirmationTaskToMeetingMorning(args: {
+  task: ScoutPortalTask;
+  activeContext: ScoutPrepContext;
+  confirmationTask: ScoutAthleteTask;
+}): Promise<Date> {
+  const athleteId = String(
+    args.activeContext.task.contact_id || args.task.contact_id || '',
+  ).trim();
+  const athleteMainId = String(
+    args.activeContext.resolved.athlete_main_id ||
+      args.activeContext.task.athlete_main_id ||
+      args.task.athlete_main_id ||
+      '',
+  ).trim();
+
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete IDs');
+  }
+
+  const prepared = await prepareConfirmationFollowUp({
+    athleteId,
+    athleteMainId,
+    athleteName: args.activeContext.contactInfo.studentAthlete.name || args.task.athlete_name,
+    sport: args.activeContext.resolved.sport || null,
+    gradYear: args.task.grad_year || null,
+    state: args.activeContext.resolved.state || null,
+    dueDate: args.confirmationTask.due_date || args.task.due_date || null,
+    dueTime: null,
+    headScoutName: args.activeContext.resolved.head_scout || null,
+    greetingOverride: buildTimeOfDayGreeting(args.activeContext),
+    fallbackText: args.confirmationTask.description || '',
+  });
+
+  const meetingDate = prepared.resolvedAppointment.currentMeetingDate;
+  if (!prepared.resolvedAppointment.currentMeeting || !meetingDate) {
+    throw new Error(prepared.resolvedAppointment.reason || 'No active booked meeting found');
+  }
+
+  const nextDueAt = buildMorningConfirmationDate(meetingDate);
+  await updateScoutPrepTask({
+    taskId: args.confirmationTask.task_id,
+    contactTask: athleteId,
+    athleteMainId,
+    athleteName: args.activeContext.contactInfo.studentAthlete.name || args.task.athlete_name,
+    dueDate: formatDateForLegacyInput(nextDueAt),
+    dueTime: formatTimeForLegacyInput(nextDueAt),
+  });
+
+  return nextDueAt;
 }
 
 function RescheduleConfirmationCallForm({
@@ -2416,6 +2489,29 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
       if (meetingSetInput && meetingSetResult) {
         try {
+          upsertConfirmationTaskWatchItem({
+            athleteId,
+            athleteMainId,
+            athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
+            appointmentId: meetingSetInput.openEventId,
+            meetingStartsAt: meetingSetInput.startsAt,
+            meetingTimezone: meetingSetInput.meetingTimezone,
+            headScout: meetingSetInput.headScout,
+            source: 'scout_prep_meeting_set',
+          });
+        } catch (error) {
+          logFailure(
+            'SCOUT_PREP_CONFIRMATION_TASK_WATCH',
+            'queue-write',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              appointmentId: meetingSetInput.openEventId,
+            },
+          );
+        }
+        try {
           await syncMeetingSetReminderCacheFromScoutPrep({
             athleteId,
             athleteMainId,
@@ -2869,6 +2965,40 @@ function ScoutPrepDetail({
     push(<RescheduleConfirmationCallForm task={task} confirmationTask={confirmationTask} />);
   }
 
+  async function handleSetConfirmationMorning() {
+    const activeContext =
+      context ||
+      (await ensureContext('Loading meeting', task.athlete_name, 'Missing task context'));
+    if (!activeContext) {
+      return;
+    }
+
+    const confirmationTask = resolveConfirmationTaskForMorningAction(task, activeContext);
+    if (!confirmationTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No confirmation task',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Saving confirm', 'Meeting morning');
+    try {
+      const nextDueAt = await updateConfirmationTaskToMeetingMorning({
+        task,
+        activeContext,
+        confirmationTask,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Confirmation saved';
+      toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Confirmation save failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function handleTextMeetingReminder() {
     const activeContext =
       context || (await ensureContext('Meeting reminder', task.athlete_name, 'Missing ID'));
@@ -2886,7 +3016,7 @@ function ScoutPrepDetail({
       return;
     }
 
-    const confirmationTask = findNewestIncompleteConfirmationTask(activeContext.tasks);
+    const confirmationTask = resolveConfirmationTaskForMorningAction(task, activeContext);
     if (!confirmationTask) {
       await showToast({
         style: Toast.Style.Failure,
@@ -3218,6 +3348,11 @@ function ScoutPrepDetail({
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
             onAction={() => void handleRescheduleConfirmationTask()}
           />
+          <Action
+            title="Set Confirmation Morning"
+            icon={Icon.Clock}
+            onAction={() => void handleSetConfirmationMorning()}
+          />
           <Action.Push
             title="Update Task"
             icon={Icon.Pencil}
@@ -3381,6 +3516,38 @@ function ScoutPrepTaskItem({
       return;
     }
     push(<RescheduleConfirmationCallForm task={task} confirmationTask={confirmationTask} />);
+  }
+
+  async function handleSetConfirmationMorning() {
+    const activeContext = await ensureTaskContext('Loading meeting', 'Missing ID');
+    if (!activeContext) {
+      return;
+    }
+
+    const confirmationTask = resolveConfirmationTaskForMorningAction(task, activeContext);
+    if (!confirmationTask) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No confirmation task',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Saving confirm', 'Meeting morning');
+    try {
+      const nextDueAt = await updateConfirmationTaskToMeetingMorning({
+        task,
+        activeContext,
+        confirmationTask,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Confirmation saved';
+      toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Confirmation save failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
   }
 
   async function handleTextMeetingReminder() {
@@ -3637,6 +3804,11 @@ function ScoutPrepTaskItem({
             icon={Icon.Calendar}
             shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
             onAction={() => void handleRescheduleConfirmationTask()}
+          />
+          <Action
+            title="Set Confirmation Morning"
+            icon={Icon.Clock}
+            onAction={() => void handleSetConfirmationMorning()}
           />
           <Action.Push
             title="Update Task"

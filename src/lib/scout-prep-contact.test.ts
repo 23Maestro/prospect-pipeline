@@ -109,6 +109,37 @@ test('getProspectContactShortcutCandidates: returns available contacts in fixed 
   );
 });
 
+test('getProspectContactShortcutCandidates: duplicate parent and athlete phone uses student athlete contact', () => {
+  const candidates = getProspectContactShortcutCandidates(
+    buildContext({
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jaylin Bailey',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent1: {
+          name: 'Robert Bailey',
+          relationship: 'Father',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+  );
+
+  assert.deepEqual(candidates, [
+    {
+      id: 'studentAthlete',
+      label: 'Student Athlete',
+      name: 'Jaylin Bailey',
+      phone: '310-555-1111',
+    },
+  ]);
+});
+
 test('mapTimezoneToLegacyRecruitZone: maps common IANA zones', () => {
   assert.equal(mapTimezoneToLegacyRecruitZone('America/Chicago'), 'CST');
   assert.equal(mapTimezoneToLegacyRecruitZone('America/New_York'), 'EST');

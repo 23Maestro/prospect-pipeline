@@ -289,6 +289,7 @@
     "sync:booked-meetings-supabase": "tsx scripts/sync-booked-meetings-to-supabase.mjs",
     "sync:commissions-supabase": "tsx scripts/sync-commissions-to-supabase.mjs",
     "reconcile:current-sales-stages-supabase": "tsx scripts/reconcile-current-sales-stages-to-supabase.mjs",
+    "watch:confirmation-tasks": "tsx scripts/watch-confirmation-tasks.mjs",
     "test:call-tracker-ownership": "node --import tsx --test scripts/call-tracker-ownership.test.mjs",
     "test:scout-prep-cache": "rm -rf /tmp/scout-prep-cache-tests && tsc --target ES2022 --module commonjs --moduleResolution node --esModuleInterop --outDir /tmp/scout-prep-cache-tests src/lib/scout-prep-cache.ts src/lib/scout-prep-cache.test.ts src/lib/npid-mcp-adapter.ts src/lib/fastapi-client.ts src/lib/api-bootstrap.ts src/lib/logger.ts src/types/video-team.ts && mkdir -p /tmp/scout-prep-cache-tests/node_modules/@raycast/api && printf \"exports.LocalStorage = { getItem: async () => undefined, setItem: async () => {} };\\n\" > /tmp/scout-prep-cache-tests/node_modules/@raycast/api/index.js && NODE_PATH=/tmp/scout-prep-cache-tests/node_modules:$PWD/node_modules node --test /tmp/scout-prep-cache-tests/lib/scout-prep-cache.test.js",
     "api": "cd npid-api-layer && source venv/bin/activate && python -m uvicorn main:app --reload --port 8000",
