@@ -265,6 +265,19 @@ async function copyTextToPasteboard(content: string): Promise<void> {
   });
 }
 
+function startConfirmationTaskWatcher(): void {
+  const child = spawn(
+    '/bin/zsh',
+    ['-lc', 'npm run watch:confirmation-tasks -- --poll --schedule-minutes 1,3,5,8,12'],
+    {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: 'ignore',
+    },
+  );
+  child.unref();
+}
+
 async function triggerMaxPrepsSearch(searchLabel: string) {
   await open(
     `kmtrigger://macro=B4784B2F-FC2A-46C1-A8D3-24D1A5A97896&value=${encodeURIComponent(searchLabel)}`,
@@ -2499,6 +2512,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             headScout: meetingSetInput.headScout,
             source: 'scout_prep_meeting_set',
           });
+          startConfirmationTaskWatcher();
         } catch (error) {
           logFailure(
             'SCOUT_PREP_CONFIRMATION_TASK_WATCH',

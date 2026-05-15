@@ -26,6 +26,8 @@ function parseArgs(argv) {
     dryRun: false,
     seedCurrent: false,
     maxItems: 100,
+    poll: false,
+    scheduleMinutes: [1, 3, 5, 8, 12],
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
@@ -46,7 +48,18 @@ function parseArgs(argv) {
     } else if (arg === '--max-items') {
       args.maxItems = Number.parseInt(argv[index + 1] || '', 10) || args.maxItems;
       index += 1;
+    } else if (arg === '--once') {
+      // Default behavior is already one pass. This flag exists for clearer Raycast handoff.
+    } else if (arg === '--poll') {
+      args.poll = true;
+    } else if (arg === '--schedule-minutes') {
+      const schedule = parseList(argv[index + 1]).map((value) => Number.parseFloat(value));
+      args.scheduleMinutes = schedule.filter((value) => Number.isFinite(value) && value > 0);
+      index += 1;
     }
+  }
+  if (!args.scheduleMinutes.length) {
+    args.scheduleMinutes = [1, 3, 5, 8, 12];
   }
   return args;
 }
@@ -125,7 +138,7 @@ function pickCurrentMeeting(events) {
 }
 
 async function seedCurrentWatchItems(args) {
-  if (!args.seedCurrent && !args.only.length) return [];
+  if (!args.seedCurrent) return [];
 
   const payload = await apiFetch(`/scout/tasks?range=all&start=0&length=${args.maxItems}`);
   const scoutTasks = Array.isArray(payload.tasks) ? payload.tasks : [];
@@ -257,5 +270,24 @@ async function processQueue(args) {
 
 const args = parseArgs(process.argv.slice(2));
 const seeded = await seedCurrentWatchItems(args);
-const results = await processQueue(args);
-console.log(JSON.stringify({ dryRun: args.dryRun, seeded, results }, null, 2));
+const startedAt = Date.now();
+const allResults = [];
+const scheduleMs = args.scheduleMinutes.map((minutes) => Math.round(minutes * 60 * 1000));
+
+for (let checkIndex = 0; ; checkIndex += 1) {
+  const results = await processQueue(args);
+  allResults.push(...results);
+  const activeResults = results.filter((result) =>
+    ['waiting', 'failed'].includes(String(result.status || '')),
+  );
+  if (!args.poll || !activeResults.length) {
+    break;
+  }
+  const nextDelayMs = scheduleMs[checkIndex] - (Date.now() - startedAt);
+  if (!Number.isFinite(nextDelayMs)) {
+    break;
+  }
+  await new Promise((resolve) => setTimeout(resolve, Math.max(0, nextDelayMs)));
+}
+
+console.log(JSON.stringify({ dryRun: args.dryRun, seeded, results: allResults }, null, 2));
