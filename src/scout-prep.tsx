@@ -14,6 +14,7 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { useForm } from '@raycast/utils';
+import { spawn } from 'node:child_process';
 import { useEffect, useRef, useState } from 'react';
 import { saveProspectContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
@@ -131,6 +132,8 @@ import {
   recordRescheduled,
   recordVoicemailFollowUpSent,
 } from './lib/supabase-lifecycle';
+import { syncAthleteContactCacheFromScoutPrepContext } from './lib/athlete-contact-cache';
+import { syncMeetingSetReminderCacheFromScoutPrep } from './lib/set-meeting-reminder-cache-sync';
 import { buildAssociatedClientsFromContactInfo } from './lib/client-message-export';
 import { sendClientMessage } from './lib/client-message-sandbox';
 import {
@@ -238,11 +241,26 @@ function formatTaskIdLabel(taskId?: string | number | null): string {
   return normalized ? `#${normalized}` : '';
 }
 
-async function copyToClipboardWithToast(content: string, title: string) {
-  await Clipboard.copy(content);
-  await showToast({
-    style: Toast.Style.Success,
-    title,
+async function copyToClipboardWithToast(content: string, label: string) {
+  const toast = await showLoadingToast('Copying', label);
+  await copyTextToPasteboard(content);
+  toast.style = Toast.Style.Success;
+  toast.title = `${label} copied`;
+  toast.message = undefined;
+}
+
+async function copyTextToPasteboard(content: string): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn('/usr/bin/pbcopy', []);
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`pbcopy exited with code ${code ?? 'unknown'}`));
+    });
+    child.stdin.end(content);
   });
 }
 
@@ -627,25 +645,26 @@ type ProspectContactBatchSummary = {
   groupNames: string[];
 };
 
-async function createProspectContact(
-  candidate?: ProspectContactShortcutCandidate | null,
-): Promise<ProspectContactCreateResult> {
-  const activeCandidate = candidate || null;
-  if (!activeCandidate) {
-    throw new Error('No eligible contact found');
+function prospectContactRoleLabel(candidate: ProspectContactShortcutCandidate): string {
+  if (candidate.id === 'studentAthlete') {
+    return 'SA';
   }
+  if (candidate.id === 'parent1') {
+    return 'P1';
+  }
+  if (candidate.id === 'parent2') {
+    return 'P2';
+  }
+  return candidate.label;
+}
 
-  const payload = buildProspectContactShortcutPayloadFromName({
-    fullName: activeCandidate.name,
-    phone: activeCandidate.phone,
-  });
-  const [firstName, lastName, phone] = payload.split('\n');
-  const [result] = await saveProspectContacts([firstName || ''], [lastName || ''], [phone || '']);
-
-  return {
-    status: result?.status || 'created',
-    groupName: result?.groupName || null,
-  };
+function formatProspectContactRoles(candidates: ProspectContactShortcutCandidate[]): string {
+  const roleOrder = ['studentAthlete', 'parent1', 'parent2'];
+  return candidates
+    .slice()
+    .sort((left, right) => roleOrder.indexOf(left.id) - roleOrder.indexOf(right.id))
+    .map(prospectContactRoleLabel)
+    .join(' + ');
 }
 
 async function createProspectContactsBatch(
@@ -878,19 +897,8 @@ function ScoutPrepContactDetail({
     }
   }, [task.contact_id]);
 
-  async function handleCreateProspectContact(candidate?: ProspectContactShortcutCandidate | null) {
-    const activeContext = context;
-    if (!activeContext) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Contact loading',
-      });
-      return;
-    }
-
-    const candidates = getProspectContactShortcutCandidates(activeContext);
-    const activeCandidate = candidate || candidates[0] || null;
-    if (!activeCandidate) {
+  async function handleCreateAllProspectContacts() {
+    if (!contactCandidates.length) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'No contact ready',
@@ -899,23 +907,22 @@ function ScoutPrepContactDetail({
       return;
     }
 
+    const roleLabel = formatProspectContactRoles(contactCandidates);
     setIsCreatingContact(true);
-    const toast = await showLoadingToast(
-      'Create contact',
-      `${activeCandidate.name}${activeCandidate.phone ? ` • ${activeCandidate.phone}` : ''}`,
-    );
+    const toast = await showLoadingToast('Create all contacts', roleLabel);
     try {
-      const result = await createProspectContact(activeCandidate);
+      const summary = await createProspectContactsBatch(contactCandidates);
       toast.style = Toast.Style.Success;
-      toast.title =
-        result.status === 'exists'
-          ? 'Contact already exists'
-          : result.status === 'updated'
-            ? 'Contact updated'
-            : 'Contact created';
-      toast.message = result.groupName
-        ? `${activeCandidate.label}: ${activeCandidate.name} • ${result.groupName}`
-        : `${activeCandidate.label}: ${activeCandidate.name}`;
+      toast.title = 'Contacts ready';
+
+      const detailParts = [
+        roleLabel,
+        summary.createdCount ? `${summary.createdCount} created` : null,
+        summary.updatedCount ? `${summary.updatedCount} updated` : null,
+        summary.existingCount ? `${summary.existingCount} existing` : null,
+      ].filter(Boolean);
+
+      toast.message = detailParts.join(' • ');
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Contact create failed';
@@ -948,7 +955,7 @@ function ScoutPrepContactDetail({
                   title="Copy Parent 1 Phone"
                   icon="📲"
                   onAction={() =>
-                    void copyToClipboardWithToast(contactInfo.parent1.phone || '', 'P1 # Copied')
+                    void copyToClipboardWithToast(contactInfo.parent1.phone || '', 'P1')
                   }
                 />
               ) : null}
@@ -963,7 +970,7 @@ function ScoutPrepContactDetail({
                 onAction={() =>
                   void copyToClipboardWithToast(
                     contactInfo.studentAthlete.phone || '',
-                    'SA # Copied',
+                    'SA',
                   )
                 }
               />
@@ -977,35 +984,19 @@ function ScoutPrepContactDetail({
                   icon="📳"
                   shortcut={{ modifiers: ['cmd'], key: 's' }}
                   onAction={() =>
-                    void copyToClipboardWithToast(contactInfo.parent2.phone || '', 'P2 # Copied')
+                    void copyToClipboardWithToast(contactInfo.parent2.phone || '', 'P2')
                   }
                 />
               ) : null}
             </ActionPanel.Section>
           ) : null}
           <ActionPanel.Section>
-            {contactCandidates[0] ? (
+            {contactCandidates.length ? (
               <Action
-                title={`Create ${contactCandidates[0].label} Contact`}
+                title="Create All Contacts"
                 icon={Icon.Person}
                 shortcut={{ modifiers: ['cmd'], key: '1' }}
-                onAction={() => void handleCreateProspectContact(contactCandidates[0])}
-              />
-            ) : null}
-            {contactCandidates[1] ? (
-              <Action
-                title={`Create ${contactCandidates[1].label} Contact`}
-                icon={Icon.Person}
-                shortcut={{ modifiers: ['cmd'], key: '2' }}
-                onAction={() => void handleCreateProspectContact(contactCandidates[1])}
-              />
-            ) : null}
-            {contactCandidates[2] ? (
-              <Action
-                title={`Create ${contactCandidates[2].label} Contact`}
-                icon={Icon.Person}
-                shortcut={{ modifiers: ['cmd'], key: '3' }}
-                onAction={() => void handleCreateProspectContact(contactCandidates[2])}
+                onAction={() => void handleCreateAllProspectContacts()}
               />
             ) : null}
             <Action
@@ -2372,6 +2363,25 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
         stage: basePlan.laravelSalesStageUpdate?.stage || stageLabel,
       });
+      try {
+        await syncAthleteContactCacheFromScoutPrepContext({
+          context: preUpdateContext,
+          crmStage: salesStageResult.stage || stageLabel,
+          source: 'scout_prep_post_call',
+          seenAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        logFailure(
+          'SCOUT_PREP_CONTACT_CACHE_SYNC',
+          'supabase-write',
+          error instanceof Error ? error.message : String(error),
+          {
+            contactId: athleteId,
+            athleteMainId,
+            stageLabel,
+          },
+        );
+      }
 
       const syncContext = preUpdateContext;
       const actionPlan = buildPostCallActionPlan({
@@ -2400,6 +2410,37 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
               stageLabel,
               materializationStatus: actionPlan.ownerContext.materializationStatus,
               ownerProof: actionPlan.ownerContext.ownerProof,
+            },
+          );
+        }
+      }
+      if (meetingSetInput && meetingSetResult) {
+        try {
+          await syncMeetingSetReminderCacheFromScoutPrep({
+            athleteId,
+            athleteMainId,
+            athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
+            context: syncContext,
+            meetingSet: {
+              openEventId: meetingSetInput.openEventId,
+              startsAt: meetingSetInput.startsAt,
+              startTime: meetingSetInput.startTime,
+              meetingTimezone: meetingSetInput.meetingTimezone,
+              bookedMeetingAssignedOwner: meetingSetInput.bookedMeetingAssignedOwner,
+              headScout: meetingSetInput.headScout,
+            },
+            meetingSetResult,
+          });
+        } catch (error) {
+          logFailure(
+            'SCOUT_PREP_SET_MEETING_REMINDER_CACHE_SYNC',
+            'supabase-write',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              stageLabel,
+              appointmentId: meetingSetInput.openEventId,
             },
           );
         }
@@ -2587,6 +2628,42 @@ function ScoutPrepDetail({
   );
   const highSchoolCopyLabel = buildHighSchoolCopyLabel(context);
 
+  async function syncContactCacheBestEffort(
+    activeContext: ScoutPrepContext,
+    crmStage: string | null,
+    source: string,
+  ) {
+    try {
+      await syncAthleteContactCacheFromScoutPrepContext({
+        context: activeContext,
+        crmStage,
+        source,
+        seenAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      logFailure(
+        'SCOUT_PREP_CONTACT_CACHE_SYNC',
+        'supabase-write',
+        error instanceof Error ? error.message : String(error),
+        {
+          contactId: activeContext.task.contact_id,
+          athleteMainId: activeContext.resolved.athlete_main_id || activeContext.task.athlete_main_id,
+          source,
+        },
+      );
+    }
+  }
+
+  function queueContactCacheSync(
+    activeContext: ScoutPrepContext,
+    crmStage: string | null,
+    source: string,
+  ) {
+    setTimeout(() => {
+      void syncContactCacheBestEffort(activeContext, crmStage, source);
+    }, 0);
+  }
+
   async function ensureContext(
     loadingTitle: string,
     loadingMessage: string,
@@ -2600,6 +2677,7 @@ function ScoutPrepDetail({
     try {
       const loadedContext = await loadScoutPrepContext(task);
       setContext(loadedContext);
+      queueContactCacheSync(loadedContext, null, 'scout_prep_context_load');
       toast.hide();
       return loadedContext;
     } catch (error) {
@@ -3007,6 +3085,7 @@ function ScoutPrepDetail({
         setMetadata(buildScoutPrepMetadata(values, context));
         setMarkdown(buildScoutPrepDetailMarkdown(values, context));
         setIsLoading(false);
+        queueContactCacheSync(context, null, 'scout_prep_detail_load');
         logInfo('SCOUT_PREP_DETAIL_LOAD', 'load-detail', 'success', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
@@ -3513,7 +3592,7 @@ function ScoutPrepTaskItem({
           <Action
             title="Copy Athlete Name"
             shortcut={{ modifiers: ['cmd'], key: 'c' }}
-            onAction={() => void copyToClipboardWithToast(task.athlete_name, 'Athlete Copied')}
+            onAction={() => void copyToClipboardWithToast(task.athlete_name, 'Athlete')}
           />
           <Action
             title="Duplicate Profile Check"

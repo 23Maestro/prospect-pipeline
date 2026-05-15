@@ -192,58 +192,100 @@ async function renderScoutSchedules(payload) {
 }
 
 async function renderContactReminder() {
-  setStatus('Ready for an iOS Shortcut payload');
+  setStatus('Find a cached athlete contact');
   await setContentHtml(`
     <form class="form-panel" id="reminder-form">
       <div class="field">
-        <label for="name">Name</label>
-        <input id="name" name="name" autocomplete="name" />
-      </div>
-      <div class="field">
         <label for="phone">Phone</label>
-        <input id="phone" name="phone" inputmode="tel" autocomplete="tel" />
+        <input id="phone" name="phone" inputmode="tel" autocomplete="tel" required />
       </div>
-      <div class="field">
-        <label for="message">Message</label>
-        <textarea id="message" name="message" required></textarea>
-      </div>
-      <button class="primary-button" type="submit">Create Reminder Payload</button>
+      <button class="primary-button" type="submit">Find Number</button>
     </form>
   `);
 
   document.querySelector('#reminder-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    void setLoading(true, 'Sending');
+    void setLoading(true, 'Searching');
     try {
-      const response = await fetch('/api/contact-reminder-intake', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          name: form.get('name'),
-          phone: form.get('phone'),
-          message: form.get('message'),
-          received_at: new Date().toISOString(),
-          source: 'mobile_web',
-        }),
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
+      const matches = await lookupAthleteContactByPhone(form.get('phone'));
+      if (!matches.length) {
+        await setContentHtml('<div class="empty-state">No active cached contact found.</div>');
+        setStatus('No match');
+        return;
       }
-      setStatus('Reminder payload created');
-      content.insertAdjacentHTML(
-        'beforeend',
-        `<article class="row"><h2 class="row-title">${escapeHtml(payload.reminder?.title || 'Reminder')}</h2><p class="row-subtitle">${escapeHtml(payload.reminder?.notes || '')}</p><div class="row-actions"><button class="copy-button" type="button" data-copy="${escapeAttribute(payload.reminder?.notes || '')}">Copy Notes</button></div></article>`,
-      );
+      setStatus(`${matches.length} found`);
+      await setContentHtml(matches.map(renderReminderLookupMatch).join(''));
       bindCopyButtons();
     } catch (error) {
-      setStatus('Reminder failed');
-      content.insertAdjacentHTML('beforeend', `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`);
+      setStatus('Lookup failed');
+      await setContentHtml(`<div class="error-state">${escapeHtml(error.message || String(error))}</div>`);
     } finally {
       setLoading(false);
     }
   });
+}
+
+async function lookupAthleteContactByPhone(phone) {
+  const config = window.__PROSPECT_SUPABASE__ || {};
+  const supabaseUrl = String(config.url || '').replace(/\/+$/, '');
+  const anonKey = String(config.anonKey || '');
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Missing Supabase public config');
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/lookup_athlete_contact_cache`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      authorization: `Bearer ${anonKey}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ input_phone: String(phone || '') }),
+  });
+  const payload = await response.json().catch(() => []);
+  if (!response.ok) {
+    throw new Error(payload.message || payload.error || `Supabase ${response.status}`);
+  }
+  return Array.isArray(payload) ? payload : [];
+}
+
+function buildReminderLookupDraft(match) {
+  const contactName = String(match.contact_name || 'Client').trim();
+  const athleteName = String(match.athlete_name || '').trim();
+  const phone = String(match.phone || match.normalized_phone || '').trim();
+  const url = String(match.admin_url || '').trim();
+  return {
+    type: 'reminder',
+    title: `Call ${contactName}`,
+    notes: `SA:${athleteName} - ${phone}`,
+    url,
+    listName: 'Prospect ID',
+  };
+}
+
+function renderReminderLookupMatch(match) {
+  const draft = buildReminderLookupDraft(match);
+  const draftJson = JSON.stringify(draft, null, 2);
+  return `
+    <article class="row">
+      <div class="row-header">
+        <div>
+          <h2 class="row-title">${escapeHtml(match.contact_name || 'Client')}</h2>
+          <p class="row-subtitle">${escapeHtml(match.relationship_label || 'Contact')} - ${escapeHtml(match.athlete_name || 'Unknown athlete')}</p>
+        </div>
+      </div>
+      <p class="row-subtitle">${escapeHtml(draft.notes)}</p>
+      <div class="row-actions">
+        <button class="copy-button" type="button" data-copy="${escapeAttribute(draftJson)}">Copy Draft</button>
+        ${
+          draft.url
+            ? `<a class="link-button" href="${escapeAttribute(draft.url)}" target="_blank" rel="noreferrer">Admin</a>`
+            : ''
+        }
+      </div>
+    </article>
+  `;
 }
 
 function bindCopyButtons() {

@@ -1,0 +1,124 @@
+import type { MeetingSetSubmitResponse, ScoutPrepContext } from '../features/scout-prep/types';
+import {
+  buildConfirmationMessage,
+  type ConfirmationFollowUpVariant,
+} from './scout-follow-up-templates';
+import { getMeetingReminderRecipient } from '../domain/scout-contact-selection';
+import { getGreetingForLocalTime } from '../domain/outreach-time-wording';
+import { buildSetMeetingReminderCacheRows } from '../domain/set-meeting-reminder-cache';
+import { upsertReminders, type SupabasePersistenceConfig } from '../domain/supabase-persistence';
+
+export type MeetingSetReminderCacheInput = {
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  context: ScoutPrepContext;
+  meetingSet: {
+    openEventId?: string | null;
+    startsAt?: string | null;
+    startTime?: string | null;
+    meetingTimezone?: string | null;
+    bookedMeetingAssignedOwner?: string | null;
+    headScout?: string | null;
+  };
+  meetingSetResult?: Partial<MeetingSetSubmitResponse> | null;
+  generatedAt?: string;
+};
+
+function clean(value?: string | null): string {
+  return String(value || '').trim();
+}
+
+function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {
+  const params = new URLSearchParams({
+    contactid: clean(athleteId),
+  });
+  const normalizedAthleteMainId = clean(athleteMainId);
+  if (normalizedAthleteMainId) {
+    params.set('athlete_main_id', normalizedAthleteMainId);
+  }
+  return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
+}
+
+export function getSetMeetingReminderSupabaseConfig(): SupabasePersistenceConfig | null {
+  const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
+    .trim()
+    .replace(/\/+$/, '');
+  const key = String(
+    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+  ).trim();
+  const schema = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
+  return url && key ? { url, key, schema } : null;
+}
+
+function parseMeetingDate(value?: string | null): Date | null {
+  const trimmed = clean(value);
+  if (!trimmed) return null;
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetReminderCacheInput) {
+  const appointmentId =
+    clean(args.meetingSetResult?.open_event_id) || clean(args.meetingSet.openEventId);
+  const meetingStartsAt =
+    clean(args.meetingSetResult?.created_task?.due_date) ||
+    clean(args.meetingSet.startsAt) ||
+    clean(args.meetingSet.startTime);
+  const meetingDate = parseMeetingDate(meetingStartsAt);
+  const reminderRecipient = getMeetingReminderRecipient(args.context);
+  const recipientPhone = reminderRecipient?.phones[0] || '';
+  if (!appointmentId || !meetingDate || !reminderRecipient || !recipientPhone) {
+    return [];
+  }
+
+  const meetingTimezone = clean(args.meetingSet.meetingTimezone) || 'America/New_York';
+  const headScoutName =
+    clean(args.meetingSet.headScout) ||
+    clean(args.meetingSet.bookedMeetingAssignedOwner) ||
+    clean(args.context.resolved.head_scout) ||
+    '';
+  const generatedAt = args.generatedAt || new Date().toISOString();
+  const confirmation = (variant: ConfirmationFollowUpVariant) =>
+    buildConfirmationMessage({
+      variant,
+      headScoutName,
+      dueAt: meetingDate,
+      meetingTimezone,
+      recipientNames: reminderRecipient.recipientNames,
+      greetingOverride: getGreetingForLocalTime({ now: new Date(generatedAt), meetingTimezone }),
+    });
+
+  return buildSetMeetingReminderCacheRows({
+    appointmentId,
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    athleteName: args.athleteName,
+    recipientName: reminderRecipient.recipientNames[0] || '',
+    recipientPhone,
+    headScoutName,
+    meetingStartsAt,
+    meetingTimezone,
+    confirmation1Message: confirmation('confirmation_1'),
+    confirmation2Message: confirmation('confirmation_2'),
+    adminUrl: buildAthleteAdminUrl(args.athleteId, args.athleteMainId),
+    taskUrl: clean(args.context.task.athlete_task_url),
+    generatedAt,
+    source: 'set_meetings_confirmation',
+  });
+}
+
+export async function syncMeetingSetReminderCacheFromScoutPrep(
+  args: MeetingSetReminderCacheInput,
+  config: SupabasePersistenceConfig | null = getSetMeetingReminderSupabaseConfig(),
+): Promise<{ enabled: boolean; count: number }> {
+  if (!config) {
+    return { enabled: false, count: 0 };
+  }
+  const rows = buildMeetingSetReminderCacheRowsFromScoutPrep(args);
+  if (!rows.length) {
+    return { enabled: true, count: 0 };
+  }
+  await upsertReminders(config, rows);
+  return { enabled: true, count: rows.length };
+}

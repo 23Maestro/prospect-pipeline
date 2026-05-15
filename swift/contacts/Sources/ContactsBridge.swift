@@ -85,6 +85,8 @@ private func requestContactAccess() async throws {
 
   let preferredGroup = try findPreferredGroup(store: store)
   let groupMemberIds = try contactIds(in: preferredGroup, store: store)
+  let request = CNSaveRequest()
+  var hasChanges = false
   var results: [SavedProspectContact] = []
 
   for index in firstNames.indices {
@@ -96,10 +98,8 @@ private func requestContactAccess() async throws {
     let lastName = lastNames[index]
     let phone = phones[index]
     let match = try findProspectContact(firstName: firstName, lastName: lastName, phone: phone, store: store)
-    let request = CNSaveRequest()
     let contact: CNMutableContact
     let status: String
-    var hasChanges = false
 
     switch match {
     case .samePhone(let existingContact):
@@ -126,16 +126,16 @@ private func requestContactAccess() async throws {
       hasChanges = true
     }
 
-    if hasChanges {
-      try store.execute(request)
-    }
-
     results.append(SavedProspectContact(
       status: status,
       groupName: preferredGroup?.name,
       name: "\(firstName) \(lastName)",
       phone: phone
     ))
+  }
+
+  if hasChanges {
+    try store.execute(request)
   }
 
   return results

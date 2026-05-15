@@ -132,9 +132,16 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/scout-prep.tsx',
     'src/domain/set-meeting-reminder-cache.ts',
     'src/domain/set-meeting-reminder-cache.test.ts',
+    'src/domain/athlete-contact-cache.ts',
+    'src/domain/athlete-contact-cache.test.ts',
+    'src/lib/athlete-contact-cache.ts',
+    'src/lib/set-meeting-reminder-cache-sync.ts',
+    'src/lib/set-meeting-reminder-cache-sync.test.ts',
     'src/head-scout-schedules.tsx',
     'supabase/migrations/20260510090000_expand_reminders_set_meeting_cache.sql',
     'supabase/tests/reminders-set-meeting-cache-columns.test.mjs',
+    'supabase/migrations/20260514090000_athlete_contact_cache.sql',
+    'supabase/tests/athlete-contact-cache-contract.test.mjs',
     'supabase/migrations/20260503043000_backsync_meeting_set_materialization_contract.sql',
     'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
     'supabase/migrations/20260503045000_backsync_call_activity_counting_contract.sql',
@@ -337,4 +344,18 @@ test('prospect mobile set meetings uses cached confirmation messages', () => {
   assert.match(appText, /event\.confirmation_1_message/);
   assert.match(appText, /event\.confirmation_2_message/);
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);
+});
+
+test('prospect mobile reminder tab looks up contacts directly in Supabase', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  const pageText = readFileSync(join(appRoot, 'app/prospect-mobile/page.tsx'), 'utf8');
+  assert.match(appText, /lookup_athlete_contact_cache/);
+  assert.match(appText, /window\.__PROSPECT_SUPABASE__/);
+  assert.match(appText, /Find Number/);
+  assert.match(appText, /buildReminderLookupDraft/);
+  assert.match(pageText, /NEXT_PUBLIC_SUPABASE_URL/);
+  assert.match(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+  assert.match(appText, /'\/contact-reminder': \{\s*title: 'Reminder Intake',\s*render: renderContactReminder,\s*usesWeek: false,\s*\}/);
+  assert.doesNotMatch(appText, /\/api\/contact-reminder-intake/);
+  assert.doesNotMatch(appText, /\/api\/v1\/mobile/);
 });

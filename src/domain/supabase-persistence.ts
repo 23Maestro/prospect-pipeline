@@ -120,6 +120,30 @@ export function upsertPendingClientWatchlistRows(
   return writeRows(config, 'pending_client_watchlist', rows, 'source_event_id');
 }
 
+export function upsertAthleteContactCacheRows(config: SupabasePersistenceConfig, rows: unknown[]) {
+  return writeRows(config, 'athlete_contact_cache', rows, 'normalized_phone,athlete_key');
+}
+
+export async function hasAthleteContactCacheRows(
+  config: SupabasePersistenceConfig,
+  athleteKey: string,
+): Promise<boolean> {
+  const rows = await readRows<{ id: string }>(
+    config,
+    'athlete_contact_cache',
+    `select=id&athlete_key=eq.${encodeURIComponent(athleteKey)}&limit=1`,
+  );
+  return rows.length > 0;
+}
+
+export function patchAthleteContactCacheRowsForAthlete(
+  config: SupabasePersistenceConfig,
+  athleteKey: string,
+  row: Record<string, unknown>,
+) {
+  return patchRow(config, 'athlete_contact_cache', 'athlete_key', athleteKey, row);
+}
+
 export function patchPendingClientWatchlistRow(
   config: SupabasePersistenceConfig,
   sourceEventId: string,
