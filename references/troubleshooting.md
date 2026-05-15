@@ -40,7 +40,3 @@
 
 ## 2026-05-12 Workflow SDK GitBook
 - When selling the workflow SDK direction, frame it as a website/API upgrade that lets selected workflows accept and return stable JSON. Keep app keys, local sessions, and Raycast-specific mechanics out of the core pitch unless they are needed for implementation detail.
-
-## 2026-05-15 Raycast Code Index
-- When `List` uses `isShowingDetail`, keep the left row sparse: title plus only exceptional badges, and move bucket/location/kind facts into `List.Item.Detail.Metadata`.
-- Do not add compact file subtitles by default when the user says the list row feels crowded; a clean symbol-only row can be easier to scan with the detail pane open.
