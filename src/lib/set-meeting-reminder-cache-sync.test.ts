@@ -47,6 +47,7 @@ test('buildMeetingSetReminderCacheRowsFromScoutPrep caches both confirmation mes
       openEventId: 'event-1',
       startsAt: '2026-05-15T19:00:00-04:00',
       meetingTimezone: 'EST',
+      meetingLength: '01:30',
       headScout: 'Ryan Lietz',
     },
     generatedAt: '2026-05-14T18:00:00.000Z',
@@ -56,6 +57,8 @@ test('buildMeetingSetReminderCacheRowsFromScoutPrep caches both confirmation mes
   assert.equal(rows[0].appointment_id, 'event-1');
   assert.equal(rows[0].athlete_key, '1489000:951000');
   assert.equal(rows[0].recipient_phone, '615-555-1212');
+  assert.equal(rows[0].meeting_duration_minutes, 90);
+  assert.equal(rows[0].meeting_ends_at, '2026-05-16T00:30:00.000Z');
   assert.equal(rows[0].admin_url, 'https://dashboard.nationalpid.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
   assert.equal(rows[0].kind, 'confirmation_1');
   assert.equal(rows[1].kind, 'confirmation_2');

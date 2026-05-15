@@ -2536,6 +2536,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
               startsAt: meetingSetInput.startsAt,
               startTime: meetingSetInput.startTime,
               meetingTimezone: meetingSetInput.meetingTimezone,
+              meetingLength: meetingSetInput.meetingLength,
               bookedMeetingAssignedOwner: meetingSetInput.bookedMeetingAssignedOwner,
               headScout: meetingSetInput.headScout,
             },

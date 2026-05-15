@@ -8,6 +8,7 @@ export type BuildSetMeetingReminderCacheRowsInput = {
   headScoutName: string;
   meetingStartsAt: string | null;
   meetingTimezone: string;
+  meetingDurationMinutes?: number | null;
   confirmation1Message: string;
   confirmation2Message: string;
   adminUrl: string;
@@ -18,11 +19,27 @@ export type BuildSetMeetingReminderCacheRowsInput = {
 
 type ReminderKind = 'confirmation_1' | 'confirmation_2';
 
+function normalizeDurationMinutes(value?: number | null): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 60;
+}
+
+function computeMeetingEndsAt(
+  startsAt?: string | null,
+  durationMinutes?: number | null,
+): string | null {
+  const start = new Date(String(startsAt || '').trim());
+  if (Number.isNaN(start.getTime())) return null;
+  return new Date(start.getTime() + normalizeDurationMinutes(durationMinutes) * 60_000).toISOString();
+}
+
 function buildRow(input: BuildSetMeetingReminderCacheRowsInput, kind: ReminderKind, messageBody: string) {
   if (!String(messageBody || '').trim()) {
     throw new Error(`message_body is required for ${kind}`);
   }
   const dedupeKey = `set_meeting_reminder:${input.appointmentId}:${kind}:${input.recipientPhone}`;
+  const meetingDurationMinutes = normalizeDurationMinutes(input.meetingDurationMinutes);
+  const meetingEndsAt = computeMeetingEndsAt(input.meetingStartsAt, meetingDurationMinutes);
   return {
     id: dedupeKey,
     appointment_id: input.appointmentId,
@@ -39,6 +56,8 @@ function buildRow(input: BuildSetMeetingReminderCacheRowsInput, kind: ReminderKi
     recipient_phone: input.recipientPhone,
     head_scout_name: input.headScoutName,
     meeting_starts_at: input.meetingStartsAt || null,
+    meeting_duration_minutes: meetingDurationMinutes,
+    meeting_ends_at: meetingEndsAt,
     meeting_timezone: input.meetingTimezone,
     message_body: messageBody,
     admin_url: input.adminUrl,
@@ -54,6 +73,8 @@ function buildRow(input: BuildSetMeetingReminderCacheRowsInput, kind: ReminderKi
       recipient_phone: input.recipientPhone,
       head_scout_name: input.headScoutName,
       meeting_starts_at: input.meetingStartsAt || null,
+      meeting_duration_minutes: meetingDurationMinutes,
+      meeting_ends_at: meetingEndsAt,
       meeting_timezone: input.meetingTimezone,
       message_body: messageBody,
       admin_url: input.adminUrl,

@@ -7,6 +7,8 @@ alter table if exists reminders
   add column if not exists recipient_phone text,
   add column if not exists head_scout_name text,
   add column if not exists meeting_starts_at timestamptz,
+  add column if not exists meeting_duration_minutes integer,
+  add column if not exists meeting_ends_at timestamptz,
   add column if not exists meeting_timezone text,
   add column if not exists message_body text,
   add column if not exists admin_url text,

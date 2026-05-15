@@ -18,6 +18,7 @@ export type MeetingSetReminderCacheInput = {
     startsAt?: string | null;
     startTime?: string | null;
     meetingTimezone?: string | null;
+    meetingLength?: string | null;
     bookedMeetingAssignedOwner?: string | null;
     headScout?: string | null;
   };
@@ -56,6 +57,16 @@ function parseMeetingDate(value?: string | null): Date | null {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseMeetingLengthMinutes(value?: string | null): number {
+  const trimmed = clean(value);
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return 60;
+  const hours = Number.parseInt(match[1], 10);
+  const minutes = Number.parseInt(match[2], 10);
+  const total = hours * 60 + minutes;
+  return Number.isFinite(total) && total > 0 ? total : 60;
 }
 
 export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetReminderCacheInput) {
@@ -99,6 +110,7 @@ export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetRe
     headScoutName,
     meetingStartsAt,
     meetingTimezone,
+    meetingDurationMinutes: parseMeetingLengthMinutes(args.meetingSet.meetingLength),
     confirmation1Message: confirmation('confirmation_1'),
     confirmation2Message: confirmation('confirmation_2'),
     adminUrl: buildAthleteAdminUrl(args.athleteId, args.athleteMainId),

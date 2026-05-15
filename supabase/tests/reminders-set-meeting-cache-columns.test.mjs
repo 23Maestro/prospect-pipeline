@@ -8,6 +8,8 @@ test('migration adds set meeting cache columns to reminders without dropping exi
   assert.match(sql, /alter table if exists reminders/i);
   assert.match(sql, /add column if not exists athlete_key text/i);
   assert.match(sql, /add column if not exists meeting_starts_at timestamptz/i);
+  assert.match(sql, /add column if not exists meeting_duration_minutes integer/i);
+  assert.match(sql, /add column if not exists meeting_ends_at timestamptz/i);
   assert.match(sql, /add column if not exists message_body text/i);
   assert.match(sql, /add column if not exists payload_json jsonb not null default '\{\}'::jsonb/i);
   assert.doesNotMatch(sql, /drop column/i);
