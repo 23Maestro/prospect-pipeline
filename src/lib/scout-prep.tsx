@@ -209,7 +209,7 @@ export async function fetchScoutPrepAthleteDetails(
   logInfo('SCOUT_PREP_ATHLETE_DETAILS', 'request', 'start', {
     athleteId,
   });
-  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve`);
+  const response = await apiFetch(`/athlete/${encodeURIComponent(athleteId)}/scout-prep-resolve`);
   if (!response.ok) {
     const errorText = await response.text().catch(() => '');
     logFailure(

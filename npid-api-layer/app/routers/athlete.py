@@ -67,6 +67,162 @@ async def persist_athlete_main_id(athlete_id: int, athlete_main_id: str):
     # This log creates an audit trail to diagnose repeated resolution issues
 
 
+def apply_athleteinfo_profile(profile_data: Dict[str, Any], info_data: Dict[str, Any]) -> None:
+    student = info_data.get("student", {}) or {}
+    profile = info_data.get("profile", {}) or {}
+
+    if student.get("firstName") or student.get("lastName"):
+        profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
+    for key in [
+        "grad_year",
+        "sport",
+        "high_school",
+        "city",
+        "state",
+        "positions",
+        "gpa",
+        "head_scout",
+        "scouting_coordinator",
+    ]:
+        if profile.get(key):
+            profile_data[key] = profile.get(key)
+
+
+def build_athlete_identifiers(
+    athlete_id: str,
+    athlete_main_id: str,
+    profile_data: Dict[str, Any],
+) -> AthleteIdentifiers:
+    return AthleteIdentifiers(
+        athlete_id=athlete_id,
+        athlete_main_id=athlete_main_id or "",
+        name=profile_data.get("name", ""),
+        grad_year=profile_data.get("grad_year"),
+        high_school=profile_data.get("high_school"),
+        city=profile_data.get("city"),
+        state=profile_data.get("state"),
+        positions=profile_data.get("positions"),
+        sport=profile_data.get("sport"),
+        jersey_number=profile_data.get("jersey_number"),
+        gpa=profile_data.get("gpa"),
+        head_scout=profile_data.get("head_scout"),
+        scouting_coordinator=profile_data.get("scouting_coordinator"),
+    )
+
+
+@router.get("/{any_id}/scout-prep-resolve", response_model=AthleteIdentifiers)
+async def resolve_athlete_for_scout_prep(
+    request: Request,
+    any_id: str,
+    force_refresh: bool = False,
+):
+    """
+    Resolve Scout Prep identity/context without jersey-number logic.
+
+    This route intentionally does not parse jersey fields, call athletic seasons,
+    or let missing jersey data invalidate useful Scout Prep context.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+    cache_key = f"scout-prep:{any_id}"
+
+    cached = athlete_cache.get(cache_key)
+    if cached and not force_refresh:
+        logger.info("📦 Scout Prep resolve cache hit for %s", any_id)
+        return cached
+
+    logger.info("🔍 Scout Prep resolving athlete context for %s", any_id)
+
+    athlete_id = None
+    athlete_main_id = None
+    profile_data: Dict[str, Any] = {}
+
+    async def hydrate_basic_profile(aid: str):
+        nonlocal athlete_id, athlete_main_id, profile_data
+        try:
+            profile_response = await session.get(f"/athlete/profile/{aid}")
+            logger.info(
+                "📥 Scout Prep profile response: status=%s length=%s has_athlete=%s",
+                profile_response.status_code,
+                len(profile_response.text or ""),
+                "athlete" in (profile_response.text or "").lower(),
+            )
+            if profile_response.status_code == 200 and "athlete" in (profile_response.text or "").lower():
+                athlete_id = aid
+                athlete_main_id = translator.extract_athlete_main_id(profile_response.text) or athlete_main_id
+                if not profile_data:
+                    profile_data = translator.parse_athlete_profile_data_basic(profile_response.text)
+                    logger.info("📊 Scout Prep profile data parsed: %s", profile_data)
+            else:
+                logger.warning("⚠️ Scout Prep profile page validation failed")
+        except Exception as e:
+            logger.error("❌ Scout Prep profile fetch failed for %s: %s", aid, e, exc_info=True)
+
+    await hydrate_basic_profile(any_id)
+
+    if not athlete_id or not athlete_main_id:
+        try:
+            search_response = await session.get(
+                "/videoteammsg/videomailprogress",
+                params={"search": any_id},
+            )
+            ids = translator.parse_video_progress_ids(search_response.text)
+            if ids:
+                athlete_id = ids.get("athlete_id") or athlete_id
+                athlete_main_id = ids.get("athlete_main_id") or athlete_main_id
+                profile_data.update(ids.get("profile", {}))
+        except Exception as e:
+            logger.debug("Scout Prep progress-page ID lookup failed: %s", e)
+
+    if athlete_id and not athlete_main_id:
+        await hydrate_basic_profile(athlete_id)
+
+    if not athlete_id:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Could not resolve Scout Prep athlete with ID: {any_id}",
+        )
+
+    if athlete_id and athlete_main_id:
+        try:
+            endpoint, form_data = translator.contact_info_to_legacy(str(athlete_id), str(athlete_main_id))
+            info_response = await session.post(endpoint, data=form_data)
+            logger.info(
+                "📥 Scout Prep athleteinfo status=%s content_type=%s length=%s",
+                info_response.status_code,
+                info_response.headers.get("content-type"),
+                len(info_response.text or ""),
+            )
+            if info_response.status_code == 200:
+                apply_athleteinfo_profile(
+                    profile_data,
+                    translator.parse_athleteinfo_response(info_response.text),
+                )
+        except Exception as e:
+            logger.warning("⚠️ Scout Prep athleteinfo enrichment failed: %s", e)
+
+    if athlete_id and athlete_main_id:
+        await persist_athlete_main_id(athlete_id, athlete_main_id)
+
+    result = build_athlete_identifiers(athlete_id, athlete_main_id or "", profile_data)
+    athlete_cache.set(cache_key, result)
+    if athlete_id != any_id:
+        athlete_cache.set(f"scout-prep:{athlete_id}", result)
+    if athlete_main_id and athlete_main_id != any_id:
+        athlete_cache.set(f"scout-prep:{athlete_main_id}", result)
+
+    logger.info(
+        "✅ Scout Prep resolve result athlete_id=%s athlete_main_id=%s name=%s grad_year=%s state=%s sport=%s",
+        result.athlete_id,
+        result.athlete_main_id,
+        result.name,
+        result.grad_year,
+        result.state,
+        result.sport,
+    )
+    return result
+
+
 @router.get("/{any_id}/resolve", response_model=AthleteIdentifiers)
 async def resolve_athlete(
     request: Request,
@@ -190,24 +346,7 @@ async def resolve_athlete(
             )
             if info_response.status_code == 200:
                 info_data = translator.parse_athleteinfo_response(info_response.text)
-                student = info_data.get("student", {}) or {}
-                profile = info_data.get("profile", {}) or {}
-
-                if student.get("firstName") or student.get("lastName"):
-                    profile_data["name"] = f"{student.get('firstName', '')} {student.get('lastName', '')}".strip()
-                for key in [
-                    "grad_year",
-                    "sport",
-                    "high_school",
-                    "city",
-                    "state",
-                    "positions",
-                    "gpa",
-                    "head_scout",
-                    "scouting_coordinator",
-                ]:
-                    if profile.get(key):
-                        profile_data[key] = profile.get(key)
+                apply_athleteinfo_profile(profile_data, info_data)
         except Exception as e:
             logger.warning(f"⚠️ athleteinfo enrichment failed: {e}")
 
@@ -307,21 +446,7 @@ async def resolve_athlete(
     if athlete_id and athlete_main_id:
         await persist_athlete_main_id(athlete_id, athlete_main_id)
 
-    result = AthleteIdentifiers(
-        athlete_id=athlete_id,
-        athlete_main_id=athlete_main_id or "",
-        name=profile_data.get("name", ""),
-        grad_year=profile_data.get("grad_year"),
-        high_school=profile_data.get("high_school"),
-        city=profile_data.get("city"),
-        state=profile_data.get("state"),
-        positions=profile_data.get("positions"),
-        sport=profile_data.get("sport"),
-        jersey_number=profile_data.get("jersey_number"),
-        gpa=profile_data.get("gpa"),
-        head_scout=profile_data.get("head_scout"),
-        scouting_coordinator=profile_data.get("scouting_coordinator"),
-    )
+    result = build_athlete_identifiers(athlete_id, athlete_main_id or "", profile_data)
 
     logger.info(
         "✅ Resolve result athlete_id=%s athlete_main_id=%s name=%s grad_year=%s high_school=%s city=%s state=%s sport=%s positions=%s gpa=%s",

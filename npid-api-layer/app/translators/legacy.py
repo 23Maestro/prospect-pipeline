@@ -1278,14 +1278,11 @@ class LegacyTranslator:
         return None
 
     @staticmethod
-    def parse_athlete_profile_data(html: str, grade_level: int = None) -> Dict[str, Any]:
+    def parse_athlete_profile_data_basic(html: str) -> Dict[str, Any]:
         """
-        Extract athlete profile data from HTML page using selectolax.
+        Extract Scout Prep-safe athlete profile data from HTML page using selectolax.
         ASSUMES HTML is always returned - robust HTML parsing.
-
-        Args:
-            html: Full profile page HTML
-            grade_level: Grade level (9-12) to help locate correct tab section
+        Does not parse jersey number or inspect grade-specific athletic season tabs.
         """
         from selectolax.parser import HTMLParser
         data = {}
@@ -1434,6 +1431,45 @@ class LegacyTranslator:
                 year_match = re.search(r'\b(20\d{2})\b', html)
                 if year_match:
                     data["grad_year"] = year_match.group(1)
+
+            debug_fields = {}
+            patterns = {
+                "first_name": r'name="first_name"[^>]*value="([^"]*)"',
+                "last_name": r'name="last_name"[^>]*value="([^"]*)"',
+                "sport": r'name="sport"[^>]*>([^<]{1,80})',
+                "high_school": r'name="high_school"[^>]*value="([^"]*)"',
+                "city": r'name="city"[^>]*value="([^"]*)"',
+                "state": r'name="state"[^>]*value="([^"]*)"',
+                "grad_year": r'name="grad_year"[^>]*value="([^"]*)"',
+            }
+            for key, pattern in patterns.items():
+                match = re.search(pattern, html, re.IGNORECASE)
+                if match and match.group(1):
+                    debug_fields[key] = match.group(1).strip()
+
+            if debug_fields:
+                logger.info("🔎 Profile debug fields (not persisted): %s", debug_fields)
+
+        except Exception as e:
+            logger.warning("⚠️ Failed to parse basic athlete profile data: %s", e, exc_info=True)
+
+        return data
+
+    @staticmethod
+    def parse_athlete_profile_data(html: str, grade_level: int = None) -> Dict[str, Any]:
+        """
+        Extract athlete profile data from HTML page using selectolax.
+        ASSUMES HTML is always returned - robust HTML parsing.
+
+        Args:
+            html: Full profile page HTML
+            grade_level: Grade level (9-12) to help locate correct tab section
+        """
+        from selectolax.parser import HTMLParser
+        data = LegacyTranslator.parse_athlete_profile_data_basic(html)
+
+        try:
+            tree = HTMLParser(html)
 
             # Map grade level to tab ID patterns for context
             grade_patterns = {
