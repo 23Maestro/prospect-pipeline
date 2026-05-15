@@ -70,27 +70,47 @@ function markdownEscape(value?: string) {
 }
 
 function buildMarkdown(record: CodeIndexRecord) {
-  const location = `${record.file}:${record.line}`;
-  const tags = record.tags.length ? record.tags.join(', ') : 'none';
-  const route =
-    record.method && record.path ? `\n- Route: \`${record.method} ${record.path}\`` : '';
   const signature = record.signature || record.snippet || '';
 
   return `# ${markdownEscape(record.name)}
-
-- Location: \`${markdownEscape(location)}\`
-- System: \`${markdownEscape(record.system)}\`
-- Bucket: \`${markdownEscape(record.bucket)}\`
-- Kind: \`${kindLabel(record)}\`
-- Exported: \`${record.exported ? 'yes' : 'no'}\`
-- Tags: \`${markdownEscape(tags)}\`${route}
-
-## Code
 
 \`\`\`
 ${signature}
 \`\`\`
 `;
+}
+
+function accessoryTags(record: CodeIndexRecord): List.Item.Accessory[] {
+  const accessories: List.Item.Accessory[] = [];
+  if (record.kind === 'function') accessories.push({ text: 'Fx' });
+  if (record.kind === 'api_call') accessories.push({ tag: 'API' });
+  if (record.method) accessories.push({ tag: record.method });
+  if (record.exported) accessories.push({ tag: 'exported' });
+  return accessories;
+}
+
+function buildDetailMetadata(record: CodeIndexRecord) {
+  const tags = record.tags.filter((tag) => tag !== 'exported' && tag !== record.method);
+
+  return (
+    <List.Item.Detail.Metadata>
+      <List.Item.Detail.Metadata.Label title="Location" text={`${record.file}:${record.line}`} />
+      <List.Item.Detail.Metadata.Label title="System" text={record.system} />
+      <List.Item.Detail.Metadata.Label title="Bucket" text={record.bucket} />
+      <List.Item.Detail.Metadata.Label title="Kind" text={kindLabel(record)} />
+      {record.method && record.path ? (
+        <List.Item.Detail.Metadata.Label title="Route" text={`${record.method} ${record.path}`} />
+      ) : null}
+      {record.exported ? <List.Item.Detail.Metadata.Label title="Exported" text="yes" /> : null}
+      {tags.length ? (
+        <List.Item.Detail.Metadata.TagList title="Tags">
+          {tags.map((tag) => (
+            <List.Item.Detail.Metadata.TagList.Item key={tag} text={tag} />
+          ))}
+        </List.Item.Detail.Metadata.TagList>
+      ) : null}
+    </List.Item.Detail.Metadata>
+  );
 }
 
 function markdownReference(record: CodeIndexRecord) {
@@ -180,7 +200,6 @@ export default function CodeIndexCommand() {
               key={record.id}
               icon={kindIcon(record)}
               title={record.name}
-              subtitle={`${record.bucket} - ${record.file}:${record.line}`}
               keywords={[
                 record.file,
                 record.bucket,
@@ -188,12 +207,13 @@ export default function CodeIndexCommand() {
                 record.path || '',
                 ...record.tags,
               ]}
-              accessories={[
-                { text: kindLabel(record) },
-                ...(record.exported ? [{ tag: 'exported' }] : []),
-                ...(record.method ? [{ tag: record.method }] : []),
-              ]}
-              detail={<List.Item.Detail markdown={buildMarkdown(record)} />}
+              accessories={accessoryTags(record)}
+              detail={
+                <List.Item.Detail
+                  markdown={buildMarkdown(record)}
+                  metadata={buildDetailMetadata(record)}
+                />
+              }
               actions={
                 <ActionPanel>
                   <Action.Open title="Open File" icon={Icon.Code} target={absolutePath(record)} />

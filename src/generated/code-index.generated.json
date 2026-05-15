@@ -39,6 +39,84 @@
     "id": "function:Domain:src/domain/architecture-contract.test.ts:9:::readRepoFile"
   },
   {
+    "exported": false,
+    "tags": ["test"],
+    "snippet": "function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {",
+    "signature": "function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {",
+    "kind": "function",
+    "name": "buildContext",
+    "file": "src/domain/athlete-contact-cache.test.ts",
+    "line": 9,
+    "system": "Domain",
+    "bucket": "Test/helper",
+    "id": "function:Domain:src/domain/athlete-contact-cache.test.ts:9:::buildContext"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function clean(value?: string | null): string {",
+    "signature": "function clean(value?: string | null): string {",
+    "kind": "function",
+    "name": "clean",
+    "file": "src/domain/athlete-contact-cache.ts",
+    "line": 54,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/athlete-contact-cache.ts:54:::clean"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function buildAthleteAdminUrl(contactId: string, athleteMainId?: string | null): string {",
+    "signature": "function buildAthleteAdminUrl(contactId: string, athleteMainId?: string | null): string {",
+    "kind": "function",
+    "name": "buildAthleteAdminUrl",
+    "file": "src/domain/athlete-contact-cache.ts",
+    "line": 58,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/athlete-contact-cache.ts:58:::buildAthleteAdminUrl"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export function buildAthleteContactCacheKey(athleteId: string, athleteMainId: string): string {",
+    "signature": "export function buildAthleteContactCacheKey(athleteId: string, athleteMainId: string): string {",
+    "kind": "function",
+    "name": "buildAthleteContactCacheKey",
+    "file": "src/domain/athlete-contact-cache.ts",
+    "line": 69,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/athlete-contact-cache.ts:69:::buildAthleteContactCacheKey"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export function normalizeContactCachePhone(raw?: string | null): string | null {",
+    "signature": "export function normalizeContactCachePhone(raw?: string | null): string | null {",
+    "kind": "function",
+    "name": "normalizeContactCachePhone",
+    "file": "src/domain/athlete-contact-cache.ts",
+    "line": 73,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/athlete-contact-cache.ts:73:::normalizeContactCachePhone"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export function buildAthleteContactCacheSyncPlan(",
+    "signature": "export function buildAthleteContactCacheSyncPlan(",
+    "kind": "function",
+    "name": "buildAthleteContactCacheSyncPlan",
+    "file": "src/domain/athlete-contact-cache.ts",
+    "line": 80,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/athlete-contact-cache.ts:80:::buildAthleteContactCacheSyncPlan"
+  },
+  {
     "exported": true,
     "tags": ["exported"],
     "snippet": "export function normalizeAthleteMainId(value?: string | number | null): string {",
@@ -2550,15 +2628,54 @@
   {
     "exported": true,
     "tags": ["exported"],
+    "snippet": "export function upsertAthleteContactCacheRows(config: SupabasePersistenceConfig, rows: unknown[]) {",
+    "signature": "export function upsertAthleteContactCacheRows(config: SupabasePersistenceConfig, rows: unknown[]) {",
+    "kind": "function",
+    "name": "upsertAthleteContactCacheRows",
+    "file": "src/domain/supabase-persistence.ts",
+    "line": 123,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/supabase-persistence.ts:123:::upsertAthleteContactCacheRows"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export async function hasAthleteContactCacheRows(",
+    "signature": "export async function hasAthleteContactCacheRows(",
+    "kind": "function",
+    "name": "hasAthleteContactCacheRows",
+    "file": "src/domain/supabase-persistence.ts",
+    "line": 127,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/supabase-persistence.ts:127:::hasAthleteContactCacheRows"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export function patchAthleteContactCacheRowsForAthlete(",
+    "signature": "export function patchAthleteContactCacheRowsForAthlete(",
+    "kind": "function",
+    "name": "patchAthleteContactCacheRowsForAthlete",
+    "file": "src/domain/supabase-persistence.ts",
+    "line": 139,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/supabase-persistence.ts:139:::patchAthleteContactCacheRowsForAthlete"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
     "snippet": "export function patchPendingClientWatchlistRow(",
     "signature": "export function patchPendingClientWatchlistRow(",
     "kind": "function",
     "name": "patchPendingClientWatchlistRow",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 123,
+    "line": 147,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:123:::patchPendingClientWatchlistRow"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:147:::patchPendingClientWatchlistRow"
   },
   {
     "exported": true,
@@ -2568,10 +2685,10 @@
     "kind": "function",
     "name": "patchRow",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 131,
+    "line": 155,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:131:::patchRow"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:155:::patchRow"
   },
   {
     "exported": true,
@@ -2581,10 +2698,10 @@
     "kind": "function",
     "name": "deleteRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 147,
+    "line": 171,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:147:::deleteRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:171:::deleteRows"
   },
   {
     "exported": false,
@@ -5514,15 +5631,28 @@
   {
     "exported": false,
     "tags": [],
+    "snippet": "function markdownReference(record: CodeIndexRecord) {",
+    "signature": "function markdownReference(record: CodeIndexRecord) {",
+    "kind": "function",
+    "name": "markdownReference",
+    "file": "src/code-index.tsx",
+    "line": 116,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/code-index.tsx:116:::markdownReference"
+  },
+  {
+    "exported": false,
+    "tags": [],
     "snippet": "async function copyWithToast(value: string, title: string) {",
     "signature": "async function copyWithToast(value: string, title: string) {",
     "kind": "function",
     "name": "copyWithToast",
     "file": "src/code-index.tsx",
-    "line": 100,
+    "line": 120,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/code-index.tsx:100:::copyWithToast"
+    "id": "function:Raycast:src/code-index.tsx:120:::copyWithToast"
   },
   {
     "exported": false,
@@ -5532,10 +5662,10 @@
     "kind": "function",
     "name": "refreshIndex",
     "file": "src/code-index.tsx",
-    "line": 105,
+    "line": 125,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/code-index.tsx:105:::refreshIndex"
+    "id": "function:Raycast:src/code-index.tsx:125:::refreshIndex"
   },
   {
     "exported": true,
@@ -5545,10 +5675,10 @@
     "kind": "function",
     "name": "CodeIndexCommand",
     "file": "src/code-index.tsx",
-    "line": 111,
+    "line": 131,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/code-index.tsx:111:::CodeIndexCommand"
+    "id": "function:Raycast:src/code-index.tsx:131:::CodeIndexCommand"
   },
   {
     "exported": false,
@@ -5558,10 +5688,10 @@
     "kind": "function",
     "name": "runRefresh",
     "file": "src/code-index.tsx",
-    "line": 140,
+    "line": 160,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/code-index.tsx:140:::runRefresh"
+    "id": "function:Raycast:src/code-index.tsx:160:::runRefresh"
   },
   {
     "exported": false,
@@ -5644,15 +5774,28 @@
   {
     "exported": false,
     "tags": [],
-    "snippet": "function markdownReference(record: CodeIndexRecord) {",
-    "signature": "function markdownReference(record: CodeIndexRecord) {",
+    "snippet": "function accessoryTags(record: CodeIndexRecord): List.Item.Accessory[] {",
+    "signature": "function accessoryTags(record: CodeIndexRecord): List.Item.Accessory[] {",
     "kind": "function",
-    "name": "markdownReference",
+    "name": "accessoryTags",
     "file": "src/code-index.tsx",
-    "line": 96,
+    "line": 83,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/code-index.tsx:96:::markdownReference"
+    "id": "function:Raycast:src/code-index.tsx:83:::accessoryTags"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function buildDetailMetadata(record: CodeIndexRecord) {",
+    "signature": "function buildDetailMetadata(record: CodeIndexRecord) {",
+    "kind": "function",
+    "name": "buildDetailMetadata",
+    "file": "src/code-index.tsx",
+    "line": 92,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/code-index.tsx:92:::buildDetailMetadata"
   },
   {
     "exported": true,
@@ -7473,6 +7616,84 @@
     "system": "Raycast",
     "bucket": "Domain logic",
     "id": "function:Raycast:src/lib/apple-calendar-follow-ups.ts:79:::createAppleCalendarFollowUpEvent"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export async function syncAthleteContactCacheFromScoutPrepContext(args: {",
+    "signature": "export async function syncAthleteContactCacheFromScoutPrepContext(args: {",
+    "kind": "function",
+    "name": "syncAthleteContactCacheFromScoutPrepContext",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 101,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:101:::syncAthleteContactCacheFromScoutPrepContext"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function readEnvFile(filePath: string): Record<string, string> {",
+    "signature": "function readEnvFile(filePath: string): Record<string, string> {",
+    "kind": "function",
+    "name": "readEnvFile",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 27,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:27:::readEnvFile"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function findProjectRoot(): string {",
+    "signature": "function findProjectRoot(): string {",
+    "kind": "function",
+    "name": "findProjectRoot",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 41,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:41:::findProjectRoot"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function readRepoEnv(): Record<string, string> {",
+    "signature": "function readRepoEnv(): Record<string, string> {",
+    "kind": "function",
+    "name": "readRepoEnv",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 54,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:54:::readRepoEnv"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function getSupabaseConfig(): SupabasePersistenceConfig | null {",
+    "signature": "function getSupabaseConfig(): SupabasePersistenceConfig | null {",
+    "kind": "function",
+    "name": "getSupabaseConfig",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 70,
+    "system": "Raycast",
+    "bucket": "Supabase persistence",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:70:::getSupabaseConfig"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function logPlanSkipped(plan: AthleteContactCacheSyncPlan) {",
+    "signature": "function logPlanSkipped(plan: AthleteContactCacheSyncPlan) {",
+    "kind": "function",
+    "name": "logPlanSkipped",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 93,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:93:::logPlanSkipped"
   },
   {
     "exported": true,
@@ -13522,6 +13743,110 @@
   {
     "exported": false,
     "tags": ["test"],
+    "snippet": "function buildContext(): ScoutPrepContext {",
+    "signature": "function buildContext(): ScoutPrepContext {",
+    "kind": "function",
+    "name": "buildContext",
+    "file": "src/lib/set-meeting-reminder-cache-sync.test.ts",
+    "line": 6,
+    "system": "Raycast",
+    "bucket": "Test/helper",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.test.ts:6:::buildContext"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export async function syncMeetingSetReminderCacheFromScoutPrep(",
+    "signature": "export async function syncMeetingSetReminderCacheFromScoutPrep(",
+    "kind": "function",
+    "name": "syncMeetingSetReminderCacheFromScoutPrep",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 111,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:111:::syncMeetingSetReminderCacheFromScoutPrep"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function clean(value?: string | null): string {",
+    "signature": "function clean(value?: string | null): string {",
+    "kind": "function",
+    "name": "clean",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 28,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:28:::clean"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {",
+    "signature": "function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null): string {",
+    "kind": "function",
+    "name": "buildAthleteAdminUrl",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 32,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:32:::buildAthleteAdminUrl"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export function getSetMeetingReminderSupabaseConfig(): SupabasePersistenceConfig | null {",
+    "signature": "export function getSetMeetingReminderSupabaseConfig(): SupabasePersistenceConfig | null {",
+    "kind": "function",
+    "name": "getSetMeetingReminderSupabaseConfig",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 43,
+    "system": "Raycast",
+    "bucket": "Supabase persistence",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:43:::getSetMeetingReminderSupabaseConfig"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function parseMeetingDate(value?: string | null): Date | null {",
+    "signature": "function parseMeetingDate(value?: string | null): Date | null {",
+    "kind": "function",
+    "name": "parseMeetingDate",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 54,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:54:::parseMeetingDate"
+  },
+  {
+    "exported": true,
+    "tags": ["exported"],
+    "snippet": "export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetReminderCacheInput) {",
+    "signature": "export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetReminderCacheInput) {",
+    "kind": "function",
+    "name": "buildMeetingSetReminderCacheRowsFromScoutPrep",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 61,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:61:::buildMeetingSetReminderCacheRowsFromScoutPrep"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "const confirmation = (variant: ConfirmationFollowUpVariant) =>",
+    "signature": "const confirmation = (variant: ConfirmationFollowUpVariant) =>",
+    "kind": "function",
+    "name": "confirmation",
+    "file": "src/lib/set-meeting-reminder-cache-sync.ts",
+    "line": 82,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/set-meeting-reminder-cache-sync.ts:82:::confirmation"
+  },
+  {
+    "exported": false,
+    "tags": ["test"],
     "snippet": "function createMemoryStorage() {",
     "signature": "function createMemoryStorage() {",
     "kind": "function",
@@ -14879,10 +15204,10 @@
     "kind": "function",
     "name": "SingleRecipientMessageForm",
     "file": "src/scout-prep.tsx",
-    "line": 1038,
+    "line": 1029,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1038:::SingleRecipientMessageForm"
+    "id": "function:Raycast:src/scout-prep.tsx:1029:::SingleRecipientMessageForm"
   },
   {
     "exported": false,
@@ -14892,10 +15217,10 @@
     "kind": "function",
     "name": "onSubmit",
     "file": "src/scout-prep.tsx",
-    "line": 1059,
+    "line": 1050,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1059:::onSubmit"
+    "id": "function:Raycast:src/scout-prep.tsx:1050:::onSubmit"
   },
   {
     "exported": false,
@@ -14905,10 +15230,10 @@
     "kind": "function",
     "name": "getScoutPrepParentOptions",
     "file": "src/scout-prep.tsx",
-    "line": 1115,
+    "line": 1106,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1115:::getScoutPrepParentOptions"
+    "id": "function:Raycast:src/scout-prep.tsx:1106:::getScoutPrepParentOptions"
   },
   {
     "exported": false,
@@ -14918,10 +15243,10 @@
     "kind": "function",
     "name": "ReminderRecipientForm",
     "file": "src/scout-prep.tsx",
-    "line": 1130,
+    "line": 1121,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1130:::ReminderRecipientForm"
+    "id": "function:Raycast:src/scout-prep.tsx:1121:::ReminderRecipientForm"
   },
   {
     "exported": false,
@@ -14931,10 +15256,10 @@
     "kind": "function",
     "name": "getSelectedCrmStageLabel",
     "file": "src/scout-prep.tsx",
-    "line": 1181,
+    "line": 1172,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1181:::getSelectedCrmStageLabel"
+    "id": "function:Raycast:src/scout-prep.tsx:1172:::getSelectedCrmStageLabel"
   },
   {
     "exported": false,
@@ -14944,10 +15269,10 @@
     "kind": "function",
     "name": "VoicemailFollowUpRecipientForm",
     "file": "src/scout-prep.tsx",
-    "line": 1194,
+    "line": 1185,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1194:::VoicemailFollowUpRecipientForm"
+    "id": "function:Raycast:src/scout-prep.tsx:1185:::VoicemailFollowUpRecipientForm"
   },
   {
     "exported": false,
@@ -14957,10 +15282,10 @@
     "kind": "function",
     "name": "openMessagesForRecipient",
     "file": "src/scout-prep.tsx",
-    "line": 1212,
+    "line": 1203,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1212:::openMessagesForRecipient"
+    "id": "function:Raycast:src/scout-prep.tsx:1203:::openMessagesForRecipient"
   },
   {
     "exported": false,
@@ -14970,10 +15295,10 @@
     "kind": "function",
     "name": "handleSubmit",
     "file": "src/scout-prep.tsx",
-    "line": 1407,
+    "line": 1398,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1407:::handleSubmit"
+    "id": "function:Raycast:src/scout-prep.tsx:1398:::handleSubmit"
   },
   {
     "exported": false,
@@ -14983,10 +15308,10 @@
     "kind": "function",
     "name": "cycleTaskListSort",
     "file": "src/scout-prep.tsx",
-    "line": 1431,
+    "line": 1422,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1431:::cycleTaskListSort"
+    "id": "function:Raycast:src/scout-prep.tsx:1422:::cycleTaskListSort"
   },
   {
     "exported": false,
@@ -14996,10 +15321,10 @@
     "kind": "function",
     "name": "getTaskListSortLabel",
     "file": "src/scout-prep.tsx",
-    "line": 1441,
+    "line": 1432,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1441:::getTaskListSortLabel"
+    "id": "function:Raycast:src/scout-prep.tsx:1432:::getTaskListSortLabel"
   },
   {
     "exported": false,
@@ -15009,10 +15334,10 @@
     "kind": "function",
     "name": "getSortActionTitle",
     "file": "src/scout-prep.tsx",
-    "line": 1447,
+    "line": 1438,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1447:::getSortActionTitle"
+    "id": "function:Raycast:src/scout-prep.tsx:1438:::getSortActionTitle"
   },
   {
     "exported": false,
@@ -15022,10 +15347,10 @@
     "kind": "function",
     "name": "buildScoutPrepTaskFromProspect",
     "file": "src/scout-prep.tsx",
-    "line": 1468,
+    "line": 1459,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1468:::buildScoutPrepTaskFromProspect"
+    "id": "function:Raycast:src/scout-prep.tsx:1459:::buildScoutPrepTaskFromProspect"
   },
   {
     "exported": false,
@@ -15035,10 +15360,10 @@
     "kind": "function",
     "name": "formatDateForLegacyInput",
     "file": "src/scout-prep.tsx",
-    "line": 1491,
+    "line": 1482,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1491:::formatDateForLegacyInput"
+    "id": "function:Raycast:src/scout-prep.tsx:1482:::formatDateForLegacyInput"
   },
   {
     "exported": false,
@@ -15048,10 +15373,10 @@
     "kind": "function",
     "name": "formatTimeForLegacyInput",
     "file": "src/scout-prep.tsx",
-    "line": 1497,
+    "line": 1488,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1497:::formatTimeForLegacyInput"
+    "id": "function:Raycast:src/scout-prep.tsx:1488:::formatTimeForLegacyInput"
   },
   {
     "exported": false,
@@ -15061,10 +15386,10 @@
     "kind": "function",
     "name": "buildDefaultConfirmationDate",
     "file": "src/scout-prep.tsx",
-    "line": 1503,
+    "line": 1494,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1503:::buildDefaultConfirmationDate"
+    "id": "function:Raycast:src/scout-prep.tsx:1494:::buildDefaultConfirmationDate"
   },
   {
     "exported": false,
@@ -15074,10 +15399,10 @@
     "kind": "function",
     "name": "RescheduleConfirmationCallForm",
     "file": "src/scout-prep.tsx",
-    "line": 1522,
+    "line": 1513,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1522:::RescheduleConfirmationCallForm"
+    "id": "function:Raycast:src/scout-prep.tsx:1513:::RescheduleConfirmationCallForm"
   },
   {
     "exported": false,
@@ -15087,10 +15412,10 @@
     "kind": "function",
     "name": "load",
     "file": "src/scout-prep.tsx",
-    "line": 1535,
+    "line": 1526,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1535:::load"
+    "id": "function:Raycast:src/scout-prep.tsx:1526:::load"
   },
   {
     "exported": false,
@@ -15100,10 +15425,10 @@
     "kind": "function",
     "name": "handleSubmit",
     "file": "src/scout-prep.tsx",
-    "line": 1561,
+    "line": 1552,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1561:::handleSubmit"
+    "id": "function:Raycast:src/scout-prep.tsx:1552:::handleSubmit"
   },
   {
     "exported": false,
@@ -15113,10 +15438,10 @@
     "kind": "function",
     "name": "buildDefaultTaskDate",
     "file": "src/scout-prep.tsx",
-    "line": 1669,
+    "line": 1660,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1669:::buildDefaultTaskDate"
+    "id": "function:Raycast:src/scout-prep.tsx:1660:::buildDefaultTaskDate"
   },
   {
     "exported": false,
@@ -15126,10 +15451,10 @@
     "kind": "function",
     "name": "formatShortDueDate",
     "file": "src/scout-prep.tsx",
-    "line": 1691,
+    "line": 1682,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1691:::formatShortDueDate"
+    "id": "function:Raycast:src/scout-prep.tsx:1682:::formatShortDueDate"
   },
   {
     "exported": false,
@@ -15139,10 +15464,10 @@
     "kind": "function",
     "name": "getTaskAccessoryMetadata",
     "file": "src/scout-prep.tsx",
-    "line": 1698,
+    "line": 1689,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1698:::getTaskAccessoryMetadata"
+    "id": "function:Raycast:src/scout-prep.tsx:1689:::getTaskAccessoryMetadata"
   },
   {
     "exported": false,
@@ -15152,10 +15477,10 @@
     "kind": "function",
     "name": "UpdateAthleteTaskForm",
     "file": "src/scout-prep.tsx",
-    "line": 1739,
+    "line": 1730,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1739:::UpdateAthleteTaskForm"
+    "id": "function:Raycast:src/scout-prep.tsx:1730:::UpdateAthleteTaskForm"
   },
   {
     "exported": false,
@@ -15165,10 +15490,10 @@
     "kind": "function",
     "name": "handleUpdate",
     "file": "src/scout-prep.tsx",
-    "line": 1757,
+    "line": 1748,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1757:::handleUpdate"
+    "id": "function:Raycast:src/scout-prep.tsx:1748:::handleUpdate"
   },
   {
     "exported": false,
@@ -15178,10 +15503,10 @@
     "kind": "function",
     "name": "handleCompleteTask",
     "file": "src/scout-prep.tsx",
-    "line": 1787,
+    "line": 1778,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1787:::handleCompleteTask"
+    "id": "function:Raycast:src/scout-prep.tsx:1778:::handleCompleteTask"
   },
   {
     "exported": false,
@@ -15191,10 +15516,10 @@
     "kind": "function",
     "name": "handleSetScheduledFollowUp",
     "file": "src/scout-prep.tsx",
-    "line": 1818,
+    "line": 1809,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1818:::handleSetScheduledFollowUp"
+    "id": "function:Raycast:src/scout-prep.tsx:1809:::handleSetScheduledFollowUp"
   },
   {
     "exported": false,
@@ -15204,10 +15529,10 @@
     "kind": "function",
     "name": "UpdateAthleteTaskPicker",
     "file": "src/scout-prep.tsx",
-    "line": 1882,
+    "line": 1873,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1882:::UpdateAthleteTaskPicker"
+    "id": "function:Raycast:src/scout-prep.tsx:1873:::UpdateAthleteTaskPicker"
   },
   {
     "exported": false,
@@ -15217,10 +15542,10 @@
     "kind": "function",
     "name": "load",
     "file": "src/scout-prep.tsx",
-    "line": 1902,
+    "line": 1893,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1902:::load"
+    "id": "function:Raycast:src/scout-prep.tsx:1893:::load"
   },
   {
     "exported": false,
@@ -15230,10 +15555,10 @@
     "kind": "function",
     "name": "handleOpenTaskUpdate",
     "file": "src/scout-prep.tsx",
-    "line": 1933,
+    "line": 1924,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1933:::handleOpenTaskUpdate"
+    "id": "function:Raycast:src/scout-prep.tsx:1924:::handleOpenTaskUpdate"
   },
   {
     "exported": false,
@@ -15243,10 +15568,10 @@
     "kind": "function",
     "name": "handleCompleteTaskFromList",
     "file": "src/scout-prep.tsx",
-    "line": 1959,
+    "line": 1950,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:1959:::handleCompleteTaskFromList"
+    "id": "function:Raycast:src/scout-prep.tsx:1950:::handleCompleteTaskFromList"
   },
   {
     "exported": false,
@@ -15256,10 +15581,10 @@
     "kind": "function",
     "name": "logInfo",
     "file": "src/scout-prep.tsx",
-    "line": 196,
+    "line": 199,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:196:::logInfo"
+    "id": "function:Raycast:src/scout-prep.tsx:199:::logInfo"
   },
   {
     "exported": false,
@@ -15269,10 +15594,10 @@
     "kind": "function",
     "name": "PostCallUpdateForm",
     "file": "src/scout-prep.tsx",
-    "line": 2070,
+    "line": 2061,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2070:::PostCallUpdateForm"
+    "id": "function:Raycast:src/scout-prep.tsx:2061:::PostCallUpdateForm"
   },
   {
     "exported": false,
@@ -15282,10 +15607,10 @@
     "kind": "function",
     "name": "load",
     "file": "src/scout-prep.tsx",
-    "line": 2086,
+    "line": 2077,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2086:::load"
+    "id": "function:Raycast:src/scout-prep.tsx:2077:::load"
   },
   {
     "exported": false,
@@ -15295,10 +15620,10 @@
     "kind": "function",
     "name": "logFailure",
     "file": "src/scout-prep.tsx",
-    "line": 211,
+    "line": 214,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:211:::logFailure"
+    "id": "function:Raycast:src/scout-prep.tsx:214:::logFailure"
   },
   {
     "exported": false,
@@ -15308,23 +15633,10 @@
     "kind": "function",
     "name": "loadTemplate",
     "file": "src/scout-prep.tsx",
-    "line": 2151,
+    "line": 2142,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2151:::loadTemplate"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "async function showLoadingToast(title: string, message?: string) {",
-    "signature": "async function showLoadingToast(title: string, message?: string) {",
-    "kind": "function",
-    "name": "showLoadingToast",
-    "file": "src/scout-prep.tsx",
-    "line": 222,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:222:::showLoadingToast"
+    "id": "function:Raycast:src/scout-prep.tsx:2142:::loadTemplate"
   },
   {
     "exported": false,
@@ -15334,10 +15646,23 @@
     "kind": "function",
     "name": "loadOpenMeetings",
     "file": "src/scout-prep.tsx",
-    "line": 2235,
+    "line": 2226,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2235:::loadOpenMeetings"
+    "id": "function:Raycast:src/scout-prep.tsx:2226:::loadOpenMeetings"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function showLoadingToast(title: string, message?: string) {",
+    "signature": "async function showLoadingToast(title: string, message?: string) {",
+    "kind": "function",
+    "name": "showLoadingToast",
+    "file": "src/scout-prep.tsx",
+    "line": 225,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:225:::showLoadingToast"
   },
   {
     "exported": false,
@@ -15347,10 +15672,10 @@
     "kind": "function",
     "name": "handleSubmit",
     "file": "src/scout-prep.tsx",
-    "line": 2268,
+    "line": 2259,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2268:::handleSubmit"
+    "id": "function:Raycast:src/scout-prep.tsx:2259:::handleSubmit"
   },
   {
     "exported": false,
@@ -15360,36 +15685,36 @@
     "kind": "function",
     "name": "formatTaskIdLabel",
     "file": "src/scout-prep.tsx",
-    "line": 236,
+    "line": 239,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:236:::formatTaskIdLabel"
+    "id": "function:Raycast:src/scout-prep.tsx:239:::formatTaskIdLabel"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "async function copyToClipboardWithToast(content: string, title: string) {",
-    "signature": "async function copyToClipboardWithToast(content: string, title: string) {",
+    "snippet": "async function copyToClipboardWithToast(content: string, label: string) {",
+    "signature": "async function copyToClipboardWithToast(content: string, label: string) {",
     "kind": "function",
     "name": "copyToClipboardWithToast",
     "file": "src/scout-prep.tsx",
-    "line": 241,
+    "line": 244,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:241:::copyToClipboardWithToast"
+    "id": "function:Raycast:src/scout-prep.tsx:244:::copyToClipboardWithToast"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "async function triggerMaxPrepsSearch(searchLabel: string) {",
-    "signature": "async function triggerMaxPrepsSearch(searchLabel: string) {",
+    "snippet": "async function copyTextToPasteboard(content: string): Promise<void> {",
+    "signature": "async function copyTextToPasteboard(content: string): Promise<void> {",
     "kind": "function",
-    "name": "triggerMaxPrepsSearch",
+    "name": "copyTextToPasteboard",
     "file": "src/scout-prep.tsx",
-    "line": 249,
+    "line": 252,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:249:::triggerMaxPrepsSearch"
+    "id": "function:Raycast:src/scout-prep.tsx:252:::copyTextToPasteboard"
   },
   {
     "exported": false,
@@ -15399,23 +15724,36 @@
     "kind": "function",
     "name": "ScoutPrepDetail",
     "file": "src/scout-prep.tsx",
-    "line": 2574,
+    "line": 2615,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2574:::ScoutPrepDetail"
+    "id": "function:Raycast:src/scout-prep.tsx:2615:::ScoutPrepDetail"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "function titleCaseWords(value?: string | null): string {",
-    "signature": "function titleCaseWords(value?: string | null): string {",
+    "snippet": "async function syncContactCacheBestEffort(",
+    "signature": "async function syncContactCacheBestEffort(",
     "kind": "function",
-    "name": "titleCaseWords",
+    "name": "syncContactCacheBestEffort",
     "file": "src/scout-prep.tsx",
-    "line": 259,
+    "line": 2631,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:259:::titleCaseWords"
+    "id": "function:Raycast:src/scout-prep.tsx:2631:::syncContactCacheBestEffort"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function queueContactCacheSync(",
+    "signature": "function queueContactCacheSync(",
+    "kind": "function",
+    "name": "queueContactCacheSync",
+    "file": "src/scout-prep.tsx",
+    "line": 2657,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:2657:::queueContactCacheSync"
   },
   {
     "exported": false,
@@ -15425,10 +15763,23 @@
     "kind": "function",
     "name": "ensureContext",
     "file": "src/scout-prep.tsx",
-    "line": 2590,
+    "line": 2667,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2590:::ensureContext"
+    "id": "function:Raycast:src/scout-prep.tsx:2667:::ensureContext"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function triggerMaxPrepsSearch(searchLabel: string) {",
+    "signature": "async function triggerMaxPrepsSearch(searchLabel: string) {",
+    "kind": "function",
+    "name": "triggerMaxPrepsSearch",
+    "file": "src/scout-prep.tsx",
+    "line": 267,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:267:::triggerMaxPrepsSearch"
   },
   {
     "exported": false,
@@ -15438,10 +15789,10 @@
     "kind": "function",
     "name": "handleCreateReminder",
     "file": "src/scout-prep.tsx",
-    "line": 2613,
+    "line": 2691,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2613:::handleCreateReminder"
+    "id": "function:Raycast:src/scout-prep.tsx:2691:::handleCreateReminder"
   },
   {
     "exported": false,
@@ -15451,23 +15802,10 @@
     "kind": "function",
     "name": "createForOption",
     "file": "src/scout-prep.tsx",
-    "line": 2636,
+    "line": 2714,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2636:::createForOption"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function formatStateForHighSchoolCopy(state?: string | null): string | null {",
-    "signature": "function formatStateForHighSchoolCopy(state?: string | null): string | null {",
-    "kind": "function",
-    "name": "formatStateForHighSchoolCopy",
-    "file": "src/scout-prep.tsx",
-    "line": 268,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:268:::formatStateForHighSchoolCopy"
+    "id": "function:Raycast:src/scout-prep.tsx:2714:::createForOption"
   },
   {
     "exported": false,
@@ -15477,10 +15815,23 @@
     "kind": "function",
     "name": "handleVoicemailFollowUp",
     "file": "src/scout-prep.tsx",
-    "line": 2688,
+    "line": 2766,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2688:::handleVoicemailFollowUp"
+    "id": "function:Raycast:src/scout-prep.tsx:2766:::handleVoicemailFollowUp"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function titleCaseWords(value?: string | null): string {",
+    "signature": "function titleCaseWords(value?: string | null): string {",
+    "kind": "function",
+    "name": "titleCaseWords",
+    "file": "src/scout-prep.tsx",
+    "line": 277,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:277:::titleCaseWords"
   },
   {
     "exported": false,
@@ -15490,10 +15841,10 @@
     "kind": "function",
     "name": "resolveNotesContext",
     "file": "src/scout-prep.tsx",
-    "line": 2732,
+    "line": 2810,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2732:::resolveNotesContext"
+    "id": "function:Raycast:src/scout-prep.tsx:2810:::resolveNotesContext"
   },
   {
     "exported": false,
@@ -15503,10 +15854,10 @@
     "kind": "function",
     "name": "handleViewNotes",
     "file": "src/scout-prep.tsx",
-    "line": 2738,
+    "line": 2816,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2738:::handleViewNotes"
+    "id": "function:Raycast:src/scout-prep.tsx:2816:::handleViewNotes"
   },
   {
     "exported": false,
@@ -15516,10 +15867,10 @@
     "kind": "function",
     "name": "handleAddNote",
     "file": "src/scout-prep.tsx",
-    "line": 2754,
+    "line": 2832,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2754:::handleAddNote"
+    "id": "function:Raycast:src/scout-prep.tsx:2832:::handleAddNote"
   },
   {
     "exported": false,
@@ -15529,10 +15880,49 @@
     "kind": "function",
     "name": "resolveConfirmationTask",
     "file": "src/scout-prep.tsx",
-    "line": 2771,
+    "line": 2849,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2771:::resolveConfirmationTask"
+    "id": "function:Raycast:src/scout-prep.tsx:2849:::resolveConfirmationTask"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function handleRescheduleConfirmationTask() {",
+    "signature": "async function handleRescheduleConfirmationTask() {",
+    "kind": "function",
+    "name": "handleRescheduleConfirmationTask",
+    "file": "src/scout-prep.tsx",
+    "line": 2859,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:2859:::handleRescheduleConfirmationTask"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function formatStateForHighSchoolCopy(state?: string | null): string | null {",
+    "signature": "function formatStateForHighSchoolCopy(state?: string | null): string | null {",
+    "kind": "function",
+    "name": "formatStateForHighSchoolCopy",
+    "file": "src/scout-prep.tsx",
+    "line": 286,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:286:::formatStateForHighSchoolCopy"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function handleTextMeetingReminder() {",
+    "signature": "async function handleTextMeetingReminder() {",
+    "kind": "function",
+    "name": "handleTextMeetingReminder",
+    "file": "src/scout-prep.tsx",
+    "line": 2872,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:2872:::handleTextMeetingReminder"
   },
   {
     "exported": false,
@@ -15542,49 +15932,10 @@
     "kind": "function",
     "name": "buildHighSchoolCopyLabel",
     "file": "src/scout-prep.tsx",
-    "line": 278,
+    "line": 296,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:278:::buildHighSchoolCopyLabel"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "async function handleRescheduleConfirmationTask() {",
-    "signature": "async function handleRescheduleConfirmationTask() {",
-    "kind": "function",
-    "name": "handleRescheduleConfirmationTask",
-    "file": "src/scout-prep.tsx",
-    "line": 2781,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2781:::handleRescheduleConfirmationTask"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "async function handleTextMeetingReminder() {",
-    "signature": "async function handleTextMeetingReminder() {",
-    "kind": "function",
-    "name": "handleTextMeetingReminder",
-    "file": "src/scout-prep.tsx",
-    "line": 2794,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2794:::handleTextMeetingReminder"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function buildMeetingSetStartsAt(",
-    "signature": "function buildMeetingSetStartsAt(",
-    "kind": "function",
-    "name": "buildMeetingSetStartsAt",
-    "file": "src/scout-prep.tsx",
-    "line": 289,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:289:::buildMeetingSetStartsAt"
+    "id": "function:Raycast:src/scout-prep.tsx:296:::buildHighSchoolCopyLabel"
   },
   {
     "exported": false,
@@ -15594,10 +15945,10 @@
     "kind": "function",
     "name": "handleSyncCallPrepToNotion",
     "file": "src/scout-prep.tsx",
-    "line": 2918,
+    "line": 2996,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2918:::handleSyncCallPrepToNotion"
+    "id": "function:Raycast:src/scout-prep.tsx:2996:::handleSyncCallPrepToNotion"
   },
   {
     "exported": false,
@@ -15607,23 +15958,23 @@
     "kind": "function",
     "name": "load",
     "file": "src/scout-prep.tsx",
-    "line": 2984,
+    "line": 3062,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:2984:::load"
+    "id": "function:Raycast:src/scout-prep.tsx:3062:::load"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "function isMeetingSetStage(stageLabel?: string | null): boolean {",
-    "signature": "function isMeetingSetStage(stageLabel?: string | null): boolean {",
+    "snippet": "function buildMeetingSetStartsAt(",
+    "signature": "function buildMeetingSetStartsAt(",
     "kind": "function",
-    "name": "isMeetingSetStage",
+    "name": "buildMeetingSetStartsAt",
     "file": "src/scout-prep.tsx",
-    "line": 314,
+    "line": 307,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:314:::isMeetingSetStage"
+    "id": "function:Raycast:src/scout-prep.tsx:307:::buildMeetingSetStartsAt"
   },
   {
     "exported": false,
@@ -15633,23 +15984,10 @@
     "kind": "function",
     "name": "ScoutPrepTaskItem",
     "file": "src/scout-prep.tsx",
-    "line": 3176,
+    "line": 3255,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3176:::ScoutPrepTaskItem"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function getTaskDisplayTitle(",
-    "signature": "function getTaskDisplayTitle(",
-    "kind": "function",
-    "name": "getTaskDisplayTitle",
-    "file": "src/scout-prep.tsx",
-    "line": 318,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:318:::getTaskDisplayTitle"
+    "id": "function:Raycast:src/scout-prep.tsx:3255:::ScoutPrepTaskItem"
   },
   {
     "exported": false,
@@ -15659,10 +15997,10 @@
     "kind": "function",
     "name": "ensureTaskContext",
     "file": "src/scout-prep.tsx",
-    "line": 3197,
+    "line": 3276,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3197:::ensureTaskContext"
+    "id": "function:Raycast:src/scout-prep.tsx:3276:::ensureTaskContext"
   },
   {
     "exported": false,
@@ -15672,10 +16010,23 @@
     "kind": "function",
     "name": "handleVoicemailFollowUp",
     "file": "src/scout-prep.tsx",
-    "line": 3214,
+    "line": 3293,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3214:::handleVoicemailFollowUp"
+    "id": "function:Raycast:src/scout-prep.tsx:3293:::handleVoicemailFollowUp"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function isMeetingSetStage(stageLabel?: string | null): boolean {",
+    "signature": "function isMeetingSetStage(stageLabel?: string | null): boolean {",
+    "kind": "function",
+    "name": "isMeetingSetStage",
+    "file": "src/scout-prep.tsx",
+    "line": 332,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:332:::isMeetingSetStage"
   },
   {
     "exported": false,
@@ -15685,10 +16036,10 @@
     "kind": "function",
     "name": "loadTaskNotesContext",
     "file": "src/scout-prep.tsx",
-    "line": 3254,
+    "line": 3333,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3254:::loadTaskNotesContext"
+    "id": "function:Raycast:src/scout-prep.tsx:3333:::loadTaskNotesContext"
   },
   {
     "exported": false,
@@ -15698,10 +16049,10 @@
     "kind": "function",
     "name": "handleViewNotes",
     "file": "src/scout-prep.tsx",
-    "line": 3258,
+    "line": 3337,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3258:::handleViewNotes"
+    "id": "function:Raycast:src/scout-prep.tsx:3337:::handleViewNotes"
   },
   {
     "exported": false,
@@ -15711,23 +16062,23 @@
     "kind": "function",
     "name": "handleAddNote",
     "file": "src/scout-prep.tsx",
-    "line": 3272,
+    "line": 3351,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3272:::handleAddNote"
+    "id": "function:Raycast:src/scout-prep.tsx:3351:::handleAddNote"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "async function completeSentTextTask(args: {",
-    "signature": "async function completeSentTextTask(args: {",
+    "snippet": "function getTaskDisplayTitle(",
+    "signature": "function getTaskDisplayTitle(",
     "kind": "function",
-    "name": "completeSentTextTask",
+    "name": "getTaskDisplayTitle",
     "file": "src/scout-prep.tsx",
-    "line": 328,
+    "line": 336,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:328:::completeSentTextTask"
+    "id": "function:Raycast:src/scout-prep.tsx:336:::getTaskDisplayTitle"
   },
   {
     "exported": false,
@@ -15737,10 +16088,10 @@
     "kind": "function",
     "name": "resolveConfirmationTask",
     "file": "src/scout-prep.tsx",
-    "line": 3287,
+    "line": 3366,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3287:::resolveConfirmationTask"
+    "id": "function:Raycast:src/scout-prep.tsx:3366:::resolveConfirmationTask"
   },
   {
     "exported": false,
@@ -15750,10 +16101,10 @@
     "kind": "function",
     "name": "handleRescheduleConfirmationTask",
     "file": "src/scout-prep.tsx",
-    "line": 3295,
+    "line": 3374,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3295:::handleRescheduleConfirmationTask"
+    "id": "function:Raycast:src/scout-prep.tsx:3374:::handleRescheduleConfirmationTask"
   },
   {
     "exported": false,
@@ -15763,10 +16114,23 @@
     "kind": "function",
     "name": "handleTextMeetingReminder",
     "file": "src/scout-prep.tsx",
-    "line": 3307,
+    "line": 3386,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3307:::handleTextMeetingReminder"
+    "id": "function:Raycast:src/scout-prep.tsx:3386:::handleTextMeetingReminder"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function completeSentTextTask(args: {",
+    "signature": "async function completeSentTextTask(args: {",
+    "kind": "function",
+    "name": "completeSentTextTask",
+    "file": "src/scout-prep.tsx",
+    "line": 346,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:346:::completeSentTextTask"
   },
   {
     "exported": false,
@@ -15776,23 +16140,10 @@
     "kind": "function",
     "name": "handleDuplicateProfileCheck",
     "file": "src/scout-prep.tsx",
-    "line": 3429,
+    "line": 3508,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3429:::handleDuplicateProfileCheck"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "async function completeConfirmation2Task(args: {",
-    "signature": "async function completeConfirmation2Task(args: {",
-    "kind": "function",
-    "name": "completeConfirmation2Task",
-    "file": "src/scout-prep.tsx",
-    "line": 363,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:363:::completeConfirmation2Task"
+    "id": "function:Raycast:src/scout-prep.tsx:3508:::handleDuplicateProfileCheck"
   },
   {
     "exported": false,
@@ -15802,10 +16153,23 @@
     "kind": "function",
     "name": "ProspectSearchListItem",
     "file": "src/scout-prep.tsx",
-    "line": 3637,
+    "line": 3716,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3637:::ProspectSearchListItem"
+    "id": "function:Raycast:src/scout-prep.tsx:3716:::ProspectSearchListItem"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function completeConfirmation2Task(args: {",
+    "signature": "async function completeConfirmation2Task(args: {",
+    "kind": "function",
+    "name": "completeConfirmation2Task",
+    "file": "src/scout-prep.tsx",
+    "line": 381,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:381:::completeConfirmation2Task"
   },
   {
     "exported": false,
@@ -15815,10 +16179,10 @@
     "kind": "function",
     "name": "PersonalFollowUpListItem",
     "file": "src/scout-prep.tsx",
-    "line": 3750,
+    "line": 3829,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3750:::PersonalFollowUpListItem"
+    "id": "function:Raycast:src/scout-prep.tsx:3829:::PersonalFollowUpListItem"
   },
   {
     "exported": false,
@@ -15828,23 +16192,10 @@
     "kind": "function",
     "name": "RecentProfileListItem",
     "file": "src/scout-prep.tsx",
-    "line": 3865,
+    "line": 3944,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3865:::RecentProfileListItem"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function SupabaseLifecycleStatusAction() {",
-    "signature": "function SupabaseLifecycleStatusAction() {",
-    "kind": "function",
-    "name": "SupabaseLifecycleStatusAction",
-    "file": "src/scout-prep.tsx",
-    "line": 387,
-    "system": "Raycast",
-    "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/scout-prep.tsx:387:::SupabaseLifecycleStatusAction"
+    "id": "function:Raycast:src/scout-prep.tsx:3944:::RecentProfileListItem"
   },
   {
     "exported": true,
@@ -15854,10 +16205,23 @@
     "kind": "function",
     "name": "ScoutPrepCommand",
     "file": "src/scout-prep.tsx",
-    "line": 3935,
+    "line": 4014,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3935:::ScoutPrepCommand"
+    "id": "function:Raycast:src/scout-prep.tsx:4014:::ScoutPrepCommand"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function SupabaseLifecycleStatusAction() {",
+    "signature": "function SupabaseLifecycleStatusAction() {",
+    "kind": "function",
+    "name": "SupabaseLifecycleStatusAction",
+    "file": "src/scout-prep.tsx",
+    "line": 405,
+    "system": "Raycast",
+    "bucket": "Supabase persistence",
+    "id": "function:Raycast:src/scout-prep.tsx:405:::SupabaseLifecycleStatusAction"
   },
   {
     "exported": false,
@@ -15867,10 +16231,10 @@
     "kind": "function",
     "name": "loadTasks",
     "file": "src/scout-prep.tsx",
-    "line": 3972,
+    "line": 4051,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:3972:::loadTasks"
+    "id": "function:Raycast:src/scout-prep.tsx:4051:::loadTasks"
   },
   {
     "exported": false,
@@ -15880,23 +16244,10 @@
     "kind": "function",
     "name": "buildTaskSearchKeywords",
     "file": "src/scout-prep.tsx",
-    "line": 398,
+    "line": 416,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:398:::buildTaskSearchKeywords"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "async function recordConfirmationSentBestEffort(args: {",
-    "signature": "async function recordConfirmationSentBestEffort(args: {",
-    "kind": "function",
-    "name": "recordConfirmationSentBestEffort",
-    "file": "src/scout-prep.tsx",
-    "line": 414,
-    "system": "Raycast",
-    "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:414:::recordConfirmationSentBestEffort"
+    "id": "function:Raycast:src/scout-prep.tsx:416:::buildTaskSearchKeywords"
   },
   {
     "exported": false,
@@ -15906,10 +16257,10 @@
     "kind": "function",
     "name": "loadPersonalFollowUps",
     "file": "src/scout-prep.tsx",
-    "line": 4209,
+    "line": 4288,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4209:::loadPersonalFollowUps"
+    "id": "function:Raycast:src/scout-prep.tsx:4288:::loadPersonalFollowUps"
   },
   {
     "exported": false,
@@ -15919,10 +16270,23 @@
     "kind": "function",
     "name": "toggleRecentMode",
     "file": "src/scout-prep.tsx",
-    "line": 4231,
+    "line": 4310,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4231:::toggleRecentMode"
+    "id": "function:Raycast:src/scout-prep.tsx:4310:::toggleRecentMode"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "async function recordConfirmationSentBestEffort(args: {",
+    "signature": "async function recordConfirmationSentBestEffort(args: {",
+    "kind": "function",
+    "name": "recordConfirmationSentBestEffort",
+    "file": "src/scout-prep.tsx",
+    "line": 432,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:432:::recordConfirmationSentBestEffort"
   },
   {
     "exported": false,
@@ -15932,10 +16296,10 @@
     "kind": "function",
     "name": "showPersonalFollowUps",
     "file": "src/scout-prep.tsx",
-    "line": 4249,
+    "line": 4328,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4249:::showPersonalFollowUps"
+    "id": "function:Raycast:src/scout-prep.tsx:4328:::showPersonalFollowUps"
   },
   {
     "exported": false,
@@ -15945,10 +16309,10 @@
     "kind": "function",
     "name": "exitPersonalFollowUps",
     "file": "src/scout-prep.tsx",
-    "line": 4258,
+    "line": 4337,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4258:::exitPersonalFollowUps"
+    "id": "function:Raycast:src/scout-prep.tsx:4337:::exitPersonalFollowUps"
   },
   {
     "exported": false,
@@ -15958,10 +16322,10 @@
     "kind": "function",
     "name": "toggleProspectSearchMode",
     "file": "src/scout-prep.tsx",
-    "line": 4264,
+    "line": 4343,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4264:::toggleProspectSearchMode"
+    "id": "function:Raycast:src/scout-prep.tsx:4343:::toggleProspectSearchMode"
   },
   {
     "exported": false,
@@ -15971,10 +16335,10 @@
     "kind": "function",
     "name": "toggleProspectSearchModeType",
     "file": "src/scout-prep.tsx",
-    "line": 4283,
+    "line": 4362,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4283:::toggleProspectSearchModeType"
+    "id": "function:Raycast:src/scout-prep.tsx:4362:::toggleProspectSearchModeType"
   },
   {
     "exported": false,
@@ -15984,10 +16348,10 @@
     "kind": "function",
     "name": "handleAddPersonalFollowUp",
     "file": "src/scout-prep.tsx",
-    "line": 4289,
+    "line": 4368,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4289:::handleAddPersonalFollowUp"
+    "id": "function:Raycast:src/scout-prep.tsx:4368:::handleAddPersonalFollowUp"
   },
   {
     "exported": false,
@@ -15997,10 +16361,10 @@
     "kind": "function",
     "name": "handleRemovePersonalFollowUp",
     "file": "src/scout-prep.tsx",
-    "line": 4310,
+    "line": 4389,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4310:::handleRemovePersonalFollowUp"
+    "id": "function:Raycast:src/scout-prep.tsx:4389:::handleRemovePersonalFollowUp"
   },
   {
     "exported": false,
@@ -16010,10 +16374,10 @@
     "kind": "function",
     "name": "cycleSort",
     "file": "src/scout-prep.tsx",
-    "line": 4319,
+    "line": 4398,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:4319:::cycleSort"
+    "id": "function:Raycast:src/scout-prep.tsx:4398:::cycleSort"
   },
   {
     "exported": false,
@@ -16023,10 +16387,10 @@
     "kind": "function",
     "name": "recordRescheduledBestEffort",
     "file": "src/scout-prep.tsx",
-    "line": 457,
+    "line": 475,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:457:::recordRescheduledBestEffort"
+    "id": "function:Raycast:src/scout-prep.tsx:475:::recordRescheduledBestEffort"
   },
   {
     "exported": false,
@@ -16036,10 +16400,10 @@
     "kind": "function",
     "name": "recordVoicemailFollowUpSentBestEffort",
     "file": "src/scout-prep.tsx",
-    "line": 495,
+    "line": 513,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:495:::recordVoicemailFollowUpSentBestEffort"
+    "id": "function:Raycast:src/scout-prep.tsx:513:::recordVoicemailFollowUpSentBestEffort"
   },
   {
     "exported": false,
@@ -16049,10 +16413,10 @@
     "kind": "function",
     "name": "buildFallbackMeetingDetails",
     "file": "src/scout-prep.tsx",
-    "line": 533,
+    "line": 551,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:533:::buildFallbackMeetingDetails"
+    "id": "function:Raycast:src/scout-prep.tsx:551:::buildFallbackMeetingDetails"
   },
   {
     "exported": false,
@@ -16062,10 +16426,10 @@
     "kind": "function",
     "name": "buildFallbackMeetingTemplate",
     "file": "src/scout-prep.tsx",
-    "line": 548,
+    "line": 566,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:548:::buildFallbackMeetingTemplate"
+    "id": "function:Raycast:src/scout-prep.tsx:566:::buildFallbackMeetingTemplate"
   },
   {
     "exported": false,
@@ -16075,10 +16439,10 @@
     "kind": "function",
     "name": "buildScoutPrepAdminUrl",
     "file": "src/scout-prep.tsx",
-    "line": 564,
+    "line": 582,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:564:::buildScoutPrepAdminUrl"
+    "id": "function:Raycast:src/scout-prep.tsx:582:::buildScoutPrepAdminUrl"
   },
   {
     "exported": false,
@@ -16088,10 +16452,10 @@
     "kind": "function",
     "name": "buildScoutPrepTaskUrl",
     "file": "src/scout-prep.tsx",
-    "line": 569,
+    "line": 587,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:569:::buildScoutPrepTaskUrl"
+    "id": "function:Raycast:src/scout-prep.tsx:587:::buildScoutPrepTaskUrl"
   },
   {
     "exported": false,
@@ -16101,10 +16465,10 @@
     "kind": "function",
     "name": "buildScoutPrepPlayerIdUrl",
     "file": "src/scout-prep.tsx",
-    "line": 575,
+    "line": 593,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:575:::buildScoutPrepPlayerIdUrl"
+    "id": "function:Raycast:src/scout-prep.tsx:593:::buildScoutPrepPlayerIdUrl"
   },
   {
     "exported": false,
@@ -16114,23 +16478,36 @@
     "kind": "function",
     "name": "buildScoutPrepContactMarkdown",
     "file": "src/scout-prep.tsx",
-    "line": 580,
+    "line": 598,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:580:::buildScoutPrepContactMarkdown"
+    "id": "function:Raycast:src/scout-prep.tsx:598:::buildScoutPrepContactMarkdown"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "async function createProspectContact(",
-    "signature": "async function createProspectContact(",
+    "snippet": "function prospectContactRoleLabel(candidate: ProspectContactShortcutCandidate): string {",
+    "signature": "function prospectContactRoleLabel(candidate: ProspectContactShortcutCandidate): string {",
     "kind": "function",
-    "name": "createProspectContact",
+    "name": "prospectContactRoleLabel",
     "file": "src/scout-prep.tsx",
-    "line": 630,
+    "line": 648,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:630:::createProspectContact"
+    "id": "function:Raycast:src/scout-prep.tsx:648:::prospectContactRoleLabel"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function formatProspectContactRoles(candidates: ProspectContactShortcutCandidate[]): string {",
+    "signature": "function formatProspectContactRoles(candidates: ProspectContactShortcutCandidate[]): string {",
+    "kind": "function",
+    "name": "formatProspectContactRoles",
+    "file": "src/scout-prep.tsx",
+    "line": 661,
+    "system": "Raycast",
+    "bucket": "Raycast UI",
+    "id": "function:Raycast:src/scout-prep.tsx:661:::formatProspectContactRoles"
   },
   {
     "exported": false,
@@ -16140,10 +16517,10 @@
     "kind": "function",
     "name": "createProspectContactsBatch",
     "file": "src/scout-prep.tsx",
-    "line": 651,
+    "line": 670,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:651:::createProspectContactsBatch"
+    "id": "function:Raycast:src/scout-prep.tsx:670:::createProspectContactsBatch"
   },
   {
     "exported": false,
@@ -16153,10 +16530,10 @@
     "kind": "function",
     "name": "collectBatchProspectContactCandidates",
     "file": "src/scout-prep.tsx",
-    "line": 720,
+    "line": 739,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:720:::collectBatchProspectContactCandidates"
+    "id": "function:Raycast:src/scout-prep.tsx:739:::collectBatchProspectContactCandidates"
   },
   {
     "exported": false,
@@ -16166,10 +16543,10 @@
     "kind": "function",
     "name": "handleBatchCreateProspectContacts",
     "file": "src/scout-prep.tsx",
-    "line": 767,
+    "line": 786,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:767:::handleBatchCreateProspectContacts"
+    "id": "function:Raycast:src/scout-prep.tsx:786:::handleBatchCreateProspectContacts"
   },
   {
     "exported": false,
@@ -16179,10 +16556,10 @@
     "kind": "function",
     "name": "openMessagesDraftForRecipients",
     "file": "src/scout-prep.tsx",
-    "line": 821,
+    "line": 840,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:821:::openMessagesDraftForRecipients"
+    "id": "function:Raycast:src/scout-prep.tsx:840:::openMessagesDraftForRecipients"
   },
   {
     "exported": false,
@@ -16192,10 +16569,10 @@
     "kind": "function",
     "name": "ScoutPrepContactDetail",
     "file": "src/scout-prep.tsx",
-    "line": 838,
+    "line": 857,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:838:::ScoutPrepContactDetail"
+    "id": "function:Raycast:src/scout-prep.tsx:857:::ScoutPrepContactDetail"
   },
   {
     "exported": false,
@@ -16205,23 +16582,23 @@
     "kind": "function",
     "name": "loadContactInfo",
     "file": "src/scout-prep.tsx",
-    "line": 849,
+    "line": 868,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:849:::loadContactInfo"
+    "id": "function:Raycast:src/scout-prep.tsx:868:::loadContactInfo"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "async function handleCreateProspectContact(candidate?: ProspectContactShortcutCandidate | null) {",
-    "signature": "async function handleCreateProspectContact(candidate?: ProspectContactShortcutCandidate | null) {",
+    "snippet": "async function handleCreateAllProspectContacts() {",
+    "signature": "async function handleCreateAllProspectContacts() {",
     "kind": "function",
-    "name": "handleCreateProspectContact",
+    "name": "handleCreateAllProspectContacts",
     "file": "src/scout-prep.tsx",
-    "line": 881,
+    "line": 900,
     "system": "Raycast",
     "bucket": "Raycast UI",
-    "id": "function:Raycast:src/scout-prep.tsx:881:::handleCreateProspectContact"
+    "id": "function:Raycast:src/scout-prep.tsx:900:::handleCreateAllProspectContacts"
   },
   {
     "exported": false,
