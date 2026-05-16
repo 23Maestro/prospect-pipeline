@@ -87,3 +87,44 @@ create table if not exists reminders (
 
 create index if not exists reminders_status_send_at_idx
   on reminders (status, send_at);
+
+create table if not exists set_meeting_confirmation_cache (
+  id text primary key,
+  appointment_id text not null,
+  kind text not null,
+  send_at timestamptz,
+  sent_at timestamptz,
+  status text not null default 'cached',
+  dedupe_key text not null unique,
+  athlete_key text,
+  athlete_id text,
+  athlete_main_id text,
+  athlete_name text,
+  recipient_name text,
+  recipient_phone text,
+  head_scout_name text,
+  meeting_starts_at timestamptz,
+  meeting_duration_minutes integer,
+  meeting_ends_at timestamptz,
+  meeting_timezone text,
+  message_body text,
+  admin_url text,
+  task_url text,
+  source text not null default 'set_meetings_confirmation',
+  generated_at timestamptz,
+  payload_json jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint set_meeting_confirmation_cache_kind_check
+    check (kind in ('confirmation_1', 'confirmation_2')),
+  constraint set_meeting_confirmation_cache_status_check
+    check (status in ('cached', 'sent', 'skipped', 'expired')),
+  constraint set_meeting_confirmation_cache_source_check
+    check (source = 'set_meetings_confirmation')
+);
+
+create index if not exists set_meeting_confirmation_cache_ready_idx
+  on set_meeting_confirmation_cache (status, meeting_starts_at desc)
+  where status = 'cached'
+    and source = 'set_meetings_confirmation'
+    and kind in ('confirmation_1', 'confirmation_2');

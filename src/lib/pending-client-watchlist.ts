@@ -150,7 +150,7 @@ async function readSetMeetingConfirmationCacheRows(
   since.setDate(since.getDate() - PENDING_CLIENT_WATCH_WINDOW_DAYS);
   return readRows<SetMeetingConfirmationCacheRow>(
     config,
-    'reminders',
+    'set_meeting_confirmation_cache',
     [
       'select=appointment_id,athlete_id,athlete_main_id,athlete_name,head_scout_name,meeting_starts_at,meeting_ends_at,meeting_duration_minutes,source,kind,status,message_body,payload_json',
       'status=eq.cached',

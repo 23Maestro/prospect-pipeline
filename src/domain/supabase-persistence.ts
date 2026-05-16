@@ -117,7 +117,7 @@ export function upsertSetMeetingConfirmationCacheRows(
   config: SupabasePersistenceConfig,
   rows: unknown[],
 ) {
-  return writeRows(config, 'reminders', rows, 'dedupe_key');
+  return writeRows(config, 'set_meeting_confirmation_cache', rows, 'dedupe_key');
 }
 
 export function upsertPendingClientWatchlistRows(
