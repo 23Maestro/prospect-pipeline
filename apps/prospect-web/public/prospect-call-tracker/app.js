@@ -1,4 +1,5 @@
 const CONTRACT_URL = '/api/call-tracker-data';
+const WEEKLY_INDEX_URL = '/prospect-call-tracker/weekly-results/index.json';
 const TIME_ZONE = 'America/New_York';
 const COMMISSION_RATE = 0.175;
 
@@ -35,6 +36,9 @@ const state = {
   summary: null,
   ui: null,
   contract: null,
+  weeklyArchiveIndex: null,
+  weeklyArchiveDetails: new Map(),
+  activeView: 'live-week',
   activeFilter: 'meaningful',
   activePeriod: currentWeekPeriod(),
 };
@@ -215,9 +219,36 @@ async function getDataContract() {
   return state.contract;
 }
 
+async function getWeeklyArchiveIndex() {
+  if (state.weeklyArchiveIndex) return state.weeklyArchiveIndex;
+  const response = await fetch(WEEKLY_INDEX_URL, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+  });
+  if (!response.ok) {
+    state.weeklyArchiveIndex = { weeks: [] };
+    return state.weeklyArchiveIndex;
+  }
+  state.weeklyArchiveIndex = await response.json();
+  return state.weeklyArchiveIndex;
+}
+
+async function getWeeklyArchiveDetails(file) {
+  if (!file) return null;
+  if (state.weeklyArchiveDetails.has(file)) return state.weeklyArchiveDetails.get(file);
+  const response = await fetch(`/prospect-call-tracker/weekly-results/${encodeURIComponent(file)}`, {
+    headers: { accept: 'application/json' },
+    cache: 'no-store',
+  });
+  if (!response.ok) return null;
+  const details = await response.json();
+  state.weeklyArchiveDetails.set(file, details);
+  return details;
+}
+
 async function loadData() {
   $('statusText').textContent = 'Loading';
-  const contract = await getDataContract();
+  const [contract] = await Promise.all([getDataContract(), getWeeklyArchiveIndex()]);
   const data = contract?.data || {};
   state.summary = data.summary || {};
   state.rows = Array.isArray(data.events) ? data.events : [];
@@ -250,6 +281,47 @@ function countsAsMeetingSet(row) {
 
 function isMeaningfulEvent(row) {
   return !hiddenDefaultOutcomes.has(row.tracker_outcome);
+}
+
+function archiveWeeks() {
+  return Array.isArray(state.weeklyArchiveIndex?.weeks) ? state.weeklyArchiveIndex.weeks : [];
+}
+
+function selectedArchiveFile() {
+  return state.activeView.startsWith('archive:') ? state.activeView.slice('archive:'.length) : '';
+}
+
+function selectedArchiveWeek() {
+  const file = selectedArchiveFile();
+  return archiveWeeks().find((week) => week.file === file) || null;
+}
+
+function selectedArchiveDetails() {
+  const file = selectedArchiveFile();
+  return file ? state.weeklyArchiveDetails.get(file) || null : null;
+}
+
+function isArchiveView() {
+  return Boolean(selectedArchiveFile());
+}
+
+function isMonthView() {
+  return state.activeView === 'live-month';
+}
+
+function dateKeyInRange(key, start, end) {
+  return Boolean(key && key >= start && key <= end);
+}
+
+function currentMonthRange() {
+  const parts = localParts(new Date());
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  return {
+    start: `${parts.year}-${parts.month}-01`,
+    end: `${parts.year}-${parts.month}-${parts.day}`,
+    label: `This Month, ${localDateLabel(ymdToLocalNoon(year, month, 1))} - ${localDateLabel(new Date())}`,
+  };
 }
 
 function periodScopedRows(rows, dateKeyForRow = eventDateKey) {
@@ -353,8 +425,51 @@ function rowQuality(row) {
   );
 }
 
+function metricsFromRows(rows) {
+  const meetingsSet = rows.filter(countsAsMeetingSet).length;
+  const dials = rows.filter(countsAsDial).length;
+  const contacts = rows.filter(countsAsContact).length;
+  return {
+    dials,
+    contacts,
+    meetingsSet,
+    setRate: contacts ? Math.round((meetingsSet / contacts) * 100) : 0,
+    outcomeCounts: outcomeCountsForRows(rows),
+    filterCounts: filterCountsForRows(rows),
+  };
+}
+
+function activeTopCardMetrics() {
+  if (isArchiveView()) {
+    const details = selectedArchiveDetails();
+    const week = selectedArchiveWeek();
+    const summary = details?.summary || week || {};
+    return {
+      label: details?.week?.label || week?.label || 'Archived Week',
+      dials: Number(summary.dials) || 0,
+      contacts: Number(summary.contacts) || 0,
+      meetingsSet: Number(summary.meetingsSet) || 0,
+      setRate: Number(summary.setRate) || 0,
+      outcomeCounts: summary.outcomeCounts || {},
+      filterCounts: summary.filterCounts || null,
+    };
+  }
+
+  if (isMonthView()) {
+    const range = currentMonthRange();
+    return {
+      label: range.label,
+      ...metricsFromRows(
+        displayRows().filter((row) => dateKeyInRange(localDateKey(row.occurred_at), range.start, range.end)),
+      ),
+    };
+  }
+
+  return state.ui?.periods?.[state.activePeriod] || null;
+}
+
 function renderPeriod() {
-  const materializedPeriod = state.ui?.periods?.[state.activePeriod];
+  const materializedPeriod = activeTopCardMetrics();
   if (materializedPeriod) {
     setText('periodTitle', materializedPeriod.label);
     setText('todayLabel', 'Local ET');
@@ -363,7 +478,8 @@ function renderPeriod() {
     setText('todayMeetingsSet', materializedPeriod.meetingsSet);
     setText('todaySetRate', `${materializedPeriod.setRate}%`);
     document.querySelectorAll('[data-period]').forEach((button) => {
-      button.classList.toggle('active', button.dataset.period === state.activePeriod);
+      button.classList.toggle('active', !isArchiveView() && !isMonthView() && button.dataset.period === state.activePeriod);
+      button.disabled = isArchiveView() || isMonthView();
     });
     return;
   }
@@ -383,6 +499,7 @@ function renderPeriod() {
 
   document.querySelectorAll('[data-period]').forEach((button) => {
     button.classList.toggle('active', button.dataset.period === state.activePeriod);
+    button.disabled = false;
   });
 }
 
@@ -466,17 +583,35 @@ function renderSummary() {
   setText('totalEvents', cards?.dials ?? summary.dials ?? 0);
   setText('voicemailOnly', cards?.voicemailOnly ?? summary.voicemail_only ?? 0);
   setText('appointmentsTracked', cards?.appointmentsTracked ?? summary.appointments_tracked ?? 0);
-  setText('rangeLabel', state.ui?.rangeLabel || currentWeekRangeLabel());
+  setText('rangeLabel', activeTopCardMetrics()?.label || state.ui?.rangeLabel || currentWeekRangeLabel());
   const fallbackDenominator = Number(summary.meeting_outcomes_total) || 0;
   const fallbackRate = fallbackDenominator ? Math.round((Number(summary.closed_won || 0) / fallbackDenominator) * 100) : 0;
   setText('closeRate', `${cards?.closeRate ?? fallbackRate}%`);
 }
 
-function outcomeCounts() {
-  return scopedRows().reduce((acc, row) => {
+function outcomeCountsForRows(rows) {
+  return rows.reduce((acc, row) => {
     acc[row.tracker_outcome] = (acc[row.tracker_outcome] || 0) + 1;
     return acc;
   }, {});
+}
+
+function filterCountsForRows(rows) {
+  const counts = outcomeCountsForRows(rows);
+  return {
+    meaningful: rows.filter(isMeaningfulEvent).length,
+    all_calls: rows.length,
+    meetings: rows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length,
+    closed_won: counts.closed_won || 0,
+    closed_lost: counts.closed_lost || 0,
+    reschedule_pending: counts.reschedule_pending || 0,
+    no_show: counts.no_show || 0,
+    canceled: counts.canceled || 0,
+  };
+}
+
+function outcomeCounts() {
+  return outcomeCountsForRows(scopedRows());
 }
 
 function renderBars() {
@@ -614,6 +749,24 @@ function renderTable() {
     .join('');
 }
 
+function renderWeekViewSelector() {
+  const select = $('weekViewSelect');
+  if (!select) return;
+  const selected = state.activeView;
+  const archivedOptions = archiveWeeks()
+    .map((week) => {
+      const label = week.label || `${week.startDate} to ${week.endDate}`;
+      return `<option value="archive:${escapeHtml(week.file)}">${escapeHtml(label)}</option>`;
+    })
+    .join('');
+  select.innerHTML = `
+    <option value="live-week">This week (live)</option>
+    <option value="live-month">This month (live)</option>
+    ${archivedOptions}
+  `;
+  select.value = selected;
+}
+
 function titleCaseLabel(value) {
   return String(value || '')
     .replace(/[_-]+/g, ' ')
@@ -634,6 +787,7 @@ function eventTitle(row) {
 }
 
 function render() {
+  renderWeekViewSelector();
   renderSummary();
   renderPeriod();
   renderPaycheck();
@@ -652,6 +806,16 @@ function handleLoadError(error) {
 function bootCallTracker() {
   state.activePeriod = currentWeekPeriod();
   $('refreshButton').addEventListener('click', () => refreshAllData().catch(handleLoadError));
+  $('weekViewSelect').addEventListener('change', async (event) => {
+    state.activeView = event.target.value || 'live-week';
+    state.activeFilter = 'meaningful';
+    const file = selectedArchiveFile();
+    if (file) {
+      $('statusText').textContent = 'Loading archive';
+      await getWeeklyArchiveDetails(file);
+    }
+    render();
+  });
   document.querySelectorAll('[data-period]').forEach((button) => {
     button.addEventListener('click', () => {
       state.activePeriod = button.dataset.period || currentWeekPeriod();

@@ -52,6 +52,7 @@ input {
 .brand-row,
 .topbar-actions,
 .page-head,
+.view-actions,
 .panel-head,
 .daily-head,
 .table-actions,
@@ -160,6 +161,7 @@ h2 {
 }
 
 #refreshButton,
+.view-select-wrap select,
 .period-toggle button,
 .filters button,
 .config-form button {
@@ -189,7 +191,34 @@ h2 {
   height: 15px;
 }
 
+.view-actions {
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.view-select-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.view-select-wrap span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.view-select-wrap select {
+  min-width: 210px;
+  padding-right: 30px;
+  color: var(--text);
+  outline: none;
+}
+
 #refreshButton:hover,
+.view-select-wrap select:hover,
+.view-select-wrap select:focus,
 .period-toggle button:hover,
 .period-toggle button.active,
 .filters button:hover,
@@ -245,6 +274,12 @@ h2 {
   color: #fff;
   border-color: rgba(0, 112, 243, 0.58);
   background: rgba(0, 112, 243, 0.14);
+}
+
+.period-toggle button:disabled {
+  color: var(--dim);
+  cursor: default;
+  opacity: 0.48;
 }
 
 .daily-cards {
@@ -774,6 +809,18 @@ tbody tr:hover {
   .daily-cards,
   .metrics {
     grid-template-columns: 1fr;
+  }
+
+  .view-actions,
+  .view-select-wrap,
+  .view-select-wrap select,
+  #refreshButton {
+    width: 100%;
+  }
+
+  .view-select-wrap {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .donut-wrap {

@@ -5,13 +5,13 @@ import {
 } from './scout-follow-up-templates';
 import { getMeetingReminderRecipient } from '../domain/scout-contact-selection';
 import { getGreetingForLocalTime } from '../domain/outreach-time-wording';
-import { buildSetMeetingReminderCacheRows } from '../domain/set-meeting-reminder-cache';
+import { buildSetMeetingConfirmationCacheRows } from '../domain/set-meeting-confirmation-cache';
 import {
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
 
-export type MeetingSetReminderCacheInput = {
+export type MeetingSetConfirmationCacheInput = {
   athleteId: string;
   athleteMainId: string;
   athleteName: string;
@@ -44,7 +44,7 @@ function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null):
   return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
 }
 
-export function getSetMeetingReminderSupabaseConfig(): SupabasePersistenceConfig | null {
+export function getSetMeetingConfirmationSupabaseConfig(): SupabasePersistenceConfig | null {
   const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
     .trim()
     .replace(/\/+$/, '');
@@ -72,7 +72,9 @@ function parseMeetingLengthMinutes(value?: string | null): number {
   return Number.isFinite(total) && total > 0 ? total : 60;
 }
 
-export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetReminderCacheInput) {
+export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
+  args: MeetingSetConfirmationCacheInput,
+) {
   const appointmentId =
     clean(args.meetingSetResult?.open_event_id) || clean(args.meetingSet.openEventId);
   const meetingStartsAt =
@@ -103,7 +105,7 @@ export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetRe
       greetingOverride: getGreetingForLocalTime({ now: new Date(generatedAt), meetingTimezone }),
     });
 
-  return buildSetMeetingReminderCacheRows({
+  return buildSetMeetingConfirmationCacheRows({
     appointmentId,
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
@@ -123,14 +125,14 @@ export function buildMeetingSetReminderCacheRowsFromScoutPrep(args: MeetingSetRe
   });
 }
 
-export async function syncMeetingSetReminderCacheFromScoutPrep(
-  args: MeetingSetReminderCacheInput,
-  config: SupabasePersistenceConfig | null = getSetMeetingReminderSupabaseConfig(),
+export async function syncMeetingSetConfirmationCacheFromScoutPrep(
+  args: MeetingSetConfirmationCacheInput,
+  config: SupabasePersistenceConfig | null = getSetMeetingConfirmationSupabaseConfig(),
 ): Promise<{ enabled: boolean; count: number }> {
   if (!config) {
     return { enabled: false, count: 0 };
   }
-  const rows = buildMeetingSetReminderCacheRowsFromScoutPrep(args);
+  const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep(args);
   if (!rows.length) {
     return { enabled: true, count: 0 };
   }

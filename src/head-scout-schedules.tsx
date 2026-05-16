@@ -56,7 +56,7 @@ import {
   filterWeeklySetMeetingCandidates,
 } from './domain/set-meetings-candidate';
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
-import { buildSetMeetingReminderCacheRows } from './domain/set-meeting-reminder-cache';
+import { buildSetMeetingConfirmationCacheRows } from './domain/set-meeting-confirmation-cache';
 import { getActiveOperator } from './domain/owners';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
@@ -343,16 +343,18 @@ async function hydrateWeeklyCandidatesFromAthleteMeetings(
       }).catch(() => null);
       const athleteNameKey = normalizeMeetingMatchText(candidate.athleteName);
       const currentTitleKey = normalizeMeetingMatchText(candidate.bookedMeeting?.title);
-      const preferred = pickNewestMeetingEvent((result?.events || []).filter((event) => {
-        const meetingDay = String(event.start || '').slice(0, 10);
-        const eventTitleKey = normalizeMeetingMatchText(event.title);
-        return (
-          meetingDay >= weekStart &&
-          meetingDay < weekEnd &&
-          eventTitleKey.includes(athleteNameKey) &&
-          eventTitleKey === currentTitleKey
-        );
-      }));
+      const preferred = pickNewestMeetingEvent(
+        (result?.events || []).filter((event) => {
+          const meetingDay = String(event.start || '').slice(0, 10);
+          const eventTitleKey = normalizeMeetingMatchText(event.title);
+          return (
+            meetingDay >= weekStart &&
+            meetingDay < weekEnd &&
+            eventTitleKey.includes(athleteNameKey) &&
+            eventTitleKey === currentTitleKey
+          );
+        }),
+      );
       if (!preferred || preferred.event_id === candidate.bookedMeeting.event_id) {
         return candidate;
       }
@@ -737,7 +739,7 @@ export function HeadScoutBookingsList({
             ).message;
       const supabaseConfig = getConfirmationCacheSupabaseConfig();
       if (supabaseConfig && candidate.bookedMeeting?.event_id) {
-        const rows = buildSetMeetingReminderCacheRows({
+        const rows = buildSetMeetingConfirmationCacheRows({
           appointmentId: candidate.bookedMeeting.event_id,
           athleteId: candidate.athleteId,
           athleteMainId: candidate.athleteMainId,

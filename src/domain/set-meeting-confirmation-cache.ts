@@ -1,4 +1,4 @@
-export type BuildSetMeetingReminderCacheRowsInput = {
+export type BuildSetMeetingConfirmationCacheRowsInput = {
   appointmentId: string;
   athleteId: string;
   athleteMainId: string;
@@ -17,7 +17,7 @@ export type BuildSetMeetingReminderCacheRowsInput = {
   source: string;
 };
 
-type ReminderKind = 'confirmation_1' | 'confirmation_2';
+type ConfirmationKind = 'confirmation_1' | 'confirmation_2';
 
 function normalizeDurationMinutes(value?: number | null): number {
   const parsed = Number(value);
@@ -30,14 +30,20 @@ function computeMeetingEndsAt(
 ): string | null {
   const start = new Date(String(startsAt || '').trim());
   if (Number.isNaN(start.getTime())) return null;
-  return new Date(start.getTime() + normalizeDurationMinutes(durationMinutes) * 60_000).toISOString();
+  return new Date(
+    start.getTime() + normalizeDurationMinutes(durationMinutes) * 60_000,
+  ).toISOString();
 }
 
-function buildRow(input: BuildSetMeetingReminderCacheRowsInput, kind: ReminderKind, messageBody: string) {
+function buildRow(
+  input: BuildSetMeetingConfirmationCacheRowsInput,
+  kind: ConfirmationKind,
+  messageBody: string,
+) {
   if (!String(messageBody || '').trim()) {
     throw new Error(`message_body is required for ${kind}`);
   }
-  const dedupeKey = `set_meeting_reminder:${input.appointmentId}:${kind}:${input.recipientPhone}`;
+  const dedupeKey = `set_meeting_confirmation:${input.appointmentId}:${kind}:${input.recipientPhone}`;
   const meetingDurationMinutes = normalizeDurationMinutes(input.meetingDurationMinutes);
   const meetingEndsAt = computeMeetingEndsAt(input.meetingStartsAt, meetingDurationMinutes);
   return {
@@ -81,14 +87,16 @@ function buildRow(input: BuildSetMeetingReminderCacheRowsInput, kind: ReminderKi
       task_url: input.taskUrl,
       source: input.source,
       generated_at: input.generatedAt,
-      reminder_kind: kind,
+      confirmation_kind: kind,
     },
     created_at: input.generatedAt,
     updated_at: input.generatedAt,
   };
 }
 
-export function buildSetMeetingReminderCacheRows(input: BuildSetMeetingReminderCacheRowsInput) {
+export function buildSetMeetingConfirmationCacheRows(
+  input: BuildSetMeetingConfirmationCacheRowsInput,
+) {
   return [
     buildRow(input, 'confirmation_1', input.confirmation1Message),
     buildRow(input, 'confirmation_2', input.confirmation2Message),

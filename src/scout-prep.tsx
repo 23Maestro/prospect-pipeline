@@ -123,7 +123,7 @@ import {
 } from './lib/reminders';
 import { recordMeetingSet, recordVoicemailFollowUpSent } from './lib/supabase-lifecycle';
 import { syncAthleteContactCacheFromScoutPrepContext } from './lib/athlete-contact-cache';
-import { syncMeetingSetReminderCacheFromScoutPrep } from './lib/set-meeting-reminder-cache-sync';
+import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-confirmation-cache-sync';
 import { sendClientMessage } from './lib/client-message-sandbox';
 import {
   isCallAttempt1PortalTask,
@@ -2134,7 +2134,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       }
       if (meetingSetInput && meetingSetResult) {
         try {
-          await syncMeetingSetReminderCacheFromScoutPrep({
+          await syncMeetingSetConfirmationCacheFromScoutPrep({
             athleteId,
             athleteMainId,
             athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,

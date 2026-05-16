@@ -19,6 +19,7 @@ test('prospect-call-tracker and prospect-mobile static assets are served from Ve
   [
     'public/prospect-call-tracker/app.js',
     'public/prospect-call-tracker/data-contract.json',
+    'public/prospect-call-tracker/weekly-results/index.json',
     'public/prospect-call-tracker/styles.css',
     'public/prospect-call-tracker/prospect-pipeline.png',
     'public/prospect-mobile/app.js',
@@ -45,7 +46,9 @@ test('server-only env names do not appear in browser-facing files', () => {
 
   const offenders = clientFiles.flatMap((path) => {
     const text = readFileSync(path, 'utf8');
-    return serverOnly.filter((name) => text.includes(name)).map((name) => `${relative(appRoot, path)}:${name}`);
+    return serverOnly
+      .filter((name) => text.includes(name))
+      .map((name) => `${relative(appRoot, path)}:${name}`);
   });
 
   assert.deepEqual(offenders, []);
@@ -63,7 +66,9 @@ test('Next.js route handlers do not duplicate domain ownership or materializatio
   ];
   const offenders = routeFiles.flatMap((path) => {
     const text = readFileSync(path, 'utf8');
-    return forbidden.filter((term) => text.includes(term)).map((term) => `${relative(appRoot, path)}:${term}`);
+    return forbidden
+      .filter((term) => text.includes(term))
+      .map((term) => `${relative(appRoot, path)}:${term}`);
   });
 
   assert.deepEqual(offenders, []);
@@ -79,7 +84,10 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     .filter(Boolean);
 
   const oldStaticPrefix = ['npid-api-layer', 'app', 'static'].join('/');
-  const oldConfigWriterPath = ['scripts', ['write', 'call', 'tracker'].join('-') + '-config.mjs'].join('/');
+  const oldConfigWriterPath = [
+    'scripts',
+    ['write', 'call', 'tracker'].join('-') + '-config.mjs',
+  ].join('/');
   const allowedSourceFiles = new Set([
     'npid-api-layer/README.md',
     'npid-api-layer/main.py',
@@ -104,12 +112,12 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/lib/scout-follow-up-templates.test.ts',
     'src/lib/sales-lifecycle.test.ts',
     'src/lib/sales-lifecycle.ts',
-	    'scripts/reconcile-current-sales-stages-to-supabase.mjs',
-	    'scripts/reconcile-current-sales-stages-to-supabase.test.mjs',
-	    'scripts/materialize-call-tracker-data-contract.mjs',
-	    'scripts/materialize-call-tracker-data-contract.test.mjs',
-	    'scripts/archive-call-tracker-week.mjs',
-	    'scripts/archive-call-tracker-weekly.sh',
+    'scripts/reconcile-current-sales-stages-to-supabase.mjs',
+    'scripts/reconcile-current-sales-stages-to-supabase.test.mjs',
+    'scripts/materialize-call-tracker-data-contract.mjs',
+    'scripts/materialize-call-tracker-data-contract.test.mjs',
+    'scripts/archive-call-tracker-week.mjs',
+    'scripts/archive-call-tracker-weekly.sh',
     'scripts/backsync-lifecycle-call-activity-events.mjs',
     'scripts/lifecycle-call-tracker-backsync-core.mjs',
     'scripts/lifecycle-call-tracker-backsync-core.test.mjs',
@@ -117,12 +125,12 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/sync-supabase-pipeline.sh',
     'scripts/sync-supabase-pipeline.test.mjs',
     oldConfigWriterPath,
-	    'scripts/sync-current-pipeline-to-supabase.mjs',
-	    'scripts/sync-current-pipeline-to-supabase.test.mjs',
-	    'scripts/sync-booked-meetings-to-supabase.mjs',
-	    'scripts/sync-booked-meetings-to-supabase.test.mjs',
-	    'src/domain/call-tracker-vercel-contract.ts',
-	    'src/domain/owner-proof-payload.ts',
+    'scripts/sync-current-pipeline-to-supabase.mjs',
+    'scripts/sync-current-pipeline-to-supabase.test.mjs',
+    'scripts/sync-booked-meetings-to-supabase.mjs',
+    'scripts/sync-booked-meetings-to-supabase.test.mjs',
+    'src/domain/call-tracker-vercel-contract.ts',
+    'src/domain/owner-proof-payload.ts',
     'src/domain/owner-resolution.ts',
     'src/domain/owner-resolution.test.ts',
     'src/domain/post-call-action.ts',
@@ -130,13 +138,18 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/lib/supabase-lifecycle.ts',
     'src/lib/supabase-lifecycle.test.ts',
     'src/scout-prep.tsx',
+    'src/generated/code-index.generated.json',
     'src/domain/set-meeting-reminder-cache.ts',
     'src/domain/set-meeting-reminder-cache.test.ts',
+    'src/domain/set-meeting-confirmation-cache.ts',
+    'src/domain/set-meeting-confirmation-cache.test.ts',
     'src/domain/athlete-contact-cache.ts',
     'src/domain/athlete-contact-cache.test.ts',
     'src/lib/athlete-contact-cache.ts',
     'src/lib/set-meeting-reminder-cache-sync.ts',
     'src/lib/set-meeting-reminder-cache-sync.test.ts',
+    'src/lib/set-meeting-confirmation-cache-sync.ts',
+    'src/lib/set-meeting-confirmation-cache-sync.test.ts',
     'src/head-scout-schedules.tsx',
     'src/domain/pending-client-watchlist.ts',
     'src/domain/pending-client-watchlist.test.ts',
@@ -159,7 +172,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
   ]);
   const forbiddenPrefixes = ['npid-api-layer/', 'scripts/', 'supabase/', 'src/'];
   const offenders = changedFiles.filter(
-    (path) => forbiddenPrefixes.some((prefix) => path.startsWith(prefix)) && !allowedSourceFiles.has(path),
+    (path) =>
+      forbiddenPrefixes.some((prefix) => path.startsWith(prefix)) && !allowedSourceFiles.has(path),
   );
   assert.deepEqual(offenders, []);
 });
@@ -185,17 +199,22 @@ test('legacy hosting and FastAPI static web leftovers are purged', () => {
 
   const rootPackage = JSON.parse(readFileSync(join(repoRoot, 'package.json'), 'utf8'));
   const forbiddenScript = 'sync:' + ['call', 'tracker', 'config'].join('-');
-  const forbiddenScriptKeys = Object.keys(rootPackage.scripts || {}).filter((key) => key === forbiddenScript);
+  const forbiddenScriptKeys = Object.keys(rootPackage.scripts || {}).filter(
+    (key) => key === forbiddenScript,
+  );
   assert.deepEqual(forbiddenScriptKeys, []);
 
-  const forbiddenPattern = new RegExp([
-    legacyHost,
-    oldMobileDir,
-    `${legacyHost}\\.toml`,
-    `${legacyHost}/functions`,
-    oldStaticPath.join('/'),
-    oldConfigWriter,
-  ].join('|'), 'i');
+  const forbiddenPattern = new RegExp(
+    [
+      legacyHost,
+      oldMobileDir,
+      `${legacyHost}\\.toml`,
+      `${legacyHost}/functions`,
+      oldStaticPath.join('/'),
+      oldConfigWriter,
+    ].join('|'),
+    'i',
+  );
   const scannedFiles = [
     ...walk(join(repoRoot, 'apps', 'prospect-web')),
     ...walk(join(repoRoot, 'docs')),
@@ -208,9 +227,7 @@ test('legacy hosting and FastAPI static web leftovers are purged', () => {
     const rel = relative(repoRoot, path);
     if (rel === ['apps', 'prospect-web', 'tests', 'static-guards.test.ts'].join('/')) return [];
     const text = readFileSync(path, 'utf8');
-    return forbiddenPattern.test(text)
-      ? [rel]
-      : [];
+    return forbiddenPattern.test(text) ? [rel] : [];
   });
   assert.deepEqual([...new Set(offenders)].sort(), []);
 });
@@ -227,16 +244,29 @@ test('call tracker public contract documents count flags as the reporting source
   assert.match(contract.purpose, /countsAsMeetingSet/i);
   assert.match(contract.purpose, /countsAsPostMeetingOutcome/i);
   assert.equal(contract.generatedFrom, 'src/domain/call-tracker-vercel-contract.ts');
-  assert.equal(contract.browserContract.eventFeed.supabaseView, 'call_tracker_events_owner_context');
+  assert.equal(
+    contract.browserContract.eventFeed.supabaseView,
+    'call_tracker_events_owner_context',
+  );
   assert.equal(contract.browserContract.summaryHelper.supabaseView, 'call_tracker_summary');
-  assert.equal(contract.browserContract.summaryHelper.deprecatedAliases.total_events, 'Do not display as Dials. Use dials.');
-  assert.equal(contract.browserContract.summaryHelper.deprecatedAliases.spoke_with, 'Do not display as Contacts. Use contacts.');
+  assert.equal(
+    contract.browserContract.summaryHelper.deprecatedAliases.total_events,
+    'Do not display as Dials. Use dials.',
+  );
+  assert.equal(
+    contract.browserContract.summaryHelper.deprecatedAliases.spoke_with,
+    'Do not display as Contacts. Use contacts.',
+  );
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_dial'));
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_contact'));
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_meeting_set'));
-  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('counts_as_post_meeting_outcome'));
+  assert.ok(
+    contract.browserContract.eventFeed.requiredFields.includes('counts_as_post_meeting_outcome'),
+  );
   assert.ok(contract.browserContract.eventFeed.requiredFields.includes('materialization_status'));
-  assert.ok(contract.browserContract.eventFeed.requiredFields.includes('resolved_owner_source_field'));
+  assert.ok(
+    contract.browserContract.eventFeed.requiredFields.includes('resolved_owner_source_field'),
+  );
   assert.equal(contract.liveSupabaseApi.browserUrl, '/api/call-tracker-data');
   assert.equal(contract.liveSupabaseApi.workflowCron, 'scripts/sync-supabase-pipeline.sh');
   assert.ok(contract.data.generatedAt);
@@ -255,35 +285,52 @@ test('call tracker public contract documents count flags as the reporting source
   assert.equal(typeof contract.data.ui.manualCorrections.allTimeContactsAdjustment, 'number');
   assert.equal(
     contract.data.ui.summaryCards.contacts,
-    contract.data.ui.summaryCards.rawContacts + contract.data.ui.summaryCards.historicalContactsAdjustment,
+    contract.data.ui.summaryCards.rawContacts +
+      contract.data.ui.summaryCards.historicalContactsAdjustment,
   );
   assert.equal(typeof contract.data.ui.summaryCards.closeRate, 'number');
   assert.equal(typeof contract.data.ui.paycheck.totalCents, 'number');
   assert.equal(typeof contract.data.ui.activePeriod, 'string');
   assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].dials, 'number');
   assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].contacts, 'number');
-  assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].meetingsSet, 'number');
-  assert.equal(typeof contract.data.ui.periods[contract.data.ui.activePeriod].filterCounts.meaningful, 'number');
+  assert.equal(
+    typeof contract.data.ui.periods[contract.data.ui.activePeriod].meetingsSet,
+    'number',
+  );
+  assert.equal(
+    typeof contract.data.ui.periods[contract.data.ui.activePeriod].filterCounts.meaningful,
+    'number',
+  );
   assert.ok('counts_as_dial' in contract.data.events[0]);
   assert.ok('counts_as_contact' in contract.data.events[0]);
 
-  const sourceTables = contract.sourceFamilies.map((source: { sourceTable: string }) => source.sourceTable);
+  const sourceTables = contract.sourceFamilies.map(
+    (source: { sourceTable: string }) => source.sourceTable,
+  );
   assert.deepEqual(sourceTables, ['call_activity_events', 'lifecycle_events', 'meeting_events']);
 
-  const totalDials = contract.cardBindings.find((binding: { domId: string }) => binding.domId === 'totalEvents');
-  const totalContacts = contract.cardBindings.find((binding: { domId: string }) => binding.domId === 'spokeWith');
+  const totalDials = contract.cardBindings.find(
+    (binding: { domId: string }) => binding.domId === 'totalEvents',
+  );
+  const totalContacts = contract.cardBindings.find(
+    (binding: { domId: string }) => binding.domId === 'spokeWith',
+  );
   assert.match(totalDials.countRule, /call_tracker_summary\.dials/);
   assert.match(totalContacts.countRule, /data\.ui\.summaryCards\.contacts/);
   assert.match(totalContacts.forbiddenRule, /post-meeting outcomes/i);
 
-  const meetingSet = contract.domainOutcomeRules.find((rule: { domainStatus: string }) => rule.domainStatus === 'meeting_set');
+  const meetingSet = contract.domainOutcomeRules.find(
+    (rule: { domainStatus: string }) => rule.domainStatus === 'meeting_set',
+  );
   assert.equal(meetingSet.countsAsDial, true);
   assert.equal(meetingSet.countsAsContact, true);
   assert.equal(meetingSet.countsAsMeetingSet, true);
   assert.equal(meetingSet.countsAsPostMeetingOutcome, false);
 
   const postMeetingRules = contract.domainOutcomeRules.filter((rule: { domainStatus: string }) =>
-    ['closed_won', 'closed_lost', 'reschedule_pending', 'no_show', 'canceled'].includes(rule.domainStatus),
+    ['closed_won', 'closed_lost', 'reschedule_pending', 'no_show', 'canceled'].includes(
+      rule.domainStatus,
+    ),
   );
   assert.equal(postMeetingRules.length, 5);
   for (const rule of postMeetingRules) {
@@ -294,19 +341,24 @@ test('call tracker public contract documents count flags as the reporting source
 });
 
 test('Vercel public dashboard assets are tracked in git despite public ignore rule', () => {
-  const trackedFiles = execFileSync('git', ['ls-files',
-    'apps/prospect-web/public/prospect-call-tracker/app.js',
-    'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
-    'apps/prospect-web/public/prospect-call-tracker/prospect-pipeline.png',
-    'apps/prospect-web/public/prospect-call-tracker/styles.css',
-    'apps/prospect-web/public/prospect-mobile/app.js',
-    'apps/prospect-web/public/prospect-mobile/assets/prospect-pipeline.png',
-    'apps/prospect-web/public/prospect-mobile/set-meetings-utils.mjs',
-    'apps/prospect-web/public/prospect-mobile/styles.css',
-  ], {
-    cwd: repoRoot,
-    encoding: 'utf8',
-  })
+  const trackedFiles = execFileSync(
+    'git',
+    [
+      'ls-files',
+      'apps/prospect-web/public/prospect-call-tracker/app.js',
+      'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
+      'apps/prospect-web/public/prospect-call-tracker/prospect-pipeline.png',
+      'apps/prospect-web/public/prospect-call-tracker/styles.css',
+      'apps/prospect-web/public/prospect-mobile/app.js',
+      'apps/prospect-web/public/prospect-mobile/assets/prospect-pipeline.png',
+      'apps/prospect-web/public/prospect-mobile/set-meetings-utils.mjs',
+      'apps/prospect-web/public/prospect-mobile/styles.css',
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+    },
+  )
     .split('\n')
     .filter(Boolean);
   assert.deepEqual(trackedFiles, [
@@ -332,6 +384,9 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
   assert.match(appText, /state\.ui\?\.summaryCards/);
   assert.match(appText, /state\.ui\?\.periods/);
   assert.match(appText, /state\.ui\?\.paycheck/);
+  assert.match(appText, /WEEKLY_INDEX_URL/);
+  assert.match(appText, /\/prospect-call-tracker\/weekly-results\/index\.json/);
+  assert.match(appText, /activeView: 'live-week'/);
   assert.match(appText, /counts_as_dial/);
   assert.match(appText, /counts_as_contact/);
   assert.match(appText, /counts_as_meeting_set/);
@@ -341,7 +396,42 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
   assert.doesNotMatch(appText, /\/rest\/v1\//);
   assert.doesNotMatch(appText, /call-tracker-sync/);
   assert.doesNotMatch(appText, /CALL_TRACKER_CONFIG/);
-  assert.doesNotMatch(appText, /contactMadeOutcomes|callActivityOutcomes|isDailyCallActivity|isDailyContact/);
+  assert.doesNotMatch(
+    appText,
+    /contactMadeOutcomes|callActivityOutcomes|isDailyCallActivity|isDailyContact/,
+  );
+});
+
+test('call tracker archive selector is backed by existing weekly-results files', () => {
+  const pageText = readFileSync(join(appRoot, 'app/prospect-call-tracker/page.tsx'), 'utf8');
+  const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
+  const indexPath = join(appRoot, 'public/prospect-call-tracker/weekly-results/index.json');
+  const index = JSON.parse(readFileSync(indexPath, 'utf8'));
+
+  assert.match(pageText, /id="weekViewSelect"/);
+  assert.match(appText, /getWeeklyArchiveIndex/);
+  assert.match(appText, /getWeeklyArchiveDetails/);
+  assert.match(appText, /selectedArchiveWeek/);
+  assert.match(appText, /activeTopCardMetrics/);
+  assert.doesNotMatch(appText, /activeAllTimeSnapshot/);
+  assert.doesNotMatch(pageText, /snapshotDials|snapshotContacts|snapshotMeetings|snapshotSetRate/);
+  assert.ok(Array.isArray(index.weeks));
+  for (const week of index.weeks) {
+    assert.equal(typeof week.file, 'string');
+    assert.equal(typeof week.dials, 'number');
+    assert.equal(typeof week.contacts, 'number');
+    assert.equal(typeof week.meetingsSet, 'number');
+    assert.equal(typeof week.setRate, 'number');
+    assert.equal(typeof week.allTimeAtArchive.dials, 'number');
+    assert.equal(typeof week.allTimeAtArchive.contacts, 'number');
+    assert.equal(typeof week.allTimeAtArchive.meetingsSet, 'number');
+    assert.equal(typeof week.allTimeAtArchive.setRate, 'number');
+    assert.equal(
+      existsSync(join(appRoot, 'public/prospect-call-tracker/weekly-results', week.file)),
+      true,
+      week.file,
+    );
+  }
 });
 
 test('prospect mobile set meetings uses confirmation cache messages', () => {
@@ -367,7 +457,9 @@ test('prospect mobile exposes only set meetings and scout schedules tabs', () =>
   const contactReminderPageExists = existsSync(
     join(appRoot, 'app/prospect-mobile/contact-reminder/page.tsx'),
   );
-  const contactReminderApiExists = existsSync(join(appRoot, 'app/api/contact-reminder-intake/route.ts'));
+  const contactReminderApiExists = existsSync(
+    join(appRoot, 'app/api/contact-reminder-intake/route.ts'),
+  );
   assert.match(pageText, /data-route="\/set-meetings"/);
   assert.match(pageText, /data-route="\/scout-schedules"/);
   assert.doesNotMatch(pageText, /data-route="\/contact-reminder"/);

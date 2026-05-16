@@ -161,15 +161,16 @@ test('Prospect Web architecture docs keep hosting adapter scope separate from do
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
   const matches = architectureDocs.filter((path) => /prospect web|vercel/i.test(readRepoFile(path)));
   assert.deepEqual(matches.sort(), [
+    'docs/architecture/code-review-boundaries.md',
     'docs/architecture/prospect-web-hosting-adapter.md',
     'docs/architecture/vercel-live-verification.md',
   ]);
 
   for (const path of matches) {
     const doc = readRepoFile(path);
-    assert.match(doc, /FastAPI remains/i);
-    assert.match(doc, /Supabase remains/i);
-    assert.match(doc, /Domain modules remain|Next\.js routes must not own/i);
+    assert.match(doc, /FastAPI remains|FastAPI is/i);
+    assert.match(doc, /Supabase remains|Supabase is/i);
+    assert.match(doc, /Domain modules remain|Domain modules define|Next\.js routes must not own/i);
     assert.doesNotMatch(doc, /Next\.js.*materialization source of truth/i);
     assert.doesNotMatch(doc, /Vercel.*domain ownership/i);
   }

@@ -79,10 +79,18 @@ export default function ProspectCallTrackerPage() {
             <h1>Prospect Call Tracker</h1>
             <span id="rangeLabel">Loading</span>
           </div>
-          <button id="refreshButton" type="button">
-            <Icon name="refresh" />
-            Refresh Data
-          </button>
+          <div className="view-actions">
+            <label className="view-select-wrap">
+              <span>View</span>
+              <select id="weekViewSelect" aria-label="Call tracker date view">
+                <option>This week (live)</option>
+              </select>
+            </label>
+            <button id="refreshButton" type="button">
+              <Icon name="refresh" />
+              Refresh Data
+            </button>
+          </div>
         </section>
 
         <section className="daily-panel" aria-label="Current day">
@@ -189,7 +197,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260504-brand" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260516-week-archive" strategy="afterInteractive" />
     </>
   );
 }
