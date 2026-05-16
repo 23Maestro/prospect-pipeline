@@ -451,6 +451,11 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /\/api\/set-meeting-confirmation-prefix/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\)"/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\*2\)"/);
+  assert.match(appText, /data-admin-modal/);
+  assert.match(appText, /data-prefix-action="\(CF\)"/);
+  assert.match(appText, /data-prefix-action="\(RSP\)"/);
+  assert.match(appText, /data-prefix-action="\(CAN\)"/);
+  assert.match(appText, /showAdminModal/);
   assert.doesNotMatch(appText, /\/api\/set-meetings/);
   assert.equal(setMeetingsRouteExists, false);
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);

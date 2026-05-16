@@ -1,7 +1,7 @@
 import { prospectFetch } from '../../../lib/fastapi-client';
 import { jsonResponse, methodNotAllowed } from '../../../lib/response-shapes';
 
-const ALLOWED_PREFIXES = new Set(['(ACF)', '(ACF*2)']);
+const ALLOWED_PREFIXES = new Set(['(ACF)', '(ACF*2)', '(CF)', '(RSP)', '(CAN)']);
 
 export async function POST(request: Request) {
   const payload = await request.json().catch(() => ({}));
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     return jsonResponse(
       {
         success: false,
-        error: 'event_id, event_date, and confirmation prefix are required',
+        error: 'event_id, event_date, and supported prefix are required',
       },
       { status: 400 },
     );
@@ -33,4 +33,3 @@ export async function POST(request: Request) {
 export function GET(request: Request) {
   return methodNotAllowed(request.method, ['POST']);
 }
-

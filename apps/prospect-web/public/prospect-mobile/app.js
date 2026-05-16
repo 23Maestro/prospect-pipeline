@@ -124,6 +124,8 @@ async function renderSetMeetings(payload) {
       const recipientLabel = event.confirmation_recipient?.name
         ? `Text ${event.confirmation_recipient.name}`
         : 'Text';
+      const eventId = event.appointment_id || event.key || '';
+      const eventDate = buildBookedMeetingEventDate(event.start);
       return `
         <article class="row">
           <div class="row-header">
@@ -134,11 +136,11 @@ async function renderSetMeetings(payload) {
             <p class="row-meta">${escapeHtml(time)}</p>
           </div>
           <div class="row-actions">
-            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(firstConfirmation)}" data-event-id="${escapeAttribute(event.appointment_id || event.key || '')}" data-event-date="${escapeAttribute(buildBookedMeetingEventDate(event.start))}" data-confirmation-prefix="(ACF)">${escapeHtml(recipientLabel)} 1</button>
-            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(secondConfirmation)}" data-event-id="${escapeAttribute(event.appointment_id || event.key || '')}" data-event-date="${escapeAttribute(buildBookedMeetingEventDate(event.start))}" data-confirmation-prefix="(ACF*2)">${escapeHtml(recipientLabel)} 2</button>
+            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(firstConfirmation)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-confirmation-prefix="(ACF)">${escapeHtml(recipientLabel)} 1</button>
+            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(secondConfirmation)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-confirmation-prefix="(ACF*2)">${escapeHtml(recipientLabel)} 2</button>
             ${
-              event.admin_url
-                ? `<a class="link-button" href="${escapeAttribute(event.admin_url)}" target="_blank" rel="noreferrer">Admin</a>`
+              event.admin_url || eventId
+                ? `<button class="link-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
                 : ''
             }
             <button class="copy-button" type="button" data-copy="${escapeAttribute(copyText)}">Copy</button>
@@ -150,6 +152,7 @@ async function renderSetMeetings(payload) {
   );
   bindCopyButtons();
   bindSmsButtons();
+  bindAdminModalButtons();
   return events.length;
 }
 
@@ -328,6 +331,77 @@ async function updateConfirmationPrefixFromButton(button) {
   const eventId = button.getAttribute('data-event-id') || '';
   const eventDate = button.getAttribute('data-event-date') || '';
   const prefix = button.getAttribute('data-confirmation-prefix') || '';
+  if (!eventId || !eventDate || !prefix) return;
+
+  await updateMeetingPrefix({ eventId, eventDate, prefix });
+}
+
+function bindAdminModalButtons() {
+  document.querySelectorAll('[data-admin-modal]').forEach((button) => {
+    button.addEventListener('click', () => showAdminModal(button));
+  });
+}
+
+function showAdminModal(button) {
+  closeAdminModal();
+
+  const eventId = button.getAttribute('data-event-id') || '';
+  const eventDate = button.getAttribute('data-event-date') || '';
+  const adminUrl = button.getAttribute('data-admin-url') || '';
+  const athleteName = button.getAttribute('data-athlete-name') || 'Meeting';
+  const headScout = button.getAttribute('data-head-scout') || '';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-admin-prefix-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-label="Meeting admin options">
+      <div class="modal-header">
+        <h2 class="modal-title">${escapeHtml(athleteName)}</h2>
+        <p class="modal-subtitle">${escapeHtml(headScout)}</p>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-button" type="button" data-prefix-action="(CF)">Set (CF)</button>
+        <button class="modal-button" type="button" data-prefix-action="(RSP)">Set (RSP)</button>
+        <button class="modal-button danger" type="button" data-prefix-action="(CAN)">Set (CAN)</button>
+        ${
+          adminUrl
+            ? `<a class="modal-button secondary" href="${escapeAttribute(adminUrl)}" target="_blank" rel="noreferrer">Open Admin</a>`
+            : ''
+        }
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeAdminModal();
+  });
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeAdminModal);
+  modal.querySelectorAll('[data-prefix-action]').forEach((prefixButton) => {
+    prefixButton.addEventListener('click', async () => {
+      const prefix = prefixButton.getAttribute('data-prefix-action') || '';
+      prefixButton.disabled = true;
+      await updateMeetingPrefix({ eventId, eventDate, prefix });
+      closeAdminModal();
+    });
+  });
+
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+  modal.querySelector('[data-prefix-action]')?.focus();
+}
+
+function closeAdminModal() {
+  document.querySelector('[data-admin-prefix-modal]')?.remove();
+  document.body.classList.remove('modal-open');
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') closeAdminModal();
+});
+
+async function updateMeetingPrefix({ eventId, eventDate, prefix }) {
   if (!eventId || !eventDate || !prefix) return;
 
   try {

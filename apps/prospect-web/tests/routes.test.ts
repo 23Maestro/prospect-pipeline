@@ -147,7 +147,41 @@ test('/api/set-meeting-confirmation-prefix forwards confirmation prefix to FastA
   });
 });
 
-test('/api/set-meeting-confirmation-prefix rejects non-confirmation prefixes', async () => {
+test('/api/set-meeting-confirmation-prefix rejects unsupported prefixes', async () => {
+  const response = await setMeetingConfirmationPrefixPOST(
+    new Request('https://example.test/api/set-meeting-confirmation-prefix', {
+      method: 'POST',
+      body: JSON.stringify({
+        event_id: '628106',
+        event_date: '2026-05-16',
+        prefix: '(FU)',
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'event_id, event_date, and supported prefix are required',
+  });
+});
+
+test('/api/set-meeting-confirmation-prefix forwards admin modal prefixes to FastAPI', async () => {
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json({
+      success: true,
+      event_id: '628106',
+      prefix: '(CAN)',
+      original_title: 'Jamiya Turner',
+      updated_title: '(CAN) Jamiya Turner',
+      message: 'Booked meeting title updated',
+    });
+  };
+
   const response = await setMeetingConfirmationPrefixPOST(
     new Request('https://example.test/api/set-meeting-confirmation-prefix', {
       method: 'POST',
@@ -159,10 +193,20 @@ test('/api/set-meeting-confirmation-prefix rejects non-confirmation prefixes', a
     }),
   );
 
-  assert.equal(response.status, 400);
+  assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), {
-    success: false,
-    error: 'event_id, event_date, and confirmation prefix are required',
+    success: true,
+    event_id: '628106',
+    prefix: '(CAN)',
+    original_title: 'Jamiya Turner',
+    updated_title: '(CAN) Jamiya Turner',
+    message: 'Booked meeting title updated',
+  });
+  assert.equal(calls[0].url, 'https://tailnet.example/api/v1/calendar/booked-meeting/title');
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+    event_id: '628106',
+    event_date: '2026-05-16',
+    prefix: '(CAN)',
   });
 });
 
