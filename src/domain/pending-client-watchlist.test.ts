@@ -6,9 +6,11 @@ import {
   buildPendingClientResolvedPatch,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
+  filterReadySetMeetingConfirmationGroups,
   filterPendingClientCandidateEvents,
   findPendingClientSignals,
   hasPendingClientWatchNote,
+  isPendingClientReviewEventTitle,
   normalizePendingClientAIVerdict,
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
@@ -112,7 +114,7 @@ test('pending client review note chooses latest follow-up event after the meetin
     meeting,
     {
       event_id: '628744',
-      title: 'Follow Up - Javiion Knight Football 2027 NJ',
+      title: '(FU) Javiion Knight Football 2027 NJ',
       assigned_owner: 'Luther Winfield',
       start: '2026-05-16T19:00',
       end: '2026-05-16T19:30',
@@ -121,7 +123,7 @@ test('pending client review note chooses latest follow-up event after the meetin
     },
     {
       event_id: '628111',
-      title: 'Follow Up - Javiion Knight Football 2027 NJ',
+      title: '(FU)*2 Javiion Knight Football 2027 NJ',
       assigned_owner: 'Luther Winfield',
       start: '2026-05-14T19:00',
       end: '2026-05-14T19:30',
@@ -130,7 +132,7 @@ test('pending client review note chooses latest follow-up event after the meetin
     },
     {
       event_id: '628745',
-      title: 'Follow Up - Blank Note Football 2027 NJ',
+      title: '(FU) Blank Note Football 2027 NJ',
       assigned_owner: 'Luther Winfield',
       start: '2026-05-17T19:00',
       end: '2026-05-17T19:30',
@@ -141,6 +143,83 @@ test('pending client review note chooses latest follow-up event after the meetin
 
   assert.equal(review?.event_id, '628744');
   assert.equal(review?.description, 'Family wanted a few days (Elite)');
+});
+
+test('pending client source keeps only ready Jerami-owned set meeting cache groups', () => {
+  const now = new Date('2026-05-15T21:05:00.000Z');
+  const rows = [
+    {
+      appointment_id: 'past-jerami',
+      athlete_id: '1489000',
+      athlete_main_id: '951000',
+      athlete_name: 'Avery Jones',
+      head_scout_name: 'Ryan Lietz',
+      meeting_starts_at: '2026-05-15T19:00:00.000Z',
+      meeting_ends_at: '2026-05-15T20:00:00.000Z',
+      source: 'set_meetings_confirmation',
+      kind: 'confirmation_1',
+      status: 'cached',
+      message_body: 'one',
+      payload_json: { active_operator_key: 'jerami_singleton' },
+    },
+    {
+      appointment_id: 'future-jerami',
+      athlete_id: '1489001',
+      athlete_main_id: '951001',
+      athlete_name: 'Future Jones',
+      head_scout_name: 'Ryan Lietz',
+      meeting_starts_at: '2026-05-15T21:00:00.000Z',
+      meeting_ends_at: '2026-05-15T22:00:00.000Z',
+      source: 'set_meetings_confirmation',
+      kind: 'confirmation_1',
+      status: 'cached',
+      message_body: 'one',
+      payload_json: { active_operator_key: 'jerami_singleton' },
+    },
+    {
+      appointment_id: 'past-other',
+      athlete_id: '1489002',
+      athlete_main_id: '951002',
+      athlete_name: 'Other Jones',
+      head_scout_name: 'Ryan Lietz',
+      meeting_starts_at: '2026-05-15T19:00:00.000Z',
+      meeting_ends_at: '2026-05-15T20:00:00.000Z',
+      source: 'set_meetings_confirmation',
+      kind: 'confirmation_1',
+      status: 'cached',
+      message_body: 'one',
+      payload_json: { active_operator_key: 'not_jerami' },
+    },
+    {
+      appointment_id: 'past-missing-operator',
+      athlete_id: '1489003',
+      athlete_main_id: '951003',
+      athlete_name: 'Missing Operator',
+      head_scout_name: 'Ryan Lietz',
+      meeting_starts_at: '2026-05-15T19:00:00.000Z',
+      meeting_ends_at: '2026-05-15T20:00:00.000Z',
+      source: 'set_meetings_confirmation',
+      kind: 'confirmation_1',
+      status: 'cached',
+      message_body: 'one',
+      payload_json: {},
+    },
+  ];
+
+  assert.deepEqual(
+    filterReadySetMeetingConfirmationGroups(rows, {
+      now,
+      activeOperatorKey: 'jerami_singleton',
+    }).map((row) => row.appointmentId),
+    ['past-jerami'],
+  );
+});
+
+test('pending client review title accepts only FU prefixes', () => {
+  assert.equal(isPendingClientReviewEventTitle('(FU) Avery Jones Football 2027 TN'), true);
+  assert.equal(isPendingClientReviewEventTitle('(FU)*2 Avery Jones Football 2027 TN'), true);
+  assert.equal(isPendingClientReviewEventTitle('Follow Up - Avery Jones Football 2027 TN'), false);
+  assert.equal(isPendingClientReviewEventTitle('Booked Meeting Avery Jones'), false);
 });
 
 test('pending client AI verdict accepts exactly pending_client', () => {

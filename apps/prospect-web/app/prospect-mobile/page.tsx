@@ -1,11 +1,12 @@
 import Script from 'next/script';
 
-export const dynamic = 'force-static';
+export const dynamic = 'force-dynamic';
 
 export default function ProspectMobilePage() {
   const supabaseConfig = {
     url: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+    schema: process.env.NEXT_PUBLIC_SUPABASE_SCHEMA || 'public',
   };
 
   return (
@@ -35,10 +36,6 @@ export default function ProspectMobilePage() {
           <a href="/prospect-mobile/scout-schedules" data-route="/scout-schedules">
             <span className="tab-icon users" aria-hidden="true" />
             <span>Scout Schedules</span>
-          </a>
-          <a href="/prospect-mobile/contact-reminder" data-route="/contact-reminder">
-            <span className="tab-icon bell" aria-hidden="true" />
-            <span>Reminder</span>
           </a>
         </nav>
 

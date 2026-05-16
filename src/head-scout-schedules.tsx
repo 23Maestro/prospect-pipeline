@@ -71,7 +71,10 @@ import {
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
 import { fetchScoutPortalTasks, loadScoutPrepContext } from './lib/scout-prep';
-import { upsertReminders, type SupabasePersistenceConfig } from './domain/supabase-persistence';
+import {
+  upsertSetMeetingConfirmationCacheRows,
+  type SupabasePersistenceConfig,
+} from './domain/supabase-persistence';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 import {
   getCachedSetMeetings,
@@ -79,7 +82,7 @@ import {
   shouldRenderCachedSetMeetingsSnapshot,
 } from './lib/set-meetings-cache';
 
-function getReminderSupabaseConfig(): SupabasePersistenceConfig | null {
+function getConfirmationCacheSupabaseConfig(): SupabasePersistenceConfig | null {
   const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
     .trim()
     .replace(/\/+$/, '');
@@ -732,7 +735,7 @@ export function HeadScoutBookingsList({
                 reminderVariant: 'confirmation_2',
               })
             ).message;
-      const supabaseConfig = getReminderSupabaseConfig();
+      const supabaseConfig = getConfirmationCacheSupabaseConfig();
       if (supabaseConfig && candidate.bookedMeeting?.event_id) {
         const rows = buildSetMeetingReminderCacheRows({
           appointmentId: candidate.bookedMeeting.event_id,
@@ -751,7 +754,7 @@ export function HeadScoutBookingsList({
           generatedAt: new Date().toISOString(),
           source: 'set_meetings_confirmation',
         });
-        await upsertReminders(supabaseConfig, rows);
+        await upsertSetMeetingConfirmationCacheRows(supabaseConfig, rows);
       }
 
       let composeMode: 'draft' | 'clipboard-fallback' = 'draft';

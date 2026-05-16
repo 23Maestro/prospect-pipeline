@@ -3,7 +3,6 @@ import { cleanMeetingTitle } from '/prospect-mobile/set-meetings-utils.mjs';
 const routes = {
   '/set-meetings': {
     title: 'Set Meetings',
-    endpoint: '/api/set-meetings',
     render: renderSetMeetings,
     usesWeek: true,
   },
@@ -12,11 +11,6 @@ const routes = {
     endpoint: '/api/head-scout-schedules',
     render: renderScoutSchedules,
     usesWeek: true,
-  },
-  '/contact-reminder': {
-    title: 'Reminder Intake',
-    render: renderContactReminder,
-    usesWeek: false,
   },
 };
 
@@ -71,7 +65,17 @@ async function loadRoute() {
   setActiveNavigation();
 
   if (!route.endpoint) {
-    await route.render();
+    await setLoading(true, 'Refreshing');
+    try {
+      const renderedCount = await route.render();
+      const count = typeof renderedCount === 'number' ? renderedCount : 0;
+      setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
+    } catch (error) {
+      content.innerHTML = `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`;
+      setStatus('Could not refresh');
+    } finally {
+      setLoading(false);
+    }
     return;
   }
 
@@ -96,7 +100,8 @@ async function loadRoute() {
 }
 
 async function renderSetMeetings(payload) {
-  const events = Array.isArray(payload?.events) ? payload.events : [];
+  const data = payload || (await fetchSetMeetingsFromSupabase(state.week));
+  const events = Array.isArray(data?.events) ? data.events : [];
   if (!events.length) {
     await setContentHtml('<div class="empty-state">No booked set meetings found for this window.</div>');
     return 0;
@@ -145,6 +150,80 @@ async function renderSetMeetings(payload) {
   return events.length;
 }
 
+async function fetchSetMeetingsFromSupabase(week) {
+  const config = window.__PROSPECT_SUPABASE__ || {};
+  const supabaseUrl = String(config.url || '').replace(/\/+$/, '');
+  const anonKey = String(config.anonKey || '');
+  const schema = String(config.schema || 'public').trim() || 'public';
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Missing Supabase public config');
+  }
+
+  const weekWindow = buildEasternWeekWindow(week);
+  const query = [
+    'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone,message_body,admin_url,task_url,kind',
+    'status=eq.cached',
+    'source=eq.set_meetings_confirmation',
+    'kind=in.(confirmation_1,confirmation_2)',
+    `meeting_starts_at=gte.${encodeURIComponent(`${weekWindow.start}T00:00:00-04:00`)}`,
+    `meeting_starts_at=lt.${encodeURIComponent(`${weekWindow.end}T00:00:00-04:00`)}`,
+    'order=meeting_starts_at.asc',
+  ].join('&');
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/reminders?${query}`, {
+    headers: {
+      apikey: anonKey,
+      authorization: `Bearer ${anonKey}`,
+      'accept-profile': schema,
+    },
+  });
+  const rows = await response.json().catch(() => []);
+  if (!response.ok) {
+    throw new Error(rows.message || rows.error || `Supabase ${response.status}`);
+  }
+
+  const grouped = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = String(row.appointment_id || '').trim();
+    if (!key) continue;
+    const existing = grouped.get(key) || { base: row };
+    if (row.kind === 'confirmation_1') existing.c1 = row.message_body || '';
+    if (row.kind === 'confirmation_2') existing.c2 = row.message_body || '';
+    grouped.set(key, existing);
+  }
+
+  const events = Array.from(grouped.values()).map((entry) => ({
+    key: entry.base.appointment_id,
+    appointment_id: entry.base.appointment_id,
+    athlete_id: entry.base.athlete_id,
+    athlete_main_id: entry.base.athlete_main_id,
+    athlete_name: entry.base.athlete_name,
+    head_scout_name: entry.base.head_scout_name,
+    current_meeting_label: entry.base.meeting_starts_at,
+    start: entry.base.meeting_starts_at,
+    meeting_timezone: entry.base.meeting_timezone,
+    confirmation_recipient: {
+      name: entry.base.recipient_name,
+      phone: entry.base.recipient_phone,
+    },
+    confirmation_1_message: entry.c1 || '',
+    confirmation_2_message: entry.c2 || '',
+    admin_url: entry.base.admin_url,
+    task_url: entry.base.task_url,
+    source: 'supabase_confirmation_cache',
+  }));
+
+  return {
+    success: true,
+    source: 'supabase_confirmation_cache',
+    backend_required: false,
+    week_start: weekWindow.start,
+    week_end: weekWindow.end,
+    count: events.length,
+    events,
+  };
+}
+
 async function renderScoutSchedules(payload) {
   const scouts = Array.isArray(payload?.scouts) ? payload.scouts : [];
   const groups = scouts
@@ -191,101 +270,33 @@ async function renderScoutSchedules(payload) {
   return visibleCount;
 }
 
-async function renderContactReminder() {
-  setStatus('Find a cached athlete contact');
-  await setContentHtml(`
-    <form class="form-panel" id="reminder-form">
-      <div class="field">
-        <label for="phone">Phone</label>
-        <input id="phone" name="phone" inputmode="tel" autocomplete="tel" required />
-      </div>
-      <button class="primary-button" type="submit">Find Number</button>
-    </form>
-  `);
+function buildEasternWeekWindow(week = 'this', now = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
 
-  document.querySelector('#reminder-form').addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    void setLoading(true, 'Searching');
-    try {
-      const matches = await lookupAthleteContactByPhone(form.get('phone'));
-      if (!matches.length) {
-        await setContentHtml('<div class="empty-state">No active cached contact found.</div>');
-        setStatus('No match');
-        return;
-      }
-      setStatus(`${matches.length} found`);
-      await setContentHtml(matches.map(renderReminderLookupMatch).join(''));
-      bindCopyButtons();
-    } catch (error) {
-      setStatus('Lookup failed');
-      await setContentHtml(`<div class="error-state">${escapeHtml(error.message || String(error))}</div>`);
-    } finally {
-      setLoading(false);
-    }
-  });
-}
+  const values = Object.fromEntries(parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value]));
+  const easternDate = new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day)));
+  const dayOfWeek = easternDate.getUTCDay();
+  const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+  const weekOffset = week === 'next' ? 1 : 0;
+  const start = new Date(easternDate);
+  start.setUTCDate(start.getUTCDate() + mondayOffset + weekOffset * 7);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 7);
 
-async function lookupAthleteContactByPhone(phone) {
-  const config = window.__PROSPECT_SUPABASE__ || {};
-  const supabaseUrl = String(config.url || '').replace(/\/+$/, '');
-  const anonKey = String(config.anonKey || '');
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Missing Supabase public config');
-  }
-
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/lookup_athlete_contact_cache`, {
-    method: 'POST',
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${anonKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({ input_phone: String(phone || '') }),
-  });
-  const payload = await response.json().catch(() => []);
-  if (!response.ok) {
-    throw new Error(payload.message || payload.error || `Supabase ${response.status}`);
-  }
-  return Array.isArray(payload) ? payload : [];
-}
-
-function buildReminderLookupDraft(match) {
-  const contactName = String(match.contact_name || 'Client').trim();
-  const athleteName = String(match.athlete_name || '').trim();
-  const phone = String(match.phone || match.normalized_phone || '').trim();
-  const url = String(match.admin_url || '').trim();
   return {
-    type: 'reminder',
-    title: `Call ${contactName}`,
-    notes: `SA:${athleteName} - ${phone}`,
-    url,
-    listName: 'Prospect ID',
+    start: toIsoDate(start),
+    end: toIsoDate(end),
+    week: week === 'next' ? 'next' : 'this',
   };
 }
 
-function renderReminderLookupMatch(match) {
-  const draft = buildReminderLookupDraft(match);
-  const draftJson = JSON.stringify(draft, null, 2);
-  return `
-    <article class="row">
-      <div class="row-header">
-        <div>
-          <h2 class="row-title">${escapeHtml(match.contact_name || 'Client')}</h2>
-          <p class="row-subtitle">${escapeHtml(match.relationship_label || 'Contact')} - ${escapeHtml(match.athlete_name || 'Unknown athlete')}</p>
-        </div>
-      </div>
-      <p class="row-subtitle">${escapeHtml(draft.notes)}</p>
-      <div class="row-actions">
-        <button class="copy-button" type="button" data-copy="${escapeAttribute(draftJson)}">Copy Draft</button>
-        ${
-          draft.url
-            ? `<a class="link-button" href="${escapeAttribute(draft.url)}" target="_blank" rel="noreferrer">Admin</a>`
-            : ''
-        }
-      </div>
-    </article>
-  `;
+function toIsoDate(date) {
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
 }
 
 function bindCopyButtons() {

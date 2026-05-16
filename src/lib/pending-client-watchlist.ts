@@ -3,16 +3,17 @@ import fs from 'fs';
 import path from 'path';
 import {
   buildPendingClientResolvedPatch,
-  buildPendingClientScanWindow,
   buildPendingClientWatchlistRow,
-  cleanPendingClientAthleteName,
-  filterPendingClientCandidateEvents,
+  filterReadySetMeetingConfirmationGroups,
   findPendingClientSignals,
   hasPendingClientWatchNote,
   PENDING_CLIENT_LIST_LIMIT,
+  PENDING_CLIENT_WATCH_WINDOW_DAYS,
   selectLatestPendingClientReviewEvent,
   type PendingClientWatchlistRow,
+  type ReadySetMeetingConfirmationGroup,
 } from '../domain/pending-client-watchlist';
+import { getActiveOperator } from '../domain/owners';
 import {
   patchPendingClientWatchlistRow,
   readRows,
@@ -20,16 +21,8 @@ import {
   upsertPendingClientWatchlistRows,
 } from '../domain/supabase-persistence';
 import { confirmPendingClientWithRayAI } from './raycast-ai';
-import {
-  fetchAthleteBookedMeetings,
-  fetchHeadScoutBookedMeetingsWindow,
-  type BookedMeetingEvent,
-} from './head-scout-schedules';
-import {
-  ensureProspectDetails,
-  runProspectRawSearch,
-  type ProspectResult,
-} from './prospect-search';
+import { fetchAthleteBookedMeetings } from './head-scout-schedules';
+import { fetchCuratedSalesStageOptions } from './sales-stage';
 
 type Preferences = {
   supabaseUrl?: string;
@@ -54,6 +47,22 @@ type ExistingPendingClientRow = Pick<
   | 'resolved_by_operator'
   | 'resolved_by_operator_key'
 >;
+
+type SetMeetingConfirmationCacheRow = {
+  appointment_id: string | null;
+  athlete_id: string | null;
+  athlete_main_id: string | null;
+  athlete_name: string | null;
+  head_scout_name: string | null;
+  meeting_starts_at: string | null;
+  meeting_ends_at: string | null;
+  meeting_duration_minutes: number | null;
+  source: string | null;
+  kind: string | null;
+  status: string | null;
+  message_body: string | null;
+  payload_json: Record<string, unknown> | null;
+};
 
 const DEFAULT_SCHEMA = 'public';
 const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
@@ -133,22 +142,39 @@ function getSupabaseConfig(): SupabasePersistenceConfig | null {
   return url && key ? { url, key, schema } : null;
 }
 
-function getEventDate(event: BookedMeetingEvent): string {
-  return String(event.start || '').split('T')[0] || '';
+async function readSetMeetingConfirmationCacheRows(
+  config: SupabasePersistenceConfig,
+  now: Date,
+): Promise<SetMeetingConfirmationCacheRow[]> {
+  const since = new Date(now);
+  since.setDate(since.getDate() - PENDING_CLIENT_WATCH_WINDOW_DAYS);
+  return readRows<SetMeetingConfirmationCacheRow>(
+    config,
+    'reminders',
+    [
+      'select=appointment_id,athlete_id,athlete_main_id,athlete_name,head_scout_name,meeting_starts_at,meeting_ends_at,meeting_duration_minutes,source,kind,status,message_body,payload_json',
+      'status=eq.cached',
+      'source=eq.set_meetings_confirmation',
+      'kind=in.(confirmation_1,confirmation_2)',
+      `meeting_starts_at=gte.${encodeURIComponent(since.toISOString())}`,
+      `meeting_starts_at=lte.${encodeURIComponent(now.toISOString())}`,
+      'order=meeting_starts_at.desc',
+    ].join('&'),
+  );
 }
 
-async function resolvePendingClientAthlete(title: string): Promise<ProspectResult | null> {
-  const athleteName = cleanPendingClientAthleteName(title);
-  if (!athleteName) return null;
+async function fetchSelectedSalesStage(athleteId: string): Promise<string | null> {
   try {
-    const [first] = await runProspectRawSearch(athleteName);
-    return first ? await ensureProspectDetails(first) : null;
+    const options = await fetchCuratedSalesStageOptions(athleteId);
+    return options.find((option) => option.selected)?.label || null;
   } catch {
     return null;
   }
 }
 
-async function buildConfirmedRows(events: BookedMeetingEvent[]): Promise<{
+async function buildConfirmedRowsFromReadySetMeetings(
+  meetings: ReadySetMeetingConfirmationGroup[],
+): Promise<{
   rows: PendingClientWatchlistRow[];
   scannedCount: number;
   confirmedCount: number;
@@ -157,20 +183,25 @@ async function buildConfirmedRows(events: BookedMeetingEvent[]): Promise<{
   const rows: PendingClientWatchlistRow[] = [];
   let aiUnavailableCount = 0;
 
-  for (const event of events) {
-    const eventDate = getEventDate(event);
-    if (!event.event_id || !eventDate) continue;
-
-    const resolvedAthlete = await resolvePendingClientAthlete(event.title || '');
-    if (!resolvedAthlete?.athlete_id || !resolvedAthlete?.athlete_main_id) continue;
-
+  for (const meeting of meetings) {
     const athleteMeetings = await fetchAthleteBookedMeetings({
-      athleteId: resolvedAthlete.athlete_id,
-      athleteMainId: resolvedAthlete.athlete_main_id,
-    });
-    const reviewEvent = selectLatestPendingClientReviewEvent(event, athleteMeetings.events || []);
+      athleteId: meeting.athleteId,
+      athleteMainId: meeting.athleteMainId,
+    }).catch(() => ({ events: [] }));
+
+    const reviewEvent = selectLatestPendingClientReviewEvent(
+      {
+        event_id: meeting.appointmentId,
+        title: meeting.athleteName,
+        assigned_owner: meeting.headScoutName,
+        start: meeting.meetingStartsAt,
+        end: meeting.meetingEndsAt,
+      },
+      athleteMeetings.events || [],
+    );
     if (!reviewEvent) continue;
 
+    const salesStage = await fetchSelectedSalesStage(meeting.athleteId);
     const description = reviewEvent.description || '';
     const matchedSignals = findPendingClientSignals(description);
     if (!hasPendingClientWatchNote(description)) continue;
@@ -178,8 +209,8 @@ async function buildConfirmedRows(events: BookedMeetingEvent[]): Promise<{
     let aiVerdict: 'pending_client' | null = 'pending_client';
     if (matchedSignals.length) {
       aiVerdict = await confirmPendingClientWithRayAI({
-        title: reviewEvent.title || event.title,
-        description,
+        title: reviewEvent.title || meeting.athleteName,
+        description: [`Sales Stage: ${salesStage || 'Unknown'}`, description].join('\n'),
         matchedSignals,
       });
       if (!aiVerdict) {
@@ -191,26 +222,26 @@ async function buildConfirmedRows(events: BookedMeetingEvent[]): Promise<{
     rows.push(
       buildPendingClientWatchlistRow({
         event: {
-          ...event,
-          title: reviewEvent.title || event.title,
-          event_id: reviewEvent.event_id || event.event_id,
-          start: reviewEvent.start || event.start,
-          end: reviewEvent.end || event.end,
-          date_time_label: reviewEvent.date_time_label || event.date_time_label,
+          event_id: reviewEvent.event_id || meeting.appointmentId,
+          title: reviewEvent.title || meeting.athleteName,
+          assigned_owner: reviewEvent.assigned_owner || meeting.headScoutName,
+          start: reviewEvent.start || meeting.meetingStartsAt,
+          end: reviewEvent.end || null,
+          date_time_label: reviewEvent.date_time_label,
         },
-        description,
+        description: [`Sales Stage: ${salesStage || 'Unknown'}`, description].join('\n\n'),
         matchedSignals,
         aiVerdict,
-        athleteId: resolvedAthlete?.athlete_id || null,
-        athleteMainId: resolvedAthlete?.athlete_main_id || null,
-        athleteName: resolvedAthlete?.name || cleanPendingClientAthleteName(event.title),
+        athleteId: meeting.athleteId,
+        athleteMainId: meeting.athleteMainId,
+        athleteName: meeting.athleteName,
       }),
     );
   }
 
   return {
     rows,
-    scannedCount: events.length,
+    scannedCount: meetings.length,
     confirmedCount: rows.length,
     aiUnavailableCount,
   };
@@ -260,10 +291,13 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
   }
 
   const now = new Date();
-  const window = buildPendingClientScanWindow(now);
-  const booked = await fetchHeadScoutBookedMeetingsWindow(window);
-  const candidates = filterPendingClientCandidateEvents(booked.events || [], now);
-  const scan = await buildConfirmedRows(candidates);
+  const cacheRows = await readSetMeetingConfirmationCacheRows(config, now);
+  const activeOperator = getActiveOperator();
+  const readyMeetings = filterReadySetMeetingConfirmationGroups(cacheRows, {
+    now,
+    activeOperatorKey: activeOperator.operatorKey,
+  });
+  const scan = await buildConfirmedRowsFromReadySetMeetings(readyMeetings);
 
   if (scan.rows.length) {
     await upsertPendingClientWatchlistRows(config, await buildRowsForUpsert(config, scan.rows));

@@ -6,7 +6,10 @@ import {
 import { getMeetingReminderRecipient } from '../domain/scout-contact-selection';
 import { getGreetingForLocalTime } from '../domain/outreach-time-wording';
 import { buildSetMeetingReminderCacheRows } from '../domain/set-meeting-reminder-cache';
-import { upsertReminders, type SupabasePersistenceConfig } from '../domain/supabase-persistence';
+import {
+  upsertSetMeetingConfirmationCacheRows,
+  type SupabasePersistenceConfig,
+} from '../domain/supabase-persistence';
 
 export type MeetingSetReminderCacheInput = {
   athleteId: string;
@@ -131,6 +134,6 @@ export async function syncMeetingSetReminderCacheFromScoutPrep(
   if (!rows.length) {
     return { enabled: true, count: 0 };
   }
-  await upsertReminders(config, rows);
+  await upsertSetMeetingConfirmationCacheRows(config, rows);
   return { enabled: true, count: rows.length };
 }

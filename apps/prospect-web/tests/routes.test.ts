@@ -3,7 +3,6 @@ import test from 'node:test';
 import { GET as callTrackerDataGET } from '../app/api/call-tracker-data/route';
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
-import { GET as setMeetingsGET } from '../app/api/set-meetings/route';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -277,27 +276,4 @@ test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity
   assert.equal(payload.data.summary.appointments_tracked, 1);
   assert.equal(payload.data.summary.dials, 1);
   assert.equal(payload.data.summary.contacts, 1);
-});
-
-test('/api/set-meetings reads Supabase reminders cache and groups confirmations', async () => {
-  process.env.SUPABASE_URL = 'https://supabase.example';
-  process.env.SUPABASE_SECRET_KEY = 'service-role';
-  const calls: string[] = [];
-  globalThis.fetch = async (url) => {
-    calls.push(String(url));
-    return Response.json([
-      { appointment_id: 'apt-1', athlete_id: 'a1', athlete_main_id: 'm1', athlete_name: 'Athlete', recipient_name: 'Mom', recipient_phone: '1555', head_scout_name: 'Scout', meeting_starts_at: '2026-05-12T18:00:00-04:00', meeting_timezone: 'America/New_York', message_body: 'c1', admin_url: 'a', task_url: 't', kind: 'confirmation_1' },
-      { appointment_id: 'apt-1', athlete_id: 'a1', athlete_main_id: 'm1', athlete_name: 'Athlete', recipient_name: 'Mom', recipient_phone: '1555', head_scout_name: 'Scout', meeting_starts_at: '2026-05-12T18:00:00-04:00', meeting_timezone: 'America/New_York', message_body: 'c2', admin_url: 'a', task_url: 't', kind: 'confirmation_2' },
-    ]);
-  };
-  const response = await setMeetingsGET(new Request('https://example.test/api/set-meetings?week=this'));
-  const payload = await response.json();
-  assert.equal(response.status, 200);
-  assert.equal(payload.source, 'supabase_reminders_cache');
-  assert.equal(payload.backend_required, false);
-  assert.equal(payload.events.length, 1);
-  assert.equal(payload.events[0].confirmation_1_message, 'c1');
-  assert.equal(payload.events[0].confirmation_2_message, 'c2');
-  assert.equal(calls[0].includes('/rest/v1/reminders?'), true);
-  assert.equal(calls[0].includes('/api/v1/mobile/set-meetings'), false);
 });

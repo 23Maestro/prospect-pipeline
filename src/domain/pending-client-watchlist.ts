@@ -21,6 +21,33 @@ export type PendingClientEventInput = {
   description?: string | null;
 };
 
+export type SetMeetingConfirmationCacheRowInput = {
+  appointment_id?: string | null;
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  athlete_name?: string | null;
+  head_scout_name?: string | null;
+  meeting_starts_at?: string | null;
+  meeting_ends_at?: string | null;
+  meeting_duration_minutes?: number | null;
+  source?: string | null;
+  kind?: string | null;
+  status?: string | null;
+  message_body?: string | null;
+  payload_json?: Record<string, unknown> | null;
+};
+
+export type ReadySetMeetingConfirmationGroup = {
+  appointmentId: string;
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  headScoutName: string | null;
+  meetingStartsAt: string;
+  meetingEndsAt: string;
+  rows: SetMeetingConfirmationCacheRowInput[];
+};
+
 export type PendingClientOwnerSnapshot = {
   head_scout: string | null;
   head_scout_key: OwnerKey | null;
@@ -87,6 +114,17 @@ function normalizeText(value?: string | number | null): string {
   return String(value || '').trim();
 }
 
+function parseDateMs(value?: string | null): number {
+  const parsed = Date.parse(normalizeText(value));
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
+}
+
+function getPayloadOperatorKey(row: SetMeetingConfirmationCacheRowInput): string {
+  return normalizeText(
+    row.payload_json?.active_operator_key || row.payload_json?.detected_by_operator_key,
+  );
+}
+
 function localStamp(date: Date): string {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -109,6 +147,56 @@ function utcFromLegacyLocal(value: string): string {
 export function isPendingClientFollowUpTitle(title?: string | null): boolean {
   const trimmed = normalizeText(title);
   return /^Follow Up -/i.test(trimmed) || /^\(FU\)(?:\*\d+)?\s*/i.test(trimmed);
+}
+
+export function isPendingClientReviewEventTitle(title?: string | null): boolean {
+  return /^\(FU\)(?:\*\d+)?\s+/i.test(normalizeText(title));
+}
+
+export function filterReadySetMeetingConfirmationGroups(
+  rows: SetMeetingConfirmationCacheRowInput[],
+  args: { now?: Date; activeOperatorKey: OwnerKey | string },
+): ReadySetMeetingConfirmationGroup[] {
+  const nowMs = (args.now || new Date()).getTime();
+  const activeOperatorKey = normalizeText(args.activeOperatorKey);
+  const grouped = new Map<string, SetMeetingConfirmationCacheRowInput[]>();
+
+  for (const row of Array.isArray(rows) ? rows : []) {
+    if (normalizeText(row.source) !== 'set_meetings_confirmation') continue;
+    if (normalizeText(row.status) !== 'cached') continue;
+    if (!['confirmation_1', 'confirmation_2'].includes(normalizeText(row.kind))) continue;
+    const payloadOperatorKey = getPayloadOperatorKey(row);
+    if (!payloadOperatorKey || payloadOperatorKey !== activeOperatorKey) continue;
+    const appointmentId = normalizeText(row.appointment_id);
+    if (!appointmentId) continue;
+    grouped.set(appointmentId, [...(grouped.get(appointmentId) || []), row]);
+  }
+
+  return Array.from(grouped.entries()).flatMap(([appointmentId, groupRows]) => {
+    const base = groupRows[0];
+    const athleteId = normalizeText(base.athlete_id);
+    const athleteMainId = normalizeText(base.athlete_main_id);
+    const meetingStartsAt = normalizeText(base.meeting_starts_at);
+    const meetingEndsAt =
+      normalizeText(base.meeting_ends_at) ||
+      (Number.isNaN(parseDateMs(meetingStartsAt))
+        ? ''
+        : new Date(parseDateMs(meetingStartsAt) + 60 * 60_000).toISOString());
+    if (!athleteId || !athleteMainId || !meetingStartsAt || !meetingEndsAt) return [];
+    if (parseDateMs(meetingEndsAt) > nowMs) return [];
+    return [
+      {
+        appointmentId,
+        athleteId,
+        athleteMainId,
+        athleteName: normalizeText(base.athlete_name),
+        headScoutName: normalizeText(base.head_scout_name) || null,
+        meetingStartsAt,
+        meetingEndsAt,
+        rows: groupRows,
+      },
+    ];
+  });
 }
 
 export function filterPendingClientCandidateEvents<T extends PendingClientEventInput>(
@@ -178,7 +266,7 @@ export function selectLatestPendingClientReviewEvent<T extends PendingClientEven
         const start = normalizeText(event.start);
         return (
           eventId !== meetingEventId &&
-          /^Follow Up -/i.test(title) &&
+          isPendingClientReviewEventTitle(title) &&
           hasPendingClientWatchNote(event.description) &&
           start > meetingEnd &&
           (!meetingOwner || owner === meetingOwner)

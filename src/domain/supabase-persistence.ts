@@ -113,6 +113,13 @@ export function upsertReminders(config: SupabasePersistenceConfig, rows: unknown
   return writeRows(config, 'reminders', rows, 'dedupe_key');
 }
 
+export function upsertSetMeetingConfirmationCacheRows(
+  config: SupabasePersistenceConfig,
+  rows: unknown[],
+) {
+  return writeRows(config, 'reminders', rows, 'dedupe_key');
+}
+
 export function upsertPendingClientWatchlistRows(
   config: SupabasePersistenceConfig,
   rows: unknown[],
