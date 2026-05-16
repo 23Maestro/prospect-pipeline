@@ -170,7 +170,7 @@ async function fetchSetMeetingsFromSupabase(week) {
     'order=meeting_starts_at.asc',
   ].join('&');
 
-  const response = await fetch(`${supabaseUrl}/rest/v1/reminders?${query}`, {
+  const response = await fetch(`${supabaseUrl}/rest/v1/set_meeting_confirmation_cache?${query}`, {
     headers: {
       apikey: anonKey,
       authorization: `Bearer ${anonKey}`,

@@ -142,6 +142,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/domain/pending-client-watchlist.test.ts',
     'src/lib/pending-client-watchlist.ts',
     'supabase/migrations/20260510090000_expand_reminders_set_meeting_cache.sql',
+    'supabase/migrations/20260515223000_set_meeting_confirmation_cache_table.sql',
+    'supabase/migrations/20260515224500_public_set_meeting_confirmation_cache_read.sql',
     'supabase/tests/reminders-set-meeting-cache-columns.test.mjs',
     'supabase/migrations/20260514090000_athlete_contact_cache.sql',
     'supabase/tests/athlete-contact-cache-contract.test.mjs',
@@ -349,7 +351,8 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(pageText, /NEXT_PUBLIC_SUPABASE_URL/);
   assert.match(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
   assert.match(appText, /window\.__PROSPECT_SUPABASE__/);
-  assert.match(appText, /\/rest\/v1\/reminders/);
+  assert.match(appText, /\/rest\/v1\/set_meeting_confirmation_cache/);
+  assert.doesNotMatch(appText, /\/rest\/v1\/reminders/);
   assert.match(appText, /supabase_confirmation_cache/);
   assert.match(appText, /event\.confirmation_1_message/);
   assert.match(appText, /event\.confirmation_2_message/);

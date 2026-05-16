@@ -15,6 +15,17 @@ const pendingClientWatchlist = readFileSync(
   new URL('../../src/lib/pending-client-watchlist.ts', import.meta.url),
   'utf8',
 );
+const publicReadSql = readFileSync(
+  new URL(
+    '../migrations/20260515224500_public_set_meeting_confirmation_cache_read.sql',
+    import.meta.url,
+  ),
+  'utf8',
+);
+const prospectMobileApp = readFileSync(
+  new URL('../../apps/prospect-web/public/prospect-mobile/app.js', import.meta.url),
+  'utf8',
+);
 
 test('migration adds set meeting cache columns to reminders without dropping existing columns', () => {
   assert.match(sql, /alter table if exists reminders/i);
@@ -50,5 +61,22 @@ test('set meeting confirmations use a named confirmation cache table', () => {
   assert.doesNotMatch(
     pendingClientWatchlist,
     /readRows<SetMeetingConfirmationCacheRow>\(\s*config,\s*'reminders'/,
+  );
+});
+
+test('prospect mobile can read only cached set meeting confirmations from the named table', () => {
+  assert.match(prospectMobileApp, /\/rest\/v1\/set_meeting_confirmation_cache/);
+  assert.doesNotMatch(prospectMobileApp, /\/rest\/v1\/reminders/);
+  assert.match(
+    publicReadSql,
+    /create policy "public can read cached set meeting confirmations"/i,
+  );
+  assert.match(publicReadSql, /for select\s+to anon, authenticated/i);
+  assert.match(publicReadSql, /status = 'cached'/i);
+  assert.match(publicReadSql, /source = 'set_meetings_confirmation'/i);
+  assert.match(publicReadSql, /kind in \('confirmation_1', 'confirmation_2'\)/i);
+  assert.match(
+    publicReadSql,
+    /grant select on public\.set_meeting_confirmation_cache to anon, authenticated/i,
   );
 });
