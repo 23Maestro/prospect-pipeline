@@ -157,22 +157,19 @@ h1 {
 }
 
 .tab-icon {
-  width: 22px;
-  height: 22px;
+  width: 23px;
+  height: 23px;
   flex: 0 0 22px;
-  border: 1px solid currentColor;
-  border-radius: 6px;
   color: var(--green);
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .tab-icon.users {
-  color: var(--blue);
-  border-radius: 999px;
-}
-
-.tab-icon.bell {
   color: var(--purple);
-  border-radius: 999px 999px 6px 6px;
 }
 
 .tabbar a span:last-of-type {

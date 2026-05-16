@@ -25,8 +25,8 @@
 - A live Meeting Set modal on an athlete without an already-set meeting is the best place to recover numeric scout ids. The modal contains `<select name="assignedto" id="whoissettingmeetingfor">` with numeric option values.
 - James Holcomb is special for calendar fetches right now:
   - Meeting Set owner id is confirmed as `56`.
+  - Calendar left-panel selected owner id is confirmed as `oDCcn1r7MGERdsb`.
   - Using `selectedowner[]=56` in `calendarevents` broadens the feed instead of acting like the tokenized head-scout filters.
-  - This is still usable because parser-side filtering by configured scout names preserves James open slots.
 - Hardcode James Holcomb to Arizona metadata for now. Legacy location data around James/Logan is unreliable; treat James as AZ and two hours behind Eastern until proven otherwise.
 
 ## 2026-04-19 Session + Video Progress

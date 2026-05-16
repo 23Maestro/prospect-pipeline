@@ -48,7 +48,7 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert luther["meeting_for"] == "370959"
     assert ryan["calendar_owner_id"] == "nhVvYOz8bAaL57c"
     assert ryan["meeting_for"] == "1354049"
-    assert james["calendar_owner_id"] == "56"
+    assert james["calendar_owner_id"] == "oDCcn1r7MGERdsb"
     assert james["meeting_for"] == "56"
     assert james["city"] == "Phoenix"
     assert james["state"] == "AZ"
@@ -88,7 +88,7 @@ def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
         ("selectedowner[]", "OrJsV8nhBouEzKY"),
         ("selectedowner[]", "bMBrA26OElRUwPs"),
         ("selectedowner[]", "nhVvYOz8bAaL57c"),
-        ("selectedowner[]", "56"),
+        ("selectedowner[]", "oDCcn1r7MGERdsb"),
         ("selectedowner[]", "d9UDl0bRSqQ1owt"),
         ("selectedowner[]", "A4H3xiZJdyrEh2X"),
         ("selectedowner[]", "avdhyXjQ8bFweEf"),

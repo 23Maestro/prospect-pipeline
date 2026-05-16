@@ -88,7 +88,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
     {
       city: 'Phoenix',
       state: 'AZ',
-      calendar_owner_id: '56',
+      calendar_owner_id: 'oDCcn1r7MGERdsb',
       meeting_for: '56',
     },
   );

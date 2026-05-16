@@ -52,7 +52,7 @@ def test_head_scout_config_preserves_legacy_shape_and_order():
             "scout_name": "James Holcomb",
             "city": "Phoenix",
             "state": "AZ",
-            "calendar_owner_id": "56",
+            "calendar_owner_id": "oDCcn1r7MGERdsb",
             "meeting_for": "56",
         },
         {
@@ -77,7 +77,7 @@ def test_head_scout_calendar_owner_ids_match_current_legacy_behavior():
         "OrJsV8nhBouEzKY",
         "bMBrA26OElRUwPs",
         "nhVvYOz8bAaL57c",
-        "56",
+        "oDCcn1r7MGERdsb",
         "d9UDl0bRSqQ1owt",
         "A4H3xiZJdyrEh2X",
     ]

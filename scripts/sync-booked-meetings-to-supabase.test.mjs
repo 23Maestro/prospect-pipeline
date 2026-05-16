@@ -2,7 +2,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-const source = readFileSync(new URL('./sync-booked-meetings-to-supabase.mjs', import.meta.url), 'utf8');
+const source = readFileSync(
+  new URL('./sync-booked-meetings-to-supabase.mjs', import.meta.url),
+  'utf8',
+);
+const confirmationCacheResolverSource = readFileSync(
+  new URL('./resolve-set-meeting-confirmation-cache.mjs', import.meta.url),
+  'utf8',
+);
 
 test('booked meeting sync uses the shared weekly source resolver and fact builders', () => {
   assert.match(source, /buildWeeklyOperatorMeetingSetCandidates/);
@@ -35,4 +42,17 @@ test('booked meeting sync writes materialized owner proof before inserting meeti
   assert.match(source, /legacy_compatibility_proof: 'weekly_operator_task_assigned_owner'/);
   assert.match(source, /ownerProof: 'payload\.matched_weekly_task_assigned_owner'/);
   assert.match(source, /payload,\s*createdAt: updatedAt/s);
+});
+
+test('one-time confirmation cache resolver can write the full confirmed window and only confirmation cache rows', () => {
+  assert.match(confirmationCacheResolverSource, /process\.env\.LIMIT \|\| '11'/);
+  assert.match(confirmationCacheResolverSource, /buildTodayThroughNextSundayWindow/);
+  assert.match(confirmationCacheResolverSource, /START_DATE/);
+  assert.match(confirmationCacheResolverSource, /END_DATE/);
+  assert.match(confirmationCacheResolverSource, /buildWeeklyOperatorMeetingSetCandidates/);
+  assert.match(confirmationCacheResolverSource, /buildSetMeetingConfirmationCacheRows/);
+  assert.match(confirmationCacheResolverSource, /upsertSetMeetingConfirmationCacheRows/);
+  assert.doesNotMatch(confirmationCacheResolverSource, /insertMeetingSetEventsOnce/);
+  assert.doesNotMatch(confirmationCacheResolverSource, /upsertAthletePipelineState/);
+  assert.doesNotMatch(confirmationCacheResolverSource, /recordMeetingSet/);
 });
