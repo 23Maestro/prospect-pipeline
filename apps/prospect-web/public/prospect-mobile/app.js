@@ -113,7 +113,10 @@ async function renderSetMeetings(payload) {
       const title = event.athlete_name || cleanMeetingTitle(event.title || 'Booked meeting');
       const owner = event.head_scout_name || event.assigned_owner || 'Scout not resolved';
       const task = event.current_task || 'Confirmation Call';
-      const time = event.current_meeting_label || event.date_time_label || formatMeetingTime(event.start, event.end);
+      const time =
+        formatCachedMeetingLabel(event.current_meeting_label || event.start) ||
+        event.date_time_label ||
+        formatMeetingTime(event.start, event.end);
       const copyText = `${title} - ${owner} - ${time}`;
       const firstConfirmation = String(event.confirmation_1_message || '');
       const secondConfirmation = String(event.confirmation_2_message || '');
@@ -431,6 +434,39 @@ function formatSlotRange(start, end) {
 
 function formatMeetingTime(start, end) {
   return `${formatSlotDate(start)}, ${formatSlotRange(start, end)}`;
+}
+
+function formatCachedMeetingLabel(value) {
+  const date = parseCachedEasternInstant(value);
+  if (!date) return '';
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(date);
+  const month = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(date);
+  const day = date.getUTCDate();
+  const hour24 = date.getUTCHours();
+  const hour12 = hour24 % 12 || 12;
+  const minute = String(date.getUTCMinutes()).padStart(2, '0');
+  const period = hour24 >= 12 ? 'pm' : 'am';
+  return `${weekday}, ${month} ${day}${ordinalSuffix(day)} - ${hour12}:${minute}${period} Eastern`;
+}
+
+function parseCachedEasternInstant(value) {
+  const parsed = new Date(String(value || '').trim());
+  if (Number.isNaN(parsed.getTime())) return null;
+  return new Date(parsed.getTime() - 5 * 60 * 60 * 1000);
+}
+
+function ordinalSuffix(day) {
+  if (day >= 11 && day <= 13) return 'th';
+  switch (day % 10) {
+    case 1:
+      return 'st';
+    case 2:
+      return 'nd';
+    case 3:
+      return 'rd';
+    default:
+      return 'th';
+  }
 }
 
 function normalizePhoneForSms(value) {

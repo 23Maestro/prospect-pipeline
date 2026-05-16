@@ -446,6 +446,8 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /supabase_confirmation_cache/);
   assert.match(appText, /event\.confirmation_1_message/);
   assert.match(appText, /event\.confirmation_2_message/);
+  assert.match(appText, /formatCachedMeetingLabel/);
+  assert.match(appText, /ordinalSuffix/);
   assert.doesNotMatch(appText, /\/api\/set-meetings/);
   assert.equal(setMeetingsRouteExists, false);
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);
