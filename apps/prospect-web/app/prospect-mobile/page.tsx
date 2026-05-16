@@ -68,7 +68,7 @@ export default function ProspectMobilePage() {
           __html: `window.__PROSPECT_SUPABASE__ = ${JSON.stringify(supabaseConfig)};`,
         }}
       />
-      <Script type="module" src="/prospect-mobile/app.js?v=20260516-meeting-label" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260516-confirmation-prefix" strategy="afterInteractive" />
     </>
   );
 }

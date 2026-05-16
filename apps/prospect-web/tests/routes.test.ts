@@ -3,6 +3,7 @@ import test from 'node:test';
 import { GET as callTrackerDataGET } from '../app/api/call-tracker-data/route';
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
+import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -98,6 +99,70 @@ test('/api/call-tracker-sync rejects unsupported methods with old shape', async 
   assert.deepEqual(await response.json(), {
     success: false,
     error: 'Method DELETE not allowed',
+  });
+});
+
+test('/api/set-meeting-confirmation-prefix forwards confirmation prefix to FastAPI', async () => {
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json({
+      success: true,
+      event_id: '628106',
+      prefix: '(ACF*2)',
+      original_title: 'Jamiya Turner',
+      updated_title: '(ACF*2) Jamiya Turner',
+      message: 'Booked meeting title updated',
+    });
+  };
+
+  const response = await setMeetingConfirmationPrefixPOST(
+    new Request('https://example.test/api/set-meeting-confirmation-prefix', {
+      method: 'POST',
+      body: JSON.stringify({
+        event_id: '628106',
+        event_date: '2026-05-16',
+        prefix: '(ACF*2)',
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    success: true,
+    event_id: '628106',
+    prefix: '(ACF*2)',
+    original_title: 'Jamiya Turner',
+    updated_title: '(ACF*2) Jamiya Turner',
+    message: 'Booked meeting title updated',
+  });
+  assert.equal(calls[0].url, 'https://tailnet.example/api/v1/calendar/booked-meeting/title');
+  assert.equal(calls[0].init?.method, 'POST');
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+    event_id: '628106',
+    event_date: '2026-05-16',
+    prefix: '(ACF*2)',
+  });
+});
+
+test('/api/set-meeting-confirmation-prefix rejects non-confirmation prefixes', async () => {
+  const response = await setMeetingConfirmationPrefixPOST(
+    new Request('https://example.test/api/set-meeting-confirmation-prefix', {
+      method: 'POST',
+      body: JSON.stringify({
+        event_id: '628106',
+        event_date: '2026-05-16',
+        prefix: '(CAN)',
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'event_id, event_date, and confirmation prefix are required',
   });
 });
 

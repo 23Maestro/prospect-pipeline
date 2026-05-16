@@ -115,6 +115,13 @@ test('domain-owned helper logic is not duplicated in Raycast command surfaces', 
   );
 });
 
+test('confirmation text actions auto-prefix booked meeting titles', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  assert.match(headScoutSchedules, /getConfirmationAppointmentPrefix/);
+  assert.match(headScoutSchedules, /variant === 'confirmation_2' \? '\(ACF\*2\)' : '\(ACF\)'/);
+  assert.match(headScoutSchedules, /updateBookedMeetingTitlePrefix\(\{\s*eventId:\s*candidate\.bookedMeeting\.event_id,[\s\S]*?prefix:\s*getConfirmationAppointmentPrefix\(variant\),/);
+});
+
 test('adapter files preserve legacy names and delegate domain meaning', () => {
   const salesStage = readRepoFile('src/lib/sales-stage.ts');
   assert.match(salesStage, /from '\.\.\/domain\/sales-stage-contract'/);

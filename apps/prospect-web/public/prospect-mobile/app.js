@@ -134,8 +134,8 @@ async function renderSetMeetings(payload) {
             <p class="row-meta">${escapeHtml(time)}</p>
           </div>
           <div class="row-actions">
-            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(firstConfirmation)}">${escapeHtml(recipientLabel)} 1</button>
-            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(secondConfirmation)}">${escapeHtml(recipientLabel)} 2</button>
+            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(firstConfirmation)}" data-event-id="${escapeAttribute(event.appointment_id || event.key || '')}" data-event-date="${escapeAttribute(buildBookedMeetingEventDate(event.start))}" data-confirmation-prefix="(ACF)">${escapeHtml(recipientLabel)} 1</button>
+            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(secondConfirmation)}" data-event-id="${escapeAttribute(event.appointment_id || event.key || '')}" data-event-date="${escapeAttribute(buildBookedMeetingEventDate(event.start))}" data-confirmation-prefix="(ACF*2)">${escapeHtml(recipientLabel)} 2</button>
             ${
               event.admin_url
                 ? `<a class="link-button" href="${escapeAttribute(event.admin_url)}" target="_blank" rel="noreferrer">Admin</a>`
@@ -313,14 +313,41 @@ function bindCopyButtons() {
 
 function bindSmsButtons() {
   document.querySelectorAll('[data-sms-body]').forEach((button) => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const body = button.getAttribute('data-sms-body') || '';
       const phone = normalizePhoneForSms(button.getAttribute('data-sms-phone') || '');
+      await updateConfirmationPrefixFromButton(button);
       window.location.href = phone
         ? `sms:${phone}?body=${encodeURIComponent(body)}`
         : `sms:?body=${encodeURIComponent(body)}`;
     });
   });
+}
+
+async function updateConfirmationPrefixFromButton(button) {
+  const eventId = button.getAttribute('data-event-id') || '';
+  const eventDate = button.getAttribute('data-event-date') || '';
+  const prefix = button.getAttribute('data-confirmation-prefix') || '';
+  if (!eventId || !eventDate || !prefix) return;
+
+  try {
+    const response = await fetch('/api/set-meeting-confirmation-prefix', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId,
+        event_date: eventDate,
+        prefix,
+      }),
+    });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    }
+    setStatus(`Saved ${prefix}`);
+  } catch (error) {
+    setStatus(`Prefix failed: ${error.message || error}`);
+  }
 }
 
 function setActiveNavigation() {
@@ -453,6 +480,12 @@ function parseCachedEasternInstant(value) {
   const parsed = new Date(String(value || '').trim());
   if (Number.isNaN(parsed.getTime())) return null;
   return new Date(parsed.getTime() - 5 * 60 * 60 * 1000);
+}
+
+function buildBookedMeetingEventDate(value) {
+  const date = parseCachedEasternInstant(value);
+  if (!date) return '';
+  return toIsoDate(date);
 }
 
 function ordinalSuffix(day) {

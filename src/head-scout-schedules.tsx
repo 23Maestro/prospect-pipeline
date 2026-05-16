@@ -171,6 +171,12 @@ function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string 
   return String(meeting?.start || '').split('T')[0] || '';
 }
 
+function getConfirmationAppointmentPrefix(
+  variant: ConfirmationFollowUpVariant,
+): AppointmentTitlePrefix {
+  return variant === 'confirmation_2' ? '(ACF*2)' : '(ACF)';
+}
+
 function MeetingDetailsForm({
   candidate,
   onSaved,
@@ -757,6 +763,15 @@ export function HeadScoutBookingsList({
           source: 'set_meetings_confirmation',
         });
         await upsertSetMeetingConfirmationCacheRows(supabaseConfig, rows);
+      }
+
+      const eventDate = getBookedMeetingEventDate(candidate.bookedMeeting);
+      if (candidate.bookedMeeting?.event_id && eventDate) {
+        await updateBookedMeetingTitlePrefix({
+          eventId: candidate.bookedMeeting.event_id,
+          eventDate,
+          prefix: getConfirmationAppointmentPrefix(variant),
+        });
       }
 
       let composeMode: 'draft' | 'clipboard-fallback' = 'draft';
