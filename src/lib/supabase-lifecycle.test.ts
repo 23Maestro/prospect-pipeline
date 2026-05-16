@@ -210,6 +210,34 @@ test('meeting set lifecycle mutation derives owner proof from task assignment wh
   assert.equal((event.payload.owner_context as Record<string, unknown>).owner_proof, 'task.assigned_owner');
 });
 
+test('meeting set lifecycle mutation does not require confirmation task id when appointment proof exists', () => {
+  const event = buildLifecycleMutationEvent({
+    sourcePost: '/sales/meeting-set',
+    athleteId: '1490881',
+    athleteMainId: '952706',
+    athleteName: 'Richard Hayes',
+    crmStage: 'Meeting Set',
+    taskTitle: 'Confirmation Call',
+    taskAssignedOwner: 'Jerami Singleton',
+    occurredAt: '2026-05-15T22:50:59.000Z',
+    appointmentId: '611014',
+    payload: {
+      owner_proof: 'raycast_operator_context',
+      meeting_name: 'Richard Hayes Football 2028 TX',
+      materialization_status: 'operator_task',
+    },
+  });
+
+  assert.equal(event.eventType, 'meeting_set');
+  assert.equal(event.payload.task_id, null);
+  assert.equal(event.payload.appointment_id, '611014');
+  assert.equal(event.payload.counts_as_dial, true);
+  assert.equal(event.payload.counts_as_contact, true);
+  assert.equal(event.payload.counts_as_meeting_set, true);
+  assert.equal(event.payload.owner_proof, 'raycast_operator_context');
+  assert.equal(event.state.currentAppointmentId, '611014');
+});
+
 test('meeting set lifecycle mutation preserves existing owner proof mirrors while normalizing canonical fields', () => {
   const event = buildLifecycleMutationEvent({
     sourcePost: '/sales/meeting-set',

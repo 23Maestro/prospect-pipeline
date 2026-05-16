@@ -517,8 +517,9 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
   const activitySubtype = resolveMutationActivitySubtype(args);
   const reporting = classifyCallTrackerReporting(activitySubtype);
   const isCountableActivity = reporting.countsAsDial || reporting.countsAsContact;
+  const isMeetingSetMutation = args.sourcePost === '/sales/meeting-set' && reporting.countsAsMeetingSet;
   const taskId = normalizeValue(args.taskId);
-  if (isCountableActivity && !taskId) {
+  if (isCountableActivity && !isMeetingSetMutation && !taskId) {
     throw new Error('Lifecycle mutation countable activity requires taskId.');
   }
   if (isCountableActivity && !actor.athleteName) {
