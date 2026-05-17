@@ -126,6 +126,7 @@ async function renderSetMeetings(payload) {
         : 'Text';
       const eventId = event.appointment_id || event.key || '';
       const eventDate = buildBookedMeetingEventDate(event.start);
+      const cardUrl = buildScriptableContactCardUrl(owner);
       return `
         <article class="row">
           <div class="row-header">
@@ -136,8 +137,11 @@ async function renderSetMeetings(payload) {
             <p class="row-meta">${escapeHtml(time)}</p>
           </div>
           <div class="row-actions">
-            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(firstConfirmation)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-confirmation-prefix="(ACF)">${escapeHtml(recipientLabel)} 1</button>
-            <button class="copy-button" type="button" data-sms-phone="${escapeAttribute(recipientPhone)}" data-sms-body="${escapeAttribute(secondConfirmation)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-confirmation-prefix="(ACF*2)">${escapeHtml(recipientLabel)} 2</button>
+            <button class="copy-button" type="button" data-confirmation-modal data-sms-phone="${escapeAttribute(recipientPhone)}" data-confirmation-1-body="${escapeAttribute(firstConfirmation)}" data-confirmation-2-body="${escapeAttribute(secondConfirmation)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-recipient-label="${escapeAttribute(recipientLabel)}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Confirm</button>
+            <a class="link-button id-card-button" href="${escapeAttribute(cardUrl)}" target="_blank" rel="noreferrer" aria-label="Share ID card for ${escapeAttribute(owner)}">
+              ${clipboardIconSvg()}
+              <span>ID Cards</span>
+            </a>
             ${
               event.admin_url || eventId
                 ? `<button class="link-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
@@ -152,6 +156,7 @@ async function renderSetMeetings(payload) {
   );
   bindCopyButtons();
   bindSmsButtons();
+  bindConfirmationModalButtons();
   bindAdminModalButtons();
   return events.length;
 }
@@ -336,10 +341,66 @@ async function updateConfirmationPrefixFromButton(button) {
   await updateMeetingPrefix({ eventId, eventDate, prefix });
 }
 
+function bindConfirmationModalButtons() {
+  document.querySelectorAll('[data-confirmation-modal]').forEach((button) => {
+    button.addEventListener('click', () => showConfirmationModal(button));
+  });
+}
+
 function bindAdminModalButtons() {
   document.querySelectorAll('[data-admin-modal]').forEach((button) => {
     button.addEventListener('click', () => showAdminModal(button));
   });
+}
+
+function showConfirmationModal(button) {
+  closeConfirmationModal();
+
+  const eventId = button.getAttribute('data-event-id') || '';
+  const eventDate = button.getAttribute('data-event-date') || '';
+  const phone = button.getAttribute('data-sms-phone') || '';
+  const firstBody = button.getAttribute('data-confirmation-1-body') || '';
+  const secondBody = button.getAttribute('data-confirmation-2-body') || '';
+  const recipientLabel = button.getAttribute('data-recipient-label') || 'Text';
+  const athleteName = button.getAttribute('data-athlete-name') || 'Meeting';
+  const headScout = button.getAttribute('data-head-scout') || '';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-confirmation-action-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-label="Confirmation text options">
+      <div class="modal-header">
+        <h2 class="modal-title">${escapeHtml(athleteName)}</h2>
+        <p class="modal-subtitle">${escapeHtml(headScout)}</p>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-button confirmation-primary" type="button" data-sms-phone="${escapeAttribute(phone)}" data-sms-body="${escapeAttribute(firstBody)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-confirmation-prefix="(ACF)">${escapeHtml(recipientLabel)} 1</button>
+        <button class="modal-button" type="button" data-sms-phone="${escapeAttribute(phone)}" data-sms-body="${escapeAttribute(secondBody)}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-confirmation-prefix="(ACF*2)">${escapeHtml(recipientLabel)} 2</button>
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeConfirmationModal();
+  });
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeConfirmationModal);
+  modal.querySelectorAll('[data-sms-body]').forEach((smsButton) => {
+    smsButton.addEventListener('click', async () => {
+      const body = smsButton.getAttribute('data-sms-body') || '';
+      const smsPhone = normalizePhoneForSms(smsButton.getAttribute('data-sms-phone') || '');
+      await updateConfirmationPrefixFromButton(smsButton);
+      closeConfirmationModal();
+      window.location.href = smsPhone
+        ? `sms:${smsPhone}?body=${encodeURIComponent(body)}`
+        : `sms:?body=${encodeURIComponent(body)}`;
+    });
+  });
+
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+  modal.querySelector('[data-sms-body]')?.focus();
 }
 
 function showAdminModal(button) {
@@ -361,8 +422,8 @@ function showAdminModal(button) {
         <p class="modal-subtitle">${escapeHtml(headScout)}</p>
       </div>
       <div class="modal-actions">
-        <button class="modal-button" type="button" data-prefix-action="(CF)">Set (CF)</button>
-        <button class="modal-button" type="button" data-prefix-action="(RSP)">Set (RSP)</button>
+        <button class="modal-button success" type="button" data-prefix-action="(CF)">Set (CF)</button>
+        <button class="modal-button warning" type="button" data-prefix-action="(RSP)">Set (RSP)</button>
         <button class="modal-button danger" type="button" data-prefix-action="(CAN)">Set (CAN)</button>
         ${
           adminUrl
@@ -397,8 +458,16 @@ function closeAdminModal() {
   document.body.classList.remove('modal-open');
 }
 
+function closeConfirmationModal() {
+  document.querySelector('[data-confirmation-action-modal]')?.remove();
+  document.body.classList.remove('modal-open');
+}
+
 document.addEventListener('keydown', (event) => {
-  if (event.key === 'Escape') closeAdminModal();
+  if (event.key === 'Escape') {
+    closeAdminModal();
+    closeConfirmationModal();
+  }
 });
 
 async function updateMeetingPrefix({ eventId, eventDate, prefix }) {
@@ -581,6 +650,20 @@ function normalizePhoneForSms(value) {
   if (digits.length === 11 && digits.startsWith('1')) return digits;
   if (digits.length === 10) return digits;
   return '';
+}
+
+function buildScriptableContactCardUrl(scoutName) {
+  const scriptName = 'Share Prospect Contact Card';
+  return `https://open.scriptable.app/run/${encodeURIComponent(scriptName)}?scout=${encodeURIComponent(String(scoutName || ''))}`;
+}
+
+function clipboardIconSvg() {
+  return `
+    <svg class="button-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M9 4.75h6M9 4.75A2.25 2.25 0 0 1 11.25 2.5h1.5A2.25 2.25 0 0 1 15 4.75M9 4.75H6.75A2.25 2.25 0 0 0 4.5 7v12.25a2.25 2.25 0 0 0 2.25 2.25h10.5a2.25 2.25 0 0 0 2.25-2.25V7a2.25 2.25 0 0 0-2.25-2.25H15" />
+      <path d="M8.5 11.25h7M8.5 15.25h5.25" />
+    </svg>
+  `;
 }
 
 function parseEasternLocal(value) {

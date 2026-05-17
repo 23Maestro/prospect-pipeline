@@ -7,18 +7,20 @@ Use this when Prospect Mobile needs to hand off a contact card from iPhone witho
 Put vetted `.vcf` files here:
 
 ```text
-iCloud Drive/Scriptable/ProspectContactCards/
+iCloud Drive/Scriptable/ProspectIDContactCards/
 ```
 
-Expected file names:
+The script scans every `.vcf` in that folder. The file names do not need to match a hardcoded repo convention as long as the vCard `FN:` value or file name contains the scout name.
+
+Cards visible in the current phone folder:
 
 ```text
-JeffreyStein-contact-card.vcf
-JeramiSingleton-contact-card.vcf
-LutherWinfield-contact-card.vcf
-RyanLietz-contact-card.vcf
-JamesHolcomb-contact-card.vcf
-Logan-contact-card.vcf
+Logan Lord
+Jerami Singleton
+Jeffrey Stein
+James Holcomb
+Luther Winfield III
+Ryan Lietz
 ```
 
 ## Script
@@ -40,22 +42,22 @@ Share Prospect Contact Card
 Share a real `.vcf` file through the iOS share sheet:
 
 ```text
-https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?card=ryan
+https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz
 ```
 
 Copy the raw vCard text to the clipboard:
 
 ```text
-https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?card=ryan&mode=copyText
+https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz&mode=copyText
 ```
 
 Open a preview:
 
 ```text
-https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?card=ryan&mode=preview
+https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz&mode=preview
 ```
 
-Supported `card` values:
+Supported shorthand values:
 
 ```text
 jeffrey
@@ -66,6 +68,8 @@ ryan
 james
 logan
 ```
+
+The website can also pass the full matched scout name as `scout=James%20Holcomb`. That is preferred because one Scriptable script can serve every scout in the folder.
 
 ## Important Limit
 

@@ -1,91 +1,144 @@
 // Scriptable: Share Prospect Contact Card
 // Preset card location on iPhone:
-// iCloud Drive/Scriptable/ProspectContactCards/<file>.vcf
+// iCloud Drive/Scriptable/ProspectIDContactCards/
 //
 // URL examples:
-// https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?card=ryan
-// https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?card=james&mode=copyText
+// https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=James%20Holcomb
+// https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz&mode=copyText
 
-const CARD_FOLDER = 'ProspectContactCards';
+const CARD_FOLDER = 'ProspectIDContactCards';
 
-const CARD_FILES = {
-  jeffrey: 'JeffreyStein-contact-card.vcf',
-  jerami: 'JeramiSingleton-contact-card.vcf',
-  luther: 'LutherWinfield-contact-card.vcf',
-  me: 'JeramiSingleton-contact-card.vcf',
-  ryan: 'RyanLietz-contact-card.vcf',
-
-  // Add these files to iCloud Drive/Scriptable/ProspectContactCards when vetted.
-  james: 'JamesHolcomb-contact-card.vcf',
-  logan: 'Logan-contact-card.vcf',
+const SCOUT_ALIASES = {
+  'james': 'James Holcomb',
+  'jamesholcomb': 'James Holcomb',
+  'jeffrey': 'Jeffrey Stein',
+  'jeffreystein': 'Jeffrey Stein',
+  'jerami': 'Jerami Singleton',
+  'jeramisingleton': 'Jerami Singleton',
+  'logan': 'Logan Lord',
+  'loganlord': 'Logan Lord',
+  'luther': 'Luther Winfield III',
+  'lutherwinfield': 'Luther Winfield III',
+  'lutherwinfieldiii': 'Luther Winfield III',
+  'me': 'Jerami Singleton',
+  'ryan': 'Ryan Lietz',
+  'ryanlietz': 'Ryan Lietz',
 };
 
 const params = args.queryParameters || {};
-const cardKey = normalizeCardKey(params.card || params.name || params.scout || '');
+const scoutInput = params.scout || params.card || params.name || '';
 const mode = normalizeMode(params.mode || 'share');
-const fileName = CARD_FILES[cardKey];
 
-if (!fileName) {
-  await showCardPicker();
-} else {
-  await handleCard(cardKey, fileName, mode);
-}
-
+await run(scoutInput, mode);
 Script.complete();
 
-async function showCardPicker() {
+async function run(scoutInput, modeValue) {
+  const fm = FileManager.iCloud();
+  const folderPath = fm.joinPath(fm.documentsDirectory(), CARD_FOLDER);
+
+  if (!fm.fileExists(folderPath)) {
+    fm.createDirectory(folderPath, true);
+    throw new Error(`Created missing folder. Add contact cards to ${CARD_FOLDER}.`);
+  }
+
+  const cards = await listContactCards(fm, folderPath);
+  if (!cards.length) {
+    throw new Error(`No contact cards found in ${CARD_FOLDER}.`);
+  }
+
+  const card = findCard(cards, scoutInput) || (await pickCard(cards));
+  if (!card) return;
+
+  await handleCard(fm, card, modeValue);
+}
+
+async function listContactCards(fm, folderPath) {
+  const names = fm.listContents(folderPath).filter((name) => name.toLowerCase().endsWith('.vcf'));
+  const cards = [];
+
+  for (const fileName of names) {
+    const path = fm.joinPath(folderPath, fileName);
+    if (fm.isFileDownloaded && !fm.isFileDownloaded(path)) {
+      await fm.downloadFileFromiCloud(path);
+    }
+    cards.push({
+      fileName,
+      path,
+      displayName: readDisplayName(fm, path) || cleanFileName(fileName),
+    });
+  }
+
+  return cards.sort((a, b) => a.displayName.localeCompare(b.displayName));
+}
+
+function findCard(cards, scoutInput) {
+  const normalizedInput = normalizeName(scoutInput);
+  if (!normalizedInput) return null;
+
+  const aliasName = SCOUT_ALIASES[normalizedInput];
+  const normalizedTarget = normalizeName(aliasName || scoutInput);
+
+  return (
+    cards.find((card) => normalizeName(card.displayName) === normalizedTarget) ||
+    cards.find((card) => normalizeName(card.fileName) === normalizedTarget) ||
+    cards.find((card) => normalizeName(card.displayName).includes(normalizedTarget)) ||
+    cards.find((card) => normalizeName(card.fileName).includes(normalizedTarget))
+  );
+}
+
+async function pickCard(cards) {
   const alert = new Alert();
   alert.title = 'Prospect Contact Card';
   alert.message = 'Choose a card to share.';
 
-  const keys = Object.keys(CARD_FILES).sort();
-  for (const key of keys) {
-    alert.addAction(labelForKey(key));
+  for (const card of cards) {
+    alert.addAction(card.displayName);
   }
   alert.addCancelAction('Cancel');
 
   const selectedIndex = await alert.presentSheet();
-  if (selectedIndex < 0) return;
-
-  const selectedKey = keys[selectedIndex];
-  await handleCard(selectedKey, CARD_FILES[selectedKey], mode);
+  return selectedIndex < 0 ? null : cards[selectedIndex];
 }
 
-async function handleCard(cardKey, fileName, modeValue) {
-  const fm = FileManager.iCloud();
-  const folderPath = fm.joinPath(fm.documentsDirectory(), CARD_FOLDER);
-  const cardPath = fm.joinPath(folderPath, fileName);
-
-  if (!fm.fileExists(folderPath)) {
-    fm.createDirectory(folderPath, true);
-    throw new Error(`Created missing folder. Add .vcf files to ${CARD_FOLDER}.`);
-  }
-
-  if (!fm.fileExists(cardPath)) {
-    throw new Error(`Missing ${fileName} in ${CARD_FOLDER}.`);
-  }
-
-  if (fm.isFileDownloaded && !fm.isFileDownloaded(cardPath)) {
-    await fm.downloadFileFromiCloud(cardPath);
-  }
-
+async function handleCard(fm, card, modeValue) {
   if (modeValue === 'copyText') {
-    Pasteboard.copyString(fm.readString(cardPath));
-    await showNotice('Copied vCard text', `${labelForKey(cardKey)} is copied as text.`);
+    Pasteboard.copyString(fm.readString(card.path));
+    await showNotice('Copied vCard text', `${card.displayName} is copied as text.`);
     return;
   }
 
   if (modeValue === 'preview') {
-    await QuickLook.present(cardPath);
+    await QuickLook.present(card.path);
     return;
   }
 
-  await ShareSheet.present([cardPath]);
+  await ShareSheet.present([card.path]);
 }
 
-function normalizeCardKey(value) {
+function readDisplayName(fm, path) {
+  try {
+    const text = fm.readString(path);
+    const fullName = text.match(/^FN:(.+)$/m);
+    if (fullName?.[1]) return fullName[1].trim();
+    const nameParts = text.match(/^N:([^;\r\n]*);([^;\r\n]*)/m);
+    if (nameParts) return `${nameParts[2]} ${nameParts[1]}`.trim();
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function cleanFileName(fileName) {
+  return String(fileName || '')
+    .replace(/\.vcf$/i, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normalizeName(value) {
   return String(value || '')
-    .trim()
+    .normalize('NFKD')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '');
 }
@@ -99,19 +152,6 @@ function normalizeMode(value) {
     return 'preview';
   }
   return 'share';
-}
-
-function labelForKey(key) {
-  const labels = {
-    jeffrey: 'Jeffrey Stein',
-    jerami: 'Jerami Singleton',
-    luther: 'Luther Winfield',
-    me: 'Jerami Singleton',
-    ryan: 'Ryan Lietz',
-    james: 'James Holcomb',
-    logan: 'Logan',
-  };
-  return labels[key] || key;
 }
 
 async function showNotice(title, message) {

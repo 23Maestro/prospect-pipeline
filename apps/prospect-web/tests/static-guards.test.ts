@@ -129,6 +129,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/sync-current-pipeline-to-supabase.test.mjs',
     'scripts/sync-booked-meetings-to-supabase.mjs',
     'scripts/sync-booked-meetings-to-supabase.test.mjs',
+    'scripts/scriptable/share-prospect-contact-card.js',
     'src/domain/call-tracker-vercel-contract.ts',
     'src/domain/owner-proof-payload.ts',
     'src/domain/owner-resolution.ts',
@@ -451,6 +452,11 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /\/api\/set-meeting-confirmation-prefix/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\)"/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\*2\)"/);
+  assert.match(appText, /data-confirmation-modal/);
+  assert.match(appText, /showConfirmationModal/);
+  assert.match(appText, /ID Cards/);
+  assert.match(appText, /clipboardIconSvg/);
+  assert.match(appText, /open\.scriptable\.app\/run/);
   assert.match(appText, /data-admin-modal/);
   assert.match(appText, /data-prefix-action="\(CF\)"/);
   assert.match(appText, /data-prefix-action="\(RSP\)"/);

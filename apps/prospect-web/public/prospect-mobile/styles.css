@@ -355,6 +355,22 @@ h1 {
   color: var(--muted);
 }
 
+.id-card-button {
+  grid-auto-flow: column;
+  gap: 6px;
+  color: var(--text);
+}
+
+.button-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -410,6 +426,24 @@ h1 {
   cursor: pointer;
   font-weight: 650;
   text-decoration: none;
+}
+
+.modal-button.confirmation-primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.modal-button.success {
+  border-color: rgba(0, 200, 83, 0.5);
+  background: rgba(0, 200, 83, 0.18);
+  color: #fff;
+}
+
+.modal-button.warning {
+  border-color: rgba(245, 158, 11, 0.52);
+  background: rgba(245, 158, 11, 0.2);
+  color: #fff;
 }
 
 .modal-button.danger {
