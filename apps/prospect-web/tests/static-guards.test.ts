@@ -456,7 +456,7 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /showConfirmationModal/);
   assert.match(appText, /ID Cards/);
   assert.match(appText, /clipboardIconSvg/);
-  assert.match(appText, /open\.scriptable\.app\/run/);
+  assert.match(appText, /scriptable:\/\/\/run\/share-prospect-contact-card/);
   assert.match(appText, /data-admin-modal/);
   assert.match(appText, /data-prefix-action="\(CF\)"/);
   assert.match(appText, /data-prefix-action="\(RSP\)"/);

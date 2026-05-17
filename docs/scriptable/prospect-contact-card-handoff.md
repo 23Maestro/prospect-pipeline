@@ -34,7 +34,7 @@ scripts/scriptable/share-prospect-contact-card.js
 Suggested Scriptable script name:
 
 ```text
-Share Prospect Contact Card
+share-prospect-contact-card
 ```
 
 ## Mobile URL Calls
@@ -42,19 +42,19 @@ Share Prospect Contact Card
 Share a real `.vcf` file through the iOS share sheet:
 
 ```text
-https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz
+scriptable:///run/share-prospect-contact-card?scout=Ryan%20Lietz
 ```
 
 Copy the raw vCard text to the clipboard:
 
 ```text
-https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz&mode=copyText
+scriptable:///run/share-prospect-contact-card?scout=Ryan%20Lietz&mode=copyText
 ```
 
 Open a preview:
 
 ```text
-https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz&mode=preview
+scriptable:///run/share-prospect-contact-card?scout=Ryan%20Lietz&mode=preview
 ```
 
 Supported shorthand values:
@@ -70,6 +70,8 @@ logan
 ```
 
 The website can also pass the full matched scout name as `scout=James%20Holcomb`. That is preferred because one Scriptable script can serve every scout in the folder.
+
+The Scriptable "Share Sheet Inputs" screen is not required for Prospect Mobile button taps. That setting only applies when launching the script from the iOS share sheet. Prospect Mobile launches the script by URL scheme, and the script reads `scout` from `args.queryParameters`.
 
 ## Important Limit
 

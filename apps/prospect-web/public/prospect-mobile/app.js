@@ -653,8 +653,7 @@ function normalizePhoneForSms(value) {
 }
 
 function buildScriptableContactCardUrl(scoutName) {
-  const scriptName = 'Share Prospect Contact Card';
-  return `https://open.scriptable.app/run/${encodeURIComponent(scriptName)}?scout=${encodeURIComponent(String(scoutName || ''))}`;
+  return `scriptable:///run/share-prospect-contact-card?scout=${encodeURIComponent(String(scoutName || ''))}`;
 }
 
 function clipboardIconSvg() {

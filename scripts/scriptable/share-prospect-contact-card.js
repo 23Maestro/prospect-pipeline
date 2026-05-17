@@ -1,10 +1,10 @@
-// Scriptable: Share Prospect Contact Card
+// Scriptable: share-prospect-contact-card
 // Preset card location on iPhone:
 // iCloud Drive/Scriptable/ProspectIDContactCards/
 //
 // URL examples:
-// https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=James%20Holcomb
-// https://open.scriptable.app/run/Share%20Prospect%20Contact%20Card?scout=Ryan%20Lietz&mode=copyText
+// scriptable:///run/share-prospect-contact-card?scout=James%20Holcomb
+// scriptable:///run/share-prospect-contact-card?scout=Ryan%20Lietz&mode=copyText
 
 const CARD_FOLDER = 'ProspectIDContactCards';
 
