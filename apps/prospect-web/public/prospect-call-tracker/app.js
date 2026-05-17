@@ -136,6 +136,13 @@ function localDayDateLabel(value) {
   }).format(value);
 }
 
+function monthName(value = new Date()) {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: TIME_ZONE,
+    month: 'long',
+  }).format(value);
+}
+
 function offsetLocalDate(value, dayOffset) {
   const parts = localParts(value);
   return ymdToLocalNoon(Number(parts.year), Number(parts.month), Number(parts.day) + dayOffset);
@@ -185,7 +192,7 @@ function activePeriodDateForPeriod(period) {
 
 function activePeriodLabel() {
   if (state.activePeriod === 'week-total') {
-    return `This Week, ${currentWeekRangeLabel()}`;
+    return currentWeekRangeLabel();
   }
   return localDayDateLabel(activePeriodDate());
 }
@@ -314,13 +321,14 @@ function dateKeyInRange(key, start, end) {
 }
 
 function currentMonthRange() {
-  const parts = localParts(new Date());
+  const now = new Date();
+  const parts = localParts(now);
   const year = Number(parts.year);
   const month = Number(parts.month);
   return {
     start: `${parts.year}-${parts.month}-01`,
     end: `${parts.year}-${parts.month}-${parts.day}`,
-    label: `This Month, ${localDateLabel(ymdToLocalNoon(year, month, 1))} - ${localDateLabel(new Date())}`,
+    label: `${monthName(now)} Results`,
   };
 }
 
@@ -477,6 +485,8 @@ function renderPeriod() {
     setText('todayContacts', materializedPeriod.contacts);
     setText('todayMeetingsSet', materializedPeriod.meetingsSet);
     setText('todaySetRate', `${materializedPeriod.setRate}%`);
+    // Soft-disabled for now. Re-enable when show rate belongs back in the top-card flow.
+    // setRateText('todayShowRate', outcomeRates.showRate, true);
     document.querySelectorAll('[data-period]').forEach((button) => {
       button.classList.toggle('active', !isArchiveView() && !isMonthView() && button.dataset.period === state.activePeriod);
       button.disabled = isArchiveView() || isMonthView();
@@ -496,6 +506,8 @@ function renderPeriod() {
   setText('todayContacts', contacts);
   setText('todayMeetingsSet', meetingsSet);
   setText('todaySetRate', `${setRate}%`);
+  // Soft-disabled for now. Re-enable when show rate belongs back in the top-card flow.
+  // setRateText('todayShowRate', outcomeRates.showRate, true);
 
   document.querySelectorAll('[data-period]').forEach((button) => {
     button.classList.toggle('active', button.dataset.period === state.activePeriod);
@@ -586,7 +598,22 @@ function renderSummary() {
   setText('rangeLabel', activeTopCardMetrics()?.label || state.ui?.rangeLabel || currentWeekRangeLabel());
   const fallbackDenominator = Number(summary.meeting_outcomes_total) || 0;
   const fallbackRate = fallbackDenominator ? Math.round((Number(summary.closed_won || 0) / fallbackDenominator) * 100) : 0;
-  setText('closeRate', `${cards?.closeRate ?? fallbackRate}%`);
+  setRateText('closeRate', cards?.closeRate ?? fallbackRate, true);
+}
+
+function gradientRateColor(rate, goodHigh = true) {
+  const score = goodHigh ? Number(rate) || 0 : 100 - (Number(rate) || 0);
+  if (score >= 67) return 'var(--green)';
+  if (score >= 40) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function setRateText(id, rate, goodHigh = true) {
+  const element = $(id);
+  if (!element) return;
+  const value = Number(rate) || 0;
+  element.textContent = `${value}%`;
+  element.style.color = gradientRateColor(value, goodHigh);
 }
 
 function outcomeCountsForRows(rows) {
@@ -618,56 +645,42 @@ function renderBars() {
   const cards = state.ui?.summaryCards || {};
   const contacts = Number(cards.contacts ?? state.summary?.contacts ?? 0);
   const meetingsSet = Number(state.summary?.meetings_set ?? 0);
+  const closedWon = Number(cards.closedWon ?? state.summary?.closed_won ?? 0);
   const setRate = contacts ? Math.round((meetingsSet / contacts) * 100) : 0;
   const entries = [
     ['Dials', Number(cards.dials ?? state.summary?.dials ?? 0), 'blue'],
-    ['Voicemail', Number(cards.voicemailOnly ?? state.summary?.voicemail_only ?? 0), 'purple'],
     ['Spoke With', contacts, 'green'],
-    ['Appointments', Number(cards.appointmentsTracked ?? state.summary?.appointments_tracked ?? 0), 'amber'],
-  ].sort((left, right) => Number(right[1]) - Number(left[1]));
-  const total = Math.max(1, entries.reduce((sum, [, count]) => sum + count, 0));
-  let cursor = 0;
-  const segments = entries.map(([, count, color]) => {
-    const start = cursor;
-    cursor += (count / total) * 100;
-    return `var(--chart-${color}) ${start}% ${cursor}%`;
-  });
+    ['Meetings Set', meetingsSet, 'amber'],
+    ['Closed Won', closedWon, 'green'],
+  ];
+  const maxCount = Math.max(1, ...entries.map(([, count]) => Number(count) || 0));
 
-  $('outcomeBars').innerHTML = entries
-    .map(([label, count, color], index) => {
-      if (index === 0) {
-        return `
-          <div class="donut-wrap">
-            <div class="donut" style="--donut:${segments.join(', ')}">
-              <div class="donut-center">
-                <span>${total}</span>
-                <small>Total</small>
+  $('outcomeBars').innerHTML = `
+    <div class="flow-chart">
+      <div class="flow-rate">
+        <span>All-Time Set Rate</span>
+        <strong style="color:${gradientRateColor(setRate, true)}">${setRate}%</strong>
+      </div>
+      <div class="flow-rows">
+        ${entries
+          .map(([label, count, color]) => {
+            const width = Math.max(4, Math.round(((Number(count) || 0) / maxCount) * 100));
+            return `
+              <div class="flow-row ${color}">
+                <div class="flow-label">
+                  <span>${label}</span>
+                  <b>${count}</b>
+                </div>
+                <div class="flow-track">
+                  <i style="width:${width}%"></i>
+                </div>
               </div>
-            </div>
-            <div class="donut-legend">
-              <div class="legend-row">
-                <span><i class="${color}"></i>${label}</span>
-                <b>${count}</b>
-              </div>
-        `;
-      }
-      const row = `
-        <div class="legend-row">
-          <span><i class="${color}"></i>${label}</span>
-          <b>${count}</b>
-        </div>
-      `;
-      if (index === entries.length - 1) {
-        return `${row}
-          <div class="all-time-set-rate">
-            <span>All-Time Set Rate</span>
-            <strong>${setRate}%</strong>
-          </div>
-        </div></div>`;
-      }
-      return row;
-    })
-    .join('');
+            `;
+          })
+          .join('')}
+      </div>
+    </div>
+  `;
 }
 
 function renderClosedWon() {
@@ -755,16 +768,23 @@ function renderWeekViewSelector() {
   const selected = state.activeView;
   const archivedOptions = archiveWeeks()
     .map((week) => {
-      const label = week.label || `${week.startDate} to ${week.endDate}`;
+      const label = dateRangeOptionLabel(week.startDate, week.endDate) || week.label || `${week.startDate} - ${week.endDate}`;
       return `<option value="archive:${escapeHtml(week.file)}">${escapeHtml(label)}</option>`;
     })
     .join('');
   select.innerHTML = `
-    <option value="live-week">This week (live)</option>
-    <option value="live-month">This month (live)</option>
+    <option value="live-week">${escapeHtml(state.ui?.rangeLabel || currentWeekRangeLabel())}</option>
+    <option value="live-month">${escapeHtml(state.ui?.monthResultLabel || `${monthName()} Results`)}</option>
     ${archivedOptions}
   `;
   select.value = selected;
+}
+
+function dateRangeOptionLabel(startDate, endDate) {
+  if (!startDate || !endDate) return '';
+  const start = ymdToLocalNoon(...startDate.split('-').map(Number));
+  const end = ymdToLocalNoon(...endDate.split('-').map(Number));
+  return `${localDateLabel(start)} - ${localDateLabel(end)}`;
 }
 
 function titleCaseLabel(value) {

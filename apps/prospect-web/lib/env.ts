@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 const serverOnlyEnvNames = [
   'SUPABASE_SERVICE_ROLE_KEY',
   'SUPABASE_SECRET_KEY',
@@ -9,7 +12,28 @@ const serverOnlyEnvNames = [
   'CALL_TRACKER_SYNC_SECRET',
 ] as const;
 
+let loadedRootEnv = false;
+
+function loadRootEnvFallback() {
+  if (loadedRootEnv) return;
+  loadedRootEnv = true;
+  const rootEnvPath = resolve(process.cwd(), '..', '..', '.env');
+  if (!existsSync(rootEnvPath)) return;
+  const lines = readFileSync(rootEnvPath, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const separator = trimmed.indexOf('=');
+    if (separator <= 0) continue;
+    const key = trimmed.slice(0, separator).trim();
+    if (process.env[key]) continue;
+    const rawValue = trimmed.slice(separator + 1).trim();
+    process.env[key] = rawValue.replace(/^['"]|['"]$/g, '');
+  }
+}
+
 export function getServerEnv(name: (typeof serverOnlyEnvNames)[number] | 'SUPABASE_URL' | 'SUPABASE_SCHEMA') {
+  loadRootEnvFallback();
   return String(process.env[name] || '').trim();
 }
 

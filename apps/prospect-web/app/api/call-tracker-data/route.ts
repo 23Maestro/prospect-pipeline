@@ -179,6 +179,10 @@ function currentWeekRangeLabel(now: Date) {
   return `${localDateLabel(currentWeekdayDate(now, 0))} - ${localDateLabel(currentWeekdayDate(now, 6))}`;
 }
 
+function currentMonthResultLabel(now: Date) {
+  return `${new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, month: 'long' }).format(now)} Results`;
+}
+
 function eventDateKey(row: Record<string, any>) {
   if (row.tracker_outcome === 'meeting_set') return localDateKey(row.occurred_at);
   if (row.counts_as_post_meeting_outcome === true || (meetingOutcomes.has(row.tracker_outcome) && row.tracker_outcome !== 'meeting_set')) {
@@ -529,6 +533,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
   return {
     activePeriod: currentWeekPeriod(now),
     rangeLabel: currentWeekRangeLabel(now),
+    monthResultLabel: currentMonthResultLabel(now),
     summaryCards: {
       moneyEarnedCents: Number(summary.money_earned_cents) || 0,
       closedWon: Number(summary.closed_won) || 0,

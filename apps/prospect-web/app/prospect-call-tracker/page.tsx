@@ -135,6 +135,12 @@ export default function ProspectCallTrackerPage() {
               <div className="card-top"><span>Set Rate</span><Icon name="trend" /></div>
               <strong id="todaySetRate">0%</strong>
             </article>
+            {/*
+            <article className="daily-card show-card">
+              <div className="card-top"><span>Show Rate</span><Icon name="check" /></div>
+              <strong id="todayShowRate">0%</strong>
+            </article>
+            */}
             <article className="daily-card amber-card">
               <div className="card-top"><span>Closed Won</span><Icon name="trophy" /></div>
               <strong id="closedWon">0</strong>
