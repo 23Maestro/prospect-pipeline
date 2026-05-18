@@ -5,10 +5,12 @@ export type ScoutTaskRange = 'todayPastDue' | 'all' | 'tomorrow' | 'future';
 export type TaskListSortKey = 'gradYear' | 'callAttempt';
 export type TaskListSortDirection = 'asc' | 'desc';
 
-export type TaskListSort = {
+export type TaskListSortRule = {
   key: TaskListSortKey;
   direction: TaskListSortDirection;
-} | null;
+};
+
+export type TaskListSort = TaskListSortRule | TaskListSortRule[] | null;
 
 export type TaskBucketRow = {
   kind: 'task';
@@ -49,10 +51,19 @@ export function buildTaskBucketRows(args: {
   sort?: TaskListSort;
 }): TaskBucketRow[] {
   const range = mapTaskListFilterToRange(args.filter);
-  const tasks = args.sort
+  const tasks = hasTaskListSort(args.sort)
     ? sortScoutPrepTasks(args.taskBuckets[range] || [], args.sort)
     : args.taskBuckets[range] || [];
   return tasks.map((task) => ({ kind: 'task', task }) satisfies TaskBucketRow);
+}
+
+function normalizeTaskListSort(sort?: TaskListSort): TaskListSortRule[] {
+  if (!sort) return [];
+  return Array.isArray(sort) ? sort : [sort];
+}
+
+function hasTaskListSort(sort?: TaskListSort): boolean {
+  return normalizeTaskListSort(sort).length > 0;
 }
 
 function parseGradYear(task: ScoutPortalTask): number | null {
@@ -81,16 +92,22 @@ export function sortScoutPrepTasks(
   tasks: ScoutPortalTask[],
   sort: Exclude<TaskListSort, null>,
 ): ScoutPortalTask[] {
+  const sortRules = normalizeTaskListSort(sort);
   return tasks
     .map((task, index) => ({ task, index }))
     .sort((left, right) => {
-      const leftValue =
-        sort.key === 'gradYear' ? parseGradYear(left.task) : parseCallAttempt(left.task);
-      const rightValue =
-        sort.key === 'gradYear' ? parseGradYear(right.task) : parseCallAttempt(right.task);
-      return (
-        compareOptionalNumber(leftValue, rightValue, sort.direction) || left.index - right.index
-      );
+      for (const sortRule of sortRules) {
+        const leftValue =
+          sortRule.key === 'gradYear' ? parseGradYear(left.task) : parseCallAttempt(left.task);
+        const rightValue =
+          sortRule.key === 'gradYear' ? parseGradYear(right.task) : parseCallAttempt(right.task);
+        const comparison = compareOptionalNumber(leftValue, rightValue, sortRule.direction);
+        if (comparison !== 0) {
+          return comparison;
+        }
+      }
+
+      return left.index - right.index;
     })
     .map((entry) => entry.task);
 }

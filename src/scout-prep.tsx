@@ -1200,30 +1200,49 @@ function VoicemailFollowUpRecipientForm({
 type ViewMode = 'tasks' | 'recent' | 'prospect' | 'personalFollowUps';
 
 function cycleTaskListSort(current: TaskListSort, key: TaskListSortKey): TaskListSort {
-  if (!current || current.key !== key) {
-    return { key, direction: 'asc' };
+  const currentRules = !current ? [] : Array.isArray(current) ? current : [current];
+  const existingIndex = currentRules.findIndex((rule) => rule.key === key);
+  if (existingIndex === -1) {
+    return [...currentRules, { key, direction: 'asc' }];
   }
-  if (current.direction === 'asc') {
-    return { key, direction: 'desc' };
+
+  const existingRule = currentRules[existingIndex];
+  if (existingRule.direction === 'asc') {
+    return currentRules.map((rule, index) =>
+      index === existingIndex ? { ...rule, direction: 'desc' } : rule,
+    );
   }
-  return null;
+
+  const nextRules = currentRules.filter((rule) => rule.key !== key);
+  return nextRules.length ? nextRules : null;
 }
 
 function getTaskListSortLabel(sort: TaskListSort): string | null {
-  if (!sort) return null;
-  const direction = sort.direction === 'asc' ? '↑' : '↓';
-  return sort.key === 'gradYear' ? `Grad Year ${direction}` : `Call Attempt ${direction}`;
+  const sortRules = !sort ? [] : Array.isArray(sort) ? sort : [sort];
+  if (!sortRules.length) return null;
+  return sortRules
+    .map((rule) => {
+      const direction = rule.direction === 'asc' ? '↑' : '↓';
+      return rule.key === 'gradYear' ? `Grad Year ${direction}` : `Call Attempt ${direction}`;
+    })
+    .join(' • ');
 }
 
 function getSortActionTitle(sort: TaskListSort, key: TaskListSortKey): string {
   const label = key === 'gradYear' ? 'Grad Year' : 'Call Attempt';
-  if (!sort || sort.key !== key) {
+  const sortRules = !sort ? [] : Array.isArray(sort) ? sort : [sort];
+  const existingRule = sortRules.find((rule) => rule.key === key);
+  if (!existingRule) {
     return `Sort ${label} Ascending`;
   }
-  if (sort.direction === 'asc') {
+  if (existingRule.direction === 'asc') {
     return `Sort ${label} Descending`;
   }
   return `Turn Off ${label} Sort`;
+}
+
+function buildScoutPrepTaskItemId(task: ScoutPortalTask): string {
+  return `task:${task.contact_id}:${task.title || 'task'}:${task.due_date || 'due'}`;
 }
 
 type RecentProfileRow = {
@@ -3043,7 +3062,8 @@ function ScoutPrepTaskItem({
 
   return (
     <List.Item
-      key={`${task.contact_id}-${task.title || 'task'}`}
+      id={buildScoutPrepTaskItemId(task)}
+      key={buildScoutPrepTaskItemId(task)}
       icon="⭐"
       title={task.athlete_name}
       keywords={buildTaskSearchKeywords(task)}
@@ -3528,6 +3548,7 @@ export default function ScoutPrepCommand() {
   const [isRecentFollowUpsLoading, setIsRecentFollowUpsLoading] = useState(false);
   const [personalFollowUps, setPersonalFollowUps] = useState<PersonalFollowUpEntry[]>([]);
   const [isPersonalFollowUpsLoading, setIsPersonalFollowUpsLoading] = useState(false);
+  const [selectedTaskItemId, setSelectedTaskItemId] = useState<string | undefined>();
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
@@ -3545,6 +3566,22 @@ export default function ScoutPrepCommand() {
   const selectedRange = mapTaskListFilterToRange(taskListFilter);
   const selectedSectionTitle = getTaskSectionTitle(taskListFilter);
   const selectedSortLabel = getTaskListSortLabel(taskListSort);
+  const selectedTaskTitleBase = selectedSortLabel
+    ? `${selectedSectionTitle} • ${selectedSortLabel}`
+    : selectedSectionTitle;
+  const callAttempt1Count = selectedTaskRows
+    .map((row) => row.task)
+    .filter(isCallAttempt1PortalTask).length;
+  const selectedTaskSectionTitle = `${selectedTaskTitleBase} • Total Tasks: ${selectedTaskRows.length} | T1: ${callAttempt1Count} •`;
+
+  useEffect(() => {
+    if (!selectedTaskItemId) {
+      return;
+    }
+
+    const timer = setTimeout(() => setSelectedTaskItemId(undefined), 0);
+    return () => clearTimeout(timer);
+  }, [selectedTaskItemId]);
 
   const loadTasks = async () => {
     if (loadTasksPromiseRef.current) {
@@ -3891,8 +3928,31 @@ export default function ScoutPrepCommand() {
     });
   }
 
+  function selectFirstTaskRow(rows: typeof selectedTaskRows) {
+    setSelectedTaskItemId(rows[0] ? buildScoutPrepTaskItemId(rows[0].task) : undefined);
+  }
+
+  function selectTaskListFilter(filter: TaskListFilter) {
+    setTaskListFilter(filter);
+    selectFirstTaskRow(
+      buildTaskBucketRows({
+        filter,
+        taskBuckets,
+        sort: taskListSort,
+      }),
+    );
+  }
+
   function cycleSort(key: TaskListSortKey) {
-    setTaskListSort((current) => cycleTaskListSort(current, key));
+    const nextSort = cycleTaskListSort(taskListSort, key);
+    setTaskListSort(nextSort);
+    selectFirstTaskRow(
+      buildTaskBucketRows({
+        filter: taskListFilter,
+        taskBuckets,
+        sort: nextSort,
+      }),
+    );
   }
 
   return (
@@ -3914,7 +3974,7 @@ export default function ScoutPrepCommand() {
           <List.Dropdown
             tooltip="Task List Filter"
             value={taskListFilter}
-            onChange={(newValue) => setTaskListFilter(newValue as TaskListFilter)}
+            onChange={(newValue) => selectTaskListFilter(newValue as TaskListFilter)}
           >
             <List.Dropdown.Item title="Today/PastDue" value="todayPastDue" />
             <List.Dropdown.Item title="Tomorrow" value="tomorrow" />
@@ -3937,6 +3997,7 @@ export default function ScoutPrepCommand() {
       }
       searchText={viewMode === 'prospect' ? prospectSearchText : undefined}
       onSearchTextChange={viewMode === 'prospect' ? setProspectSearchText : undefined}
+      selectedItemId={viewMode === 'tasks' ? selectedTaskItemId : undefined}
     >
       {viewMode === 'personalFollowUps' ? (
         <List.Section title="Personal Follow-Ups" subtitle={String(personalFollowUps.length)}>
@@ -4095,22 +4156,22 @@ export default function ScoutPrepCommand() {
                 <Action
                   title="Show Today/PastDue"
                   shortcut={{ modifiers: ['cmd'], key: '1' }}
-                  onAction={() => setTaskListFilter('todayPastDue')}
+                  onAction={() => selectTaskListFilter('todayPastDue')}
                 />
                 <Action
                   title="Show Tomorrow"
                   shortcut={{ modifiers: ['cmd'], key: '2' }}
-                  onAction={() => setTaskListFilter('tomorrow')}
+                  onAction={() => selectTaskListFilter('tomorrow')}
                 />
                 <Action
                   title="Show Future"
                   shortcut={{ modifiers: ['cmd'], key: '3' }}
-                  onAction={() => setTaskListFilter('future')}
+                  onAction={() => selectTaskListFilter('future')}
                 />
                 <Action
                   title="Show All"
                   shortcut={{ modifiers: ['cmd'], key: '4' }}
-                  onAction={() => setTaskListFilter('all')}
+                  onAction={() => selectTaskListFilter('all')}
                 />
                 <Action
                   title="Personal Follow-Ups"
@@ -4144,22 +4205,15 @@ export default function ScoutPrepCommand() {
           }
         />
       ) : (
-        <List.Section
-          title={
-            selectedSortLabel
-              ? `${selectedSectionTitle} • ${selectedSortLabel}`
-              : selectedSectionTitle
-          }
-          subtitle={String(selectedTaskRows.length)}
-        >
+        <List.Section title={selectedTaskSectionTitle}>
           {selectedTaskRows.map((row) => (
             <ScoutPrepTaskItem
-              key={`${row.task.contact_id}-${row.task.title || 'task'}-${row.task.due_date || 'due'}`}
+              key={buildScoutPrepTaskItemId(row.task)}
               task={row.task}
               taskListSort={taskListSort}
               onToggleProspectSearchMode={toggleProspectSearchMode}
               onShowPersonalFollowUps={showPersonalFollowUps}
-              onSelectTaskListFilter={setTaskListFilter}
+              onSelectTaskListFilter={selectTaskListFilter}
               onCycleTaskListSort={cycleSort}
               onReturnToRootList={() => undefined}
             />

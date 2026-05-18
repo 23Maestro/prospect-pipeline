@@ -136,3 +136,27 @@ test('all items can sort by call attempt with non-attempt rows last', () => {
     ['Attempt 1 Athlete', 'Attempt 3 Athlete', 'Meeting Athlete'],
   );
 });
+
+test('sort keys compound in the provided order', () => {
+  const rows = buildTaskBucketRows({
+    filter: 'all',
+    taskBuckets: {
+      ...buildBuckets(),
+      all: [
+        buildTask('Attempt 2 Senior', '04/22/2026 09:00 AM', '2026', 'Call Attempt 2'),
+        buildTask('Attempt 1 Junior', '04/22/2026 10:00 AM', '2027', 'Call Attempt 1'),
+        buildTask('Attempt 1 Senior', '04/22/2026 11:00 AM', '2026', 'Call Attempt 1'),
+        buildTask('Attempt 2 Junior', '04/22/2026 12:00 PM', '2027', 'Call Attempt 2'),
+      ],
+    },
+    sort: [
+      { key: 'callAttempt', direction: 'asc' },
+      { key: 'gradYear', direction: 'asc' },
+    ],
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Attempt 1 Senior', 'Attempt 1 Junior', 'Attempt 2 Senior', 'Attempt 2 Junior'],
+  );
+});

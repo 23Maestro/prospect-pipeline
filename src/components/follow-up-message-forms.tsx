@@ -20,7 +20,7 @@ type ConfirmationReminderFormValues = {
   variant: ConfirmationFollowUpVariant;
 };
 
-type ConfirmationSubmitMode = 'messages' | 'messages_and_contact';
+type ConfirmationSubmitMode = 'messages_and_contact' | 'copy_message';
 
 export function VoicemailFollowUpMessageForm(props: {
   navigationTitle: string;
@@ -90,16 +90,15 @@ export function VoicemailFollowUpMessageForm(props: {
 export function ConfirmationReminderMessageForm(props: {
   navigationTitle: string;
   defaultVariant: ConfirmationFollowUpVariant;
-  onSubmit: (
-    values: ConfirmationReminderFormValues,
-    mode: ConfirmationSubmitMode,
-  ) => Promise<void>;
-  secondarySubmitTitle?: string;
+  onSubmit: (values: ConfirmationReminderFormValues, mode: ConfirmationSubmitMode) => Promise<void>;
 }) {
   const { pop } = useNavigation();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  async function handleSubmit(values: ConfirmationReminderFormValues, mode: ConfirmationSubmitMode) {
+  async function handleSubmit(
+    values: ConfirmationReminderFormValues,
+    mode: ConfirmationSubmitMode,
+  ) {
     if (isSubmitting) {
       return;
     }
@@ -107,11 +106,13 @@ export function ConfirmationReminderMessageForm(props: {
     setIsSubmitting(true);
     try {
       await props.onSubmit(values, mode);
-      pop();
+      if (mode !== 'copy_message') {
+        pop();
+      }
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Draft failed',
+        title: mode === 'copy_message' ? 'Copy failed' : 'Draft failed',
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
@@ -126,20 +127,17 @@ export function ConfirmationReminderMessageForm(props: {
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title={isSubmitting ? 'Opening…' : 'Messages'}
+            title={isSubmitting ? 'Opening…' : 'Msg + Card'}
             onSubmit={(values) =>
-              void handleSubmit(values as ConfirmationReminderFormValues, 'messages')
+              void handleSubmit(values as ConfirmationReminderFormValues, 'messages_and_contact')
             }
           />
-          {props.secondarySubmitTitle ? (
-            <Action.SubmitForm
-              title={isSubmitting ? 'Opening…' : props.secondarySubmitTitle}
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
-              onSubmit={(values) =>
-                void handleSubmit(values as ConfirmationReminderFormValues, 'messages_and_contact')
-              }
-            />
-          ) : null}
+          <Action.SubmitForm
+            title={isSubmitting ? 'Copying…' : 'Copy Message'}
+            onSubmit={(values) =>
+              void handleSubmit(values as ConfirmationReminderFormValues, 'copy_message')
+            }
+          />
         </ActionPanel>
       }
     >

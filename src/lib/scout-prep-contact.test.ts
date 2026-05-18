@@ -826,7 +826,7 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(card, /### Scout Notes/);
   assert.match(card, /### Summary \/ Deficit/);
   assert.match(card, /### Set Meeting/);
-  assert.match(card, /### Requirements After Yes/);
+  assert.match(card, /### Meeting Requirements/);
   assert.equal((card.match(/^### /gm) || []).length, 6);
   assert.match(
     card,
@@ -858,6 +858,10 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(
     card,
     /> They have \[Day\/Time Option 1\] or \[Day\/Time Option 2\]\. Which works better\?/,
+  );
+  assert.match(
+    card,
+    /Real quick, Bryson: Coach is holding that time specifically for your family, so I want to make sure everyone can be there and ready so it’s a productive meeting for everybody\./,
   );
   assert.match(card, /- Full family on the call: parent, athlete, and mom\/dad\./);
   assert.match(card, /- Scout will call your cell with the Zoom code\./);

@@ -118,7 +118,9 @@ export type HeadScoutBookingsListProps = {
 
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5'];
 const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
+  { title: 'Copy James Card', scoutName: 'James Holcomb' },
   { title: 'Copy Jeffrey Card', scoutName: 'Jeffrey Stein' },
+  { title: 'Copy Logan Card', scoutName: 'Logan Lord' },
   { title: 'Copy Ryan Card', scoutName: 'Ryan Lietz' },
   { title: 'Copy Luther Card', scoutName: 'Luther Winfield' },
   { title: 'Copy Jerami Card', scoutName: 'Jerami Singleton' },
@@ -675,10 +677,14 @@ export function HeadScoutBookingsList({
     variant: ConfirmationFollowUpVariant,
     options?: {
       openContactCard?: boolean;
+      copyOnly?: boolean;
     },
   ) {
     setSendingTextKey(candidate.key);
-    const toast = await showLoadingToast('Opening', candidate.athleteName);
+    const toast = await showLoadingToast(
+      options?.copyOnly ? 'Copying' : 'Opening',
+      candidate.athleteName,
+    );
     try {
       const task = buildCandidateTask(candidate);
       const context = await loadScoutPrepContext(task);
@@ -703,6 +709,14 @@ export function HeadScoutBookingsList({
       });
       if (!prepared.canDraft) {
         throw new Error(prepared.resolvedAppointment.reason);
+      }
+
+      if (options?.copyOnly) {
+        await Clipboard.copy(prepared.message);
+        toast.style = Toast.Style.Success;
+        toast.title = 'Copied';
+        toast.message = variant === 'confirmation_2' ? 'Confirmation 2' : 'Confirmation 1';
+        return;
       }
 
       const confirmation1 =
@@ -804,7 +818,7 @@ export function HeadScoutBookingsList({
             : 'Draft open';
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Open failed';
+      toast.title = options?.copyOnly ? 'Copy failed' : 'Open failed';
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setSendingTextKey((current) => (current === candidate.key ? null : current));
@@ -822,10 +836,10 @@ export function HeadScoutBookingsList({
       <ConfirmationReminderMessageForm
         navigationTitle={`Confirmation Text • ${candidate.athleteName}`}
         defaultVariant={defaultVariant}
-        secondarySubmitTitle={candidate.headScoutName ? 'Msg + Card' : undefined}
         onSubmit={(values, mode) =>
           sendConfirmationText(candidate, values.variant, {
             openContactCard: mode === 'messages_and_contact',
+            copyOnly: mode === 'copy_message',
           })
         }
       />
