@@ -388,6 +388,8 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
   assert.match(appText, /WEEKLY_INDEX_URL/);
   assert.match(appText, /\/prospect-call-tracker\/weekly-results\/index\.json/);
   assert.match(appText, /activeView: 'live-week'/);
+  assert.match(appText, /<option value="live-week">Live<\/option>/);
+  assert.match(appText, /state\.activePeriod = currentWeekPeriod\(\)/);
   assert.match(appText, /counts_as_dial/);
   assert.match(appText, /counts_as_contact/);
   assert.match(appText, /counts_as_meeting_set/);
@@ -410,10 +412,15 @@ test('call tracker archive selector is backed by existing weekly-results files',
   const index = JSON.parse(readFileSync(indexPath, 'utf8'));
 
   assert.match(pageText, /id="weekViewSelect"/);
+  assert.match(pageText, /ID Commander Center: Calls/);
+  assert.doesNotMatch(pageText, /Health OK/);
+  assert.doesNotMatch(pageText, /Sync Complete/);
+  assert.doesNotMatch(pageText, /id="payDateLabel"/);
   assert.match(appText, /getWeeklyArchiveIndex/);
   assert.match(appText, /getWeeklyArchiveDetails/);
   assert.match(appText, /selectedArchiveWeek/);
   assert.match(appText, /activeTopCardMetrics/);
+  assert.match(appText, /dateRangeOptionLabel\(details\?\.week\?\.startDate/);
   assert.doesNotMatch(appText, /activeAllTimeSnapshot/);
   assert.doesNotMatch(pageText, /snapshotDials|snapshotContacts|snapshotMeetings|snapshotSetRate/);
   assert.ok(Array.isArray(index.weeks));

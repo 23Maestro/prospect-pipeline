@@ -291,7 +291,9 @@ function isMeaningfulEvent(row) {
 }
 
 function archiveWeeks() {
-  return Array.isArray(state.weeklyArchiveIndex?.weeks) ? state.weeklyArchiveIndex.weeks : [];
+  return Array.isArray(state.weeklyArchiveIndex?.weeks)
+    ? [...state.weeklyArchiveIndex.weeks].sort((left, right) => String(right.startDate || '').localeCompare(String(left.startDate || '')))
+    : [];
 }
 
 function selectedArchiveFile() {
@@ -452,8 +454,13 @@ function activeTopCardMetrics() {
     const details = selectedArchiveDetails();
     const week = selectedArchiveWeek();
     const summary = details?.summary || week || {};
+    const label =
+      dateRangeOptionLabel(details?.week?.startDate || week?.startDate, details?.week?.endDate || week?.endDate) ||
+      details?.week?.label ||
+      week?.label ||
+      'Archived Week';
     return {
-      label: details?.week?.label || week?.label || 'Archived Week',
+      label,
       dials: Number(summary.dials) || 0,
       contacts: Number(summary.contacts) || 0,
       meetingsSet: Number(summary.meetingsSet) || 0,
@@ -773,9 +780,9 @@ function renderWeekViewSelector() {
     })
     .join('');
   select.innerHTML = `
-    <option value="live-week">${escapeHtml(state.ui?.rangeLabel || currentWeekRangeLabel())}</option>
-    <option value="live-month">${escapeHtml(state.ui?.monthResultLabel || `${monthName()} Results`)}</option>
+    <option value="live-week">Live</option>
     ${archivedOptions}
+    <option value="live-month">${escapeHtml(state.ui?.monthResultLabel || `${monthName()} Results`)}</option>
   `;
   select.value = selected;
 }
@@ -829,6 +836,9 @@ function bootCallTracker() {
   $('weekViewSelect').addEventListener('change', async (event) => {
     state.activeView = event.target.value || 'live-week';
     state.activeFilter = 'meaningful';
+    if (state.activeView === 'live-week') {
+      state.activePeriod = currentWeekPeriod();
+    }
     const file = selectedArchiveFile();
     if (file) {
       $('statusText').textContent = 'Loading archive';

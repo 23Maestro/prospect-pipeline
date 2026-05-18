@@ -60,18 +60,13 @@ export default function ProspectCallTrackerPage() {
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" href="/prospect-call-tracker/prospect-pipeline.png" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260504-brand" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260518-commander-header" />
       <main className="shell">
         <header className="topbar">
           <a className="brand-row" href="/">
             <img className="app-mark" src="/prospect-call-tracker/prospect-pipeline.png" alt="" />
-            <strong>Prospect Web</strong>
+            <strong>ID Commander Center: Calls</strong>
           </a>
-          <div className="topbar-actions">
-            <span className="status-pill health">Health OK</span>
-            <span className="status-pill"><Icon name="check" />Sync Complete</span>
-            <span className="status-pill muted"><Icon name="clock" /><span id="payDateLabel">Next check</span></span>
-          </div>
         </header>
 
         <section className="page-head">
@@ -203,7 +198,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260516-week-archive" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260518-live-selector" strategy="afterInteractive" />
     </>
   );
 }
