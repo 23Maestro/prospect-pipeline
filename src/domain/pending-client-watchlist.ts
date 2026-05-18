@@ -4,6 +4,7 @@ import {
   type ActiveOperatorContext,
   type OwnerKey,
 } from './owners';
+import { resolveSalesLifecycle } from '../lib/sales-lifecycle';
 
 export const PENDING_CLIENT_WATCH_WINDOW_DAYS = 14;
 export const PENDING_CLIENT_LIST_LIMIT = 5;
@@ -46,6 +47,14 @@ export type ReadySetMeetingConfirmationGroup = {
   meetingStartsAt: string;
   meetingEndsAt: string;
   rows: SetMeetingConfirmationCacheRowInput[];
+};
+
+export type PendingClientLifecycleDecision = {
+  eligible: boolean;
+  normalizedStage: string;
+  operatorStatus: string;
+  lifecycleReason: string;
+  reason: string;
 };
 
 export type PendingClientOwnerSnapshot = {
@@ -121,7 +130,7 @@ function parseDateMs(value?: string | null): number {
 
 function getPayloadOperatorKey(row: SetMeetingConfirmationCacheRowInput): string {
   return normalizeText(
-    row.payload_json?.active_operator_key || row.payload_json?.detected_by_operator_key,
+    String(row.payload_json?.active_operator_key || row.payload_json?.detected_by_operator_key || ''),
   );
 }
 
@@ -151,6 +160,56 @@ export function isPendingClientFollowUpTitle(title?: string | null): boolean {
 
 export function isPendingClientReviewEventTitle(title?: string | null): boolean {
   return /^\(FU\)(?:\*\d+)?\s+/i.test(normalizeText(title));
+}
+
+export function hasStrictNoShowEvidence(args: {
+  crmStage?: string | null;
+  bookedEventTitle?: string | null;
+}): boolean {
+  if (/^\(NS\)(?:\*\d+)?\s+/i.test(normalizeText(args.bookedEventTitle))) {
+    return true;
+  }
+  const lifecycle = resolveSalesLifecycle(args.crmStage);
+  return lifecycle.normalizedStage === 'no_show';
+}
+
+export function shouldResolvePendingClientForLifecycle(args: {
+  crmStage?: string | null;
+  bookedEventTitle?: string | null;
+}): boolean {
+  const lifecycle = resolveSalesLifecycle(args.crmStage);
+  return (
+    hasStrictNoShowEvidence(args) ||
+    lifecycle.normalizedStage === 'closed_won' ||
+    lifecycle.normalizedStage === 'closed_lost' ||
+    lifecycle.normalizedStage === 'inactive'
+  );
+}
+
+export function classifyPendingClientLifecycle(args: {
+  crmStage?: string | null;
+  reviewEventTitle?: string | null;
+  reviewDescription?: string | null;
+}): PendingClientLifecycleDecision {
+  const lifecycle = resolveSalesLifecycle(args.crmStage);
+  if (lifecycle.normalizedStage !== 'meeting_follow_up') {
+    return {
+      eligible: false,
+      normalizedStage: lifecycle.normalizedStage,
+      operatorStatus: lifecycle.operatorStatus,
+      lifecycleReason: lifecycle.reason,
+      reason: `CRM lifecycle is ${lifecycle.normalizedStage}, not pending-client follow-up.`,
+    };
+  }
+  return {
+    eligible: true,
+    normalizedStage: lifecycle.normalizedStage,
+    operatorStatus: lifecycle.operatorStatus,
+    lifecycleReason: lifecycle.reason,
+    reason: isPendingClientReviewEventTitle(args.reviewEventTitle) && hasPendingClientWatchNote(args.reviewDescription)
+      ? 'CRM lifecycle and post-meeting (FU) note identify a pending client.'
+      : 'CRM lifecycle identifies a pending client; event-list note is not populated yet.',
+  };
 }
 
 export function filterReadySetMeetingConfirmationGroups(

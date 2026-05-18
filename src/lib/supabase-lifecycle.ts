@@ -471,7 +471,7 @@ function lifecycleMutationEventType(sourcePost: LifecycleMutationSourcePost): st
 function resolveMutationActivitySubtype(args: LifecycleMutationEventArgs): ScoutTaskStatus {
   if (args.activitySubtype) return args.activitySubtype;
   const stageStatus = classifyCrmStage(args.crmStage);
-  if (stageStatus !== 'needs_manual_review') return stageStatus;
+  if (stageStatus) return stageStatus;
   return classifyScoutTask({
     title: args.taskTitle,
     description: args.taskDescription,

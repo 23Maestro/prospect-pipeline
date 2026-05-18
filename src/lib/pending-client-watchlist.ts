@@ -4,16 +4,13 @@ import path from 'path';
 import {
   buildPendingClientResolvedPatch,
   buildPendingClientWatchlistRow,
-  filterReadySetMeetingConfirmationGroups,
+  classifyPendingClientLifecycle,
   findPendingClientSignals,
-  hasPendingClientWatchNote,
   PENDING_CLIENT_LIST_LIMIT,
-  PENDING_CLIENT_WATCH_WINDOW_DAYS,
   selectLatestPendingClientReviewEvent,
+  shouldResolvePendingClientForLifecycle,
   type PendingClientWatchlistRow,
-  type ReadySetMeetingConfirmationGroup,
 } from '../domain/pending-client-watchlist';
-import { getActiveOperator } from '../domain/owners';
 import {
   patchPendingClientWatchlistRow,
   readRows,
@@ -48,20 +45,20 @@ type ExistingPendingClientRow = Pick<
   | 'resolved_by_operator_key'
 >;
 
-type SetMeetingConfirmationCacheRow = {
-  appointment_id: string | null;
+type PipelineStateRow = {
+  athlete_key: string | null;
   athlete_id: string | null;
   athlete_main_id: string | null;
+  crm_stage: string | null;
+  task_status: string | null;
+  head_scout: string | null;
+  current_appointment_id: string | null;
+  updated_at: string | null;
+};
+
+type AthleteRow = {
+  athlete_key: string | null;
   athlete_name: string | null;
-  head_scout_name: string | null;
-  meeting_starts_at: string | null;
-  meeting_ends_at: string | null;
-  meeting_duration_minutes: number | null;
-  source: string | null;
-  kind: string | null;
-  status: string | null;
-  message_body: string | null;
-  payload_json: Record<string, unknown> | null;
 };
 
 const DEFAULT_SCHEMA = 'public';
@@ -142,24 +139,25 @@ function getSupabaseConfig(): SupabasePersistenceConfig | null {
   return url && key ? { url, key, schema } : null;
 }
 
-async function readSetMeetingConfirmationCacheRows(
+async function readCurrentPipelineRows(
   config: SupabasePersistenceConfig,
-  now: Date,
-): Promise<SetMeetingConfirmationCacheRow[]> {
-  const since = new Date(now);
-  since.setDate(since.getDate() - PENDING_CLIENT_WATCH_WINDOW_DAYS);
-  return readRows<SetMeetingConfirmationCacheRow>(
+): Promise<PipelineStateRow[]> {
+  return readRows<PipelineStateRow>(
     config,
-    'set_meeting_confirmation_cache',
+    'athlete_pipeline_state',
     [
-      'select=appointment_id,athlete_id,athlete_main_id,athlete_name,head_scout_name,meeting_starts_at,meeting_ends_at,meeting_duration_minutes,source,kind,status,message_body,payload_json',
-      'status=eq.cached',
-      'source=eq.set_meetings_confirmation',
-      'kind=in.(confirmation_1,confirmation_2)',
-      `meeting_starts_at=gte.${encodeURIComponent(since.toISOString())}`,
-      `meeting_starts_at=lte.${encodeURIComponent(now.toISOString())}`,
-      'order=meeting_starts_at.desc',
+      'select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,head_scout,current_appointment_id,updated_at',
+      'order=updated_at.desc',
+      'limit=1000',
     ].join('&'),
+  );
+}
+
+async function readAthleteRows(config: SupabasePersistenceConfig): Promise<AthleteRow[]> {
+  return readRows<AthleteRow>(
+    config,
+    'athletes',
+    'select=athlete_key,athlete_name&limit=1000',
   );
 }
 
@@ -172,8 +170,22 @@ async function fetchSelectedSalesStage(athleteId: string): Promise<string | null
   }
 }
 
-async function buildConfirmedRowsFromReadySetMeetings(
-  meetings: ReadySetMeetingConfirmationGroup[],
+function isEnded(value?: string | null, now = new Date()): boolean {
+  const parsed = Date.parse(String(value || ''));
+  return !Number.isNaN(parsed) && parsed <= now.getTime();
+}
+
+function buildPendingClientSourceEventId(row: PipelineStateRow): string {
+  const athleteKey = String(row.athlete_key || `${row.athlete_id}:${row.athlete_main_id}`).trim();
+  const appointmentId = String(row.current_appointment_id || 'no-current-appointment').trim();
+  return `pending-client:${athleteKey}:${appointmentId}`;
+}
+
+async function buildConfirmedRowsFromPipelineState(
+  stateRows: PipelineStateRow[],
+  athleteNameByKey: Map<string, string>,
+  config: SupabasePersistenceConfig,
+  now = new Date(),
 ): Promise<{
   rows: PendingClientWatchlistRow[];
   scannedCount: number;
@@ -183,33 +195,77 @@ async function buildConfirmedRowsFromReadySetMeetings(
   const rows: PendingClientWatchlistRow[] = [];
   let aiUnavailableCount = 0;
 
-  for (const meeting of meetings) {
+  for (const state of stateRows) {
+    const athleteId = String(state.athlete_id || '').trim();
+    const athleteMainId = String(state.athlete_main_id || '').trim();
+    if (!athleteId || !athleteMainId) continue;
+
+    const salesStage = (await fetchSelectedSalesStage(athleteId)) || state.crm_stage || '';
+    if (shouldResolvePendingClientForLifecycle({ crmStage: salesStage })) {
+      await patchPendingClientWatchlistRow(
+        config,
+        buildPendingClientSourceEventId(state),
+        buildPendingClientResolvedPatch(),
+      ).catch(() => undefined);
+      continue;
+    }
+
+    const initialDecision = classifyPendingClientLifecycle({ crmStage: salesStage });
+    if (!initialDecision.eligible) continue;
+
     const athleteMeetings = await fetchAthleteBookedMeetings({
-      athleteId: meeting.athleteId,
-      athleteMainId: meeting.athleteMainId,
+      athleteId,
+      athleteMainId,
     }).catch(() => ({ events: [] }));
+    const currentMeeting =
+      (athleteMeetings.events || []).find(
+        (event) => String(event.event_id || '').trim() === String(state.current_appointment_id || '').trim(),
+      ) ||
+      (athleteMeetings.events || [])
+        .filter((event) => isEnded(event.end || event.start, now))
+        .sort((left, right) => String(right.end || right.start).localeCompare(String(left.end || left.start)))[0] ||
+      null;
+    if (!currentMeeting || !isEnded(currentMeeting.end || currentMeeting.start, now)) continue;
+
+    if (
+      shouldResolvePendingClientForLifecycle({
+        crmStage: salesStage,
+        bookedEventTitle: currentMeeting.title,
+      })
+    ) {
+      await patchPendingClientWatchlistRow(
+        config,
+        buildPendingClientSourceEventId(state),
+        buildPendingClientResolvedPatch(),
+      ).catch(() => undefined);
+      continue;
+    }
 
     const reviewEvent = selectLatestPendingClientReviewEvent(
       {
-        event_id: meeting.appointmentId,
-        title: meeting.athleteName,
-        assigned_owner: meeting.headScoutName,
-        start: meeting.meetingStartsAt,
-        end: meeting.meetingEndsAt,
+        event_id: currentMeeting.event_id,
+        title: currentMeeting.title,
+        assigned_owner: currentMeeting.assigned_owner || state.head_scout,
+        start: currentMeeting.start,
+        end: currentMeeting.end,
       },
       athleteMeetings.events || [],
     );
-    if (!reviewEvent) continue;
 
-    const salesStage = await fetchSelectedSalesStage(meeting.athleteId);
-    const description = reviewEvent.description || '';
+    const decision = classifyPendingClientLifecycle({
+      crmStage: salesStage,
+      reviewEventTitle: reviewEvent?.title || currentMeeting.title,
+      reviewDescription: reviewEvent?.description || currentMeeting.description || '',
+    });
+    if (!decision.eligible) continue;
+
+    const description = reviewEvent?.description || currentMeeting.description || '';
     const matchedSignals = findPendingClientSignals(description);
-    if (!hasPendingClientWatchNote(description)) continue;
 
     let aiVerdict: 'pending_client' | null = 'pending_client';
     if (matchedSignals.length) {
       aiVerdict = await confirmPendingClientWithRayAI({
-        title: reviewEvent.title || meeting.athleteName,
+        title: reviewEvent?.title || currentMeeting.title,
         description: [`Sales Stage: ${salesStage || 'Unknown'}`, description].join('\n'),
         matchedSignals,
       });
@@ -222,26 +278,30 @@ async function buildConfirmedRowsFromReadySetMeetings(
     rows.push(
       buildPendingClientWatchlistRow({
         event: {
-          event_id: reviewEvent.event_id || meeting.appointmentId,
-          title: reviewEvent.title || meeting.athleteName,
-          assigned_owner: reviewEvent.assigned_owner || meeting.headScoutName,
-          start: reviewEvent.start || meeting.meetingStartsAt,
-          end: reviewEvent.end || null,
-          date_time_label: reviewEvent.date_time_label,
+          event_id: buildPendingClientSourceEventId(state),
+          title: reviewEvent?.title || currentMeeting.title,
+          assigned_owner: reviewEvent?.assigned_owner || currentMeeting.assigned_owner || state.head_scout,
+          start: reviewEvent?.start || currentMeeting.start,
+          end: reviewEvent?.end || currentMeeting.end || null,
+          date_time_label: reviewEvent?.date_time_label || currentMeeting.date_time_label,
         },
-        description: [`Sales Stage: ${salesStage || 'Unknown'}`, description].join('\n\n'),
+        description: [
+          `Sales Stage: ${salesStage || 'Unknown'}`,
+          `Lifecycle: ${decision.normalizedStage}`,
+          description || decision.reason,
+        ].join('\n\n'),
         matchedSignals,
         aiVerdict,
-        athleteId: meeting.athleteId,
-        athleteMainId: meeting.athleteMainId,
-        athleteName: meeting.athleteName,
+        athleteId,
+        athleteMainId,
+        athleteName: athleteNameByKey.get(String(state.athlete_key || '').trim()) || null,
       }),
     );
   }
 
   return {
     rows,
-    scannedCount: meetings.length,
+    scannedCount: stateRows.length,
     confirmedCount: rows.length,
     aiUnavailableCount,
   };
@@ -291,13 +351,17 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
   }
 
   const now = new Date();
-  const cacheRows = await readSetMeetingConfirmationCacheRows(config, now);
-  const activeOperator = getActiveOperator();
-  const readyMeetings = filterReadySetMeetingConfirmationGroups(cacheRows, {
-    now,
-    activeOperatorKey: activeOperator.operatorKey,
-  });
-  const scan = await buildConfirmedRowsFromReadySetMeetings(readyMeetings);
+  const [stateRows, athleteRows] = await Promise.all([
+    readCurrentPipelineRows(config),
+    readAthleteRows(config),
+  ]);
+  const athleteNameByKey = new Map(
+    athleteRows.map((row) => [
+      String(row.athlete_key || '').trim(),
+      String(row.athlete_name || '').trim(),
+    ]),
+  );
+  const scan = await buildConfirmedRowsFromPipelineState(stateRows, athleteNameByKey, config, now);
 
   if (scan.rows.length) {
     await upsertPendingClientWatchlistRows(config, await buildRowsForUpsert(config, scan.rows));

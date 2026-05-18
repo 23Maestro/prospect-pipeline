@@ -4,6 +4,17 @@ import fetch from 'node-fetch';
 import { randomUUID } from 'node:crypto';
 import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';
 import { upsertPostMeetingOutcomeFacts } from '../src/domain/supabase-persistence.ts';
+import {
+  appointmentStatusForTitleOrStage,
+  crmStageForOutcome,
+  isPostMeetingLifecycleStage,
+  lifecycleTextIncludesAny,
+  normalizeCrmSalesStage,
+  normalizeLifecycleText,
+  parseAppointmentTitleOutcome,
+  shouldArchiveReconciledState,
+  taskStatusForTitleOrStage,
+} from '../src/domain/supabase-lifecycle-translator.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -41,203 +52,6 @@ if (projectRef && !SUPABASE_URL.includes(projectRef)) {
     `Supabase URL ${SUPABASE_URL} does not match linked project ref ${projectRef}. Refusing to write to the wrong project.`,
   );
   process.exit(1);
-}
-
-function normalizeStageText(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s*[-–—]\s*/g, ' ')
-    .replace(/[.,:]+/g, ' ')
-    .replace(/\s+/g, ' ');
-}
-
-function includesAny(haystack, needles) {
-  return needles.some((needle) => haystack.includes(needle));
-}
-
-function parseAppointmentTitleOutcome(title) {
-  const originalTitle = String(title || '').trim();
-  const active = {
-    originalTitle,
-    cleanTitle: originalTitle,
-    outcome: 'active',
-    revenueCents: null,
-    prefix: null,
-  };
-  if (!originalTitle) return active;
-
-  // Prospect ID win titles may be "(ENR)", "(ENR $99)", or "(ENR $99 - Post Date)".
-  // Any ENR prefix is a terminal close-won signal; the dollar amount is optional evidence.
-  const enrollmentMatch = originalTitle.match(/^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?[^)]*\)\s*/i);
-  if (enrollmentMatch) {
-    const revenue = enrollmentMatch[1] ? Number.parseFloat(enrollmentMatch[1]) : Number.NaN;
-    return {
-      originalTitle,
-      cleanTitle: originalTitle.replace(enrollmentMatch[0], '').trim(),
-      outcome: 'terminal_enrollment',
-      revenueCents: Number.isFinite(revenue) ? Math.round(revenue * 100) : null,
-      prefix: enrollmentMatch[0].trim(),
-    };
-  }
-
-  const prefixRules = [
-    { pattern: /^\s*\(RSP\)(?:\*\d+)?\s*/i, outcome: 'reschedule_pending' },
-    { pattern: /^\s*\(CL\)(?:\*\d+)?\s*/i, outcome: 'terminal_close_lost' },
-    { pattern: /^\s*\(FU\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_follow_up' },
-    { pattern: /^\s*\(CAN\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_canceled' },
-    { pattern: /^\s*\(NS\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_no_show' },
-  ];
-
-  for (const rule of prefixRules) {
-    const match = originalTitle.match(rule.pattern);
-    if (match) {
-      return {
-        originalTitle,
-        cleanTitle: originalTitle.replace(match[0], '').trim(),
-        outcome: rule.outcome,
-        revenueCents: null,
-        prefix: match[0].trim(),
-      };
-    }
-  }
-
-  return active;
-}
-
-function normalizeCrmSalesStage(rawCrmStage) {
-  const normalized = normalizeStageText(rawCrmStage);
-  if (!normalized) return 'unknown';
-  if (normalized === 'new opportunity') return 'new_opportunity';
-  if (
-    normalized === 'left voice mail 1' ||
-    normalized === 'left voicemail 1' ||
-    normalized === 'left voice mail 2' ||
-    normalized === 'left voicemail 2' ||
-    normalized === 'never spoke to' ||
-    normalized === 'called unable to leave vm' ||
-    normalized === 'unable to leave vm' ||
-    normalized === 'spoke to athlete not parent' ||
-    normalized === 'athlete not parent'
-  ) {
-    return 'call_attempt';
-  }
-  if (includesAny(normalized, ['closed won', 'close won'])) return 'closed_won';
-  if (includesAny(normalized, ['closed lost', 'close lost'])) {
-    return 'closed_lost';
-  }
-  if (includesAny(normalized, ['inactive', 'dead lead', 'archived', 'not interested', 'too young'])) return 'inactive';
-  if (includesAny(normalized, ['no show', 'noshow'])) return 'no_show';
-  if (
-    includesAny(normalized, [
-      'reschedule pending',
-      'rescheduled pending',
-      'meeting result res pending',
-      'meeting result canceled',
-      'actual meeting canceled',
-    ])
-  ) {
-    return 'reschedule_pending';
-  }
-  if (includesAny(normalized, ['meeting result rescheduled', 'actual meeting rescheduled'])) {
-    return 'rescheduled';
-  }
-  if (normalized === 'rescheduled') return 'rescheduled';
-  if (normalized === 'meeting set') return 'meeting_set';
-  if (
-    includesAny(normalized, [
-      'actual meeting follow up',
-      'spoke to i need to follow up',
-      'spoke to follow up',
-      'meeting follow up',
-      'follow up',
-      'awaiting close',
-      'close pending',
-      'close follow up',
-    ])
-  ) {
-    return 'meeting_follow_up';
-  }
-  return 'unknown';
-}
-
-function taskStatusForStage(rawCrmStage, existingTaskStatus) {
-  const normalizedText = normalizeStageText(rawCrmStage);
-  const normalizedStage = normalizeCrmSalesStage(rawCrmStage);
-
-  if (normalizedText === 'left voice mail 1' || normalizedText === 'left voicemail 1') {
-    return 'call_attempt_1';
-  }
-  if (normalizedText === 'left voice mail 2' || normalizedText === 'left voicemail 2') {
-    return 'call_attempt_2';
-  }
-  if (normalizedText === 'never spoke to') return 'call_attempt_3';
-  if (normalizedText === 'called unable to leave vm' || normalizedText === 'unable to leave vm') {
-    return 'unable_to_leave_vm';
-  }
-  if (normalizedStage === 'meeting_set') return 'confirmation_call';
-  if (normalizedStage === 'reschedule_pending') return 'reschedule_pending';
-  if (normalizedStage === 'rescheduled') return 'confirmation_call';
-  if (normalizedStage === 'no_show') return 'no_show';
-  if (normalizedStage === 'meeting_follow_up') return 'meeting_follow_up';
-  if (normalizedStage === 'closed_won') return 'closed_won';
-  if (normalizedStage === 'closed_lost') return 'closed_lost';
-  if (normalizedStage === 'inactive') return 'inactive';
-
-  return String(existingTaskStatus || '').trim() || 'needs_manual_review';
-}
-
-function taskStatusForTitleOrStage(bookedEventTitle, rawCrmStage, existingTaskStatus) {
-  const normalizedTitle = String(bookedEventTitle || '').trim().toLowerCase();
-  if (normalizedTitle.startsWith('(enr')) return 'closed_won';
-  if (normalizedTitle.startsWith('(cl)')) return 'closed_lost';
-  if (normalizedTitle.startsWith('(rsp)')) return 'reschedule_pending';
-  if (normalizedTitle.startsWith('(can)')) return 'reschedule_pending';
-  if (normalizedTitle.startsWith('(ns)')) return 'no_show';
-  if (normalizedTitle.startsWith('(fu)')) return 'meeting_follow_up';
-  return taskStatusForStage(rawCrmStage, existingTaskStatus);
-}
-
-function appointmentStatusForTitleOrStage(rawCrmStage, bookedEventTitle) {
-  const normalizedTitle = String(bookedEventTitle || '').trim().toLowerCase();
-  if (normalizedTitle.startsWith('(enr')) return 'closed_won';
-  if (normalizedTitle.startsWith('(cl)')) return 'closed_lost';
-  if (normalizedTitle.startsWith('(rsp)')) return 'reschedule_pending';
-  if (normalizedTitle.startsWith('(can)')) return 'canceled';
-  if (normalizedTitle.startsWith('(ns)')) return 'no_show';
-  if (normalizedTitle.startsWith('(fu)')) return 'follow_up';
-
-  const normalizedStage = normalizeCrmSalesStage(rawCrmStage);
-  if (normalizedStage === 'closed_won') return 'closed_won';
-  if (normalizedStage === 'closed_lost') return 'closed_lost';
-  if (normalizedStage === 'reschedule_pending') return 'reschedule_pending';
-  if (normalizedStage === 'rescheduled') return 'rescheduled';
-  if (normalizedStage === 'no_show') return 'no_show';
-  if (normalizedStage === 'meeting_follow_up') return 'follow_up';
-  if (normalizedStage === 'meeting_set') return 'scheduled';
-  return null;
-}
-
-function crmStageForOutcome(titleOutcome, selectedStage) {
-  const trimmedStage = String(selectedStage || '').trim();
-  if (trimmedStage) return trimmedStage;
-  if (titleOutcome === 'terminal_enrollment') return 'Actual Meeting - Close Won';
-  if (titleOutcome === 'terminal_close_lost') return 'Actual Meeting - Close Lost';
-  if (titleOutcome === 'reschedule_pending') return 'Meeting Result - Res. Pending';
-  if (titleOutcome === 'soft_archive_no_show') return 'Meeting Result - No Show';
-  if (titleOutcome === 'soft_archive_canceled') return 'Meeting Result - Canceled';
-  if (titleOutcome === 'soft_archive_follow_up') return 'Actual Meeting - Follow Up';
-  return trimmedStage;
-}
-
-function shouldArchiveReconciledState(titleOutcome) {
-  return new Set([
-    'terminal_enrollment',
-    'terminal_close_lost',
-    'soft_archive_no_show',
-    'soft_archive_canceled',
-    'soft_archive_follow_up',
-  ]).has(titleOutcome);
 }
 
 function parseLooseDate(value) {
@@ -282,7 +96,7 @@ function latestTaskDate(task) {
 
 function staleActiveStateDecision(args) {
   const { row, selectedStageLabel, parsedTitle, bookedMeeting, latestTask } = args;
-  const stageText = normalizeStageText(
+  const stageText = normalizeLifecycleText(
     [
       selectedStageLabel,
       row.crm_stage,
@@ -315,7 +129,7 @@ function staleActiveStateDecision(args) {
     };
   }
 
-  if (includesAny(stageText, ['canceled', 'cancelled']) || row.task_status === 'canceled') {
+  if (lifecycleTextIncludesAny(stageText, ['canceled', 'cancelled']) || row.task_status === 'canceled') {
     return {
       shouldArchive: eventAge >= 10 || taskAge >= 10,
       reason: eventAge >= 10 || taskAge >= 10 ? 'stale_canceled_10_days' : 'keep_canceled_under_10_days',
@@ -392,17 +206,6 @@ function outcomePriority(outcome) {
     default:
       return 0;
   }
-}
-
-function isPostMeetingLifecycleStage(stage) {
-  return new Set([
-    'closed_won',
-    'closed_lost',
-    'reschedule_pending',
-    'rescheduled',
-    'no_show',
-    'meeting_follow_up',
-  ]).has(stage);
 }
 
 function selectReconciliationEvent(events, storedAppointmentId, selectedStage) {

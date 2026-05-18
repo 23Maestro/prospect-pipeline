@@ -16,10 +16,15 @@ test('booked meeting sync uses the shared weekly source resolver and fact builde
   assert.match(source, /buildMeetingSetFact/);
   assert.match(source, /buildOwnerProofPayload/);
   assert.match(source, /resolveOwnerContext/);
+  assert.match(source, /supabase-lifecycle-translator/);
+  assert.match(source, /taskStatusForStage/);
+  assert.match(source, /appointmentStatusForTitleOrStage/);
   assert.match(source, /insertMeetingSetEventsOnce/);
   assert.match(source, /\/scout\/tasks\?range=thisWeek/);
   assert.match(source, /\/calendar\/booked-meetings\?/);
   assert.match(source, /\/calendar\/athlete-booked-meetings\?/);
+  assert.doesNotMatch(source, /function inferCrmStage/);
+  assert.doesNotMatch(source, /function inferTaskStatus/);
 });
 
 test('booked meeting sync does not reintroduce known-athlete prefilter or local Supabase fact writes', () => {

@@ -7,6 +7,7 @@ import {
   classifyCallTrackerReporting,
   classifyCrmStage,
   classifyScoutTask,
+  resolvePipelineTaskStatus,
   trackerOutcomeForTaskStatus,
 } from './scout-task-classifier';
 
@@ -101,4 +102,28 @@ test('task titles classify legacy call attempts from the task text', () => {
   assert.equal(classifyScoutTask({ title: 'Call Attempt 2' }).taskStatus, 'call_attempt_2');
   assert.equal(classifyScoutTask({ title: 'Call Attempt 3' }).taskStatus, 'call_attempt_3');
   assert.equal(classifyScoutTask({ title: 'SCHEDULED FOLLOW-UP' }).taskStatus, 'spoke_to_follow_up');
+});
+
+test('CRM stage classification returns null for blank or unknown stages', () => {
+  assert.equal(classifyCrmStage(''), null);
+  assert.equal(classifyCrmStage('Not A Laravel Stage'), null);
+});
+
+test('pipeline status uses event prefixes, then CRM stage, then legacy task status', () => {
+  assert.equal(
+    resolvePipelineTaskStatus({
+      rawCrmStage: 'Actual Meeting - Follow Up',
+      bookedEventTitle: '(NS)*2 Sample Athlete Football 2027 TX',
+      existingTaskStatus: 'no_show',
+    }),
+    'no_show',
+  );
+  assert.equal(
+    resolvePipelineTaskStatus({
+      rawCrmStage: '',
+      bookedEventTitle: '(NS)*2 Sample Athlete Football 2027 TX',
+      existingTaskStatus: 'meeting_follow_up',
+    }),
+    'no_show',
+  );
 });

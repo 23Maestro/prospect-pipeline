@@ -278,9 +278,9 @@ export function classifyScoutTask(args: {
   };
 }
 
-export function classifyCrmStage(rawCrmStage?: string | null): ScoutTaskStatus {
+export function classifyCrmStage(rawCrmStage?: string | null): ScoutTaskStatus | null {
   const normalized = normalizeText(rawCrmStage);
-  if (!normalized) return 'needs_manual_review';
+  if (!normalized) return null;
   if (normalized === 'new opportunity') return 'new_opportunity';
   if (normalized === 'left voice mail 1' || normalized === 'left voicemail 1') return 'call_attempt_1';
   if (normalized === 'left voice mail 2' || normalized === 'left voicemail 2') return 'call_attempt_2';
@@ -309,7 +309,7 @@ export function classifyCrmStage(rawCrmStage?: string | null): ScoutTaskStatus {
   if (includesAny(normalized, ['closed won', 'close won'])) return 'closed_won';
   if (includesAny(normalized, ['closed lost', 'close lost', 'not interested'])) return 'closed_lost';
   if (includesAny(normalized, ['inactive', 'dead lead', 'archived', 'too young'])) return 'inactive';
-  return 'needs_manual_review';
+  return null;
 }
 
 export function classifyAppointmentTitle(title?: string | null): ScoutTaskStatus | null {

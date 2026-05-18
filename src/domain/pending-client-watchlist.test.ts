@@ -1,14 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 
 import {
   buildPendingClientOwnerSnapshot,
   buildPendingClientResolvedPatch,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
+  classifyPendingClientLifecycle,
   filterReadySetMeetingConfirmationGroups,
   filterPendingClientCandidateEvents,
   findPendingClientSignals,
+  hasStrictNoShowEvidence,
   hasPendingClientWatchNote,
   isPendingClientReviewEventTitle,
   normalizePendingClientAIVerdict,
@@ -220,6 +223,46 @@ test('pending client review title accepts only FU prefixes', () => {
   assert.equal(isPendingClientReviewEventTitle('(FU)*2 Avery Jones Football 2027 TN'), true);
   assert.equal(isPendingClientReviewEventTitle('Follow Up - Avery Jones Football 2027 TN'), false);
   assert.equal(isPendingClientReviewEventTitle('Booked Meeting Avery Jones'), false);
+});
+
+test('pending client lifecycle starts from CRM stage and uses event notes as reason evidence', () => {
+  assert.equal(
+    classifyPendingClientLifecycle({
+      crmStage: 'Actual Meeting - Follow Up',
+      reviewEventTitle: 'Follow Up - Raul Agramonte Football 2027 FL',
+      reviewDescription: 'Follow up with the father on coming aboard.',
+    }).eligible,
+    true,
+  );
+  assert.equal(
+    classifyPendingClientLifecycle({
+      crmStage: 'Meeting Set',
+      reviewEventTitle: 'Follow Up - Raul Agramonte Football 2027 FL',
+      reviewDescription: 'Follow up with the father on coming aboard.',
+    }).eligible,
+    false,
+  );
+});
+
+test('no-show evidence accepts legacy title prefixes and CRM no-show stages', () => {
+  assert.equal(hasStrictNoShowEvidence({ crmStage: 'Meeting Result - No Show' }), true);
+  assert.equal(hasStrictNoShowEvidence({ bookedEventTitle: '(NS)*2 Raul Agramonte Football 2027 FL' }), true);
+  assert.equal(
+    hasStrictNoShowEvidence({
+      crmStage: 'Actual Meeting - Follow Up',
+      bookedEventTitle: '(NS)*2 Raul Agramonte Football 2027 FL',
+    }),
+    true,
+  );
+  assert.equal(hasStrictNoShowEvidence({ crmStage: 'Actual Meeting - Follow Up' }), false);
+});
+
+test('pending client loader does not read the confirmation cache table', () => {
+  const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.doesNotMatch(source, /set_meeting_confirmation_cache/);
+  assert.doesNotMatch(source, /readSetMeetingConfirmationCacheRows/);
+  assert.match(source, /fetchAthleteBookedMeetings/);
+  assert.match(source, /athlete_pipeline_state/);
 });
 
 test('pending client AI verdict accepts exactly pending_client', () => {

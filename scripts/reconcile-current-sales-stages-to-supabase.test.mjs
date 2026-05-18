@@ -3,6 +3,23 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 const source = readFileSync(new URL('./reconcile-current-sales-stages-to-supabase.mjs', import.meta.url), 'utf8');
+const translatorSource = readFileSync(
+  new URL('../src/domain/supabase-lifecycle-translator.ts', import.meta.url),
+  'utf8',
+);
+
+test('current sales-stage reconciler delegates lifecycle translation to the domain translator', () => {
+  assert.match(source, /supabase-lifecycle-translator/);
+  assert.match(source, /parseAppointmentTitleOutcome/);
+  assert.match(source, /taskStatusForTitleOrStage/);
+  assert.match(source, /appointmentStatusForTitleOrStage/);
+  assert.match(source, /crmStageForOutcome/);
+  assert.doesNotMatch(source, /function normalizeCrmSalesStage/);
+  assert.doesNotMatch(source, /function taskStatusForStage/);
+  assert.doesNotMatch(source, /function taskStatusForTitleOrStage/);
+  assert.doesNotMatch(source, /function appointmentStatusForTitleOrStage/);
+  assert.doesNotMatch(source, /function crmStageForOutcome/);
+});
 
 test('current sales-stage reconciler stores post-meeting outcomes through meeting-events domain writer', () => {
   assert.match(source, /buildMeetingOutcomeFact/);
@@ -23,9 +40,9 @@ test('current sales-stage reconciler does not turn ended active meetings into po
 });
 
 test('current sales-stage reconciler treats ENR dollar prefixes as close-won title evidence', () => {
-  assert.ok(source.includes('\\(ENR(?:\\s+\\$?([0-9]+(?:\\.[0-9]{1,2})?))?[^)]*\\)\\s*'));
+  assert.ok(translatorSource.includes('\\(ENR(?:\\s+\\$?([0-9]+(?:\\.[0-9]{1,2})?))?[^)]*\\)\\s*'));
   assert.match(source, /matchStrategy: 'close_won_enrollment_prefix'/);
-  assert.match(source, /revenueCents: Number\.isFinite\(revenue\) \? Math\.round\(revenue \* 100\) : null/);
+  assert.match(translatorSource, /revenueCents: Number\.isFinite\(revenue\) \? Math\.round\(revenue \* 100\) : null/);
 });
 
 test('current sales-stage reconciler documents stage title commission precedence', () => {
@@ -43,7 +60,7 @@ test('current sales-stage reconciler keeps ended active meetings in soft archive
 });
 
 test('current sales-stage reconciler deletes canceled active state after ten days', () => {
-  assert.match(source, /includesAny\(stageText, \['canceled', 'cancelled'\]\)/);
+  assert.match(source, /lifecycleTextIncludesAny\(stageText, \['canceled', 'cancelled'\]\)/);
   assert.match(source, /row\.task_status === 'canceled'/);
   assert.match(source, /stale_canceled_10_days/);
   assert.match(source, /keep_canceled_under_10_days/);

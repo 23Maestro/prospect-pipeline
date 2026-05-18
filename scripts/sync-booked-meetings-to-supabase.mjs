@@ -17,6 +17,10 @@ import {
   upsertAthletePipelineState,
   upsertAthletes,
 } from '../src/domain/supabase-persistence.ts';
+import {
+  appointmentStatusForTitleOrStage,
+  taskStatusForStage,
+} from '../src/domain/supabase-lifecycle-translator.ts';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
@@ -117,28 +121,6 @@ function getSelectedSalesStageLabel(payload) {
   const options = Array.isArray(payload?.options) ? payload.options : [];
   const selected = options.find((option) => option?.selected);
   return String(selected?.label || '').trim() || null;
-}
-
-function inferCrmStage({ selectedStage, latestConfirmationTask }) {
-  const normalizedSelected = String(selectedStage || '').trim().toLowerCase();
-  if (normalizedSelected === 'meeting set') return 'Meeting Set';
-  if (normalizedSelected === 'rescheduled') return 'Rescheduled';
-  if (normalizedSelected === 'no show') return 'No Show';
-
-  const title = String(latestConfirmationTask?.title || '').trim().toLowerCase();
-  if (title.startsWith('(rsp)') || title.includes('rescheduled')) {
-    return 'Rescheduled';
-  }
-
-  return 'Meeting Set';
-}
-
-function inferTaskStatus({ crmStage }) {
-  const normalizedStage = String(crmStage || '').trim().toLowerCase();
-  if (normalizedStage === 'no show') {
-    return 'no_show';
-  }
-  return 'confirmation_call';
 }
 
 function buildCurrentTaskTitle(latestIncompleteConfirmationTask) {
@@ -246,14 +228,11 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
     ).catch(() => ({ options: [] }));
     const selectedStage = getSelectedSalesStageLabel(stagePayload);
 
-    const crmStage = inferCrmStage({
-      selectedStage,
-      latestConfirmationTask,
-    });
-    const taskStatus = inferTaskStatus({ crmStage });
+    const crmStage = String(selectedStage || '').trim() || 'Meeting Set';
+    const taskStatus = taskStatusForStage(crmStage, 'confirmation_call') || 'confirmation_call';
     const appointmentId = String(event.event_id || '').trim();
     const startsAt = normalizeIsoValue(event.start);
-    const appointmentStatus = crmStage === 'Rescheduled' ? 'rescheduled' : 'scheduled';
+    const appointmentStatus = appointmentStatusForTitleOrStage(crmStage, event.title) || 'scheduled';
     const currentTaskId = String(latestIncompleteConfirmationTask?.task_id || '').trim() || null;
     const currentTaskTitle = buildCurrentTaskTitle(latestIncompleteConfirmationTask);
     const dueAt =
