@@ -313,6 +313,70 @@ function firstValue(row: Record<string, any>, paths: string[][]) {
   return '';
 }
 
+function validIsoValue(value: unknown) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  const date = new Date(text);
+  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+}
+
+function lifecycleAppointmentId(row: Record<string, any>) {
+  return firstValue(row, [
+    ['appointment_id'],
+    ['booked_event_id'],
+    ['current_appointment_id'],
+    ['verified_athlete_booked_meeting_id'],
+  ]);
+}
+
+function meetingSetClockFromLifecycle(row: Record<string, any>) {
+  const body = payload(row);
+  if (body.source_post === '/sales/meeting-set') {
+    return validIsoValue(row.created_at);
+  }
+  if (body.source === 'weekly_booked_meetings_with_operator_confirmation_task') {
+    return validIsoValue(
+      firstValue(row, [
+        ['latest_confirmation_task_due_at'],
+        ['matched_weekly_task_due_at'],
+        ['due_at'],
+      ]),
+    );
+  }
+  return validIsoValue(body.occurred_at) || validIsoValue(row.created_at);
+}
+
+function meetingSetClockCorrections(lifecycleRows: Array<Record<string, any>>) {
+  const byAppointment = new Map<string, string>();
+  for (const row of lifecycleRows) {
+    if (row.event_type !== 'meeting_set') continue;
+    const appointmentId = lifecycleAppointmentId(row);
+    const clock = meetingSetClockFromLifecycle(row);
+    if (!appointmentId || !clock) continue;
+    const previous = byAppointment.get(appointmentId);
+    if (!previous || new Date(clock).getTime() < new Date(previous).getTime()) {
+      byAppointment.set(appointmentId, clock);
+    }
+  }
+  return byAppointment;
+}
+
+function normalizeMeetingSetClocks(rows: Array<Record<string, any>>, lifecycleRows: Array<Record<string, any>>) {
+  const corrections = meetingSetClockCorrections(lifecycleRows);
+  return rows.map((row) => {
+    if (row.tracker_outcome !== 'meeting_set' || !row.appointment_id) return row;
+    const correctedClock = corrections.get(String(row.appointment_id));
+    if (!correctedClock) return row;
+    const currentClock = validIsoValue(row.occurred_at || row.event_at);
+    if (currentClock && new Date(currentClock).getTime() === new Date(correctedClock).getTime()) return row;
+    return {
+      ...row,
+      occurred_at: correctedClock,
+      event_at: correctedClock,
+    };
+  });
+}
+
 function classifyLifecycleActivity(row: Record<string, any>) {
   const stage = normalizeKey(row.crm_stage);
   const direct = activityByStage.get(stage);
@@ -573,7 +637,7 @@ async function buildLiveContract() {
   const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : []).map(lifecycleActivityToEvent).filter(Boolean) as Array<Record<string, any>>;
   const viewDedupeKeys = new Set(viewEvents.map((row: Record<string, any>) => row.dedupe_key).filter(Boolean));
   const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
-  const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
+  const materializedEvents = normalizeMeetingSetClocks(mergeEventRows(viewEvents, lifecycleEvents), Array.isArray(lifecycleRows) ? lifecycleRows : []);
   const summary = resolveMeetingSetSummary(
     addLifecycleDeltasToSummary((Array.isArray(summaryRows) ? summaryRows[0] : {}) || {}, lifecycleDeltaEvents),
     [...viewEvents, ...lifecycleDeltaEvents],

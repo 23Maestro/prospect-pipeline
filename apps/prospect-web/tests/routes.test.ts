@@ -387,3 +387,85 @@ test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity
   assert.equal(payload.data.summary.dials, 1);
   assert.equal(payload.data.summary.contacts, 1);
 });
+
+test('/api/call-tracker-data does not use weekly sync time as meeting-set clock', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([
+        { dials: 1, contacts: 1, meetings_set: 1, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 1 },
+      ]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      return Response.json([
+        {
+          athlete_key: '1490499:952328',
+          athlete_id: '1490499',
+          athlete_main_id: '952328',
+          athlete_name: 'Elia Imani',
+          occurred_at: '2026-05-18T14:03:57.075+00:00',
+          event_at: '2026-05-18T14:03:57.075+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Rescheduled',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          source: 'weekly_booked_meetings_with_operator_confirmation_task',
+          appointment_id: '611039',
+          live_event_id: null,
+          booked_event_title: 'Elia Imani Football 2029 TX',
+          revenue_cents: null,
+          dedupe_key: 'meeting_set:1490499:952328:611039',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_dial: true,
+          counts_as_contact: true,
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Logan Lord',
+          resolved_owner_source_field: 'appointmentSetterName',
+          can_materialize_for_active_operator: true,
+          created_at: '2026-05-18T14:03:57.075+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([
+        {
+          id: 'lifecycle-1',
+          athlete_key: '1490499:952328',
+          athlete_id: '1490499',
+          athlete_main_id: '952328',
+          event_type: 'meeting_set',
+          dedupe_key: 'meeting_set:1490499:952328:611039',
+          crm_stage: 'Rescheduled',
+          task_status: 'confirmation_call',
+          created_at: '2026-05-18T14:03:57.075+00:00',
+          payload_json: {
+            source: 'weekly_booked_meetings_with_operator_confirmation_task',
+            appointment_id: '611039',
+            booked_event_id: '611039',
+            latest_confirmation_task_due_at: '2026-05-10T19:04:00.000Z',
+            matched_weekly_task_due_at: 'Sun 05/10/26 03:04 PM',
+          },
+        },
+      ]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const [row] = payload.data.events.filter(
+    (event: { athlete_name?: string; tracker_outcome?: string }) =>
+      event.athlete_name === 'Elia Imani' && event.tracker_outcome === 'meeting_set',
+  );
+  assert.equal(row.occurred_at, '2026-05-10T19:04:00.000Z');
+  assert.equal(row.event_at, '2026-05-10T19:04:00.000Z');
+  assert.notEqual(row.occurred_at, '2026-05-18T14:03:57.075+00:00');
+});
