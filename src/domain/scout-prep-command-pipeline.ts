@@ -98,6 +98,18 @@ function parseMeetingStart(value?: string | Date | null): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeScoutAthleteTask(task: Partial<ScoutAthleteTask>): ScoutAthleteTask {
+  return {
+    task_id: String(task.task_id || '').trim(),
+    title: task.title,
+    assigned_owner: task.assigned_owner,
+    due_date: task.due_date,
+    completion_date: task.completion_date,
+    description: task.description,
+    row_text: task.row_text,
+  };
+}
+
 export function buildScoutPrepCommandContext(args: {
   context: ScoutPrepContext;
   currentMeeting?: BookedMeetingEvent | null;
@@ -120,7 +132,7 @@ export function buildScoutPrepCommandContext(args: {
     athleteIdentity: { athleteId, athleteMainId },
     athleteName: args.context.contactInfo.studentAthlete.name || args.context.task.athlete_name || '',
     task: args.context.task,
-    tasks: getIncompleteTasks(args.context.tasks),
+    tasks: getIncompleteTasks(args.context.tasks).map(normalizeScoutAthleteTask),
     contactSelection: selectScoutPrepContactNumbers(args.context),
     reminderRecipient: getMeetingReminderRecipient(args.context),
     voicemailRecipients,

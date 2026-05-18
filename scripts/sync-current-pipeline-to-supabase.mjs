@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Audit/reconcile job only for external/manual current pipeline drift.
+// Scout Prep Raycast actions are primary action-time writers.
+
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
 import { buildAthleteKey } from '../src/domain/athlete-identity.ts';
@@ -18,6 +21,11 @@ import {
   isDashboardCallActivityStatus,
   stripMoveThisTaskPrefix,
 } from '../src/domain/scout-task-classifier.ts';
+import {
+  appointmentStatusForTitleOrStage,
+  normalizeCrmSalesStage,
+  taskStatusForStage,
+} from '../src/domain/supabase-lifecycle-translator.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -120,16 +128,9 @@ function getSelectedSalesStage(payload) {
   return String(selected?.label || selected?.value || '').trim() || null;
 }
 
-function normalizeSalesStageKey(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-}
-
 function isOpenNewOpportunityQueueItem(args) {
   return (
-    normalizeSalesStageKey(args.selectedSalesStage) === 'new opportunity' &&
+    normalizeCrmSalesStage(args.selectedSalesStage) === 'new_opportunity' &&
     isDashboardCallActivityStatus(args.taskStatus) &&
     !args.completionAt
   );
@@ -294,12 +295,13 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
     });
     const dueAt = parseLegacyTaskDate(taskFromList?.due_date || pipelineTask.due_date);
     const completionAt = parseLegacyTaskDate(taskFromList?.completion_date || pipelineTask.completion_date);
-    const selectedStageIsMeetingSet = String(selectedSalesStage || '').trim().toLowerCase() === 'meeting set';
+    const translatedTaskStatus = taskStatusForStage(selectedSalesStage, mapping.taskStatus) || mapping.taskStatus;
+    const selectedStageIsMeetingSet = normalizeCrmSalesStage(selectedSalesStage) === 'meeting_set';
     const shouldMonitorEndedMeetingSet =
       !currentMeeting &&
       previousMeeting &&
       selectedStageIsMeetingSet &&
-      mapping.taskStatus === 'confirmation_call' &&
+      translatedTaskStatus === 'confirmation_call' &&
       hasMeetingEnded(previousMeeting);
     const appointmentMeeting = currentMeeting || (shouldMonitorEndedMeetingSet ? previousMeeting : null);
     const appointmentId = appointmentMeeting?.event_id
@@ -313,16 +315,16 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       String(resolvePayload.athlete_name || '').trim() ||
       String(pipelineTask.athlete_name || '').trim() ||
       athleteId;
-    const currentAppointmentStatus =
-      mapping.taskStatus === 'no_show'
-        ? 'no_show'
-        : shouldMonitorEndedMeetingSet
-          ? 'awaiting_post_meeting_update'
-          : mapping.taskStatus === 'confirmation_call'
-          ? 'scheduled'
-          : appointmentMeeting
+    const currentAppointmentStatus = shouldMonitorEndedMeetingSet
+      ? 'awaiting_post_meeting_update'
+      : appointmentStatusForTitleOrStage(selectedSalesStage, appointmentMeeting?.title) ||
+        (translatedTaskStatus === 'no_show'
+          ? 'no_show'
+          : translatedTaskStatus === 'confirmation_call'
             ? 'scheduled'
-            : null;
+            : appointmentMeeting
+              ? 'scheduled'
+              : null);
     const ownership = resolveCallTrackerOwnership({
       purpose: 'call_activity',
       trackedOwnerName: TRACKED_OWNER_NAME,
@@ -407,8 +409,8 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
     if (
       appointmentId &&
       currentMeeting &&
-      mapping.taskStatus === 'confirmation_call' &&
-      String(selectedSalesStage || '').trim().toLowerCase() === 'meeting set'
+      translatedTaskStatus === 'confirmation_call' &&
+      selectedStageIsMeetingSet
     ) {
       const titleKey = normalizeMeetingTitleKey(currentMeeting.title || athleteName);
       const existingTransitionAt = existingMeetingSetTransitions.get(`${athleteKey}:${titleKey}`);
@@ -417,7 +419,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
           athleteId,
           athleteMainId,
           crmStage: selectedSalesStage,
-          taskStatus: mapping.taskStatus,
+          taskStatus: translatedTaskStatus,
           payload: {
             ...sourcePayload,
             source: 'scout_tasks_current_pipeline',
@@ -508,7 +510,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
         : selectedSalesStage,
       taskStatus: shouldMonitorEndedMeetingSet
         ? 'post_meeting_update_pending'
-        : mapping.taskStatus,
+        : translatedTaskStatus,
       headScout,
       currentTaskId: String(pipelineTask.task_id || '').trim() || null,
       currentTaskTitle: strippedTaskTitle || rawTaskTitle || null,

@@ -704,6 +704,10 @@ class MeetingSetSubmitRequest(BaseModel):
     contact: str = ""
     openmeetings_list_length: str = "-1"
     template_id: str = "210"
+    meeting_for: Optional[str] = None
+    meetingfor: Optional[str] = None
+    calendar_owner_id: Optional[str] = None
+    booked_meeting_assigned_owner: Optional[str] = None
 
 
 class MeetingSetSubmitResponse(BaseModel):

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Audit/reconcile job only. Raycast Scout Prep actions write Laravel and Supabase at action time.
+// Keep this for external/manual Laravel state, calendar/event-title outcomes, and repair.
+
 import fetch from 'node-fetch';
 import { randomUUID } from 'node:crypto';
 import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';

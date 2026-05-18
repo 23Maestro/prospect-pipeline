@@ -7,10 +7,10 @@ import { searchLogger } from './logger';
 import { resolveSalesLifecycle } from './sales-lifecycle';
 import {
   classifyCallTrackerReporting,
-  classifyCrmStage,
   classifyScoutTask,
   type ScoutTaskStatus,
 } from '../domain/scout-task-classifier';
+import { taskStatusForStage } from '../domain/supabase-lifecycle-translator';
 import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner-resolution';
 import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
 import { buildCallActivityFact } from '../domain/call-tracker-facts';
@@ -470,13 +470,16 @@ function lifecycleMutationEventType(sourcePost: LifecycleMutationSourcePost): st
 
 function resolveMutationActivitySubtype(args: LifecycleMutationEventArgs): ScoutTaskStatus {
   if (args.activitySubtype) return args.activitySubtype;
-  const stageStatus = classifyCrmStage(args.crmStage);
-  if (stageStatus) return stageStatus;
-  return classifyScoutTask({
+  if (args.sourcePost === '/sales/meeting-set') return 'meeting_set';
+  const taskClassification = classifyScoutTask({
     title: args.taskTitle,
     description: args.taskDescription,
     rowText: args.taskStatus || args.crmStage,
   }).taskStatus;
+  if (taskClassification !== 'needs_manual_review') return taskClassification;
+  const stageStatus = taskStatusForStage(args.crmStage, args.taskStatus);
+  if (stageStatus) return stageStatus;
+  return taskClassification;
 }
 
 function resolveMutationOccurredAt(args: LifecycleMutationEventArgs): {

@@ -1,0 +1,43 @@
+# Scout Prep Supabase Source Of Truth
+
+This file pins which workflow owns each Supabase write so lifecycle logic does not drift back into script-local helpers.
+
+## Primary write path
+
+| Workflow | Source action | Laravel/FastAPI write | Supabase write | Notes |
+| --- | --- | --- | --- | --- |
+| Scout Prep post-call action | Raycast Scout Prep | Task/stage update route succeeds first | `recordLifecycleMutation` | This is the primary call activity writer for Raycast-owned actions. |
+| Scout Prep meeting set | Raycast Scout Prep | Meeting creation and sales stage save succeed first | `recordMeetingSet` / lifecycle mutation | Confirmation cache may be updated for text follow-up lookup only. |
+| Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update | Confirmation cache and event title state | Confirmation cache is not lifecycle truth. |
+| Pending Clients | Current pipeline state | Reads current sales stage and athlete event list | Reads Supabase pipeline/lifecycle state | It must not read confirmation cache. |
+
+## Reconcile and audit path
+
+Reconcile scripts exist for state that did not originate from a Raycast action-time write:
+
+- manual Laravel sales stage changes
+- calendar title or event-list changes
+- event description details
+- commission updates
+- historical repair or backfill
+
+These scripts may write Supabase, but they are audit/reconcile/repair jobs, not the primary Scout Prep writer.
+
+## Script roles
+
+| Script | Role |
+| --- | --- |
+| `scripts/reconcile-current-sales-stages-to-supabase.mjs` | Audit/reconcile current Laravel/calendar state into Supabase. |
+| `scripts/sync-current-pipeline-to-supabase.mjs` | Audit/reconcile current pipeline drift and external/manual state. |
+| `scripts/sync-booked-meetings-to-supabase.mjs` | Audit/reconcile booked meeting facts and external calendar state. |
+| `scripts/sync-commissions-to-supabase.mjs` | Audit/reconcile commission rows. |
+| `scripts/backsync-lifecycle-call-activity-events.mjs` | Legacy repair only. |
+| `scripts/materialize-call-tracker-data-contract.mjs` | Legacy/static browser contract materialization only. |
+
+## Rules
+
+- Do not add new script-local lifecycle translation helpers.
+- Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, appointment status, and post-meeting outcome translation.
+- Use `src/lib/supabase-lifecycle.ts` for Raycast action-time Supabase writes.
+- Treat confirmation cache as confirmation-message support only.
+- If a required stage, event title, or athlete event-list fact is missing, fix the source-domain write or reconcile path. Do not add broad fallback guesses.

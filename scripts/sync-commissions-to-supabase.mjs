@@ -3,6 +3,11 @@
 import fetch from 'node-fetch';
 import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';
 import { upsertPostMeetingOutcomeFacts } from '../src/domain/supabase-persistence.ts';
+import {
+  appointmentStatusForTitleOrStage,
+  crmStageForOutcome,
+  taskStatusForTitleOrStage,
+} from '../src/domain/supabase-lifecycle-translator.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -183,16 +188,22 @@ for (const entry of paidEntries) {
       continue;
     }
 
+    const closeWonCrmStage = crmStageForOutcome('terminal_enrollment');
+    const closeWonTaskStatus =
+      taskStatusForTitleOrStage('(ENR)', closeWonCrmStage, 'closed_won') || 'closed_won';
+    const closeWonOutcome =
+      appointmentStatusForTitleOrStage(closeWonCrmStage, '(ENR)') || closeWonTaskStatus;
+
     postMeetingOutcomeFacts.push(buildMeetingOutcomeFact({
       athleteId,
       athleteMainId,
       athleteName: entry.athlete_name,
       occurredAt: paidAt,
       source: 'stripe_commissions',
-      rawCrmStage: 'Actual Meeting - Close Won',
-      rawTaskStatus: 'closed_won',
+      rawCrmStage: closeWonCrmStage,
+      rawTaskStatus: closeWonTaskStatus,
       rawEventType: 'post_meeting_outcome',
-      dedupeOutcome: 'closed_won',
+      dedupeOutcome: closeWonOutcome,
       appointmentId,
       liveEventId: String(bookedMeeting?.event_id || '').trim() || null,
       bookedEventTitle:

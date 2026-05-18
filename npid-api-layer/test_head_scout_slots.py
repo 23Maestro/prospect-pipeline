@@ -4,6 +4,7 @@ import os
 sys.path.append(os.getcwd())
 
 from app.translators.legacy import LegacyTranslator
+from app.models.schemas import MeetingSetSubmitRequest
 
 
 def test_parse_head_scout_slots_response_filters_and_orders_slots():
@@ -102,6 +103,28 @@ def test_open_meetings_request_preserves_meetingfor_field_unchanged():
 
     assert endpoint == "/template/template/openmeetings"
     assert params == {"meetingfor": "1354049"}
+
+
+def test_meeting_set_request_accepts_raycast_head_scout_context_fields():
+    request = MeetingSetSubmitRequest(
+        athlete_id="1490754",
+        athlete_main_id="952580",
+        meeting_name="Raul Agramonte Football 2027 FL",
+        meeting_timezone="EST",
+        assigned_to="1354049",
+        open_event_id="588340",
+        task_description="Main Number:\nOther Details:",
+        start_time="15:00",
+        meeting_for="1354049",
+        meetingfor="1354049",
+        calendar_owner_id="nhVvYOz8bAaL57c",
+        booked_meeting_assigned_owner="Ryan Lietz",
+    )
+
+    assert request.meeting_for == "1354049"
+    assert request.meetingfor == "1354049"
+    assert request.calendar_owner_id == "nhVvYOz8bAaL57c"
+    assert request.booked_meeting_assigned_owner == "Ryan Lietz"
 
 
 def test_build_head_scout_schedule_from_open_meetings_uses_concrete_slots():

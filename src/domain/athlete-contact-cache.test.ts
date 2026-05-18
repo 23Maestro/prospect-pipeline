@@ -2,9 +2,22 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ScoutPrepContext } from '../features/scout-prep/types';
 import {
+  type AthleteContactCacheSyncPlan,
   buildAthleteContactCacheSyncPlan,
   normalizeContactCachePhone,
 } from './athlete-contact-cache';
+
+function assertUpsertPlan(
+  plan: AthleteContactCacheSyncPlan,
+): asserts plan is Extract<AthleteContactCacheSyncPlan, { action: 'upsert' }> {
+  assert.equal(plan.action, 'upsert');
+}
+
+function assertSoftInactivatePlan(
+  plan: AthleteContactCacheSyncPlan,
+): asserts plan is Extract<AthleteContactCacheSyncPlan, { action: 'soft_inactivate' }> {
+  assert.equal(plan.action, 'soft_inactivate');
+}
 
 function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
   return {
@@ -60,7 +73,7 @@ test('buildAthleteContactCacheSyncPlan builds active rows from Scout Prep contac
     seenAt: '2026-05-14T18:00:00.000Z',
   });
 
-  assert.equal(plan.action, 'upsert');
+  assertUpsertPlan(plan);
   assert.equal(plan.athleteKey, '1489000:951000');
   assert.equal(plan.rows.length, 3);
   assert.equal(plan.rows[0].admin_url, 'https://dashboard.nationalpid.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
@@ -95,7 +108,7 @@ test('duplicate same-athlete phones keep one cache row and let student athlete w
     seenAt: '2026-05-14T18:00:00.000Z',
   });
 
-  assert.equal(plan.action, 'upsert');
+  assertUpsertPlan(plan);
   assert.equal(plan.rows.length, 1);
   assert.equal(plan.rows[0].contact_name, 'Avery Jones');
   assert.equal(plan.rows[0].relationship_label, 'Student Athlete');
@@ -109,7 +122,7 @@ test('inactive lifecycle stages soft-inactivate cache rows', () => {
     seenAt: '2026-05-14T18:00:00.000Z',
   });
 
-  assert.equal(plan.action, 'soft_inactivate');
+  assertSoftInactivatePlan(plan);
   assert.equal(plan.athleteKey, '1489000:951000');
   assert.match(plan.inactiveReason, /inactive/i);
 });

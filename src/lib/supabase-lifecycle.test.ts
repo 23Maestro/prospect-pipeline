@@ -358,6 +358,71 @@ test('Laravel POST wrappers call the shared lifecycle mutation writer after succ
   assert.match(salesStageSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/sales\/stage'/);
 });
 
+test('Scout Prep Supabase writes happen after the matching Laravel write succeeds', () => {
+  const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
+  const salesStageSource = fs.readFileSync('src/lib/sales-stage.ts', 'utf8');
+
+  const taskCompletion = scoutPrepSource.slice(
+    scoutPrepSource.indexOf('export async function completeScoutPrepTaskAfterVoicemail'),
+    scoutPrepSource.indexOf('export async function fetchScoutTaskPopup'),
+  );
+  assert.ok(taskCompletion.indexOf("apiFetch('/tasks/complete'") < taskCompletion.indexOf('recordLifecycleMutation({'));
+  assert.ok(taskCompletion.indexOf('if (!response.ok)') < taskCompletion.indexOf('recordLifecycleMutation({'));
+
+  const taskUpdate = scoutPrepSource.slice(
+    scoutPrepSource.indexOf('export async function updateScoutPrepTask'),
+    scoutPrepSource.indexOf('export async function recordCallAttempt3MessageSent'),
+  );
+  assert.ok(taskUpdate.indexOf("apiFetch('/tasks/update'") < taskUpdate.indexOf('recordLifecycleMutation({'));
+  assert.ok(taskUpdate.indexOf('if (!response.ok)') < taskUpdate.indexOf('recordLifecycleMutation({'));
+
+  const callAttempt3 = scoutPrepSource.slice(
+    scoutPrepSource.indexOf('export async function recordCallAttempt3MessageSent'),
+    scoutPrepSource.indexOf('const FOLLOW_UP_STAGE_BY_VARIANT'),
+  );
+  assert.ok(callAttempt3.indexOf("apiFetch('/tasks/call-attempt-3-sent'") < callAttempt3.indexOf('recordLifecycleMutation({'));
+  assert.ok(callAttempt3.indexOf('if (!response.ok)') < callAttempt3.indexOf('recordLifecycleMutation({'));
+
+  const followUp = scoutPrepSource.slice(
+    scoutPrepSource.indexOf('export async function recordVoicemailFollowUpMessageSent'),
+    scoutPrepSource.indexOf('export function resolveGradeLabel'),
+  );
+  assert.ok(followUp.indexOf("apiFetch('/tasks/follow-up-message-sent'") < followUp.indexOf('recordLifecycleMutation({'));
+  assert.ok(followUp.indexOf('if (!response.ok)') < followUp.indexOf('recordLifecycleMutation({'));
+
+  const salesStage = salesStageSource.slice(
+    salesStageSource.indexOf('export async function updateSalesStage'),
+    salesStageSource.indexOf('export async function submitMeetingSet'),
+  );
+  assert.ok(salesStage.indexOf("apiFetch('/sales/stage'") < salesStage.indexOf('recordLifecycleMutation({'));
+  assert.ok(salesStage.indexOf('if (!response.ok)') < salesStage.indexOf('recordLifecycleMutation({'));
+});
+
+test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {
+  const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
+  const postCallFlow = commandSource.slice(
+    commandSource.indexOf('async function handleSubmit'),
+    commandSource.indexOf('let taskCompletionMessage'),
+  );
+
+  assert.ok(postCallFlow.indexOf('submitMeetingSet(initialPlan.laravelMeetingSetSubmit)') > -1);
+  assert.ok(postCallFlow.indexOf('updateSalesStage({') > -1);
+  assert.ok(postCallFlow.indexOf('recordMeetingSet(actionPlan.supabaseLifecycleWrite.args)') > -1);
+  assert.ok(postCallFlow.indexOf('syncMeetingSetConfirmationCacheFromScoutPrep({') > -1);
+  assert.ok(
+    postCallFlow.indexOf('submitMeetingSet(initialPlan.laravelMeetingSetSubmit)') <
+      postCallFlow.indexOf('recordMeetingSet(actionPlan.supabaseLifecycleWrite.args)'),
+  );
+  assert.ok(
+    postCallFlow.indexOf('updateSalesStage({') <
+      postCallFlow.indexOf('recordMeetingSet(actionPlan.supabaseLifecycleWrite.args)'),
+  );
+  assert.ok(
+    postCallFlow.indexOf('recordMeetingSet(actionPlan.supabaseLifecycleWrite.args)') <
+      postCallFlow.indexOf('syncMeetingSetConfirmationCacheFromScoutPrep({'),
+  );
+});
+
 test('task completion wrapper never promotes a task title into raw CRM stage', () => {
   const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
 
@@ -372,6 +437,8 @@ test('task completion wrapper never promotes a task title into raw CRM stage', (
 test('shared lifecycle mutation writer upserts call activity facts at action time', () => {
   const source = fs.readFileSync('src/lib/supabase-lifecycle.ts', 'utf8');
 
+  assert.match(source, /supabase-lifecycle-translator/);
+  assert.match(source, /taskStatusForStage\(args\.crmStage, args\.taskStatus\)/);
   assert.match(source, /buildCallActivityFact/);
   assert.match(source, /request\(config, 'call_activity_events'/);
   assert.match(source, /onConflict: 'task_id'/);

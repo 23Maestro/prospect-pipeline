@@ -8,8 +8,12 @@ test('commission sync uses FastAPI commission source and writes post-meeting out
   assert.match(source, /\/commissions\/stripe/);
   assert.match(source, /buildMeetingOutcomeFact/);
   assert.match(source, /upsertPostMeetingOutcomeFacts/);
+  assert.match(source, /supabase-lifecycle-translator/);
+  assert.match(source, /crmStageForOutcome/);
+  assert.match(source, /taskStatusForTitleOrStage/);
+  assert.match(source, /appointmentStatusForTitleOrStage/);
   assert.match(source, /rawEventType: 'post_meeting_outcome'/);
-  assert.match(source, /rawCrmStage: 'Actual Meeting - Close Won'/);
+  assert.match(source, /rawCrmStage: closeWonCrmStage/);
 });
 
 test('commission sync only materializes paid commission rows and carries duplicate evidence', () => {
@@ -20,7 +24,7 @@ test('commission sync only materializes paid commission rows and carries duplica
 });
 
 test('commission sync enriches the same close-won outcome fact instead of creating account-specific wins', () => {
-  assert.match(source, /dedupeOutcome: 'closed_won'/);
+  assert.match(source, /dedupeOutcome: closeWonOutcome/);
   assert.doesNotMatch(source, /dedupeOutcome: `closed_won:\$\{entry\.account_id/);
   assert.match(source, /Commission rows are paid close-won evidence, not call activity/);
 });

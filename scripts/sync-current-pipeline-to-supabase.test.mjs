@@ -10,9 +10,14 @@ const source = readFileSync(
 test('current pipeline sync writes canonical facts and snapshots through shared persistence', () => {
   assert.match(source, /buildCallActivityFact/);
   assert.match(source, /buildMeetingSetFact/);
+  assert.match(source, /supabase-lifecycle-translator/);
+  assert.match(source, /taskStatusForStage/);
+  assert.match(source, /appointmentStatusForTitleOrStage/);
+  assert.match(source, /normalizeCrmSalesStage/);
   assert.match(source, /upsertAthletePipelineState/);
   assert.match(source, /upsertCallActivityEvents/);
   assert.match(source, /insertMeetingSetEventsOnce/);
+  assert.doesNotMatch(source, /function normalizeSalesStageKey/);
 });
 
 test('current pipeline sync no longer writes raw pipeline snapshot rows as lifecycle events', () => {
@@ -55,7 +60,7 @@ test('current pipeline keeps ended active meeting sets in post-meeting polling s
 test('current pipeline activity facts require task completion clocks instead of open-task due dates', () => {
   assert.match(source, /const completionAt = parseLegacyTaskDate\(taskFromList\?\.completion_date \|\| pipelineTask\.completion_date\)/);
   assert.match(source, /function isOpenNewOpportunityQueueItem/);
-  assert.match(source, /normalizeSalesStageKey\(args\.selectedSalesStage\) === 'new opportunity'/);
+  assert.match(source, /normalizeCrmSalesStage\(args\.selectedSalesStage\) === 'new_opportunity'/);
   assert.match(source, /&& !openNewOpportunityQueueItem\)/);
   assert.match(source, /const activityOccurredAt = completionAt/);
   assert.match(source, /occurredAt: activityOccurredAt/);
@@ -71,5 +76,6 @@ test('current pipeline keeps open New Opportunity call-attempt tasks as state, n
   assert.match(source, /crmStage: shouldMonitorEndedMeetingSet[\s\S]*: selectedSalesStage/);
   assert.match(source, /currentTaskTitle: strippedTaskTitle \|\| rawTaskTitle \|\| null/);
   assert.match(source, /openNewOpportunityQueueItem/);
+  assert.match(source, /taskStatus: shouldMonitorEndedMeetingSet[\s\S]*: translatedTaskStatus/);
   assert.doesNotMatch(source, /reason: 'open_new_opportunity_queue_item_not_call_activity'/);
 });

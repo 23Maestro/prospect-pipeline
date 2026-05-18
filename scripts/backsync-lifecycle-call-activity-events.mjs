@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Legacy repair job only. Do not use this as the primary call-tracker materialization path.
+// Action-time writers own new Scout Prep/Raycast call activity facts.
+
 import { resolve } from 'node:path';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 import {

@@ -523,6 +523,12 @@ export async function recordVoicemailFollowUpMessageSent(args: {
   if (!stage) {
     throw new Error(`No lifecycle update configured for ${args.variant}`);
   }
+  const activitySubtype =
+    args.variant === 'call_attempt_1' ||
+    args.variant === 'call_attempt_2' ||
+    args.variant === 'call_attempt_3'
+      ? args.variant
+      : undefined;
   if (!taskTitle) {
     throw new Error(`Missing task title for ${args.variant}`);
   }
@@ -567,7 +573,7 @@ export async function recordVoicemailFollowUpMessageSent(args: {
     taskId: result.task_id || args.taskId,
     taskTitle,
     taskDescription: description,
-    activitySubtype: args.variant,
+    activitySubtype,
     taskAssignedOwner: getActiveOperator().taskAssignedOwnerName,
     completedDate,
     completedTime,

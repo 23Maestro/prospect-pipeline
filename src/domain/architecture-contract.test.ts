@@ -164,6 +164,37 @@ test('Supabase reporting views materialize only domain facts or explicit compati
   assert.doesNotMatch(migration, /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\)/);
 });
 
+test('Scout Prep Supabase source of truth keeps action-time writes separate from audit jobs', () => {
+  const doc = readRepoFile('docs/architecture/scout-prep-supabase-source-of-truth.md');
+
+  [
+    'recordLifecycleMutation',
+    'recordMeetingSet',
+    'Confirmation cache is not lifecycle truth',
+    'Pending Clients',
+    'It must not read confirmation cache',
+    'manual Laravel sales stage changes',
+    'calendar title or event-list changes',
+    'Legacy repair only',
+    'Do not add new script-local lifecycle translation helpers',
+    'src/domain/supabase-lifecycle-translator.ts',
+    'src/lib/supabase-lifecycle.ts',
+  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+
+  const reconcileSalesStages = readRepoFile('scripts/reconcile-current-sales-stages-to-supabase.mjs');
+  assert.match(reconcileSalesStages, /Audit\/reconcile job only/);
+  assert.match(reconcileSalesStages, /Raycast Scout Prep actions write Laravel and Supabase at action time/);
+
+  const syncCurrentPipeline = readRepoFile('scripts/sync-current-pipeline-to-supabase.mjs');
+  assert.match(syncCurrentPipeline, /Audit\/reconcile job only for external\/manual current pipeline drift/);
+
+  const backsync = readRepoFile('scripts/backsync-lifecycle-call-activity-events.mjs');
+  assert.match(backsync, /Legacy repair job only/);
+
+  const materializer = readRepoFile('scripts/materialize-call-tracker-data-contract.mjs');
+  assert.match(materializer, /Legacy\/materialization utility only/);
+});
+
 test('Prospect Web architecture docs keep hosting adapter scope separate from domain meaning', () => {
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
   const matches = architectureDocs.filter((path) => /prospect web|vercel/i.test(readRepoFile(path)));

@@ -1,5 +1,8 @@
 #!/usr/bin/env node
 
+// Legacy/materialization utility only for static browser contract snapshots.
+// Live workflow facts should come from canonical Supabase fact tables.
+
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
