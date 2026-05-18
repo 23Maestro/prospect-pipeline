@@ -379,6 +379,51 @@ function collegeSportLabel(values: ScoutPrepFormValues, context?: ScoutPrepConte
   return `college ${sportLabel(values, context).toLowerCase()}`;
 }
 
+function resolvedMaxPrepsMascot(context?: ScoutPrepContext): string | null {
+  return (
+    String(context?.resolved.maxpreps?.mascot || context?.resolved.maxpreps_mascot || '').trim() ||
+    null
+  );
+}
+
+function resolvedMaxPrepsSport(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): string | null {
+  return (
+    titleCase(context?.resolved.maxpreps?.sport || context?.resolved.maxpreps_sport) ||
+    sportLabel(values, context)
+  );
+}
+
+function resolvedMaxPrepsStateRank(context?: ScoutPrepContext): string | null {
+  const rawRank = String(
+    context?.resolved.maxpreps?.state_rank || context?.resolved.maxpreps_state_rank || '',
+  ).trim();
+  if (!rawRank) {
+    return null;
+  }
+
+  const state = String(context?.resolved.state || '').trim().toUpperCase();
+  if (/rank/i.test(rawRank)) {
+    return rawRank;
+  }
+  return state ? `${state} Rank ${rawRank.replace(/^#/, '')}` : `Rank ${rawRank.replace(/^#/, '')}`;
+}
+
+function buildMaxPrepsSnapshotLine(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): string | null {
+  const mascot = resolvedMaxPrepsMascot(context);
+  const stateRank = resolvedMaxPrepsStateRank(context);
+  if (!mascot || !stateRank) {
+    return null;
+  }
+
+  return `${mascot} ${resolvedMaxPrepsSport(values, context)} • ${stateRank}`;
+}
+
 function buildSnapshotLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const snapshot: Array<[string, string | null | undefined]> = [
     ['Athlete', context?.contactInfo.studentAthlete.name || values.athleteName],
@@ -394,6 +439,7 @@ function buildSnapshotLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
     ['Position', cleanPositions(context?.resolved.positions)],
     ['School', context?.resolved.high_school],
     ['City / State', formatCityState(context?.resolved.city, context?.resolved.state)],
+    ['Maxpreps', buildMaxPrepsSnapshotLine(values, context)],
   ];
 
   return snapshot
@@ -715,6 +761,19 @@ function buildAcademicScoutNote(values: ScoutPrepFormValues, context?: ScoutPrep
   return `${gpaTone} Does ${pronouns.subject} know what ${pronouns.subject} may want to major in?`;
 }
 
+function buildMaxPrepsLevelPrompt(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): string | null {
+  const mascot = resolvedMaxPrepsMascot(context);
+  if (!mascot) {
+    return null;
+  }
+
+  const athleteFirst = athleteFirstName(values, context);
+  return `What level was ${athleteFirst} playing at as a ${values.gradYear.toLowerCase()} for the ${mascot}?`;
+}
+
 function selectSinglePrompt(prompts: string[]): string | null {
   return prompts.find((prompt) => prompt.trim().length > 0) || null;
 }
@@ -746,6 +805,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
   const measurablePrompt =
     selectSinglePrompt(buildMeasurablePrompts(values, context)) ||
     'What do coaches usually react to first?';
+  const maxPrepsLevelPrompt = buildMaxPrepsLevelPrompt(values, context);
 
   return [
     [
@@ -767,15 +827,17 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '### Confirm Interest',
       '',
       `- Are you comfortable with ${athleteFirst} taking steps to get in front of college coaches?`,
-      `- When it comes to ${collegeSport}, is this something ${athleteFirst} is serious about, or still just exploring?`,
     ].join('\n'),
     [
       '### Scout Notes',
       '',
       `- ${buildAcademicScoutNote(values, context)}`,
+      maxPrepsLevelPrompt ? `- ${maxPrepsLevelPrompt}` : null,
       `- ${positionPrompt}`,
       `- ${measurablePrompt}`,
-    ].join('\n'),
+    ]
+      .filter((line) => line !== null)
+      .join('\n'),
     [
       '### Summary / Deficit',
       '',

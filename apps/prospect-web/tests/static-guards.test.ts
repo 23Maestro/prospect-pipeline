@@ -390,6 +390,10 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
   assert.match(appText, /activeView: 'live-week'/);
   assert.match(appText, /<option value="live-week">Live<\/option>/);
   assert.match(appText, /state\.activePeriod = currentWeekPeriod\(\)/);
+  assert.match(appText, /state\.activePeriod = 'week-total'/);
+  assert.match(appText, /archivePeriodDate/);
+  assert.match(appText, /metricsFromRows\(scopedActivityRows\(\)\)/);
+  assert.match(appText, /button\.disabled = isMonthView\(\)/);
   assert.match(appText, /counts_as_dial/);
   assert.match(appText, /counts_as_contact/);
   assert.match(appText, /counts_as_meeting_set/);
@@ -421,6 +425,7 @@ test('call tracker archive selector is backed by existing weekly-results files',
   assert.match(appText, /selectedArchiveWeek/);
   assert.match(appText, /activeTopCardMetrics/);
   assert.match(appText, /dateRangeOptionLabel\(details\?\.week\?\.startDate/);
+  assert.match(appText, /selectedArchiveDetails\(\)\?\.events/);
   assert.doesNotMatch(appText, /activeAllTimeSnapshot/);
   assert.doesNotMatch(pageText, /snapshotDials|snapshotContacts|snapshotMeetings|snapshotSetRate/);
   assert.ok(Array.isArray(index.weeks));
@@ -440,6 +445,20 @@ test('call tracker archive selector is backed by existing weekly-results files',
       week.file,
     );
   }
+});
+
+test('call tracker commission is a flat twenty percent of revenue', () => {
+  const pageRouteText = readFileSync(join(appRoot, 'app/api/call-tracker-data/route.ts'), 'utf8');
+  const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
+  const materializeText = readFileSync(join(repoRoot, 'scripts/materialize-call-tracker-data-contract.mjs'), 'utf8');
+  for (const source of [pageRouteText, appText, materializeText]) {
+    assert.match(source, /COMMISSION_RATE = 0\.2/);
+    assert.match(source, /commissionCentsForRow/);
+    assert.doesNotMatch(source, /0\.175/);
+    assert.doesNotMatch(source, /firstSubscriptionBillDate/);
+  }
+  assert.doesNotMatch(pageRouteText, /commissionCents[\s\S]*\/ 2/);
+  assert.doesNotMatch(appText, /monthlySubscriptionCommissionCents/);
 });
 
 test('prospect mobile set meetings uses confirmation cache messages', () => {

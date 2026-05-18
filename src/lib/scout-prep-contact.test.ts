@@ -836,8 +836,9 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.doesNotMatch(card, /^>$/m);
   assert.match(
     card,
-    /- Are you comfortable with Bryson taking steps to get in front of college coaches\?\n- When it comes to college football, is this something Bryson is serious about, or still just exploring\?/,
+    /### Confirm Interest\n\n- Are you comfortable with Bryson taking steps to get in front of college coaches\?/,
   );
+  assert.doesNotMatch(card, /still just exploring/);
   assert.match(
     card,
     /We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport/,
@@ -851,6 +852,7 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(card, /For football, June 15 is when coaches can start calling juniors/);
   assert.match(card, /The goal is to use this window before June 15/);
   assert.match(card, /The goal is to use this window before June 15/);
+  assert.doesNotMatch(card, /Maxpreps:/);
   assert.match(
     card,
     /> So the next step is getting you, Bryson, and mom on a Zoom with one of our scouts so they can evaluate where Bryson is and what needs to happen next\./,
@@ -876,6 +878,55 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.doesNotMatch(card, /We don’t want to waste your time/);
   assert.doesNotMatch(card, /team of all-star scouts/i);
   assert.doesNotMatch(card, /Top 500 team/i);
+});
+
+test('buildScoutPrepCard: MaxPreps context adds snapshot rank and mascot level prompt', () => {
+  const card = buildScoutPrepCard(
+    {
+      athleteName: 'Jance Mercado',
+      parent1Name: 'Parent Mercado',
+      gradYear: 'Sophomore',
+      sport: 'Football',
+    },
+    buildContext({
+      resolved: {
+        sport: 'Football',
+        gpa: '3.82',
+        positions: 'OLB',
+        state: 'MO',
+        high_school: 'Republic High School',
+        maxpreps_mascot: 'Republic Tigers',
+        maxpreps_sport: 'Football',
+        maxpreps_state_rank: '24',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Jance Mercado',
+          email: null,
+          phone: null,
+        },
+        parent1: {
+          name: 'Parent Mercado',
+          relationship: 'Parent',
+          email: null,
+          phone: null,
+        },
+        parent2: null,
+      },
+    }),
+  ).markdown;
+
+  assert.match(card, /- \*\*Maxpreps:\*\* Republic Tigers Football • MO Rank 24/);
+  assert.match(
+    card,
+    /- Are you comfortable with Jance taking steps to get in front of college coaches\?/,
+  );
+  assert.doesNotMatch(card, /When it comes to college football/);
+  assert.match(
+    card,
+    /- With a 3\.82, academics can be a real strength in the recruiting conversation\. Does Jance know what he may want to major in\?\n- What level was Jance playing at as a sophomore for the Republic Tigers\?\n- At linebacker, is Jance's separator instincts, physicality, coverage, or sideline-to-sideline speed\?\n- Height, weight, 40, shuttle, anything like that you feel coaches usually react to\?/,
+  );
 });
 
 test('buildScoutPrepCard: uses female athlete pronouns for womens volleyball', () => {
@@ -962,10 +1013,7 @@ test('buildScoutPrepCard: uses resolved sport in live script copy', () => {
     card,
     /Jason made a profile to connect with college coaches and is showing clear interest in playing college men's basketball/,
   );
-  assert.match(
-    card,
-    /When it comes to college men's basketball, is this something Jason is serious about, or still just exploring/,
-  );
+  assert.doesNotMatch(card, /still just exploring/);
   assert.match(card, /serious about men's basketball/);
   assert.match(
     card,

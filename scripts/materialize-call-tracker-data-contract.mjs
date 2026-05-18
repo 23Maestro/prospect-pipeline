@@ -14,7 +14,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const target = resolve(repoRoot, 'apps/prospect-web/public/prospect-call-tracker/data-contract.json');
 const eventLimit = Number(process.env.CALL_TRACKER_CONTRACT_EVENT_LIMIT || 1000);
 const TIME_ZONE = 'America/New_York';
-const COMMISSION_RATE = 0.175;
+const COMMISSION_RATE = 0.2;
 const HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT = 13;
 const hiddenDefaultOutcomes = new Set(['voicemail', 'spoke_follow_up', 'unable_to_leave_vm']);
 const meetingOutcomes = new Set([
@@ -309,6 +309,16 @@ function nextPayDate(now) {
   return ymdToLocalNoon(payYear, payMonth, day <= 14 ? 14 : day <= 28 ? 28 : 14);
 }
 
+function previousPayDate(payDate) {
+  const parts = localParts(payDate);
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  if (day === 28) return ymdToLocalNoon(year, month, 14);
+  const previousMonth = addMonths(year, month, -1);
+  return ymdToLocalNoon(previousMonth.year, previousMonth.month, 28);
+}
+
 function basePayForDate(payDate) {
   const parts = localParts(payDate);
   const year = Number(parts.year);
@@ -317,33 +327,27 @@ function basePayForDate(payDate) {
   return year === 2026 && month >= 5 && month <= 7 && day <= 28 ? 100000 : 50000;
 }
 
-function firstSubscriptionBillDate(row) {
+function commissionCentsForRow(row) {
+  return Math.round((Number(row.revenue_cents) || 0) * COMMISSION_RATE);
+}
+
+function rowBelongsToPaycheck(row, previousPay, payDate) {
   const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
-  if (Number.isNaN(sourceDate.getTime())) return null;
-  const parts = localParts(sourceDate);
-  const year = Number(parts.year);
-  const month = Number(parts.month);
-  const day = Number(parts.day);
-  if (day <= 15) return ymdToLocalNoon(year, month, 23);
-  const nextMonth = addMonths(year, month, 1);
-  return ymdToLocalNoon(nextMonth.year, nextMonth.month, 8);
+  if (Number.isNaN(sourceDate.getTime())) return false;
+  return sourceDate.getTime() > previousPay.getTime() && sourceDate.getTime() <= payDate.getTime();
 }
 
 function paycheck(rows, now) {
   const payDate = nextPayDate(now);
+  const previousPay = previousPayDate(payDate);
   const baseCents = basePayForDate(payDate);
-  const commissionCents = Math.round(rows
-    .filter((row) => row.tracker_outcome === 'closed_won')
-    .reduce((total, row) => {
-      const revenueCents = Number(row.revenue_cents) || 0;
-      const firstBillDate = firstSubscriptionBillDate(row);
-      if (!revenueCents || !firstBillDate) return total;
-      if (firstBillDate.getTime() > now.getTime() || firstBillDate.getTime() > payDate.getTime()) return total;
-      return total + Math.round(revenueCents * COMMISSION_RATE);
-    }, 0) / 2);
+  const commissionCents = rows
+    .filter((row) => row.tracker_outcome === 'closed_won' && rowBelongsToPaycheck(row, previousPay, payDate))
+    .reduce((total, row) => total + commissionCentsForRow(row), 0);
   return {
     payDate: payDate.toISOString(),
     payDateLabel: `Next check ${localDateLabel(payDate)}`,
+    previousPayDate: previousPay.toISOString(),
     baseCents,
     commissionCents,
     totalCents: baseCents + commissionCents,

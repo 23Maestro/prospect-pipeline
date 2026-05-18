@@ -1,7 +1,7 @@
 const CONTRACT_URL = '/api/call-tracker-data';
 const WEEKLY_INDEX_URL = '/prospect-call-tracker/weekly-results/index.json';
 const TIME_ZONE = 'America/New_York';
-const COMMISSION_RATE = 0.175;
+const COMMISSION_RATE = 0.2;
 
 const labels = {
   meaningful: 'Meaningful',
@@ -48,11 +48,14 @@ function $(id) {
 }
 
 function money(cents) {
+  const value = Number(cents) || 0;
+  const fractionDigits = Math.abs(value % 100) === 0 ? 0 : 2;
   return new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format((Number(cents) || 0) / 100);
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(value / 100);
 }
 
 function escapeHtml(value) {
@@ -201,6 +204,24 @@ function currentWeekRangeLabel() {
   return `${localDateLabel(currentWeekdayDate(0))} - ${localDateLabel(currentWeekdayDate(6))}`;
 }
 
+function archivePeriodDate(period) {
+  const week = selectedArchiveWeek();
+  if (!week?.startDate || period === 'week-total' || !String(period || '').startsWith('week-')) {
+    return null;
+  }
+  const start = ymdToLocalNoon(...week.startDate.split('-').map(Number));
+  return offsetLocalDate(start, Number(String(period).replace('week-', '')) || 0);
+}
+
+function archivePeriodLabel(period) {
+  const week = selectedArchiveWeek();
+  if (period === 'week-total') {
+    return dateRangeOptionLabel(week?.startDate, week?.endDate) || week?.label || 'Archived Week';
+  }
+  const date = archivePeriodDate(period);
+  return date ? localDayDateLabel(date) : 'Archived Day';
+}
+
 function ymdToLocalNoon(year, month, day) {
   return new Date(Date.UTC(year, month - 1, day, 16, 0, 0));
 }
@@ -260,7 +281,7 @@ async function loadData() {
   state.summary = data.summary || {};
   state.rows = Array.isArray(data.events) ? data.events : [];
   state.ui = data.ui || null;
-  if (state.ui?.activePeriod) state.activePeriod = state.ui.activePeriod;
+  if (state.activeView === 'live-week' && state.ui?.activePeriod) state.activePeriod = state.ui.activePeriod;
   render();
 }
 
@@ -318,6 +339,10 @@ function isMonthView() {
   return state.activeView === 'live-month';
 }
 
+function isWeekTotalView() {
+  return state.activePeriod === 'week-total';
+}
+
 function dateKeyInRange(key, start, end) {
   return Boolean(key && key >= start && key <= end);
 }
@@ -335,6 +360,14 @@ function currentMonthRange() {
 }
 
 function periodScopedRows(rows, dateKeyForRow = eventDateKey) {
+  if (isArchiveView()) {
+    const archiveRows = Array.isArray(selectedArchiveDetails()?.events) ? selectedArchiveDetails().events : [];
+    if (isWeekTotalView()) return archiveRows;
+    const date = archivePeriodDate(state.activePeriod);
+    const periodKey = date ? localDateKey(date) : '';
+    return archiveRows.filter((row) => dateKeyForRow(row) === periodKey);
+  }
+
   if (state.activePeriod === 'week-total') {
     const weekStart = localDateKey(currentWeekdayDate(0));
     const weekEnd = localDateKey(currentWeekdayDate(6));
@@ -349,10 +382,14 @@ function periodScopedRows(rows, dateKeyForRow = eventDateKey) {
 }
 
 function scopedRows() {
+  if (isArchiveView()) return periodScopedRows(selectedArchiveDetails()?.events || []);
   return periodScopedRows(displayRows());
 }
 
 function scopedActivityRows() {
+  if (isArchiveView()) {
+    return periodScopedRows(selectedArchiveDetails()?.events || [], (row) => localDateKey(row.occurred_at));
+  }
   return periodScopedRows(displayRows(), (row) => localDateKey(row.occurred_at));
 }
 
@@ -459,6 +496,12 @@ function activeTopCardMetrics() {
       details?.week?.label ||
       week?.label ||
       'Archived Week';
+    if (!isWeekTotalView() && details) {
+      return {
+        label: archivePeriodLabel(state.activePeriod),
+        ...metricsFromRows(scopedActivityRows()),
+      };
+    }
     return {
       label,
       dials: Number(summary.dials) || 0,
@@ -495,8 +538,8 @@ function renderPeriod() {
     // Soft-disabled for now. Re-enable when show rate belongs back in the top-card flow.
     // setRateText('todayShowRate', outcomeRates.showRate, true);
     document.querySelectorAll('[data-period]').forEach((button) => {
-      button.classList.toggle('active', !isArchiveView() && !isMonthView() && button.dataset.period === state.activePeriod);
-      button.disabled = isArchiveView() || isMonthView();
+      button.classList.toggle('active', !isMonthView() && button.dataset.period === state.activePeriod);
+      button.disabled = isMonthView();
     });
     return;
   }
@@ -533,6 +576,16 @@ function nextPayDate(now = new Date()) {
   return ymdToLocalNoon(payYear, payMonth, payDay);
 }
 
+function previousPayDate(payDate) {
+  const parts = localParts(payDate);
+  const year = Number(parts.year);
+  const month = Number(parts.month);
+  const day = Number(parts.day);
+  if (day === 28) return ymdToLocalNoon(year, month, 14);
+  const previousMonth = addMonths(year, month, -1);
+  return ymdToLocalNoon(previousMonth.year, previousMonth.month, 28);
+}
+
 function basePayForDate(payDate) {
   const parts = localParts(payDate);
   const year = Number(parts.year);
@@ -542,34 +595,21 @@ function basePayForDate(payDate) {
   return bonusBaseActive ? 100000 : 50000;
 }
 
-function firstSubscriptionBillDate(row) {
-  const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
-  if (Number.isNaN(sourceDate.getTime())) return null;
-  const parts = localParts(sourceDate);
-  const year = Number(parts.year);
-  const month = Number(parts.month);
-  const day = Number(parts.day);
-
-  if (day <= 15) {
-    return ymdToLocalNoon(year, month, 23);
-  }
-
-  const nextMonth = addMonths(year, month, 1);
-  return ymdToLocalNoon(nextMonth.year, nextMonth.month, 8);
+function commissionCentsForRow(row) {
+  return Math.round((Number(row.revenue_cents) || 0) * COMMISSION_RATE);
 }
 
-function monthlySubscriptionCommissionCents(payDate, now = new Date()) {
+function rowBelongsToPaycheck(row, previousPay, payDate) {
+  const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
+  if (Number.isNaN(sourceDate.getTime())) return false;
+  return sourceDate.getTime() > previousPay.getTime() && sourceDate.getTime() <= payDate.getTime();
+}
+
+function paycheckCommissionCents(payDate) {
+  const previousPay = previousPayDate(payDate);
   return state.rows
-    .filter((row) => row.tracker_outcome === 'closed_won')
-    .reduce((total, row) => {
-      const revenueCents = Number(row.revenue_cents) || 0;
-      const firstBillDate = firstSubscriptionBillDate(row);
-      if (!revenueCents || !firstBillDate) return total;
-      if (firstBillDate.getTime() > now.getTime() || firstBillDate.getTime() > payDate.getTime()) {
-        return total;
-      }
-      return total + Math.round(revenueCents * COMMISSION_RATE);
-    }, 0);
+    .filter((row) => row.tracker_outcome === 'closed_won' && rowBelongsToPaycheck(row, previousPay, payDate))
+    .reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
 function renderPaycheck() {
@@ -581,10 +621,9 @@ function renderPaycheck() {
     return;
   }
 
-  const now = new Date();
   const payDate = nextPayDate();
   const baseCents = basePayForDate(payDate);
-  const commissionCents = Math.round(monthlySubscriptionCommissionCents(payDate, now) / 2);
+  const commissionCents = paycheckCommissionCents(payDate);
   const totalCents = baseCents + commissionCents;
 
   setText('payDateLabel', `Next check ${localDateLabel(payDate)}`);
@@ -714,8 +753,9 @@ function renderClosedWon() {
 }
 
 function renderFilters() {
-  const counts = state.ui?.periods?.[state.activePeriod]?.outcomeCounts || outcomeCounts();
-  const materializedFilterCounts = state.ui?.periods?.[state.activePeriod]?.filterCounts || null;
+  const activeMetrics = activeTopCardMetrics();
+  const counts = activeMetrics?.outcomeCounts || state.ui?.periods?.[state.activePeriod]?.outcomeCounts || outcomeCounts();
+  const materializedFilterCounts = activeMetrics?.filterCounts || state.ui?.periods?.[state.activePeriod]?.filterCounts || null;
   const rows = scopedRows();
   $('filters').innerHTML = tableFilters
     .map((outcome) => {
@@ -838,6 +878,8 @@ function bootCallTracker() {
     state.activeFilter = 'meaningful';
     if (state.activeView === 'live-week') {
       state.activePeriod = currentWeekPeriod();
+    } else if (selectedArchiveFile()) {
+      state.activePeriod = 'week-total';
     }
     const file = selectedArchiveFile();
     if (file) {

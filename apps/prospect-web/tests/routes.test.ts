@@ -469,3 +469,58 @@ test('/api/call-tracker-data does not use weekly sync time as meeting-set clock'
   assert.equal(row.event_at, '2026-05-10T19:04:00.000Z');
   assert.notEqual(row.occurred_at, '2026-05-18T14:03:57.075+00:00');
 });
+
+test('/api/call-tracker-data calculates paycheck commission as twenty percent of revenue', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const closedWonAt = new Date().toISOString();
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([
+        { dials: 0, contacts: 0, meetings_set: 0, meeting_outcomes_total: 1, closed_won: 1, money_earned_cents: 10000, voicemail_only: 0, appointments_tracked: 0 },
+      ]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      return Response.json([
+        {
+          athlete_name: 'Commission Athlete',
+          occurred_at: closedWonAt,
+          event_at: closedWonAt,
+          tracker_outcome: 'closed_won',
+          raw_crm_stage: 'Actual Meeting - Close Won',
+          raw_task_status: 'closed_won',
+          raw_event_type: 'post_meeting_outcome',
+          source: 'stripe_commissions',
+          appointment_id: 'paid-1',
+          live_event_id: 'paid-1',
+          booked_event_title: '(ENR) Commission Athlete',
+          revenue_cents: 10000,
+          dedupe_key: 'post_meeting_outcome:paid-1:closed_won',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_dial: false,
+          counts_as_contact: false,
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Jerami Singleton',
+          resolved_owner_source_field: 'bookedMeeting.assigned_owner',
+          can_materialize_for_active_operator: true,
+          created_at: closedWonAt,
+        },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.data.ui.paycheck.commissionCents, 2000);
+});
