@@ -387,3 +387,21 @@ test('meeting set facts reject rows that do not come from a booked calendar even
     /appointment_id\/event_id/,
   );
 });
+
+test('meeting set facts reject rescheduled pipeline state', () => {
+  assert.throws(
+    () =>
+      buildMeetingSetFact({
+        athleteId: '1491000',
+        athleteMainId: '952900',
+        crmStage: 'Rescheduled',
+        taskStatus: 'confirmation_call',
+        payload: {
+          source: 'weekly_booked_meetings_with_operator_confirmation_task',
+          appointment_id: '613999',
+          meeting_name: 'Bryce Hill Football 2026 PA',
+        },
+      }),
+    /CRM stage Meeting Set/,
+  );
+});

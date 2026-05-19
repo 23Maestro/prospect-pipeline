@@ -461,6 +461,11 @@ h2 {
   color: var(--green);
 }
 
+.red-card .ui-icon,
+#todayMeetingsSet {
+  color: var(--red);
+}
+
 .amber-card .ui-icon,
 #closedWon {
   color: var(--amber);
@@ -957,6 +962,11 @@ tbody tr:hover .pill {
 .pill.voicemail {
   background: rgba(0, 112, 243, 0.14);
   color: #58a6ff;
+}
+
+.pill.spoke_follow_up {
+  background: rgba(245, 165, 36, 0.14);
+  color: var(--amber);
 }
 
 .pill.no_show,

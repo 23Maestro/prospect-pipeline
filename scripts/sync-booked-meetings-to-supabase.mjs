@@ -21,6 +21,7 @@ import {
   appointmentStatusForTitleOrStage,
   taskStatusForStage,
 } from '../src/domain/supabase-lifecycle-translator.ts';
+import { classifyMeetingSetStage } from '../src/domain/sales-stage-contract.ts';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
@@ -190,6 +191,7 @@ const appointmentsById = new Map();
 const meetingSetEvents = [];
 const athletePipelineStateRows = [];
 const failures = [];
+const nonMeetingSetSkipped = [];
 
 for (const [index, candidate] of meetingSetCandidates.entries()) {
   const event = {
@@ -317,17 +319,27 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       }),
     };
 
-    // Clock contract: lifecycle_events.created_at is when this athlete became Meeting Set.
-    // Appointment start/end stay in payload_json as meeting evidence; sync reruns insert-once
-    // by dedupe_key so daily tracking never moves to the latest sync time.
-    meetingSetEvents.push(buildMeetingSetFact({
-      athleteId: candidate.athleteId,
-      athleteMainId: candidate.athleteMainId,
-      crmStage,
-      taskStatus,
-      payload,
-      createdAt: updatedAt,
-    }));
+    if (classifyMeetingSetStage(crmStage)) {
+      // Clock contract: lifecycle_events.created_at is when this athlete became Meeting Set.
+      // Appointment start/end stay in payload_json as meeting evidence; sync reruns insert-once
+      // by dedupe_key so daily tracking never moves to the latest sync time.
+      meetingSetEvents.push(buildMeetingSetFact({
+        athleteId: candidate.athleteId,
+        athleteMainId: candidate.athleteMainId,
+        crmStage,
+        taskStatus,
+        payload,
+        createdAt: updatedAt,
+      }));
+    } else {
+      nonMeetingSetSkipped.push({
+        athlete_key: candidate.athleteKey,
+        athlete_name: candidate.athleteName,
+        appointment_id: appointmentId,
+        crm_stage: crmStage,
+        reason: 'booked_meeting_updates_state_only_not_meeting_set_fact',
+      });
+    }
 
     athletePipelineStateRows.push(buildPipelineStateSnapshot({
       athleteId: candidate.athleteId,
@@ -366,6 +378,7 @@ console.log(
       appointmentsUpserted: appointmentsById.size,
       meetingSetEventsInsertedOnce: meetingSetEvents.length,
       athletePipelineStateUpserted: athletePipelineStateRows.length,
+      nonMeetingSetSkipped,
       failures,
     },
     null,

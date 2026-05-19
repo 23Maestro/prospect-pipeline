@@ -10,6 +10,7 @@ import {
   classifyCallTrackerReporting,
   type ActivityKind,
 } from './scout-task-classifier';
+import { classifyMeetingSetStage } from './sales-stage-contract';
 
 function normalizeValue(value?: string | number | null): string | null {
   const trimmed = String(value || '').trim();
@@ -497,6 +498,9 @@ export function buildMeetingOutcomeFact(args: {
 
 export function buildMeetingSetFact(args: MeetingSetFactInput): MeetingSetFactRow {
   const identity = validateAthleteIdentity(args);
+  if (!classifyMeetingSetStage(args.crmStage || '')) {
+    throw new Error(`Meeting set facts require CRM stage Meeting Set. Received ${args.crmStage || 'missing'}.`);
+  }
   const appointmentId = normalizeValue(
     (args.payload?.appointment_id as string | number | null | undefined) ||
       (args.payload?.booked_event_id as string | number | null | undefined),

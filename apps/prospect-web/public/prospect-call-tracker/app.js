@@ -602,6 +602,12 @@ function commissionCentsForRow(row) {
   return Math.round((Number(row.revenue_cents) || 0) * COMMISSION_RATE);
 }
 
+function allTimeCommissionCents() {
+  return state.rows
+    .filter((row) => row.tracker_outcome === 'closed_won')
+    .reduce((total, row) => total + commissionCentsForRow(row), 0);
+}
+
 function rowBelongsToPaycheck(row, previousPay, payDate) {
   const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
   if (Number.isNaN(sourceDate.getTime())) return false;
@@ -638,7 +644,8 @@ function renderPaycheck() {
 function renderSummary() {
   const summary = state.summary || {};
   const cards = state.ui?.summaryCards;
-  setText('moneyEarned', money(cards?.moneyEarnedCents ?? summary.money_earned_cents));
+  const fallbackCommissionCents = allTimeCommissionCents() || Math.round((Number(summary.money_earned_cents) || 0) * COMMISSION_RATE);
+  setText('moneyEarned', money(cards?.moneyEarnedCents ?? fallbackCommissionCents));
   setText('closedWon', cards?.closedWon ?? summary.closed_won ?? 0);
   setText('spokeWith', cards?.contacts ?? summary.contacts ?? 0);
   setText('totalEvents', cards?.dials ?? summary.dials ?? 0);
@@ -796,18 +803,21 @@ function visibleRows() {
 function renderTable() {
   $('eventsBody').innerHTML = visibleRows()
     .map(
-      (row) => `
+      (row) => {
+        const outcome = displayOutcome(row);
+        return `
         <tr>
           <td>${shortDate(row.event_at || row.occurred_at)}</td>
           <td class="name-cell">${row.athlete_name || ''}</td>
-          <td><span class="pill ${row.tracker_outcome}">${labels[row.tracker_outcome] || row.tracker_outcome}</span></td>
+          <td><span class="pill ${outcome}">${labels[outcome] || outcome}</span></td>
           <td>${displayStage(row)}</td>
           <td class="event-title" title="${eventTitle(row)}">
             <span>${eventTitle(row)}</span>
           </td>
           <td class="money-cell">${Number(row.revenue_cents || 0) ? money(row.revenue_cents) : ''}</td>
         </tr>
-      `,
+      `;
+      },
     )
     .join('');
 }
@@ -847,6 +857,13 @@ function titleCaseLabel(value) {
 
 function displayStage(row) {
   return titleCaseLabel(row.raw_crm_stage || row.raw_task_status || row.raw_event_type || '');
+}
+
+function displayOutcome(row) {
+  if (row.tracker_outcome === 'voicemail' && displayStage(row) === 'Meeting Set') {
+    return 'spoke_follow_up';
+  }
+  return row.tracker_outcome;
 }
 
 function eventTitle(row) {

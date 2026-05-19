@@ -49,6 +49,12 @@ test('booked meeting sync writes materialized owner proof before inserting meeti
   assert.match(source, /payload,\s*createdAt: updatedAt/s);
 });
 
+test('booked meeting sync only writes Meeting Set facts for true Meeting Set stage', () => {
+  assert.match(source, /classifyMeetingSetStage\(crmStage\)/);
+  assert.match(source, /nonMeetingSetSkipped/);
+  assert.match(source, /booked_meeting_updates_state_only_not_meeting_set_fact/);
+});
+
 test('one-time confirmation cache resolver can write the full confirmed window and only confirmation cache rows', () => {
   assert.match(confirmationCacheResolverSource, /process\.env\.LIMIT \|\| '11'/);
   assert.match(confirmationCacheResolverSource, /buildTodayThroughNextSundayWindow/);

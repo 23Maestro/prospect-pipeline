@@ -169,6 +169,9 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260519012000_call_tracker_meeting_set_athlete_identity.sql',
     'supabase/migrations/20260519013000_call_tracker_meeting_set_entry_counts.sql',
     'supabase/migrations/20260519014000_call_tracker_owner_context_source_flags.sql',
+    'supabase/migrations/20260519015000_repair_rescheduled_meeting_set_flags.sql',
+    'supabase/migrations/20260519016000_call_tracker_reschedule_preserves_first_meeting_set.sql',
+    'supabase/migrations/20260519017000_call_tracker_restore_reconcile_clock_and_first_reschedule_identity.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
     'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
@@ -485,6 +488,8 @@ test('call tracker commission is a flat twenty percent of revenue', () => {
   }
   assert.doesNotMatch(pageRouteText, /commissionCents[\s\S]*\/ 2/);
   assert.doesNotMatch(appText, /monthlySubscriptionCommissionCents/);
+  assert.match(pageRouteText, /moneyEarnedCents: commissionCentsForRows\(rows\)/);
+  assert.match(appText, /fallbackCommissionCents/);
 });
 
 test('prospect mobile set meetings uses confirmation cache messages', () => {

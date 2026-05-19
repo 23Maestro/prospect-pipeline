@@ -284,6 +284,8 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
         athlete_name: 'Carson visser',
         occurred_at: '2026-05-05T18:22:20+00:00',
         event_at: '2026-05-05T18:22:20+00:00',
+        reporting_at: '2026-05-05T18:22:20+00:00',
+        reporting_date_et: '2026-05-05',
         tracker_outcome: 'meeting_set',
         raw_crm_stage: 'Meeting Set',
         raw_event_type: 'lifecycle_meeting_set',
@@ -306,7 +308,17 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
       };
       return Response.json([
         { ...base, source: 'lifecycle_meeting_set', raw_task_status: 'SCHEDULED FOLLOW-UP', dedupe_key: null },
-        { ...base, source: 'scout_tasks_current_pipeline', raw_task_status: 'confirmation_call', dedupe_key: 'meeting_set:1490749:952575:588133' },
+        {
+          ...base,
+          occurred_at: '2026-05-11T20:05:53.444+00:00',
+          event_at: '2026-05-11T20:05:53.444+00:00',
+          reporting_at: '2026-05-11T20:05:53.444+00:00',
+          reporting_date_et: '2026-05-11',
+          source: 'weekly_booked_meetings_with_operator_confirmation_task',
+          raw_task_status: 'confirmation_call',
+          dedupe_key: 'meeting_set:1490749:952575:588133',
+          created_at: '2026-05-11T20:05:53.444+00:00',
+        },
       ]);
     }
     if (requestUrl.includes('/lifecycle_events?')) {
@@ -324,6 +336,7 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
   );
   assert.equal(carsonMeetingSets.length, 1);
   assert.equal(carsonMeetingSets[0].dedupe_key, 'meeting_set:1490749:952575:588133');
+  assert.equal(carsonMeetingSets[0].reporting_date_et, '2026-05-11');
 });
 
 test('/api/call-tracker-data does not count appointment changes as new meeting sets', async () => {
@@ -620,4 +633,5 @@ test('/api/call-tracker-data calculates paycheck commission as twenty percent of
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.data.ui.paycheck.commissionCents, 2000);
+  assert.equal(payload.data.ui.summaryCards.moneyEarnedCents, 2000);
 });

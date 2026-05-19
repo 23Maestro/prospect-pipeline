@@ -240,6 +240,10 @@ function eventIdentityKey(row: Record<string, any>) {
       [normalizeKey(row.athlete_id), normalizeKey(row.athlete_main_id)].filter(Boolean).join(':') ||
       normalizeKey(row.athlete_name);
     const meetingTitle = normalizeKey(row.booked_event_title);
+    const appointmentId = normalizeKey(row.appointment_id);
+    if (athleteIdentity && meetingTitle && appointmentId) {
+      return `meeting_set:athlete:${athleteIdentity}:title:${meetingTitle}:appointment:${appointmentId}`;
+    }
     if (athleteIdentity && meetingTitle) return `meeting_set:athlete:${athleteIdentity}:title:${meetingTitle}:date:${eventDateKey(row)}`;
     return [
       'meeting_set',
@@ -489,6 +493,12 @@ function commissionCentsForRow(row: Record<string, any>) {
   return Math.round((Number(row.revenue_cents) || 0) * COMMISSION_RATE);
 }
 
+function commissionCentsForRows(rows: Array<Record<string, any>>) {
+  return rows
+    .filter((row) => row.tracker_outcome === 'closed_won')
+    .reduce((total, row) => total + commissionCentsForRow(row), 0);
+}
+
 function rowBelongsToPaycheck(row: Record<string, any>, previousPay: Date, payDate: Date) {
   const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
   if (Number.isNaN(sourceDate.getTime())) return false;
@@ -514,7 +524,7 @@ function paycheck(rows: Array<Record<string, any>>, now: Date) {
 
 function buildUiData(summary: Record<string, any>, events: Array<Record<string, any>>, generatedAt: string) {
   const now = new Date(generatedAt);
-  const rows = displayRows(events);
+  const rows = displayRows(events).filter(isDashboardVisibleEvent);
   const rawAllTimeContacts = Number(summary.contacts) || 0;
   const correctedAllTimeContacts = rawAllTimeContacts + HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT;
   const periods: Record<string, any> = {};
@@ -540,7 +550,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
     rangeLabel: currentWeekRangeLabel(now),
     monthResultLabel: currentMonthResultLabel(now),
     summaryCards: {
-      moneyEarnedCents: Number(summary.money_earned_cents) || 0,
+      moneyEarnedCents: commissionCentsForRows(rows),
       closedWon: Number(summary.closed_won) || 0,
       contacts: correctedAllTimeContacts,
       rawContacts: rawAllTimeContacts,
@@ -584,7 +594,7 @@ async function buildLiveContract() {
     [...viewEvents, ...lifecycleDeltaEvents],
     materializedEvents,
   );
-  const publicEvents = materializedEvents.map(publicRow);
+  const publicEvents = materializedEvents.filter(isDashboardVisibleEvent).map(publicRow);
   const ui = buildUiData(summary, materializedEvents, generatedAt);
   if (Array.isArray(ui.closedWonRows)) {
     ui.closedWonRows = ui.closedWonRows.map(publicRow);

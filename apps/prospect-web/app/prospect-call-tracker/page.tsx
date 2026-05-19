@@ -122,7 +122,7 @@ export default function ProspectCallTrackerPage() {
               <div className="card-top"><span>Contacts Made</span><Icon name="user" /></div>
               <strong id="todayContacts">0</strong>
             </article>
-            <article className="daily-card green-card">
+            <article className="daily-card red-card">
               <div className="card-top"><span>Meetings Set</span><Icon name="calendar" /></div>
               <strong id="todayMeetingsSet">0</strong>
             </article>
