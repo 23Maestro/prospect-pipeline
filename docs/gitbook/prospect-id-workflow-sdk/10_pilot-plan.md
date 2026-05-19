@@ -70,6 +70,12 @@ video submit/edit -> resolve athlete/video context -> update stage/status -> ret
 - editor time preserved
 - management visibility improved
 
+## Tracking
+
+| Workflow | Before/after metric |
+| --- | --- |
+| Video Inbox duplicates | Count duplicate, reappearing, or wrong-profile inbox assignments before and after workflow-key resolution. |
+
 ## QA checklist
 
 | Area | Success check |
@@ -78,6 +84,7 @@ video submit/edit -> resolve athlete/video context -> update stage/status -> ret
 | Confirmation copy | Parent name, athlete name, scout, date, time, and timezone are correct. |
 | Meeting set | Stage/task updates correctly after the appointment is submitted. |
 | Video submit/edit | Progress updates from the button action and returns handled state. |
+| Video Inbox resolution | Family messages attach to one request, completed threads do not recreate assignments, and dual-sport conflicts only prompt for sport/profile. |
 | Customer intake | Customer-selected submissions create structured work items instead of raw interpretation. |
 | Routing | Result routes to the assigned owner or review queue. |
 | Review queue | Manual review appears only when the conflict is real. |
@@ -92,4 +99,3 @@ video submit/edit -> resolve athlete/video context -> update stage/status -> ret
 | Management visibility | Status comes from workflow data instead of manual patching. |
 | Development focus | Backend asks become smaller, clearer, and easier to test. |
 | Scale | Marketing volume can increase without multiplying the same manual cleanup. |
-

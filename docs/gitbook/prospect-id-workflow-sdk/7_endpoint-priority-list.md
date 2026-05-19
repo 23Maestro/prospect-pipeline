@@ -34,6 +34,7 @@ Every pilot response should include:
 | `sales/stage` | Update stage after appointment-setting actions. | 1 |
 | `athlete/resolve` | Resolve athlete, main profile, sport/profile, and contacts. | 1 |
 | `video/progress-action` | Run submit/edit progress update chains. | 2 |
+| `video/inbox-resolve` | Resolve incoming Video Inbox messages against athlete, contact, sport/profile, thread, Video Progress, and video request status before creating work. | 2 |
 | `customer/video-action` | Create a structured customer video request from selected intent. | 2 |
 | `workflow/resolve` | Return workflow key, current status, and next action options. | 2 |
 
@@ -61,5 +62,5 @@ Each endpoint should answer one workflow question:
 | Can we submit the selected meeting? | `meeting/set` |
 | Did the official CRM stage update? | `sales/stage` |
 | Did video progress update? | `video/progress-action` |
+| Should this Video Inbox message create work, attach to existing work, stay suppressed, or need review? | `video/inbox-resolve` |
 | Can this customer request be routed without guessing? | `customer/video-action` |
-
