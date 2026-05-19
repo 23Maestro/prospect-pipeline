@@ -845,7 +845,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
     [
       '### Meeting Requirements',
       '',
-      `Real quick, ${athleteFirst}: Coach is holding that time specifically for your family, so I want to make sure everyone can be there and ready so it’s a productive meeting for everybody.`,
+      `Real quick, ${parent1First}: Coach is holding that time specifically for your family, so I want to make sure everyone can be there and ready so it’s a productive meeting for everybody.`,
       '',
       '- Full family on the call: parent, athlete, and mom/dad.',
       '- Be on a laptop/tablet or have Zoom ready.',

@@ -430,6 +430,60 @@ async function recordVoicemailFollowUpSentBestEffort(args: {
   }
 }
 
+async function persistVoicemailFollowUpMessageSent(args: {
+  context: ScoutPrepContext;
+  task: ScoutPortalTask;
+  variant: VoicemailFollowUpVariant;
+  previousCrmStage?: string | null;
+  previousTaskStatus?: string | null;
+}) {
+  if (args.variant === 'send_cal_link' || args.variant === 'no_show') {
+    return;
+  }
+
+  const followUpTask = resolveVoicemailLifecycleTaskForCompletion(
+    args.context.tasks,
+    args.variant,
+  );
+  const taskLabel = getVoicemailLifecycleTaskTitle(args.variant) || args.variant;
+  if (!followUpTask?.task_id) {
+    throw new Error(`Missing task list item for ${taskLabel}`);
+  }
+
+  const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
+  const athleteMainId = String(
+    args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
+  ).trim();
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete identifiers for voicemail follow-up');
+  }
+
+  const athleteName =
+    args.context.contactInfo.studentAthlete.name || args.task.athlete_name || athleteId;
+  const taskTitle = stripMoveThisTaskPrefix(followUpTask.title) || args.variant;
+  const result = await recordVoicemailFollowUpMessageSent({
+    athleteId,
+    athleteMainId,
+    athleteName,
+    taskId: followUpTask.task_id,
+    variant: args.variant,
+    taskTitle: taskTitle || undefined,
+    description: followUpTask.description || undefined,
+  });
+
+  await recordVoicemailFollowUpSentBestEffort({
+    athleteId,
+    athleteMainId,
+    athleteName,
+    taskId: followUpTask.task_id,
+    taskTitle,
+    previousCrmStage: args.previousCrmStage,
+    previousTaskStatus: args.previousTaskStatus,
+    crmStage: result.stage || getVoicemailLifecycleStageLabel(args.variant) || args.variant,
+    taskStatus: args.variant,
+  });
+}
+
 function buildFallbackMeetingDetails(): string {
   return [
     'Main Number:',
@@ -1057,55 +1111,12 @@ function VoicemailFollowUpRecipientForm({
                     });
                   }
                 : async () => {
-                    if (selectedVariant === 'send_cal_link') {
-                      return;
-                    }
-
-                    const followUpTask = resolveVoicemailLifecycleTaskForCompletion(
-                      context.tasks,
-                      selectedVariant,
-                    );
-                    const athleteId = String(
-                      task.contact_id || context.task.contact_id || '',
-                    ).trim();
-                    const athleteMainId = String(
-                      context.resolved.athlete_main_id || task.athlete_main_id || '',
-                    ).trim();
-
-                    if (!followUpTask?.task_id) {
-                      throw new Error(
-                        `Missing task list item for ${getVoicemailLifecycleTaskTitle(selectedVariant) || selectedVariant}`,
-                      );
-                    }
-
-                    if (!athleteId || !athleteMainId) {
-                      throw new Error('Missing athlete identifiers for voicemail follow-up');
-                    }
-
-                    const result = await recordVoicemailFollowUpMessageSent({
-                      athleteId,
-                      athleteMainId,
-                      athleteName:
-                        context.contactInfo.studentAthlete.name || task.athlete_name || athleteId,
-                      taskId: followUpTask.task_id,
+                    await persistVoicemailFollowUpMessageSent({
+                      context,
+                      task,
                       variant: selectedVariant,
-                      taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || undefined,
-                      description: followUpTask.description || undefined,
-                    });
-                    await recordVoicemailFollowUpSentBestEffort({
-                      athleteId,
-                      athleteMainId,
-                      athleteName:
-                        context.contactInfo.studentAthlete.name || task.athlete_name || athleteId,
-                      taskId: followUpTask.task_id,
-                      taskTitle: stripMoveThisTaskPrefix(followUpTask.title) || selectedVariant,
                       previousCrmStage: crmStage,
                       previousTaskStatus: currentTask || task.title || null,
-                      crmStage:
-                        result.stage ||
-                        getVoicemailLifecycleStageLabel(selectedVariant) ||
-                        selectedVariant,
-                      taskStatus: selectedVariant,
                     });
                   }
             }
@@ -1132,11 +1143,19 @@ function VoicemailFollowUpRecipientForm({
         variant: variant || defaultVariant,
       });
       try {
-        if (selectedVariant !== 'send_cal_link') {
+        if (selectedVariant === 'no_show') {
           await completeSentTextTask({
             context,
             task,
             variant: selectedVariant,
+          });
+        } else {
+          await persistVoicemailFollowUpMessageSent({
+            context,
+            task,
+            variant: selectedVariant,
+            previousCrmStage: crmStage,
+            previousTaskStatus: currentTask || task.title || null,
           });
         }
       } catch (error) {
@@ -3111,7 +3130,7 @@ function ScoutPrepTaskItem({
     const toast = await showLoadingToast('Dup Check', task.athlete_name);
     try {
       const result = await runDuplicateProfileResolutionForTask(task);
-      if (result.matchCount <= 1) {
+      if (!result.completed.length && !result.skipped.length) {
         toast.style = Toast.Style.Success;
         toast.title = 'No duplicate found';
         toast.message = task.athlete_name;

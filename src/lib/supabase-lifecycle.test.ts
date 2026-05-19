@@ -398,6 +398,34 @@ test('Scout Prep Supabase writes happen after the matching Laravel write succeed
   assert.ok(salesStage.indexOf('if (!response.ok)') < salesStage.indexOf('recordLifecycleMutation({'));
 });
 
+test('Scout Prep voicemail follow-up persistence is shared across recipient modes', () => {
+  const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
+  const helperStart = commandSource.indexOf('async function persistVoicemailFollowUpMessageSent');
+  const formStart = commandSource.indexOf('function VoicemailFollowUpRecipientForm');
+  const formEnd = commandSource.indexOf('function ScoutPrepDetail');
+
+  assert.ok(helperStart > -1, 'missing shared voicemail follow-up persistence helper');
+  assert.ok(formStart > -1 && formEnd > formStart, 'missing voicemail follow-up form boundary');
+
+  const helper = commandSource.slice(helperStart, formStart);
+  assert.match(helper, /recordVoicemailFollowUpMessageSent\(\{/);
+  assert.match(helper, /recordVoicemailFollowUpSentBestEffort\(\{/);
+
+  const form = commandSource.slice(formStart, formEnd);
+  const persistCallCount = (form.match(/persistVoicemailFollowUpMessageSent\(\{/g) || []).length;
+  assert.equal(persistCallCount, 2);
+
+  const multiRecipientBranch = form.slice(
+    form.indexOf('const mode = await openMessagesDraftForRecipients'),
+    form.indexOf('await popToRoot({ clearSearchBar: true });', form.indexOf('const mode = await openMessagesDraftForRecipients')),
+  );
+  assert.match(multiRecipientBranch, /persistVoicemailFollowUpMessageSent\(\{/);
+  assert.ok(
+    multiRecipientBranch.indexOf("selectedVariant === 'no_show'") <
+      multiRecipientBranch.indexOf('completeSentTextTask({'),
+  );
+});
+
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
   const postCallFlow = commandSource.slice(

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ScoutPortalTask } from '../features/scout-prep/types.js';
 import {
   buildRepeatProfileDescription,
+  getDuplicateIdentityEvidence,
   isCallAttempt1PortalTask,
   runDuplicateProfileResolutionForTask,
   selectDuplicateCallAttempt1Task,
@@ -17,6 +18,10 @@ function buildTask(overrides: Partial<ScoutPortalTask> = {}): ScoutPortalTask {
     athlete_id: '1489567',
     athlete_main_id: '951406',
     athlete_name: 'Wylie Robinson',
+    grad_year: '2027',
+    sport: 'Football',
+    high_school: 'North High School',
+    state: 'TX',
     title: 'Call Attempt 1',
     description: 'Call the family',
     ...overrides,
@@ -59,6 +64,7 @@ test('selectDuplicateCandidates keeps the current row clean and selects other ex
       firstName: 'Wylie',
       lastName: 'Robinson',
       fullName: 'Wylie Robinson',
+      gradYear: '2027',
     },
     {
       athleteId: '1490001',
@@ -86,6 +92,63 @@ test('buildRepeatProfileDescription appends marker once without wiping content',
   assert.equal(buildRepeatProfileDescription('Call the family'), 'Call the family\nRepeat Profile');
   assert.equal(buildRepeatProfileDescription('Call the family\nRepeat Profile'), 'Call the family\nRepeat Profile');
   assert.equal(buildRepeatProfileDescription(''), 'Repeat Profile');
+});
+
+test('getDuplicateIdentityEvidence requires proof beyond exact name', () => {
+  assert.deepEqual(
+    getDuplicateIdentityEvidence(
+      {
+        athleteId: '1490000',
+        athleteMainId: '951499',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+      },
+      buildTask(),
+    ),
+    [],
+  );
+
+  assert.deepEqual(
+    getDuplicateIdentityEvidence(
+      {
+        athleteId: '1490000',
+        athleteMainId: '951499',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+        gradYear: '2027',
+        highSchool: 'North High School',
+      },
+      buildTask(),
+    ),
+    ['grad_year', 'high_school'],
+  );
+});
+
+test('runDuplicateProfileResolutionForTask skips exact-name matches without secondary proof', async () => {
+  const result = await runDuplicateProfileResolutionForTask(buildTask(), {
+    searchRows: async () => [
+      {
+        athleteId: '1489567',
+        athleteMainId: '951406',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+      },
+      {
+        athleteId: '1490000',
+        athleteMainId: '951499',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+      },
+    ],
+  });
+
+  assert.equal(result.matchCount, 2);
+  assert.deepEqual(result.completed, []);
+  assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'Needs secondary identity match' }]);
 });
 
 test('selectDuplicateCallAttempt1Task chooses newest incomplete call attempt 1 task', () => {
@@ -153,6 +216,7 @@ test('runDuplicateProfileResolutionForTask updates and completes duplicate-side 
         firstName: 'Wylie',
         lastName: 'Robinson',
         fullName: 'Wylie Robinson',
+        gradYear: '2027',
       },
     ],
     resolveAthleteMainId: async () => '951499',
@@ -200,6 +264,7 @@ test('runDuplicateProfileResolutionForTask creates completed repeat task when du
         firstName: 'Wylie',
         lastName: 'Robinson',
         fullName: 'Wylie Robinson',
+        gradYear: '2027',
       },
     ],
     resolveAthleteMainId: async () => '951499',

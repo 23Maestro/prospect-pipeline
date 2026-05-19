@@ -892,8 +892,9 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   );
   assert.match(
     card,
-    /Real quick, Bryson: Coach is holding that time specifically for your family, so I want to make sure everyone can be there and ready so it’s a productive meeting for everybody\./,
+    /Real quick, Jamie: Coach is holding that time specifically for your family, so I want to make sure everyone can be there and ready so it’s a productive meeting for everybody\./,
   );
+  assert.doesNotMatch(card, /Real quick, Bryson:/);
   assert.match(card, /- Full family on the call: parent, athlete, and mom\/dad\./);
   assert.match(card, /- Scout will call your cell with the Zoom code\./);
   const deficitSection =
