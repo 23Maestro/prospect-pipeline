@@ -240,7 +240,7 @@ function eventIdentityKey(row: Record<string, any>) {
       [normalizeKey(row.athlete_id), normalizeKey(row.athlete_main_id)].filter(Boolean).join(':') ||
       normalizeKey(row.athlete_name);
     const meetingTitle = normalizeKey(row.booked_event_title);
-    if (athleteIdentity && meetingTitle) return `meeting_set:athlete:${athleteIdentity}:title:${meetingTitle}`;
+    if (athleteIdentity && meetingTitle) return `meeting_set:athlete:${athleteIdentity}:title:${meetingTitle}:date:${eventDateKey(row)}`;
     return [
       'meeting_set',
       normalizeKey(row.athlete_name),
@@ -442,18 +442,13 @@ function resolveMeetingSetSummary(
 ) {
   const rawMeetingSets = rawRows.filter((row) => row.counts_as_meeting_set === true).length;
   const resolvedMeetingSets = resolvedRows.filter((row) => row.counts_as_meeting_set === true).length;
-  const nonDashboardMeetingSets = rawRows.filter(
-    (row) => row.tracker_outcome === 'meeting_set' && row.counts_as_meeting_set !== true,
-  ).length;
-  const removedDuplicates = Math.max(0, rawMeetingSets - resolvedMeetingSets) + nonDashboardMeetingSets;
+  const removedDuplicates = Math.max(0, rawMeetingSets - resolvedMeetingSets);
   return {
     ...fallback,
     total_events: Math.max(0, (Number(fallback.total_events) || 0) - removedDuplicates),
     spoke_with: Math.max(0, (Number(fallback.spoke_with) || 0) - removedDuplicates),
     meetings_set: resolvedMeetingSets,
     appointments_tracked: resolvedMeetingSets,
-    dials: Math.max(0, (Number(fallback.dials) || 0) - removedDuplicates),
-    contacts: Math.max(0, (Number(fallback.contacts) || 0) - removedDuplicates),
   };
 }
 

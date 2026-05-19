@@ -402,8 +402,84 @@ test('/api/call-tracker-data does not count appointment changes as new meeting s
   }
   assert.equal(payload.data.summary.meetings_set, 1);
   assert.equal(payload.data.summary.appointments_tracked, 1);
-  assert.equal(payload.data.summary.dials, 1);
-  assert.equal(payload.data.summary.contacts, 1);
+  assert.equal(payload.data.summary.dials, 2);
+  assert.equal(payload.data.summary.contacts, 2);
+});
+
+test('/api/call-tracker-data keeps same-athlete meeting facts on separate reporting dates', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([
+        { dials: 2, contacts: 2, meetings_set: 2, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 2 },
+      ]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      const base = {
+        athlete_key: '1491165:952986',
+        athlete_id: '1491165',
+        athlete_main_id: '952986',
+        athlete_name: 'Michael Gallimore',
+        tracker_outcome: 'meeting_set',
+        raw_crm_stage: 'Meeting Set',
+        raw_task_status: 'confirmation_call',
+        raw_event_type: 'lifecycle_meeting_set',
+        booked_event_title: 'Michael Gallimore Football 2027 MD',
+        active_operator_name: 'Jerami Singleton',
+        task_assigned_owner: 'Jerami Singleton',
+        counts_as_dial: true,
+        counts_as_contact: true,
+        counts_as_meeting_set: true,
+        counts_as_post_meeting_outcome: false,
+        materialization_status: 'operator_task',
+        resolved_owner_name: 'Jerami Singleton',
+        resolved_owner_source_field: 'task.assigned_owner',
+        can_materialize_for_active_operator: true,
+      };
+      return Response.json([
+        {
+          ...base,
+          occurred_at: '2026-05-13T18:35:24.817+00:00',
+          event_at: '2026-05-13T18:35:24.817+00:00',
+          reporting_at: '2026-05-13T18:35:24.817+00:00',
+          reporting_date_et: '2026-05-13',
+          appointment_id: '613331',
+          dedupe_key: 'meeting_set:1491165:952986:613331',
+          created_at: '2026-05-13T18:35:24.817+00:00',
+        },
+        {
+          ...base,
+          occurred_at: '2026-05-18T14:03:52.715+00:00',
+          event_at: '2026-05-18T14:03:52.715+00:00',
+          reporting_at: '2026-05-18T14:03:52.715+00:00',
+          reporting_date_et: '2026-05-18',
+          appointment_id: '612642',
+          dedupe_key: 'meeting_set:1491165:952986:612642',
+          created_at: '2026-05-18T14:03:52.715+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const rows = payload.data.events.filter(
+    (row: { athlete_name?: string; tracker_outcome?: string }) =>
+      row.athlete_name === 'Michael Gallimore' && row.tracker_outcome === 'meeting_set',
+  );
+  assert.equal(rows.length, 2);
+  assert.deepEqual(
+    rows.map((row: { reporting_date_et?: string }) => row.reporting_date_et).sort(),
+    ['2026-05-13', '2026-05-18'],
+  );
 });
 
 test('/api/call-tracker-data trusts Supabase reporting_at instead of rewriting meeting-set clocks locally', async () => {

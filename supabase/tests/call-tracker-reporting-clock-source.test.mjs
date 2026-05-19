@@ -8,7 +8,7 @@ const sql = readFileSync(
   'utf8',
 );
 const athleteIdentitySql = readFileSync(
-  resolve('supabase/migrations/20260519013000_call_tracker_meeting_set_entry_counts.sql'),
+  resolve('supabase/migrations/20260519014000_call_tracker_owner_context_source_flags.sql'),
   'utf8',
 );
 
@@ -26,17 +26,14 @@ test('reporting clock migration keeps reporting_at in Supabase instead of local 
   assert.doesNotMatch(sql, /prospect-web\.vercel\.app/i);
 });
 
-test('meeting set dashboard count is first real lifecycle entry per athlete key', () => {
-  assert.match(athleteIdentitySql, /and cte\.is_tracked_owner/i);
-  assert.match(athleteIdentitySql, /partition by coalesce\(cte\.athlete_key, 'event:' \|\| cte\.id::text\)/i);
-  assert.match(athleteIdentitySql, /meeting_set_athlete_sequence = 1/i);
+test('meeting set dashboard count stays source-owned instead of SQL-ranked', () => {
+  assert.match(athleteIdentitySql, /cte\.counts_as_meeting_set/i);
+  assert.doesNotMatch(athleteIdentitySql, /row_number\(\) over/i);
+  assert.doesNotMatch(athleteIdentitySql, /meeting_set_athlete_sequence/i);
   assert.doesNotMatch(athleteIdentitySql, /partition by .*appointment_id/i);
-  assert.doesNotMatch(athleteIdentitySql, /and coalesce\(cte\.counts_as_meeting_set, false\)/i);
 });
 
-test('reschedules stay in the reporting view but are not dashboard-countable meeting sets', () => {
-  assert.match(athleteIdentitySql, /'rescheduled'/i);
-  assert.match(athleteIdentitySql, /'reschedule pending'/i);
-  assert.match(athleteIdentitySql, /when cte\.tracker_outcome = 'meeting_set' then coalesce\(cte\.meeting_set_athlete_sequence = 1, false\)/i);
+test('post-meeting outcomes remain source-counted reporting facts', () => {
   assert.match(athleteIdentitySql, /cte\.counts_as_post_meeting_outcome/i);
+  assert.match(athleteIdentitySql, /when cte\.counts_as_post_meeting_outcome then coalesce\(cte\.event_at, cte\.occurred_at\)/i);
 });

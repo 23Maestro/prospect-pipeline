@@ -168,6 +168,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260519010000_call_tracker_reporting_clock_source.sql',
     'supabase/migrations/20260519012000_call_tracker_meeting_set_athlete_identity.sql',
     'supabase/migrations/20260519013000_call_tracker_meeting_set_entry_counts.sql',
+    'supabase/migrations/20260519014000_call_tracker_owner_context_source_flags.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
     'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
