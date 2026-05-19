@@ -109,6 +109,12 @@
       "title": "Deplicate Profiles",
       "description": "Find duplicate SA Profiles",
       "mode": "no-view"
+    },
+    {
+      "name": "maxpreps-scout-context",
+      "title": "MaxPreps Scout Context",
+      "description": "Resolve mascot and state rank for a resolved school and sport",
+      "mode": "no-view"
     }
   ],
   "dependencies": {

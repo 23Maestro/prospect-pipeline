@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const defaultContractUrl = 'https://prospect-web.vercel.app/api/call-tracker-data';
 const contractPath = resolve(repoRoot, 'apps/prospect-web/public/prospect-call-tracker/data-contract.json');
 const archiveDir = resolve(repoRoot, 'apps/prospect-web/public/prospect-call-tracker/weekly-results');
 const indexPath = resolve(archiveDir, 'index.json');
@@ -31,9 +32,7 @@ function localDateKey(value) {
 }
 
 function eventDateKey(row) {
-  if (row.tracker_outcome === 'meeting_set') return localDateKey(row.occurred_at);
-  if (row.counts_as_post_meeting_outcome === true) return localDateKey(row.event_at || row.occurred_at);
-  return localDateKey(row.occurred_at || row.event_at);
+  return row.reporting_date_et || localDateKey(row.reporting_at || row.occurred_at);
 }
 
 function safeSlug(value) {
@@ -44,7 +43,17 @@ function safeSlug(value) {
     .replace(/^-|-$/g, '');
 }
 
-const contract = readJson(contractPath);
+async function readContract() {
+  const source = process.env.CALL_TRACKER_ARCHIVE_SOURCE || defaultContractUrl;
+  if (source === 'local-data-contract') return readJson(contractPath);
+  const response = await fetch(source, { headers: { accept: 'application/json' }, cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`${source} -> ${response.status} ${await response.text()}`);
+  }
+  return response.json();
+}
+
+const contract = await readContract();
 if (!contract?.data?.ui?.periods?.['week-total']) {
   throw new Error(`Missing materialized week-total in ${contractPath}`);
 }

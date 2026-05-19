@@ -326,7 +326,7 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
   assert.equal(carsonMeetingSets[0].dedupe_key, 'meeting_set:1490749:952575:588133');
 });
 
-test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity without exposing ids', async () => {
+test('/api/call-tracker-data does not count appointment changes as new meeting sets', async () => {
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
   process.env.SUPABASE_SCHEMA = 'public';
@@ -334,7 +334,7 @@ test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity
     const requestUrl = String(url);
     if (requestUrl.includes('/call_tracker_summary?')) {
       return Response.json([
-        { dials: 2, contacts: 2, meetings_set: 2, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 2 },
+        { dials: 2, contacts: 2, meetings_set: 1, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 1 },
       ]);
     }
     if (requestUrl.includes('/call_tracker_events_owner_context?')) {
@@ -352,7 +352,6 @@ test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity
         task_assigned_owner: 'Jerami Singleton',
         counts_as_dial: true,
         counts_as_contact: true,
-        counts_as_meeting_set: true,
         counts_as_post_meeting_outcome: false,
         materialization_status: 'operator_task',
         resolved_owner_name: 'Jerami Singleton',
@@ -360,8 +359,24 @@ test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity
         can_materialize_for_active_operator: true,
       };
       return Response.json([
-        { ...base, occurred_at: '2026-05-13T22:01:56.559+00:00', appointment_id: '624183', dedupe_key: 'meeting_set:1491040:952861:624183', created_at: '2026-05-13T22:01:56.559+00:00' },
-        { ...base, occurred_at: '2026-05-13T20:06:25.123+00:00', appointment_id: '620950', dedupe_key: null, created_at: '2026-05-13T20:06:25.123+00:00' },
+        {
+          ...base,
+          occurred_at: '2026-05-13T22:01:56.559+00:00',
+          appointment_id: '624183',
+          raw_crm_stage: 'Rescheduled',
+          counts_as_meeting_set: false,
+          dedupe_key: 'meeting_set:1491040:952861:624183',
+          created_at: '2026-05-13T22:01:56.559+00:00',
+        },
+        {
+          ...base,
+          occurred_at: '2026-05-13T20:06:25.123+00:00',
+          appointment_id: '620950',
+          raw_crm_stage: 'Meeting Set',
+          counts_as_meeting_set: true,
+          dedupe_key: null,
+          created_at: '2026-05-13T20:06:25.123+00:00',
+        },
       ]);
     }
     if (requestUrl.includes('/lifecycle_events?')) {
@@ -378,17 +393,20 @@ test('/api/call-tracker-data resolves duplicate meeting sets by athlete identity
       row.athlete_name === 'Jamiya Turner' && row.tracker_outcome === 'meeting_set',
   );
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].appointment_id, '624183');
-  assert.equal(rows[0].athlete_key, undefined);
-  assert.equal(rows[0].athlete_id, undefined);
-  assert.equal(rows[0].athlete_main_id, undefined);
+  assert.equal(rows[0].appointment_id, '620950');
+  assert.equal(rows[0].counts_as_meeting_set, true);
+  for (const row of rows) {
+    assert.equal(row.athlete_key, undefined);
+    assert.equal(row.athlete_id, undefined);
+    assert.equal(row.athlete_main_id, undefined);
+  }
   assert.equal(payload.data.summary.meetings_set, 1);
   assert.equal(payload.data.summary.appointments_tracked, 1);
   assert.equal(payload.data.summary.dials, 1);
   assert.equal(payload.data.summary.contacts, 1);
 });
 
-test('/api/call-tracker-data does not use weekly sync time as meeting-set clock', async () => {
+test('/api/call-tracker-data trusts Supabase reporting_at instead of rewriting meeting-set clocks locally', async () => {
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
   process.env.SUPABASE_SCHEMA = 'public';
@@ -408,6 +426,8 @@ test('/api/call-tracker-data does not use weekly sync time as meeting-set clock'
           athlete_name: 'Elia Imani',
           occurred_at: '2026-05-18T14:03:57.075+00:00',
           event_at: '2026-05-18T14:03:57.075+00:00',
+          reporting_at: '2026-05-10T19:04:00.000Z',
+          reporting_date_et: '2026-05-10',
           tracker_outcome: 'meeting_set',
           raw_crm_stage: 'Rescheduled',
           raw_task_status: 'confirmation_call',
@@ -465,9 +485,10 @@ test('/api/call-tracker-data does not use weekly sync time as meeting-set clock'
     (event: { athlete_name?: string; tracker_outcome?: string }) =>
       event.athlete_name === 'Elia Imani' && event.tracker_outcome === 'meeting_set',
   );
-  assert.equal(row.occurred_at, '2026-05-10T19:04:00.000Z');
-  assert.equal(row.event_at, '2026-05-10T19:04:00.000Z');
-  assert.notEqual(row.occurred_at, '2026-05-18T14:03:57.075+00:00');
+  assert.equal(row.occurred_at, '2026-05-18T14:03:57.075+00:00');
+  assert.equal(row.event_at, '2026-05-18T14:03:57.075+00:00');
+  assert.equal(row.reporting_at, '2026-05-10T19:04:00.000Z');
+  assert.equal(row.reporting_date_et, '2026-05-10');
 });
 
 test('/api/call-tracker-data calculates paycheck commission as twenty percent of revenue', async () => {

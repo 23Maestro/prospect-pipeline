@@ -165,8 +165,12 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
     'supabase/migrations/20260503045000_backsync_call_activity_counting_contract.sql',
     'supabase/migrations/20260503030000_call_tracker_counting_contract.sql',
+    'supabase/migrations/20260519010000_call_tracker_reporting_clock_source.sql',
+    'supabase/migrations/20260519012000_call_tracker_meeting_set_athlete_identity.sql',
+    'supabase/migrations/20260519013000_call_tracker_meeting_set_entry_counts.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
+    'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
     'supabase/tests/call-tracker-counting-contract.test.mjs',
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
     'supabase/tests/meeting-set-materialization-backsync.test.mjs',
@@ -424,6 +428,7 @@ test('call tracker archive selector is backed by existing weekly-results files',
   assert.match(appText, /getWeeklyArchiveDetails/);
   assert.match(appText, /selectedArchiveWeek/);
   assert.match(appText, /activeTopCardMetrics/);
+  assert.match(appText, /reportingDateKey/);
   assert.match(appText, /dateRangeOptionLabel\(details\?\.week\?\.startDate/);
   assert.match(appText, /selectedArchiveDetails\(\)\?\.events/);
   assert.doesNotMatch(appText, /activeAllTimeSnapshot/);
@@ -445,6 +450,26 @@ test('call tracker archive selector is backed by existing weekly-results files',
       week.file,
     );
   }
+});
+
+test('call tracker archive writer uses the live browser contract and source-owned reporting clock', () => {
+  const archiveText = readFileSync(join(repoRoot, 'scripts/archive-call-tracker-week.mjs'), 'utf8');
+  const routeText = readFileSync(join(appRoot, 'app/api/call-tracker-data/route.ts'), 'utf8');
+  const migrationText = readFileSync(
+    join(repoRoot, 'supabase/migrations/20260519010000_call_tracker_reporting_clock_source.sql'),
+    'utf8',
+  );
+
+  assert.match(archiveText, /prospect-web\.vercel\.app\/api\/call-tracker-data/);
+  assert.match(archiveText, /CALL_TRACKER_ARCHIVE_SOURCE/);
+  assert.match(archiveText, /row\.reporting_date_et \|\| localDateKey\(row\.reporting_at \|\| row\.occurred_at\)/);
+  assert.doesNotMatch(archiveText, /row\.tracker_outcome === 'meeting_set'/);
+  assert.match(routeText, /'reporting_at'/);
+  assert.match(routeText, /'reporting_date_et'/);
+  assert.doesNotMatch(routeText, /normalizeMeetingSetClocks/);
+  assert.match(migrationText, /as reporting_at/);
+  assert.match(migrationText, /reporting_date_et/);
+  assert.match(migrationText, /source_post' = '\/sales\/meeting-set'/);
 });
 
 test('call tracker commission is a flat twenty percent of revenue', () => {

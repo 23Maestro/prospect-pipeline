@@ -411,6 +411,20 @@ function upsertGpaLine(template: string, gpa?: string | null): string {
   return `${template.trimEnd()}\n\n${nextLine}`;
 }
 
+function prependMaxPrepsUrl(template: string, url?: string | null): string {
+  const normalizedUrl = String(url || '').trim();
+  if (!normalizedUrl) {
+    return template;
+  }
+
+  const trimmed = template.trimStart();
+  if (trimmed.startsWith(normalizedUrl)) {
+    return template;
+  }
+
+  return `${normalizedUrl}\n\n${template}`;
+}
+
 export function mergeMeetingDetailsTemplate(
   template: string,
   contactSelection: ScoutPrepContactSelection,
@@ -418,22 +432,18 @@ export function mergeMeetingDetailsTemplate(
 ): string {
   let merged = template;
   const details = buildMeetingDetailsContactSection(contactSelection);
-  merged = setTemplateValue(
-    merged,
-    'Main Number',
-    details.primaryNumber,
-  );
-  merged = setTemplateValue(
-    merged,
-    'Backup Number',
-    details.backupNumber,
-  );
+  merged = setTemplateValue(merged, 'Main Number', details.primaryNumber);
+  merged = setTemplateValue(merged, 'Backup Number', details.backupNumber);
   merged = setTemplateValue(merged, 'Spoke To', details.spokeTo);
   merged = setTemplateValue(merged, 'Other Parent', details.otherParent);
 
   if (context) {
     merged = replaceSectionBody(merged, 'About The Athlete', buildAthleteDetailsLines(context));
     merged = upsertGpaLine(merged, context.resolved.gpa);
+    merged = prependMaxPrepsUrl(
+      merged,
+      context.resolved.maxpreps?.url || context.resolved.maxpreps_url,
+    );
   }
 
   return merged;

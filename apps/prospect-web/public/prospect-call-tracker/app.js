@@ -307,8 +307,12 @@ function countsAsMeetingSet(row) {
   return row.counts_as_meeting_set === true;
 }
 
+function isDashboardVisibleEvent(row) {
+  return row.tracker_outcome !== 'meeting_set' || countsAsMeetingSet(row);
+}
+
 function isMeaningfulEvent(row) {
-  return !hiddenDefaultOutcomes.has(row.tracker_outcome);
+  return isDashboardVisibleEvent(row) && !hiddenDefaultOutcomes.has(row.tracker_outcome);
 }
 
 function archiveWeeks() {
@@ -382,25 +386,23 @@ function periodScopedRows(rows, dateKeyForRow = eventDateKey) {
 }
 
 function scopedRows() {
-  if (isArchiveView()) return periodScopedRows(selectedArchiveDetails()?.events || []);
+  if (isArchiveView()) return periodScopedRows((selectedArchiveDetails()?.events || []).filter(isDashboardVisibleEvent));
   return periodScopedRows(displayRows());
 }
 
 function scopedActivityRows() {
   if (isArchiveView()) {
-    return periodScopedRows(selectedArchiveDetails()?.events || [], (row) => localDateKey(row.occurred_at));
+    return periodScopedRows((selectedArchiveDetails()?.events || []).filter(isDashboardVisibleEvent), reportingDateKey);
   }
-  return periodScopedRows(displayRows(), (row) => localDateKey(row.occurred_at));
+  return periodScopedRows(displayRows(), reportingDateKey);
 }
 
 function eventDateKey(row) {
-  if (row.tracker_outcome === 'meeting_set') {
-    return localDateKey(row.occurred_at);
-  }
-  if (isPostMeetingResult(row) || (meetingOutcomes.has(row.tracker_outcome) && row.tracker_outcome !== 'meeting_set')) {
-    return localDateKey(row.event_at || row.occurred_at);
-  }
-  return localDateKey(row.occurred_at);
+  return reportingDateKey(row);
+}
+
+function reportingDateKey(row) {
+  return row.reporting_date_et || localDateKey(row.reporting_at || row.occurred_at);
 }
 
 function isPostMeetingResult(row) {
@@ -419,7 +421,7 @@ function isPostMeetingResult(row) {
 }
 
 function displayRows() {
-  return dedupePipelineRows(state.rows).sort(
+  return dedupePipelineRows(state.rows).filter(isDashboardVisibleEvent).sort(
     (left, right) => new Date(right.event_at || right.occurred_at) - new Date(left.event_at || left.occurred_at),
   );
 }
@@ -465,6 +467,7 @@ function normalizeKey(value) {
 
 function rowQuality(row) {
   return (
+    (row.counts_as_meeting_set === true ? 32 : 0) +
     (row.booked_event_title ? 4 : 0) +
     (row.appointment_id ? 2 : 0) +
     (row.event_at ? 1 : 0) +
@@ -518,7 +521,7 @@ function activeTopCardMetrics() {
     return {
       label: range.label,
       ...metricsFromRows(
-        displayRows().filter((row) => dateKeyInRange(localDateKey(row.occurred_at), range.start, range.end)),
+        displayRows().filter((row) => dateKeyInRange(reportingDateKey(row), range.start, range.end)),
       ),
     };
   }

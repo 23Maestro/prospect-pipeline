@@ -203,6 +203,35 @@ test('mergeMeetingDetailsTemplate: prefills athlete details and optional GPA onl
   );
 });
 
+test('mergeMeetingDetailsTemplate: prepends MaxPreps URL when resolved', () => {
+  const template = [
+    'Main Number:',
+    'Backup Number:',
+    'Spoke To:',
+    'Other Parent:',
+    '',
+    'About The Athlete:',
+    '',
+    'Deficit:',
+  ].join('\n');
+  const context = buildContext({
+    resolved: {
+      maxpreps_url: 'https://www.maxpreps.com/mo/republic/republic-tigers/football/',
+    },
+  });
+
+  const merged = mergeMeetingDetailsTemplate(
+    template,
+    selectScoutPrepContactNumbers(context),
+    context,
+  );
+
+  assert.match(
+    merged,
+    /^https:\/\/www\.maxpreps\.com\/mo\/republic\/republic-tigers\/football\/\n\nMain Number:/,
+  );
+});
+
 test('buildMeetingTemplateDefaults: prefers computed timezone when option exists', () => {
   const template: MeetingSetTemplateResponse = {
     success: true,
@@ -896,7 +925,6 @@ test('buildScoutPrepCard: MaxPreps context adds snapshot rank and mascot level p
         state: 'MO',
         high_school: 'Republic High School',
         maxpreps_mascot: 'Republic Tigers',
-        maxpreps_sport: 'Football',
         maxpreps_state_rank: '24',
       },
       contactInfo: {
@@ -917,7 +945,7 @@ test('buildScoutPrepCard: MaxPreps context adds snapshot rank and mascot level p
     }),
   ).markdown;
 
-  assert.match(card, /- \*\*Maxpreps:\*\* Republic Tigers Football • MO Rank 24/);
+  assert.match(card, /- \*\*Maxpreps:\*\* Republic Tigers • MO Rank 24/);
   assert.match(
     card,
     /- Are you comfortable with Jance taking steps to get in front of college coaches\?/,

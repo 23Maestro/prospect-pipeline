@@ -25,6 +25,8 @@ const eventFields = [
   'athlete_name',
   'occurred_at',
   'event_at',
+  'reporting_at',
+  'reporting_date_et',
   'tracker_outcome',
   'raw_crm_stage',
   'raw_task_status',
@@ -184,11 +186,7 @@ function currentMonthResultLabel(now: Date) {
 }
 
 function eventDateKey(row: Record<string, any>) {
-  if (row.tracker_outcome === 'meeting_set') return localDateKey(row.occurred_at);
-  if (row.counts_as_post_meeting_outcome === true || (meetingOutcomes.has(row.tracker_outcome) && row.tracker_outcome !== 'meeting_set')) {
-    return localDateKey(row.event_at || row.occurred_at);
-  }
-  return localDateKey(row.occurred_at);
+  return row.reporting_date_et || localDateKey(row.reporting_at || row.occurred_at);
 }
 
 function normalizeKey(value: unknown) {
@@ -197,6 +195,7 @@ function normalizeKey(value: unknown) {
 
 function rowQuality(row: Record<string, any>) {
   return (
+    (row.counts_as_meeting_set === true ? 32 : 0) +
     (row.dedupe_key ? 8 : 0) +
     (row.booked_event_title ? 4 : 0) +
     (row.appointment_id ? 2 : 0) +
@@ -242,15 +241,18 @@ function eventIdentityKey(row: Record<string, any>) {
       normalizeKey(row.athlete_name);
     const meetingTitle = normalizeKey(row.booked_event_title);
     if (athleteIdentity && meetingTitle) return `meeting_set:athlete:${athleteIdentity}:title:${meetingTitle}`;
-    if (row.appointment_id) return `meeting_set:appointment:${row.appointment_id}`;
     return [
       'meeting_set',
       normalizeKey(row.athlete_name),
       normalizeKey(row.booked_event_title),
-      localDateKey(row.event_at || row.occurred_at),
+      eventDateKey(row),
     ].join('|');
   }
   return row.dedupe_key || `${row.source}:${row.athlete_name}:${row.tracker_outcome}:${row.event_at || row.occurred_at}`;
+}
+
+function isDashboardVisibleEvent(row: Record<string, any>) {
+  return row.tracker_outcome !== 'meeting_set' || row.counts_as_meeting_set === true;
 }
 
 function publicRow(row: Record<string, any>) {
@@ -283,10 +285,11 @@ function outcomeCounts(rows: Array<Record<string, any>>) {
 
 function filterCounts(rows: Array<Record<string, any>>) {
   const counts = outcomeCounts(rows);
+  const dashboardRows = rows.filter(isDashboardVisibleEvent);
   return {
-    meaningful: rows.filter((row) => !hiddenDefaultOutcomes.has(row.tracker_outcome)).length,
-    all_calls: rows.length,
-    meetings: rows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length,
+    meaningful: dashboardRows.filter((row) => !hiddenDefaultOutcomes.has(row.tracker_outcome)).length,
+    all_calls: dashboardRows.length,
+    meetings: dashboardRows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length,
     closed_won: counts.closed_won || 0,
     closed_lost: counts.closed_lost || 0,
     reschedule_pending: counts.reschedule_pending || 0,
@@ -311,70 +314,6 @@ function firstValue(row: Record<string, any>, paths: string[][]) {
     if (text) return text;
   }
   return '';
-}
-
-function validIsoValue(value: unknown) {
-  const text = String(value || '').trim();
-  if (!text) return '';
-  const date = new Date(text);
-  return Number.isNaN(date.getTime()) ? '' : date.toISOString();
-}
-
-function lifecycleAppointmentId(row: Record<string, any>) {
-  return firstValue(row, [
-    ['appointment_id'],
-    ['booked_event_id'],
-    ['current_appointment_id'],
-    ['verified_athlete_booked_meeting_id'],
-  ]);
-}
-
-function meetingSetClockFromLifecycle(row: Record<string, any>) {
-  const body = payload(row);
-  if (body.source_post === '/sales/meeting-set') {
-    return validIsoValue(row.created_at);
-  }
-  if (body.source === 'weekly_booked_meetings_with_operator_confirmation_task') {
-    return validIsoValue(
-      firstValue(row, [
-        ['latest_confirmation_task_due_at'],
-        ['matched_weekly_task_due_at'],
-        ['due_at'],
-      ]),
-    );
-  }
-  return validIsoValue(body.occurred_at) || validIsoValue(row.created_at);
-}
-
-function meetingSetClockCorrections(lifecycleRows: Array<Record<string, any>>) {
-  const byAppointment = new Map<string, string>();
-  for (const row of lifecycleRows) {
-    if (row.event_type !== 'meeting_set') continue;
-    const appointmentId = lifecycleAppointmentId(row);
-    const clock = meetingSetClockFromLifecycle(row);
-    if (!appointmentId || !clock) continue;
-    const previous = byAppointment.get(appointmentId);
-    if (!previous || new Date(clock).getTime() < new Date(previous).getTime()) {
-      byAppointment.set(appointmentId, clock);
-    }
-  }
-  return byAppointment;
-}
-
-function normalizeMeetingSetClocks(rows: Array<Record<string, any>>, lifecycleRows: Array<Record<string, any>>) {
-  const corrections = meetingSetClockCorrections(lifecycleRows);
-  return rows.map((row) => {
-    if (row.tracker_outcome !== 'meeting_set' || !row.appointment_id) return row;
-    const correctedClock = corrections.get(String(row.appointment_id));
-    if (!correctedClock) return row;
-    const currentClock = validIsoValue(row.occurred_at || row.event_at);
-    if (currentClock && new Date(currentClock).getTime() === new Date(correctedClock).getTime()) return row;
-    return {
-      ...row,
-      occurred_at: correctedClock,
-      event_at: correctedClock,
-    };
-  });
 }
 
 function classifyLifecycleActivity(row: Record<string, any>) {
@@ -445,6 +384,8 @@ function lifecycleActivityToEvent(row: Record<string, any>) {
     athlete_name: firstValue(row, [['athlete_name'], ['name'], ['$row', 'athlete_name']]) || null,
     occurred_at: occurredAt,
     event_at: occurredAt,
+    reporting_at: occurredAt,
+    reporting_date_et: localDateKey(occurredAt),
     tracker_outcome: trackerOutcome,
     raw_crm_stage: null,
     raw_task_status: activitySubtype,
@@ -501,7 +442,10 @@ function resolveMeetingSetSummary(
 ) {
   const rawMeetingSets = rawRows.filter((row) => row.counts_as_meeting_set === true).length;
   const resolvedMeetingSets = resolvedRows.filter((row) => row.counts_as_meeting_set === true).length;
-  const removedDuplicates = Math.max(0, rawMeetingSets - resolvedMeetingSets);
+  const nonDashboardMeetingSets = rawRows.filter(
+    (row) => row.tracker_outcome === 'meeting_set' && row.counts_as_meeting_set !== true,
+  ).length;
+  const removedDuplicates = Math.max(0, rawMeetingSets - resolvedMeetingSets) + nonDashboardMeetingSets;
   return {
     ...fallback,
     total_events: Math.max(0, (Number(fallback.total_events) || 0) - removedDuplicates),
@@ -639,7 +583,7 @@ async function buildLiveContract() {
   const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : []).map(lifecycleActivityToEvent).filter(Boolean) as Array<Record<string, any>>;
   const viewDedupeKeys = new Set(viewEvents.map((row: Record<string, any>) => row.dedupe_key).filter(Boolean));
   const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
-  const materializedEvents = normalizeMeetingSetClocks(mergeEventRows(viewEvents, lifecycleEvents), Array.isArray(lifecycleRows) ? lifecycleRows : []);
+  const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
   const summary = resolveMeetingSetSummary(
     addLifecycleDeltasToSummary((Array.isArray(summaryRows) ? summaryRows[0] : {}) || {}, lifecycleDeltaEvents),
     [...viewEvents, ...lifecycleDeltaEvents],

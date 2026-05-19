@@ -125,6 +125,7 @@ import { recordMeetingSet, recordVoicemailFollowUpSent } from './lib/supabase-li
 import { syncAthleteContactCacheFromScoutPrepContext } from './lib/athlete-contact-cache';
 import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-confirmation-cache-sync';
 import { sendClientMessage } from './lib/client-message-sandbox';
+import { resolveMaxPrepsScoutContext } from './lib/maxpreps-scout-context';
 import {
   isCallAttempt1PortalTask,
   runDuplicateProfileResolutionForTask,
@@ -2682,6 +2683,77 @@ function ScoutPrepDetail({
     }
   }
 
+  async function handleResolveMaxPrepsContext() {
+    const activeContext =
+      context || (await ensureContext('MaxPreps', task.athlete_name, 'Missing Scout Prep context'));
+    if (!activeContext) {
+      return;
+    }
+
+    if (
+      !activeContext.resolved.high_school ||
+      !activeContext.resolved.state ||
+      !activeContext.resolved.sport
+    ) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing school context',
+        message: 'Needs school, state, and sport.',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('MaxPreps', activeContext.resolved.high_school);
+    try {
+      const result = await resolveMaxPrepsScoutContext({
+        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        highSchool: activeContext.resolved.high_school,
+        city: activeContext.resolved.city,
+        state: activeContext.resolved.state,
+        sport: activeContext.resolved.sport,
+      });
+      if (!result) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'No MaxPreps match';
+        toast.message = 'No confirmed team page.';
+        return;
+      }
+
+      const nextContext: ScoutPrepContext = {
+        ...activeContext,
+        resolved: {
+          ...activeContext.resolved,
+          maxpreps_mascot: result.mascot,
+          maxpreps_state_rank: result.state_rank,
+          maxpreps_url: result.url,
+          maxpreps: {
+            mascot: result.mascot,
+            state_rank: result.state_rank,
+            url: result.url,
+          },
+        },
+      };
+      const values = buildScoutPrepValues({
+        athleteName: nextContext.contactInfo.studentAthlete.name || task.athlete_name,
+        parent1Name: nextContext.contactInfo.parent1?.name || undefined,
+        parent2Name: nextContext.contactInfo.parent2?.name || undefined,
+        gradYear: task.grad_year,
+        sport: nextContext.resolved.sport || undefined,
+      });
+
+      setContext(nextContext);
+      setMetadata(buildScoutPrepMetadata(values, nextContext));
+      setMarkdown(buildScoutPrepDetailMarkdown(values, nextContext));
+      toast.style = Toast.Style.Success;
+      toast.title = 'MaxPreps resolved';
+      toast.message = `${result.mascot} • ${result.state_rank}`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'MaxPreps failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -2856,6 +2928,13 @@ function ScoutPrepDetail({
                 icon="🔎"
                 shortcut={{ modifiers: ['cmd'], key: 'h' }}
                 onAction={() => void triggerMaxPrepsSearch(highSchoolCopyLabel)}
+              />
+            ) : null}
+            {highSchoolCopyLabel ? (
+              <Action
+                title="Resolve MaxPreps Context"
+                icon="🏈"
+                onAction={() => void handleResolveMaxPrepsContext()}
               />
             ) : null}
           </ActionPanel.Section>

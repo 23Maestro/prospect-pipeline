@@ -63,12 +63,10 @@ export type ScoutPrepContext = {
     height?: string | null;
     weight?: string | null;
     maxpreps_mascot?: string | null;
-    maxpreps_sport?: string | null;
     maxpreps_state_rank?: string | null;
     maxpreps_url?: string | null;
     maxpreps?: {
       mascot?: string | null;
-      sport?: string | null;
       state_rank?: string | null;
       url?: string | null;
     } | null;

@@ -386,16 +386,6 @@ function resolvedMaxPrepsMascot(context?: ScoutPrepContext): string | null {
   );
 }
 
-function resolvedMaxPrepsSport(
-  values: ScoutPrepFormValues,
-  context?: ScoutPrepContext,
-): string | null {
-  return (
-    titleCase(context?.resolved.maxpreps?.sport || context?.resolved.maxpreps_sport) ||
-    sportLabel(values, context)
-  );
-}
-
 function resolvedMaxPrepsStateRank(context?: ScoutPrepContext): string | null {
   const rawRank = String(
     context?.resolved.maxpreps?.state_rank || context?.resolved.maxpreps_state_rank || '',
@@ -404,24 +394,23 @@ function resolvedMaxPrepsStateRank(context?: ScoutPrepContext): string | null {
     return null;
   }
 
-  const state = String(context?.resolved.state || '').trim().toUpperCase();
+  const state = String(context?.resolved.state || '')
+    .trim()
+    .toUpperCase();
   if (/rank/i.test(rawRank)) {
     return rawRank;
   }
   return state ? `${state} Rank ${rawRank.replace(/^#/, '')}` : `Rank ${rawRank.replace(/^#/, '')}`;
 }
 
-function buildMaxPrepsSnapshotLine(
-  values: ScoutPrepFormValues,
-  context?: ScoutPrepContext,
-): string | null {
+function buildMaxPrepsSnapshotLine(context?: ScoutPrepContext): string | null {
   const mascot = resolvedMaxPrepsMascot(context);
   const stateRank = resolvedMaxPrepsStateRank(context);
   if (!mascot || !stateRank) {
     return null;
   }
 
-  return `${mascot} ${resolvedMaxPrepsSport(values, context)} • ${stateRank}`;
+  return `${mascot} • ${stateRank}`;
 }
 
 function buildSnapshotLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
@@ -439,7 +428,7 @@ function buildSnapshotLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
     ['Position', cleanPositions(context?.resolved.positions)],
     ['School', context?.resolved.high_school],
     ['City / State', formatCityState(context?.resolved.city, context?.resolved.state)],
-    ['Maxpreps', buildMaxPrepsSnapshotLine(values, context)],
+    ['Maxpreps', buildMaxPrepsSnapshotLine(context)],
   ];
 
   return snapshot
