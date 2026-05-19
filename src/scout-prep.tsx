@@ -127,6 +127,14 @@ import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-
 import { sendClientMessage } from './lib/client-message-sandbox';
 import { resolveMaxPrepsScoutContext } from './lib/maxpreps-scout-context';
 import {
+  getCachedScoutPrepContext,
+  getCachedScoutPrepMaxPrepsContext,
+  setCachedScoutPrepContext,
+  setCachedScoutPrepMaxPrepsContext,
+  type ScoutPrepMaxPrepsCacheInput,
+  type ScoutPrepMaxPrepsContext,
+} from './lib/scout-prep-cache';
+import {
   isCallAttempt1PortalTask,
   runDuplicateProfileResolutionForTask,
 } from './lib/scout-duplicate-profiles';
@@ -292,6 +300,38 @@ function buildHighSchoolCopyLabel(context?: ScoutPrepContext | null): string | n
   const state = formatStateForHighSchoolCopy(context?.resolved.state);
   const sport = titleCaseWords(context?.resolved.sport);
   return [highSchool, state, sport ? `${sport} Team` : null].filter(Boolean).join(' ');
+}
+
+function buildMaxPrepsCacheInput(
+  context: ScoutPrepContext,
+  task: ScoutPortalTask,
+): ScoutPrepMaxPrepsCacheInput {
+  return {
+    athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
+    highSchool: context.resolved.high_school,
+    state: context.resolved.state,
+    sport: context.resolved.sport,
+  };
+}
+
+function mergeMaxPrepsContext(
+  context: ScoutPrepContext,
+  maxPreps: ScoutPrepMaxPrepsContext,
+): ScoutPrepContext {
+  return {
+    ...context,
+    resolved: {
+      ...context.resolved,
+      maxpreps_mascot: maxPreps.mascot,
+      maxpreps_state_rank: maxPreps.state_rank,
+      maxpreps_url: maxPreps.url,
+      maxpreps: {
+        mascot: maxPreps.mascot,
+        state_rank: maxPreps.state_rank,
+        url: maxPreps.url,
+      },
+    },
+  };
 }
 
 function buildMeetingSetStartsAt(
@@ -2423,6 +2463,53 @@ function ScoutPrepDetail({
     }, 0);
   }
 
+  async function withCachedMaxPrepsContext(activeContext: ScoutPrepContext) {
+    const cachedMaxPreps = await getCachedScoutPrepMaxPrepsContext(
+      buildMaxPrepsCacheInput(activeContext, task),
+    );
+    return cachedMaxPreps?.isFresh
+      ? mergeMaxPrepsContext(activeContext, cachedMaxPreps.data)
+      : activeContext;
+  }
+
+  function renderScoutPrepContext(activeContext: ScoutPrepContext) {
+    const values = buildScoutPrepValues({
+      athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+      parent1Name: activeContext.contactInfo.parent1?.name || undefined,
+      parent2Name: activeContext.contactInfo.parent2?.name || undefined,
+      gradYear: task.grad_year,
+      sport: activeContext.resolved.sport || undefined,
+    });
+
+    setContext(activeContext);
+    setMetadata(buildScoutPrepMetadata(values, activeContext));
+    setMarkdown(buildScoutPrepDetailMarkdown(values, activeContext));
+  }
+
+  async function loadLiveScoutPrepContextForDetail() {
+    const loadedContext = await loadScoutPrepContext(task);
+    const renderContext = await withCachedMaxPrepsContext(loadedContext);
+    await setCachedScoutPrepContext(task, renderContext);
+    return renderContext;
+  }
+
+  async function handleRefreshScoutPrep() {
+    const toast = await showLoadingToast('Refreshing', task.athlete_name);
+    try {
+      const refreshedContext = await loadLiveScoutPrepContextForDetail();
+      renderScoutPrepContext(refreshedContext);
+      setIsLoading(false);
+      queueContactCacheSync(refreshedContext, null, 'scout_prep_manual_refresh');
+      toast.style = Toast.Style.Success;
+      toast.title = 'Scout Prep refreshed';
+      toast.message = undefined;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Refresh failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function ensureContext(
     loadingTitle: string,
     loadingMessage: string,
@@ -2434,7 +2521,7 @@ function ScoutPrepDetail({
 
     const toast = await showLoadingToast(loadingTitle, loadingMessage);
     try {
-      const loadedContext = await loadScoutPrepContext(task);
+      const loadedContext = await loadLiveScoutPrepContextForDetail();
       setContext(loadedContext);
       queueContactCacheSync(loadedContext, null, 'scout_prep_context_load');
       toast.hide();
@@ -2724,12 +2811,31 @@ function ScoutPrepDetail({
 
     const toast = await showLoadingToast('MaxPreps', activeContext.resolved.high_school);
     try {
+      const cacheInput = buildMaxPrepsCacheInput(activeContext, task);
+      const cached = await getCachedScoutPrepMaxPrepsContext(cacheInput);
+      if (cached?.isFresh) {
+        const nextContext = mergeMaxPrepsContext(activeContext, cached.data);
+        const values = buildScoutPrepValues({
+          athleteName: nextContext.contactInfo.studentAthlete.name || task.athlete_name,
+          parent1Name: nextContext.contactInfo.parent1?.name || undefined,
+          parent2Name: nextContext.contactInfo.parent2?.name || undefined,
+          gradYear: task.grad_year,
+          sport: nextContext.resolved.sport || undefined,
+        });
+
+        setContext(nextContext);
+        setMetadata(buildScoutPrepMetadata(values, nextContext));
+        setMarkdown(buildScoutPrepDetailMarkdown(values, nextContext));
+        await setCachedScoutPrepContext(task, nextContext);
+        toast.style = Toast.Style.Success;
+        toast.title = 'MaxPreps cached';
+        toast.message = `${cached.data.mascot} • ${cached.data.state_rank}`;
+        return;
+      }
+
       const result = await resolveMaxPrepsScoutContext({
-        athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
-        highSchool: activeContext.resolved.high_school,
+        ...cacheInput,
         city: activeContext.resolved.city,
-        state: activeContext.resolved.state,
-        sport: activeContext.resolved.sport,
       });
       if (!result) {
         toast.style = Toast.Style.Failure;
@@ -2738,20 +2844,8 @@ function ScoutPrepDetail({
         return;
       }
 
-      const nextContext: ScoutPrepContext = {
-        ...activeContext,
-        resolved: {
-          ...activeContext.resolved,
-          maxpreps_mascot: result.mascot,
-          maxpreps_state_rank: result.state_rank,
-          maxpreps_url: result.url,
-          maxpreps: {
-            mascot: result.mascot,
-            state_rank: result.state_rank,
-            url: result.url,
-          },
-        },
-      };
+      await setCachedScoutPrepMaxPrepsContext(cacheInput, result);
+      const nextContext = mergeMaxPrepsContext(activeContext, result);
       const values = buildScoutPrepValues({
         athleteName: nextContext.contactInfo.studentAthlete.name || task.athlete_name,
         parent1Name: nextContext.contactInfo.parent1?.name || undefined,
@@ -2763,6 +2857,7 @@ function ScoutPrepDetail({
       setContext(nextContext);
       setMetadata(buildScoutPrepMetadata(values, nextContext));
       setMarkdown(buildScoutPrepDetailMarkdown(values, nextContext));
+      await setCachedScoutPrepContext(task, nextContext);
       toast.style = Toast.Style.Success;
       toast.title = 'MaxPreps resolved';
       toast.message = `${result.mascot} • ${result.state_rank}`;
@@ -2785,28 +2880,25 @@ function ScoutPrepDetail({
           athleteName: task.athlete_name,
         });
 
-        const context = await loadScoutPrepContext(task);
-        const values = buildScoutPrepValues({
-          athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
-          parent1Name: context.contactInfo.parent1?.name || undefined,
-          parent2Name: context.contactInfo.parent2?.name || undefined,
-          gradYear: task.grad_year,
-          sport: context.resolved.sport || undefined,
-        });
+        const cachedContext = await getCachedScoutPrepContext(task);
+        const renderContext = cachedContext?.isFresh
+          ? await withCachedMaxPrepsContext(cachedContext.data)
+          : await loadLiveScoutPrepContextForDetail();
 
         if (!active) {
           return;
         }
 
-        setContext(context);
-        setMetadata(buildScoutPrepMetadata(values, context));
-        setMarkdown(buildScoutPrepDetailMarkdown(values, context));
+        renderScoutPrepContext(renderContext);
         setIsLoading(false);
-        queueContactCacheSync(context, null, 'scout_prep_detail_load');
+        if (!cachedContext?.isFresh) {
+          queueContactCacheSync(renderContext, null, 'scout_prep_detail_load');
+        }
         logInfo('SCOUT_PREP_DETAIL_LOAD', 'load-detail', 'success', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
-          athleteName: values.athleteName,
+          athleteName: renderContext.contactInfo.studentAthlete.name || task.athlete_name,
+          source: cachedContext?.isFresh ? 'context-cache' : 'live',
         });
 
         // Local transformer-based enrichment is intentionally disabled for now.
@@ -2878,6 +2970,11 @@ function ScoutPrepDetail({
               icon="⬆️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
               onAction={() => void handleSyncCallPrepToNotion()}
+            />
+            <Action
+              title="Refresh Scout Prep"
+              icon="🔄"
+              onAction={() => void handleRefreshScoutPrep()}
             />
             <Action
               title="Move CF Task"
