@@ -53,7 +53,14 @@ export type MeetingSetStageClassification = {
 export type PostMeetingOutcomeClassification = {
   kind: 'post_meeting_outcome';
   normalizedStage: string;
-  outcome: 'follow_up' | 'closed_lost' | 'closed_won' | 'resolution_pending' | 'rescheduled' | 'canceled' | 'no_show';
+  outcome:
+    | 'follow_up'
+    | 'closed_lost'
+    | 'closed_won'
+    | 'resolution_pending'
+    | 'rescheduled'
+    | 'canceled'
+    | 'no_show';
 };
 
 const VOICEMAIL_VARIANT_BY_STAGE = new Map<string, VoicemailFollowUpVariant>([
@@ -128,6 +135,18 @@ export function classifyPostMeetingOutcomeStage(
   const normalizedStage = normalizeSalesStageLabelForLaravel(stage);
   const outcome = POST_MEETING_OUTCOME_BY_STAGE.get(normalizedStage);
   return outcome ? { kind: 'post_meeting_outcome', normalizedStage, outcome } : null;
+}
+
+export function isConfirmedRescheduleSchedulingStage(stage: string): boolean {
+  const normalizedStage = normalizeSalesStageLabelForLaravel(stage);
+  return (
+    normalizedStage === 'Rescheduled' ||
+    classifyPostMeetingOutcomeStage(normalizedStage)?.outcome === 'rescheduled'
+  );
+}
+
+export function needsPostCallMeetingSchedulingFields(stage: string): boolean {
+  return Boolean(classifyMeetingSetStage(stage)) || isConfirmedRescheduleSchedulingStage(stage);
 }
 
 export function isCuratedSalesStageLabel(stage: string): boolean {

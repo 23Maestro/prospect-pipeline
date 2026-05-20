@@ -12,6 +12,7 @@ import {
   buildVoicemailFollowUpBody,
   getVoicemailFollowUpRecipients,
   getProspectContactShortcutCandidates,
+  hydrateMeetingSetTemplateForForm,
   mapTimezoneToLegacyRecruitZone,
   mergeMeetingDetailsTemplate,
   normalizePhoneForMessages,
@@ -263,6 +264,27 @@ test('buildMeetingTemplateDefaults: keeps backend timezone when computed option 
 
   const defaults = buildMeetingTemplateDefaults(template, buildContext());
   assert.equal(defaults.selected_recruit_timezone, 'EST');
+});
+
+test('hydrateMeetingSetTemplateForForm: fills sparse Meeting Set templates for existing stage updates', () => {
+  const template: MeetingSetTemplateResponse = {
+    success: true,
+    meeting_name: '',
+    selected_recruit_timezone: null,
+    recruit_timezone_options: [],
+    details_template: '',
+  };
+
+  const hydrated = hydrateMeetingSetTemplateForForm(template, buildContext(), {
+    athleteName: 'Bryson Smith',
+    gradYear: 2027,
+  });
+
+  assert.equal(hydrated.meeting_name, 'Bryson Smith 2027');
+  assert.equal(hydrated.selected_recruit_timezone, 'CST');
+  assert.ok(hydrated.recruit_timezone_options.length > 0);
+  assert.match(hydrated.details_template || '', /Main Number: \(651\) 555-1212/);
+  assert.match(hydrated.details_template || '', /About The Athlete:/);
 });
 
 test('getVoicemailFollowUpRecipients: returns parents plus group text option', () => {

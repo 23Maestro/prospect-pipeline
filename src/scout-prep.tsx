@@ -33,7 +33,6 @@ import type {
   ScoutPrepContext,
 } from './features/scout-prep/types';
 import {
-  buildMeetingTemplateDefaults,
   buildMessagesComposeUrlForRecipients,
   buildProspectContactShortcutPayloadFromName,
   buildScoutPrepLeavingVoicemailBody,
@@ -42,6 +41,7 @@ import {
   getProspectContactShortcutCandidates,
   normalizePhoneForMessages,
   resolveParentHonorificFromRelationship,
+  hydrateMeetingSetTemplateForForm,
   type ProspectContactShortcutCandidate,
   selectScoutPrepContactNumbers,
 } from './lib/scout-prep-contact';
@@ -93,7 +93,8 @@ import {
 import { buildPostCallActionPlan } from './domain/post-call-action';
 import {
   classifyMeetingSetStage,
-  classifyPostMeetingOutcomeStage,
+  isConfirmedRescheduleSchedulingStage,
+  needsPostCallMeetingSchedulingFields,
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './domain/sales-stage-contract';
 import {
@@ -462,14 +463,12 @@ function isMeetingSetStage(stageLabel?: string | null): boolean {
   return Boolean(classifyMeetingSetStage(String(stageLabel || '')));
 }
 
-function isReschedulePendingStage(stageLabel?: string | null): boolean {
-  return (
-    classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome === 'resolution_pending'
-  );
+function isConfirmedRescheduleMeetingStage(stageLabel?: string | null): boolean {
+  return isConfirmedRescheduleSchedulingStage(String(stageLabel || ''));
 }
 
 function needsMeetingSchedulingFields(stageLabel?: string | null): boolean {
-  return isMeetingSetStage(stageLabel) || isReschedulePendingStage(stageLabel);
+  return needsPostCallMeetingSchedulingFields(String(stageLabel || ''));
 }
 
 function getTaskDisplayTitle(
@@ -2050,7 +2049,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           stage: selectedStageLabel,
         });
         const [template, displayContext] = await Promise.all([
-          isReschedulePendingStage(selectedStageLabel)
+          isConfirmedRescheduleMeetingStage(selectedStageLabel)
             ? fetchRescheduleMeetingTemplate(task)
             : fetchMeetingSetTemplate(task),
           loadScoutPrepContextForDisplay(task),
@@ -2060,13 +2059,10 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           return;
         }
         setMeetingTemplate(
-          buildMeetingTemplateDefaults(
-            {
-              ...template,
-              details_template: template.details_template || buildFallbackMeetingDetails(),
-            },
-            context,
-          ),
+          hydrateMeetingSetTemplateForForm(template, context, {
+            athleteName: task.athlete_name,
+            gradYear: task.grad_year,
+          }),
         );
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', 'success', {
           contactId: task.contact_id,
@@ -2086,15 +2082,23 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             return;
           }
           const fallbackTemplate = buildFallbackMeetingTemplate();
-          fallbackTemplate.meeting_name = `${task.athlete_name} ${task.grad_year || ''}`.trim();
-          setMeetingTemplate(buildMeetingTemplateDefaults(fallbackTemplate, context));
+          setMeetingTemplate(
+            hydrateMeetingSetTemplateForForm(fallbackTemplate, context, {
+              athleteName: task.athlete_name,
+              gradYear: task.grad_year,
+            }),
+          );
         } catch {
           if (!active) {
             return;
           }
           const fallbackTemplate = buildFallbackMeetingTemplate();
-          fallbackTemplate.meeting_name = `${task.athlete_name} ${task.grad_year || ''}`.trim();
-          setMeetingTemplate(fallbackTemplate);
+          setMeetingTemplate(
+            hydrateMeetingSetTemplateForForm(fallbackTemplate, null, {
+              athleteName: task.athlete_name,
+              gradYear: task.grad_year,
+            }),
+          );
         }
         logFailure('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', message, {
           contactId: task.contact_id,
@@ -2265,7 +2269,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
             throw new Error('Meeting Set submit plan was not built');
           }
           meetingSetResult = await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
-        } else if (isReschedulePendingStage(stageLabel)) {
+        } else if (isConfirmedRescheduleMeetingStage(stageLabel)) {
           rescheduleMeetingPayload = {
             athlete_id: athleteId,
             athlete_main_id: athleteMainId,
@@ -2450,7 +2454,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         ? 'Stage saved + done'
         : isMeetingSetStage(stageLabel)
           ? 'Meeting Set saved'
-          : isReschedulePendingStage(stageLabel)
+          : isConfirmedRescheduleMeetingStage(stageLabel)
             ? 'Reschedule saved'
             : 'Stage saved';
       toast.message =
@@ -2459,7 +2463,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           ? meetingSetResult?.email_sent
             ? 'Email sent'
             : 'Meeting Set saved'
-          : isReschedulePendingStage(stageLabel)
+          : isConfirmedRescheduleMeetingStage(stageLabel)
             ? rescheduleMeetingResult?.email_sent
               ? 'Email sent'
               : 'Reschedule saved'

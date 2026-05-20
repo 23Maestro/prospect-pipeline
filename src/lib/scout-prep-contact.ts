@@ -479,3 +479,55 @@ export function buildMeetingTemplateDefaults(
     ),
   };
 }
+
+function buildFallbackMeetingDetailsTemplate(): string {
+  return [
+    'Main Number:',
+    'Backup Number:',
+    'Spoke To:',
+    'Other Parent:',
+    '',
+    'About The Athlete:',
+    '',
+    'Deficit:',
+    '',
+    'Other Details:',
+  ].join('\n');
+}
+
+const DEFAULT_RECRUIT_TIMEZONES = ['AST', 'EST', 'CST', 'MST', 'PST', 'AKST', 'HST'];
+
+export function hydrateMeetingSetTemplateForForm(
+  template: MeetingSetTemplateResponse,
+  context?: ScoutPrepContext | null,
+  defaults: {
+    athleteName?: string | null;
+    gradYear?: string | number | null;
+    fallbackTimezone?: string | null;
+  } = {},
+): MeetingSetTemplateResponse {
+  const fallbackTimezone =
+    String(defaults.fallbackTimezone || template.selected_recruit_timezone || '').trim() || 'EST';
+  const meetingName =
+    String(template.meeting_name || '').trim() ||
+    `${String(defaults.athleteName || '').trim()} ${String(defaults.gradYear || '').trim()}`.trim();
+  const recruitTimezoneOptions = template.recruit_timezone_options?.length
+    ? template.recruit_timezone_options
+    : DEFAULT_RECRUIT_TIMEZONES.map((zone) => ({
+        value: zone,
+        label: zone,
+        selected: zone === fallbackTimezone,
+      }));
+
+  return buildMeetingTemplateDefaults(
+    {
+      ...template,
+      meeting_name: meetingName,
+      selected_recruit_timezone: fallbackTimezone,
+      recruit_timezone_options: recruitTimezoneOptions,
+      details_template:
+        String(template.details_template || '').trim() || buildFallbackMeetingDetailsTemplate(),
+    },
+    context,
+  );
+}

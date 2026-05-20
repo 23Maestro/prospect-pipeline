@@ -5,7 +5,9 @@ import {
   classifyMeetingSetStage,
   classifyPostCallActivityStage,
   classifyPostMeetingOutcomeStage,
+  isConfirmedRescheduleSchedulingStage,
   isCuratedSalesStageLabel,
+  needsPostCallMeetingSchedulingFields,
   normalizeSalesStageLabelForLaravel,
 } from './sales-stage-contract';
 
@@ -60,6 +62,20 @@ test('meeting-set and post-meeting classifications are separate from post-call a
     outcome: 'closed_won',
   });
   assert.equal(classifyPostCallActivityStage('Actual Meeting - Close Won'), null);
+});
+
+test('post-call scheduling form is limited to Meeting Set and confirmed reschedules', () => {
+  assert.equal(needsPostCallMeetingSchedulingFields('Meeting Set'), true);
+  assert.equal(needsPostCallMeetingSchedulingFields('Meeting Result - Rescheduled'), true);
+  assert.equal(needsPostCallMeetingSchedulingFields('Rescheduled'), true);
+
+  assert.equal(needsPostCallMeetingSchedulingFields('Meeting Result - Res. Pending'), false);
+  assert.equal(isConfirmedRescheduleSchedulingStage('Meeting Result - Res. Pending'), false);
+  assert.deepEqual(classifyPostMeetingOutcomeStage('Meeting Result - Res. Pending'), {
+    kind: 'post_meeting_outcome',
+    normalizedStage: 'Meeting Result - Res. Pending',
+    outcome: 'resolution_pending',
+  });
 });
 
 test('new opportunity is recognized but not a completed post-call outcome', () => {
