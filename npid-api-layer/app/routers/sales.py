@@ -13,6 +13,8 @@ from app.models.schemas import (
     MeetingSetSubmitRequest,
     MeetingSetSubmitResponse,
     MeetingSetTemplateResponse,
+    RescheduleMeetingSubmitRequest,
+    RescheduleMeetingSubmitResponse,
     SendEmailRequest,
     SalesStageOptionsResponse,
     SalesStageUpdateRequest,
@@ -78,49 +80,83 @@ def _pick_created_follow_up_task(tasks: List[Dict[str, Any]]) -> Optional[Dict[s
     return sorted(candidates, key=sort_key, reverse=True)[0]
 
 
-async def _verify_sales_stage_persisted(
+async def _send_template_email(
     session: NPIDSession,
     translator: LegacyTranslator,
     athlete_id: str,
-    expected_stage: str,
-) -> str:
-    options_endpoint, options_params = translator.sales_stage_options_to_legacy(athlete_id=athlete_id)
-    options_response = await session.get(options_endpoint, params=options_params)
-    options_result = translator.parse_sales_stage_options_response(options_response.text)
-    selected_label = str(options_result.get("selected_label") or "").strip()
-
+    template_id: str,
+    event_name: str,
+) -> bool:
     logger.info(
-        "SALES_STAGE_UPDATE %s",
+        "%s %s",
+        event_name,
         {
-            "event": "SALES_STAGE_UPDATE",
-            "step": "readback",
-            "status": "success",
+            "event": event_name,
+            "step": "request",
+            "status": "start",
             "feature": FEATURE,
             "context": {
                 "athleteId": athlete_id,
-                "expectedStage": expected_stage,
-                "selectedLabel": selected_label or None,
-                "endpoint": options_endpoint,
-                "statusCode": options_response.status_code,
-                "bodyLength": len(options_response.text or ""),
-                "bodyPreview": (options_response.text or "")[:120],
+                "templateId": template_id,
             },
         },
     )
 
-    if not selected_label or selected_label.lower() == "select":
-        raise HTTPException(
-            status_code=502,
-            detail="Sales stage did not persist; legacy readback is still Select",
-        )
+    template_endpoint, template_form_data = translator.template_data_to_legacy(template_id, athlete_id)
+    template_response = await session.post(template_endpoint, data=template_form_data)
+    template_data = translator.parse_template_data_response(template_response.text)
+    if not template_data:
+        raise HTTPException(status_code=500, detail="Failed to parse meeting email template data")
 
-    if not translator.sales_stage_labels_match(expected_stage, selected_label):
-        raise HTTPException(
-            status_code=502,
-            detail=f"Sales stage readback mismatch: expected {expected_stage}, got {selected_label}",
-        )
+    recipients_response = await session.get(f"/rulestemplates/template/sendingtodetails?id={athlete_id}")
+    recipients = translator.parse_email_recipients(recipients_response.text)
+    parent_ids = [
+        str(parent.get("id") or "").strip()
+        for parent in recipients.get("parents", [])
+        if parent.get("checked") and str(parent.get("id") or "").strip()
+    ]
+    include_athlete = bool(recipients.get("athlete", {}).get("checked"))
+    other_email = str(recipients.get("other_email") or "").strip() or None
 
-    return selected_label
+    email_request = SendEmailRequest(
+        athlete_id=athlete_id,
+        template_id=template_id,
+        notification_from=str(template_data.get("sender_name") or "Video Team"),
+        notification_from_email=str(
+            template_data.get("sender_email") or "videoteam@prospectid.com"
+        ),
+        notification_subject=str(template_data.get("templatesubject") or ""),
+        notification_message=str(template_data.get("templatedescription") or ""),
+        include_athlete=include_athlete,
+        parent_ids=parent_ids or None,
+        other_email=other_email,
+    )
+    email_endpoint, email_form_data = translator.send_email_to_legacy(email_request)
+    email_response = await session.post(email_endpoint, data=email_form_data)
+    email_sent = email_response.status_code == 200 and "failed" not in (
+        email_response.text or ""
+    ).lower()
+
+    logger.info(
+        "%s %s",
+        event_name,
+        {
+            "event": event_name,
+            "step": "response",
+            "status": "success" if email_sent else "failure",
+            "feature": FEATURE,
+            **({"error": (email_response.text or "")[:200]} if not email_sent else {}),
+            "context": {
+                "athleteId": athlete_id,
+                "templateId": template_id,
+                "includeAthlete": include_athlete,
+                "parentCount": len(parent_ids),
+                "statusCode": email_response.status_code,
+            },
+        },
+    )
+
+    return email_sent
 
 
 def _is_confirmation_call_task(task: Dict[str, Any]) -> bool:
@@ -374,6 +410,82 @@ async def get_meeting_set_template(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.get("/reschedule-meeting-template", response_model=MeetingSetTemplateResponse)
+async def get_reschedule_meeting_template(
+    request: Request,
+    adminathlete: str,
+    athlete_main_id: str,
+    cal_date: str = "",
+    cal_time: str = "",
+):
+    """
+    Fetch hydrated Reschedule Meeting modal template data.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    logger.info(
+        "RESCHEDULE_MEETING_TEMPLATE_FETCH %s",
+        {
+            "event": "RESCHEDULE_MEETING_TEMPLATE_FETCH",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "adminathlete": adminathlete,
+                "athleteMainId": athlete_main_id,
+                "calDate": cal_date,
+                "calTime": cal_time,
+            },
+        },
+    )
+
+    try:
+        endpoint, params = translator.reschedule_meeting_template_to_legacy(
+            adminathlete=adminathlete,
+            athlete_main_id=athlete_main_id,
+            cal_date=cal_date,
+            cal_time=cal_time,
+        )
+        response = await session.get(endpoint, params=params)
+        result = translator.parse_meeting_set_template_response(response.text)
+        logger.info(
+            "RESCHEDULE_MEETING_TEMPLATE_FETCH %s",
+            {
+                "event": "RESCHEDULE_MEETING_TEMPLATE_FETCH",
+                "step": "parse",
+                "status": "success",
+                "feature": FEATURE,
+                "context": {
+                    "adminathlete": adminathlete,
+                    "athleteMainId": athlete_main_id,
+                    "hasMeetingName": bool(result.get("meeting_name")),
+                    "timezoneCount": len(result.get("recruit_timezone_options", [])),
+                    "hasDetailsTemplate": bool(result.get("details_template")),
+                },
+            },
+        )
+        return MeetingSetTemplateResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "RESCHEDULE_MEETING_TEMPLATE_FETCH %s",
+            {
+                "event": "RESCHEDULE_MEETING_TEMPLATE_FETCH",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "adminathlete": adminathlete,
+                    "athleteMainId": athlete_main_id,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.post("/stage", response_model=SalesStageUpdateResponse)
 async def update_sales_stage(request: Request, payload: SalesStageUpdateRequest):
     """
@@ -586,75 +698,12 @@ async def submit_meeting_set(request: Request, payload: MeetingSetSubmitRequest)
         tasks = tasks_result.get("tasks", [])
         created_task_payload = _pick_created_confirmation_task(tasks)
 
-        logger.info(
-            "MEETING_SET_EMAIL %s",
-            {
-                "event": "MEETING_SET_EMAIL",
-                "step": "request",
-                "status": "start",
-                "feature": FEATURE,
-                "context": {
-                    "athleteId": athlete_id,
-                    "templateId": template_id,
-                },
-            },
-        )
-
-        template_endpoint, template_form_data = translator.template_data_to_legacy(template_id, athlete_id)
-        template_response = await session.post(template_endpoint, data=template_form_data)
-        template_data = translator.parse_template_data_response(template_response.text)
-        if not template_data:
-            raise HTTPException(status_code=500, detail="Failed to parse meeting-set email template data")
-
-        recipients_response = await session.get(f"/rulestemplates/template/sendingtodetails?id={athlete_id}")
-        recipients = translator.parse_email_recipients(recipients_response.text)
-        parent_ids = [
-            str(parent.get("id") or "").strip()
-            for parent in recipients.get("parents", [])
-            if parent.get("checked") and str(parent.get("id") or "").strip()
-        ]
-        include_athlete = bool(recipients.get("athlete", {}).get("checked"))
-        other_email = str(recipients.get("other_email") or "").strip() or None
-
-        email_request = SendEmailRequest(
+        email_sent = await _send_template_email(
+            session=session,
+            translator=translator,
             athlete_id=athlete_id,
             template_id=template_id,
-            notification_from=str(template_data.get("sender_name") or "Video Team"),
-            notification_from_email=str(
-                template_data.get("sender_email") or "videoteam@prospectid.com"
-            ),
-            notification_subject=str(template_data.get("templatesubject") or ""),
-            notification_message=str(template_data.get("templatedescription") or ""),
-            include_athlete=include_athlete,
-            parent_ids=parent_ids or None,
-            other_email=other_email,
-        )
-        email_endpoint, email_form_data = translator.send_email_to_legacy(email_request)
-        email_response = await session.post(email_endpoint, data=email_form_data)
-        email_sent = email_response.status_code == 200 and "failed" not in (
-            email_response.text or ""
-        ).lower()
-
-        logger.info(
-            "MEETING_SET_EMAIL %s",
-            {
-                "event": "MEETING_SET_EMAIL",
-                "step": "response",
-                "status": "success" if email_sent else "failure",
-                "feature": FEATURE,
-                **(
-                    {"error": (email_response.text or "")[:200]}
-                    if not email_sent
-                    else {}
-                ),
-                "context": {
-                    "athleteId": athlete_id,
-                    "templateId": template_id,
-                    "includeAthlete": include_athlete,
-                    "parentCount": len(parent_ids),
-                    "statusCode": email_response.status_code,
-                },
-            },
+            event_name="MEETING_SET_EMAIL",
         )
 
         return MeetingSetSubmitResponse(
@@ -676,6 +725,121 @@ async def submit_meeting_set(request: Request, payload: MeetingSetSubmitRequest)
             "MEETING_SET_SUBMIT %s",
             {
                 "event": "MEETING_SET_SUBMIT",
+                "step": "request",
+                "status": "failure",
+                "feature": FEATURE,
+                "error": str(exc),
+                "context": {
+                    "athleteId": athlete_id,
+                    "athleteMainId": athlete_main_id,
+                    "assignedTo": assigned_to,
+                    "openEventId": open_event_id,
+                    "templateId": template_id,
+                },
+            },
+        )
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/reschedule-meeting", response_model=RescheduleMeetingSubmitResponse)
+async def submit_reschedule_meeting(request: Request, payload: RescheduleMeetingSubmitRequest):
+    """
+    Submit legacy Reschedule Meeting form, then send default Meeting Set email.
+    """
+    session = get_session(request)
+    translator = LegacyTranslator()
+
+    athlete_id = payload.athlete_id.strip()
+    athlete_main_id = payload.athlete_main_id.strip()
+    assigned_to = payload.assigned_to.strip()
+    open_event_id = payload.open_event_id.strip()
+    meeting_name = payload.meeting_name.strip()
+    template_id = payload.template_id.strip() or "210"
+
+    if not athlete_id or not athlete_main_id:
+        raise HTTPException(status_code=400, detail="athlete_id and athlete_main_id are required")
+    if not assigned_to or not open_event_id:
+        raise HTTPException(status_code=400, detail="assigned_to and open_event_id are required")
+    if not meeting_name:
+        raise HTTPException(status_code=400, detail="meeting_name is required")
+
+    logger.info(
+        "RESCHEDULE_MEETING_SUBMIT %s",
+        {
+            "event": "RESCHEDULE_MEETING_SUBMIT",
+            "step": "request",
+            "status": "start",
+            "feature": FEATURE,
+            "context": {
+                "athleteId": athlete_id,
+                "athleteMainId": athlete_main_id,
+                "assignedTo": assigned_to,
+                "openEventId": open_event_id,
+                "templateId": template_id,
+            },
+        },
+    )
+
+    try:
+        endpoint, form_data = translator.reschedule_meeting_submit_to_legacy(payload)
+        response = await session.post(endpoint, data=form_data)
+        body_preview = (response.text or "")[:200]
+        if response.status_code >= 400:
+            logger.error(
+                "RESCHEDULE_MEETING_SUBMIT %s",
+                {
+                    "event": "RESCHEDULE_MEETING_SUBMIT",
+                    "step": "response",
+                    "status": "failure",
+                    "feature": FEATURE,
+                    "error": body_preview or f"HTTP {response.status_code}",
+                    "context": {
+                        "athleteId": athlete_id,
+                        "athleteMainId": athlete_main_id,
+                        "assignedTo": assigned_to,
+                        "openEventId": open_event_id,
+                        "statusCode": response.status_code,
+                    },
+                },
+            )
+            raise HTTPException(
+                status_code=response.status_code,
+                detail=body_preview or f"Reschedule Meeting HTTP {response.status_code}",
+            )
+
+        tasks_endpoint, tasks_params = translator.tasks_list_to_legacy(athlete_id, athlete_main_id)
+        tasks_response = await session.get(tasks_endpoint, params=tasks_params)
+        tasks_result = translator.parse_tasks_list_response(tasks_response.text)
+        tasks = tasks_result.get("tasks", [])
+        created_task_payload = _pick_created_confirmation_task(tasks)
+
+        email_sent = await _send_template_email(
+            session=session,
+            translator=translator,
+            athlete_id=athlete_id,
+            template_id=template_id,
+            event_name="RESCHEDULE_MEETING_EMAIL",
+        )
+
+        return RescheduleMeetingSubmitResponse(
+            success=True,
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+            assigned_to=assigned_to,
+            open_event_id=open_event_id,
+            meeting_name=meeting_name,
+            template_id=template_id,
+            status_code=response.status_code,
+            email_sent=email_sent,
+            created_task=AthleteTask(**created_task_payload) if created_task_payload else None,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(
+            "RESCHEDULE_MEETING_SUBMIT %s",
+            {
+                "event": "RESCHEDULE_MEETING_SUBMIT",
                 "step": "request",
                 "status": "failure",
                 "feature": FEATURE,

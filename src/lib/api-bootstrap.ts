@@ -21,6 +21,8 @@ const REQUIRED_SERVER_PATHS = [
   '/api/v1/sales/stages/{athlete_id}',
   '/api/v1/sales/meeting-set-template',
   '/api/v1/sales/meeting-set',
+  '/api/v1/sales/reschedule-meeting-template',
+  '/api/v1/sales/reschedule-meeting',
   '/api/v1/tasks/popup',
   '/api/v1/tasks/update',
   '/api/v1/tasks/complete',

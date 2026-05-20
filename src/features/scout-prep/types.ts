@@ -180,3 +180,9 @@ export type MeetingSetSubmitResponse = {
   email_sent: boolean;
   created_task?: ScoutAthleteTask | null;
 };
+
+export type RescheduleMeetingSubmitRequest = MeetingSetSubmitRequest & {
+  keep_as_open_slot?: string;
+};
+
+export type RescheduleMeetingSubmitResponse = MeetingSetSubmitResponse;

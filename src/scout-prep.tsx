@@ -23,6 +23,8 @@ import { HeadScoutSchedulesRoot } from './head-scout-schedules';
 import type {
   MeetingSetSubmitResponse,
   MeetingSetTemplateResponse,
+  RescheduleMeetingSubmitRequest,
+  RescheduleMeetingSubmitResponse,
   SalesStageOption,
   ScoutAthleteTask,
   ScoutRecentProfile,
@@ -33,7 +35,6 @@ import type {
 import {
   buildMeetingTemplateDefaults,
   buildMessagesComposeUrlForRecipients,
-  buildTimeOfDayGreeting,
   buildProspectContactShortcutPayloadFromName,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
@@ -84,12 +85,15 @@ import {
 import {
   fetchCuratedSalesStageOptions,
   fetchMeetingSetTemplate,
+  fetchRescheduleMeetingTemplate,
   submitMeetingSet,
+  submitRescheduleMeeting,
   updateSalesStage,
 } from './lib/sales-stage';
 import { buildPostCallActionPlan } from './domain/post-call-action';
 import {
   classifyMeetingSetStage,
+  classifyPostMeetingOutcomeStage,
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './domain/sales-stage-contract';
 import {
@@ -121,8 +125,15 @@ import {
   type ReminderContactOption,
   type ReminderMode,
 } from './lib/reminders';
-import { recordMeetingSet, recordVoicemailFollowUpSent } from './lib/supabase-lifecycle';
-import { syncAthleteContactCacheFromScoutPrepContext } from './lib/athlete-contact-cache';
+import {
+  recordMeetingSet,
+  recordRescheduled,
+  recordVoicemailFollowUpSent,
+} from './lib/supabase-lifecycle';
+import {
+  hasAthleteContactCacheForTask,
+  syncAthleteContactCacheFromScoutPrepContext,
+} from './lib/athlete-contact-cache';
 import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-confirmation-cache-sync';
 import { sendClientMessage } from './lib/client-message-sandbox';
 import { resolveMaxPrepsScoutContext } from './lib/maxpreps-scout-context';
@@ -341,9 +352,7 @@ async function mergeCachedMaxPrepsContext(
   const cachedMaxPreps = await getCachedScoutPrepMaxPrepsContext(
     buildMaxPrepsCacheInput(context, task),
   );
-  return cachedMaxPreps?.isFresh
-    ? mergeMaxPrepsContext(context, cachedMaxPreps.data)
-    : context;
+  return cachedMaxPreps?.isFresh ? mergeMaxPrepsContext(context, cachedMaxPreps.data) : context;
 }
 
 async function loadScoutPrepContextForDisplay(
@@ -367,6 +376,50 @@ async function loadScoutPrepContextForDisplay(
     context: renderContext,
     source: 'live',
   };
+}
+
+function uniqueContactCacheSeedTasks(
+  taskBuckets: Record<ScoutTaskRange, ScoutPortalTask[]>,
+): ScoutPortalTask[] {
+  const byAthleteKey = new Map<string, ScoutPortalTask>();
+  for (const task of Object.values(taskBuckets).flat()) {
+    const athleteId = String(task.athlete_id || task.contact_id || '').trim();
+    const athleteMainId = String(task.athlete_main_id || '').trim();
+    if (!athleteId || !athleteMainId) continue;
+    const key = `${athleteId}:${athleteMainId}`;
+    if (!byAthleteKey.has(key)) byAthleteKey.set(key, task);
+  }
+  return Array.from(byAthleteKey.values());
+}
+
+async function seedMissingAthleteContactCacheFromTasks(
+  taskBuckets: Record<ScoutTaskRange, ScoutPortalTask[]>,
+) {
+  for (const task of uniqueContactCacheSeedTasks(taskBuckets)) {
+    try {
+      const cacheState = await hasAthleteContactCacheForTask(task);
+      if (!cacheState.enabled || cacheState.cached) continue;
+
+      const context = await loadScoutPrepContext(task);
+      await syncAthleteContactCacheFromScoutPrepContext({
+        context,
+        crmStage: null,
+        source: 'scout_prep_task_ingest',
+        seenAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      logFailure(
+        'SCOUT_PREP_CONTACT_CACHE_INGEST',
+        'background-seed',
+        error instanceof Error ? error.message : String(error),
+        {
+          contactId: task.contact_id,
+          athleteId: task.athlete_id || task.contact_id,
+          athleteMainId: task.athlete_main_id || null,
+        },
+      );
+    }
+  }
 }
 
 function buildMeetingSetStartsAt(
@@ -394,8 +447,29 @@ function buildMeetingSetStartsAt(
   return `20${year}-${month}-${day}T${rawStartTime}`;
 }
 
+function buildEasternStartsAt(value?: string | null): string | null {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed}:00-04:00`;
+  }
+  return trimmed;
+}
+
 function isMeetingSetStage(stageLabel?: string | null): boolean {
   return Boolean(classifyMeetingSetStage(String(stageLabel || '')));
+}
+
+function isReschedulePendingStage(stageLabel?: string | null): boolean {
+  return (
+    classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome === 'resolution_pending'
+  );
+}
+
+function needsMeetingSchedulingFields(stageLabel?: string | null): boolean {
+  return isMeetingSetStage(stageLabel) || isReschedulePendingStage(stageLabel);
 }
 
 function getTaskDisplayTitle(
@@ -516,10 +590,7 @@ async function persistVoicemailFollowUpMessageSent(args: {
     return;
   }
 
-  const followUpTask = resolveVoicemailLifecycleTaskForCompletion(
-    args.context.tasks,
-    args.variant,
-  );
+  const followUpTask = resolveVoicemailLifecycleTaskForCompletion(args.context.tasks, args.variant);
   const taskLabel = getVoicemailLifecycleTaskTitle(args.variant) || args.variant;
   if (!followUpTask?.task_id) {
     throw new Error(`Missing task list item for ${taskLabel}`);
@@ -1962,7 +2033,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
   useEffect(() => {
     let active = true;
-    if (!isMeetingSetStage(selectedStageLabel)) {
+    if (!needsMeetingSchedulingFields(selectedStageLabel)) {
       setMeetingTemplate(null);
       setIsLoadingMeetingTemplate(false);
       return () => {
@@ -1976,9 +2047,12 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', 'start', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
+          stage: selectedStageLabel,
         });
         const [template, displayContext] = await Promise.all([
-          fetchMeetingSetTemplate(task),
+          isReschedulePendingStage(selectedStageLabel)
+            ? fetchRescheduleMeetingTemplate(task)
+            : fetchMeetingSetTemplate(task),
           loadScoutPrepContextForDisplay(task),
         ]);
         const context = displayContext.context;
@@ -1999,6 +2073,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           athleteMainId: task.athlete_main_id || null,
           timezoneCount: template.recruit_timezone_options.length,
           hasPrimaryPhone: Boolean(selectScoutPrepContactNumbers(context).primaryNumber),
+          stage: selectedStageLabel,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -2045,7 +2120,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
 
   useEffect(() => {
     let active = true;
-    if (!isMeetingSetStage(selectedStageLabel) || !selectedMeetingFor) {
+    if (!needsMeetingSchedulingFields(selectedStageLabel) || !selectedMeetingFor) {
       setOpenMeetingSlots([]);
       setSelectedOpenMeetingId('');
       setIsLoadingOpenMeetings(false);
@@ -2125,7 +2200,11 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
       const preUpdateContext = context || (await loadScoutPrepContext(task));
       let meetingSetResult: MeetingSetSubmitResponse | null = null;
       let meetingSetInput: Parameters<typeof buildPostCallActionPlan>[0]['meetingSet'] = undefined;
-      if (isMeetingSetStage(stageLabel)) {
+      let rescheduleMeetingResult: RescheduleMeetingSubmitResponse | null = null;
+      let rescheduleMeetingPayload: RescheduleMeetingSubmitRequest | null = null;
+      let rescheduleStartsAt: string | null = null;
+      let rescheduleHeadScout: string | null = null;
+      if (needsMeetingSchedulingFields(stageLabel)) {
         const assignedTo = String(
           values.meetingFor || selectedMeetingFor || values.legacyAssignedTo || '',
         ).trim();
@@ -2142,13 +2221,13 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         const startsAt = buildMeetingSetStartsAt(selectedOpenMeeting);
 
         if (!meetingName || !meetingTimezone || !taskDescription) {
-          throw new Error('Meeting Set requires meeting name, timezone, and details');
+          throw new Error('Meeting update requires meeting name, timezone, and details');
         }
         if (!assignedTo || !openEventId || !startTime) {
-          throw new Error('Meeting Set requires scout and open meeting selection');
+          throw new Error('Meeting update requires scout and open meeting selection');
         }
 
-        meetingSetInput = {
+        const meetingInput = {
           athleteId,
           athleteMainId,
           meetingName,
@@ -2164,20 +2243,45 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           meetingLength,
           headScout: String(preUpdateContext.resolved.head_scout || '').trim() || null,
         };
+        rescheduleStartsAt = buildEasternStartsAt(startsAt) || startTime;
+        rescheduleHeadScout =
+          String(preUpdateContext.resolved.head_scout || '').trim() ||
+          selectedOpenMeeting?.assigned_owner ||
+          selectedScout?.scout_name ||
+          null;
 
-        const initialPlan = buildPostCallActionPlan({
-          athleteId,
-          athleteMainId,
-          athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
-          stageLabel,
-          tasks: preUpdateContext.tasks,
-          selectedTaskId: task.task_id,
-          meetingSet: meetingSetInput,
-        });
-        if (!initialPlan.laravelMeetingSetSubmit) {
-          throw new Error('Meeting Set submit plan was not built');
+        if (isMeetingSetStage(stageLabel)) {
+          meetingSetInput = meetingInput;
+          const initialPlan = buildPostCallActionPlan({
+            athleteId,
+            athleteMainId,
+            athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
+            stageLabel,
+            tasks: preUpdateContext.tasks,
+            selectedTaskId: task.task_id,
+            meetingSet: meetingSetInput,
+          });
+          if (!initialPlan.laravelMeetingSetSubmit) {
+            throw new Error('Meeting Set submit plan was not built');
+          }
+          meetingSetResult = await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
+        } else if (isReschedulePendingStage(stageLabel)) {
+          rescheduleMeetingPayload = {
+            athlete_id: athleteId,
+            athlete_main_id: athleteMainId,
+            meeting_name: meetingName,
+            meeting_timezone: meetingTimezone,
+            assigned_to: assignedTo,
+            open_event_id: openEventId,
+            task_description: taskDescription,
+            start_time: startTime,
+            meeting_length: meetingLength,
+            openmeetings_list_length: '-1',
+            template_id: '210',
+            keep_as_open_slot: 'yes',
+          };
+          rescheduleMeetingResult = await submitRescheduleMeeting(rescheduleMeetingPayload);
         }
-        meetingSetResult = await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
       }
 
       const basePlan = buildPostCallActionPlan({
@@ -2279,6 +2383,36 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           );
         }
       }
+      if (rescheduleMeetingPayload && rescheduleMeetingResult) {
+        try {
+          await recordRescheduled({
+            athleteId,
+            athleteMainId,
+            athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
+            crmStage: salesStageResult.stage || stageLabel,
+            taskStatus: rescheduleMeetingResult.created_task?.title || 'Confirmation Call',
+            headScout: rescheduleHeadScout,
+            currentTaskId: rescheduleMeetingResult.created_task?.task_id || null,
+            currentTaskTitle: rescheduleMeetingResult.created_task?.title || null,
+            appointmentId: rescheduleMeetingPayload.open_event_id,
+            sourceEventId: rescheduleMeetingPayload.open_event_id,
+            startsAt: rescheduleStartsAt,
+            dueAt: rescheduleStartsAt,
+          });
+        } catch (error) {
+          logFailure(
+            'SCOUT_PREP_RESCHEDULE_SYNC',
+            'supabase-write',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              stageLabel,
+              appointmentId: rescheduleMeetingPayload.open_event_id,
+            },
+          );
+        }
+      }
 
       let taskCompletionMessage: string | null = null;
       const taskCompletion = actionPlan.laravelTaskCompletion;
@@ -2316,14 +2450,20 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         ? 'Stage saved + done'
         : isMeetingSetStage(stageLabel)
           ? 'Meeting Set saved'
-          : 'Stage saved';
+          : isReschedulePendingStage(stageLabel)
+            ? 'Reschedule saved'
+            : 'Stage saved';
       toast.message =
         taskCompletionMessage ||
         (isMeetingSetStage(stageLabel)
           ? meetingSetResult?.email_sent
             ? 'Email sent'
             : 'Meeting Set saved'
-          : stageLabel);
+          : isReschedulePendingStage(stageLabel)
+            ? rescheduleMeetingResult?.email_sent
+              ? 'Email sent'
+              : 'Reschedule saved'
+            : stageLabel);
 
       await popToRoot({ clearSearchBar: true });
     } catch (error) {
@@ -2363,10 +2503,10 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
         </Form.Dropdown>
       ) : null}
 
-      {isMeetingSetStage(selectedStageLabel) ? (
+      {needsMeetingSchedulingFields(selectedStageLabel) ? (
         <>
           {isLoadingMeetingTemplate ? (
-            <Form.Description text="Loading Meeting Set template…" />
+            <Form.Description text="Loading meeting template…" />
           ) : (
             <>
               <Form.TextField
@@ -3828,6 +3968,9 @@ export default function ScoutPrepCommand() {
           future: [...taskBuckets.future].reverse(),
         };
         setTaskBuckets(nextTaskBuckets);
+        setTimeout(() => {
+          void seedMissingAthleteContactCacheFromTasks(nextTaskBuckets);
+        }, 0);
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'success', {
           selectedRange,
           todayPastDueCount: nextTaskBuckets.todayPastDue.length,

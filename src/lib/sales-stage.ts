@@ -4,6 +4,8 @@ import type {
   MeetingSetSubmitRequest,
   MeetingSetSubmitResponse,
   MeetingSetTemplateResponse,
+  RescheduleMeetingSubmitRequest,
+  RescheduleMeetingSubmitResponse,
   SalesStageOption,
   SalesStageOptionsResponse,
   SalesStageUpdateResponse,
@@ -20,13 +22,11 @@ import { recordLifecycleMutation } from './supabase-lifecycle';
 
 const FEATURE = 'sales-stage';
 const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
-const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = CURATED_SALES_STAGE_LABELS.map(
-  (label) => ({
-    value: label,
-    label,
-    selected: false,
-  }),
-);
+const FALLBACK_CURATED_OPTIONS: SalesStageOption[] = CURATED_SALES_STAGE_LABELS.map((label) => ({
+  value: label,
+  label,
+  selected: false,
+}));
 
 function logInfo(
   event: string,
@@ -94,21 +94,21 @@ export async function fetchCuratedSalesStageOptions(
           option.selected === selected?.selected,
       )
     : false;
-  const fallbackOptions = selectedAllowed && selected
-    ? [
-        selected,
-        ...FALLBACK_CURATED_OPTIONS.filter(
-          (option) =>
-            !excludedLabels.has(option.label) &&
-            (option.label !== selected.label || option.value !== selected.value),
-        ),
-      ]
-    : FALLBACK_CURATED_OPTIONS.filter((option) => !excludedLabels.has(option.label));
+  const fallbackOptions =
+    selectedAllowed && selected
+      ? [
+          selected,
+          ...FALLBACK_CURATED_OPTIONS.filter(
+            (option) =>
+              !excludedLabels.has(option.label) &&
+              (option.label !== selected.label || option.value !== selected.value),
+          ),
+        ]
+      : FALLBACK_CURATED_OPTIONS.filter((option) => !excludedLabels.has(option.label));
   const hasOnlySelectedStage = options.length <= 1;
-  const finalOptions =
-    hasOnlySelectedStage
-      ? fallbackOptions
-      : curated.length > 0
+  const finalOptions = hasOnlySelectedStage
+    ? fallbackOptions
+    : curated.length > 0
       ? selectedAllowed && selected && !selectedAlreadyIncluded
         ? [selected, ...curated]
         : curated
@@ -157,6 +157,46 @@ export async function fetchMeetingSetTemplate(
 
   const payload = (await response.json()) as MeetingSetTemplateResponse;
   logInfo('MEETING_SET_TEMPLATE_LOAD', 'parse', 'success', {
+    adminathlete: task.contact_id,
+    athleteMainId: task.athlete_main_id || null,
+    hasMeetingName: Boolean(String(payload.meeting_name || '').trim()),
+    timezoneCount: payload.recruit_timezone_options?.length || 0,
+    hasDetailsTemplate: Boolean(String(payload.details_template || '').trim()),
+  });
+  return payload;
+}
+
+export async function fetchRescheduleMeetingTemplate(
+  task: ScoutPortalTask,
+): Promise<MeetingSetTemplateResponse> {
+  logInfo('RESCHEDULE_MEETING_TEMPLATE_LOAD', 'request', 'start', {
+    adminathlete: task.contact_id,
+    athleteMainId: task.athlete_main_id || null,
+  });
+
+  const params = new URLSearchParams({
+    adminathlete: String(task.contact_id),
+    athlete_main_id: String(task.athlete_main_id || ''),
+    cal_date: '',
+    cal_time: '',
+  });
+
+  const response = await apiFetch(`/sales/reschedule-meeting-template?${params.toString()}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message =
+      errorText.slice(0, 200) || `Reschedule Meeting template HTTP ${response.status}`;
+    logFailure('RESCHEDULE_MEETING_TEMPLATE_LOAD', 'request', message, {
+      adminathlete: task.contact_id,
+      athleteMainId: task.athlete_main_id || null,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const payload = (await response.json()) as MeetingSetTemplateResponse;
+  logInfo('RESCHEDULE_MEETING_TEMPLATE_LOAD', 'parse', 'success', {
     adminathlete: task.contact_id,
     athleteMainId: task.athlete_main_id || null,
     hasMeetingName: Boolean(String(payload.meeting_name || '').trim()),
@@ -284,6 +324,51 @@ export async function submitMeetingSet(
 
   const result = (await response.json()) as MeetingSetSubmitResponse;
   logInfo('MEETING_SET_SUBMIT', 'parse', 'success', {
+    athleteId: result.athlete_id,
+    athleteMainId: result.athlete_main_id,
+    assignedTo: result.assigned_to,
+    openEventId: result.open_event_id,
+    emailSent: result.email_sent,
+    hasCreatedTask: Boolean(result.created_task),
+  });
+  return result;
+}
+
+export async function submitRescheduleMeeting(
+  payload: RescheduleMeetingSubmitRequest,
+): Promise<RescheduleMeetingSubmitResponse> {
+  logInfo('RESCHEDULE_MEETING_SUBMIT', 'request', 'start', {
+    athleteId: payload.athlete_id,
+    athleteMainId: payload.athlete_main_id,
+    assignedTo: payload.assigned_to,
+    openEventId: payload.open_event_id,
+    templateId: payload.template_id || '210',
+  });
+
+  const response = await apiFetch('/sales/reschedule-meeting', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    const message = errorText.slice(0, 200) || `Reschedule Meeting submit HTTP ${response.status}`;
+    logFailure('RESCHEDULE_MEETING_SUBMIT', 'request', message, {
+      athleteId: payload.athlete_id,
+      athleteMainId: payload.athlete_main_id,
+      assignedTo: payload.assigned_to,
+      openEventId: payload.open_event_id,
+      statusCode: response.status,
+      responsePreview: errorText.slice(0, 120),
+    });
+    throw new Error(message);
+  }
+
+  const result = (await response.json()) as RescheduleMeetingSubmitResponse;
+  logInfo('RESCHEDULE_MEETING_SUBMIT', 'parse', 'success', {
     athleteId: result.athlete_id,
     athleteMainId: result.athlete_main_id,
     assignedTo: result.assigned_to,

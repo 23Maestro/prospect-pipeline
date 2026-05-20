@@ -195,6 +195,19 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
   assert.match(materializer, /Legacy\/materialization utility only/);
 });
 
+test('Scout Prep task ingest seeds missing athlete contact cache without blocking list render', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const setTaskBucketsIndex = scoutPrep.indexOf('setTaskBuckets(nextTaskBuckets)');
+  const seedIndex = scoutPrep.indexOf('seedMissingAthleteContactCacheFromTasks(nextTaskBuckets)');
+
+  assert.match(scoutPrep, /function uniqueContactCacheSeedTasks/);
+  assert.match(scoutPrep, /hasAthleteContactCacheForTask\(task\)/);
+  assert.match(scoutPrep, /if \(!cacheState\.enabled \|\| cacheState\.cached\) continue/);
+  assert.match(scoutPrep, /source: 'scout_prep_task_ingest'/);
+  assert.ok(setTaskBucketsIndex > 0);
+  assert.ok(seedIndex > setTaskBucketsIndex);
+});
+
 test('Prospect Web architecture docs keep hosting adapter scope separate from domain meaning', () => {
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
   const matches = architectureDocs.filter((path) => /prospect web|vercel/i.test(readRepoFile(path)));

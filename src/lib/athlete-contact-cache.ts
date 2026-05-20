@@ -1,8 +1,9 @@
 import { getPreferenceValues } from '@raycast/api';
 import fs from 'fs';
 import path from 'path';
-import type { ScoutPrepContext } from '../features/scout-prep/types';
+import type { ScoutPortalTask, ScoutPrepContext } from '../features/scout-prep/types';
 import {
+  buildAthleteContactCacheKey,
   buildAthleteContactCacheSyncPlan,
   type AthleteContactCacheSyncPlan,
 } from '../domain/athlete-contact-cache';
@@ -136,4 +137,26 @@ export async function syncAthleteContactCacheFromScoutPrepContext(args: {
 
   await upsertAthleteContactCacheRows(config, plan.rows);
   return { enabled: true, action: plan.action, count: plan.rows.length };
+}
+
+export async function hasAthleteContactCacheForTask(
+  task: ScoutPortalTask,
+): Promise<{ enabled: boolean; cached: boolean; athleteKey: string | null }> {
+  const athleteId = String(task.athlete_id || task.contact_id || '').trim();
+  const athleteMainId = String(task.athlete_main_id || '').trim();
+  if (!athleteId || !athleteMainId) {
+    return { enabled: false, cached: false, athleteKey: null };
+  }
+
+  const config = getSupabaseConfig();
+  if (!config) {
+    return { enabled: false, cached: false, athleteKey: null };
+  }
+
+  const athleteKey = buildAthleteContactCacheKey(athleteId, athleteMainId);
+  return {
+    enabled: true,
+    cached: await hasAthleteContactCacheRows(config, athleteKey),
+    athleteKey,
+  };
 }

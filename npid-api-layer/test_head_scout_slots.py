@@ -4,7 +4,7 @@ import os
 sys.path.append(os.getcwd())
 
 from app.translators.legacy import LegacyTranslator
-from app.models.schemas import MeetingSetSubmitRequest
+from app.models.schemas import MeetingSetSubmitRequest, RescheduleMeetingSubmitRequest
 
 
 def test_parse_head_scout_slots_response_filters_and_orders_slots():
@@ -125,6 +125,55 @@ def test_meeting_set_request_accepts_raycast_head_scout_context_fields():
     assert request.meetingfor == "1354049"
     assert request.calendar_owner_id == "nhVvYOz8bAaL57c"
     assert request.booked_meeting_assigned_owner == "Ryan Lietz"
+
+
+def test_reschedule_meeting_request_uses_verified_legacy_endpoint_and_fields():
+    request = RescheduleMeetingSubmitRequest(
+        athlete_id="1491137",
+        athlete_main_id="952958",
+        meeting_name="Trindon Thompson Football 2029 GA",
+        meeting_timezone="EST",
+        assigned_to="2254",
+        open_event_id="627030",
+        task_description="Main Number:\nOther Details:",
+        start_time="03:00",
+        meeting_length="01:00",
+    )
+
+    endpoint, form_data = LegacyTranslator.reschedule_meeting_submit_to_legacy(request)
+
+    assert endpoint == "/tasks/reschedulemeeting"
+    assert form_data == {
+        "keepasopenslot": "yes",
+        "contact_task_main": "952958",
+        "contact_task": "1491137",
+        "existingtask": "",
+        "tasktitle": "Trindon Thompson Football 2029 GA",
+        "contact": "",
+        "meetingtimezone": "EST",
+        "assignedto": "2254",
+        "openmeetings_list_length": "-1",
+        "openeventid": "627030",
+        "duedate": "",
+        "starttime": "03:00",
+        "meetinglength": "01:00",
+        "taskdescription": "Main Number:\nOther Details:",
+    }
+
+
+def test_reschedule_meeting_template_uses_verified_legacy_endpoint():
+    endpoint, params = LegacyTranslator.reschedule_meeting_template_to_legacy(
+        adminathlete="1491137",
+        athlete_main_id="952958",
+    )
+
+    assert endpoint == "/template/template/reschedulemeeting"
+    assert params == {
+        "cal_date": "",
+        "cal_time": "",
+        "adminathlete": "1491137",
+        "athlete_main_id": "952958",
+    }
 
 
 def test_build_head_scout_schedule_from_open_meetings_uses_concrete_slots():

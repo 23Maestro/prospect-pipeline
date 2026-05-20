@@ -2282,6 +2282,31 @@ class LegacyTranslator:
         }
         return endpoint, form_data
 
+    @staticmethod
+    def reschedule_meeting_submit_to_legacy(request: Any) -> Tuple[str, Dict[str, Any]]:
+        """
+        Convert Reschedule Meeting submit request to legacy form data.
+        POST /tasks/reschedulemeeting
+        """
+        endpoint = "/tasks/reschedulemeeting"
+        form_data = {
+            "keepasopenslot": request.keep_as_open_slot,
+            "contact_task_main": request.athlete_main_id,
+            "contact_task": request.athlete_id,
+            "existingtask": request.existing_task,
+            "tasktitle": request.meeting_name,
+            "contact": request.contact,
+            "meetingtimezone": request.meeting_timezone,
+            "assignedto": request.assigned_to,
+            "openmeetings_list_length": request.openmeetings_list_length,
+            "openeventid": request.open_event_id,
+            "duedate": request.due_date,
+            "starttime": request.start_time,
+            "meetinglength": request.meeting_length,
+            "taskdescription": request.task_description,
+        }
+        return endpoint, form_data
+
     # ============== Inbox Translators ==============
     # Ported from: src/python/npid_api_client.py
 
@@ -4346,6 +4371,26 @@ class LegacyTranslator:
         GET /template/template/meetingset?cal_date=&cal_time=&adminathlete=...&athlete_main_id=...
         """
         endpoint = "/template/template/meetingset"
+        params: Dict[str, Any] = {
+            "cal_date": cal_date,
+            "cal_time": cal_time,
+            "adminathlete": adminathlete,
+            "athlete_main_id": athlete_main_id,
+        }
+        return endpoint, params
+
+    @staticmethod
+    def reschedule_meeting_template_to_legacy(
+        adminathlete: str,
+        athlete_main_id: str,
+        cal_date: str = "",
+        cal_time: str = "",
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Build request for Reschedule Meeting modal template hydration.
+        GET /template/template/reschedulemeeting?cal_date=&cal_time=&adminathlete=...&athlete_main_id=...
+        """
+        endpoint = "/template/template/reschedulemeeting"
         params: Dict[str, Any] = {
             "cal_date": cal_date,
             "cal_time": cal_time,
