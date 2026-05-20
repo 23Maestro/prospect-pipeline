@@ -12,12 +12,29 @@ const routes = {
     render: renderScoutSchedules,
     usesWeek: true,
   },
+  '/contact-search': {
+    title: 'Search',
+    render: renderContactSearch,
+    usesWeek: false,
+  },
 };
 
 const state = {
   week: 'this',
-  route: routes[window.location.pathname] ? window.location.pathname : '/set-meetings',
+  route: routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings',
   isLoading: false,
+  contactSearch: {
+    query: '',
+    results: [],
+    selectedId: '',
+  },
+  schedulePayload: null,
+  scheduleSearch: {
+    active: false,
+    query: '',
+    results: [],
+    selectedId: '',
+  },
 };
 
 const pageTitle = document.querySelector('#page-title');
@@ -235,22 +252,41 @@ async function fetchSetMeetingsFromSupabase(week) {
   };
 }
 
+async function renderContactSearch() {
+  await setContentHtml(buildContactSearchHtml(state.contactSearch));
+  bindContactSearch('contact');
+  bindCopyButtons();
+  return state.contactSearch.results.length;
+}
+
 async function renderScoutSchedules(payload) {
-  const scouts = Array.isArray(payload?.scouts) ? payload.scouts : [];
+  if (payload) {
+    state.schedulePayload = payload;
+  }
+  const sourcePayload = payload || state.schedulePayload || {};
+  const scouts = Array.isArray(sourcePayload?.scouts) ? sourcePayload.scouts : [];
   const groups = scouts
     .map((scout) => ({
       ...scout,
       visibleSlots: filterVisibleScoutSlots(Array.isArray(scout.slots) ? scout.slots : []),
     }))
     .filter((scout) => scout.visibleSlots.length);
+  if (state.scheduleSearch.active) {
+    await setContentHtml(buildScheduleSearchHtml(groups));
+    bindContactSearch('schedule');
+    bindCopyButtons();
+    return groups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
+  }
+
   if (!groups.length) {
-    await setContentHtml('<div class="empty-state">No open scout slots found for this window.</div>');
+    await setContentHtml(`${buildScheduleSearchBarHtml()}<div class="empty-state">No open scout slots found for this window.</div>`);
+    bindScheduleSearchEntry();
     return 0;
   }
 
   const visibleCount = groups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
   await setContentHtml(
-    groups
+    `${buildScheduleSearchBarHtml()}<div class="schedule-list">${groups
     .map((scout) => {
       const rows = scout.visibleSlots
         .map((slot) => {
@@ -275,10 +311,320 @@ async function renderScoutSchedules(payload) {
         .join('');
       return `<h2 class="group-title">${escapeHtml(scout.scout_name)} - ${scout.visibleSlots.length}</h2>${rows}`;
     })
-    .join(''),
+    .join('')}</div>`,
   );
+  bindScheduleSearchEntry();
   bindCopyButtons();
   return visibleCount;
+}
+
+function buildContactSearchHtml(searchState) {
+  const results = Array.isArray(searchState.results) ? searchState.results : [];
+  const selected = findSelectedContactGroup(results, searchState.selectedId);
+  return `
+    <section class="search-panel">
+      ${buildContactSearchFormHtml(searchState.query, 'contact')}
+      ${buildContactResultsHtml(results, searchState.selectedId, 'contact')}
+      ${selected ? buildSelectedContactCardsHtml(selected) : ''}
+    </section>
+  `;
+}
+
+function buildScheduleSearchHtml(groups) {
+  const searchState = state.scheduleSearch;
+  const results = Array.isArray(searchState.results) ? searchState.results : [];
+  const selected = findSelectedContactGroup(results, searchState.selectedId);
+  const timezone = selected?.timezone || 'America/New_York';
+  const timezoneLabel = selected?.timezoneLabel || 'Eastern';
+  return `
+    <section class="search-panel schedule-search-panel">
+      ${buildContactSearchFormHtml(searchState.query, 'schedule')}
+      ${buildContactResultsHtml(results, searchState.selectedId, 'schedule')}
+      ${
+        selected
+          ? `<h2 class="group-title">${escapeHtml(selected.title)} - ${escapeHtml(timezoneLabel)}</h2>${buildScheduleGroupsHtml(groups, timezone, timezoneLabel)}`
+          : ''
+      }
+    </section>
+  `;
+}
+
+function buildScheduleSearchBarHtml() {
+  return `
+    <section class="search-entry">
+      <button class="search-entry-button" type="button" data-schedule-search-start>
+        <span>Search contacts</span>
+      </button>
+    </section>
+  `;
+}
+
+function buildContactSearchFormHtml(query, scope) {
+  return `
+    <form class="search-form" data-contact-search-form="${escapeAttribute(scope)}">
+      <input class="search-input" name="query" type="search" inputmode="search" autocomplete="off" placeholder="Search" value="${escapeAttribute(query || '')}" />
+      <button class="primary-button search-submit" type="submit">Send</button>
+      ${
+        scope === 'schedule'
+          ? '<button class="link-button search-cancel" type="button" data-schedule-search-cancel>Done</button>'
+          : ''
+      }
+    </form>
+  `;
+}
+
+function buildContactResultsHtml(results, selectedId, scope) {
+  if (!results.length) return '';
+  return `
+    <div class="result-list">
+      ${results
+        .map((group) => {
+          const active = group.id === selectedId ? ' active' : '';
+          return `
+            <button class="result-row${active}" type="button" data-contact-result="${escapeAttribute(group.id)}" data-result-scope="${escapeAttribute(scope)}">
+              <span>
+                <strong>${escapeHtml(group.title)}</strong>
+                <small>${escapeHtml(group.subtitle)}</small>
+              </span>
+              <span>Select</span>
+            </button>
+          `;
+        })
+        .join('')}
+    </div>
+  `;
+}
+
+function buildSelectedContactCardsHtml(group) {
+  return `
+    <div class="contact-card-list">
+      ${group.contacts.map((contact) => buildSelectedContactCardHtml(contact)).join('')}
+    </div>
+  `;
+}
+
+function buildSelectedContactCardHtml(contact) {
+  const phone = contact.phone || '';
+  const createUrl = buildScriptablePhoneActionUrl('ID New Contact', phone);
+  const followUpUrl = buildScriptablePhoneActionUrl('ID iCal Follow-Up', phone);
+  return `
+    <article class="row contact-card">
+      <div class="row-header">
+        <div>
+          <h2 class="row-title">${escapeHtml(contact.name)}</h2>
+          <p class="row-subtitle">${escapeHtml(contact.relationship || 'Contact')}</p>
+        </div>
+        <p class="row-meta">${escapeHtml(formatPhoneLabel(phone))}</p>
+      </div>
+      <div class="row-actions">
+        <button class="copy-button" type="button" data-copy="${escapeAttribute(phone)}">Copy</button>
+        <a class="link-button" href="${escapeAttribute(createUrl)}">Create</a>
+        <a class="link-button" href="${escapeAttribute(followUpUrl)}">Follow-Up</a>
+      </div>
+    </article>
+  `;
+}
+
+function buildScheduleGroupsHtml(groups, timezone, timezoneLabel) {
+  if (!groups.length) {
+    return '<div class="empty-state">No open scout slots found for this window.</div>';
+  }
+  return groups
+    .map((scout) => {
+      const rows = scout.visibleSlots
+        .map((slot) => {
+          const dateLabel = formatSlotDateForTimezone(slot.start, timezone);
+          const range = formatSlotRangeForTimezone(slot.start, slot.end, timezone, timezoneLabel);
+          const copyText = `${scout.scout_name}: ${dateLabel}, ${range}`;
+          return `
+            <article class="row">
+              <div class="row-header">
+                <div>
+                  <h2 class="row-title">${escapeHtml(dateLabel)}</h2>
+                  <p class="row-subtitle">${escapeHtml(range)}</p>
+                </div>
+                <p class="row-meta">${escapeHtml(scout.state || '')}</p>
+              </div>
+              <div class="row-actions">
+                <button class="copy-button" type="button" data-copy="${escapeAttribute(copyText)}">Copy</button>
+              </div>
+            </article>
+          `;
+        })
+        .join('');
+      return `<h2 class="group-title">${escapeHtml(scout.scout_name)} - ${scout.visibleSlots.length}</h2>${rows}`;
+    })
+    .join('');
+}
+
+function bindScheduleSearchEntry() {
+  document.querySelector('[data-schedule-search-start]')?.addEventListener('click', async () => {
+    state.scheduleSearch.active = true;
+    state.scheduleSearch.selectedId = '';
+    await renderScoutSchedules();
+    document.querySelector('.search-input')?.focus();
+  });
+}
+
+function bindContactSearch(scope) {
+  document.querySelector(`[data-contact-search-form="${scope}"]`)?.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const query = String(new FormData(form).get('query') || '').trim();
+    if (scope === 'schedule') {
+      state.scheduleSearch.query = query;
+      state.scheduleSearch.selectedId = '';
+    } else {
+      state.contactSearch.query = query;
+      state.contactSearch.selectedId = '';
+    }
+    if (!query) {
+      if (scope === 'schedule') state.scheduleSearch.results = [];
+      else state.contactSearch.results = [];
+      await rerenderSearchScope(scope);
+      return;
+    }
+
+    setStatus('Searching');
+    const results = groupContactSearchRows(await searchAthleteContactCache(query), query);
+    if (scope === 'schedule') state.scheduleSearch.results = results;
+    else state.contactSearch.results = results;
+    await rerenderSearchScope(scope);
+    setStatus(`${results.length} found`);
+  });
+
+  document.querySelector('[data-schedule-search-cancel]')?.addEventListener('click', async () => {
+    state.scheduleSearch.active = false;
+    state.scheduleSearch.selectedId = '';
+    await renderScoutSchedules();
+  });
+
+  document.querySelectorAll(`[data-result-scope="${scope}"]`).forEach((button) => {
+    button.addEventListener('click', async () => {
+      const id = button.getAttribute('data-contact-result') || '';
+      if (scope === 'schedule') state.scheduleSearch.selectedId = id;
+      else state.contactSearch.selectedId = id;
+      await rerenderSearchScope(scope);
+      bindCopyButtons();
+    });
+  });
+}
+
+async function rerenderSearchScope(scope) {
+  if (scope === 'schedule') {
+    await renderScoutSchedules();
+    return;
+  }
+  await renderContactSearch();
+}
+
+async function searchAthleteContactCache(query) {
+  const config = window.__PROSPECT_SUPABASE__ || {};
+  const supabaseUrl = String(config.url || '').replace(/\/+$/, '');
+  const anonKey = String(config.anonKey || '');
+  const schema = String(config.schema || 'public').trim() || 'public';
+  if (!supabaseUrl || !anonKey) {
+    throw new Error('Missing Supabase public config');
+  }
+
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/search_athlete_contact_cache`, {
+    method: 'POST',
+    headers: {
+      apikey: anonKey,
+      authorization: `Bearer ${anonKey}`,
+      'accept-profile': schema,
+      'content-profile': schema,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ input_query: query }),
+  });
+  const rows = await response.json().catch(() => []);
+  if (!response.ok) {
+    throw new Error(rows.message || rows.error || `Supabase ${response.status}`);
+  }
+  return Array.isArray(rows) ? rows : [];
+}
+
+function groupContactSearchRows(rows, query) {
+  const normalizedQuery = normalizeSearchText(query);
+  const phoneQuery = String(query || '').replace(/\D/g, '');
+  const byAthlete = new Map();
+  for (const row of rows) {
+    const key = String(row.athlete_key || '').trim();
+    if (!key) continue;
+    const existing =
+      byAthlete.get(key) ||
+      {
+        id: key,
+        athleteName: row.athlete_name || 'Student Athlete',
+        matchKind: 'athlete',
+        timezone: row.timezone || '',
+        timezoneLabel: row.timezone_label || '',
+        contacts: [],
+      };
+    existing.timezone ||= row.timezone || '';
+    existing.timezoneLabel ||= row.timezone_label || '';
+    const contact = {
+      name: row.contact_name || '',
+      relationship: row.relationship_label || '',
+      phone: row.phone || '',
+      normalizedPhone: row.normalized_phone || '',
+    };
+    if (!existing.contacts.some((candidate) => candidate.normalizedPhone === contact.normalizedPhone)) {
+      existing.contacts.push(contact);
+    }
+    if (
+      row.match_kind === 'contact' ||
+      normalizeSearchText(row.contact_name).includes(normalizedQuery) ||
+      (phoneQuery.length >= 3 && String(row.normalized_phone || '').includes(phoneQuery))
+    ) {
+      existing.matchKind = row.match_kind === 'phone' ? 'phone' : 'contact';
+      existing.matchedContactName ||= row.contact_name || '';
+    }
+    byAthlete.set(key, existing);
+  }
+
+  return Array.from(byAthlete.values()).map((group) => {
+    const parents = group.contacts
+      .filter((contact) => !isStudentAthleteRelationship(contact.relationship))
+      .map((contact) => contact.name)
+      .filter(Boolean);
+    const title = group.matchKind === 'contact' || group.matchKind === 'phone'
+      ? group.matchedContactName || group.contacts[0]?.name || group.athleteName
+      : group.athleteName;
+    const subtitle = group.matchKind === 'contact' || group.matchKind === 'phone'
+      ? group.athleteName
+      : parents.join(' / ') || 'Contact cache';
+    return {
+      ...group,
+      title,
+      subtitle,
+    };
+  });
+}
+
+function findSelectedContactGroup(results, selectedId) {
+  return (Array.isArray(results) ? results : []).find((group) => group.id === selectedId) || null;
+}
+
+function isStudentAthleteRelationship(value) {
+  return normalizeSearchText(value).includes('student athlete');
+}
+
+function normalizeSearchText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function buildScriptablePhoneActionUrl(scriptName, phone) {
+  return `scriptable:///run/${encodeURIComponent(scriptName)}?phone=${encodeURIComponent(phone || '')}`;
+}
+
+function formatPhoneLabel(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  return value || '';
 }
 
 function buildEasternWeekWindow(week = 'this', now = new Date()) {
@@ -602,6 +948,29 @@ function formatSlotRange(start, end) {
   return `${formatter.format(startDate)} - ${formatter.format(endDate)} Eastern`;
 }
 
+function formatSlotDateForTimezone(value, timezone) {
+  const date = parseEasternSlotInstant(value);
+  if (!date) return formatSlotDate(value);
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone || 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function formatSlotRangeForTimezone(start, end, timezone, timezoneLabel) {
+  const startDate = parseEasternSlotInstant(start);
+  const endDate = parseEasternSlotInstant(end);
+  if (!startDate || !endDate) return formatSlotRange(start, end);
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone || 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${formatter.format(startDate)} - ${formatter.format(endDate)} ${timezoneLabel || 'Eastern'}`;
+}
+
 function formatMeetingTime(start, end) {
   return `${formatSlotDate(start)}, ${formatSlotRange(start, end)}`;
 }
@@ -670,6 +1039,20 @@ function parseEasternLocal(value) {
   if (!match) return null;
   const [, year, month, day, hour, minute] = match;
   return new Date(Number(year), Number(month) - 1, Number(day), Number(hour), Number(minute));
+}
+
+function parseEasternSlotInstant(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/[zZ]|[+-]\d{2}:?\d{2}$/.test(raw)) {
+    const parsed = new Date(raw);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute] = match;
+  const parsed = new Date(`${year}-${month}-${day}T${hour}:${minute}:00-04:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function escapeHtml(value) {

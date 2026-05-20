@@ -14,7 +14,7 @@ export default function ProspectMobilePage() {
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="theme-color" content="#070816" />
       <link rel="icon" href="/prospect-mobile/assets/prospect-pipeline.png" />
-      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260517-confirm-id-cards" />
+      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260520-contact-search" />
       <main className="app-shell">
         <header className="topbar">
           <div className="brand-lockup">
@@ -45,6 +45,13 @@ export default function ProspectMobilePage() {
             </svg>
             <span>Scout Schedules</span>
           </a>
+          <a href="/prospect-mobile/contact-search" data-route="/contact-search">
+            <svg className="tab-icon search" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="m20 20-4.6-4.6" />
+              <path d="M10.75 17.5a6.75 6.75 0 1 0 0-13.5 6.75 6.75 0 0 0 0 13.5Z" />
+            </svg>
+            <span>Search</span>
+          </a>
         </nav>
 
         <section className="toolbar" id="week-toolbar">
@@ -68,7 +75,7 @@ export default function ProspectMobilePage() {
           __html: `window.__PROSPECT_SUPABASE__ = ${JSON.stringify(supabaseConfig)};`,
         }}
       />
-      <Script type="module" src="/prospect-mobile/app.js?v=20260517-confirm-id-cards" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260520-contact-search" strategy="afterInteractive" />
     </>
   );
 }

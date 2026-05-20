@@ -160,6 +160,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260515224500_public_set_meeting_confirmation_cache_read.sql',
     'supabase/tests/reminders-set-meeting-cache-columns.test.mjs',
     'supabase/migrations/20260514090000_athlete_contact_cache.sql',
+    'supabase/migrations/20260520090000_athlete_contact_cache_search_timezone.sql',
     'supabase/tests/athlete-contact-cache-contract.test.mjs',
     'supabase/migrations/20260503043000_backsync_meeting_set_materialization_contract.sql',
     'supabase/migrations/20260503044000_rename_call_events_to_meeting_events.sql',
@@ -528,24 +529,43 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);
 });
 
-test('prospect mobile exposes only set meetings and scout schedules tabs', () => {
+test('prospect mobile exposes set meetings, scout schedules, and contact search tabs', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
   const pageText = readFileSync(join(appRoot, 'app/prospect-mobile/page.tsx'), 'utf8');
   const contactReminderPageExists = existsSync(
     join(appRoot, 'app/prospect-mobile/contact-reminder/page.tsx'),
+  );
+  const contactSearchPageExists = existsSync(
+    join(appRoot, 'app/prospect-mobile/contact-search/page.tsx'),
   );
   const contactReminderApiExists = existsSync(
     join(appRoot, 'app/api/contact-reminder-intake/route.ts'),
   );
   assert.match(pageText, /data-route="\/set-meetings"/);
   assert.match(pageText, /data-route="\/scout-schedules"/);
+  assert.match(pageText, /data-route="\/contact-search"/);
+  assert.equal(contactSearchPageExists, true);
+  assert.match(appText, /'\/contact-search'/);
+  assert.match(appText, /search_athlete_contact_cache/);
+  assert.match(appText, /renderContactSearch/);
+  assert.match(appText, /scriptable:\/\/\/run\/\$\{encodeURIComponent\(scriptName\)\}\?phone=/);
+  assert.match(appText, /ID New Contact/);
+  assert.match(appText, /ID iCal Follow-Up/);
   assert.doesNotMatch(pageText, /data-route="\/contact-reminder"/);
   assert.doesNotMatch(appText, /'\/contact-reminder'/);
   assert.equal(contactReminderPageExists, false);
   assert.equal(contactReminderApiExists, false);
   assert.doesNotMatch(appText, /renderContactReminder/);
-  assert.doesNotMatch(appText, /lookup_athlete_contact_cache/);
   assert.doesNotMatch(appText, /Reminder Intake/);
   assert.doesNotMatch(appText, /\/api\/contact-reminder-intake/);
   assert.doesNotMatch(appText, /\/api\/v1\/mobile/);
+});
+
+test('prospect mobile contact search keeps lookup and timezone matching on Supabase', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  assert.match(appText, /\/rest\/v1\/rpc\/search_athlete_contact_cache/);
+  assert.match(appText, /formatSlotRangeForTimezone/);
+  assert.match(appText, /state\.scheduleSearch/);
+  assert.doesNotMatch(appText, /\/api\/contact-search/);
+  assert.doesNotMatch(appText, /\/api\/contact-lookup/);
 });

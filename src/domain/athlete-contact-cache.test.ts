@@ -32,6 +32,8 @@ function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
     resolved: {
       athlete_id: '1489000',
       athlete_main_id: '951000',
+      city: 'Nashville',
+      state: 'TN',
     },
     contactInfo: {
       contactId: '1489000',
@@ -82,6 +84,8 @@ test('buildAthleteContactCacheSyncPlan builds active rows from Scout Prep contac
     ['6155551212', '6155553000', '6155559898'],
   );
   assert.equal(plan.rows[0].cache_status, 'active');
+  assert.equal(plan.rows[0].timezone, 'America/Chicago');
+  assert.equal(plan.rows[0].timezone_label, 'CST');
 });
 
 test('duplicate same-athlete phones keep one cache row and let student athlete win', () => {

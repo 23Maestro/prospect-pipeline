@@ -12,6 +12,7 @@
   --blue: #0070f3;
   --green: #00c853;
   --purple: #a855f7;
+  --amber: #f59e0b;
   --red: #ef4444;
   --shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
 }
@@ -131,29 +132,29 @@ h1 {
 
 .tabbar {
   display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 10px;
   margin: 0 0 14px;
 }
 
 .tabbar a {
-  min-height: 58px;
-  justify-content: space-between;
+  min-height: 62px;
+  justify-content: center;
+  flex-direction: column;
   gap: 12px;
-  padding: 0 14px;
+  padding: 10px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: linear-gradient(180deg, var(--surface-2), var(--surface));
   color: var(--text);
   text-decoration: none;
-  font-size: 14px;
+  font-size: 12px;
   font-weight: 650;
+  text-align: center;
 }
 
 .tabbar a::after {
-  content: "›";
-  color: var(--muted);
-  font-size: 24px;
-  line-height: 1;
+  content: none;
 }
 
 .tabbar a.active {
@@ -177,8 +178,12 @@ h1 {
   color: var(--purple);
 }
 
+.tab-icon.search {
+  color: var(--amber);
+}
+
 .tabbar a span:last-of-type {
-  flex: 1;
+  flex: 0 0 auto;
 }
 
 .toolbar {
@@ -223,7 +228,7 @@ h1 {
   gap: 10px;
   opacity: 1;
   transform: translateY(0);
-  transition: opacity 150ms ease, transform 150ms ease;
+  transition: opacity 180ms ease, transform 180ms ease;
 }
 
 .content-exit {
@@ -239,7 +244,9 @@ h1 {
 .content-ready .group-title,
 .content-ready .empty-state,
 .content-ready .error-state,
-.content-ready .form-panel {
+.content-ready .form-panel,
+.content-ready .search-panel,
+.content-ready .search-entry {
   animation: content-pop 180ms ease-out both;
 }
 
@@ -496,6 +503,116 @@ h1 {
   display: grid;
   gap: 12px;
   padding: 14px;
+}
+
+.search-entry {
+  margin-bottom: 2px;
+}
+
+.search-entry-button {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 650;
+  text-align: left;
+  padding: 0 14px;
+}
+
+.search-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.search-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+}
+
+.search-input {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #050505;
+  color: var(--text);
+  padding: 0 12px;
+  font-size: 16px;
+  outline: none;
+}
+
+.search-input:focus {
+  border-color: var(--amber);
+}
+
+.search-submit {
+  width: auto;
+  min-width: 72px;
+  margin: 0;
+}
+
+.search-cancel {
+  grid-column: 1 / -1;
+}
+
+.result-list,
+.contact-card-list,
+.schedule-list {
+  display: grid;
+  gap: 10px;
+}
+
+.result-row {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.result-row.active {
+  border-color: rgba(245, 158, 11, 0.62);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.result-row strong,
+.result-row small {
+  display: block;
+}
+
+.result-row strong {
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.result-row small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.result-row > span:last-child {
+  color: var(--amber);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.contact-card {
+  border-color: var(--line-strong);
 }
 
 .field {
