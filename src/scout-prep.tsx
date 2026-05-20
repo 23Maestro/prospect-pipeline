@@ -2863,6 +2863,7 @@ function ScoutPrepDetail({
       const result = await resolveMaxPrepsScoutContext({
         ...cacheInput,
         city: activeContext.resolved.city,
+        state: formatStateForHighSchoolCopy(activeContext.resolved.state),
       });
       if (!result) {
         toast.style = Toast.Style.Failure;
@@ -3308,7 +3309,7 @@ function ScoutPrepTaskItem({
           <ActionPanel.Section title="Workflow">
             <Action
               title="Post-Call Update"
-              icon="⇪"
+              icon="🚀"
               shortcut={{ modifiers: ['cmd'], key: 'u' }}
               onAction={() => {
                 let shouldResetRootList = false;

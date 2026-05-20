@@ -122,12 +122,10 @@ export function extractMaxPrepsUrlFromSearchMarkdown(markdown: string, sport?: s
 
 function buildSearchQuery(input: MaxPrepsScoutContextInput): string {
   return [
-    clean(input.athleteName),
     clean(input.highSchool),
-    clean(input.city),
     clean(input.state),
     clean(input.sport),
-    'MaxPreps',
+    'Team',
   ]
     .filter(Boolean)
     .join(' ');
