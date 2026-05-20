@@ -30,6 +30,7 @@ const meetingOutcomes = new Set([
   'no_show',
 ]);
 const hiddenDefaultOutcomes = new Set(['voicemail', 'spoke_follow_up', 'unable_to_leave_vm']);
+const PAID_COMMISSION_SOURCES = new Set(['stripe_commissions', 'stripe_commission_payroll']);
 
 const state = {
   rows: [],
@@ -103,6 +104,10 @@ function shortDate(value) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(new Date(value));
+}
+
+function rowDisplayAt(row) {
+  return row.reporting_at || row.event_at || row.occurred_at;
 }
 
 function localParts(value) {
@@ -307,7 +312,12 @@ function countsAsMeetingSet(row) {
   return row.counts_as_meeting_set === true;
 }
 
+function isPaidClosedWon(row) {
+  return row.tracker_outcome === 'closed_won' && PAID_COMMISSION_SOURCES.has(row.source) && Number(row.revenue_cents) > 0;
+}
+
 function isDashboardVisibleEvent(row) {
+  if (row.tracker_outcome === 'closed_won') return isPaidClosedWon(row);
   return row.tracker_outcome !== 'meeting_set' || countsAsMeetingSet(row);
 }
 
@@ -422,7 +432,7 @@ function isPostMeetingResult(row) {
 
 function displayRows() {
   return dedupePipelineRows(state.rows).filter(isDashboardVisibleEvent).sort(
-    (left, right) => new Date(right.event_at || right.occurred_at) - new Date(left.event_at || left.occurred_at),
+    (left, right) => new Date(rowDisplayAt(right)) - new Date(rowDisplayAt(left)),
   );
 }
 
@@ -440,7 +450,7 @@ function dedupePipelineRows(rows) {
       normalizeKey(row.athlete_name),
       normalizeKey(row.tracker_outcome),
       normalizeKey(row.raw_crm_stage || row.raw_task_status),
-      localDateKey(row.event_at || row.occurred_at),
+      reportingDateKey(row),
     ].join('|');
     const previous = byKey.get(key);
 
@@ -470,8 +480,8 @@ function rowQuality(row) {
     (row.counts_as_meeting_set === true ? 32 : 0) +
     (row.booked_event_title ? 4 : 0) +
     (row.appointment_id ? 2 : 0) +
-    (row.event_at ? 1 : 0) +
-    Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
+    (rowDisplayAt(row) ? 1 : 0) +
+    Math.floor(new Date(rowDisplayAt(row) || 0).getTime() / 100000000000)
   );
 }
 
@@ -604,7 +614,7 @@ function commissionCentsForRow(row) {
 
 function allTimeCommissionCents() {
   return state.rows
-    .filter((row) => row.tracker_outcome === 'closed_won')
+    .filter(isPaidClosedWon)
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
@@ -617,7 +627,7 @@ function rowBelongsToPaycheck(row, previousPay, payDate) {
 function paycheckCommissionCents(payDate) {
   const previousPay = previousPayDate(payDate);
   return state.rows
-    .filter((row) => row.tracker_outcome === 'closed_won' && rowBelongsToPaycheck(row, previousPay, payDate))
+    .filter((row) => isPaidClosedWon(row) && rowBelongsToPaycheck(row, previousPay, payDate))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
@@ -684,7 +694,7 @@ function filterCountsForRows(rows) {
   return {
     meaningful: rows.filter(isMeaningfulEvent).length,
     all_calls: rows.length,
-    meetings: rows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length,
+    meetings: rows.filter((row) => row.tracker_outcome === 'meeting_set').length,
     closed_won: counts.closed_won || 0,
     closed_lost: counts.closed_lost || 0,
     reschedule_pending: counts.reschedule_pending || 0,
@@ -741,7 +751,7 @@ function renderBars() {
 
 function renderClosedWon() {
   const closed = state.ui?.closedWonRows || state.rows
-    .filter((row) => row.tracker_outcome === 'closed_won')
+    .filter(isPaidClosedWon)
     .sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0));
 
   $('closedWonList').innerHTML = closed.length
@@ -775,7 +785,7 @@ function renderFilters() {
           : outcome === 'meaningful'
             ? rows.filter(isMeaningfulEvent).length
           : outcome === 'meetings'
-            ? rows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length
+            ? rows.filter((row) => row.tracker_outcome === 'meeting_set').length
             : counts[outcome] || 0);
       const active = state.activeFilter === outcome ? 'active' : '';
       return `<button type="button" class="${active}" data-outcome="${outcome}">${labels[outcome] || outcome} ${count}</button>`;
@@ -795,19 +805,26 @@ function visibleRows() {
   if (state.activeFilter === 'all_calls') return rows;
   if (state.activeFilter === 'meaningful') return rows.filter(isMeaningfulEvent);
   if (state.activeFilter === 'meetings') {
-    return rows.filter((row) => meetingOutcomes.has(row.tracker_outcome));
+    return rows.filter((row) => row.tracker_outcome === 'meeting_set');
   }
   return rows.filter((row) => row.tracker_outcome === state.activeFilter);
 }
 
 function renderTable() {
-  $('eventsBody').innerHTML = visibleRows()
+  const body = $('eventsBody');
+  if (!body) return;
+  const rows = visibleRows();
+  const tableWrap = body.closest('.table-wrap');
+  tableWrap?.classList.add('is-updating');
+  tableWrap?.scrollTo({ top: 0, behavior: 'smooth' });
+  body.classList.add('is-updating');
+  body.innerHTML = rows
     .map(
       (row) => {
         const outcome = displayOutcome(row);
         return `
         <tr>
-          <td>${shortDate(row.event_at || row.occurred_at)}</td>
+          <td>${shortDate(rowDisplayAt(row))}</td>
           <td class="name-cell">${row.athlete_name || ''}</td>
           <td><span class="pill ${outcome}">${labels[outcome] || outcome}</span></td>
           <td>${displayStage(row)}</td>
@@ -820,6 +837,11 @@ function renderTable() {
       },
     )
     .join('');
+  body.dataset.rowCount = String(rows.length);
+  requestAnimationFrame(() => {
+    body.classList.remove('is-updating');
+    tableWrap?.classList.remove('is-updating');
+  });
 }
 
 function renderWeekViewSelector() {

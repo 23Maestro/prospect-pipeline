@@ -130,12 +130,15 @@ function pickCurrentTask(tasks) {
 }
 
 const commperiod = process.env.COMMISSION_PERIOD || commissionPeriodForDate();
-const commissionPayload = await postJson('/commissions/stripe', { commperiod });
-// Commission rows are paid close-won evidence, not call activity. They confirm or enrich
+const commissionPayload = await postJson('/commissions/stripe-payroll', { commperiod });
+// Payroll commission rows are paid close-won evidence, not call activity. They confirm or enrich
 // the same post_meeting_outcome fact selected by sales stage/event title when the title
 // lacks an ENR dollar prefix.
 const paidEntries = (Array.isArray(commissionPayload.entries) ? commissionPayload.entries : [])
-  .filter((entry) => String(entry?.status || '').trim().toLowerCase() === 'paid')
+  .filter((entry) => {
+    const status = String(entry?.status || '').trim().toLowerCase();
+    return !status || status === 'paid';
+  })
   .filter((entry) => String(entry?.athlete_id || '').trim() && String(entry?.athlete_main_id || '').trim());
 
 const postMeetingOutcomeFacts = [];
@@ -229,6 +232,7 @@ for (const entry of paidEntries) {
       ownerContext: trackerOwnership.context,
       payload: {
         source: 'stripe_commissions',
+        commission_source_view: commissionPayload.source,
         commperiod,
         commission_status: entry.status,
         commission_account_id: entry.account_id,

@@ -589,11 +589,38 @@ test('/api/call-tracker-data calculates paycheck commission as twenty percent of
     const requestUrl = String(url);
     if (requestUrl.includes('/call_tracker_summary?')) {
       return Response.json([
-        { dials: 0, contacts: 0, meetings_set: 0, meeting_outcomes_total: 1, closed_won: 1, money_earned_cents: 10000, voicemail_only: 0, appointments_tracked: 0 },
+        { dials: 0, contacts: 0, meetings_set: 0, meeting_outcomes_total: 2, closed_won: 2, money_earned_cents: 19900, voicemail_only: 0, appointments_tracked: 0 },
       ]);
     }
     if (requestUrl.includes('/call_tracker_events_owner_context?')) {
       return Response.json([
+        {
+          athlete_name: 'Failed Payment Athlete',
+          occurred_at: closedWonAt,
+          event_at: closedWonAt,
+          tracker_outcome: 'closed_won',
+          raw_crm_stage: 'Actual Meeting - Close Won',
+          raw_task_status: 'closed_won',
+          raw_event_type: 'post_meeting_outcome',
+          source: 'legacy_sales_stage_current',
+          appointment_id: 'failed-payment',
+          live_event_id: 'failed-payment',
+          booked_event_title: '(ENR $99) Failed Payment Athlete',
+          revenue_cents: 9900,
+          dedupe_key: 'legacy_sales_stage_current:failed-payment:closed_won',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_dial: false,
+          counts_as_contact: false,
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Jerami Singleton',
+          resolved_owner_source_field: 'bookedMeeting.assigned_owner',
+          can_materialize_for_active_operator: true,
+          created_at: closedWonAt,
+        },
         {
           athlete_name: 'Commission Athlete',
           occurred_at: closedWonAt,
@@ -634,4 +661,11 @@ test('/api/call-tracker-data calculates paycheck commission as twenty percent of
   const payload = await response.json();
   assert.equal(payload.data.ui.paycheck.commissionCents, 2000);
   assert.equal(payload.data.ui.summaryCards.moneyEarnedCents, 2000);
+  assert.equal(payload.data.ui.summaryCards.closedWon, 1);
+  assert.equal(payload.data.ui.closedWonRows.length, 1);
+  assert.equal(payload.data.ui.closedWonRows[0].athlete_name, 'Commission Athlete');
+  assert.equal(
+    payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Failed Payment Athlete'),
+    false,
+  );
 });

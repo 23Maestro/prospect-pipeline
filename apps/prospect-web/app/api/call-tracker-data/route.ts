@@ -11,6 +11,7 @@ const HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT = 13;
 const PAYLOAD_FIELD = ['payload', 'json'].join('_');
 const MATERIALIZATION_REASON_FIELD = ['materialization', 'reason'].join('_');
 const hiddenDefaultOutcomes = new Set(['voicemail', 'spoke_follow_up', 'unable_to_leave_vm']);
+const paidCommissionSources = new Set(['stripe_commissions', 'stripe_commission_payroll']);
 const meetingOutcomes = new Set([
   'meeting_set',
   'reschedule_pending',
@@ -256,7 +257,12 @@ function eventIdentityKey(row: Record<string, any>) {
 }
 
 function isDashboardVisibleEvent(row: Record<string, any>) {
+  if (row.tracker_outcome === 'closed_won') return isPaidClosedWon(row);
   return row.tracker_outcome !== 'meeting_set' || row.counts_as_meeting_set === true;
+}
+
+function isPaidClosedWon(row: Record<string, any>) {
+  return row.tracker_outcome === 'closed_won' && paidCommissionSources.has(row.source) && Number(row.revenue_cents) > 0;
 }
 
 function publicRow(row: Record<string, any>) {
@@ -293,7 +299,7 @@ function filterCounts(rows: Array<Record<string, any>>) {
   return {
     meaningful: dashboardRows.filter((row) => !hiddenDefaultOutcomes.has(row.tracker_outcome)).length,
     all_calls: dashboardRows.length,
-    meetings: dashboardRows.filter((row) => meetingOutcomes.has(row.tracker_outcome)).length,
+    meetings: dashboardRows.filter((row) => row.tracker_outcome === 'meeting_set').length,
     closed_won: counts.closed_won || 0,
     closed_lost: counts.closed_lost || 0,
     reschedule_pending: counts.reschedule_pending || 0,
@@ -495,7 +501,7 @@ function commissionCentsForRow(row: Record<string, any>) {
 
 function commissionCentsForRows(rows: Array<Record<string, any>>) {
   return rows
-    .filter((row) => row.tracker_outcome === 'closed_won')
+    .filter(isPaidClosedWon)
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
@@ -510,7 +516,7 @@ function paycheck(rows: Array<Record<string, any>>, now: Date) {
   const previousPay = previousPayDate(payDate);
   const baseCents = basePayForDate(payDate);
   const commissionCents = rows
-    .filter((row) => row.tracker_outcome === 'closed_won' && rowBelongsToPaycheck(row, previousPay, payDate))
+    .filter((row) => isPaidClosedWon(row) && rowBelongsToPaycheck(row, previousPay, payDate))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
   return {
     payDate: payDate.toISOString(),
@@ -527,6 +533,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
   const rows = displayRows(events).filter(isDashboardVisibleEvent);
   const rawAllTimeContacts = Number(summary.contacts) || 0;
   const correctedAllTimeContacts = rawAllTimeContacts + HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT;
+  const paidClosedWonRows = rows.filter(isPaidClosedWon);
   const periods: Record<string, any> = {};
   for (const period of ['week-0', 'week-1', 'week-2', 'week-3', 'week-4', 'week-total']) {
     const scoped = rowsForPeriod(rows, now, period);
@@ -545,20 +552,21 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
     };
   }
   const meetingOutcomesTotal = Number(summary.meeting_outcomes_total) || 0;
+  const paidClosedWonCount = paidClosedWonRows.length;
   return {
     activePeriod: currentWeekPeriod(now),
     rangeLabel: currentWeekRangeLabel(now),
     monthResultLabel: currentMonthResultLabel(now),
     summaryCards: {
       moneyEarnedCents: commissionCentsForRows(rows),
-      closedWon: Number(summary.closed_won) || 0,
+      closedWon: paidClosedWonCount,
       contacts: correctedAllTimeContacts,
       rawContacts: rawAllTimeContacts,
       historicalContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
       dials: Number(summary.dials) || 0,
       voicemailOnly: Number(summary.voicemail_only) || 0,
       appointmentsTracked: Number(summary.appointments_tracked) || 0,
-      closeRate: meetingOutcomesTotal ? Math.round((Number(summary.closed_won || 0) / meetingOutcomesTotal) * 100) : 0,
+      closeRate: meetingOutcomesTotal ? Math.round((paidClosedWonCount / meetingOutcomesTotal) * 100) : 0,
     },
     manualCorrections: {
       allTimeContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
@@ -568,9 +576,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
     },
     paycheck: paycheck(rows, now),
     periods,
-    closedWonRows: rows
-      .filter((row) => row.tracker_outcome === 'closed_won')
-      .sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0)),
+    closedWonRows: paidClosedWonRows.sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0)),
   };
 }
 

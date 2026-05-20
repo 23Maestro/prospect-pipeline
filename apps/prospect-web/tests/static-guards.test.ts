@@ -489,7 +489,11 @@ test('call tracker commission is a flat twenty percent of revenue', () => {
   assert.doesNotMatch(pageRouteText, /commissionCents[\s\S]*\/ 2/);
   assert.doesNotMatch(appText, /monthlySubscriptionCommissionCents/);
   assert.match(pageRouteText, /moneyEarnedCents: commissionCentsForRows\(rows\)/);
+  assert.match(pageRouteText, /function isPaidClosedWon/);
+  assert.match(pageRouteText, /paidCommissionSources\.has\(row\.source\)/);
   assert.match(appText, /fallbackCommissionCents/);
+  assert.match(appText, /function isPaidClosedWon/);
+  assert.match(appText, /PAID_COMMISSION_SOURCES\.has\(row\.source\)/);
 });
 
 test('prospect mobile set meetings uses confirmation cache messages', () => {
