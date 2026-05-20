@@ -334,6 +334,41 @@ function mergeMaxPrepsContext(
   };
 }
 
+async function mergeCachedMaxPrepsContext(
+  task: ScoutPortalTask,
+  context: ScoutPrepContext,
+): Promise<ScoutPrepContext> {
+  const cachedMaxPreps = await getCachedScoutPrepMaxPrepsContext(
+    buildMaxPrepsCacheInput(context, task),
+  );
+  return cachedMaxPreps?.isFresh
+    ? mergeMaxPrepsContext(context, cachedMaxPreps.data)
+    : context;
+}
+
+async function loadScoutPrepContextForDisplay(
+  task: ScoutPortalTask,
+  options: { forceLive?: boolean } = {},
+): Promise<{ context: ScoutPrepContext; source: 'context-cache' | 'live' }> {
+  if (!options.forceLive) {
+    const cachedContext = await getCachedScoutPrepContext(task);
+    if (cachedContext?.isFresh) {
+      return {
+        context: await mergeCachedMaxPrepsContext(task, cachedContext.data),
+        source: 'context-cache',
+      };
+    }
+  }
+
+  const liveContext = await loadScoutPrepContext(task);
+  const renderContext = await mergeCachedMaxPrepsContext(task, liveContext);
+  await setCachedScoutPrepContext(task, renderContext);
+  return {
+    context: renderContext,
+    source: 'live',
+  };
+}
+
 function buildMeetingSetStartsAt(
   selectedOpenMeeting?: {
     start_time?: string | null;
@@ -1942,10 +1977,11 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
         });
-        const [template, context] = await Promise.all([
+        const [template, displayContext] = await Promise.all([
           fetchMeetingSetTemplate(task),
-          loadScoutPrepContext(task),
+          loadScoutPrepContextForDisplay(task),
         ]);
+        const context = displayContext.context;
         if (!active) {
           return;
         }
@@ -1970,7 +2006,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
           return;
         }
         try {
-          const context = await loadScoutPrepContext(task);
+          const { context } = await loadScoutPrepContextForDisplay(task);
           if (!active) {
             return;
           }
@@ -2463,15 +2499,6 @@ function ScoutPrepDetail({
     }, 0);
   }
 
-  async function withCachedMaxPrepsContext(activeContext: ScoutPrepContext) {
-    const cachedMaxPreps = await getCachedScoutPrepMaxPrepsContext(
-      buildMaxPrepsCacheInput(activeContext, task),
-    );
-    return cachedMaxPreps?.isFresh
-      ? mergeMaxPrepsContext(activeContext, cachedMaxPreps.data)
-      : activeContext;
-  }
-
   function renderScoutPrepContext(activeContext: ScoutPrepContext) {
     const values = buildScoutPrepValues({
       athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
@@ -2487,9 +2514,9 @@ function ScoutPrepDetail({
   }
 
   async function loadLiveScoutPrepContextForDetail() {
-    const loadedContext = await loadScoutPrepContext(task);
-    const renderContext = await withCachedMaxPrepsContext(loadedContext);
-    await setCachedScoutPrepContext(task, renderContext);
+    const { context: renderContext } = await loadScoutPrepContextForDisplay(task, {
+      forceLive: true,
+    });
     return renderContext;
   }
 
@@ -2880,10 +2907,7 @@ function ScoutPrepDetail({
           athleteName: task.athlete_name,
         });
 
-        const cachedContext = await getCachedScoutPrepContext(task);
-        const renderContext = cachedContext?.isFresh
-          ? await withCachedMaxPrepsContext(cachedContext.data)
-          : await loadLiveScoutPrepContextForDetail();
+        const { context: renderContext, source } = await loadScoutPrepContextForDisplay(task);
 
         if (!active) {
           return;
@@ -2891,14 +2915,14 @@ function ScoutPrepDetail({
 
         renderScoutPrepContext(renderContext);
         setIsLoading(false);
-        if (!cachedContext?.isFresh) {
+        if (source === 'live') {
           queueContactCacheSync(renderContext, null, 'scout_prep_detail_load');
         }
         logInfo('SCOUT_PREP_DETAIL_LOAD', 'load-detail', 'success', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
           athleteName: renderContext.contactInfo.studentAthlete.name || task.athlete_name,
-          source: cachedContext?.isFresh ? 'context-cache' : 'live',
+          source,
         });
 
         // Local transformer-based enrichment is intentionally disabled for now.
@@ -2934,7 +2958,7 @@ function ScoutPrepDetail({
         <ActionPanel>
           <Action
             title="Post-Call Update"
-            icon="⇪"
+            icon="🚀"
             onAction={() => {
               let shouldReturnToRootList = false;
               push(<PostCallUpdateForm task={task} />, () => {
@@ -2974,6 +2998,7 @@ function ScoutPrepDetail({
             <Action
               title="Refresh Scout Prep"
               icon="🔄"
+              shortcut={{ modifiers: ['cmd', 'opt'], key: 'r' }}
               onAction={() => void handleRefreshScoutPrep()}
             />
             <Action
@@ -3050,6 +3075,7 @@ function ScoutPrepDetail({
               <Action
                 title="Resolve MaxPreps Context"
                 icon="🏈"
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
                 onAction={() => void handleResolveMaxPrepsContext()}
               />
             ) : null}
