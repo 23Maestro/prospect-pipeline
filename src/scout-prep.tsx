@@ -1660,8 +1660,11 @@ function UpdateAthleteTaskForm({
         title: 'Task saved',
         message: currentTaskTitle,
       });
-      await onUpdated?.();
-      pop();
+      if (onUpdated) {
+        await onUpdated();
+      } else {
+        pop();
+      }
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -1692,7 +1695,11 @@ function UpdateAthleteTaskForm({
         title: 'Completed',
         message: currentTaskTitle,
       });
-      pop();
+      if (onUpdated) {
+        await onUpdated();
+      } else {
+        pop();
+      }
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -1723,8 +1730,11 @@ function UpdateAthleteTaskForm({
         title: 'Task saved',
         message: 'SCHEDULED FOLLOW-UP',
       });
-      await onUpdated?.();
-      pop();
+      if (onUpdated) {
+        await onUpdated();
+      } else {
+        pop();
+      }
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -1771,9 +1781,11 @@ function UpdateAthleteTaskForm({
 function UpdateAthleteTaskPicker({
   task,
   initialContext = null,
+  onTaskMutationComplete,
 }: {
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
+  onTaskMutationComplete?: () => void | Promise<void>;
 }) {
   const { push } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext);
@@ -1840,6 +1852,8 @@ function UpdateAthleteTaskPicker({
         onUpdated={async () => {
           const loadedContext = await loadScoutPrepContext(task);
           setContext(loadedContext);
+          await onTaskMutationComplete?.();
+          await popToRoot({ clearSearchBar: true });
         }}
       />,
     );
@@ -1889,6 +1903,8 @@ function UpdateAthleteTaskPicker({
         title: 'Completed',
         message: getTaskDisplayTitle(selectedTask),
       });
+      await onTaskMutationComplete?.();
+      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -1956,7 +1972,13 @@ function UpdateAthleteTaskPicker({
   );
 }
 
-function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
+function PostCallUpdateForm({
+  task,
+  onSaved,
+}: {
+  task: ScoutPortalTask;
+  onSaved?: () => void | Promise<void>;
+}) {
   const [stageOptions, setStageOptions] = useState<SalesStageOption[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>('');
   const [meetingTemplate, setMeetingTemplate] = useState<MeetingSetTemplateResponse | null>(null);
@@ -2469,6 +2491,7 @@ function PostCallUpdateForm({ task }: { task: ScoutPortalTask }) {
               : 'Reschedule saved'
             : stageLabel);
 
+      await onSaved?.();
       await popToRoot({ clearSearchBar: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -2890,6 +2913,8 @@ function ScoutPrepDetail({
       toast.style = Toast.Style.Success;
       toast.title = 'Confirmation saved';
       toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
+      await onReturnToRootList?.();
+      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Confirmation save failed';
@@ -3104,17 +3129,7 @@ function ScoutPrepDetail({
           <Action
             title="Post-Call Update"
             icon="🚀"
-            onAction={() => {
-              let shouldReturnToRootList = false;
-              push(<PostCallUpdateForm task={task} />, () => {
-                if (!shouldReturnToRootList) {
-                  return;
-                }
-                shouldReturnToRootList = false;
-                pop();
-                onReturnToRootList?.();
-              });
-            }}
+            onAction={() => push(<PostCallUpdateForm task={task} onSaved={onReturnToRootList} />)}
           />
           <Action
             title="Voicemail Follow-Up"
@@ -3156,7 +3171,13 @@ function ScoutPrepDetail({
               title="Update Task"
               icon="✏️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
-              target={<UpdateAthleteTaskPicker task={task} initialContext={context} />}
+              target={
+                <UpdateAthleteTaskPicker
+                  task={task}
+                  initialContext={context}
+                  onTaskMutationComplete={onReturnToRootList}
+                />
+              }
             />
           </ActionPanel.Section>
           <ActionPanel.Section title="Athlete Info">
@@ -3379,6 +3400,8 @@ function ScoutPrepTaskItem({
       toast.style = Toast.Style.Success;
       toast.title = 'Confirmation saved';
       toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
+      await onReturnToRootList();
+      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Confirmation save failed';
@@ -3455,16 +3478,7 @@ function ScoutPrepTaskItem({
               title="Post-Call Update"
               icon="🚀"
               shortcut={{ modifiers: ['cmd'], key: 'u' }}
-              onAction={() => {
-                let shouldResetRootList = false;
-                push(<PostCallUpdateForm task={task} />, () => {
-                  if (!shouldResetRootList) {
-                    return;
-                  }
-                  shouldResetRootList = false;
-                  onReturnToRootList();
-                });
-              }}
+              onAction={() => push(<PostCallUpdateForm task={task} onSaved={onReturnToRootList} />)}
             />
             <Action
               title="Move CF Task"
@@ -3476,7 +3490,9 @@ function ScoutPrepTaskItem({
               title="Update Task"
               icon="✏️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
-              target={<UpdateAthleteTaskPicker task={task} />}
+              target={
+                <UpdateAthleteTaskPicker task={task} onTaskMutationComplete={onReturnToRootList} />
+              }
             />
             <Action
               title="Duplicate Profile Check"
@@ -4324,6 +4340,18 @@ export default function ScoutPrepCommand() {
     );
   }
 
+  async function returnToRootTaskList() {
+    setViewMode('tasks');
+    setProspectSearchText('');
+    setProspectResults([]);
+    setIsProspectSearching(false);
+    setRecentProfiles([]);
+    setIsRecentFollowUpsLoading(false);
+    setPersonalFollowUps([]);
+    setIsPersonalFollowUpsLoading(false);
+    await loadTasks();
+  }
+
   return (
     <List
       isLoading={
@@ -4377,7 +4405,7 @@ export default function ScoutPrepCommand() {
                 entry={entry}
                 onRemove={handleRemovePersonalFollowUp}
                 onExit={exitPersonalFollowUps}
-                onReturnToRootList={() => undefined}
+                onReturnToRootList={returnToRootTaskList}
               />
             ))
           ) : (
@@ -4419,7 +4447,7 @@ export default function ScoutPrepCommand() {
                 onShowProspectSearch={toggleProspectSearchMode}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
                 onToggleRecentMode={toggleRecentMode}
-                onReturnToRootList={() => undefined}
+                onReturnToRootList={returnToRootTaskList}
               />
             ))
           ) : (
@@ -4457,7 +4485,7 @@ export default function ScoutPrepCommand() {
                 onToggleProspectSearchModeType={toggleProspectSearchModeType}
                 onToggleProspectSearchMode={toggleProspectSearchMode}
                 onAddPersonalFollowUp={handleAddPersonalFollowUp}
-                onReturnToRootList={() => undefined}
+                onReturnToRootList={returnToRootTaskList}
               />
             ))
           ) : (
@@ -4584,7 +4612,7 @@ export default function ScoutPrepCommand() {
               onShowPersonalFollowUps={showPersonalFollowUps}
               onSelectTaskListFilter={selectTaskListFilter}
               onCycleTaskListSort={cycleSort}
-              onReturnToRootList={() => undefined}
+              onReturnToRootList={returnToRootTaskList}
             />
           ))}
         </List.Section>
