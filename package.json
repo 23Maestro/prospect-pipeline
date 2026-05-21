@@ -69,13 +69,6 @@
       "icon": "scout-prep.png"
     },
     {
-      "name": "daily-call-blocks",
-      "title": "Daily Call Blocks",
-      "description": "Export Prospect ID call blocks",
-      "mode": "no-view",
-      "icon": "scout-prep.png"
-    },
-    {
       "name": "head-scout-schedules",
       "title": "Scout Openings",
       "description": "View scout open slots for the current week",

@@ -17,6 +17,7 @@ import { spawn } from 'node:child_process';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
+import { exportDailyCallBlocks, type TaskCounts } from './daily-call-blocks';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { VoicemailFollowUpMessageForm } from './components/follow-up-message-forms';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
@@ -574,6 +575,17 @@ function SupabaseLifecycleStatusAction() {
       target={<SupabaseLifecycleStatusCommand />}
     />
   );
+}
+
+function buildDailyCallBlockTaskCounts(tasks: ScoutPortalTask[]): TaskCounts {
+  return {
+    touch1Count: tasks.filter(isCallAttempt1PortalTask).length,
+    remainingTaskCount: tasks.length,
+  };
+}
+
+function getDailyCallBlocksActionTitle(counts: TaskCounts): string {
+  return `Daily Call Blocks (${counts.touch1Count} T1 / ${counts.remainingTaskCount})`;
 }
 
 function buildTaskSearchKeywords(
@@ -3534,6 +3546,8 @@ function ScoutPrepDetail({
 function ScoutPrepTaskItem({
   task,
   taskListSort,
+  dailyCallBlocksActionTitle,
+  onExportDailyCallBlocks,
   onToggleProspectSearchMode,
   onShowPersonalFollowUps,
   onSelectTaskListFilter,
@@ -3542,6 +3556,8 @@ function ScoutPrepTaskItem({
 }: {
   task: ScoutPortalTask;
   taskListSort: TaskListSort;
+  dailyCallBlocksActionTitle: string;
+  onExportDailyCallBlocks: () => void;
   onToggleProspectSearchMode: () => void;
   onShowPersonalFollowUps: () => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
@@ -3744,6 +3760,12 @@ function ScoutPrepTaskItem({
               icon="🚀"
               shortcut={{ modifiers: ['cmd'], key: 'u' }}
               onAction={() => push(<PostCallUpdateForm task={task} onSaved={onReturnToRootList} />)}
+            />
+            <Action
+              title={dailyCallBlocksActionTitle}
+              icon="📅"
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
+              onAction={onExportDailyCallBlocks}
             />
             <Action
               title="Move CF Task"
@@ -4220,6 +4242,11 @@ export default function ScoutPrepCommand() {
     .map((row) => row.task)
     .filter(isCallAttempt1PortalTask).length;
   const selectedTaskSectionTitle = `${selectedTaskTitleBase} • Total Tasks: ${selectedTaskRows.length} | T1: ${callAttempt1Count} •`;
+  const dailyCallBlockCounts = useMemo(
+    () => buildDailyCallBlockTaskCounts(taskBuckets.todayPastDue),
+    [taskBuckets.todayPastDue],
+  );
+  const dailyCallBlocksActionTitle = getDailyCallBlocksActionTitle(dailyCallBlockCounts);
 
   useEffect(() => {
     if (!selectedTaskItemId) {
@@ -4253,10 +4280,7 @@ export default function ScoutPrepCommand() {
           future: [...taskBuckets.future].reverse(),
         };
         const dailyCallBlockTasks = nextTaskBuckets.todayPastDue;
-        await setCachedDailyCallBlockTaskCounts({
-          touch1Count: dailyCallBlockTasks.filter(isCallAttempt1PortalTask).length,
-          remainingTaskCount: dailyCallBlockTasks.length,
-        });
+        await setCachedDailyCallBlockTaskCounts(buildDailyCallBlockTaskCounts(dailyCallBlockTasks));
         setTaskBuckets(nextTaskBuckets);
         setTimeout(() => {
           void seedMissingAthleteContactCacheFromTasks(nextTaskBuckets);
@@ -4298,6 +4322,10 @@ export default function ScoutPrepCommand() {
     initialLoadStartedRef.current = true;
     void loadTasks();
   }, []);
+
+  const handleExportDailyCallBlocks = async () => {
+    await exportDailyCallBlocks(dailyCallBlockCounts);
+  };
 
   useEffect(() => {
     if (viewMode !== 'prospect') {
@@ -4819,6 +4847,12 @@ export default function ScoutPrepCommand() {
           actions={
             <ActionPanel>
               <Action title="Reload Scout Tasks" onAction={() => void loadTasks()} />
+              <Action
+                title={dailyCallBlocksActionTitle}
+                icon="📅"
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'd' }}
+                onAction={() => void handleExportDailyCallBlocks()}
+              />
               <ActionPanel.Section title="Navigation">
                 <Action
                   title="Show Today/PastDue"
@@ -4878,6 +4912,8 @@ export default function ScoutPrepCommand() {
               key={buildScoutPrepTaskItemId(row.task)}
               task={row.task}
               taskListSort={taskListSort}
+              dailyCallBlocksActionTitle={dailyCallBlocksActionTitle}
+              onExportDailyCallBlocks={() => void handleExportDailyCallBlocks()}
               onToggleProspectSearchMode={toggleProspectSearchMode}
               onShowPersonalFollowUps={showPersonalFollowUps}
               onSelectTaskListFilter={selectTaskListFilter}
