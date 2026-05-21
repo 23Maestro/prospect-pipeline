@@ -8,7 +8,6 @@ import {
   Toast,
   Clipboard,
   open,
-  popToRoot,
   showToast,
   useNavigation,
 } from '@raycast/api';
@@ -1242,7 +1241,6 @@ function SingleRecipientMessageForm({
         title: 'Sent',
         message: selectedContact.name,
       });
-      await popToRoot({ clearSearchBar: true });
     },
   });
 
@@ -1640,7 +1638,6 @@ function VoicemailFollowUpRecipientForm({
         });
         return;
       }
-      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       await Clipboard.copy(body);
       await open(`sms:${recipient.phones[0]}`);
@@ -1662,7 +1659,6 @@ function VoicemailFollowUpRecipientForm({
         title: 'Messages opened',
         message: 'Copied to clipboard.',
       });
-      await popToRoot({ clearSearchBar: true });
     }
   }
 
@@ -2179,7 +2175,6 @@ function UpdateAthleteTaskPicker({
           const loadedContext = await loadScoutPrepContext(task);
           setContext(loadedContext);
           await onTaskMutationComplete?.();
-          await popToRoot({ clearSearchBar: true });
         }}
       />,
     );
@@ -2230,7 +2225,6 @@ function UpdateAthleteTaskPicker({
         message: getTaskDisplayTitle(selectedTask),
       });
       await onTaskMutationComplete?.();
-      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -2903,7 +2897,6 @@ export function PostCallUpdateForm({
               : 'Reschedule saved'
             : stageLabel);
 
-      await popToRoot({ clearSearchBar: true });
       await onSaved?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -3189,7 +3182,6 @@ function ScoutPrepDetail({
           title: mode === 'call' ? 'Call reminder set' : 'Text reminder set',
           message: option.name,
         });
-        await popToRoot({ clearSearchBar: true });
       } catch (error) {
         toast.style = Toast.Style.Failure;
         toast.title = 'Reminder failed';
@@ -3352,7 +3344,6 @@ function ScoutPrepDetail({
       toast.title = 'Confirmation saved';
       toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
       await onReturnToRootList?.();
-      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Confirmation save failed';
@@ -3864,7 +3855,6 @@ function ScoutPrepTaskItem({
       toast.title = 'Confirmation saved';
       toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
       await onReturnToRootList();
-      await popToRoot({ clearSearchBar: true });
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Confirmation save failed';

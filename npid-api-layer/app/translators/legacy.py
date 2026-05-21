@@ -1965,12 +1965,15 @@ class LegacyTranslator:
 
         logger.info(f"🔍 DEBUG: Found {len(guardians)} guardians: {list(guardians.keys())}")
 
-        # Filter out guardians without a relationship (incomplete entries)
-        # Only check 'relationship' field, not 'parentsno' (which is just parent1/parent2 identifier)
+        # Filter out empty placeholder rows while keeping real guardians even
+        # when the optional relationship field is blank.
         valid_guardians = []
         for guardian_id, guardian_data in guardians.items():
-            relationship = guardian_data.get('relationship', '')
-            if relationship and relationship.strip():
+            has_guardian_value = any(
+                str(guardian_data.get(field) or '').strip()
+                for field in ('first_name', 'last_name', 'phone', 'email')
+            )
+            if has_guardian_value:
                 valid_guardians.append((guardian_id, guardian_data))
 
         logger.info(f"🔍 DEBUG: Valid guardians (with relationship): {len(valid_guardians)}")

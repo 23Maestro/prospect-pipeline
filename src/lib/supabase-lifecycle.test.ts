@@ -417,13 +417,19 @@ test('Scout Prep voicemail follow-up persistence is shared across recipient mode
 
   const multiRecipientBranch = form.slice(
     form.indexOf('const mode = await openMessagesDraftForRecipients'),
-    form.indexOf('await popToRoot({ clearSearchBar: true });', form.indexOf('const mode = await openMessagesDraftForRecipients')),
+    form.indexOf('async function handleSubmit'),
   );
   assert.match(multiRecipientBranch, /persistVoicemailFollowUpMessageSent\(\{/);
   assert.ok(
     multiRecipientBranch.indexOf("selectedVariant === 'no_show'") <
       multiRecipientBranch.indexOf('completeSentTextTask({'),
   );
+});
+
+test('Scout Prep actions stay inside the command instead of popping to Raycast root', () => {
+  const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
+
+  assert.equal(commandSource.includes('popToRoot'), false);
 });
 
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {

@@ -140,7 +140,7 @@ test('scout prep cache: stale entry stays readable but marked stale', async () =
   const staleIso = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
   const storage = createStorage({
     'scout-prep:measurables:1489285': JSON.stringify({
-      version: 2,
+      version: 3,
       cachedAt: staleIso,
       data: { height: `6'2"`, weight: '320 lbs' },
     }),
