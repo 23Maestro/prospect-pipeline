@@ -1280,6 +1280,14 @@ type ScoutPrepParentOption = {
   name: string;
 };
 
+type ScoutPrepTranslateNameOption = {
+  id: 'studentAthlete' | 'parent1' | 'parent2';
+  label: string;
+  name: string;
+};
+
+const RAYCAST_TRANSLATE_DEEPLINK = 'raycast://extensions/raycast/translator/translate';
+
 function getScoutPrepParentOptions(context: ScoutPrepContext) {
   return [
     context.contactInfo.parent1?.name
@@ -1289,6 +1297,96 @@ function getScoutPrepParentOptions(context: ScoutPrepContext) {
       ? { id: 'parent2' as const, name: context.contactInfo.parent2.name }
       : null,
   ].filter(Boolean) as ScoutPrepParentOption[];
+}
+
+function getScoutPrepTranslateNameOptions(
+  context: ScoutPrepContext,
+): ScoutPrepTranslateNameOption[] {
+  return [
+    context.contactInfo.studentAthlete.name
+      ? {
+          id: 'studentAthlete' as const,
+          label: 'Student Athlete',
+          name: context.contactInfo.studentAthlete.name,
+        }
+      : null,
+    context.contactInfo.parent1?.name
+      ? { id: 'parent1' as const, label: 'Parent 1', name: context.contactInfo.parent1.name }
+      : null,
+    context.contactInfo.parent2?.name
+      ? { id: 'parent2' as const, label: 'Parent 2', name: context.contactInfo.parent2.name }
+      : null,
+  ].filter(Boolean) as ScoutPrepTranslateNameOption[];
+}
+
+async function openRaycastTranslateWithText(text: string) {
+  const value = text.trim().split(/\s+/)[0] || '';
+  if (!value) {
+    throw new Error('No text selected');
+  }
+
+  await Clipboard.copy(value);
+  const url = new URL(RAYCAST_TRANSLATE_DEEPLINK);
+  url.searchParams.set('fallbackText', value);
+  await open(url.toString());
+}
+
+function ScoutPrepTranslateNameForm({
+  options,
+  defaultOptionId,
+}: {
+  options: ScoutPrepTranslateNameOption[];
+  defaultOptionId?: ScoutPrepTranslateNameOption['id'];
+}) {
+  const [selectedOptionId, setSelectedOptionId] = useState(defaultOptionId || options[0]?.id || '');
+
+  async function handleSubmit() {
+    const selected = options.find((option) => option.id === selectedOptionId) || options[0] || null;
+    if (!selected) {
+      await showToast({ style: Toast.Style.Failure, title: 'No contact' });
+      return;
+    }
+
+    try {
+      await openRaycastTranslateWithText(selected.name);
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Translate failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return (
+    <Form
+      navigationTitle="Translate Name"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Open Translate"
+            icon="🌐"
+            onSubmit={() => void handleSubmit()}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Dropdown
+        id="contactName"
+        title="Contact"
+        value={selectedOptionId}
+        onChange={setSelectedOptionId}
+      >
+        {options.map((option) => (
+          <Form.Dropdown.Item
+            key={option.id}
+            value={option.id}
+            title={`${option.label}: ${option.name}`}
+          />
+        ))}
+      </Form.Dropdown>
+    </Form>
+  );
 }
 
 function buildMessageContactOptions(
@@ -3118,6 +3216,31 @@ function ScoutPrepDetail({
     );
   }
 
+  async function handleTranslateName() {
+    const activeContext =
+      context ||
+      (await ensureContext('Translate name', task.athlete_name, 'Failed to load contact data'));
+    if (!activeContext) {
+      return;
+    }
+
+    const options = getScoutPrepTranslateNameOptions(activeContext);
+    if (!options.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No contact',
+      });
+      return;
+    }
+
+    push(
+      <ScoutPrepTranslateNameForm
+        options={options}
+        defaultOptionId={options.find((option) => option.id === 'parent1')?.id || options[0]?.id}
+      />,
+    );
+  }
+
   async function handleVoicemailFollowUp() {
     const activeContext =
       context ||
@@ -3516,6 +3639,12 @@ function ScoutPrepDetail({
               icon="☎️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
               target={<ScoutPrepContactDetail task={task} initialContext={context} />}
+            />
+            <Action
+              title="Translate Name"
+              icon="🌐"
+              shortcut={{ modifiers: ['cmd'], key: 'l' }}
+              onAction={() => void handleTranslateName()}
             />
             <Action.Push
               title="Head Scout Schedules"
