@@ -14,8 +14,8 @@ import {
 } from '@raycast/api';
 import { useForm } from '@raycast/utils';
 import { spawn } from 'node:child_process';
-import { useEffect, useRef, useState } from 'react';
-import { saveProspectContacts } from 'swift:../swift/contacts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { VoicemailFollowUpMessageForm } from './components/follow-up-message-forms';
@@ -457,6 +457,57 @@ function buildEasternStartsAt(value?: string | null): string | null {
     return `${trimmed}:00-04:00`;
   }
   return trimmed;
+}
+
+function normalizePersonName(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function resolveBookedMeetingScout(meeting?: BookedMeetingEvent | null) {
+  const assignedOwner = normalizePersonName(meeting?.assigned_owner);
+  if (!assignedOwner) {
+    return null;
+  }
+  return (
+    HEAD_SCOUT_ORDER.find((scout) => normalizePersonName(scout.scout_name) === assignedOwner) ||
+    null
+  );
+}
+
+function buildOpenMeetingSlotFromBookedMeeting(
+  meeting?: BookedMeetingEvent | null,
+): OpenMeetingSlot | null {
+  if (!meeting?.event_id || !meeting.start) {
+    return null;
+  }
+  return {
+    open_event_id: meeting.event_id,
+    date_time_label: meeting.date_time_label || meeting.start,
+    title: meeting.title || '',
+    assigned_owner: meeting.assigned_owner || '',
+    start_time: meeting.start.split('T')[1]?.slice(0, 5) || '',
+  };
+}
+
+function buildMeetingLengthFromBookedMeeting(meeting?: BookedMeetingEvent | null): string | null {
+  if (!meeting?.start || !meeting.end) {
+    return null;
+  }
+  const start = easternLocalIsoToDate(meeting.start);
+  const end = easternLocalIsoToDate(meeting.end);
+  if (!start || !end) {
+    return null;
+  }
+  const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
+  if (!Number.isFinite(minutes) || minutes <= 0) {
+    return null;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return `${String(hours).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
 function isMeetingSetStage(stageLabel?: string | null): boolean {
@@ -1003,10 +1054,19 @@ type VoicemailFollowUpFormValues = {
   variant?: VoicemailFollowUpVariant;
 };
 
+type MessageContactOption = {
+  id: string;
+  label: string;
+  name: string;
+  phone: string;
+};
+
 function SingleRecipientMessageForm({
   title,
   recipientName,
   phone,
+  contactOptions,
+  defaultContactId,
   initialMessage,
   onMessageSent,
   onMessageSentLabel,
@@ -1016,17 +1076,104 @@ function SingleRecipientMessageForm({
   title: string;
   recipientName: string;
   phone: string;
+  contactOptions?: MessageContactOption[];
+  defaultContactId?: string;
   initialMessage: string;
   onMessageSent?: () => Promise<void>;
   onMessageSentLabel?: string;
   onMessageSentToastTitle?: string;
   onMessageSentFailureTitle?: string;
 }) {
-  const { itemProps, handleSubmit } = useForm<{ message: string }>({
-    initialValues: { message: initialMessage },
+  const fallbackContact = useMemo(
+    () => ({
+      id: 'default',
+      label: recipientName,
+      name: recipientName,
+      phone,
+    }),
+    [phone, recipientName],
+  );
+  const messageContacts = useMemo(() => {
+    return contactOptions?.length ? contactOptions : [fallbackContact];
+  }, [contactOptions, fallbackContact]);
+  const initialContactId =
+    defaultContactId && messageContacts.some((contact) => contact.id === defaultContactId)
+      ? defaultContactId
+      : messageContacts[0]?.id || fallbackContact.id;
+  const [searchText, setSearchText] = useState('');
+  const [searchedContacts, setSearchedContacts] = useState<MessageContactOption[]>([]);
+  const [isSearchingContacts, setIsSearchingContacts] = useState(false);
+  const searchRequestIdRef = useRef(0);
+
+  useEffect(() => {
+    const query = searchText.trim();
+    if (query.length < 2) {
+      setIsSearchingContacts(false);
+      return;
+    }
+
+    const requestId = ++searchRequestIdRef.current;
+    setIsSearchingContacts(true);
+    const timer = setTimeout(() => {
+      void (async () => {
+        try {
+          const contacts = await searchContacts(query, 20);
+          if (requestId !== searchRequestIdRef.current) return;
+          const existingPhones = new Set(messageContacts.map((contact) => contact.phone));
+          const nextContacts: MessageContactOption[] = [];
+          const seenPhones = new Set<string>();
+
+          for (const contact of contacts) {
+            const name = [contact.givenName, contact.familyName].filter(Boolean).join(' ').trim();
+            for (const phone of contact.phoneNumbers || []) {
+              const normalizedPhone = normalizePhoneForMessages(phone.number);
+              if (
+                !normalizedPhone ||
+                existingPhones.has(normalizedPhone) ||
+                seenPhones.has(normalizedPhone)
+              ) {
+                continue;
+              }
+              seenPhones.add(normalizedPhone);
+              nextContacts.push({
+                id: `contact:${contact.id}:${normalizedPhone}`,
+                label: name || 'Contact',
+                name: name || 'Contact',
+                phone: normalizedPhone,
+              });
+            }
+          }
+
+          setSearchedContacts(nextContacts);
+        } catch (error) {
+          if (requestId !== searchRequestIdRef.current) return;
+          setSearchedContacts([]);
+        } finally {
+          if (requestId === searchRequestIdRef.current) {
+            setIsSearchingContacts(false);
+          }
+        }
+      })();
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [messageContacts, searchText]);
+
+  const contactChoices = searchedContacts.length
+    ? [...messageContacts, ...searchedContacts]
+    : messageContacts;
+
+  const { itemProps, handleSubmit } = useForm<{ contactId: string; message: string }>({
+    initialValues: { contactId: initialContactId, message: initialMessage },
     async onSubmit(values) {
+      const selectedContact =
+        [...messageContacts, ...searchedContacts].find(
+          (contact) => contact.id === values.contactId,
+        ) ||
+        messageContacts[0] ||
+        fallbackContact;
       const result = await sendClientMessage({
-        address: phone,
+        address: selectedContact.phone,
         text: values.message,
         serviceName: 'iMessage',
       });
@@ -1054,7 +1201,7 @@ function SingleRecipientMessageForm({
       await showToast({
         style: Toast.Style.Success,
         title: 'Sent',
-        message: recipientName,
+        message: selectedContact.name,
       });
       await popToRoot({ clearSearchBar: true });
     },
@@ -1069,7 +1216,21 @@ function SingleRecipientMessageForm({
         </ActionPanel>
       }
     >
-      <Form.Description title="Client" text={`${recipientName} • ${phone}`} />
+      <Form.Dropdown
+        {...itemProps.contactId}
+        title="Client"
+        filtering
+        isLoading={isSearchingContacts}
+        onSearchTextChange={setSearchText}
+      >
+        {contactChoices.map((contact) => (
+          <Form.Dropdown.Item
+            key={contact.id}
+            value={contact.id}
+            title={`${contact.label} • ${contact.phone}`}
+          />
+        ))}
+      </Form.Dropdown>
       <Form.TextArea {...itemProps.message} title="Message" />
     </Form>
   );
@@ -1089,6 +1250,30 @@ function getScoutPrepParentOptions(context: ScoutPrepContext) {
       ? { id: 'parent2' as const, name: context.contactInfo.parent2.name }
       : null,
   ].filter(Boolean) as ScoutPrepParentOption[];
+}
+
+function buildMessageContactOptions(
+  recipients: ReturnType<typeof getVoicemailFollowUpRecipients>,
+): MessageContactOption[] {
+  const seenPhones = new Set<string>();
+  const options: MessageContactOption[] = [];
+
+  for (const recipient of recipients) {
+    if (recipient.id === 'groupAll') continue;
+    for (const phone of recipient.phones) {
+      const normalizedPhone = normalizePhoneForMessages(phone);
+      if (!normalizedPhone || seenPhones.has(normalizedPhone)) continue;
+      seenPhones.add(normalizedPhone);
+      options.push({
+        id: `${recipient.id}:${normalizedPhone}`,
+        label: recipient.label || recipient.name,
+        name: recipient.name,
+        phone: normalizedPhone,
+      });
+    }
+  }
+
+  return options;
 }
 
 type ReminderRecipientFormValues = {
@@ -1229,11 +1414,15 @@ function VoicemailFollowUpRecipientForm({
 
     try {
       if (recipient.phones.length === 1 && recipient.id !== 'groupAll') {
+        const contactOptions = buildMessageContactOptions(recipients);
+        const defaultContactId = `${recipient.id}:${normalizePhoneForMessages(recipient.phones[0]) || recipient.phones[0]}`;
         push(
           <SingleRecipientMessageForm
             title={`Send Message • ${recipient.name}`}
             recipientName={recipient.name}
             phone={recipient.phones[0]}
+            contactOptions={contactOptions}
+            defaultContactId={defaultContactId}
             initialMessage={body}
             onMessageSentLabel={
               selectedVariant === 'no_show'
@@ -1985,8 +2174,10 @@ function PostCallUpdateForm({
   const [selectedMeetingFor, setSelectedMeetingFor] = useState<string>(
     HEAD_SCOUT_ORDER[0]?.meeting_for || '',
   );
+  const [currentBookedMeeting, setCurrentBookedMeeting] = useState<BookedMeetingEvent | null>(null);
   const [openMeetingSlots, setOpenMeetingSlots] = useState<OpenMeetingSlot[]>([]);
   const [selectedOpenMeetingId, setSelectedOpenMeetingId] = useState<string>('');
+  const [meetingLength, setMeetingLength] = useState<string>('01:00');
   const [isLoadingStages, setIsLoadingStages] = useState(true);
   const [isLoadingMeetingTemplate, setIsLoadingMeetingTemplate] = useState(false);
   const [isLoadingOpenMeetings, setIsLoadingOpenMeetings] = useState(false);
@@ -2056,6 +2247,8 @@ function PostCallUpdateForm({
     let active = true;
     if (!needsMeetingSchedulingFields(selectedStageLabel)) {
       setMeetingTemplate(null);
+      setCurrentBookedMeeting(null);
+      setMeetingLength('01:00');
       setIsLoadingMeetingTemplate(false);
       return () => {
         active = false;
@@ -2077,6 +2270,27 @@ function PostCallUpdateForm({
           loadScoutPrepContextForDisplay(task),
         ]);
         const context = displayContext.context;
+        const athleteId = String(
+          task.athlete_id ||
+            task.contact_id ||
+            context.task.athlete_id ||
+            context.task.contact_id ||
+            '',
+        ).trim();
+        const athleteMainId = String(
+          task.athlete_main_id || context.resolved.athlete_main_id || '',
+        ).trim();
+        const bookedMeeting =
+          athleteId && athleteMainId
+            ? selectCurrentBookedMeeting(
+                (
+                  await fetchAthleteBookedMeetings({
+                    athleteId,
+                    athleteMainId,
+                  }).catch(() => ({ events: [] as BookedMeetingEvent[] }))
+                ).events || [],
+              )
+            : null;
         if (!active) {
           return;
         }
@@ -2086,11 +2300,22 @@ function PostCallUpdateForm({
             gradYear: task.grad_year,
           }),
         );
+        setCurrentBookedMeeting(bookedMeeting);
+        const bookedScout = resolveBookedMeetingScout(bookedMeeting);
+        if (bookedScout?.meeting_for) {
+          setSelectedMeetingFor(bookedScout.meeting_for);
+        }
+        if (bookedMeeting?.event_id) {
+          setSelectedOpenMeetingId(bookedMeeting.event_id);
+        }
+        setMeetingLength(buildMeetingLengthFromBookedMeeting(bookedMeeting) || '01:00');
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', 'success', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
           timezoneCount: template.recruit_timezone_options.length,
           hasPrimaryPhone: Boolean(selectScoutPrepContactNumbers(context).primaryNumber),
+          currentBookedMeetingId: bookedMeeting?.event_id || null,
+          currentBookedMeetingScout: bookedMeeting?.assigned_owner || null,
           stage: selectedStageLabel,
         });
       } catch (error) {
@@ -2143,6 +2368,30 @@ function PostCallUpdateForm({
   const meetingDetailsKey = `${meetingTemplateKey}-${meetingTemplate?.details_template || ''}`;
   const canRenderStageFields =
     !isLoadingStages && stageOptions.length > 0 && Boolean(selectedStage);
+  const selectedBookedMeetingScout = useMemo(
+    () => resolveBookedMeetingScout(currentBookedMeeting),
+    [currentBookedMeeting],
+  );
+  const selectedBookedMeetingSlot = useMemo(
+    () => buildOpenMeetingSlotFromBookedMeeting(currentBookedMeeting),
+    [currentBookedMeeting],
+  );
+  const meetingSlotsForDropdown = useMemo(() => {
+    const slots = [...openMeetingSlots];
+    if (
+      selectedBookedMeetingSlot &&
+      selectedBookedMeetingScout?.meeting_for === selectedMeetingFor &&
+      !slots.some((slot) => slot.open_event_id === selectedBookedMeetingSlot.open_event_id)
+    ) {
+      return [selectedBookedMeetingSlot, ...slots];
+    }
+    return slots;
+  }, [
+    openMeetingSlots,
+    selectedBookedMeetingScout?.meeting_for,
+    selectedBookedMeetingSlot,
+    selectedMeetingFor,
+  ]);
 
   useEffect(() => {
     let active = true;
@@ -2163,13 +2412,21 @@ function PostCallUpdateForm({
           return;
         }
         setOpenMeetingSlots(response.slots);
-        setSelectedOpenMeetingId(response.slots[0]?.open_event_id || '');
+        const currentMeetingId =
+          selectedBookedMeetingScout?.meeting_for === selectedMeetingFor
+            ? currentBookedMeeting?.event_id || ''
+            : '';
+        setSelectedOpenMeetingId(currentMeetingId || response.slots[0]?.open_event_id || '');
       } catch (error) {
         if (!active) {
           return;
         }
         setOpenMeetingSlots([]);
-        setSelectedOpenMeetingId('');
+        setSelectedOpenMeetingId(
+          selectedBookedMeetingScout?.meeting_for === selectedMeetingFor
+            ? currentBookedMeeting?.event_id || ''
+            : '',
+        );
         await showToast({
           style: Toast.Style.Failure,
           title: 'Meetings load failed',
@@ -2186,7 +2443,12 @@ function PostCallUpdateForm({
     return () => {
       active = false;
     };
-  }, [selectedMeetingFor, selectedStageLabel]);
+  }, [
+    currentBookedMeeting?.event_id,
+    selectedBookedMeetingScout?.meeting_for,
+    selectedMeetingFor,
+    selectedStageLabel,
+  ]);
 
   async function handleSubmit(values: Record<string, string | undefined>) {
     if (isSaving) {
@@ -2235,12 +2497,13 @@ function PostCallUpdateForm({
           values.meetingFor || selectedMeetingFor || values.legacyAssignedTo || '',
         ).trim();
         const openEventId = String(values.openMeetingId || selectedOpenMeetingId || '').trim();
-        const meetingLength = String(values.legacyMeetingLength || '01:00').trim() || '01:00';
+        const selectedMeetingLength =
+          String(values.legacyMeetingLength || meetingLength || '01:00').trim() || '01:00';
         const meetingName = String(values.meetingName || '').trim();
         const meetingTimezone = String(values.recruitTimeZone || '').trim();
         const taskDescription = String(values.meetingDetails || '').trim();
         const selectedOpenMeeting =
-          openMeetingSlots.find((slot) => slot.open_event_id === openEventId) || null;
+          meetingSlotsForDropdown.find((slot) => slot.open_event_id === openEventId) || null;
         const selectedScout =
           HEAD_SCOUT_ORDER.find((scout) => scout.meeting_for === assignedTo) || null;
         const startTime = selectedOpenMeeting?.start_time || '';
@@ -2266,7 +2529,7 @@ function PostCallUpdateForm({
           taskDescription,
           startTime,
           startsAt: startsAt || startTime,
-          meetingLength,
+          meetingLength: selectedMeetingLength,
           headScout: String(preUpdateContext.resolved.head_scout || '').trim() || null,
         };
         rescheduleStartsAt = buildEasternStartsAt(startsAt) || startTime;
@@ -2301,7 +2564,7 @@ function PostCallUpdateForm({
             open_event_id: openEventId,
             task_description: taskDescription,
             start_time: startTime,
-            meeting_length: meetingLength,
+            meeting_length: selectedMeetingLength,
             openmeetings_list_length: '-1',
             template_id: '210',
             keep_as_open_slot: 'yes',
@@ -2491,8 +2754,8 @@ function PostCallUpdateForm({
               : 'Reschedule saved'
             : stageLabel);
 
-      await onSaved?.();
       await popToRoot({ clearSearchBar: true });
+      await onSaved?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.style = Toast.Style.Failure;
@@ -2521,7 +2784,7 @@ function PostCallUpdateForm({
         <Form.Dropdown
           id="officialStage"
           title="Official Sales Stage"
-          defaultValue={selectedStage}
+          value={selectedStage}
           onChange={setSelectedStage}
         >
           {stageOptions.map((option) => (
@@ -2588,7 +2851,7 @@ function PostCallUpdateForm({
                 value={selectedOpenMeetingId}
                 onChange={setSelectedOpenMeetingId}
               >
-                {openMeetingSlots.map((slot) => (
+                {meetingSlotsForDropdown.map((slot) => (
                   <Form.Dropdown.Item
                     key={slot.open_event_id}
                     value={slot.open_event_id}
@@ -2597,13 +2860,14 @@ function PostCallUpdateForm({
                 ))}
               </Form.Dropdown>
               {isLoadingOpenMeetings ? <Form.Description text="Loading open meetings…" /> : null}
-              {!isLoadingOpenMeetings && !openMeetingSlots.length ? (
+              {!isLoadingOpenMeetings && !meetingSlotsForDropdown.length ? (
                 <Form.Description text="No open meetings found for selected scout." />
               ) : null}
               <Form.TextField
                 id="legacyMeetingLength"
                 title="Meeting Length"
-                defaultValue="01:00"
+                value={meetingLength}
+                onChange={setMeetingLength}
               />
             </>
           )}

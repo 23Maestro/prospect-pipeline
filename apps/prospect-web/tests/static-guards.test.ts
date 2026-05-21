@@ -549,6 +549,10 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(appText, /search_athlete_contact_cache/);
   assert.match(appText, /renderContactSearch/);
   assert.match(appText, /scriptable:\/\/\/run\/\$\{encodeURIComponent\(scriptName\)\}\?phone=/);
+  assert.match(appText, /buildContactClipboardPayload/);
+  assert.match(appText, /data-contact-clipboard/);
+  assert.match(appText, /bindScriptableContactButtons/);
+  assert.match(appText, /navigator\.clipboard\.writeText\(clipboardText\)/);
   assert.match(appText, /ID New Contact/);
   assert.match(appText, /ID iCal Follow-Up/);
   assert.doesNotMatch(pageText, /data-route="\/contact-reminder"/);
@@ -565,7 +569,19 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
   assert.match(appText, /\/rest\/v1\/rpc\/search_athlete_contact_cache/);
   assert.match(appText, /formatSlotRangeForTimezone/);
+  assert.match(appText, /buildCurrentTimezoneTag/);
+  assert.match(appText, /timezone-tag/);
   assert.match(appText, /state\.scheduleSearch/);
   assert.doesNotMatch(appText, /\/api\/contact-search/);
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
+});
+
+test('prospect mobile tabs keep route renders scoped to the active tab', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  assert.match(appText, /routeRequestId/);
+  assert.match(appText, /setCurrentRoute\(nextRoute\)/);
+  assert.match(appText, /isActiveRoute\(renderContext\)/);
+  assert.match(appText, /swapContentHtml\(html, renderContext\)/);
+  assert.match(appText, /nextRoute !== '\/scout-schedules'/);
+  assert.match(appText, /nextRoute !== '\/contact-search'/);
 });

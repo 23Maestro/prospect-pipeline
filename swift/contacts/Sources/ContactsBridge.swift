@@ -79,6 +79,45 @@ private func requestContactAccess() async throws {
   }.sorted { $0.givenName < $1.givenName }
 }
 
+@raycast func searchContacts(query: String, limit: Int) async throws -> [ContactItem] {
+  let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+  guard !trimmedQuery.isEmpty else {
+    return []
+  }
+
+  let store = CNContactStore()
+  try await requestContactAccess()
+
+  let keys: [CNKeyDescriptor] = [
+    CNContactIdentifierKey as CNKeyDescriptor,
+    CNContactGivenNameKey as CNKeyDescriptor,
+    CNContactFamilyNameKey as CNKeyDescriptor,
+    CNContactPhoneNumbersKey as CNKeyDescriptor,
+  ]
+  let predicate = CNContact.predicateForContacts(matchingName: trimmedQuery)
+  let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keys)
+  let maxResults = max(1, min(limit, 50))
+
+  return contacts.prefix(maxResults).map { contact in
+    let phoneNumbers = contact.phoneNumbers.map { cnPhoneNumber -> PhoneNumber in
+      let number = cnPhoneNumber.value.stringValue
+      let countryCode = cnPhoneNumber.value.value(forKey: "countryCode") as? String
+      return PhoneNumber(
+        number: number, countryCode: countryCode?.isEmpty ?? true ? nil : countryCode)
+    }
+
+    return ContactItem(
+      id: contact.identifier,
+      givenName: contact.givenName,
+      familyName: contact.familyName,
+      phoneNumbers: phoneNumbers,
+      imageData: nil
+    )
+  }.sorted {
+    "\($0.givenName) \($0.familyName)" < "\($1.givenName) \($1.familyName)"
+  }
+}
+
 @raycast func saveProspectContacts(firstNames: [String], lastNames: [String], phones: [String]) async throws -> [SavedProspectContact] {
   let store = CNContactStore()
   try await requestContactAccess()

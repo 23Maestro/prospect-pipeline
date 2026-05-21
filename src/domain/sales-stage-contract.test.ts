@@ -9,6 +9,7 @@ import {
   isCuratedSalesStageLabel,
   needsPostCallMeetingSchedulingFields,
   normalizeSalesStageLabelForLaravel,
+  POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './sales-stage-contract';
 
 test('sales stage aliases normalize to Laravel-visible labels', () => {
@@ -67,7 +68,9 @@ test('meeting-set and post-meeting classifications are separate from post-call a
 test('post-call scheduling form is limited to Meeting Set and confirmed reschedules', () => {
   assert.equal(needsPostCallMeetingSchedulingFields('Meeting Set'), true);
   assert.equal(needsPostCallMeetingSchedulingFields('Meeting Result - Rescheduled'), true);
-  assert.equal(needsPostCallMeetingSchedulingFields('Rescheduled'), true);
+  assert.equal(needsPostCallMeetingSchedulingFields('Rescheduled'), false);
+  assert.equal(isCuratedSalesStageLabel('Rescheduled'), false);
+  assert.ok(POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS.includes('Rescheduled'));
 
   assert.equal(needsPostCallMeetingSchedulingFields('Meeting Result - Res. Pending'), false);
   assert.equal(isConfirmedRescheduleSchedulingStage('Meeting Result - Res. Pending'), false);

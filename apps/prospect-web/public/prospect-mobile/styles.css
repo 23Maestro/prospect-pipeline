@@ -615,6 +615,18 @@ h1 {
   border-color: var(--line-strong);
 }
 
+.timezone-tag {
+  min-width: 96px;
+  margin-left: auto;
+  color: var(--red);
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 760;
+  line-height: 1.1;
+  text-align: right;
+  white-space: nowrap;
+}
+
 .field {
   display: grid;
   gap: 6px;

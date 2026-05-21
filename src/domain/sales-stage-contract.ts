@@ -18,7 +18,6 @@ export const CURATED_SALES_STAGE_LABELS = [
   'Spoke to - Too Young',
   SPOKE_TO_FOLLOW_UP_LABEL,
   'Meeting Set',
-  'Rescheduled',
   'Actual Meeting - Follow Up',
   'Actual Meeting - Close Lost',
   'Actual Meeting - Close Won',
@@ -30,6 +29,7 @@ export const CURATED_SALES_STAGE_LABELS = [
 
 export const POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS = [
   'New Opportunity',
+  'Rescheduled',
   'Actual Meeting - Follow Up',
   'Actual Meeting - Close Lost',
   'Actual Meeting - Close Won',
@@ -139,10 +139,7 @@ export function classifyPostMeetingOutcomeStage(
 
 export function isConfirmedRescheduleSchedulingStage(stage: string): boolean {
   const normalizedStage = normalizeSalesStageLabelForLaravel(stage);
-  return (
-    normalizedStage === 'Rescheduled' ||
-    classifyPostMeetingOutcomeStage(normalizedStage)?.outcome === 'rescheduled'
-  );
+  return classifyPostMeetingOutcomeStage(normalizedStage)?.outcome === 'rescheduled';
 }
 
 export function needsPostCallMeetingSchedulingFields(stage: string): boolean {

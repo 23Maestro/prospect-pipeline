@@ -22,6 +22,7 @@ const routes = {
 const state = {
   week: 'this',
   route: routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings',
+  routeRequestId: 0,
   isLoading: false,
   contactSearch: {
     query: '',
@@ -45,7 +46,7 @@ const weekToolbar = document.querySelector('#week-toolbar');
 const FADE_DURATION_MS = 150;
 
 window.addEventListener('popstate', () => {
-  state.route = routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings';
+  setCurrentRoute(routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings');
   void loadRoute();
 });
 
@@ -55,7 +56,7 @@ document.querySelectorAll('[data-route]').forEach((link) => {
     const nextRoute = link.getAttribute('data-route');
     if (!nextRoute || nextRoute === state.route) return;
     history.pushState({}, '', `/prospect-mobile${nextRoute}`);
-    state.route = nextRoute;
+    setCurrentRoute(nextRoute);
     void loadRoute();
   });
 });
@@ -76,27 +77,32 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function loadRoute() {
-  const route = routes[state.route];
+  const routeKey = state.route;
+  const requestId = ++state.routeRequestId;
+  const renderContext = { routeKey, requestId };
+  const route = routes[routeKey];
   pageTitle.textContent = 'Prospect Mobile';
   weekToolbar.hidden = !route.usesWeek;
   setActiveNavigation();
 
   if (!route.endpoint) {
-    await setLoading(true, 'Refreshing');
+    await setLoading(true, 'Refreshing', renderContext);
     try {
-      const renderedCount = await route.render();
+      const renderedCount = await route.render(undefined, renderContext);
+      if (!isActiveRoute(renderContext)) return;
       const count = typeof renderedCount === 'number' ? renderedCount : 0;
       setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
     } catch (error) {
+      if (!isActiveRoute(renderContext)) return;
       content.innerHTML = `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`;
       setStatus('Could not refresh');
     } finally {
-      setLoading(false);
+      if (isActiveRoute(renderContext)) setLoading(false);
     }
     return;
   }
 
-  await setLoading(true, 'Refreshing');
+  await setLoading(true, 'Refreshing', renderContext);
   try {
     const response = await fetch(`${route.endpoint}?week=${encodeURIComponent(state.week)}`, {
       headers: { accept: 'application/json' },
@@ -105,22 +111,26 @@ async function loadRoute() {
     if (!response.ok) {
       throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
     }
-    const renderedCount = await route.render(payload);
+    if (!isActiveRoute(renderContext)) return;
+    const renderedCount = await route.render(payload, renderContext);
+    if (!isActiveRoute(renderContext)) return;
     const count = typeof renderedCount === 'number' ? renderedCount : payload.count ?? payload.scouts?.length ?? payload.events?.length ?? 0;
     setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
   } catch (error) {
+    if (!isActiveRoute(renderContext)) return;
     content.innerHTML = `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`;
     setStatus('Could not refresh');
   } finally {
-    setLoading(false);
+    if (isActiveRoute(renderContext)) setLoading(false);
   }
 }
 
-async function renderSetMeetings(payload) {
+async function renderSetMeetings(payload, renderContext) {
   const data = payload || (await fetchSetMeetingsFromSupabase(state.week));
+  if (!isActiveRoute(renderContext)) return 0;
   const events = Array.isArray(data?.events) ? data.events : [];
   if (!events.length) {
-    await setContentHtml('<div class="empty-state">No booked set meetings found for this window.</div>');
+    await setContentHtml('<div class="empty-state">No booked set meetings found for this window.</div>', renderContext);
     return 0;
   }
 
@@ -170,6 +180,7 @@ async function renderSetMeetings(payload) {
       `;
       })
       .join(''),
+    renderContext,
   );
   bindCopyButtons();
   bindSmsButtons();
@@ -252,14 +263,17 @@ async function fetchSetMeetingsFromSupabase(week) {
   };
 }
 
-async function renderContactSearch() {
-  await setContentHtml(buildContactSearchHtml(state.contactSearch));
+async function renderContactSearch(_payload, renderContext) {
+  await setContentHtml(buildContactSearchHtml(state.contactSearch), renderContext);
+  if (!isActiveRoute(renderContext)) return 0;
   bindContactSearch('contact');
   bindCopyButtons();
+  bindScriptableContactButtons();
   return state.contactSearch.results.length;
 }
 
-async function renderScoutSchedules(payload) {
+async function renderScoutSchedules(payload, renderContext) {
+  if (!isActiveRoute(renderContext)) return 0;
   if (payload) {
     state.schedulePayload = payload;
   }
@@ -272,14 +286,16 @@ async function renderScoutSchedules(payload) {
     }))
     .filter((scout) => scout.visibleSlots.length);
   if (state.scheduleSearch.active) {
-    await setContentHtml(buildScheduleSearchHtml(groups));
+    await setContentHtml(buildScheduleSearchHtml(groups), renderContext);
+    if (!isActiveRoute(renderContext)) return 0;
     bindContactSearch('schedule');
     bindCopyButtons();
     return groups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
   }
 
   if (!groups.length) {
-    await setContentHtml(`${buildScheduleSearchBarHtml()}<div class="empty-state">No open scout slots found for this window.</div>`);
+    await setContentHtml(`${buildScheduleSearchBarHtml()}<div class="empty-state">No open scout slots found for this window.</div>`, renderContext);
+    if (!isActiveRoute(renderContext)) return 0;
     bindScheduleSearchEntry();
     return 0;
   }
@@ -312,7 +328,9 @@ async function renderScoutSchedules(payload) {
       return `<h2 class="group-title">${escapeHtml(scout.scout_name)} - ${scout.visibleSlots.length}</h2>${rows}`;
     })
     .join('')}</div>`,
+    renderContext,
   );
+  if (!isActiveRoute(renderContext)) return 0;
   bindScheduleSearchEntry();
   bindCopyButtons();
   return visibleCount;
@@ -396,17 +414,19 @@ function buildContactResultsHtml(results, selectedId, scope) {
 }
 
 function buildSelectedContactCardsHtml(group) {
+  const timezoneTag = buildCurrentTimezoneTag(group.timezone, group.timezoneLabel);
   return `
     <div class="contact-card-list">
-      ${group.contacts.map((contact) => buildSelectedContactCardHtml(contact)).join('')}
+      ${group.contacts.map((contact) => buildSelectedContactCardHtml(contact, timezoneTag)).join('')}
     </div>
   `;
 }
 
-function buildSelectedContactCardHtml(contact) {
+function buildSelectedContactCardHtml(contact, timezoneTag) {
   const phone = contact.phone || '';
   const createUrl = buildScriptablePhoneActionUrl('ID New Contact', phone);
   const followUpUrl = buildScriptablePhoneActionUrl('ID iCal Follow-Up', phone);
+  const clipboardPayload = buildContactClipboardPayload(contact);
   return `
     <article class="row contact-card">
       <div class="row-header">
@@ -418,8 +438,9 @@ function buildSelectedContactCardHtml(contact) {
       </div>
       <div class="row-actions">
         <button class="copy-button" type="button" data-copy="${escapeAttribute(phone)}">Copy</button>
-        <a class="link-button" href="${escapeAttribute(createUrl)}">Create</a>
-        <a class="link-button" href="${escapeAttribute(followUpUrl)}">Follow-Up</a>
+        <button class="link-button" type="button" data-scriptable-url="${escapeAttribute(createUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Create</button>
+        <button class="link-button" type="button" data-scriptable-url="${escapeAttribute(followUpUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Follow-Up</button>
+        ${timezoneTag ? `<span class="timezone-tag">${escapeHtml(timezoneTag)}</span>` : ''}
       </div>
     </article>
   `;
@@ -461,7 +482,7 @@ function bindScheduleSearchEntry() {
   document.querySelector('[data-schedule-search-start]')?.addEventListener('click', async () => {
     state.scheduleSearch.active = true;
     state.scheduleSearch.selectedId = '';
-    await renderScoutSchedules();
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
     document.querySelector('.search-input')?.focus();
   });
 }
@@ -496,7 +517,7 @@ function bindContactSearch(scope) {
   document.querySelector('[data-schedule-search-cancel]')?.addEventListener('click', async () => {
     state.scheduleSearch.active = false;
     state.scheduleSearch.selectedId = '';
-    await renderScoutSchedules();
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
   });
 
   document.querySelectorAll(`[data-result-scope="${scope}"]`).forEach((button) => {
@@ -512,10 +533,10 @@ function bindContactSearch(scope) {
 
 async function rerenderSearchScope(scope) {
   if (scope === 'schedule') {
-    await renderScoutSchedules();
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
     return;
   }
-  await renderContactSearch();
+  await renderContactSearch(undefined, currentRenderContext('/contact-search'));
 }
 
 async function searchAthleteContactCache(query) {
@@ -619,12 +640,56 @@ function buildScriptablePhoneActionUrl(scriptName, phone) {
   return `scriptable:///run/${encodeURIComponent(scriptName)}?phone=${encodeURIComponent(phone || '')}`;
 }
 
+function buildContactClipboardPayload(contact) {
+  return [
+    contact.name || '',
+    contact.relationship || '',
+    formatPhoneLabel(contact.phone || '') || contact.phone || '',
+  ]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean)
+    .join('\n');
+}
+
 function formatPhoneLabel(value) {
   const digits = String(value || '').replace(/\D/g, '');
   if (digits.length === 10) {
     return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   }
   return value || '';
+}
+
+function buildCurrentTimezoneTag(timezone, timezoneLabel) {
+  const resolvedTimezone = normalizeContactTimezone(timezone, timezoneLabel);
+  if (!resolvedTimezone) return '';
+  try {
+    const time = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: resolvedTimezone,
+    }).format(new Date());
+    return `${time} ${timezoneAbbreviation(resolvedTimezone, timezoneLabel)}`;
+  } catch {
+    return '';
+  }
+}
+
+function normalizeContactTimezone(timezone, timezoneLabel) {
+  const rawTimezone = String(timezone || '').trim();
+  if (rawTimezone.includes('/')) return rawTimezone;
+
+  const key = normalizeSearchText(`${rawTimezone} ${timezoneLabel || ''}`);
+  if (/\b(est|eastern|et)\b/.test(key)) return 'America/New_York';
+  if (/\b(cst|central|ct)\b/.test(key)) return 'America/Chicago';
+  if (/\b(mst|mountain|mt)\b/.test(key)) return 'America/Denver';
+  return '';
+}
+
+function timezoneAbbreviation(timezone, timezoneLabel) {
+  const key = normalizeSearchText(`${timezone || ''} ${timezoneLabel || ''}`);
+  if (key.includes('america/chicago') || /\b(cst|central|ct)\b/.test(key)) return 'CST';
+  if (key.includes('america/denver') || /\b(mst|mountain|mt)\b/.test(key)) return 'MST';
+  return 'EST';
 }
 
 function buildEasternWeekWindow(week = 'this', now = new Date()) {
@@ -661,6 +726,24 @@ function bindCopyButtons() {
     button.addEventListener('click', async () => {
       await navigator.clipboard.writeText(button.getAttribute('data-copy') || '');
       setStatus('Copied');
+    });
+  });
+}
+
+function bindScriptableContactButtons() {
+  document.querySelectorAll('[data-scriptable-url][data-contact-clipboard]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const clipboardText = button.getAttribute('data-contact-clipboard') || '';
+      const scriptableUrl = button.getAttribute('data-scriptable-url') || '';
+      if (!scriptableUrl) return;
+      try {
+        await navigator.clipboard.writeText(clipboardText);
+        setStatus('Contact selected');
+      } catch {
+        setStatus('Clipboard failed');
+        return;
+      }
+      window.location.href = scriptableUrl;
     });
   });
 }
@@ -848,13 +931,34 @@ function setActiveNavigation() {
   });
 }
 
-async function setLoading(isLoading, message = '') {
+function setCurrentRoute(nextRoute) {
+  state.route = nextRoute;
+  if (nextRoute !== '/scout-schedules') {
+    state.scheduleSearch.active = false;
+    state.scheduleSearch.selectedId = '';
+  }
+  if (nextRoute !== '/contact-search') {
+    state.contactSearch.selectedId = '';
+  }
+}
+
+function currentRenderContext(routeKey) {
+  return { routeKey, requestId: state.routeRequestId };
+}
+
+function isActiveRoute(renderContext) {
+  if (!renderContext) return true;
+  return state.route === renderContext.routeKey && state.routeRequestId === renderContext.requestId;
+}
+
+async function setLoading(isLoading, message = '', renderContext) {
+  if (!isActiveRoute(renderContext)) return;
   state.isLoading = isLoading;
   refreshButton.disabled = isLoading;
   refreshButton.style.opacity = isLoading ? '0.6' : '1';
   content.classList.toggle('is-loading', isLoading);
   if (isLoading) {
-    await swapContentHtml(buildLoadingRows());
+    await swapContentHtml(buildLoadingRows(), renderContext);
   }
   if (message) setStatus(message);
 }
@@ -863,17 +967,20 @@ function setStatus(message) {
   statusLine.textContent = message;
 }
 
-function setContentHtml(html) {
-  return swapContentHtml(html);
+function setContentHtml(html, renderContext) {
+  return swapContentHtml(html, renderContext);
 }
 
-async function swapContentHtml(html) {
+async function swapContentHtml(html, renderContext) {
+  if (!isActiveRoute(renderContext)) return false;
   content.classList.remove('content-ready');
   content.classList.add('content-exit');
   await wait(FADE_DURATION_MS);
+  if (!isActiveRoute(renderContext)) return false;
   content.innerHTML = html;
   content.classList.remove('content-exit');
   requestAnimationFrame(() => content.classList.add('content-ready'));
+  return true;
 }
 
 function wait(ms) {
