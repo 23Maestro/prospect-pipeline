@@ -1,4 +1,4 @@
-import { Clipboard, Toast, open, showToast } from '@raycast/api';
+import { Clipboard, LocalStorage, Toast, open, showToast } from '@raycast/api';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -12,43 +12,13 @@ type ScheduleBlock = {
   title: string;
   start: Date;
   end: Date;
-  notes: string[];
+  task: string;
 };
 
-const GOAL = '6-7 sets';
-const DIAL_TARGET = '40-47 calls';
-const PRIORITIES = [
-  'Confirm meetings',
-  'No-shows / reschedules',
-  'Touch 1s',
-  'Touch 2s / 3s',
-  'Callbacks',
-  'Final confirmation sweep',
-];
+type TaskCounts = { touch1Count: number; remainingTaskCount: number };
 
-const BLOCK_NOTES: Record<string, string[]> = {
-  'Launch + Confirmations': [
-    'Confirm today/tomorrow meetings',
-    'Send missing confirmation texts',
-    'Check no-show/reschedule replies',
-  ],
-  'Touch 1 Attack': ['Clear new recruits first', 'Push for direct set', 'Target: 15-20 dials'],
-  'No-Show / Reschedule Sweep': ['Rebook warm no-shows', 'Offer 2 specific slots'],
-  'Follow-Up Block': ['Touch 2s / 3s', 'Prior interest', 'Parent/spouse follow-ups'],
-  'Admin Reset': ['Update CRM', 'Send confirmations', 'Ask for more recruits if Touch 1s are low'],
-  'Touch 1 + Callback Push': ['Callbacks first', 'Remaining Touch 1s second', 'Follow-ups third'],
-  'Break / Text Replies / CRM Cleanup': ['Handle replies', 'Clean notes', 'Prep prime window'],
-  'Prime Parent Answer Window': [
-    'Push live conversations',
-    'Set meetings',
-    'Protect show expectations',
-  ],
-  'Final Confirmation Sweep': [
-    'Confirm booked meetings',
-    'Save reminders',
-    "Prep tomorrow's first calls",
-  ],
-};
+const TOUCH_1_STORAGE_KEYS = ['touch1_count', 'touch_1_count', 'scout_touch1_count'] as const;
+const REMAINING_TASK_STORAGE_KEYS = ['remaining_tasks', 'remaining_task_count', 'scout_remaining_tasks'] as const;
 
 function localDateAt(source: Date, time: TimeOfDay): Date {
   return new Date(
@@ -84,16 +54,16 @@ function resolveStartTime(now: Date): Date | null {
   return null;
 }
 
-function buildBlock(title: string, start: Date, minutes: number): ScheduleBlock {
+function buildBlock(title: string, task: string, start: Date, minutes: number): ScheduleBlock {
   return {
-    title: `Prospect ID: ${title}`,
+    title: `SC: ${title}`,
     start,
     end: addMinutes(start, minutes),
-    notes: BLOCK_NOTES[title],
+    task,
   };
 }
 
-function buildSchedule(start: Date): ScheduleBlock[] {
+function buildSchedule(start: Date, counts: TaskCounts): ScheduleBlock[] {
   const primeStart = localDateAt(start, { hour: 16, minute: 30 });
   const primeEnd = localDateAt(start, { hour: 19, minute: 15 });
   const finalEnd = localDateAt(start, { hour: 19, minute: 30 });
@@ -102,15 +72,16 @@ function buildSchedule(start: Date): ScheduleBlock[] {
   const blocks: ScheduleBlock[] = [];
   let cursor = start;
 
+  const touch1Goal = Math.min(10, Math.max(0, counts.touch1Count));
   const fixedBeforePrime = [
-    ['Launch + Confirmations', 15],
-    ['Touch 1 Attack', 90],
-    ['No-Show / Reschedule Sweep', 30],
-    ['Follow-Up Block', 60],
+    ['Confirmations', 'Confirm today and tomorrow meetings', 15],
+    ['Touch 1 Focus', touch1Goal > 0 ? `Call ${touch1Goal} Touch 1s` : 'Clear callbacks and prep new Touch 1 list', 90],
+    ['Reschedule Sweep', 'Rebook no-shows with 2 specific options', 30],
+    ['Follow-Up Push', `Complete ${Math.min(8, Math.max(1, counts.remainingTaskCount))} remaining follow-ups`, 60],
   ] as const;
 
-  for (const [title, minutes] of fixedBeforePrime) {
-    blocks.push(buildBlock(title, cursor, minutes));
+  for (const [title, task, minutes] of fixedBeforePrime) {
+    blocks.push(buildBlock(title, task, cursor, minutes));
     cursor = addMinutes(cursor, minutes);
   }
 
@@ -131,22 +102,18 @@ function buildSchedule(start: Date): ScheduleBlock[] {
   const adminMinutes = standardFinish <= primeStart ? standardAdminMinutes : 15;
   const breakMinutes = standardFinish <= primeStart ? standardBreakMinutes : 15;
 
-  blocks.push(buildBlock('Admin Reset', cursor, adminMinutes));
+  blocks.push(buildBlock('CRM Reset', 'Update notes and send missing confirmations', cursor, adminMinutes));
   cursor = addMinutes(cursor, adminMinutes);
-  blocks.push(buildBlock('Touch 1 + Callback Push', cursor, standardPushMinutes));
+  blocks.push(buildBlock('Touch 1 + Callbacks', 'Finish remaining Touch 1s, then callbacks', cursor, standardPushMinutes));
   cursor = addMinutes(cursor, standardPushMinutes);
 
   if (cursor < primeStart) {
     blocks.push(
-      buildBlock(
-        'Break / Text Replies / CRM Cleanup',
-        cursor,
-        Math.round((primeStart.getTime() - cursor.getTime()) / 60000),
-      ),
+      buildBlock('Reply Cleanup', 'Handle text replies and clean CRM notes', cursor, Math.round((primeStart.getTime() - cursor.getTime()) / 60000)),
     );
     cursor = primeStart;
   } else {
-    blocks.push(buildBlock('Break / Text Replies / CRM Cleanup', cursor, breakMinutes));
+    blocks.push(buildBlock('Reply Cleanup', 'Handle text replies and clean CRM notes', cursor, breakMinutes));
     cursor = addMinutes(cursor, breakMinutes);
   }
 
@@ -158,20 +125,20 @@ function buildSchedule(start: Date): ScheduleBlock[] {
 
   if (parentEnd <= latestEnd) {
     blocks.push({
-      title: 'Prospect ID: Prime Parent Answer Window',
+      title: 'SC: Prime Parent Answer Window',
       start: parentWindowStart,
       end: parentEnd,
-      notes: BLOCK_NOTES['Prime Parent Answer Window'],
+      task: 'Push live conversations and set meetings',
     });
   }
 
   const finalStart = parentEnd <= primeEnd ? primeEnd : addMinutes(latestEnd, -15);
   if (finalStart < latestEnd && finalEnd <= latestEnd) {
     blocks.push({
-      title: 'Prospect ID: Final Confirmation Sweep',
+      title: 'SC: Final Confirmation Sweep',
       start: finalStart,
       end: parentEnd <= primeEnd ? finalEnd : latestEnd,
-      notes: BLOCK_NOTES['Final Confirmation Sweep'],
+      task: 'Send final confirmations and prep first calls for tomorrow',
     });
   }
 
@@ -213,16 +180,8 @@ function foldIcsLine(line: string): string {
   return chunks.join('\r\n');
 }
 
-function buildDescription(notes: string[]): string {
-  return [
-    `Goal: ${GOAL}`,
-    `Dial Target: ${DIAL_TARGET}`,
-    '',
-    'Priority order:',
-    ...PRIORITIES.map((priority, index) => `${index + 1}. ${priority}`),
-    '',
-    ...notes.map((note) => `- ${note}`),
-  ].join('\n');
+function buildDescription(task: string): string {
+  return `Task: ${task}`;
 }
 
 function buildIcs(blocks: ScheduleBlock[], generatedAt: Date): string {
@@ -242,7 +201,7 @@ function buildIcs(blocks: ScheduleBlock[], generatedAt: Date): string {
       `DTSTART:${formatLocalIcsDateTime(block.start)}`,
       `DTEND:${formatLocalIcsDateTime(block.end)}`,
       `SUMMARY:${escapeIcsText(block.title)}`,
-      `DESCRIPTION:${escapeIcsText(buildDescription(block.notes))}`,
+      `DESCRIPTION:${escapeIcsText(buildDescription(block.task))}`,
       'END:VEVENT',
     );
   });
@@ -262,16 +221,11 @@ function buildPlainTextPlan(blocks: ScheduleBlock[], start: Date): string {
   return [
     'DAILY CALL BLOCKS',
     `Start: ${formatClock(start)}`,
-    `Goal: ${GOAL}`,
-    `Dial Target: ${DIAL_TARGET}`,
-    '',
-    'Priority:',
-    ...PRIORITIES.map((priority, index) => `${index + 1}. ${priority}`),
     '',
     'Time Blocks:',
     ...blocks.flatMap((block) => [
       `${formatClock(block.start)}-${formatClock(block.end)} ${block.title}`,
-      ...block.notes.map((note) => `- ${note}`),
+      `- Task: ${block.task}`,
     ]),
     '',
     'Scoreboard:',
@@ -279,6 +233,23 @@ function buildPlainTextPlan(blocks: ScheduleBlock[], start: Date): string {
     'Sets: __',
     'Shows: __',
   ].join('\n');
+}
+
+async function getNumericValue(keys: readonly string[]): Promise<number> {
+  for (const key of keys) {
+    const value = await LocalStorage.getItem<string>(key);
+    const numeric = Number(value);
+    if (Number.isFinite(numeric) && numeric >= 0) return Math.floor(numeric);
+  }
+  return 0;
+}
+
+async function loadTaskCounts(): Promise<TaskCounts> {
+  const [touch1Count, remainingTaskCount] = await Promise.all([
+    getNumericValue(TOUCH_1_STORAGE_KEYS),
+    getNumericValue(REMAINING_TASK_STORAGE_KEYS),
+  ]);
+  return { touch1Count, remainingTaskCount };
 }
 
 export default async function DailyCallBlocksCommand() {
@@ -293,7 +264,8 @@ export default async function DailyCallBlocksCommand() {
     return;
   }
 
-  const blocks = buildSchedule(start);
+  const counts = await loadTaskCounts();
+  const blocks = buildSchedule(start, counts);
   const downloadsPath = join(homedir(), 'Downloads');
   const filename = `prospect-id-call-blocks-${formatDateStamp(start).replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')}.ics`;
   const filePath = join(downloadsPath, filename);
