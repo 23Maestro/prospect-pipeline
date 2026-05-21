@@ -1,7 +1,8 @@
-import { Clipboard, LocalStorage, Toast, open, showToast } from '@raycast/api';
+import { Clipboard, Toast, open, showToast } from '@raycast/api';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { getCachedDailyCallBlockTaskCounts } from './lib/scout-prep-cache';
 
 type TimeOfDay = {
   hour: number;
@@ -16,9 +17,6 @@ type ScheduleBlock = {
 };
 
 type TaskCounts = { touch1Count: number; remainingTaskCount: number };
-
-const TOUCH_1_STORAGE_KEYS = ['touch1_count', 'touch_1_count', 'scout_touch1_count'] as const;
-const REMAINING_TASK_STORAGE_KEYS = ['remaining_tasks', 'remaining_task_count', 'scout_remaining_tasks'] as const;
 
 function localDateAt(source: Date, time: TimeOfDay): Date {
   return new Date(
@@ -73,11 +71,19 @@ function buildSchedule(start: Date, counts: TaskCounts): ScheduleBlock[] {
   let cursor = start;
 
   const touch1Goal = Math.min(10, Math.max(0, counts.touch1Count));
+  const followUpTask =
+    counts.remainingTaskCount > 0
+      ? `Complete ${Math.min(8, counts.remainingTaskCount)} remaining follow-ups`
+      : 'Clear callbacks and prep follow-up queue';
   const fixedBeforePrime = [
     ['Confirmations', 'Confirm today and tomorrow meetings', 15],
-    ['Touch 1 Focus', touch1Goal > 0 ? `Call ${touch1Goal} Touch 1s` : 'Clear callbacks and prep new Touch 1 list', 90],
+    [
+      'Touch 1 Focus',
+      touch1Goal > 0 ? `Call ${touch1Goal} Touch 1s` : 'Clear callbacks and prep new Touch 1 list',
+      90,
+    ],
     ['Reschedule Sweep', 'Rebook no-shows with 2 specific options', 30],
-    ['Follow-Up Push', `Complete ${Math.min(8, Math.max(1, counts.remainingTaskCount))} remaining follow-ups`, 60],
+    ['Follow-Up Push', followUpTask, 60],
   ] as const;
 
   for (const [title, task, minutes] of fixedBeforePrime) {
@@ -102,18 +108,34 @@ function buildSchedule(start: Date, counts: TaskCounts): ScheduleBlock[] {
   const adminMinutes = standardFinish <= primeStart ? standardAdminMinutes : 15;
   const breakMinutes = standardFinish <= primeStart ? standardBreakMinutes : 15;
 
-  blocks.push(buildBlock('CRM Reset', 'Update notes and send missing confirmations', cursor, adminMinutes));
+  blocks.push(
+    buildBlock('CRM Reset', 'Update notes and send missing confirmations', cursor, adminMinutes),
+  );
   cursor = addMinutes(cursor, adminMinutes);
-  blocks.push(buildBlock('Touch 1 + Callbacks', 'Finish remaining Touch 1s, then callbacks', cursor, standardPushMinutes));
+  blocks.push(
+    buildBlock(
+      'Touch 1 + Callbacks',
+      'Finish remaining Touch 1s, then callbacks',
+      cursor,
+      standardPushMinutes,
+    ),
+  );
   cursor = addMinutes(cursor, standardPushMinutes);
 
   if (cursor < primeStart) {
     blocks.push(
-      buildBlock('Reply Cleanup', 'Handle text replies and clean CRM notes', cursor, Math.round((primeStart.getTime() - cursor.getTime()) / 60000)),
+      buildBlock(
+        'Reply Cleanup',
+        'Handle text replies and clean CRM notes',
+        cursor,
+        Math.round((primeStart.getTime() - cursor.getTime()) / 60000),
+      ),
     );
     cursor = primeStart;
   } else {
-    blocks.push(buildBlock('Reply Cleanup', 'Handle text replies and clean CRM notes', cursor, breakMinutes));
+    blocks.push(
+      buildBlock('Reply Cleanup', 'Handle text replies and clean CRM notes', cursor, breakMinutes),
+    );
     cursor = addMinutes(cursor, breakMinutes);
   }
 
@@ -235,21 +257,9 @@ function buildPlainTextPlan(blocks: ScheduleBlock[], start: Date): string {
   ].join('\n');
 }
 
-async function getNumericValue(keys: readonly string[]): Promise<number> {
-  for (const key of keys) {
-    const value = await LocalStorage.getItem<string>(key);
-    const numeric = Number(value);
-    if (Number.isFinite(numeric) && numeric >= 0) return Math.floor(numeric);
-  }
-  return 0;
-}
-
 async function loadTaskCounts(): Promise<TaskCounts> {
-  const [touch1Count, remainingTaskCount] = await Promise.all([
-    getNumericValue(TOUCH_1_STORAGE_KEYS),
-    getNumericValue(REMAINING_TASK_STORAGE_KEYS),
-  ]);
-  return { touch1Count, remainingTaskCount };
+  const cachedCounts = await getCachedDailyCallBlockTaskCounts();
+  return cachedCounts?.data || { touch1Count: 0, remainingTaskCount: 0 };
 }
 
 export default async function DailyCallBlocksCommand() {

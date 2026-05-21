@@ -141,6 +141,7 @@ import { resolveMaxPrepsScoutContext } from './lib/maxpreps-scout-context';
 import {
   getCachedScoutPrepContext,
   getCachedScoutPrepMaxPrepsContext,
+  setCachedDailyCallBlockTaskCounts,
   setCachedScoutPrepContext,
   setCachedScoutPrepMaxPrepsContext,
   type ScoutPrepMaxPrepsCacheInput,
@@ -4251,6 +4252,11 @@ export default function ScoutPrepCommand() {
           tomorrow: [...taskBuckets.tomorrow].reverse(),
           future: [...taskBuckets.future].reverse(),
         };
+        const dailyCallBlockTasks = nextTaskBuckets.todayPastDue;
+        await setCachedDailyCallBlockTaskCounts({
+          touch1Count: dailyCallBlockTasks.filter(isCallAttempt1PortalTask).length,
+          remainingTaskCount: dailyCallBlockTasks.length,
+        });
         setTaskBuckets(nextTaskBuckets);
         setTimeout(() => {
           void seedMissingAthleteContactCacheFromTasks(nextTaskBuckets);

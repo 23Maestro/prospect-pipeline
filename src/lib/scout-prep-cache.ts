@@ -6,11 +6,14 @@ const CACHE_VERSION = 2;
 const MEASURABLES_TTL_MS = 24 * 60 * 60 * 1000;
 const CONTACT_INFO_TTL_MS = 24 * 60 * 60 * 1000;
 const MAXPREPS_CONTEXT_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DAILY_CALL_BLOCK_COUNTS_TTL_MS = 12 * 60 * 60 * 1000;
+const DAILY_CALL_BLOCK_COUNTS_KEY = 'daily-call-blocks:task-counts';
 
 type StorageLike = Pick<typeof LocalStorage, 'getItem' | 'setItem'>;
 type CacheLike = Pick<Cache, 'get' | 'set'>;
 
 const scoutPrepContextCache = new Cache({ namespace: 'scout-prep-context' });
+const dailyCallBlockCountsCache = new Cache({ namespace: 'scout-prep-task-counts' });
 
 export type ScoutPrepMeasurables = {
   height?: string | null;
@@ -29,6 +32,11 @@ export type ScoutPrepMaxPrepsCacheInput = {
   highSchool?: string | null;
   state?: string | null;
   sport?: string | null;
+};
+
+export type DailyCallBlockTaskCounts = {
+  touch1Count: number;
+  remainingTaskCount: number;
 };
 
 type CacheRecord<T> = {
@@ -211,4 +219,26 @@ export async function setCachedScoutPrepContext(
   cache: CacheLike = scoutPrepContextCache,
 ): Promise<void> {
   cache.set(buildScoutPrepContextKey(task), serializeRecord(data));
+}
+
+export async function getCachedDailyCallBlockTaskCounts(
+  cache: CacheLike = dailyCallBlockCountsCache,
+): Promise<CacheReadResult<DailyCallBlockTaskCounts>> {
+  return parseCacheRecord<DailyCallBlockTaskCounts>(
+    cache.get(DAILY_CALL_BLOCK_COUNTS_KEY) || null,
+    DAILY_CALL_BLOCK_COUNTS_TTL_MS,
+  );
+}
+
+export async function setCachedDailyCallBlockTaskCounts(
+  counts: DailyCallBlockTaskCounts,
+  cache: CacheLike = dailyCallBlockCountsCache,
+): Promise<void> {
+  cache.set(
+    DAILY_CALL_BLOCK_COUNTS_KEY,
+    serializeRecord({
+      touch1Count: Math.max(0, Math.floor(counts.touch1Count)),
+      remainingTaskCount: Math.max(0, Math.floor(counts.remainingTaskCount)),
+    }),
+  );
 }

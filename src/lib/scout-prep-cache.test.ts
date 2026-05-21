@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   getCachedScoutPrepContactInfo,
+  getCachedDailyCallBlockTaskCounts,
   getCachedScoutPrepContext,
   getCachedScoutPrepMeasurables,
   getCachedScoutPrepMaxPrepsContext,
+  setCachedDailyCallBlockTaskCounts,
   setCachedScoutPrepContactInfo,
   setCachedScoutPrepContext,
   setCachedScoutPrepMeasurables,
@@ -281,4 +283,22 @@ test('scout prep cache: cached context remains renderable', async () => {
 
   assert.match(markdown, /August Nyakeoga|Jance Mercado/);
   assert.match(markdown, /Football/);
+});
+
+test('scout prep cache: daily call block counts round down and never go negative', async () => {
+  const cache = createCache();
+
+  await setCachedDailyCallBlockTaskCounts(
+    {
+      touch1Count: 10.9,
+      remainingTaskCount: -4,
+    },
+    cache,
+  );
+
+  const cached = await getCachedDailyCallBlockTaskCounts(cache);
+  assert.ok(cached);
+  assert.equal(cached.isFresh, true);
+  assert.equal(cached.data.touch1Count, 10);
+  assert.equal(cached.data.remainingTaskCount, 0);
 });
