@@ -4,10 +4,13 @@ import { searchLogger } from './logger';
 const FEATURE = 'notion-call-scripts';
 const NOTION_VERSION = '2022-06-28';
 const MAX_APPEND_BLOCKS = 100;
+const DEFAULT_CALL_NOTES_PAGE_ID = '34b4c8bd-6c26-803f-8e46-cefd9e2e9d1b';
+const DEFAULT_CALL_NOTES_TOGGLE_TITLE = 'Student Athlete';
 
 type NotionCallScriptPreferences = {
   notionToken?: string;
   notionCurrentCallScriptsPageId?: string;
+  notionCallNotesPageId?: string;
   notionScriptToggleTitle?: string;
   notionVoicemailToggleTitle?: string;
 };
@@ -42,6 +45,11 @@ export type NotionCallScriptConfig = {
   token: string;
   pageId: string;
   toggleTitle: string;
+};
+
+export type NotionPageReplaceConfig = {
+  token: string;
+  pageId: string;
 };
 
 function logInfo(
@@ -106,6 +114,23 @@ function getConfig(target: SyncTarget): NotionCallScriptConfig {
   return { token, pageId, toggleTitle };
 }
 
+function getCallNotesConfig(): NotionPageReplaceConfig {
+  const prefs = getPreferenceValues<NotionCallScriptPreferences>();
+  const token = String(prefs.notionToken || '').trim();
+  const pageId = normalizeNotionId(
+    String(prefs.notionCallNotesPageId || DEFAULT_CALL_NOTES_PAGE_ID),
+  );
+
+  if (!token) {
+    throw new Error('Set Notion API Token in Raycast preferences.');
+  }
+  if (!pageId) {
+    throw new Error('Set Notion Call Notes Page ID in Raycast preferences.');
+  }
+
+  return { token, pageId };
+}
+
 export async function notionRequest<T>(
   token: string,
   path: string,
@@ -162,6 +187,19 @@ function blockPlainText(block: NotionBlock): string {
     .trim();
 }
 
+function isToggleLikeBlock(block: NotionBlock): boolean {
+  if (block.type === 'toggle') {
+    return true;
+  }
+
+  if (!/^heading_[123]$/.test(block.type)) {
+    return false;
+  }
+
+  const value = block[block.type] as { is_toggleable?: boolean } | undefined;
+  return value?.is_toggleable === true;
+}
+
 async function findToggleBlockId(
   token: string,
   rootBlockId: string,
@@ -181,6 +219,33 @@ async function findToggleBlockId(
   }
 
   return null;
+}
+
+async function findCallNotesToggleBlockId(
+  token: string,
+  rootBlockId: string,
+  title: string,
+): Promise<string | null> {
+  const expectedTitles = new Set(
+    [title, DEFAULT_CALL_NOTES_TOGGLE_TITLE]
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  const children = await listChildren(token, rootBlockId);
+  let firstToggleBlockId: string | null = null;
+
+  for (const child of children) {
+    if (!child.id || !isToggleLikeBlock(child)) {
+      continue;
+    }
+
+    firstToggleBlockId ||= child.id;
+    if (expectedTitles.has(blockPlainText(child).trim().toLowerCase())) {
+      return child.id;
+    }
+  }
+
+  return firstToggleBlockId;
 }
 
 export async function archiveBlock(token: string, blockId: string): Promise<void> {
@@ -216,7 +281,7 @@ function paragraphBlock(content: string): NotionBlock {
   return {
     object: 'block',
     type: 'paragraph',
-    paragraph: { rich_text: richText(content) },
+    paragraph: { rich_text: content ? richText(content) : [] },
   };
 }
 
@@ -226,6 +291,18 @@ function toggleBlock(title: string, children: NotionBlock[]): NotionBlock {
     type: 'toggle',
     toggle: {
       rich_text: richText(title, true),
+      children,
+    },
+  };
+}
+
+function toggleHeadingBlock(title: string, children: NotionBlock[]): NotionBlock {
+  return {
+    object: 'block',
+    type: 'heading_1',
+    heading_1: {
+      rich_text: richText(title, true),
+      is_toggleable: true,
       children,
     },
   };
@@ -301,6 +378,15 @@ export function scoutPrepMarkdownToNotionBlocks(markdown: string): NotionBlock[]
   return blocks.length ? blocks : [paragraphBlock('No content generated.')];
 }
 
+function hasLeadingMaxPrepsBlock(markdown: string): boolean {
+  return /^https:\/\/(?:www\.)?maxpreps\.com\//i.test(markdown.trimStart());
+}
+
+export function callNotesMarkdownToNotionBlocks(markdown: string): NotionBlock[] {
+  const blocks = scoutPrepMarkdownToNotionBlocks(markdown);
+  return hasLeadingMaxPrepsBlock(markdown) ? blocks : [paragraphBlock(''), ...blocks];
+}
+
 function cleanInlineMarkdown(value: string): string {
   return value
     .replace(/\*\*([^*]+)\*\*/g, '$1')
@@ -359,6 +445,61 @@ export async function syncCallScriptToggleToNotionWithConfig(
       target: args.target,
       toggleTitle,
     });
+    throw error;
+  }
+}
+
+export async function syncCallNotesPageToNotion(args: {
+  markdown: string;
+  toggleTitle: string;
+}): Promise<{ pageId: string; toggleTitle: string; replacedCount: number; appendedCount: number }> {
+  return syncCallNotesPageToNotionWithConfig(args, getCallNotesConfig());
+}
+
+export async function syncCallNotesPageToNotionWithConfig(
+  args: {
+    markdown: string;
+    toggleTitle: string;
+  },
+  config: NotionPageReplaceConfig,
+): Promise<{ pageId: string; toggleTitle: string; replacedCount: number; appendedCount: number }> {
+  const { token, pageId } = {
+    ...config,
+    pageId: normalizeNotionId(config.pageId),
+  };
+  const toggleTitle = args.toggleTitle.trim() || DEFAULT_CALL_NOTES_TOGGLE_TITLE;
+  const blocks = callNotesMarkdownToNotionBlocks(args.markdown);
+
+  logInfo('NOTION_CALL_NOTES_SYNC', 'replace-toggle', 'start', {
+    pageId,
+    toggleTitle,
+    blockCount: blocks.length,
+  });
+
+  try {
+    const toggleBlockId = await findCallNotesToggleBlockId(token, pageId, toggleTitle);
+    if (toggleBlockId) {
+      await archiveBlock(token, toggleBlockId);
+    }
+
+    await appendChildren(token, pageId, [toggleHeadingBlock(toggleTitle, blocks)]);
+
+    logInfo('NOTION_CALL_NOTES_SYNC', 'replace-toggle', 'success', {
+      pageId,
+      toggleTitle,
+      replacedCount: toggleBlockId ? 1 : 0,
+      appendedCount: blocks.length,
+    });
+
+    return {
+      pageId,
+      toggleTitle,
+      replacedCount: toggleBlockId ? 1 : 0,
+      appendedCount: blocks.length,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logFailure('NOTION_CALL_NOTES_SYNC', 'replace-toggle', message, { pageId, toggleTitle });
     throw error;
   }
 }

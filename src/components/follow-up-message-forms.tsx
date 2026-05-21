@@ -94,6 +94,10 @@ export function ConfirmationReminderMessageForm(props: {
 }) {
   const { pop } = useNavigation();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<ConfirmationFollowUpVariant>(
+    props.defaultVariant,
+  );
+  const primaryActionTitle = selectedVariant === 'confirmation_2' ? 'Msg Only' : 'Msg + Card';
 
   async function handleSubmit(
     values: ConfirmationReminderFormValues,
@@ -127,7 +131,7 @@ export function ConfirmationReminderMessageForm(props: {
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title={isSubmitting ? 'Opening…' : 'Msg + Card'}
+            title={isSubmitting ? 'Opening…' : primaryActionTitle}
             onSubmit={(values) =>
               void handleSubmit(values as ConfirmationReminderFormValues, 'messages_and_contact')
             }
@@ -141,7 +145,12 @@ export function ConfirmationReminderMessageForm(props: {
         </ActionPanel>
       }
     >
-      <Form.Dropdown id="variant" title="Reminder Type" defaultValue={props.defaultVariant}>
+      <Form.Dropdown
+        id="variant"
+        title="Reminder Type"
+        value={selectedVariant}
+        onChange={(value) => setSelectedVariant(value as ConfirmationFollowUpVariant)}
+      >
         <Form.Dropdown.Item value="confirmation_1" title="Confirmation 1" />
         <Form.Dropdown.Item value="confirmation_2" title="Confirmation 2" />
       </Form.Dropdown>

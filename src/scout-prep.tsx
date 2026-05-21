@@ -35,6 +35,7 @@ import type {
 } from './features/scout-prep/types';
 import {
   buildMessagesComposeUrlForRecipients,
+  buildMeetingSetCallNotesMarkdown,
   buildProspectContactShortcutPayloadFromName,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
@@ -71,7 +72,7 @@ import {
   type TaskListFilter,
   type ScoutTaskRange,
 } from './lib/scout-task-filters';
-import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
+import { syncCallNotesPageToNotion, syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import {
   ensureProspectDetails,
   runProspectRawSearch,
@@ -2174,12 +2175,14 @@ function UpdateAthleteTaskPicker({
   );
 }
 
-function PostCallUpdateForm({
+export function PostCallUpdateForm({
   task,
   onSaved,
+  initialStageLabel,
 }: {
   task: ScoutPortalTask;
   onSaved?: () => void | Promise<void>;
+  initialStageLabel?: string;
 }) {
   const [stageOptions, setStageOptions] = useState<SalesStageOption[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>('');
@@ -2217,9 +2220,13 @@ function PostCallUpdateForm({
               option.label as (typeof POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS)[number],
             ),
         );
+        const initialStage = initialStageLabel
+          ? filteredOptions.find((option) => option.label === initialStageLabel)
+          : null;
         setStageOptions(filteredOptions);
         setSelectedStage(
-          filteredOptions.find((option) => option.selected)?.value ||
+          initialStage?.value ||
+            filteredOptions.find((option) => option.selected)?.value ||
             filteredOptions[0]?.value ||
             '',
         );
@@ -2251,7 +2258,7 @@ function PostCallUpdateForm({
     return () => {
       active = false;
     };
-  }, [task]);
+  }, [initialStageLabel, task]);
 
   const selectedStageLabel =
     stageOptions.find((option) => option.value === selectedStage)?.label || selectedStage;
@@ -3240,6 +3247,17 @@ function ScoutPrepDetail({
         crmStage: selectedCrmStage,
         currentTask: currentVoicemailTask || task.title || null,
       });
+      const fallbackTemplate = hydrateMeetingSetTemplateForForm(
+        buildFallbackMeetingTemplate(),
+        activeContext,
+        {
+          athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+          gradYear: task.grad_year,
+        },
+      );
+      const callNotes = buildMeetingSetCallNotesMarkdown({
+        meetingDetails: fallbackTemplate.details_template || buildFallbackMeetingDetails(),
+      });
 
       const [scriptResult, voicemailResult] = await Promise.all([
         syncCallScriptToggleToNotion({
@@ -3250,11 +3268,15 @@ function ScoutPrepDetail({
           target: 'voicemail',
           markdown: voicemail,
         }),
+        syncCallNotesPageToNotion({
+          markdown: callNotes,
+          toggleTitle: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
+        }),
       ]);
 
       toast.style = Toast.Style.Success;
       toast.title = 'Notion synced';
-      toast.message = `${scriptResult.toggleTitle} + ${voicemailResult.toggleTitle}`;
+      toast.message = `${scriptResult.toggleTitle} + ${voicemailResult.toggleTitle} + Call Notes`;
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Notion sync failed';
@@ -3843,28 +3865,28 @@ function ScoutPrepTaskItem({
           <ActionPanel.Section title="Navigation">
             <Action
               title="Show Today/PastDue"
-              shortcut={{ modifiers: ['cmd'], key: '1' }}
+              shortcut={{ modifiers: ['opt'], key: '1' }}
               onAction={() => onSelectTaskListFilter('todayPastDue')}
             />
             <Action
               title="Show Tomorrow"
-              shortcut={{ modifiers: ['cmd'], key: '2' }}
+              shortcut={{ modifiers: ['opt'], key: '2' }}
               onAction={() => onSelectTaskListFilter('tomorrow')}
             />
             <Action
               title="Show Future"
-              shortcut={{ modifiers: ['cmd'], key: '3' }}
+              shortcut={{ modifiers: ['opt'], key: '3' }}
               onAction={() => onSelectTaskListFilter('future')}
             />
             <Action
               title="Show All"
-              shortcut={{ modifiers: ['cmd'], key: '4' }}
+              shortcut={{ modifiers: ['opt'], key: '4' }}
               onAction={() => onSelectTaskListFilter('all')}
             />
             <Action
               title="Personal Follow-Ups"
               icon="🕘"
-              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              shortcut={{ modifiers: ['opt'], key: '5' }}
               onAction={onShowPersonalFollowUps}
             />
             <Action
@@ -4117,7 +4139,7 @@ function PersonalFollowUpListItem({
             <Action
               title="Exit Personal Follow-Ups"
               icon="🕘"
-              shortcut={{ modifiers: ['cmd'], key: '5' }}
+              shortcut={{ modifiers: ['opt'], key: '5' }}
               onAction={onExit}
             />
           </ActionPanel.Section>
@@ -4720,7 +4742,7 @@ export default function ScoutPrepCommand() {
                   <Action
                     title="Exit Personal Follow-Ups"
                     icon="🕘"
-                    shortcut={{ modifiers: ['cmd'], key: '5' }}
+                    shortcut={{ modifiers: ['opt'], key: '5' }}
                     onAction={exitPersonalFollowUps}
                   />
                   <Action
@@ -4818,7 +4840,7 @@ export default function ScoutPrepCommand() {
                   <Action
                     title="Personal Follow-Ups"
                     icon="🕘"
-                    shortcut={{ modifiers: ['cmd'], key: '5' }}
+                    shortcut={{ modifiers: ['opt'], key: '5' }}
                     onAction={showPersonalFollowUps}
                   />
                   <Action
@@ -4856,28 +4878,28 @@ export default function ScoutPrepCommand() {
               <ActionPanel.Section title="Navigation">
                 <Action
                   title="Show Today/PastDue"
-                  shortcut={{ modifiers: ['cmd'], key: '1' }}
+                  shortcut={{ modifiers: ['opt'], key: '1' }}
                   onAction={() => selectTaskListFilter('todayPastDue')}
                 />
                 <Action
                   title="Show Tomorrow"
-                  shortcut={{ modifiers: ['cmd'], key: '2' }}
+                  shortcut={{ modifiers: ['opt'], key: '2' }}
                   onAction={() => selectTaskListFilter('tomorrow')}
                 />
                 <Action
                   title="Show Future"
-                  shortcut={{ modifiers: ['cmd'], key: '3' }}
+                  shortcut={{ modifiers: ['opt'], key: '3' }}
                   onAction={() => selectTaskListFilter('future')}
                 />
                 <Action
                   title="Show All"
-                  shortcut={{ modifiers: ['cmd'], key: '4' }}
+                  shortcut={{ modifiers: ['opt'], key: '4' }}
                   onAction={() => selectTaskListFilter('all')}
                 />
                 <Action
                   title="Personal Follow-Ups"
                   icon="🕘"
-                  shortcut={{ modifiers: ['cmd'], key: '5' }}
+                  shortcut={{ modifiers: ['opt'], key: '5' }}
                   onAction={showPersonalFollowUps}
                 />
                 <Action

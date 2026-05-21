@@ -50,6 +50,7 @@ import {
   APPOINTMENT_TITLE_PREFIXES,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
+import { PostCallUpdateForm } from './scout-prep';
 import {
   buildMeetingDayLabel,
   buildSetMeetingCandidatesFromBookedMeetings,
@@ -838,7 +839,7 @@ export function HeadScoutBookingsList({
         defaultVariant={defaultVariant}
         onSubmit={(values, mode) =>
           sendConfirmationText(candidate, values.variant, {
-            openContactCard: mode === 'messages_and_contact',
+            openContactCard: mode === 'messages_and_contact' && values.variant !== 'confirmation_2',
             copyOnly: mode === 'copy_message',
           })
         }
@@ -963,18 +964,20 @@ export function HeadScoutBookingsList({
                   ]}
                   actions={
                     <ActionPanel>
-                      {candidate.athleteId && candidate.athleteMainId ? (
-                        <Action.Push
-                          title={
-                            sendingTextKey === candidate.key ? 'Opening…' : 'Send Confirmation'
-                          }
-                          icon={Icon.Message}
-                          shortcut={{ modifiers: ['cmd'], key: 'm' }}
-                          target={buildConfirmationTextForm(candidate)}
-                        />
-                      ) : null}
+                      <ActionPanel.Section title="Confirmation">
+                        {candidate.athleteId && candidate.athleteMainId ? (
+                          <Action.Push
+                            title={
+                              sendingTextKey === candidate.key ? 'Opening…' : 'Send Confirmation'
+                            }
+                            icon={Icon.Message}
+                            shortcut={{ modifiers: ['cmd'], key: 'm' }}
+                            target={buildConfirmationTextForm(candidate)}
+                          />
+                        ) : null}
+                      </ActionPanel.Section>
                       {candidate.bookedMeeting?.event_id ? (
-                        <>
+                        <ActionPanel.Section title="Meeting Prefix">
                           {APPOINTMENT_TITLE_PREFIXES.map((prefix, index) => (
                             <Action
                               key={prefix}
@@ -984,7 +987,7 @@ export function HeadScoutBookingsList({
                               icon={Icon.Pencil}
                               shortcut={
                                 index < APPOINTMENT_SHORTCUT_KEYS.length
-                                  ? { modifiers: ['cmd'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
+                                  ? { modifiers: ['opt'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
                                   : undefined
                               }
                               onAction={() => void handleMarkMeeting(candidate, prefix)}
@@ -1000,10 +1003,38 @@ export function HeadScoutBookingsList({
                               }
                             />
                           ) : null}
-                        </>
+                        </ActionPanel.Section>
+                      ) : null}
+                      {candidate.athleteId ? (
+                        <ActionPanel.Section title="Post-Call Update">
+                          <Action.Push
+                            title="Reschedule Pending"
+                            icon={Icon.Clock}
+                            shortcut={{ modifiers: ['cmd', 'opt'], key: 'r' }}
+                            target={
+                              <PostCallUpdateForm
+                                task={buildCandidateTask(candidate)}
+                                initialStageLabel="Meeting Result - Res. Pending"
+                                onSaved={refreshLive}
+                              />
+                            }
+                          />
+                          <Action.Push
+                            title="Meeting Set - Rescheduled"
+                            icon={Icon.Calendar}
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                            target={
+                              <PostCallUpdateForm
+                                task={buildCandidateTask(candidate)}
+                                initialStageLabel="Meeting Result - Rescheduled"
+                                onSaved={refreshLive}
+                              />
+                            }
+                          />
+                        </ActionPanel.Section>
                       ) : null}
                       {weeklyMeetingsOnly ? (
-                        <>
+                        <ActionPanel.Section title="Navigation">
                           <Action.Push
                             title="Pending Clients"
                             icon={Icon.Eye}
@@ -1028,37 +1059,41 @@ export function HeadScoutBookingsList({
                               />
                             }
                           />
-                        </>
+                        </ActionPanel.Section>
                       ) : null}
-                      {candidate.adminUrl ? (
-                        <Action.OpenInBrowser
-                          title="Open Athlete Admin"
-                          shortcut={{ modifiers: ['cmd'], key: 'o' }}
-                          url={candidate.adminUrl}
-                        />
-                      ) : null}
-                      {candidate.taskUrl ? (
-                        <Action.OpenInBrowser
-                          title="Open Athlete Task Tab"
-                          shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-                          url={candidate.taskUrl}
-                        />
-                      ) : null}
-                      {candidate.bookedMeeting ? (
-                        <Action.CopyToClipboard
-                          title="Copy Booked Meeting"
-                          shortcut={{ modifiers: ['cmd'], key: 'c' }}
-                          content={`${candidate.athleteName} • ${candidate.bookedMeeting.date_time_label}`}
-                        />
-                      ) : null}
-                      {VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS.map((action) => (
-                        <Action
-                          key={action.scoutName}
-                          title={action.title}
-                          icon={Icon.Clipboard}
-                          onAction={() => void handleCopyNamedContactCard(action.scoutName)}
-                        />
-                      ))}
+                      <ActionPanel.Section title="Athlete">
+                        {candidate.adminUrl ? (
+                          <Action.OpenInBrowser
+                            title="Open Athlete Admin"
+                            shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                            url={candidate.adminUrl}
+                          />
+                        ) : null}
+                        {candidate.taskUrl ? (
+                          <Action.OpenInBrowser
+                            title="Open Athlete Task Tab"
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                            url={candidate.taskUrl}
+                          />
+                        ) : null}
+                        {candidate.bookedMeeting ? (
+                          <Action.CopyToClipboard
+                            title="Copy Booked Meeting"
+                            shortcut={{ modifiers: ['cmd'], key: 'c' }}
+                            content={`${candidate.athleteName} • ${candidate.bookedMeeting.date_time_label}`}
+                          />
+                        ) : null}
+                      </ActionPanel.Section>
+                      <ActionPanel.Section title="Contact Cards">
+                        {VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS.map((action) => (
+                          <Action
+                            key={action.scoutName}
+                            title={action.title}
+                            icon={Icon.Clipboard}
+                            onAction={() => void handleCopyNamedContactCard(action.scoutName)}
+                          />
+                        ))}
+                      </ActionPanel.Section>
                     </ActionPanel>
                   }
                 />

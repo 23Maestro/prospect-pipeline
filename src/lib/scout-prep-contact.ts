@@ -358,6 +358,10 @@ function buildAthleteDetailsLines(context: ScoutPrepContext): string[] {
   return lines;
 }
 
+export function buildMeetingSetCallNotesMarkdown(args: { meetingDetails: string }): string {
+  return args.meetingDetails.trim();
+}
+
 function replaceSectionBody(template: string, label: string, lines: string[]): string {
   if (!lines.length) {
     return template;

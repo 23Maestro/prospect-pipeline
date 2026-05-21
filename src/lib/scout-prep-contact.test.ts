@@ -5,6 +5,7 @@ import { buildScoutPrepCard } from '../features/scout-prep/content.js';
 import { CAL_BOOKING_URL } from './scout-follow-up-templates.js';
 import {
   buildMeetingTemplateDefaults,
+  buildMeetingSetCallNotesMarkdown,
   buildMessagesComposeUrlForRecipients,
   buildProspectContactShortcutPayload,
   buildProspectContactShortcutPayloadFromName,
@@ -285,6 +286,15 @@ test('hydrateMeetingSetTemplateForForm: fills sparse Meeting Set templates for e
   assert.ok(hydrated.recruit_timezone_options.length > 0);
   assert.match(hydrated.details_template || '', /Main Number: \(651\) 555-1212/);
   assert.match(hydrated.details_template || '', /About The Athlete:/);
+});
+
+test('buildMeetingSetCallNotesMarkdown: mirrors Meeting Set details without adding old page context', () => {
+  assert.equal(
+    buildMeetingSetCallNotesMarkdown({
+      meetingDetails: 'Main Number: (515) 718-2798\n\nAbout The Athlete:\nWR | RET',
+    }),
+    'Main Number: (515) 718-2798\n\nAbout The Athlete:\nWR | RET',
+  );
 });
 
 test('getVoicemailFollowUpRecipients: returns parents plus group text option', () => {
