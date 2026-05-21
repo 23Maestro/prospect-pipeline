@@ -110,6 +110,7 @@ import { searchLogger } from './lib/logger';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
+  fetchBookedMeetingDetails,
   fetchOpenMeetings,
   HEAD_SCOUT_ORDER,
   type BookedMeetingEvent,
@@ -511,6 +512,30 @@ function buildMeetingLengthFromBookedMeeting(meeting?: BookedMeetingEvent | null
   const hours = Math.floor(minutes / 60);
   const remainder = minutes % 60;
   return `${String(hours).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
+}
+
+function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string {
+  return String(meeting?.start || '').split('T')[0] || '';
+}
+
+async function resolveExistingBookedMeetingDescription(
+  meeting?: BookedMeetingEvent | null,
+): Promise<string | null> {
+  const fallbackDescription = String(meeting?.description || '').trim();
+  const eventDate = getBookedMeetingEventDate(meeting);
+  if (!meeting?.event_id || !eventDate) {
+    return fallbackDescription || null;
+  }
+
+  try {
+    const details = await fetchBookedMeetingDetails({
+      eventId: meeting.event_id,
+      eventDate,
+    });
+    return String(details.description || '').trim() || fallbackDescription || null;
+  } catch {
+    return fallbackDescription || null;
+  }
 }
 
 function isMeetingSetStage(stageLabel?: string | null): boolean {
@@ -2311,14 +2336,20 @@ export function PostCallUpdateForm({
                 ).events || [],
               )
             : null;
+        const existingRescheduleDescription = isConfirmedRescheduleMeetingStage(selectedStageLabel)
+          ? await resolveExistingBookedMeetingDescription(bookedMeeting)
+          : null;
         if (!active) {
           return;
         }
+        const hydratedTemplate = hydrateMeetingSetTemplateForForm(template, context, {
+          athleteName: task.athlete_name,
+          gradYear: task.grad_year,
+        });
         setMeetingTemplate(
-          hydrateMeetingSetTemplateForForm(template, context, {
-            athleteName: task.athlete_name,
-            gradYear: task.grad_year,
-          }),
+          existingRescheduleDescription
+            ? { ...hydratedTemplate, details_template: existingRescheduleDescription }
+            : hydratedTemplate,
         );
         setCurrentBookedMeeting(bookedMeeting);
         const bookedScout = resolveBookedMeetingScout(bookedMeeting);

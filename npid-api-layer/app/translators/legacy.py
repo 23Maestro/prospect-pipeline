@@ -4256,6 +4256,13 @@ class LegacyTranslator:
             LegacyTranslator.normalize_sales_stage_label_for_legacy(str(expected or ""))
         )
         actual_normalized = LegacyTranslator.normalize_sales_stage_label_for_compare(actual)
+        rescheduled_aliases = {
+            "rescheduled",
+            "meeting set rescheduled",
+            "meeting result rescheduled",
+        }
+        if expected_normalized in rescheduled_aliases and actual_normalized in rescheduled_aliases:
+            return True
         return bool(expected_normalized and actual_normalized and expected_normalized == actual_normalized)
 
     @staticmethod
@@ -4275,6 +4282,7 @@ class LegacyTranslator:
             "Spoke to - Athlete, not Parent",
             "Spoke to - Too Young",
             SPOKE_TO_FOLLOW_UP_LEGACY_LABEL,
+            "Meeting Set - Rescheduled",
             "Meeting Set",
             "Rescheduled",
             "Actual Meeting - Follow Up",

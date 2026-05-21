@@ -40,6 +40,15 @@ class SalesStageParserTests(unittest.TestCase):
         self.assertEqual(result["selected_value"], "Meeting Result - No Show")
         self.assertEqual(result["options"][0]["selected"], True)
 
+    def test_parses_plain_text_meeting_set_rescheduled_stage(self):
+        html = "<html><body>Meeting Set - Rescheduled</body></html>"
+
+        result = LegacyTranslator.parse_sales_stage_options_response(html)
+
+        self.assertTrue(result["success"])
+        self.assertEqual(result["selected_label"], "Meeting Set - Rescheduled")
+        self.assertEqual(result["selected_value"], "Meeting Set - Rescheduled")
+
     def test_parses_spoke_to_need_follow_up_label(self):
         html = """
         <html>
@@ -83,6 +92,16 @@ class SalesStageParserTests(unittest.TestCase):
                 "Spoke to - I need to follow up",
             )
         )
+
+    def test_sales_stage_compare_matches_rescheduled_legacy_aliases(self):
+        for selected in ("Rescheduled", "Meeting Set - Rescheduled"):
+            with self.subTest(selected=selected):
+                self.assertTrue(
+                    LegacyTranslator.sales_stage_labels_match(
+                        selected,
+                        "Meeting Result - Rescheduled",
+                    )
+                )
 
     def test_sales_stage_update_accepts_new_spoke_to_labels(self):
         for stage in ("Spoke to - Athlete, not Parent", "Spoke to - Too Young"):
