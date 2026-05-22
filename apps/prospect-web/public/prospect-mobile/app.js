@@ -1,4 +1,8 @@
-import { cleanMeetingTitle } from '/prospect-mobile/set-meetings-utils.mjs';
+import {
+  cleanMeetingTitle,
+  isCurrentCachedMeeting,
+  parseCachedEasternInstant,
+} from '/prospect-mobile/set-meetings-utils.mjs';
 
 const routes = {
   '/set-meetings': {
@@ -210,10 +214,13 @@ async function fetchSetMeetingsFromSupabase(week) {
   ].join('&');
 
   const response = await fetch(`${supabaseUrl}/rest/v1/set_meeting_confirmation_cache?${query}`, {
+    cache: 'no-store',
     headers: {
       apikey: anonKey,
       authorization: `Bearer ${anonKey}`,
       'accept-profile': schema,
+      'cache-control': 'no-cache',
+      pragma: 'no-cache',
     },
   });
   const rows = await response.json().catch(() => []);
@@ -231,26 +238,28 @@ async function fetchSetMeetingsFromSupabase(week) {
     grouped.set(key, existing);
   }
 
-  const events = Array.from(grouped.values()).map((entry) => ({
-    key: entry.base.appointment_id,
-    appointment_id: entry.base.appointment_id,
-    athlete_id: entry.base.athlete_id,
-    athlete_main_id: entry.base.athlete_main_id,
-    athlete_name: entry.base.athlete_name,
-    head_scout_name: entry.base.head_scout_name,
-    current_meeting_label: entry.base.meeting_starts_at,
-    start: entry.base.meeting_starts_at,
-    meeting_timezone: entry.base.meeting_timezone,
-    confirmation_recipient: {
-      name: entry.base.recipient_name,
-      phone: entry.base.recipient_phone,
-    },
-    confirmation_1_message: entry.c1 || '',
-    confirmation_2_message: entry.c2 || '',
-    admin_url: entry.base.admin_url,
-    task_url: entry.base.task_url,
-    source: 'supabase_confirmation_cache',
-  }));
+  const events = Array.from(grouped.values())
+    .map((entry) => ({
+      key: entry.base.appointment_id,
+      appointment_id: entry.base.appointment_id,
+      athlete_id: entry.base.athlete_id,
+      athlete_main_id: entry.base.athlete_main_id,
+      athlete_name: entry.base.athlete_name,
+      head_scout_name: entry.base.head_scout_name,
+      current_meeting_label: entry.base.meeting_starts_at,
+      start: entry.base.meeting_starts_at,
+      meeting_timezone: entry.base.meeting_timezone,
+      confirmation_recipient: {
+        name: entry.base.recipient_name,
+        phone: entry.base.recipient_phone,
+      },
+      confirmation_1_message: entry.c1 || '',
+      confirmation_2_message: entry.c2 || '',
+      admin_url: entry.base.admin_url,
+      task_url: entry.base.task_url,
+      source: 'supabase_confirmation_cache',
+    }))
+    .filter((event) => isCurrentCachedMeeting(event.start, week));
 
   return {
     success: true,
@@ -417,6 +426,7 @@ function buildSelectedContactCardsHtml(group) {
   const timezoneTag = buildCurrentTimezoneTag(group.timezone, group.timezoneLabel);
   return `
     <div class="contact-card-list">
+      ${group.adminUrl ? `<div class="matched-result-actions"><a class="link-button admin-button" href="${escapeAttribute(group.adminUrl)}" target="_blank" rel="noreferrer">Admin</a></div>` : ''}
       ${group.contacts.map((contact) => buildSelectedContactCardHtml(contact, timezoneTag)).join('')}
     </div>
   `;
@@ -437,9 +447,9 @@ function buildSelectedContactCardHtml(contact, timezoneTag) {
         <p class="row-meta">${escapeHtml(formatPhoneLabel(phone))}</p>
       </div>
       <div class="row-actions">
-        <button class="copy-button" type="button" data-copy="${escapeAttribute(phone)}">Copy</button>
-        <button class="link-button" type="button" data-scriptable-url="${escapeAttribute(createUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Create</button>
-        <button class="link-button" type="button" data-scriptable-url="${escapeAttribute(followUpUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Follow-Up</button>
+        <button class="copy-button contact-copy-button" type="button" data-copy="${escapeAttribute(phone)}">Copy</button>
+        <button class="link-button contact-create-button" type="button" data-scriptable-url="${escapeAttribute(createUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Create</button>
+        <button class="link-button contact-follow-up-button" type="button" data-scriptable-url="${escapeAttribute(followUpUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Follow-Up</button>
         ${timezoneTag ? `<span class="timezone-tag">${escapeHtml(timezoneTag)}</span>` : ''}
       </div>
     </article>
@@ -578,6 +588,9 @@ function groupContactSearchRows(rows, query) {
       {
         id: key,
         athleteName: row.athlete_name || 'Student Athlete',
+        athleteId: row.athlete_id || '',
+        athleteMainId: row.athlete_main_id || '',
+        adminUrl: row.admin_url || buildAthleteAdminUrl(row.athlete_id, row.athlete_main_id),
         matchKind: 'athlete',
         timezone: row.timezone || '',
         timezoneLabel: row.timezone_label || '',
@@ -585,6 +598,7 @@ function groupContactSearchRows(rows, query) {
       };
     existing.timezone ||= row.timezone || '';
     existing.timezoneLabel ||= row.timezone_label || '';
+    existing.adminUrl ||= row.admin_url || buildAthleteAdminUrl(row.athlete_id, row.athlete_main_id);
     const contact = {
       name: row.contact_name || '',
       relationship: row.relationship_label || '',
@@ -622,6 +636,15 @@ function groupContactSearchRows(rows, query) {
       subtitle,
     };
   });
+}
+
+function buildAthleteAdminUrl(athleteId, athleteMainId) {
+  const id = String(athleteId || '').trim();
+  if (!id) return '';
+  const params = new URLSearchParams({ contactid: id });
+  const mainId = String(athleteMainId || '').trim();
+  if (mainId) params.set('athlete_main_id', mainId);
+  return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
 }
 
 function findSelectedContactGroup(results, selectedId) {
@@ -1093,12 +1116,6 @@ function formatCachedMeetingLabel(value) {
   const minute = String(date.getUTCMinutes()).padStart(2, '0');
   const period = hour24 >= 12 ? 'pm' : 'am';
   return `${weekday}, ${month} ${day}${ordinalSuffix(day)} - ${hour12}:${minute}${period} Eastern`;
-}
-
-function parseCachedEasternInstant(value) {
-  const parsed = new Date(String(value || '').trim());
-  if (Number.isNaN(parsed.getTime())) return null;
-  return new Date(parsed.getTime() - 5 * 60 * 60 * 1000);
 }
 
 function buildBookedMeetingEventDate(value) {

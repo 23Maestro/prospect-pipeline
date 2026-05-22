@@ -499,6 +499,7 @@ test('call tracker commission is a flat twenty percent of revenue', () => {
 
 test('prospect mobile set meetings uses confirmation cache messages', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  const utilitiesText = readFileSync(join(appRoot, 'public/prospect-mobile/set-meetings-utils.mjs'), 'utf8');
   const pageText = readFileSync(join(appRoot, 'app/prospect-mobile/page.tsx'), 'utf8');
   const setMeetingsRouteExists = existsSync(join(appRoot, 'app/api/set-meetings/route.ts'));
   assert.match(pageText, /NEXT_PUBLIC_SUPABASE_URL/);
@@ -509,6 +510,13 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /supabase_confirmation_cache/);
   assert.match(appText, /event\.confirmation_1_message/);
   assert.match(appText, /event\.confirmation_2_message/);
+  assert.match(appText, /cache: 'no-store'/);
+  assert.match(appText, /'cache-control': 'no-cache'/);
+  assert.match(appText, /\.filter\(\(event\) => isCurrentCachedMeeting\(event\.start, week\)\)/);
+  assert.match(appText, /isCurrentCachedMeeting/);
+  assert.match(appText, /parseCachedEasternInstant\(value\)/);
+  assert.match(utilitiesText, /function isCurrentCachedMeeting/);
+  assert.match(utilitiesText, /function getCurrentCachedEasternClock/);
   assert.match(appText, /formatCachedMeetingLabel/);
   assert.match(appText, /ordinalSuffix/);
   assert.match(appText, /\/api\/set-meeting-confirmation-prefix/);
@@ -547,6 +555,12 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);
   assert.match(appText, /search_athlete_contact_cache/);
+  assert.match(appText, /matched-result-actions/);
+  assert.match(appText, /class="link-button admin-button"/);
+  assert.match(appText, /buildAthleteAdminUrl/);
+  assert.match(appText, /row\.admin_url/);
+  assert.match(appText, /contact-create-button/);
+  assert.match(appText, /contact-follow-up-button/);
   assert.match(appText, /renderContactSearch/);
   assert.match(appText, /scriptable:\/\/\/run\/\$\{encodeURIComponent\(scriptName\)\}\?phone=/);
   assert.match(appText, /buildContactClipboardPayload/);

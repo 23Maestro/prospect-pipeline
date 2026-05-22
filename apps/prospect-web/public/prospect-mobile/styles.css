@@ -344,9 +344,9 @@ h1 {
 }
 
 .copy-button {
-  border: 1px solid var(--line);
-  background: var(--surface-3);
-  color: var(--text);
+  border: 1px solid rgba(0, 200, 83, 0.38);
+  background: rgba(0, 200, 83, 0.14);
+  color: #d7ffe5;
 }
 
 .row-actions .copy-button:first-child,
@@ -357,15 +357,23 @@ h1 {
 }
 
 .link-button {
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--muted);
+  border: 1px solid rgba(168, 85, 247, 0.38);
+  background: rgba(168, 85, 247, 0.14);
+  color: #ead9ff;
 }
 
 .id-card-button {
   grid-auto-flow: column;
   gap: 6px;
-  color: var(--text);
+  border-color: rgba(168, 85, 247, 0.48);
+  background: rgba(168, 85, 247, 0.18);
+  color: #f1e6ff;
+}
+
+.admin-button {
+  border-color: rgba(239, 68, 68, 0.58);
+  background: rgba(239, 68, 68, 0.18);
+  color: #ffe1e1;
 }
 
 .button-icon {
@@ -569,6 +577,15 @@ h1 {
   gap: 10px;
 }
 
+.matched-result-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.matched-result-actions .admin-button {
+  min-width: 112px;
+}
+
 .result-row {
   display: flex;
   min-height: 62px;
@@ -613,6 +630,23 @@ h1 {
 
 .contact-card {
   border-color: var(--line-strong);
+}
+
+.contact-copy-button {
+  border-color: rgba(0, 200, 83, 0.42);
+  background: rgba(0, 200, 83, 0.16);
+}
+
+.contact-create-button {
+  border-color: rgba(0, 112, 243, 0.44);
+  background: rgba(0, 112, 243, 0.17);
+  color: #d8eaff;
+}
+
+.contact-follow-up-button {
+  border-color: rgba(245, 158, 11, 0.48);
+  background: rgba(245, 158, 11, 0.18);
+  color: #ffe8bd;
 }
 
 .timezone-tag {
