@@ -22,7 +22,7 @@ export default function ProspectMobilePage() {
               <img
                 src="/prospect-id-shield.svg"
                 alt="Prospect ID"
-                className="h-20 w-20 shrink-0"
+                className="mobile-mark shrink-0"
               />
             </a>
             <h1 id="page-title">SC: Mobile</h1>

@@ -69,11 +69,12 @@ a {
 }
 
 .home-mark {
-  width: 34px;
-  height: 41px;
-  border-radius: 9px;
-  object-fit: cover;
+  width: 28px;
+  height: 28px;
   flex: 0 0 auto;
+  filter:
+    drop-shadow(0 0 8px rgba(255, 255, 255, 0.45))
+    drop-shadow(0 0 20px rgba(0, 112, 243, 0.28));
 }
 
 .home-status {

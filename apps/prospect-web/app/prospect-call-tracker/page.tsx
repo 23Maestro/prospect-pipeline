@@ -59,13 +59,13 @@ export default function ProspectCallTrackerPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <link rel="icon" href="/prospect-call-tracker/prospect-pipeline.png" />
+      <link rel="icon" href="/prospect-id-shield.svg" />
       <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260522-sc-header" />
       <main className="shell">
         <header className="topbar">
           <div className="brand-row">
             <a className="brand-home-link" href="/" aria-label="Back to Command Center">
-              <img className="app-mark" src="/prospect-call-tracker/prospect-pipeline.png" alt="" />
+              <img className="app-mark" src="/prospect-id-shield.svg" alt="Prospect ID" />
             </a>
             <strong>SC: Calls</strong>
           </div>

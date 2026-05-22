@@ -128,12 +128,12 @@ input {
 }
 
 .app-mark {
-  width: 40px;
-  height: 48px;
-  border-radius: 0;
-  object-fit: cover;
+  width: 32px;
+  height: 32px;
   flex: 0 0 auto;
-  box-shadow: none;
+  filter:
+    drop-shadow(0 0 10px rgba(255, 255, 255, 0.46))
+    drop-shadow(0 0 24px rgba(0, 112, 243, 0.32));
 }
 
 .topbar-actions {

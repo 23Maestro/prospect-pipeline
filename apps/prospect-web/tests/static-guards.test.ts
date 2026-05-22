@@ -431,11 +431,15 @@ test('call tracker archive selector is backed by existing weekly-results files',
   assert.match(pageText, /id="weekViewSelect"/);
   assert.match(pageText, /SC: Calls/);
   assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
+  assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
+  assert.match(pageText, /alt="Prospect ID"/);
   assert.match(stylesText, /--command-bg:[\s\S]*#081120/);
   assert.match(stylesText, /background: var\(--command-bg\)/);
   assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
   assert.match(stylesText, /\.topbar::after \{[\s\S]*content: none;/);
   assert.match(stylesText, /\.brand-row strong \{[\s\S]*text-shadow:/);
+  assert.match(stylesText, /\.app-mark \{[\s\S]*width: 32px;[\s\S]*height: 32px;/);
+  assert.match(stylesText, /\.app-mark \{[\s\S]*drop-shadow\(0 0 24px rgba\(0, 112, 243, 0\.32\)\)/);
   assert.doesNotMatch(pageText, /Health OK/);
   assert.doesNotMatch(pageText, /Sync Complete/);
   assert.doesNotMatch(pageText, /id="payDateLabel"/);
@@ -568,7 +572,7 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
   assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
   assert.match(pageText, /alt="Prospect ID"/);
-  assert.match(pageText, /className="h-20 w-20 shrink-0"/);
+  assert.match(pageText, /className="mobile-mark shrink-0"/);
   assert.doesNotMatch(pageText, /className="brand-mark"/);
   assert.doesNotMatch(pageText, /\/prospect-mobile\/assets\/prospect-pipeline\.png/);
   assert.match(appText, /pageTitle\.textContent = 'SC: Mobile'/);
@@ -576,8 +580,8 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(stylesText, /background: var\(--command-bg\)/);
   assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
   assert.doesNotMatch(stylesText, /\.brand-mark/);
-  assert.match(stylesText, /\.h-20 \{[\s\S]*height: 5rem;/);
-  assert.match(stylesText, /\.w-20 \{[\s\S]*width: 5rem;/);
+  assert.match(stylesText, /\.mobile-mark \{[\s\S]*width: 52px;[\s\S]*height: 52px;/);
+  assert.match(stylesText, /\.mobile-mark \{[\s\S]*drop-shadow\(0 0 24px rgba\(0, 112, 243, 0\.3\)\)/);
   assert.match(stylesText, /\.shrink-0 \{[\s\S]*flex-shrink: 0;/);
   assert.match(stylesText, /text-shadow:[\s\S]*rgba\(0, 112, 243, 0\.22\)/);
   assert.equal(contactSearchPageExists, true);
@@ -616,6 +620,18 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   assert.match(appText, /state\.scheduleSearch/);
   assert.doesNotMatch(appText, /\/api\/contact-search/);
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
+});
+
+test('home command center uses the reduced glowing shield svg', () => {
+  const pageText = readFileSync(join(appRoot, 'app/page.tsx'), 'utf8');
+  const stylesText = readFileSync(join(appRoot, 'app/globals.css'), 'utf8');
+
+  assert.match(pageText, /Command Center/);
+  assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
+  assert.match(pageText, /alt="Prospect ID"/);
+  assert.doesNotMatch(pageText, /\/prospect-call-tracker\/prospect-pipeline\.png/);
+  assert.match(stylesText, /\.home-mark \{[\s\S]*width: 28px;[\s\S]*height: 28px;/);
+  assert.match(stylesText, /\.home-mark \{[\s\S]*drop-shadow\(0 0 20px rgba\(0, 112, 243, 0\.28\)\)/);
 });
 
 test('prospect mobile tabs keep route renders scoped to the active tab', () => {
