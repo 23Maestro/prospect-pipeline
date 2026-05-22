@@ -421,11 +421,16 @@ test('call tracker daily cards consume Supabase boolean count fields only', () =
 test('call tracker archive selector is backed by existing weekly-results files', () => {
   const pageText = readFileSync(join(appRoot, 'app/prospect-call-tracker/page.tsx'), 'utf8');
   const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
+  const stylesText = readFileSync(join(appRoot, 'public/prospect-call-tracker/styles.css'), 'utf8');
   const indexPath = join(appRoot, 'public/prospect-call-tracker/weekly-results/index.json');
   const index = JSON.parse(readFileSync(indexPath, 'utf8'));
 
   assert.match(pageText, /id="weekViewSelect"/);
   assert.match(pageText, /ID Commander Center: Calls/);
+  assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
+  assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: #000;[\s\S]*box-shadow: none;/);
+  assert.match(stylesText, /\.topbar::after \{[\s\S]*content: none;/);
+  assert.match(stylesText, /\.brand-row strong \{[\s\S]*text-shadow:/);
   assert.doesNotMatch(pageText, /Health OK/);
   assert.doesNotMatch(pageText, /Sync Complete/);
   assert.doesNotMatch(pageText, /id="payDateLabel"/);
@@ -525,6 +530,7 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /data-confirmation-modal/);
   assert.match(appText, /showConfirmationModal/);
   assert.match(appText, /ID Cards/);
+  assert.match(appText, /class="link-button admin-button" type="button" data-admin-modal/);
   assert.match(appText, /clipboardIconSvg/);
   assert.match(appText, /scriptable:\/\/\/run\/share-prospect-contact-card/);
   assert.match(appText, /data-admin-modal/);
@@ -539,6 +545,7 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
 
 test('prospect mobile exposes set meetings, scout schedules, and contact search tabs', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  const stylesText = readFileSync(join(appRoot, 'public/prospect-mobile/styles.css'), 'utf8');
   const pageText = readFileSync(join(appRoot, 'app/prospect-mobile/page.tsx'), 'utf8');
   const contactReminderPageExists = existsSync(
     join(appRoot, 'app/prospect-mobile/contact-reminder/page.tsx'),
@@ -552,6 +559,11 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(pageText, /data-route="\/set-meetings"/);
   assert.match(pageText, /data-route="\/scout-schedules"/);
   assert.match(pageText, /data-route="\/contact-search"/);
+  assert.match(pageText, /ID: Mobile Commands/);
+  assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
+  assert.match(appText, /pageTitle\.textContent = 'ID: Mobile Commands'/);
+  assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: #000;[\s\S]*box-shadow: none;/);
+  assert.match(stylesText, /text-shadow:[\s\S]*rgba\(0, 112, 243, 0\.22\)/);
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);
   assert.match(appText, /search_athlete_contact_cache/);

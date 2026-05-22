@@ -85,7 +85,7 @@ async function loadRoute() {
   const requestId = ++state.routeRequestId;
   const renderContext = { routeKey, requestId };
   const route = routes[routeKey];
-  pageTitle.textContent = 'Prospect Mobile';
+  pageTitle.textContent = 'ID: Mobile Commands';
   weekToolbar.hidden = !route.usesWeek;
   setActiveNavigation();
 
@@ -175,7 +175,7 @@ async function renderSetMeetings(payload, renderContext) {
             </a>
             ${
               event.admin_url || eventId
-                ? `<button class="link-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
+                ? `<button class="link-button admin-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
                 : ''
             }
             <button class="copy-button" type="button" data-copy="${escapeAttribute(copyText)}">Copy</button>

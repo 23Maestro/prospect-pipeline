@@ -60,13 +60,15 @@ export default function ProspectCallTrackerPage() {
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" href="/prospect-call-tracker/prospect-pipeline.png" />
-      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260518-commander-header" />
+      <link rel="stylesheet" href="/prospect-call-tracker/styles.css?v=20260522-flat-header" />
       <main className="shell">
         <header className="topbar">
-          <a className="brand-row" href="/">
-            <img className="app-mark" src="/prospect-call-tracker/prospect-pipeline.png" alt="" />
+          <div className="brand-row">
+            <a className="brand-home-link" href="/" aria-label="Back to Command Center">
+              <img className="app-mark" src="/prospect-call-tracker/prospect-pipeline.png" alt="" />
+            </a>
             <strong>ID Commander Center: Calls</strong>
-          </a>
+          </div>
         </header>
 
         <section className="page-head">
