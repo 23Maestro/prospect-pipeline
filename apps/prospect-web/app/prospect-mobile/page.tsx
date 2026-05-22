@@ -13,13 +13,17 @@ export default function ProspectMobilePage() {
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="theme-color" content="#070816" />
-      <link rel="icon" href="/prospect-mobile/assets/prospect-pipeline.png" />
+      <link rel="icon" href="/prospect-id-shield.svg" />
       <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260522-sc-header" />
       <main className="app-shell">
         <header className="topbar">
           <div className="brand-lockup">
             <a className="brand-home-link" href="/" aria-label="Back to Command Center">
-              <img className="brand-mark" src="/prospect-mobile/assets/prospect-pipeline.png" alt="" />
+              <img
+                src="/prospect-id-shield.svg"
+                alt="Prospect ID"
+                className="h-20 w-20 shrink-0"
+              />
             </a>
             <h1 id="page-title">SC: Mobile</h1>
           </div>

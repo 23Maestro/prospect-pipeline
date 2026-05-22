@@ -25,6 +25,7 @@ test('prospect-call-tracker and prospect-mobile static assets are served from Ve
     'public/prospect-mobile/app.js',
     'public/prospect-mobile/styles.css',
     'public/prospect-mobile/set-meetings-utils.mjs',
+    'public/prospect-id-shield.svg',
     'public/prospect-mobile/assets/prospect-pipeline.png',
   ].forEach((path) => assert.equal(existsSync(join(appRoot, path)), true, path));
 });
@@ -359,6 +360,7 @@ test('Vercel public dashboard assets are tracked in git despite public ignore ru
       'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
       'apps/prospect-web/public/prospect-call-tracker/prospect-pipeline.png',
       'apps/prospect-web/public/prospect-call-tracker/styles.css',
+      'apps/prospect-web/public/prospect-id-shield.svg',
       'apps/prospect-web/public/prospect-mobile/app.js',
       'apps/prospect-web/public/prospect-mobile/assets/prospect-pipeline.png',
       'apps/prospect-web/public/prospect-mobile/set-meetings-utils.mjs',
@@ -376,6 +378,7 @@ test('Vercel public dashboard assets are tracked in git despite public ignore ru
     'apps/prospect-web/public/prospect-call-tracker/data-contract.json',
     'apps/prospect-web/public/prospect-call-tracker/prospect-pipeline.png',
     'apps/prospect-web/public/prospect-call-tracker/styles.css',
+    'apps/prospect-web/public/prospect-id-shield.svg',
     'apps/prospect-web/public/prospect-mobile/app.js',
     'apps/prospect-web/public/prospect-mobile/assets/prospect-pipeline.png',
     'apps/prospect-web/public/prospect-mobile/set-meetings-utils.mjs',
@@ -563,10 +566,19 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(pageText, /data-route="\/contact-search"/);
   assert.match(pageText, /SC: Mobile/);
   assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
+  assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
+  assert.match(pageText, /alt="Prospect ID"/);
+  assert.match(pageText, /className="h-20 w-20 shrink-0"/);
+  assert.doesNotMatch(pageText, /className="brand-mark"/);
+  assert.doesNotMatch(pageText, /\/prospect-mobile\/assets\/prospect-pipeline\.png/);
   assert.match(appText, /pageTitle\.textContent = 'SC: Mobile'/);
   assert.match(stylesText, /--command-bg:[\s\S]*#081120/);
   assert.match(stylesText, /background: var\(--command-bg\)/);
   assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
+  assert.doesNotMatch(stylesText, /\.brand-mark/);
+  assert.match(stylesText, /\.h-20 \{[\s\S]*height: 5rem;/);
+  assert.match(stylesText, /\.w-20 \{[\s\S]*width: 5rem;/);
+  assert.match(stylesText, /\.shrink-0 \{[\s\S]*flex-shrink: 0;/);
   assert.match(stylesText, /text-shadow:[\s\S]*rgba\(0, 112, 243, 0\.22\)/);
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);

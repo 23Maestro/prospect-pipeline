@@ -5,7 +5,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Prospect Web',
   icons: {
-    icon: '/prospect-mobile/assets/prospect-pipeline.png',
+    icon: '/prospect-id-shield.svg',
   },
 };
 
