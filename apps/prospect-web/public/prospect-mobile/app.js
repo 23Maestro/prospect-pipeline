@@ -85,7 +85,7 @@ async function loadRoute() {
   const requestId = ++state.routeRequestId;
   const renderContext = { routeKey, requestId };
   const route = routes[routeKey];
-  pageTitle.textContent = 'ID: Mobile Commands';
+  pageTitle.textContent = 'SC: Mobile';
   weekToolbar.hidden = !route.usesWeek;
   setActiveNavigation();
 

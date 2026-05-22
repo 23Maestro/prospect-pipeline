@@ -14,14 +14,14 @@ export default function ProspectMobilePage() {
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
       <meta name="theme-color" content="#070816" />
       <link rel="icon" href="/prospect-mobile/assets/prospect-pipeline.png" />
-      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260522-header-actions" />
+      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260522-sc-header" />
       <main className="app-shell">
         <header className="topbar">
           <div className="brand-lockup">
             <a className="brand-home-link" href="/" aria-label="Back to Command Center">
               <img className="brand-mark" src="/prospect-mobile/assets/prospect-pipeline.png" alt="" />
             </a>
-            <h1 id="page-title">ID: Mobile Commands</h1>
+            <h1 id="page-title">SC: Mobile</h1>
           </div>
           <button className="icon-button" id="refresh-button" type="button" aria-label="Refresh">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -77,7 +77,7 @@ export default function ProspectMobilePage() {
           __html: `window.__PROSPECT_SUPABASE__ = ${JSON.stringify(supabaseConfig)};`,
         }}
       />
-      <Script type="module" src="/prospect-mobile/app.js?v=20260522-header-actions" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260522-sc-header" strategy="afterInteractive" />
     </>
   );
 }

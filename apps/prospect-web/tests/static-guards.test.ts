@@ -426,9 +426,11 @@ test('call tracker archive selector is backed by existing weekly-results files',
   const index = JSON.parse(readFileSync(indexPath, 'utf8'));
 
   assert.match(pageText, /id="weekViewSelect"/);
-  assert.match(pageText, /ID Commander Center: Calls/);
+  assert.match(pageText, /SC: Calls/);
   assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
-  assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: #000;[\s\S]*box-shadow: none;/);
+  assert.match(stylesText, /--command-bg:[\s\S]*#081120/);
+  assert.match(stylesText, /background: var\(--command-bg\)/);
+  assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
   assert.match(stylesText, /\.topbar::after \{[\s\S]*content: none;/);
   assert.match(stylesText, /\.brand-row strong \{[\s\S]*text-shadow:/);
   assert.doesNotMatch(pageText, /Health OK/);
@@ -559,10 +561,12 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(pageText, /data-route="\/set-meetings"/);
   assert.match(pageText, /data-route="\/scout-schedules"/);
   assert.match(pageText, /data-route="\/contact-search"/);
-  assert.match(pageText, /ID: Mobile Commands/);
+  assert.match(pageText, /SC: Mobile/);
   assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
-  assert.match(appText, /pageTitle\.textContent = 'ID: Mobile Commands'/);
-  assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: #000;[\s\S]*box-shadow: none;/);
+  assert.match(appText, /pageTitle\.textContent = 'SC: Mobile'/);
+  assert.match(stylesText, /--command-bg:[\s\S]*#081120/);
+  assert.match(stylesText, /background: var\(--command-bg\)/);
+  assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
   assert.match(stylesText, /text-shadow:[\s\S]*rgba\(0, 112, 243, 0\.22\)/);
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);
