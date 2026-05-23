@@ -591,6 +591,7 @@ async def get_booked_meeting_details(
             event_id=event_id,
             title=title,
             description=description,
+            form_data=form_data,
         )
     except HTTPException:
         raise

@@ -426,10 +426,34 @@ test('Scout Prep voicemail follow-up persistence is shared across recipient mode
   );
 });
 
-test('Scout Prep actions stay inside the command instead of popping to Raycast root', () => {
+test('Scout Prep post-call success refreshes before returning to command root', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
+  const helper = commandSource.slice(
+    commandSource.indexOf('async function completeScoutPrepMutationSuccess'),
+    commandSource.indexOf('function formatTaskIdLabel'),
+  );
+  const formStart = commandSource.indexOf('export function PostCallUpdateForm');
+  const submitStart = commandSource.indexOf('async function handleSubmit', formStart);
+  const postCallFlow = commandSource.slice(
+    submitStart,
+    commandSource.indexOf('return (', submitStart),
+  );
 
-  assert.equal(commandSource.includes('popToRoot'), false);
+  assert.match(helper, /await args\.onReturnToRootList\?\.\(\);/);
+  assert.doesNotMatch(helper, /popToRoot/);
+  assert.match(postCallFlow, /completeScoutPrepMutationSuccess\(\{[\s\S]*onReturnToRootList: onSaved/);
+  assert.match(postCallFlow, /popViews\(pop, closeAfterSaveViews\);/);
+});
+
+test('Set Meetings reschedule actions pass the booked meeting into Scout Prep post-call form', () => {
+  const source = fs.readFileSync('src/head-scout-schedules.tsx', 'utf8');
+  const actionPanel = source.slice(
+    source.indexOf('title="Reschedule Pending"'),
+    source.indexOf('<ActionPanel.Section title="Navigation">'),
+  );
+
+  assert.match(actionPanel, /initialStageLabel="Meeting Result - Res\. Pending"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
+  assert.match(actionPanel, /initialStageLabel="Meeting Result - Rescheduled"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
 });
 
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {

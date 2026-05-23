@@ -1,5 +1,5 @@
 import { Action, ActionPanel, Form, showToast, Toast, useNavigation } from '@raycast/api';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ConfirmationFollowUpVariant,
   VoicemailFollowUpVariant,
@@ -30,6 +30,13 @@ export function VoicemailFollowUpMessageForm(props: {
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   async function handleSubmit(values: VoicemailFollowUpFormValues) {
     if (isSubmitting) {
@@ -46,7 +53,9 @@ export function VoicemailFollowUpMessageForm(props: {
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      setIsSubmitting(false);
+      if (isMountedRef.current) {
+        setIsSubmitting(false);
+      }
     }
   }
 

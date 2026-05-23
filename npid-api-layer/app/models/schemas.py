@@ -870,6 +870,7 @@ class BookedMeetingDetailsResponse(BaseModel):
     event_id: str
     title: str
     description: str
+    form_data: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BookedMeetingDescriptionUpdateRequest(BaseModel):

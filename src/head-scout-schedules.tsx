@@ -1015,6 +1015,7 @@ export function HeadScoutBookingsList({
                               <PostCallUpdateForm
                                 task={buildCandidateTask(candidate)}
                                 initialStageLabel="Meeting Result - Res. Pending"
+                                initialBookedMeeting={candidate.bookedMeeting}
                                 onSaved={refreshLive}
                               />
                             }
@@ -1027,6 +1028,7 @@ export function HeadScoutBookingsList({
                               <PostCallUpdateForm
                                 task={buildCandidateTask(candidate)}
                                 initialStageLabel="Meeting Result - Rescheduled"
+                                initialBookedMeeting={candidate.bookedMeeting}
                                 onSaved={refreshLive}
                               />
                             }

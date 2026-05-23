@@ -109,12 +109,16 @@ import { searchLogger } from './lib/logger';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
-  fetchBookedMeetingDetails,
   fetchOpenMeetings,
   HEAD_SCOUT_ORDER,
   type BookedMeetingEvent,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
+import {
+  resolveBookedMeetingDetailsForForm,
+  selectCurrentBookedMeeting,
+  type ResolvedBookedMeetingDetails,
+} from './lib/booked-meeting-details-resolver';
 import {
   resolveVoicemailFollowUpVariant,
   type VoicemailFollowUpVariant,
@@ -247,6 +251,32 @@ async function showLoadingToast(title: string, message?: string) {
     title: compactTitle,
     message: compactMessage || undefined,
   });
+}
+
+async function completeScoutPrepMutationSuccess(args: {
+  toast?: Toast;
+  title: string;
+  message?: string;
+  onReturnToRootList?: () => void | Promise<void>;
+}) {
+  if (args.toast) {
+    args.toast.style = Toast.Style.Success;
+    args.toast.title = args.title;
+    args.toast.message = args.message;
+  } else {
+    await showToast({
+      style: Toast.Style.Success,
+      title: args.title,
+      message: args.message,
+    });
+  }
+  await args.onReturnToRootList?.();
+}
+
+function popViews(pop: () => void, count: number) {
+  for (let index = 0; index < count; index += 1) {
+    pop();
+  }
 }
 
 function formatTaskIdLabel(taskId?: string | number | null): string {
@@ -482,6 +512,7 @@ function resolveBookedMeetingScout(meeting?: BookedMeetingEvent | null) {
 
 function buildOpenMeetingSlotFromBookedMeeting(
   meeting?: BookedMeetingEvent | null,
+  startTimeOverride?: string | null,
 ): OpenMeetingSlot | null {
   if (!meeting?.event_id || !meeting.start) {
     return null;
@@ -491,7 +522,8 @@ function buildOpenMeetingSlotFromBookedMeeting(
     date_time_label: meeting.date_time_label || meeting.start,
     title: meeting.title || '',
     assigned_owner: meeting.assigned_owner || '',
-    start_time: meeting.start.split('T')[1]?.slice(0, 5) || '',
+    start_time:
+      String(startTimeOverride || '').trim() || meeting.start.split('T')[1]?.slice(0, 5) || '',
   };
 }
 
@@ -513,28 +545,56 @@ function buildMeetingLengthFromBookedMeeting(meeting?: BookedMeetingEvent | null
   return `${String(hours).padStart(2, '0')}:${String(remainder).padStart(2, '0')}`;
 }
 
-function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string {
-  return String(meeting?.start || '').split('T')[0] || '';
+function selectMeetingForFromResolvedBookedMeeting(
+  resolved?: ResolvedBookedMeetingDetails | null,
+  bookedScout?: (typeof HEAD_SCOUT_ORDER)[number] | null,
+): string | null {
+  const candidates = [resolved?.assignedTo, bookedScout?.meeting_for]
+    .map((value) => String(value || '').trim())
+    .filter(Boolean);
+  for (const candidate of candidates) {
+    if (HEAD_SCOUT_ORDER.some((scout) => scout.meeting_for === candidate)) {
+      return candidate;
+    }
+  }
+  return candidates[0] || null;
 }
 
-async function resolveExistingBookedMeetingDescription(
-  meeting?: BookedMeetingEvent | null,
-): Promise<string | null> {
-  const fallbackDescription = String(meeting?.description || '').trim();
-  const eventDate = getBookedMeetingEventDate(meeting);
-  if (!meeting?.event_id || !eventDate) {
-    return fallbackDescription || null;
+function applyResolvedBookedMeetingPayloadToTemplate(
+  template: MeetingSetTemplateResponse,
+  resolved?: ResolvedBookedMeetingDetails | null,
+): MeetingSetTemplateResponse {
+  if (!resolved) {
+    return template;
   }
 
-  try {
-    const details = await fetchBookedMeetingDetails({
-      eventId: meeting.event_id,
-      eventDate,
-    });
-    return String(details.description || '').trim() || fallbackDescription || null;
-  } catch {
-    return fallbackDescription || null;
-  }
+  const selectedTimezone = String(resolved.meetingTimezone || '').trim();
+  const recruitTimezoneOptions = selectedTimezone
+    ? (() => {
+        let found = false;
+        const nextOptions = (template.recruit_timezone_options || []).map((option) => {
+          const isSelected = option.value === selectedTimezone || option.label === selectedTimezone;
+          if (isSelected) found = true;
+          return { ...option, selected: isSelected };
+        });
+        if (!found) {
+          nextOptions.unshift({
+            value: selectedTimezone,
+            label: selectedTimezone,
+            selected: true,
+          });
+        }
+        return nextOptions;
+      })()
+    : template.recruit_timezone_options;
+
+  return {
+    ...template,
+    meeting_name: resolved.meetingName || resolved.title || template.meeting_name,
+    selected_recruit_timezone: selectedTimezone || template.selected_recruit_timezone,
+    recruit_timezone_options: recruitTimezoneOptions,
+    details_template: resolved.description || template.details_template,
+  };
 }
 
 function isMeetingSetStage(stageLabel?: string | null): boolean {
@@ -1110,6 +1170,7 @@ function SingleRecipientMessageForm({
   onMessageSentLabel,
   onMessageSentToastTitle,
   onMessageSentFailureTitle,
+  onMessageSentComplete,
 }: {
   title: string;
   recipientName: string;
@@ -1121,6 +1182,7 @@ function SingleRecipientMessageForm({
   onMessageSentLabel?: string;
   onMessageSentToastTitle?: string;
   onMessageSentFailureTitle?: string;
+  onMessageSentComplete?: () => Promise<void> | void;
 }) {
   const fallbackContact = useMemo(
     () => ({
@@ -1236,11 +1298,15 @@ function SingleRecipientMessageForm({
         }
       }
 
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Sent',
-        message: selectedContact.name,
-      });
+      if (onMessageSentComplete) {
+        await onMessageSentComplete();
+      } else {
+        await showToast({
+          style: Toast.Style.Success,
+          title: 'Sent',
+          message: selectedContact.name,
+        });
+      }
     },
   });
 
@@ -1484,13 +1550,17 @@ function VoicemailFollowUpRecipientForm({
   context,
   crmStage,
   currentTask,
+  onComplete,
+  closeAfterCompleteViews = 1,
 }: {
   task: ScoutPortalTask;
   context: ScoutPrepContext;
   crmStage?: string | null;
   currentTask?: string | null;
+  onComplete?: () => Promise<void> | void;
+  closeAfterCompleteViews?: number;
 }) {
-  const { push } = useNavigation();
+  const { push, pop } = useNavigation();
   const recipients = getVoicemailFollowUpRecipients(context);
   const defaultVariant = resolveVoicemailFollowUpVariant({
     crmStage,
@@ -1547,10 +1617,25 @@ function VoicemailFollowUpRecipientForm({
       variant: variant || defaultVariant,
     });
 
+    async function finishFollowUpFlow(
+      toastTitle: string,
+      toastMessage?: string,
+      extraChildViews = 0,
+    ) {
+      await completeScoutPrepMutationSuccess({
+        title: toastTitle,
+        message: toastMessage,
+        onReturnToRootList: onComplete,
+      });
+      popViews(pop, closeAfterCompleteViews + extraChildViews);
+    }
+
     try {
       if (recipient.phones.length === 1 && recipient.id !== 'groupAll') {
         const contactOptions = buildMessageContactOptions(recipients);
-        const defaultContactId = `${recipient.id}:${normalizePhoneForMessages(recipient.phones[0]) || recipient.phones[0]}`;
+        const defaultContactId = `${recipient.id}:${
+          normalizePhoneForMessages(recipient.phones[0]) || recipient.phones[0]
+        }`;
         push(
           <SingleRecipientMessageForm
             title={`Send Message • ${recipient.name}`}
@@ -1589,6 +1674,9 @@ function VoicemailFollowUpRecipientForm({
                     });
                   }
             }
+            onMessageSentComplete={async () => {
+              await finishFollowUpFlow('Sent', recipient.name, 1);
+            }}
           />,
         );
         logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'success', {
@@ -1638,6 +1726,10 @@ function VoicemailFollowUpRecipientForm({
         });
         return;
       }
+      await finishFollowUpFlow(
+        selectedVariant === 'no_show' ? 'Completed' : 'Sent',
+        recipient.name,
+      );
     } catch (error) {
       await Clipboard.copy(body);
       await open(`sms:${recipient.phones[0]}`);
@@ -1654,10 +1746,10 @@ function VoicemailFollowUpRecipientForm({
           variant: variant || defaultVariant,
         },
       );
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Messages opened',
+      await completeScoutPrepMutationSuccess({
+        title: 'Sent',
         message: 'Copied to clipboard.',
+        onReturnToRootList: onComplete,
       });
     }
   }
@@ -1809,23 +1901,6 @@ function resolveConfirmationTaskForMorningAction(
   return findNewestIncompleteConfirmationTask(activeContext.tasks);
 }
 
-function selectCurrentBookedMeeting(events: BookedMeetingEvent[]): BookedMeetingEvent | null {
-  const sorted = [...events]
-    .filter((event) => String(event.start || '').trim())
-    .sort((left, right) => String(left.start).localeCompare(String(right.start)));
-  if (!sorted.length) return null;
-
-  const now = new Date();
-  return (
-    sorted.find((event) => {
-      const meetingDate = easternLocalIsoToDate(String(event.start || '').trim());
-      return Boolean(meetingDate && meetingDate.getTime() >= now.getTime());
-    }) ||
-    sorted[sorted.length - 1] ||
-    null
-  );
-}
-
 async function resolveCurrentMeetingDateForTask(args: {
   athleteId: string;
   athleteMainId: string;
@@ -1960,7 +2035,6 @@ function UpdateAthleteTaskForm({
   contactTask: string;
   onUpdated?: () => void | Promise<void>;
 }) {
-  const { pop } = useNavigation();
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const currentTaskTitle = getTaskDisplayTitle(selectedTask);
@@ -1968,6 +2042,7 @@ function UpdateAthleteTaskForm({
   async function handleUpdate(values: { dueDate?: Date }) {
     if (isSaving) return;
     setIsSaving(true);
+    const toast = await showLoadingToast('Saving', currentTaskTitle);
     try {
       await updateScoutPrepTask({
         taskId: selectedTask.task_id,
@@ -1977,22 +2052,16 @@ function UpdateAthleteTaskForm({
         dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
         dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
       });
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Task saved',
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: 'Saved',
         message: currentTaskTitle,
+        onReturnToRootList: onUpdated,
       });
-      if (onUpdated) {
-        await onUpdated();
-      } else {
-        pop();
-      }
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Task save failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Save failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setIsSaving(false);
     }
@@ -2001,6 +2070,7 @@ function UpdateAthleteTaskForm({
   async function handleCompleteTask() {
     if (isCompleting) return;
     setIsCompleting(true);
+    const toast = await showLoadingToast('Saving', currentTaskTitle);
     try {
       await completeScoutPrepTaskAfterVoicemail({
         athleteId: contactTask,
@@ -2012,22 +2082,16 @@ function UpdateAthleteTaskForm({
         description: selectedTask.description || currentTaskTitle,
         taskId: selectedTask.task_id,
       });
-      await showToast({
-        style: Toast.Style.Success,
+      await completeScoutPrepMutationSuccess({
+        toast,
         title: 'Completed',
         message: currentTaskTitle,
+        onReturnToRootList: onUpdated,
       });
-      if (onUpdated) {
-        await onUpdated();
-      } else {
-        pop();
-      }
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Complete failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Complete failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setIsCompleting(false);
     }
@@ -2036,6 +2100,7 @@ function UpdateAthleteTaskForm({
   async function handleSetScheduledFollowUp(values: { dueDate?: Date }) {
     if (isSaving) return;
     setIsSaving(true);
+    const toast = await showLoadingToast('Saving', 'Follow-up');
     try {
       await updateScoutPrepTask({
         taskId: selectedTask.task_id,
@@ -2047,22 +2112,16 @@ function UpdateAthleteTaskForm({
         dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
         dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
       });
-      await showToast({
-        style: Toast.Style.Success,
-        title: 'Task saved',
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: 'Saved',
         message: 'SCHEDULED FOLLOW-UP',
+        onReturnToRootList: onUpdated,
       });
-      if (onUpdated) {
-        await onUpdated();
-      } else {
-        pop();
-      }
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Title save failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Save failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setIsSaving(false);
     }
@@ -2104,12 +2163,14 @@ function UpdateAthleteTaskPicker({
   task,
   initialContext = null,
   onTaskMutationComplete,
+  closeAfterMutationViews = 1,
 }: {
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
   onTaskMutationComplete?: () => void | Promise<void>;
+  closeAfterMutationViews?: number;
 }) {
-  const { push } = useNavigation();
+  const { push, pop } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext);
   const [isLoading, setIsLoading] = useState(!initialContext);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
@@ -2175,6 +2236,7 @@ function UpdateAthleteTaskPicker({
           const loadedContext = await loadScoutPrepContext(task);
           setContext(loadedContext);
           await onTaskMutationComplete?.();
+          popViews(pop, closeAfterMutationViews + 1);
         }}
       />,
     );
@@ -2196,6 +2258,7 @@ function UpdateAthleteTaskPicker({
     }
 
     setCompletingTaskId(selectedTask.task_id);
+    const toast = await showLoadingToast('Saving', getTaskDisplayTitle(selectedTask));
     try {
       await completeScoutPrepTaskAfterVoicemail({
         athleteId: contactTask,
@@ -2219,18 +2282,19 @@ function UpdateAthleteTaskPicker({
           : current,
       );
 
-      await showToast({
-        style: Toast.Style.Success,
+      await completeScoutPrepMutationSuccess({
+        toast,
         title: 'Completed',
         message: getTaskDisplayTitle(selectedTask),
+        onReturnToRootList: async () => {
+          await onTaskMutationComplete?.();
+          popViews(pop, closeAfterMutationViews);
+        },
       });
-      await onTaskMutationComplete?.();
     } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Complete failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Complete failed';
+      toast.message = error instanceof Error ? error.message : String(error);
     } finally {
       setCompletingTaskId(null);
     }
@@ -2296,11 +2360,16 @@ export function PostCallUpdateForm({
   task,
   onSaved,
   initialStageLabel,
+  initialBookedMeeting,
+  closeAfterSaveViews = 1,
 }: {
   task: ScoutPortalTask;
   onSaved?: () => void | Promise<void>;
   initialStageLabel?: string;
+  initialBookedMeeting?: BookedMeetingEvent | null;
+  closeAfterSaveViews?: number;
 }) {
+  const { pop } = useNavigation();
   const [stageOptions, setStageOptions] = useState<SalesStageOption[]>([]);
   const [selectedStage, setSelectedStage] = useState<string>('');
   const [meetingTemplate, setMeetingTemplate] = useState<MeetingSetTemplateResponse | null>(null);
@@ -2308,6 +2377,8 @@ export function PostCallUpdateForm({
     HEAD_SCOUT_ORDER[0]?.meeting_for || '',
   );
   const [currentBookedMeeting, setCurrentBookedMeeting] = useState<BookedMeetingEvent | null>(null);
+  const [currentBookedMeetingStartTime, setCurrentBookedMeetingStartTime] = useState<string>('');
+  const [currentBookedMeetingFor, setCurrentBookedMeetingFor] = useState<string>('');
   const [openMeetingSlots, setOpenMeetingSlots] = useState<OpenMeetingSlot[]>([]);
   const [selectedOpenMeetingId, setSelectedOpenMeetingId] = useState<string>('');
   const [meetingLength, setMeetingLength] = useState<string>('01:00');
@@ -2315,6 +2386,13 @@ export function PostCallUpdateForm({
   const [isLoadingMeetingTemplate, setIsLoadingMeetingTemplate] = useState(false);
   const [isLoadingOpenMeetings, setIsLoadingOpenMeetings] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -2385,6 +2463,8 @@ export function PostCallUpdateForm({
     if (!needsMeetingSchedulingFields(selectedStageLabel)) {
       setMeetingTemplate(null);
       setCurrentBookedMeeting(null);
+      setCurrentBookedMeetingStartTime('');
+      setCurrentBookedMeetingFor('');
       setMeetingLength('01:00');
       setIsLoadingMeetingTemplate(false);
       return () => {
@@ -2417,20 +2497,12 @@ export function PostCallUpdateForm({
         const athleteMainId = String(
           task.athlete_main_id || context.resolved.athlete_main_id || '',
         ).trim();
-        const bookedMeeting =
-          athleteId && athleteMainId
-            ? selectCurrentBookedMeeting(
-                (
-                  await fetchAthleteBookedMeetings({
-                    athleteId,
-                    athleteMainId,
-                  }).catch(() => ({ events: [] as BookedMeetingEvent[] }))
-                ).events || [],
-              )
-            : null;
-        const existingRescheduleDescription = isConfirmedRescheduleMeetingStage(selectedStageLabel)
-          ? await resolveExistingBookedMeetingDescription(bookedMeeting)
-          : null;
+        const resolvedBookedMeeting = await resolveBookedMeetingDetailsForForm({
+          athleteId,
+          athleteMainId,
+          initialBookedMeeting,
+        });
+        const bookedMeeting = resolvedBookedMeeting?.bookedMeeting || null;
         if (!active) {
           return;
         }
@@ -2439,19 +2511,28 @@ export function PostCallUpdateForm({
           gradYear: task.grad_year,
         });
         setMeetingTemplate(
-          existingRescheduleDescription
-            ? { ...hydratedTemplate, details_template: existingRescheduleDescription }
-            : hydratedTemplate,
+          applyResolvedBookedMeetingPayloadToTemplate(hydratedTemplate, resolvedBookedMeeting),
         );
         setCurrentBookedMeeting(bookedMeeting);
+        setCurrentBookedMeetingStartTime(resolvedBookedMeeting?.startTime || '');
         const bookedScout = resolveBookedMeetingScout(bookedMeeting);
-        if (bookedScout?.meeting_for) {
-          setSelectedMeetingFor(bookedScout.meeting_for);
+        const resolvedMeetingFor = selectMeetingForFromResolvedBookedMeeting(
+          resolvedBookedMeeting,
+          bookedScout,
+        );
+        setCurrentBookedMeetingFor(resolvedMeetingFor || '');
+        if (resolvedMeetingFor) {
+          setSelectedMeetingFor(resolvedMeetingFor);
         }
-        if (bookedMeeting?.event_id) {
-          setSelectedOpenMeetingId(bookedMeeting.event_id);
+        const resolvedOpenEventId = resolvedBookedMeeting?.openEventId || bookedMeeting?.event_id || '';
+        if (resolvedOpenEventId) {
+          setSelectedOpenMeetingId(resolvedOpenEventId);
         }
-        setMeetingLength(buildMeetingLengthFromBookedMeeting(bookedMeeting) || '01:00');
+        setMeetingLength(
+          resolvedBookedMeeting?.meetingLength ||
+            buildMeetingLengthFromBookedMeeting(bookedMeeting) ||
+            '01:00',
+        );
         logInfo('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', 'success', {
           contactId: task.contact_id,
           athleteMainId: task.athlete_main_id || null,
@@ -2478,6 +2559,9 @@ export function PostCallUpdateForm({
               gradYear: task.grad_year,
             }),
           );
+          setCurrentBookedMeeting(null);
+          setCurrentBookedMeetingStartTime('');
+          setCurrentBookedMeetingFor('');
         } catch {
           if (!active) {
             return;
@@ -2489,6 +2573,9 @@ export function PostCallUpdateForm({
               gradYear: task.grad_year,
             }),
           );
+          setCurrentBookedMeeting(null);
+          setCurrentBookedMeetingStartTime('');
+          setCurrentBookedMeetingFor('');
         }
         logFailure('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', message, {
           contactId: task.contact_id,
@@ -2505,7 +2592,7 @@ export function PostCallUpdateForm({
     return () => {
       active = false;
     };
-  }, [selectedStage, selectedStageLabel, task]);
+  }, [initialBookedMeeting, selectedStage, selectedStageLabel, task]);
 
   const meetingTemplateKey = `${selectedStage}-${meetingTemplate?.meeting_name || 'meeting'}`;
   const meetingDetailsKey = `${meetingTemplateKey}-${meetingTemplate?.details_template || ''}`;
@@ -2516,14 +2603,15 @@ export function PostCallUpdateForm({
     [currentBookedMeeting],
   );
   const selectedBookedMeetingSlot = useMemo(
-    () => buildOpenMeetingSlotFromBookedMeeting(currentBookedMeeting),
-    [currentBookedMeeting],
+    () => buildOpenMeetingSlotFromBookedMeeting(currentBookedMeeting, currentBookedMeetingStartTime),
+    [currentBookedMeeting, currentBookedMeetingStartTime],
   );
   const meetingSlotsForDropdown = useMemo(() => {
     const slots = [...openMeetingSlots];
     if (
       selectedBookedMeetingSlot &&
-      selectedBookedMeetingScout?.meeting_for === selectedMeetingFor &&
+      (currentBookedMeetingFor === selectedMeetingFor ||
+        selectedBookedMeetingSlot.open_event_id === selectedOpenMeetingId) &&
       !slots.some((slot) => slot.open_event_id === selectedBookedMeetingSlot.open_event_id)
     ) {
       return [selectedBookedMeetingSlot, ...slots];
@@ -2531,7 +2619,8 @@ export function PostCallUpdateForm({
     return slots;
   }, [
     openMeetingSlots,
-    selectedBookedMeetingScout?.meeting_for,
+    currentBookedMeetingFor,
+    selectedOpenMeetingId,
     selectedBookedMeetingSlot,
     selectedMeetingFor,
   ]);
@@ -2556,7 +2645,7 @@ export function PostCallUpdateForm({
         }
         setOpenMeetingSlots(response.slots);
         const currentMeetingId =
-          selectedBookedMeetingScout?.meeting_for === selectedMeetingFor
+          currentBookedMeetingFor === selectedMeetingFor
             ? currentBookedMeeting?.event_id || ''
             : '';
         setSelectedOpenMeetingId(currentMeetingId || response.slots[0]?.open_event_id || '');
@@ -2566,7 +2655,7 @@ export function PostCallUpdateForm({
         }
         setOpenMeetingSlots([]);
         setSelectedOpenMeetingId(
-          selectedBookedMeetingScout?.meeting_for === selectedMeetingFor
+          currentBookedMeetingFor === selectedMeetingFor
             ? currentBookedMeeting?.event_id || ''
             : '',
         );
@@ -2588,7 +2677,7 @@ export function PostCallUpdateForm({
     };
   }, [
     currentBookedMeeting?.event_id,
-    selectedBookedMeetingScout?.meeting_for,
+    currentBookedMeetingFor,
     selectedMeetingFor,
     selectedStageLabel,
   ]);
@@ -2610,7 +2699,7 @@ export function PostCallUpdateForm({
     }
 
     setIsSaving(true);
-    const toast = await showLoadingToast('Saving stage', 'Web + Supabase');
+    const toast = await showLoadingToast('Saving', 'Laravel + Supabase');
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -2877,45 +2966,49 @@ export function PostCallUpdateForm({
         }
       }
 
-      toast.style = Toast.Style.Success;
-      toast.title = taskCompletionMessage
-        ? 'Stage saved + done'
-        : isMeetingSetStage(stageLabel)
-          ? 'Meeting Set saved'
-          : isConfirmedRescheduleMeetingStage(stageLabel)
-            ? 'Reschedule saved'
-            : 'Stage saved';
-      toast.message =
-        taskCompletionMessage ||
-        (isMeetingSetStage(stageLabel)
-          ? meetingSetResult?.email_sent
-            ? 'Email sent'
-            : 'Meeting Set saved'
-          : isConfirmedRescheduleMeetingStage(stageLabel)
-            ? rescheduleMeetingResult?.email_sent
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: taskCompletionMessage
+          ? 'Saved'
+          : isMeetingSetStage(stageLabel)
+            ? 'Meeting Set'
+            : isConfirmedRescheduleMeetingStage(stageLabel)
+              ? 'Rescheduled'
+              : 'Saved',
+        message:
+          taskCompletionMessage ||
+          (isMeetingSetStage(stageLabel)
+            ? meetingSetResult?.email_sent
               ? 'Email sent'
-              : 'Reschedule saved'
-            : stageLabel);
-
-      await onSaved?.();
+              : 'Saved'
+            : isConfirmedRescheduleMeetingStage(stageLabel)
+              ? rescheduleMeetingResult?.email_sent
+                ? 'Email sent'
+                : 'Saved'
+              : stageLabel),
+        onReturnToRootList: onSaved,
+      });
+      popViews(pop, closeAfterSaveViews);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.style = Toast.Style.Failure;
-      toast.title = 'Stage save failed';
+      toast.title = 'Save failed';
       toast.message = message;
     } finally {
-      setIsSaving(false);
+      if (isMountedRef.current) {
+        setIsSaving(false);
+      }
     }
   }
 
   return (
     <Form
-      isLoading={isLoadingStages}
+      isLoading={isLoadingStages || isSaving}
       navigationTitle={`Post-Call Update • ${task.athlete_name}`}
       actions={
         <ActionPanel>
           <Action.SubmitForm
-            title={isSaving ? 'Saving Sales Stage…' : 'Save Sales Stage'}
+            title={isSaving ? 'Saving…' : 'Save'}
             onSubmit={(values) => void handleSubmit(values as Record<string, string | undefined>)}
           />
         </ActionPanel>
@@ -3034,6 +3127,11 @@ function ScoutPrepDetail({
     null,
   );
   const highSchoolCopyLabel = buildHighSchoolCopyLabel(context);
+
+  async function returnToRootListAndCloseDetail() {
+    await onReturnToRootList?.();
+    popViews(pop, 1);
+  }
 
   async function syncContactCacheBestEffort(
     activeContext: ScoutPrepContext,
@@ -3253,22 +3351,15 @@ function ScoutPrepDetail({
     try {
       const crmStage = await getSelectedCrmStageLabel(task.contact_id);
       toast.hide();
-      let shouldReturnToRootList = false;
       push(
         <VoicemailFollowUpRecipientForm
           task={task}
           context={activeContext}
           crmStage={crmStage}
           currentTask={task.title || null}
+          onComplete={onReturnToRootList}
+          closeAfterCompleteViews={2}
         />,
-        () => {
-          if (!shouldReturnToRootList) {
-            return;
-          }
-          shouldReturnToRootList = false;
-          pop();
-          onReturnToRootList?.();
-        },
       );
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -3333,20 +3424,22 @@ function ScoutPrepDetail({
       return;
     }
 
-    const toast = await showLoadingToast('Saving confirm', 'Meeting morning');
+    const toast = await showLoadingToast('Saving', 'Meeting morning');
     try {
       const nextDueAt = await updateConfirmationTaskToMeetingMorning({
         task,
         activeContext,
         confirmationTask,
       });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Confirmation saved';
-      toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
-      await onReturnToRootList?.();
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: 'Completed',
+        message: `${formatDateForLegacyInput(nextDueAt)} 09:00`,
+        onReturnToRootList: returnToRootListAndCloseDetail,
+      });
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Confirmation save failed';
+      toast.title = 'Complete failed';
       toast.message = error instanceof Error ? error.message : String(error);
     }
   }
@@ -3573,7 +3666,15 @@ function ScoutPrepDetail({
           <Action
             title="Post-Call Update"
             icon="🚀"
-            onAction={() => push(<PostCallUpdateForm task={task} onSaved={onReturnToRootList} />)}
+            onAction={() =>
+              push(
+                <PostCallUpdateForm
+                  task={task}
+                  onSaved={onReturnToRootList}
+                  closeAfterSaveViews={2}
+                />,
+              )
+            }
           />
           <Action
             title="Voicemail Follow-Up"
@@ -3620,6 +3721,7 @@ function ScoutPrepDetail({
                   task={task}
                   initialContext={context}
                   onTaskMutationComplete={onReturnToRootList}
+                  closeAfterMutationViews={2}
                 />
               }
             />
@@ -3739,6 +3841,11 @@ function ScoutPrepTaskItem({
 }) {
   const { push, pop } = useNavigation();
 
+  async function returnToRootListAndCloseCurrentView() {
+    await onReturnToRootList();
+    popViews(pop, 1);
+  }
+
   async function ensureTaskContext(
     loadingTitle: string,
     failureTitle: string,
@@ -3773,21 +3880,15 @@ function ScoutPrepTaskItem({
     try {
       const crmStage = await getSelectedCrmStageLabel(task.contact_id);
       toast.hide();
-      let shouldResetRootList = false;
       push(
         <VoicemailFollowUpRecipientForm
           task={task}
           context={context}
           crmStage={crmStage}
           currentTask={task.title || null}
+          onComplete={onReturnToRootList}
+          closeAfterCompleteViews={1}
         />,
-        () => {
-          if (!shouldResetRootList) {
-            return;
-          }
-          shouldResetRootList = false;
-          onReturnToRootList();
-        },
       );
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -3844,20 +3945,22 @@ function ScoutPrepTaskItem({
       return;
     }
 
-    const toast = await showLoadingToast('Saving confirm', 'Meeting morning');
+    const toast = await showLoadingToast('Saving', 'Meeting morning');
     try {
       const nextDueAt = await updateConfirmationTaskToMeetingMorning({
         task,
         activeContext,
         confirmationTask,
       });
-      toast.style = Toast.Style.Success;
-      toast.title = 'Confirmation saved';
-      toast.message = `${formatDateForLegacyInput(nextDueAt)} 09:00`;
-      await onReturnToRootList();
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: 'Completed',
+        message: `${formatDateForLegacyInput(nextDueAt)} 09:00`,
+        onReturnToRootList,
+      });
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Confirmation save failed';
+      toast.title = 'Complete failed';
       toast.message = error instanceof Error ? error.message : String(error);
     }
   }
@@ -3931,7 +4034,15 @@ function ScoutPrepTaskItem({
               title="Post-Call Update"
               icon="🚀"
               shortcut={{ modifiers: ['cmd'], key: 'u' }}
-              onAction={() => push(<PostCallUpdateForm task={task} onSaved={onReturnToRootList} />)}
+              onAction={() =>
+                push(
+                  <PostCallUpdateForm
+                    task={task}
+                    onSaved={returnToRootListAndCloseCurrentView}
+                    closeAfterSaveViews={0}
+                  />,
+                )
+              }
             />
             <Action
               title={dailyCallBlocksActionTitle}

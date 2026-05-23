@@ -100,6 +100,7 @@ export type BookedMeetingDetailsResponse = {
   event_id: string;
   title: string;
   description: string;
+  form_data?: Record<string, string | number | boolean | null | undefined>;
 };
 
 export type BookedMeetingDescriptionUpdateResponse = {
