@@ -68,3 +68,108 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep caches both confirmation
   assert.match(rows[0].message_body, /Prospect ID Zoom Meeting/);
   assert.match(rows[1].message_body, /Please reply YES/);
 });
+
+test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when required mobile cache fields are missing', () => {
+  assert.throws(
+    () =>
+      buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+        athleteId: '1489000',
+        athleteMainId: '951000',
+        athleteName: 'Avery Jones',
+        context: buildContext(),
+        meetingSet: {
+          startsAt: '2026-05-15T19:00:00-04:00',
+          meetingTimezone: 'EST',
+          meetingLength: '01:00',
+          headScout: 'Ryan Lietz',
+        },
+        generatedAt: '2026-05-14T18:00:00.000Z',
+      }),
+    /Missing required Meeting Set confirmation cache fields: appointmentId/,
+  );
+});
+
+test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when meeting length is missing', () => {
+  assert.throws(
+    () =>
+      buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+        athleteId: '1489000',
+        athleteMainId: '951000',
+        athleteName: 'Avery Jones',
+        context: buildContext(),
+        meetingSet: {
+          openEventId: 'event-1',
+          startsAt: '2026-05-15T19:00:00-04:00',
+          meetingTimezone: 'EST',
+          headScout: 'Ryan Lietz',
+        },
+        generatedAt: '2026-05-14T18:00:00.000Z',
+      }),
+    /Missing required Meeting Set confirmation cache fields: meetingLength/,
+  );
+});
+
+test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when meeting length is invalid', () => {
+  assert.throws(
+    () =>
+      buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+        athleteId: '1489000',
+        athleteMainId: '951000',
+        athleteName: 'Avery Jones',
+        context: buildContext(),
+        meetingSet: {
+          openEventId: 'event-1',
+          startsAt: '2026-05-15T19:00:00-04:00',
+          meetingTimezone: 'EST',
+          meetingLength: 'bad',
+          headScout: 'Ryan Lietz',
+        },
+        generatedAt: '2026-05-14T18:00:00.000Z',
+      }),
+    /Invalid Meeting Set confirmation cache meeting length: bad/,
+  );
+});
+
+
+test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekend cache messages for intended send day', () => {
+  const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    context: buildContext(),
+    meetingSet: {
+      openEventId: 'event-1',
+      startsAt: '2026-05-23T10:00:00',
+      meetingTimezone: 'EST',
+      meetingLength: '01:00',
+      headScout: 'Ryan Lietz',
+    },
+    generatedAt: '2026-05-22T12:00:00.000Z',
+  });
+
+  assert.match(
+    rows[0].message_body,
+    /Prospect ID Zoom Meeting tomorrow morning 5\/23 at 10:00 AM ET/,
+  );
+  assert.match(rows[1].message_body, /still has you down for 10:00am eastern tomorrow morning/);
+});
+
+test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekday cache messages for same-day send', () => {
+  const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    context: buildContext(),
+    meetingSet: {
+      openEventId: 'event-1',
+      startsAt: '2026-05-25T18:00:00',
+      meetingTimezone: 'CST',
+      meetingLength: '01:00',
+      headScout: 'Ryan Lietz',
+    },
+    generatedAt: '2026-05-22T12:00:00.000Z',
+  });
+
+  assert.match(rows[0].message_body, /Prospect ID Zoom Meeting tonight 5\/25 at 6:00 PM CT/);
+  assert.match(rows[1].message_body, /still has you down for 6:00pm central tonight/);
+});

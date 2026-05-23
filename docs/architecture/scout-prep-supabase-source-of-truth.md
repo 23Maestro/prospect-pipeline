@@ -7,7 +7,7 @@ This file pins which workflow owns each Supabase write so lifecycle logic does n
 | Workflow | Source action | Laravel/FastAPI write | Supabase write | Notes |
 | --- | --- | --- | --- | --- |
 | Scout Prep post-call action | Raycast Scout Prep | Task/stage update route succeeds first | `recordLifecycleMutation` | This is the primary call activity writer for Raycast-owned actions. |
-| Scout Prep meeting set | Raycast Scout Prep | Meeting creation and sales stage save succeed first | `recordMeetingSet` / lifecycle mutation | Confirmation cache may be updated for text follow-up lookup only. |
+| Scout Prep meeting set | Raycast Scout Prep | Meeting creation and sales stage save succeed first | `recordMeetingSet` / lifecycle mutation plus `set_meeting_confirmation_cache` | Confirmation cache is required for Prospect Mobile confirmation prep actions and must write both confirmation rows. |
 | Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update | Confirmation cache and event title state | Confirmation cache is not lifecycle truth. |
 | Pending Clients | Current pipeline state | Reads current sales stage and athlete event list | Reads Supabase pipeline/lifecycle state | It must not read confirmation cache. |
 
@@ -40,4 +40,5 @@ These scripts may write Supabase, but they are audit/reconcile/repair jobs, not 
 - Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, appointment status, and post-meeting outcome translation.
 - Use `src/lib/supabase-lifecycle.ts` for Raycast action-time Supabase writes.
 - Treat confirmation cache as confirmation-message support only.
+- For successful Raycast Meeting Set submits, write exactly two confirmation cache rows (`confirmation_1` and `confirmation_2`) or fail loudly with the missing source field.
 - If a required stage, event title, or athlete event-list fact is missing, fix the source-domain write or reconcile path. Do not add broad fallback guesses.

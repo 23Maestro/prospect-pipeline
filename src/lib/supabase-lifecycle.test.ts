@@ -479,6 +479,11 @@ test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creati
     postCallFlow.indexOf('recordMeetingSet(actionPlan.supabaseLifecycleWrite.args)') <
       postCallFlow.indexOf('syncMeetingSetConfirmationCacheFromScoutPrep({'),
   );
+  const confirmationCacheCatch = postCallFlow.slice(
+    postCallFlow.indexOf("logFailure(\n            'SCOUT_PREP_SET_MEETING_REMINDER_CACHE_SYNC'"),
+    postCallFlow.indexOf('if (rescheduleMeetingPayload && rescheduleMeetingResult)'),
+  );
+  assert.match(confirmationCacheCatch, /throw error;/);
 });
 
 test('task completion wrapper never promotes a task title into raw CRM stage', () => {

@@ -2902,6 +2902,7 @@ export function PostCallUpdateForm({
               appointmentId: meetingSetInput.openEventId,
             },
           );
+          throw error;
         }
       }
       if (rescheduleMeetingPayload && rescheduleMeetingResult) {

@@ -4,6 +4,7 @@ import fetch from 'node-fetch';
 import { buildWeeklyOperatorMeetingSetCandidates } from '../src/domain/booked-meeting-source.ts';
 import { buildSetMeetingConfirmationCacheRows } from '../src/domain/set-meeting-confirmation-cache.ts';
 import { upsertSetMeetingConfirmationCacheRows } from '../src/domain/supabase-persistence.ts';
+import { buildMeetingSetConfirmationIntendedSendDate } from '../src/lib/set-meeting-confirmation-cache-sync.ts';
 import { getGreetingForLocalTime } from '../src/domain/outreach-time-wording.ts';
 import { buildConfirmationMessage } from '../src/lib/scout-follow-up-templates.ts';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
@@ -241,13 +242,18 @@ for (const [index, candidate] of candidates.entries()) {
     const meetingDate = new Date(startsAt);
     const headScoutName = String(candidate.bookedMeeting.assignedOwner || '').trim();
     const meetingTimezone = EASTERN_TIME_ZONE;
+    const intendedSendAt = buildMeetingSetConfirmationIntendedSendDate({
+      meetingDate,
+      meetingTimezone,
+    });
     const confirmation1Message = buildConfirmationMessage({
       variant: 'confirmation_1',
       headScoutName,
       dueAt: meetingDate,
       meetingTimezone,
       recipientNames: recipient.names,
-      greetingOverride: getGreetingForLocalTime({ now: new Date(generatedAt), meetingTimezone }),
+      greetingOverride: getGreetingForLocalTime({ now: intendedSendAt, meetingTimezone }),
+      now: intendedSendAt,
     });
     const confirmation2Message = buildConfirmationMessage({
       variant: 'confirmation_2',
@@ -255,7 +261,8 @@ for (const [index, candidate] of candidates.entries()) {
       dueAt: meetingDate,
       meetingTimezone,
       recipientNames: recipient.names,
-      greetingOverride: getGreetingForLocalTime({ now: new Date(generatedAt), meetingTimezone }),
+      greetingOverride: getGreetingForLocalTime({ now: intendedSendAt, meetingTimezone }),
+      now: intendedSendAt,
     });
 
     rows.push(
