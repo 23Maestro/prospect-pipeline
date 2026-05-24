@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { isCurrentCachedMeeting } from '../public/prospect-mobile/set-meetings-utils.mjs';
+import {
+  isCurrentCachedMeeting,
+  parseCachedEasternInstant,
+} from '../public/prospect-mobile/set-meetings-utils.mjs';
+
+test('cached meeting timestamps stay as real instants instead of subtracting fixed EST offset', () => {
+  assert.equal(
+    parseCachedEasternInstant('2026-05-23T14:00:00Z')?.toISOString(),
+    '2026-05-23T14:00:00.000Z',
+  );
+});
 
 test('mobile set meetings hides past meetings for this week using display local time', () => {
   const reloadTime = new Date('2026-05-22T00:43:00Z'); // May 21, 8:43 PM Eastern

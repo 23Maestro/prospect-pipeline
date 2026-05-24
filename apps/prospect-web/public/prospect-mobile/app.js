@@ -145,7 +145,7 @@ async function renderSetMeetings(payload, renderContext) {
       const owner = event.head_scout_name || event.assigned_owner || 'Scout not resolved';
       const task = event.current_task || 'Confirmation Call';
       const time =
-        formatCachedMeetingLabel(event.current_meeting_label || event.start) ||
+        formatCachedMeetingLabel(event.current_meeting_label || event.start, event.meeting_timezone) ||
         event.date_time_label ||
         formatMeetingTime(event.start, event.end);
       const copyText = `${title} - ${owner} - ${time}`;
@@ -156,7 +156,7 @@ async function renderSetMeetings(payload, renderContext) {
         ? `Text ${event.confirmation_recipient.name}`
         : 'Text';
       const eventId = event.appointment_id || event.key || '';
-      const eventDate = buildBookedMeetingEventDate(event.start);
+      const eventDate = buildBookedMeetingEventDate(event.start, event.meeting_timezone);
       const cardUrl = buildScriptableContactCardUrl(owner);
       return `
         <article class="row">
@@ -715,6 +715,26 @@ function timezoneAbbreviation(timezone, timezoneLabel) {
   return 'EST';
 }
 
+function normalizeMeetingTimezone(timezone) {
+  const rawTimezone = String(timezone || '').trim();
+  if (rawTimezone.includes('/')) return rawTimezone;
+
+  const key = normalizeSearchText(rawTimezone);
+  if (/\b(est|eastern|et)\b/.test(key)) return 'America/New_York';
+  if (/\b(cst|central|ct)\b/.test(key)) return 'America/Chicago';
+  if (/\b(mst|mountain|mt)\b/.test(key)) return 'America/Denver';
+  if (/\b(pst|pacific|pt)\b/.test(key)) return 'America/Los_Angeles';
+  return 'America/New_York';
+}
+
+function meetingTimezoneLabel(timezone) {
+  const key = normalizeSearchText(String(timezone || ''));
+  if (key.includes('america/chicago') || /\b(cst|central|ct)\b/.test(key)) return 'CT';
+  if (key.includes('america/denver') || /\b(mst|mountain|mt)\b/.test(key)) return 'MT';
+  if (key.includes('america/los angeles') || /\b(pst|pacific|pt)\b/.test(key)) return 'PT';
+  return 'ET';
+}
+
 function buildEasternWeekWindow(week = 'this', now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
@@ -1105,23 +1125,37 @@ function formatMeetingTime(start, end) {
   return `${formatSlotDate(start)}, ${formatSlotRange(start, end)}`;
 }
 
-function formatCachedMeetingLabel(value) {
+function formatCachedMeetingLabel(value, timezone) {
   const date = parseCachedEasternInstant(value);
   if (!date) return '';
-  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long', timeZone: 'UTC' }).format(date);
-  const month = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' }).format(date);
-  const day = date.getUTCDate();
-  const hour24 = date.getUTCHours();
-  const hour12 = hour24 % 12 || 12;
-  const minute = String(date.getUTCMinutes()).padStart(2, '0');
-  const period = hour24 >= 12 ? 'pm' : 'am';
-  return `${weekday}, ${month} ${day}${ordinalSuffix(day)} - ${hour12}:${minute}${period} Eastern`;
+  const meetingTimezone = normalizeMeetingTimezone(timezone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: meetingTimezone,
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  }).formatToParts(date);
+  const valueFor = (type) => parts.find((part) => part.type === type)?.value || '';
+  const day = Number.parseInt(valueFor('day'), 10);
+  const period = valueFor('dayPeriod').toLowerCase();
+  return `${valueFor('weekday')}, ${valueFor('month')} ${day}${ordinalSuffix(day)} - ${valueFor('hour')}:${valueFor('minute')}${period} ${meetingTimezoneLabel(timezone)}`;
 }
 
-function buildBookedMeetingEventDate(value) {
+function buildBookedMeetingEventDate(value, timezone) {
   const date = parseCachedEasternInstant(value);
   if (!date) return '';
-  return toIsoDate(date);
+  const meetingTimezone = normalizeMeetingTimezone(timezone);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: meetingTimezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 function ordinalSuffix(day) {

@@ -7,7 +7,7 @@ export function cleanMeetingTitle(title) {
 export function parseCachedEasternInstant(value) {
   const parsed = new Date(String(value || '').trim());
   if (Number.isNaN(parsed.getTime())) return null;
-  return new Date(parsed.getTime() - 5 * 60 * 60 * 1000);
+  return parsed;
 }
 
 export function getCurrentCachedEasternClock(now = new Date()) {
@@ -28,5 +28,5 @@ export function isCurrentCachedMeeting(value, week = 'this', now = new Date()) {
   if (week !== 'this') return true;
   const meetingDate = parseCachedEasternInstant(value);
   if (!meetingDate) return false;
-  return meetingDate.getTime() >= getCurrentCachedEasternClock(now).getTime();
+  return meetingDate.getTime() >= now.getTime();
 }
