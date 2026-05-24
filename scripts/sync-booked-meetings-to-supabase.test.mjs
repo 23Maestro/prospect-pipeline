@@ -10,6 +10,10 @@ const confirmationCacheResolverSource = readFileSync(
   new URL('./resolve-set-meeting-confirmation-cache.mjs', import.meta.url),
   'utf8',
 );
+const mobileReadinessGuardSource = readFileSync(
+  new URL('./verify-set-meetings-mobile-readiness.mjs', import.meta.url),
+  'utf8',
+);
 
 test('booked meeting sync uses the shared weekly source resolver and fact builders', () => {
   assert.match(source, /buildWeeklyOperatorMeetingSetCandidates/);
@@ -66,4 +70,13 @@ test('one-time confirmation cache resolver can write the full confirmed window a
   assert.doesNotMatch(confirmationCacheResolverSource, /insertMeetingSetEventsOnce/);
   assert.doesNotMatch(confirmationCacheResolverSource, /upsertAthletePipelineState/);
   assert.doesNotMatch(confirmationCacheResolverSource, /recordMeetingSet/);
+});
+
+test('mobile set meetings readiness guard writes cache before checking mobile routes', () => {
+  assert.match(mobileReadinessGuardSource, /runResolver\(windowRange\)/);
+  assert.match(mobileReadinessGuardSource, /fetchLiveSetMeetings\(windowRange\)/);
+  assert.match(mobileReadinessGuardSource, /readConfirmationCacheRows\(supabaseConfig, windowRange\)/);
+  assert.match(mobileReadinessGuardSource, /findCacheGaps\(live\.events, cacheRows\)/);
+  assert.match(mobileReadinessGuardSource, /checkSchedulesRoute\(windowRange\)/);
+  assert.match(mobileReadinessGuardSource, /process\.exitCode = 1/);
 });
