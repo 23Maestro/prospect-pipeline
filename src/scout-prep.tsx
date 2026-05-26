@@ -8,6 +8,7 @@ import {
   Toast,
   Clipboard,
   open,
+  clearSearchBar,
   showToast,
   useNavigation,
 } from '@raycast/api';
@@ -2902,7 +2903,6 @@ export function PostCallUpdateForm({
               appointmentId: meetingSetInput.openEventId,
             },
           );
-          throw error;
         }
       }
       if (rescheduleMeetingPayload && rescheduleMeetingResult) {
@@ -4924,6 +4924,9 @@ export default function ScoutPrepCommand() {
 
   async function returnToRootTaskList() {
     setViewMode('tasks');
+    setTaskListFilter('todayPastDue');
+    setTaskListSort(null);
+    setSelectedTaskItemId(undefined);
     setProspectSearchText('');
     setProspectResults([]);
     setIsProspectSearching(false);
@@ -4931,6 +4934,7 @@ export default function ScoutPrepCommand() {
     setIsRecentFollowUpsLoading(false);
     setPersonalFollowUps([]);
     setIsPersonalFollowUpsLoading(false);
+    await clearSearchBar({ forceScrollToTop: true });
     await loadTasks();
   }
 

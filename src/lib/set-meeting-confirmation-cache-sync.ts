@@ -10,6 +10,7 @@ import {
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
+import { getSupabasePersistenceConfig } from './supabase-lifecycle';
 
 export type MeetingSetConfirmationCacheInput = {
   athleteId: string;
@@ -64,14 +65,7 @@ function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null):
 }
 
 export function getSetMeetingConfirmationSupabaseConfig(): SupabasePersistenceConfig | null {
-  const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
-    .trim()
-    .replace(/\/+$/, '');
-  const key = String(
-    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  ).trim();
-  const schema = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
-  return url && key ? { url, key, schema } : null;
+  return getSupabasePersistenceConfig();
 }
 
 function parseMeetingDate(value?: string | null): Date | null {

@@ -361,7 +361,7 @@ function readRepoEnv(): Record<string, string> {
   }, {});
 }
 
-function getConfig(): SupabaseConfig | null {
+export function getSupabasePersistenceConfig(): SupabaseConfig | null {
   const prefs = getPreferenceValues<Preferences>();
   const repoEnv = readRepoEnv();
   const url = String(process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '')
@@ -911,7 +911,7 @@ async function purgeAthleteLifecycle(args: {
 }
 
 async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: boolean }> {
-  const config = getConfig();
+  const config = getSupabasePersistenceConfig();
   if (!config) {
     return { enabled: false };
   }
@@ -992,7 +992,7 @@ export async function recordLifecycleMutation(
     return result;
   }
 
-  const config = getConfig();
+  const config = getSupabasePersistenceConfig();
   if (!config) return result;
 
   const row = buildCallActivityFact({
@@ -1202,7 +1202,7 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
 }
 
 export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnapshot> {
-  const config = getConfig();
+  const config = getSupabasePersistenceConfig();
   if (!config) {
     return {
       enabled: false,
@@ -1251,7 +1251,7 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
 }
 
 export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallbackRow[]> {
-  const config = getConfig();
+  const config = getSupabasePersistenceConfig();
   if (!config) {
     return [];
   }
