@@ -47,15 +47,6 @@ type AppointmentSnapshot = {
   sourceEventId?: string | null;
 };
 
-type ReminderSnapshot = {
-  appointmentId: string;
-  kind: string;
-  sendAt?: string | null;
-  sentAt?: string | null;
-  status: string;
-  dedupeSuffix: string;
-};
-
 type PipelineStateSnapshot = {
   crmStage?: string | null;
   taskStatus?: string | null;
@@ -70,7 +61,6 @@ type LifecycleWriteArgs = {
   eventType: string;
   payload?: Record<string, unknown>;
   appointment?: AppointmentSnapshot | null;
-  reminder?: ReminderSnapshot | null;
   previousState?: Pick<PipelineStateSnapshot, 'crmStage' | 'taskStatus'> | null;
   state: PipelineStateSnapshot;
 };
@@ -140,7 +130,6 @@ type ConfirmationQueuedWriteArgs = PipelineActor & {
   dueAt?: string | null;
   messagePreview?: string | null;
   lifecycleState?: string | null;
-  reminderKind?: string | null;
   messageVariant?: string | null;
 };
 
@@ -154,7 +143,6 @@ type ConfirmationSentWriteArgs = PipelineActor & {
   sentAt?: string | null;
   dueAt?: string | null;
   messagePreview?: string | null;
-  reminderKind?: string | null;
   messageVariant?: string | null;
 };
 
@@ -246,17 +234,6 @@ type LifecycleEventRow = {
   created_at: string;
 };
 
-type ReminderRow = {
-  id: string;
-  appointment_id: string;
-  kind: string;
-  send_at: string | null;
-  sent_at: string | null;
-  status: string;
-  dedupe_key: string;
-  updated_at: string;
-};
-
 export type LifecycleHealthSnapshot = {
   enabled: boolean;
   config?: {
@@ -279,14 +256,7 @@ export type LifecycleHealthSnapshot = {
     athlete_main_id: string;
     created_at: string;
   }>;
-  reminderRows: Array<{
-    appointment_id: string;
-    kind: string;
-    status: string;
-    send_at: string | null;
-    sent_at: string | null;
-    updated_at: string;
-  }>;
+  reminderRows: Array<Record<string, never>>;
 };
 
 export type ActiveMeetingFallbackRow = {
@@ -629,16 +599,6 @@ export function buildAppointmentId(args: {
   return `appointment:${buildAthleteKey(args.athleteId, args.athleteMainId)}`;
 }
 
-export function buildReminderDedupeKey(args: {
-  appointmentId: string;
-  kind: string;
-  suffix: string;
-  sendAt?: string | null;
-}): string {
-  const sendAt = normalizeIsoValue(args.sendAt) || 'none';
-  return [args.appointmentId.trim(), args.kind.trim(), args.suffix.trim(), sendAt].join(':');
-}
-
 function buildAthleteRow(actor: PipelineActor, updatedAt: string): AthletesRow {
   return {
     athlete_key: buildAthleteKey(actor.athleteId, actor.athleteMainId),
@@ -717,25 +677,6 @@ function buildLifecycleEventRow(
     ...row,
     previous_crm_stage: normalizeValue(args.previousState.crmStage),
     previous_task_status: normalizeValue(args.previousState.taskStatus),
-  };
-}
-
-function buildReminderRow(reminder: ReminderSnapshot, updatedAt: string): ReminderRow {
-  const dedupeKey = buildReminderDedupeKey({
-    appointmentId: reminder.appointmentId,
-    kind: reminder.kind,
-    suffix: reminder.dedupeSuffix,
-    sendAt: reminder.sendAt,
-  });
-  return {
-    id: dedupeKey,
-    appointment_id: reminder.appointmentId,
-    kind: reminder.kind.trim(),
-    send_at: normalizeIsoValue(reminder.sendAt),
-    sent_at: normalizeIsoValue(reminder.sentAt),
-    status: reminder.status.trim(),
-    dedupe_key: dedupeKey,
-    updated_at: updatedAt,
   };
 }
 
@@ -980,7 +921,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
   const appointmentRow = args.appointment
     ? buildAppointmentRow(args.athlete, args.appointment, updatedAt)
     : null;
-  const reminderRow = args.reminder ? buildReminderRow(args.reminder, updatedAt) : null;
   const eventRow = buildLifecycleEventRow(args.athlete, args, updatedAt);
   const stateRow = buildPipelineStateRow(args.athlete, args.state, updatedAt);
 
@@ -988,7 +928,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
     eventType: args.eventType,
     athleteKey: athleteRow.athlete_key,
     hasAppointment: Boolean(appointmentRow),
-    hasReminder: Boolean(reminderRow),
   });
 
   try {
@@ -1001,13 +940,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
       await request(config, 'appointments', {
         rows: [appointmentRow],
         onConflict: 'id',
-      });
-    }
-
-    if (reminderRow) {
-      await request(config, 'reminders', {
-        rows: [reminderRow],
-        onConflict: 'dedupe_key',
       });
     }
 
@@ -1032,7 +964,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
     eventType: args.eventType,
     athleteKey: athleteRow.athlete_key,
     appointmentId: appointmentRow?.id || null,
-    reminderId: reminderRow?.id || null,
   });
 
   return { enabled: true };
@@ -1147,15 +1078,6 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
       startsAt: args.startsAt,
       status: 'scheduled',
     },
-    reminder: args.taskDueDate
-      ? {
-          appointmentId,
-          kind: 'confirmation',
-          sendAt: args.taskDueDate,
-          status: 'queued',
-          dedupeSuffix: 'meeting_set_confirmation',
-        }
-      : null,
     state: {
       crmStage: args.crmStage,
       taskStatus: args.taskStatus,
@@ -1186,13 +1108,6 @@ export async function recordConfirmationQueued(
       status: 'confirmation_queued',
       sourceEventId: args.appointmentId,
     },
-    reminder: {
-      appointmentId,
-      kind: normalizeValue(args.reminderKind) || 'confirmation',
-      sendAt: args.dueAt,
-      status: 'queued',
-      dedupeSuffix: 'confirmation_queued',
-    },
     state: {
       crmStage: args.crmStage,
       taskStatus: args.taskStatus,
@@ -1220,14 +1135,6 @@ export async function recordConfirmationSent(
       headScout: args.headScout,
       status: 'confirmation_sent',
       sourceEventId: args.appointmentId,
-    },
-    reminder: {
-      appointmentId,
-      kind: normalizeValue(args.reminderKind) || 'confirmation',
-      sendAt: args.dueAt,
-      sentAt: args.sentAt || new Date().toISOString(),
-      status: 'sent',
-      dedupeSuffix: 'confirmation_sent',
     },
     state: {
       crmStage: args.crmStage,
@@ -1283,15 +1190,6 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
       status: 'rescheduled',
       sourceEventId: args.sourceEventId || args.appointmentId,
     },
-    reminder: args.dueAt
-      ? {
-          appointmentId,
-          kind: 'confirmation',
-          sendAt: args.dueAt,
-          status: 'queued',
-          dedupeSuffix: 'rescheduled_confirmation',
-        }
-      : null,
     state: {
       crmStage: args.crmStage,
       taskStatus: args.taskStatus,
@@ -1314,7 +1212,7 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
     };
   }
 
-  const [stateRows, eventRows, reminderRows] = await Promise.all([
+  const [stateRows, eventRows] = await Promise.all([
     queryTable<LifecycleHealthSnapshot['stateRows'][number]>(
       config,
       'athlete_pipeline_state',
@@ -1324,12 +1222,7 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
       config,
       'lifecycle_events',
       'select=event_type,crm_stage,task_status,athlete_id,athlete_main_id,created_at&order=created_at.desc&limit=15',
-    ),
-    queryTable<LifecycleHealthSnapshot['reminderRows'][number]>(
-      config,
-      'reminders',
-      'select=appointment_id,kind,status,send_at,sent_at,updated_at&order=updated_at.desc&limit=10',
-    ),
+    )
   ]);
 
   const athleteKeys = Array.from(new Set(stateRows.map((row) => row.athlete_key).filter(Boolean)));
@@ -1353,7 +1246,7 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
       athlete_name: athleteNameByKey.get(row.athlete_key) || '',
     })),
     eventRows,
-    reminderRows,
+    reminderRows: [],
   };
 }
 

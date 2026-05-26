@@ -173,3 +173,15 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekday cache mes
   assert.match(rows[0].message_body, /Prospect ID Zoom Meeting tonight 5\/25 at 6:00 PM CT/);
   assert.match(rows[1].message_body, /still has you down for 6:00pm central tonight/);
 });
+
+
+test('central labels keep 7:00 PM CT and central wording for both confirmations', () => {
+  const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+    athleteId: '1489000', athleteMainId: '951000', athleteName: 'Avery Jones', context: buildContext(),
+    meetingSet: { openEventId: 'event-2', startsAt: '2026-05-25T19:00:00', meetingTimezone: 'Central', meetingLength: '01:00', headScout: 'Ryan Lietz' },
+    generatedAt: '2026-05-22T12:00:00.000Z',
+  });
+  assert.match(rows[0].message_body, /7:00 PM CT/);
+  assert.match(rows[1].message_body, /7:00pm central/);
+  assert.doesNotMatch(rows[0].message_body, /8:00 PM ET/);
+});

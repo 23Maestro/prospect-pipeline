@@ -109,10 +109,6 @@ export function upsertPostMeetingOutcomeFacts(config: SupabasePersistenceConfig,
   return writeRows(config, 'meeting_events', rows, 'dedupe_key');
 }
 
-export function upsertReminders(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'reminders', rows, 'dedupe_key');
-}
-
 export function upsertSetMeetingConfirmationCacheRows(
   config: SupabasePersistenceConfig,
   rows: unknown[],

@@ -37,6 +37,15 @@ const LEGACY_TIMEZONE_TO_IANA: Record<string, string> = {
   AKST: 'America/Anchorage',
   HST: 'Pacific/Honolulu',
   AST: 'America/Puerto_Rico',
+  ET: 'America/New_York',
+  EASTERN: 'America/New_York',
+  CT: 'America/Chicago',
+  CENTRAL: 'America/Chicago',
+  MT: 'America/Denver',
+  MOUNTAIN: 'America/Denver',
+  PT: 'America/Los_Angeles',
+  PACIFIC: 'America/Los_Angeles',
+  ARIZONA: 'America/Phoenix',
 };
 
 function clean(value?: string | null): string {

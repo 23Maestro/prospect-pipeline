@@ -528,11 +528,11 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /'cache-control': 'no-cache'/);
   assert.match(appText, /\.filter\(\(event\) => isCurrentCachedMeeting\(event\.start, week\)\)/);
   assert.match(appText, /isCurrentCachedMeeting/);
-  assert.match(appText, /parseCachedEasternInstant\(value\)/);
+  assert.match(appText, /parseCachedMeetingInstant\(value\)/);
   assert.match(utilitiesText, /function isCurrentCachedMeeting/);
-  assert.match(utilitiesText, /function getCurrentCachedEasternClock/);
+  assert.match(utilitiesText, /function getCurrentCachedMeetingClock/);
   assert.match(appText, /formatCachedMeetingLabel\(event\.current_meeting_label \|\| event\.start, event\.meeting_timezone\)/);
-  assert.match(appText, /function normalizeMeetingTimezone/);
+  assert.match(appText, /function normalizeMeetingTimezoneLabel/);
   assert.match(appText, /function meetingTimezoneLabel/);
   assert.match(appText, /buildBookedMeetingEventDate\(event\.start, event\.meeting_timezone\)/);
   assert.match(appText, /ordinalSuffix/);
