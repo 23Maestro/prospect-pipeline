@@ -1,6 +1,23 @@
 {
-  "generatedAt": "2026-05-20T17:02:24.472Z",
+  "generatedAt": "2026-05-25T03:45:08.609Z",
   "weeks": [
+    {
+      "archivedAt": "2026-05-25T03:45:08.609Z",
+      "file": "2026-05-18_to_2026-05-22.json",
+      "startDate": "2026-05-18",
+      "endDate": "2026-05-22",
+      "label": "This Week, May 18 - May 24",
+      "dials": 99,
+      "contacts": 24,
+      "meetingsSet": 20,
+      "setRate": 83,
+      "allTimeAtArchive": {
+        "dials": 549,
+        "contacts": 143,
+        "meetingsSet": 65,
+        "setRate": 45
+      }
+    },
     {
       "archivedAt": "2026-05-20T17:02:24.472Z",
       "file": "2026-05-11_to_2026-05-15.json",

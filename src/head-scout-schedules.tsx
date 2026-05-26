@@ -4,6 +4,7 @@ import {
   Clipboard,
   Color,
   Form,
+  Grid,
   Icon,
   type KeyEquivalent,
   List,
@@ -118,6 +119,7 @@ export type HeadScoutBookingsListProps = {
 };
 
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5'];
+const SCOUT_GRID_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5', '6'];
 const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
   { title: 'Copy James Card', scoutName: 'James Holcomb' },
   { title: 'Copy Jeffrey Card', scoutName: 'Jeffrey Stein' },
@@ -150,9 +152,30 @@ function getHeadScoutCountColor(scoutName: string): string | Color {
       return '#1F9FA7';
     case 'James Holcomb':
       return '#070708';
+    case 'Logan Lord':
+      return '#600';
+    case 'Kenton Manis':
+      return '#05A915';
     default:
       return Color.SecondaryText;
   }
+}
+
+function getHeadScoutInitials(scoutName: string): string {
+  return scoutName
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() || '')
+    .join('')
+    .slice(0, 2);
+}
+
+function buildHeadScoutInitialsBadge(scoutName: string): string {
+  const color = getHeadScoutCountColor(scoutName);
+  const backgroundColor = typeof color === 'string' ? color : '#6B7280';
+  const initials = getHeadScoutInitials(scoutName);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 213"><rect width="320" height="213" rx="18" fill="${backgroundColor}"/><text x="160" y="122" text-anchor="middle" dominant-baseline="middle" fill="#fff" font-family="-apple-system,BlinkMacSystemFont,'SF Pro Display',Arial,sans-serif" font-size="82" font-weight="800">${initials}</text></svg>`;
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
 function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalTask {
@@ -1317,9 +1340,11 @@ export function HeadScoutSchedulesRoot({
   initialWeekOffset = 0,
   syncContext,
 }: HeadScoutSchedulesRootProps) {
+  const { push } = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
   const [payload, setPayload] = useState<HeadScoutSlotsResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [searchText, setSearchText] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -1362,45 +1387,64 @@ export function HeadScoutSchedulesRoot({
       ? 'This Week'
       : `Week +${initialWeekOffset}`;
 
+  function buildScoutScheduleTarget(scout: HeadScoutSchedule) {
+    return (
+      <HeadScoutScheduleList
+        scout={scout}
+        weekStart={payload?.week_start || ''}
+        weekEnd={payload?.week_end || ''}
+        timezoneLabel={payload?.timezone_label || ''}
+        weekOffset={initialWeekOffset}
+        syncContext={syncContext}
+      />
+    );
+  }
+
+  function handleSearchTextChange(value: string) {
+    setSearchText(value);
+    const shortcutIndex = SCOUT_GRID_SHORTCUT_KEYS.indexOf(value.trim() as KeyEquivalent);
+    const scout = shortcutIndex >= 0 ? payload?.scouts?.[shortcutIndex] : null;
+    if (scout) {
+      setSearchText('');
+      push(buildScoutScheduleTarget(scout));
+    }
+  }
+
   return (
-    <List
+    <Grid
       navigationTitle={`Scout Openings • ${weekLabel}`}
       isLoading={isLoading}
       searchBarPlaceholder="Filter head scouts"
+      searchText={searchText}
+      onSearchTextChange={handleSearchTextChange}
+      columns={4}
+      aspectRatio="3/2"
+      fit={Grid.Fit.Fill}
+      inset={Grid.Inset.Medium}
     >
-      <List.Section title="Open Schedules">
-        {payload?.scouts?.map((scout) => {
+      <Grid.Section title="Open Schedules">
+        {payload?.scouts?.map((scout, index) => {
           const visibleSlots = filterVisibleHeadScoutSlots(scout.slots, initialWeekOffset);
+          const shortcutKey = SCOUT_GRID_SHORTCUT_KEYS[index];
           return (
-            <List.Item
+            <Grid.Item
               key={scout.scout_name}
-              icon={Icon.Person}
-              title={scout.scout_name}
-              subtitle={`${scout.city}, ${scout.state}`}
-              accessories={[
-                {
-                  tag: {
-                    value: `${visibleSlots.length} open`,
-                    color: getHeadScoutCountColor(scout.scout_name),
-                  },
-                },
-                ...(syncContext ? [{ text: 'Scout Prep' }] : []),
-              ]}
+              content={{
+                value: buildHeadScoutInitialsBadge(scout.scout_name),
+                tooltip: scout.scout_name,
+              }}
+              title={`${index + 1}. ${scout.scout_name}`}
+              subtitle={`${scout.city}, ${scout.state} • ${visibleSlots.length} open${
+                syncContext ? ' • Scout Prep' : ''
+              }`}
+              keywords={[scout.city, scout.state, `${visibleSlots.length} open`]}
               actions={
                 <ActionPanel>
                   <Action.Push
                     title="View Open Slots"
                     icon={Icon.Calendar}
-                    target={
-                      <HeadScoutScheduleList
-                        scout={scout}
-                        weekStart={payload?.week_start || ''}
-                        weekEnd={payload?.week_end || ''}
-                        timezoneLabel={payload?.timezone_label || ''}
-                        weekOffset={initialWeekOffset}
-                        syncContext={syncContext}
-                      />
-                    }
+                    shortcut={shortcutKey ? { modifiers: [], key: shortcutKey } : undefined}
+                    target={buildScoutScheduleTarget(scout)}
                   />
                   <Action.Push
                     title="Next Week"
@@ -1418,9 +1462,9 @@ export function HeadScoutSchedulesRoot({
             />
           );
         })}
-      </List.Section>
+      </Grid.Section>
       {!isLoading && !payload?.scouts?.length ? (
-        <List.EmptyView
+        <Grid.EmptyView
           title="No head scouts found"
           description={errorMessage || 'No schedules returned for this week.'}
           actions={
@@ -1440,7 +1484,7 @@ export function HeadScoutSchedulesRoot({
           }
         />
       ) : null}
-    </List>
+    </Grid>
   );
 }
 
