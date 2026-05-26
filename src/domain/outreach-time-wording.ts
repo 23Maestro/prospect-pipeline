@@ -18,6 +18,19 @@ const TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
   AST: 'America/Puerto_Rico',
 };
 
+
+const HUMAN_TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
+  EASTERN: 'America/New_York',
+  ET: 'America/New_York',
+  CENTRAL: 'America/Chicago',
+  CT: 'America/Chicago',
+  MOUNTAIN: 'America/Denver',
+  MT: 'America/Denver',
+  PACIFIC: 'America/Los_Angeles',
+  PT: 'America/Los_Angeles',
+  ARIZONA: 'America/Phoenix',
+};
+
 const IANA_TO_TIMEZONE_LABEL: Record<string, string> = Object.fromEntries(
   Object.entries(TIMEZONE_LABEL_TO_IANA).map(([label, iana]) => [iana, label]),
 );
@@ -45,6 +58,9 @@ export function resolveIanaTimeZoneFromLegacyLabel(timezoneLabel?: string | null
   const normalized = trimmed.toUpperCase();
   if (TIMEZONE_LABEL_TO_IANA[normalized]) {
     return TIMEZONE_LABEL_TO_IANA[normalized];
+  }
+  if (HUMAN_TIMEZONE_LABEL_TO_IANA[normalized]) {
+    return HUMAN_TIMEZONE_LABEL_TO_IANA[normalized];
   }
   try {
     new Intl.DateTimeFormat('en-US', { timeZone: trimmed }).format(new Date());

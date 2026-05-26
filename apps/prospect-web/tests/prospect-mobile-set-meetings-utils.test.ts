@@ -3,12 +3,12 @@ import test from 'node:test';
 
 import {
   isCurrentCachedMeeting,
-  parseCachedEasternInstant,
+  parseCachedMeetingInstant,
 } from '../public/prospect-mobile/set-meetings-utils.mjs';
 
 test('cached meeting timestamps stay as real instants instead of subtracting fixed EST offset', () => {
   assert.equal(
-    parseCachedEasternInstant('2026-05-23T14:00:00Z')?.toISOString(),
+    parseCachedMeetingInstant('2026-05-23T14:00:00Z')?.toISOString(),
     '2026-05-23T14:00:00.000Z',
   );
 });

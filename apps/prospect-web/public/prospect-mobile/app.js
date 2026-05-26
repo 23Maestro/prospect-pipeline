@@ -1,7 +1,7 @@
 import {
   cleanMeetingTitle,
   isCurrentCachedMeeting,
-  parseCachedEasternInstant,
+  parseCachedMeetingInstant,
 } from '/prospect-mobile/set-meetings-utils.mjs';
 
 const routes = {
@@ -202,7 +202,7 @@ async function fetchSetMeetingsFromSupabase(week) {
     throw new Error('Missing Supabase public config');
   }
 
-  const weekWindow = buildEasternWeekWindow(week);
+  const weekWindow = buildMeetingWeekWindow(week);
   const query = [
     'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone,message_body,admin_url,task_url,kind',
     'status=eq.cached',
@@ -715,7 +715,7 @@ function timezoneAbbreviation(timezone, timezoneLabel) {
   return 'EST';
 }
 
-function normalizeMeetingTimezone(timezone) {
+function normalizeMeetingTimezoneLabel(timezone) {
   const rawTimezone = String(timezone || '').trim();
   if (rawTimezone.includes('/')) return rawTimezone;
 
@@ -735,7 +735,7 @@ function meetingTimezoneLabel(timezone) {
   return 'ET';
 }
 
-function buildEasternWeekWindow(week = 'this', now = new Date()) {
+function buildMeetingWeekWindow(week = 'this', now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
@@ -1126,9 +1126,9 @@ function formatMeetingTime(start, end) {
 }
 
 function formatCachedMeetingLabel(value, timezone) {
-  const date = parseCachedEasternInstant(value);
+  const date = parseCachedMeetingInstant(value);
   if (!date) return '';
-  const meetingTimezone = normalizeMeetingTimezone(timezone);
+  const meetingTimezone = normalizeMeetingTimezoneLabel(timezone);
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: meetingTimezone,
     weekday: 'long',
@@ -1145,9 +1145,9 @@ function formatCachedMeetingLabel(value, timezone) {
 }
 
 function buildBookedMeetingEventDate(value, timezone) {
-  const date = parseCachedEasternInstant(value);
+  const date = parseCachedMeetingInstant(value);
   if (!date) return '';
-  const meetingTimezone = normalizeMeetingTimezone(timezone);
+  const meetingTimezone = normalizeMeetingTimezoneLabel(timezone);
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: meetingTimezone,
     year: 'numeric',

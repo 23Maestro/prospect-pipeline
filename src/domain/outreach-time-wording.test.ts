@@ -142,3 +142,16 @@ test('confirmation clock and timezone labels come from the same timezone resolve
   assert.equal(getConfirmationClockLabel({ meetingStart, meetingTimezone: 'CST' }), '2:00 PM');
   assert.equal(getConfirmationTimezoneLabel('CST'), 'CT');
 });
+
+
+test('human timezone labels normalize to expected IANA zones', () => {
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('Eastern'), 'America/New_York');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('ET'), 'America/New_York');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('Central'), 'America/Chicago');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('CT'), 'America/Chicago');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('Mountain'), 'America/Denver');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('MT'), 'America/Denver');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('Pacific'), 'America/Los_Angeles');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('PT'), 'America/Los_Angeles');
+  assert.equal(resolveIanaTimeZoneFromLegacyLabel('Arizona'), 'America/Phoenix');
+});

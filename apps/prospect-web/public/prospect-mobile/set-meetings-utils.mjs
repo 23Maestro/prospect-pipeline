@@ -4,13 +4,13 @@ export function cleanMeetingTitle(title) {
   return String(title || '').replace(DISPLAY_PREFIX_PATTERN, '').trim();
 }
 
-export function parseCachedEasternInstant(value) {
+export function parseCachedMeetingInstant(value) {
   const parsed = new Date(String(value || '').trim());
   if (Number.isNaN(parsed.getTime())) return null;
   return parsed;
 }
 
-export function getCurrentCachedEasternClock(now = new Date()) {
+export function getCurrentCachedMeetingClock(now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     year: 'numeric',
@@ -26,7 +26,7 @@ export function getCurrentCachedEasternClock(now = new Date()) {
 
 export function isCurrentCachedMeeting(value, week = 'this', now = new Date()) {
   if (week !== 'this') return true;
-  const meetingDate = parseCachedEasternInstant(value);
+  const meetingDate = parseCachedMeetingInstant(value);
   if (!meetingDate) return false;
   return meetingDate.getTime() >= now.getTime();
 }
