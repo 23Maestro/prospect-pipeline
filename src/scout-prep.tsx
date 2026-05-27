@@ -865,7 +865,11 @@ async function persistVoicemailFollowUpMessageSent(args: {
   previousCrmStage?: string | null;
   previousTaskStatus?: string | null;
 }) {
-  if (args.variant === 'send_cal_link' || args.variant === 'no_show') {
+  if (
+    args.variant === 'send_cal_link' ||
+    args.variant === 'no_show' ||
+    args.variant === 'reschedule_pending'
+  ) {
     return;
   }
 
@@ -1776,18 +1780,24 @@ function VoicemailFollowUpRecipientForm({
             defaultContactId={defaultContactId}
             initialMessage={body}
             onMessageSentLabel={
-              selectedVariant === 'no_show'
+              selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
                 ? 'No sales stage change'
                 : selectedVariant.replace(/_/g, ' ')
             }
             onMessageSentToastTitle={
-              selectedVariant === 'no_show' ? 'Completing No Show Task' : undefined
+              selectedVariant === 'no_show'
+                ? 'Completing No Show Task'
+                : selectedVariant === 'reschedule_pending'
+                  ? 'Completing Reschedule Task'
+                  : undefined
             }
             onMessageSentFailureTitle={
-              selectedVariant === 'no_show' ? 'Sent, task not completed' : undefined
+              selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
+                ? 'Sent, task not completed'
+                : undefined
             }
             onMessageSent={
-              selectedVariant === 'no_show'
+              selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
                 ? async () => {
                     await completeSentTextTask({
                       context,
@@ -1831,7 +1841,7 @@ function VoicemailFollowUpRecipientForm({
         variant: variant || defaultVariant,
       });
       try {
-        if (selectedVariant === 'no_show') {
+        if (selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending') {
           await completeSentTextTask({
             context,
             task,
@@ -1850,7 +1860,7 @@ function VoicemailFollowUpRecipientForm({
         await showToast({
           style: Toast.Style.Failure,
           title:
-            selectedVariant === 'no_show'
+            selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
               ? 'Draft open, task not completed'
               : 'Draft open, save failed',
           message: error instanceof Error ? error.message : String(error),
@@ -1858,7 +1868,9 @@ function VoicemailFollowUpRecipientForm({
         return;
       }
       await finishFollowUpFlow(
-        selectedVariant === 'no_show' ? 'Completed' : 'Sent',
+        selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
+          ? 'Completed'
+          : 'Sent',
         recipient.name,
       );
     } catch (error) {
@@ -3535,7 +3547,7 @@ function ScoutPrepDetail({
       return;
     }
 
-    const toast = await showLoadingToast('Voicemail', 'Loading stage');
+    const toast = await showLoadingToast('Voicemail', 'Loading contacts');
     const recipients = getVoicemailFollowUpRecipients(activeContext);
     if (!recipients.length) {
       toast.style = Toast.Style.Failure;
@@ -3544,24 +3556,16 @@ function ScoutPrepDetail({
       return;
     }
 
-    try {
-      const crmStage = await getSelectedCrmStageLabel(task.contact_id);
-      toast.hide();
-      push(
-        <VoicemailFollowUpRecipientForm
-          task={task}
-          context={activeContext}
-          crmStage={crmStage}
-          currentTask={task.title || null}
-          onComplete={onReturnToRootList}
-          closeAfterCompleteViews={2}
-        />,
-      );
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Stage load failed';
-      toast.message = error instanceof Error ? error.message : 'Unknown error';
-    }
+    toast.hide();
+    push(
+      <VoicemailFollowUpRecipientForm
+        task={task}
+        context={activeContext}
+        currentTask={task.title || null}
+        onComplete={onReturnToRootList}
+        closeAfterCompleteViews={2}
+      />,
+    );
   }
 
   async function resolveNotesContext(options?: {
@@ -4137,7 +4141,7 @@ function ScoutPrepTaskItem({
       return;
     }
 
-    const toast = await showLoadingToast('Voicemail', 'Loading stage');
+    const toast = await showLoadingToast('Voicemail', 'Loading contacts');
     const recipients = getVoicemailFollowUpRecipients(context);
     if (!recipients.length) {
       toast.style = Toast.Style.Failure;
@@ -4145,24 +4149,16 @@ function ScoutPrepTaskItem({
       return;
     }
 
-    try {
-      const crmStage = await getSelectedCrmStageLabel(task.contact_id);
-      toast.hide();
-      push(
-        <VoicemailFollowUpRecipientForm
-          task={task}
-          context={context}
-          crmStage={crmStage}
-          currentTask={task.title || null}
-          onComplete={onReturnToRootList}
-          closeAfterCompleteViews={1}
-        />,
-      );
-    } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Stage load failed';
-      toast.message = error instanceof Error ? error.message : 'Unknown error';
-    }
+    toast.hide();
+    push(
+      <VoicemailFollowUpRecipientForm
+        task={task}
+        context={context}
+        currentTask={task.title || null}
+        onComplete={onReturnToRootList}
+        closeAfterCompleteViews={1}
+      />,
+    );
   }
 
   async function loadTaskNotesContext(): Promise<ScoutPrepContext | null> {

@@ -89,6 +89,7 @@ export function VoicemailFollowUpMessageForm(props: {
         <Form.Dropdown.Item value="call_attempt_1" title="Attempt 1" />
         <Form.Dropdown.Item value="call_attempt_2" title="Attempt 2" />
         <Form.Dropdown.Item value="call_attempt_3" title="Attempt 3" />
+        <Form.Dropdown.Item value="reschedule_pending" title="Reschedule" />
         <Form.Dropdown.Item value="no_show" title="No Show" />
         <Form.Dropdown.Item value="send_cal_link" title="Send Cal Link" />
       </Form.Dropdown>

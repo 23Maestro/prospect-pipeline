@@ -20,7 +20,10 @@ test('incomplete task helpers preserve topmost task and newest task semantics', 
   ];
 
   assert.equal(isIncompleteTaskValue('not completed'), true);
-  assert.equal(stripMoveThisTaskPrefix('(SC Move This Task) Confirmation Call'), 'Confirmation Call');
+  assert.equal(
+    stripMoveThisTaskPrefix('(SC Move This Task) Confirmation Call'),
+    'Confirmation Call',
+  );
   assert.equal(getTopmostIncompleteTask(tasks)?.task_id, '100');
   assert.deepEqual(
     getIncompleteTasks(tasks).map((task) => task.task_id),
@@ -44,7 +47,12 @@ test('voicemail lifecycle selection prefers matching task and falls back for cal
     resolveVoicemailLifecycleTaskForCompletion(
       [
         { task_id: '401', title: 'Call Attempt 1', completion_date: '' },
-        { task_id: '402', title: 'Scheduled Follow Up', description: 'Second time text', completion_date: '' },
+        {
+          task_id: '402',
+          title: 'Scheduled Follow Up',
+          description: 'Second time text',
+          completion_date: '',
+        },
       ],
       'call_attempt_2',
     )?.task_id,
@@ -57,6 +65,14 @@ test('voicemail lifecycle selection prefers matching task and falls back for cal
       'call_attempt_3',
     )?.task_id,
     '403',
+  );
+
+  assert.equal(
+    resolveVoicemailLifecycleTaskForCompletion(
+      [{ task_id: '404', title: 'Meeting Result - Res. Pending', completion_date: '' }],
+      'reschedule_pending',
+    )?.task_id,
+    '404',
   );
 });
 

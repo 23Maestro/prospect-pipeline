@@ -1,9 +1,14 @@
 import type { ScoutAthleteTask, ScoutPortalTask } from '../features/scout-prep/types';
 import { isActiveOperatorTaskAssignedOwner } from './owners';
-import { classifyPostCallActivityStage, getSalesStageLabelForVoicemailVariant } from './sales-stage-contract';
+import {
+  classifyPostCallActivityStage,
+  getSalesStageLabelForVoicemailVariant,
+} from './sales-stage-contract';
 import type { VoicemailFollowUpVariant } from '../lib/scout-follow-up-templates';
 
-export type ScoutTaskInput = Partial<ScoutAthleteTask> & Partial<ScoutPortalTask> & Record<string, unknown>;
+export type ScoutTaskInput = Partial<ScoutAthleteTask> &
+  Partial<ScoutPortalTask> &
+  Record<string, unknown>;
 
 function taskId(task?: ScoutTaskInput | null): string {
   return String(task?.task_id || '').trim();
@@ -59,9 +64,7 @@ export function getIncompleteTasks<T extends ScoutTaskInput>(tasks: T[] = []): T
 }
 
 export function getTopmostIncompleteTask<T extends ScoutTaskInput>(tasks: T[] = []): T | null {
-  return (
-    tasks.find((task) => isIncompleteTaskValue(task.completion_date) && taskId(task)) || null
-  );
+  return tasks.find((task) => isIncompleteTaskValue(task.completion_date) && taskId(task)) || null;
 }
 
 export function findNewestIncompleteTaskByTitle<T extends ScoutTaskInput>(
@@ -77,8 +80,7 @@ export function findNewestIncompleteTaskByTitle<T extends ScoutTaskInput>(
   return (
     getIncompleteTasks(tasks).find(
       (candidate) =>
-        (stripMoveThisTaskPrefix(candidate.title) || '').trim().toLowerCase() ===
-        normalizedTarget,
+        (stripMoveThisTaskPrefix(candidate.title) || '').trim().toLowerCase() === normalizedTarget,
     ) || null
   );
 }
@@ -118,18 +120,28 @@ export function isFollowUpScoutTask(task?: ScoutTaskInput | null): boolean {
 export function findNewestIncompleteFollowUpTask(
   tasks: ScoutTaskInput[] = [],
 ): ScoutAthleteTask | null {
-  const task = sortNewestTaskIdFirst(tasks.filter((candidate) => isFollowUpScoutTask(candidate)))[0];
+  const task = sortNewestTaskIdFirst(
+    tasks.filter((candidate) => isFollowUpScoutTask(candidate)),
+  )[0];
   return task ? asScoutAthleteTask(task) : null;
 }
 
-function normalizeTaskMatchText(task: Pick<ScoutTaskInput, 'title' | 'description' | 'row_text'>): string {
+function normalizeTaskMatchText(
+  task: Pick<ScoutTaskInput, 'title' | 'description' | 'row_text'>,
+): string {
   return [task.title, task.description, task.row_text]
-    .map((value) => String(value || '').trim().toLowerCase())
+    .map((value) =>
+      String(value || '')
+        .trim()
+        .toLowerCase(),
+    )
     .filter(Boolean)
     .join(' ');
 }
 
-function isNoShowTaskMatch(task: Pick<ScoutTaskInput, 'title' | 'description' | 'row_text'>): boolean {
+function isNoShowTaskMatch(
+  task: Pick<ScoutTaskInput, 'title' | 'description' | 'row_text'>,
+): boolean {
   const text = normalizeTaskMatchText(task).replace(/[-_]+/g, ' ');
   return /\bno\s*show\b/.test(text) || /\bnoshow\b/.test(text);
 }
@@ -160,23 +172,29 @@ export function isVoicemailLifecycleTaskMatch(
   if (variant === 'call_attempt_3') {
     return title === 'call attempt 3' || description.includes('third time');
   }
+  if (variant === 'reschedule_pending') {
+    return (
+      title.includes('reschedule pending') ||
+      title.includes('res pending') ||
+      title.includes('res. pending') ||
+      description.includes('reschedule pending') ||
+      description.includes('res. pending')
+    );
+  }
 
   return false;
 }
 
-export function getVoicemailLifecycleTaskTitle(
-  variant: VoicemailFollowUpVariant,
-): string | null {
+export function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant): string | null {
   if (variant === 'call_attempt_1') return 'Call Attempt 1';
   if (variant === 'call_attempt_2') return 'Call Attempt 2';
   if (variant === 'call_attempt_3') return 'Call Attempt 3';
+  if (variant === 'reschedule_pending') return 'Reschedule Pending';
   if (variant === 'no_show') return 'No Show';
   return null;
 }
 
-export function getVoicemailLifecycleStageLabel(
-  variant: VoicemailFollowUpVariant,
-): string | null {
+export function getVoicemailLifecycleStageLabel(variant: VoicemailFollowUpVariant): string | null {
   return getSalesStageLabelForVoicemailVariant(variant);
 }
 
@@ -264,8 +282,7 @@ export function resolvePostCallTaskToComplete<T extends ScoutTaskInput>(
     const normalizedTitle = expectedVoicemailTitle.toLowerCase();
     return (
       incompleteTasks.find(
-        (task) =>
-          (stripMoveThisTaskPrefix(task.title) || '').toLowerCase() === normalizedTitle,
+        (task) => (stripMoveThisTaskPrefix(task.title) || '').toLowerCase() === normalizedTitle,
       ) ||
       incompleteTasks[0] ||
       null
