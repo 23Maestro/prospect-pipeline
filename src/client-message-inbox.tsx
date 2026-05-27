@@ -6,6 +6,8 @@ import {
   Icon,
   List,
   Toast,
+  LaunchType,
+  launchCommand,
   popToRoot,
   showHUD,
   showToast,
@@ -256,6 +258,19 @@ function ClientThread({ chat }: { chat: ClientInboxChat }) {
   );
 }
 
+async function openScoutPrepFromClientMessage(chat: ClientInboxChat) {
+  const athleteName = String(chat.clientMatch.athleteName || chat.displayName || '').trim();
+  await launchCommand({
+    name: 'scout-prep',
+    type: LaunchType.UserInitiated,
+    context: {
+      initialFilter: 'all',
+      searchText: athleteName,
+      source: 'client-message-inbox',
+    },
+  });
+}
+
 export default function ClientMessageInboxCommand() {
   const [searchText, setSearchText] = useState('');
   const { push } = useNavigation();
@@ -480,6 +495,12 @@ export default function ClientMessageInboxCommand() {
                 icon={Icon.Calendar}
                 shortcut={{ modifiers: ['cmd'], key: '4' }}
                 onAction={() => void handleCreateAppleCalendarFollowUp(chat)}
+              />
+              <Action
+                title="Open Scout Prep"
+                icon={Icon.List}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
+                onAction={() => void openScoutPrepFromClientMessage(chat)}
               />
               {chat.is_group ? (
                 <Action.Open

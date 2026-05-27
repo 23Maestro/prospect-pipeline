@@ -613,6 +613,27 @@ export function buildScoutPrepValues(args: {
   };
 }
 
+export function resolveScoutPrepContactLookupIds(args: {
+  taskContactId?: string | null;
+  resolvedAthleteId?: string | null;
+  taskAthleteMainId?: string | null;
+  resolvedAthleteMainId?: string | null;
+}): { contactId: string; athleteMainId: string } {
+  const contactId = String(args.resolvedAthleteId || args.taskContactId || '').trim();
+  const athleteMainId = String(args.resolvedAthleteMainId || args.taskAthleteMainId || '').trim();
+  return { contactId, athleteMainId };
+}
+
+export function isScoutPrepContactCacheUsable(contactInfo?: ContactInfo | null): boolean {
+  return Boolean(contactInfo?.parent1);
+}
+
+export function isScoutPrepContextCacheUsableForDisplay(
+  context?: ScoutPrepContext | null,
+): boolean {
+  return Boolean(String(context?.resolved.positions || '').trim());
+}
+
 export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<ScoutPrepContext> {
   const athleteId = String(task.athlete_id || task.contact_id || '').trim();
   const athleteMainIdHint = String(task.athlete_main_id || '').trim();
@@ -666,8 +687,15 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
     contactId: task.contact_id,
     athleteId,
   });
+  const contactLookup = resolveScoutPrepContactLookupIds({
+    taskContactId: task.contact_id,
+    resolvedAthleteId: athleteDetails?.athlete_id || athleteId,
+    taskAthleteMainId: task.athlete_main_id,
+    resolvedAthleteMainId: athleteDetails?.athlete_main_id || athleteMainId,
+  });
+
   const [contactInfo, notes, tasks, measurables] = await Promise.all([
-    loadScoutPrepContactInfo(String(task.contact_id), athleteMainId, athleteId),
+    loadScoutPrepContactInfo(contactLookup.contactId, contactLookup.athleteMainId, athleteId),
     fetchAthleteNotes(athleteId, athleteMainId),
     fetchAthleteTasks(athleteId, athleteMainId),
     loadScoutPrepMeasurables(athleteId, String(task.contact_id)),
@@ -724,7 +752,7 @@ async function loadScoutPrepContactInfo(
   athleteId: string,
 ): Promise<ContactInfo> {
   const cached = await getCachedScoutPrepContactInfo(contactId, athleteMainId);
-  if (cached?.isFresh) {
+  if (cached?.isFresh && isScoutPrepContactCacheUsable(cached.data)) {
     logInfo('SCOUT_PREP_CONTACT_CACHE', 'parse', 'success', {
       contactId,
       athleteId,
@@ -735,6 +763,15 @@ async function loadScoutPrepContactInfo(
       hasParent2: Boolean(cached.data.parent2),
     });
     return cached.data;
+  }
+  if (cached?.isFresh) {
+    logInfo('SCOUT_PREP_CONTACT_CACHE', 'request', 'start', {
+      contactId,
+      athleteId,
+      athleteMainId,
+      source: 'cache-missing-parent-refresh',
+      cacheAgeMs: cached.cacheAgeMs,
+    });
   }
 
   try {

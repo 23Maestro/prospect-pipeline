@@ -406,11 +406,11 @@ function resolvedMaxPrepsStateRank(context?: ScoutPrepContext): string | null {
 function buildMaxPrepsSnapshotLine(context?: ScoutPrepContext): string | null {
   const mascot = resolvedMaxPrepsMascot(context);
   const stateRank = resolvedMaxPrepsStateRank(context);
-  if (!mascot || !stateRank) {
+  if (!mascot) {
     return null;
   }
 
-  return `${mascot} • ${stateRank}`;
+  return [mascot, stateRank].filter(Boolean).join(' • ');
 }
 
 function buildSnapshotLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {

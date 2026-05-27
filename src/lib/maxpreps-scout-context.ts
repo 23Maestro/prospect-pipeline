@@ -301,17 +301,17 @@ async function searchMaxPrepsUrls(input: MaxPrepsScoutContextInput): Promise<str
 }
 
 async function findMaxPrepsUrls(input: MaxPrepsScoutContextInput): Promise<string[]> {
+  const searchUrls = await searchMaxPrepsUrls(input);
   const directUrl = normalizeMaxPrepsTeamUrl(input.maxPrepsUrl);
-  if (directUrl) {
-    return [directUrl];
-  }
-
-  return searchMaxPrepsUrls(input);
+  return Array.from(new Set([...searchUrls, ...(directUrl ? [directUrl] : [])]));
 }
 
 export function parseMaxPrepsTeamHtml(html: string, url: string): MaxPrepsScoutContext | null {
   const $ = cheerio.load(html);
-  const description = clean($('meta[name="description"]').attr('content'));
+  const description = clean($('meta[name="description"]').attr('content')).replace(
+    /&#x27;|&#39;|&apos;/gi,
+    "'",
+  );
   const mascotMatch = description.match(/See the\s+(.+?)'s/i);
   const mascot = clean(mascotMatch?.[1]);
   const stateRankBlock = $('h4')
@@ -322,13 +322,13 @@ export function parseMaxPrepsTeamHtml(html: string, url: string): MaxPrepsScoutC
     ? compactWhitespace($(stateRankBlock).next().text()).replace(/^#/, '')
     : '';
 
-  if (!mascot || !stateRankLabel || !stateRankValue) {
+  if (!mascot) {
     return null;
   }
 
   return {
     mascot,
-    state_rank: `${stateRankLabel} ${stateRankValue}`,
+    state_rank: stateRankLabel && stateRankValue ? `${stateRankLabel} ${stateRankValue}` : '',
     url,
   };
 }

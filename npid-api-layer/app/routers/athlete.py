@@ -119,8 +119,8 @@ async def resolve_athlete_for_scout_prep(
     """
     Resolve Scout Prep identity/context without jersey-number logic.
 
-    This route intentionally does not parse jersey fields, call athletic seasons,
-    or let missing jersey data invalidate useful Scout Prep context.
+    This route intentionally does not parse jersey fields or let missing
+    athletic-season data invalidate useful Scout Prep context.
     """
     session = get_session(request)
     translator = LegacyTranslator()
@@ -200,6 +200,28 @@ async def resolve_athlete_for_scout_prep(
                 )
         except Exception as e:
             logger.warning("⚠️ Scout Prep athleteinfo enrichment failed: %s", e)
+
+    if athlete_id and athlete_main_id and not profile_data.get("positions"):
+        sport_alias = translator.normalize_sport_alias(profile_data.get("sport"))
+        if sport_alias:
+            try:
+                seasons_endpoint, seasons_params = translator.athletic_seasons_to_legacy(
+                    str(athlete_id),
+                    str(athlete_main_id),
+                    sport_alias,
+                )
+                seasons_response = await session.get(seasons_endpoint, params=seasons_params)
+                seasons_details = translator.parse_athletic_seasons_details(seasons_response.text or "")
+                if seasons_details.get("positions"):
+                    profile_data["positions"] = seasons_details["positions"]
+                logger.info(
+                    "📋 Scout Prep athletic seasons positions: athlete_id=%s status=%s positions=%s",
+                    athlete_id,
+                    seasons_response.status_code,
+                    profile_data.get("positions"),
+                )
+            except Exception as e:
+                logger.warning("⚠️ Scout Prep positions enrichment failed: %s", e)
 
     if athlete_id and athlete_main_id:
         await persist_athlete_main_id(athlete_id, athlete_main_id)

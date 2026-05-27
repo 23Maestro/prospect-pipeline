@@ -55,6 +55,89 @@ class ScoutPrepResolveTests(unittest.TestCase):
         self.assertEqual(merged["parent1"]["relationship"], "Parent")
         self.assertEqual(merged["parent1"]["phone"], "(425) 770-6400")
 
+    def test_athleteinfo_parser_uses_profile_header_as_student_name_source(self):
+        html = """
+        <html>
+          <body>
+            <h4>Wyatt Harrison <a class="profilelink" href="/athlete/profile/1494473"></a></h4>
+            <input name="first_name" value="Wyatt" />
+            <input name="last_name" value="Harri" />
+            <input name="phone" value="(903) 372-4551" />
+            <input name="GUARDIAN[1158530][athlete_guardian_id]" value="1158530" />
+            <input name="GUARDIAN[1158530][parentsno]" value="parent1" />
+            <input name="GUARDIAN[1158530][first_name]" value="Danielle" />
+            <input name="GUARDIAN[1158530][last_name]" value="Harrison" />
+            <input name="GUARDIAN[1158530][relationship]" value="Mom" />
+            <input name="GUARDIAN[1158530][phone]" value="(903) 372-4551" />
+            <input name="GUARDIAN[1158530][email]" value="mrs.harrison1122@gmail.com" />
+          </body>
+        </html>
+        """
+
+        parsed = LegacyTranslator.parse_athleteinfo_response(html)
+        merged = LegacyTranslator.merge_contact_data("1494473", parsed, [])
+
+        self.assertEqual(merged["student_athlete"]["name"], "Wyatt Harrison")
+        self.assertEqual(merged["parent1"]["name"], "Danielle Harrison")
+
+    def test_athleteinfo_parser_header_student_name_overrides_different_input_name(self):
+        html = """
+        <html>
+          <body>
+            <h4>Wyatt Harrison <a class="profilelink" href="/athlete/profile/1494473"></a></h4>
+            <input name="first_name" value="Wrong" />
+            <input name="last_name" value="Input" />
+            <input name="phone" value="(903) 372-4551" />
+          </body>
+        </html>
+        """
+
+        parsed = LegacyTranslator.parse_athleteinfo_response(html)
+        merged = LegacyTranslator.merge_contact_data("1494473", parsed, [])
+
+        self.assertEqual(merged["student_athlete"]["name"], "Wyatt Harrison")
+
+    def test_athletic_seasons_parser_reads_only_positions_from_junior_details(self):
+        html = """
+        <html>
+          <body>
+            <div id="detailsjunior0">
+              <div class="col-md-12">
+                <div class="col-md-3 col-xs-7">Positions</div>
+                <div class="col-md-9 col-xs-5">QB-P</div>
+              </div>
+              <div class="col-md-12">
+                <div class="col-md-3 col-xs-7">Jersey #</div>
+                <div class="col-md-9 col-xs-5">10</div>
+              </div>
+            </div>
+          </body>
+        </html>
+        """
+
+        parsed = LegacyTranslator.parse_athletic_seasons_details(html)
+
+        self.assertEqual(parsed["positions"], "QB-P")
+        self.assertNotIn("jersey_number", parsed)
+
+    def test_athletic_seasons_parser_returns_none_when_positions_missing(self):
+        html = """
+        <html>
+          <body>
+            <div id="detailsjunior0">
+              <div class="col-md-12">
+                <div class="col-md-3 col-xs-7">Jersey #</div>
+                <div class="col-md-9 col-xs-5">10</div>
+              </div>
+            </div>
+          </body>
+        </html>
+        """
+
+        parsed = LegacyTranslator.parse_athletic_seasons_details(html)
+
+        self.assertIsNone(parsed["positions"])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2,7 +2,7 @@ import { Cache, LocalStorage } from '@raycast/api';
 import type { ScoutPortalTask, ScoutPrepContext } from '../features/scout-prep/types';
 import type { ContactInfo } from './npid-mcp-adapter';
 
-const CACHE_VERSION = 3;
+const CACHE_VERSION = 4;
 const MEASURABLES_TTL_MS = 24 * 60 * 60 * 1000;
 const CONTACT_INFO_TTL_MS = 24 * 60 * 60 * 1000;
 const MAXPREPS_CONTEXT_TTL_MS = 7 * 24 * 60 * 60 * 1000;

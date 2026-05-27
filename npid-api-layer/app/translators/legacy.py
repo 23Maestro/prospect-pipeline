@@ -1934,13 +1934,39 @@ class LegacyTranslator:
                     return option
             return None
 
+        def split_full_name(full_name: Optional[str]) -> Tuple[Optional[str], Optional[str]]:
+            cleaned = re.sub(r'\s+', ' ', str(full_name or '')).strip()
+            if not cleaned:
+                return None, None
+            parts = cleaned.split(' ', 1)
+            if len(parts) == 1:
+                return parts[0], None
+            return parts[0], parts[1]
+
+        def get_profile_header_name() -> Optional[str]:
+            for heading in tree.css('h4'):
+                profile_link = heading.css_first('a.profilelink[href^="/athlete/profile/"]')
+                if not profile_link:
+                    continue
+                text = re.sub(r'\s+', ' ', heading.text(separator=' ', strip=True)).strip()
+                if text:
+                    return text
+            return None
+
         # Extract student data
+        profile_header_name = get_profile_header_name()
+        header_first, header_last = split_full_name(profile_header_name)
         student = {
-            "firstName": get_input_value('first_name'),
-            "lastName": get_input_value('last_name'),
+            "firstName": header_first or get_input_value('first_name'),
+            "lastName": header_last or get_input_value('last_name'),
             "phone": get_input_value('phone'),
             "email": get_input_value('email')
         }
+        if header_first or header_last:
+            logger.info(
+                "🧭 Parsed student name from athlete profile header: %s",
+                profile_header_name,
+            )
 
         # Extract guardian data using GUARDIAN[ID][field] pattern
         guardian_inputs = tree.css('input[name^="GUARDIAN["]')
@@ -1976,7 +2002,7 @@ class LegacyTranslator:
             if has_guardian_value:
                 valid_guardians.append((guardian_id, guardian_data))
 
-        logger.info(f"🔍 DEBUG: Valid guardians (with relationship): {len(valid_guardians)}")
+        logger.info(f"🔍 DEBUG: Valid guardians (with contact values): {len(valid_guardians)}")
 
         # Convert valid guardians to parent1/parent2
         parent1 = None
@@ -3963,6 +3989,40 @@ class LegacyTranslator:
                 })
 
         return {"jersey_number": None, "attempts": attempts, "failure_reason": "js_rendered_not_in_raw_html"}
+
+    @staticmethod
+    def parse_athletic_seasons_details(html_response: str) -> Dict[str, Any]:
+        """
+        Parse Scout Prep-safe position details from athletic seasons HTML.
+
+        This intentionally returns only positions so Scout Prep can use the
+        athletic season details source without reintroducing jersey behavior.
+        """
+        soup = BeautifulSoup(html_response or "", "html.parser")
+        grade_order = ["senior", "junior", "sophomore", "freshman"]
+        positions = None
+
+        for grade in grade_order:
+            containers = soup.select(f'div[id^="details{grade}"]')
+            for container in sorted(containers, key=lambda node: node.get("id") or ""):
+                value_node = container.select_one("div.col-md-3.col-xs-7:-soup-contains('Positions')")
+                if not value_node:
+                    continue
+                row = value_node.find_parent("div", class_="col-md-12")
+                candidate = ""
+                if row:
+                    cols = row.select("div")
+                    if len(cols) >= 2:
+                        candidate = cols[1].get_text(" ", strip=True)
+                positions = LegacyTranslator._clean_positions(candidate)
+                if positions:
+                    break
+            if positions:
+                break
+
+        return {
+            "positions": positions,
+        }
 
     @staticmethod
     def athlete_transactions_to_legacy(contact_id: str, athlete_main_id: str) -> Tuple[str, Dict[str, Any]]:

@@ -12,7 +12,13 @@ import {
   setCachedScoutPrepMeasurables,
   setCachedScoutPrepMaxPrepsContext,
 } from './scout-prep-cache.js';
-import { buildScoutPrepDetailMarkdown, buildScoutPrepValues } from './scout-prep.js';
+import {
+  buildScoutPrepDetailMarkdown,
+  buildScoutPrepValues,
+  isScoutPrepContactCacheUsable,
+  isScoutPrepContextCacheUsableForDisplay,
+  resolveScoutPrepContactLookupIds,
+} from './scout-prep.js';
 import type { ContactInfo } from './npid-mcp-adapter.js';
 import type { ScoutPortalTask, ScoutPrepContext } from '../features/scout-prep/types.js';
 
@@ -140,7 +146,7 @@ test('scout prep cache: stale entry stays readable but marked stale', async () =
   const staleIso = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
   const storage = createStorage({
     'scout-prep:measurables:1489285': JSON.stringify({
-      version: 3,
+      version: 4,
       cachedAt: staleIso,
       data: { height: `6'2"`, weight: '320 lbs' },
     }),
@@ -178,6 +184,47 @@ test('scout prep cache: contact round-trip works', async () => {
   assert.ok(cached);
   assert.equal(cached.isFresh, true);
   assert.equal(cached.data.parent1?.name, 'Peter Osebe');
+});
+
+test('scout prep contact lookup uses resolved athlete ids over task ids', () => {
+  const ids = resolveScoutPrepContactLookupIds({
+    taskContactId: '1498420',
+    resolvedAthleteId: '1494473',
+    taskAthleteMainId: '953676',
+    resolvedAthleteMainId: '953398',
+  });
+
+  assert.deepEqual(ids, {
+    contactId: '1494473',
+    athleteMainId: '953398',
+  });
+});
+
+test('scout prep contact cache is not usable without parent1', () => {
+  assert.equal(isScoutPrepContactCacheUsable(buildContactInfo()), true);
+  assert.equal(
+    isScoutPrepContactCacheUsable({
+      ...buildContactInfo(),
+      parent1: null,
+    }),
+    false,
+  );
+});
+
+test('scout prep display context cache is not usable when positions are missing', () => {
+  const context = buildScoutPrepContext(buildScoutPrepTask());
+  assert.equal(isScoutPrepContextCacheUsableForDisplay(context), true);
+
+  assert.equal(
+    isScoutPrepContextCacheUsableForDisplay({
+      ...context,
+      resolved: {
+        ...context.resolved,
+        positions: null,
+      },
+    }),
+    false,
+  );
 });
 
 test('scout prep cache: maxpreps context round-trip normalizes lookup key', async () => {
@@ -283,6 +330,7 @@ test('scout prep cache: cached context remains renderable', async () => {
 
   assert.match(markdown, /August Nyakeoga|Jance Mercado/);
   assert.match(markdown, /Football/);
+  assert.match(markdown, /- \*\*Position:\*\* OLB/);
 });
 
 test('scout prep cache: daily call block counts round down and never go negative', async () => {

@@ -46,7 +46,9 @@ test('architecture docs pin the domain/adapters/persistence contract', () => {
     'source_owner and owner_proof are persistence outputs',
     'Outreach wording is domain-owned',
     'Scout Prep, Head Scout Schedules, and View Set Meetings share one command/data pipeline',
-  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ].forEach((phrase) =>
+    assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
+  );
 
   assert.doesNotMatch(doc, /vercel/i);
   assert.doesNotMatch(doc, new RegExp('net' + 'lify migration', 'i'));
@@ -72,7 +74,9 @@ test('architecture smoke checklist covers the manual cross-system proof path', (
     'Confirm Scout Openings still lists Jeffrey/Luther/Ryan/James open slots.',
     'Confirm Head Scout calendar owner IDs still match legacy behavior.',
     'Confirm FastAPI legacy adapter routes still return expected data.',
-  ].forEach((phrase) => assert.match(checklist, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ].forEach((phrase) =>
+    assert.match(checklist, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
+  );
 });
 
 test('active-operator fallbacks are sourced from owner config/domain in command pipeline code', () => {
@@ -119,7 +123,10 @@ test('confirmation text actions auto-prefix booked meeting titles', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   assert.match(headScoutSchedules, /getConfirmationAppointmentPrefix/);
   assert.match(headScoutSchedules, /variant === 'confirmation_2' \? '\(ACF\*2\)' : '\(ACF\)'/);
-  assert.match(headScoutSchedules, /updateBookedMeetingTitlePrefix\(\{\s*eventId:\s*candidate\.bookedMeeting\.event_id,[\s\S]*?prefix:\s*getConfirmationAppointmentPrefix\(variant\),/);
+  assert.match(
+    headScoutSchedules,
+    /updateBookedMeetingTitlePrefix\(\{\s*eventId:\s*candidate\.bookedMeeting\.event_id,[\s\S]*?prefix:\s*getConfirmationAppointmentPrefix\(variant\),/,
+  );
 });
 
 test('adapter files preserve legacy names and delegate domain meaning', () => {
@@ -154,14 +161,28 @@ test('post-call task completion carries selected stage into lifecycle tracking',
 });
 
 test('Supabase reporting views materialize only domain facts or explicit compatibility proof', () => {
-  const migration = readRepoFile('supabase/migrations/20260502011000_call_tracker_active_operator_materialization_gate.sql');
+  const migration = readRepoFile(
+    'supabase/migrations/20260502011000_call_tracker_active_operator_materialization_gate.sql',
+  );
 
-  assert.match(migration, /A real Prospect ID event is not automatically an active-operator dashboard fact/i);
-  assert.match(migration, /payload_json->'materialization_proof'->>'materialization_status'\s*=\s*'operator_task'/);
-  assert.match(migration, /legacy_compatibility_proof'\s*=\s*'weekly_operator_task_assigned_owner'/);
+  assert.match(
+    migration,
+    /A real Prospect ID event is not automatically an active-operator dashboard fact/i,
+  );
+  assert.match(
+    migration,
+    /payload_json->'materialization_proof'->>'materialization_status'\s*=\s*'operator_task'/,
+  );
+  assert.match(
+    migration,
+    /legacy_compatibility_proof'\s*=\s*'weekly_operator_task_assigned_owner'/,
+  );
   assert.match(migration, /cae\.payload_json->>'materialization_status'\s*=\s*'operator_task'/);
   assert.match(migration, /nullif\(cae\.owner_proof, ''\) is not null/);
-  assert.doesNotMatch(migration, /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\)/);
+  assert.doesNotMatch(
+    migration,
+    /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\)/,
+  );
 });
 
 test('Scout Prep Supabase source of truth keeps action-time writes separate from audit jobs', () => {
@@ -179,14 +200,24 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
     'Do not add new script-local lifecycle translation helpers',
     'src/domain/supabase-lifecycle-translator.ts',
     'src/lib/supabase-lifecycle.ts',
-  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ].forEach((phrase) =>
+    assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
+  );
 
-  const reconcileSalesStages = readRepoFile('scripts/reconcile-current-sales-stages-to-supabase.mjs');
+  const reconcileSalesStages = readRepoFile(
+    'scripts/reconcile-current-sales-stages-to-supabase.mjs',
+  );
   assert.match(reconcileSalesStages, /Audit\/reconcile job only/);
-  assert.match(reconcileSalesStages, /Raycast Scout Prep actions write Laravel and Supabase at action time/);
+  assert.match(
+    reconcileSalesStages,
+    /Raycast Scout Prep actions write Laravel and Supabase at action time/,
+  );
 
   const syncCurrentPipeline = readRepoFile('scripts/sync-current-pipeline-to-supabase.mjs');
-  assert.match(syncCurrentPipeline, /Audit\/reconcile job only for external\/manual current pipeline drift/);
+  assert.match(
+    syncCurrentPipeline,
+    /Audit\/reconcile job only for external\/manual current pipeline drift/,
+  );
 
   const backsync = readRepoFile('scripts/backsync-lifecycle-call-activity-events.mjs');
   assert.match(backsync, /Legacy repair job only/);
@@ -227,7 +258,21 @@ test('Scout Prep client message and lifecycle flowcharts pin the current resolve
     'StudentAthleteMessageResolver',
     'plus lifecycle state is the natural gate',
     'Ambiguous message matches are flagged for review',
-  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ].forEach((phrase) =>
+    assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
+  );
+});
+
+test('Client Messages launches Scout Prep against the all-task bucket', () => {
+  const clientMessages = readRepoFile('src/client-message-inbox.tsx');
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+
+  assert.match(clientMessages, /name: 'scout-prep'/);
+  assert.match(clientMessages, /initialFilter: 'all'/);
+  assert.match(clientMessages, /searchText: athleteName/);
+  assert.match(scoutPrep, /resolveInitialTaskListFilter\(launchContext\?\.initialFilter\)/);
+  assert.match(scoutPrep, /const \[taskSearchText, setTaskSearchText\]/);
+  assert.match(scoutPrep, /viewMode === 'tasks'\s*\?\s*taskSearchText/);
 });
 
 test('Scout Prep pipeline cleanup contract defines when active clients end', () => {
@@ -252,12 +297,16 @@ test('Scout Prep pipeline cleanup contract defines when active clients end', () 
     'is only for confirmation message prep',
     'when reconciliation deletes `athlete_pipeline_state`',
     'the active pipeline row and active contact-cache rows end together',
-  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+  ].forEach((phrase) =>
+    assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
+  );
 });
 
 test('Prospect Web architecture docs keep hosting adapter scope separate from domain meaning', () => {
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
-  const matches = architectureDocs.filter((path) => /prospect web|vercel/i.test(readRepoFile(path)));
+  const matches = architectureDocs.filter((path) =>
+    /prospect web|vercel/i.test(readRepoFile(path)),
+  );
   assert.deepEqual(matches.sort(), [
     'docs/architecture/code-review-boundaries.md',
     'docs/architecture/prospect-web-hosting-adapter.md',
