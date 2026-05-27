@@ -99,7 +99,10 @@ export function VoicemailFollowUpMessageForm(props: {
 export function ConfirmationReminderMessageForm(props: {
   navigationTitle: string;
   defaultVariant: ConfirmationFollowUpVariant;
-  onSubmit: (values: ConfirmationReminderFormValues, mode: ConfirmationSubmitMode) => Promise<void>;
+  onSubmit: (
+    values: ConfirmationReminderFormValues,
+    mode: ConfirmationSubmitMode,
+  ) => Promise<boolean | void>;
 }) {
   const { pop } = useNavigation();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -118,8 +121,8 @@ export function ConfirmationReminderMessageForm(props: {
 
     setIsSubmitting(true);
     try {
-      await props.onSubmit(values, mode);
-      if (mode !== 'copy_message') {
+      const shouldAutoClose = await props.onSubmit(values, mode);
+      if (mode !== 'copy_message' && shouldAutoClose !== false) {
         pop();
       }
     } catch (error) {

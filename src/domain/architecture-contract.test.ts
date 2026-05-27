@@ -208,6 +208,53 @@ test('Scout Prep task ingest seeds missing athlete contact cache without blockin
   assert.ok(seedIndex > setTaskBucketsIndex);
 });
 
+test('Scout Prep client message and lifecycle flowcharts pin the current resolver gap', () => {
+  const doc = readRepoFile('docs/architecture/scout-prep-client-message-lifecycle-flowcharts.md');
+
+  [
+    'Legacy Client Messages Routing',
+    'the contact group was the gate',
+    'Implemented Client Messages Routing',
+    'active `athlete_contact_cache` rows can admit a thread into Client Messages',
+    'ID Clients',
+    'ID Contacts',
+    'Current Lifecycle And Cache Truth',
+    'athlete_pipeline_state current snapshot',
+    'lifecycle_events audit history',
+    'set_meeting_confirmation_cache',
+    'not lifecycle truth',
+    'Target Resolver Shape',
+    'StudentAthleteMessageResolver',
+    'plus lifecycle state is the natural gate',
+    'Ambiguous message matches are flagged for review',
+  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+});
+
+test('Scout Prep pipeline cleanup contract defines when active clients end', () => {
+  const doc = readRepoFile('docs/architecture/scout-prep-pipeline-cleanup-contract.md');
+
+  [
+    'Deleted from the pipeline means: remove the athlete from the active work list.',
+    'It does not mean: erase history.',
+    'if there is still a real next step, keep them',
+    'Actual Meeting - Close Won',
+    'Actual Meeting - Close Lost',
+    'Spoke to - Not Interested',
+    'Spoke to - Too Young',
+    'After a meeting ends, the meeting must get an ending.',
+    'If the result is known, end it now.',
+    'No Show: keep it for up to 7 days',
+    'Follow Up: keep it for up to 7 days',
+    'Reschedule Pending: keep it if there is a future booked meeting',
+    'delete after 21 days',
+    'Canceled: keep it for up to 21 days',
+    'Never Spoke To / Call Attempt 3: delete after 3 days',
+    'is only for confirmation message prep',
+    'when reconciliation deletes `athlete_pipeline_state`',
+    'the active pipeline row and active contact-cache rows end together',
+  ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
+});
+
 test('Prospect Web architecture docs keep hosting adapter scope separate from domain meaning', () => {
   const architectureDocs = listFiles('docs/architecture').filter((path) => path.endsWith('.md'));
   const matches = architectureDocs.filter((path) => /prospect web|vercel/i.test(readRepoFile(path)));

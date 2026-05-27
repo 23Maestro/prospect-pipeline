@@ -134,8 +134,8 @@ function staleActiveStateDecision(args) {
 
   if (lifecycleTextIncludesAny(stageText, ['canceled', 'cancelled']) || row.task_status === 'canceled') {
     return {
-      shouldArchive: eventAge >= 10 || taskAge >= 10,
-      reason: eventAge >= 10 || taskAge >= 10 ? 'stale_canceled_10_days' : 'keep_canceled_under_10_days',
+      shouldArchive: eventAge >= 21 || taskAge >= 21,
+      reason: eventAge >= 21 || taskAge >= 21 ? 'stale_canceled_21_days' : 'keep_canceled_under_21_days',
     };
   }
 
@@ -149,9 +149,9 @@ function staleActiveStateDecision(args) {
   if (stageText.includes('rescheduled') || stageText.includes('res pending') || stageText.includes('reschedule pending')) {
     const hasFutureBookedMeeting = parseLooseDate(bookedMeeting?.start)?.getTime() > Date.now();
     return {
-      shouldArchive: !hasFutureBookedMeeting && (eventAge >= 7 || taskAge >= 7),
-      reason: !hasFutureBookedMeeting && (eventAge >= 7 || taskAge >= 7)
-        ? 'stale_reschedule_7_days_without_future_meeting'
+      shouldArchive: !hasFutureBookedMeeting && (eventAge >= 21 || taskAge >= 21),
+      reason: !hasFutureBookedMeeting && (eventAge >= 21 || taskAge >= 21)
+        ? 'stale_reschedule_21_days_without_future_meeting'
         : 'keep_reschedule_pending',
     };
   }
@@ -762,6 +762,12 @@ await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, postMeetingOutcomeFacts);
 
 for (const deletion of stateDeletes) {
   await supabaseDelete('athlete_pipeline_state', 'athlete_key', deletion.athleteKey);
+  await supabasePatch('athlete_contact_cache', 'athlete_key', deletion.athleteKey, {
+    cache_status: 'inactive',
+    inactive_reason: deletion.reason,
+    inactive_at: now,
+    updated_at: now,
+  });
 }
 
 console.log(

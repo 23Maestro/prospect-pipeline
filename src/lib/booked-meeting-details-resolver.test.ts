@@ -141,6 +141,20 @@ test('falls back to booked event description when popup fetch fails', async () =
   assert.equal(result?.title, 'Jonathan Van Roekel Football 2027 IA');
 });
 
+test('uses cached meeting description when Laravel drops popup and eventlist details', async () => {
+  const result = await resolveBookedMeetingDetailsForForm(
+    {
+      initialBookedMeeting: bookedMeeting({ description: '' }),
+    },
+    {
+      fetchBookedMeetingDetails: async () => details({ description: '' }),
+      getCachedMeetingDescription: async () => 'Cached RSP meeting description',
+    },
+  );
+
+  assert.equal(result?.description, 'Cached RSP meeting description');
+});
+
 test('returns null when no booked meeting can be resolved', async () => {
   const result: ResolvedBookedMeetingDetails | null = await resolveBookedMeetingDetailsForForm(
     {

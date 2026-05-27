@@ -456,6 +456,17 @@ test('Set Meetings reschedule actions pass the booked meeting into Scout Prep po
   assert.match(actionPanel, /initialStageLabel="Meeting Result - Rescheduled"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
 });
 
+test('Scout Prep Reschedule Pending caches booked meeting description before Laravel stage update', () => {
+  const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
+  const postCallFlow = commandSource.slice(
+    commandSource.indexOf('async function handleSubmit'),
+    commandSource.indexOf('const salesStageResult = await updateSalesStage({'),
+  );
+
+  assert.match(postCallFlow, /cacheMeetingDescriptionForReschedulePending\(\{/);
+  assert.match(postCallFlow, /isReschedulePendingStage\(stageLabel\)/);
+});
+
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
   const postCallFlow = commandSource.slice(

@@ -95,12 +95,14 @@ import {
 import { buildPostCallActionPlan } from './domain/post-call-action';
 import {
   classifyMeetingSetStage,
+  classifyPostMeetingOutcomeStage,
   isConfirmedRescheduleSchedulingStage,
   needsPostCallMeetingSchedulingFields,
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './domain/sales-stage-contract';
 import {
   isConfirmationCallTask,
+  getTopmostIncompleteTask,
   getVoicemailLifecycleStageLabel,
   getVoicemailLifecycleTaskTitle,
   resolveVoicemailLifecycleTaskForCompletion,
@@ -120,6 +122,10 @@ import {
   selectCurrentBookedMeeting,
   type ResolvedBookedMeetingDetails,
 } from './lib/booked-meeting-details-resolver';
+import {
+  cacheBookedMeetingDescription,
+  getCachedBookedMeetingDescription,
+} from './lib/booked-meeting-description-cache';
 import {
   resolveVoicemailFollowUpVariant,
   type VoicemailFollowUpVariant,
@@ -606,8 +612,32 @@ function isConfirmedRescheduleMeetingStage(stageLabel?: string | null): boolean 
   return isConfirmedRescheduleSchedulingStage(String(stageLabel || ''));
 }
 
+function isReschedulePendingStage(stageLabel?: string | null): boolean {
+  return classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome === 'resolution_pending';
+}
+
 function needsMeetingSchedulingFields(stageLabel?: string | null): boolean {
   return needsPostCallMeetingSchedulingFields(String(stageLabel || ''));
+}
+
+async function cacheMeetingDescriptionForReschedulePending(args: {
+  athleteId: string;
+  athleteMainId: string;
+  initialBookedMeeting?: BookedMeetingEvent | null;
+}): Promise<void> {
+  const resolved = await resolveBookedMeetingDetailsForForm({
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    initialBookedMeeting: args.initialBookedMeeting || null,
+  });
+  if (!resolved?.description) return;
+
+  await cacheBookedMeetingDescription({
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    eventId: resolved.openEventId || resolved.bookedMeeting.event_id,
+    description: resolved.description,
+  });
 }
 
 function getTaskDisplayTitle(
@@ -618,6 +648,100 @@ function getTaskDisplayTitle(
     String(task?.description || '').trim() ||
     'Untitled Task'
   );
+}
+
+function isReschedulePendingTask(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): boolean {
+  const title = stripMoveThisTaskPrefix(task?.title) || String(task?.title || '').trim();
+  const normalizedTitle = title.toLowerCase();
+  return (
+    /^\s*\(rsp\)/i.test(String(task?.title || '')) ||
+    normalizedTitle.includes('reschedule pending') ||
+    normalizedTitle.includes('rescheduled pending') ||
+    normalizedTitle.includes('rescheduled') ||
+    normalizedTitle.includes('res pending') ||
+    normalizedTitle.includes('res. pending')
+  );
+}
+
+function isConfirmationCallTaskTitle(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): boolean {
+  const title = stripMoveThisTaskPrefix(task?.title) || String(task?.title || '').trim();
+  return title.toLowerCase().includes('confirmation call');
+}
+
+function isFollowUpTaskTitle(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): boolean {
+  const title = stripMoveThisTaskPrefix(task?.title) || String(task?.title || '').trim();
+  const normalizedTitle = title.toLowerCase();
+  return normalizedTitle.includes('follow up') || normalizedTitle.includes('follow-up');
+}
+
+function canCompleteTaskFromActionPanel(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): boolean {
+  return (
+    isConfirmationCallTaskTitle(task) ||
+    isReschedulePendingTask(task) ||
+    isFollowUpTaskTitle(task)
+  );
+}
+
+function resolveDirectCompletionTask(
+  task: ScoutPortalTask,
+  context?: ScoutPrepContext | null,
+): ScoutAthleteTask | null {
+  const selectedTaskId = String(task.task_id || '').trim();
+  if (selectedTaskId) {
+    return {
+      task_id: selectedTaskId,
+      title: task.title || null,
+      assigned_owner: task.assigned_owner || null,
+      due_date: task.due_date || null,
+      completion_date: task.completion_date || null,
+      description: task.description || task.title || null,
+    };
+  }
+
+  return (
+    getTopmostIncompleteTask((context?.tasks || []).filter(canCompleteTaskFromActionPanel)) || null
+  );
+}
+
+async function completeScoutPrepTaskDirectly(args: {
+  task: ScoutPortalTask;
+  context?: ScoutPrepContext | null;
+}): Promise<ScoutAthleteTask> {
+  const selectedTask = resolveDirectCompletionTask(args.task, args.context);
+  if (!selectedTask?.task_id) {
+    throw new Error('No incomplete task found');
+  }
+
+  const athleteId = String(args.task.contact_id || args.context?.task.contact_id || '').trim();
+  const athleteMainId = String(
+    args.context?.resolved.athlete_main_id || args.task.athlete_main_id || '',
+  ).trim();
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing task IDs');
+  }
+
+  const taskTitle = getTaskDisplayTitle(selectedTask);
+  await completeScoutPrepTaskAfterVoicemail({
+    athleteId,
+    athleteMainId,
+    athleteName:
+      args.context?.contactInfo.studentAthlete.name || args.task.athlete_name || athleteId,
+    contactTask: athleteId,
+    taskId: selectedTask.task_id,
+    taskTitle,
+    assignedOwner: selectedTask.assigned_owner || args.task.assigned_owner,
+    description: selectedTask.description || taskTitle,
+  });
+
+  return selectedTask;
 }
 
 async function completeSentTextTask(args: {
@@ -2498,11 +2622,16 @@ export function PostCallUpdateForm({
         const athleteMainId = String(
           task.athlete_main_id || context.resolved.athlete_main_id || '',
         ).trim();
-        const resolvedBookedMeeting = await resolveBookedMeetingDetailsForForm({
-          athleteId,
-          athleteMainId,
-          initialBookedMeeting,
-        });
+        const resolvedBookedMeeting = await resolveBookedMeetingDetailsForForm(
+          {
+            athleteId,
+            athleteMainId,
+            initialBookedMeeting,
+          },
+          {
+            getCachedMeetingDescription: getCachedBookedMeetingDescription,
+          },
+        );
         const bookedMeeting = resolvedBookedMeeting?.bookedMeeting || null;
         if (!active) {
           return;
@@ -2816,6 +2945,28 @@ export function PostCallUpdateForm({
         meetingSet: meetingSetInput,
       });
 
+      if (isReschedulePendingStage(stageLabel)) {
+        try {
+          await cacheMeetingDescriptionForReschedulePending({
+            athleteId,
+            athleteMainId,
+            initialBookedMeeting,
+          });
+        } catch (error) {
+          logFailure(
+            'SCOUT_PREP_RSP_MEETING_DESCRIPTION_CACHE',
+            'best-effort',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              stageLabel,
+              appointmentId: initialBookedMeeting?.event_id || null,
+            },
+          );
+        }
+      }
+
       const salesStageResult = await updateSalesStage({
         athleteMainId,
         athleteId,
@@ -3124,10 +3275,12 @@ function ScoutPrepDetail({
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
   const [metadata, setMetadata] = useState<any>(undefined);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCompletingTask, setIsCompletingTask] = useState(false);
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadScoutPrepContext>> | null>(
     null,
   );
   const highSchoolCopyLabel = buildHighSchoolCopyLabel(context);
+  const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
 
   async function returnToRootListAndCloseDetail() {
     await onReturnToRootList?.();
@@ -3445,6 +3598,37 @@ function ScoutPrepDetail({
     }
   }
 
+  async function handleCompleteTask() {
+    if (isCompletingTask) return;
+
+    setIsCompletingTask(true);
+    const toast = await showLoadingToast('Completing', getTaskDisplayTitle(task));
+    try {
+      const needsContext = !task.task_id || !task.athlete_main_id;
+      let activeContext = context;
+      if (!activeContext && needsContext) {
+        activeContext = await loadLiveScoutPrepContextForDetail();
+        setContext(activeContext);
+      }
+      const completedTask = await completeScoutPrepTaskDirectly({
+        task,
+        context: activeContext,
+      });
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: 'Completed',
+        message: getTaskDisplayTitle(completedTask),
+        onReturnToRootList: returnToRootListAndCloseDetail,
+      });
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Complete failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      setIsCompletingTask(false);
+    }
+  }
+
   async function handleSyncCallPrepToNotion() {
     if (isLoading || /^Loading scout prep/i.test(markdown.trim())) {
       await showToast({
@@ -3713,6 +3897,14 @@ function ScoutPrepDetail({
               shortcut={{ modifiers: ['cmd'], key: 's' }}
               onAction={() => void handleSetConfirmationMorning()}
             />
+            {showDirectCompleteAction ? (
+              <Action
+                title={isCompletingTask ? 'Completing…' : 'Complete Task'}
+                icon="✅"
+                shortcut={{ modifiers: ['cmd'], key: 'j' }}
+                onAction={() => void handleCompleteTask()}
+              />
+            ) : null}
             <Action.Push
               title="Update Task"
               icon="✏️"
@@ -3841,6 +4033,7 @@ function ScoutPrepTaskItem({
   onReturnToRootList: () => void;
 }) {
   const { push, pop } = useNavigation();
+  const [isCompletingTask, setIsCompletingTask] = useState(false);
 
   async function returnToRootListAndCloseCurrentView() {
     await onReturnToRootList();
@@ -3861,6 +4054,30 @@ function ScoutPrepTaskItem({
       toast.title = failureTitle;
       toast.message = error instanceof Error ? error.message : 'Unknown error';
       return null;
+    }
+  }
+
+  async function handleCompleteTask() {
+    if (isCompletingTask) return;
+
+    setIsCompletingTask(true);
+    const toast = await showLoadingToast('Completing', getTaskDisplayTitle(task));
+    try {
+      const needsContext = !task.task_id || !task.athlete_main_id;
+      const context = needsContext ? await loadScoutPrepContext(task) : null;
+      const completedTask = await completeScoutPrepTaskDirectly({ task, context });
+      await completeScoutPrepMutationSuccess({
+        toast,
+        title: 'Completed',
+        message: getTaskDisplayTitle(completedTask),
+        onReturnToRootList,
+      });
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Complete failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      setIsCompletingTask(false);
     }
   }
 
@@ -4005,6 +4222,7 @@ function ScoutPrepTaskItem({
   }
 
   const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
+  const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
 
   return (
     <List.Item
@@ -4057,6 +4275,14 @@ function ScoutPrepTaskItem({
               shortcut={{ modifiers: ['cmd'], key: 's' }}
               onAction={() => void handleSetConfirmationMorning()}
             />
+            {showDirectCompleteAction ? (
+              <Action
+                title={isCompletingTask ? 'Completing…' : 'Complete Task'}
+                icon="✅"
+                shortcut={{ modifiers: ['cmd'], key: 'j' }}
+                onAction={() => void handleCompleteTask()}
+              />
+            ) : null}
             <Action.Push
               title="Update Task"
               icon="✏️"

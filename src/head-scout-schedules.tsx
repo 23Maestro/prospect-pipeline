@@ -72,7 +72,12 @@ import {
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
-import { fetchScoutPortalTasks, loadScoutPrepContext } from './lib/scout-prep';
+import { sendClientMessage } from './lib/client-message-sandbox';
+import {
+  completeScoutPrepTaskAfterVoicemail,
+  fetchScoutPortalTasks,
+  loadScoutPrepContext,
+} from './lib/scout-prep';
 import {
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
@@ -201,6 +206,129 @@ function getConfirmationAppointmentPrefix(
   variant: ConfirmationFollowUpVariant,
 ): AppointmentTitlePrefix {
   return variant === 'confirmation_2' ? '(ACF*2)' : '(ACF)';
+}
+
+async function completeCandidateConfirmationTask(candidate: HeadScoutFollowUpCandidate) {
+  const taskId = String(candidate.taskId || '').trim();
+  if (!taskId) {
+    throw new Error('Missing confirmation task');
+  }
+
+  const taskTitle = String(
+    candidate.followUpTask?.title || candidate.currentTask || 'Confirmation Call',
+  ).trim();
+
+  await completeScoutPrepTaskAfterVoicemail({
+    athleteId: candidate.athleteId,
+    athleteMainId: candidate.athleteMainId,
+    athleteName: candidate.athleteName,
+    contactTask: candidate.athleteId,
+    taskId,
+    taskTitle,
+    assignedOwner: candidate.followUpTask?.assignedOwner || null,
+    description: candidate.followUpTask?.description || taskTitle,
+  });
+}
+
+function Confirmation2SendForm({
+  candidate,
+  recipientNames,
+  phones,
+  message,
+  onComplete,
+}: {
+  candidate: HeadScoutFollowUpCandidate;
+  recipientNames: string[];
+  phones: string[];
+  message: string;
+  onComplete: () => void | Promise<void>;
+}) {
+  const { pop } = useNavigation();
+  const contactOptions = phones.map((phone, index) => ({
+    id: `${index}:${phone}`,
+    name: recipientNames[index] || recipientNames[0] || candidate.athleteName,
+    phone,
+  }));
+  const [contactId, setContactId] = useState(contactOptions[0]?.id || '');
+  const [draftMessage, setDraftMessage] = useState(message);
+  const [isSending, setIsSending] = useState(false);
+
+  async function handleSend() {
+    if (isSending) return;
+
+    const selectedContact =
+      contactOptions.find((contact) => contact.id === contactId) || contactOptions[0];
+    if (!selectedContact?.phone) {
+      await showToast({ style: Toast.Style.Failure, title: 'No phone' });
+      return;
+    }
+
+    setIsSending(true);
+    try {
+      const result = await sendClientMessage({
+        address: selectedContact.phone,
+        text: draftMessage,
+        serviceName: 'iMessage',
+      });
+      if (result !== 'Success') {
+        throw new Error(result);
+      }
+
+      const toast = await showLoadingToast('Completing', 'Confirmation Call');
+      try {
+        await completeCandidateConfirmationTask(candidate);
+        toast.hide();
+      } catch (error) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Sent, task not completed';
+        toast.message = error instanceof Error ? error.message : String(error);
+        return;
+      }
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'Sent',
+        message: 'Task completed',
+      });
+      await onComplete();
+      pop();
+      pop();
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Send failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  return (
+    <Form
+      navigationTitle={`Confirmation 2 • ${candidate.athleteName}`}
+      isLoading={isSending}
+      actions={
+        <ActionPanel>
+          <Action
+            title={isSending ? 'Sending…' : 'Send Message'}
+            onAction={() => void handleSend()}
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Dropdown id="contactId" title="Client" value={contactId} onChange={setContactId}>
+        {contactOptions.map((contact) => (
+          <Form.Dropdown.Item
+            key={contact.id}
+            value={contact.id}
+            title={`${contact.name} • ${contact.phone}`}
+          />
+        ))}
+      </Form.Dropdown>
+      <Form.TextArea id="message" title="Message" value={draftMessage} onChange={setDraftMessage} />
+    </Form>
+  );
 }
 
 function MeetingDetailsForm({
@@ -586,6 +714,7 @@ export function HeadScoutBookingsList({
   weekOffset = 0,
   weeklyMeetingsOnly = false,
 }: HeadScoutBookingsListProps) {
+  const { push } = useNavigation();
   const [candidates, setCandidates] = useState<HeadScoutFollowUpCandidate[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [sendingTextKey, setSendingTextKey] = useState<string | null>(null);
@@ -810,6 +939,20 @@ export function HeadScoutBookingsList({
           eventDate,
           prefix: getConfirmationAppointmentPrefix(variant),
         });
+      }
+
+      if (variant === 'confirmation_2') {
+        push(
+          <Confirmation2SendForm
+            candidate={candidate}
+            recipientNames={reminderRecipient.recipientNames}
+            phones={reminderRecipient.phones}
+            message={prepared.message}
+            onComplete={refreshLive}
+          />,
+        );
+        toast.hide();
+        return false;
       }
 
       let composeMode: 'draft' | 'clipboard-fallback' = 'draft';

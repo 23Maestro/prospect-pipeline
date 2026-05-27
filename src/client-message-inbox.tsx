@@ -275,7 +275,7 @@ export default function ClientMessageInboxCommand() {
     const { options, immediateOption } = resolveClientReminderTarget({
       isGroup: chat.is_group,
       matchedPhones: chat.matchedPhones,
-      associatedClients: [],
+      associatedClients: chat.clientMatch.associatedClients || [],
       fallbackContact: {
         id: 'matchedContact',
         label: 'Contact',
@@ -345,7 +345,7 @@ export default function ClientMessageInboxCommand() {
     const { options, immediateOption } = resolveClientReminderTarget({
       isGroup: chat.is_group,
       matchedPhones: chat.matchedPhones,
-      associatedClients: [],
+      associatedClients: chat.clientMatch.associatedClients || [],
       fallbackContact: {
         id: 'matchedContact',
         label: 'Contact',
@@ -438,6 +438,9 @@ export default function ClientMessageInboxCommand() {
           title={chat.displayName}
           subtitle={chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus || ''}
           accessories={[
+            ...(chat.clientMatch.ambiguity === 'multiple_athletes'
+              ? [{ tag: { value: 'Review', color: Color.Red } }]
+              : []),
             ...(chat.clientMatch.athleteName
               ? [
                   {

@@ -24,6 +24,11 @@ export type ResolvedBookedMeetingDetails = {
 type ResolverDependencies = {
   fetchAthleteBookedMeetings?: typeof fetchAthleteBookedMeetings;
   fetchBookedMeetingDetails?: typeof fetchBookedMeetingDetails;
+  getCachedMeetingDescription?: (args: {
+    athleteId: string;
+    athleteMainId: string;
+    eventId: string;
+  }) => Promise<string | null>;
 };
 
 export function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string | null {
@@ -75,10 +80,11 @@ function buildResolvedMeetingDetails(args: {
   formData?: BookedMeetingDetailsResponse['form_data'];
 }): ResolvedBookedMeetingDetails {
   const formData = normalizeFormData(args.formData);
+  const formDescription = firstValue(formData, ['taskdescription', 'task_description']);
   return {
     bookedMeeting: args.bookedMeeting,
     title: args.title,
-    description: args.description,
+    description: args.description || formDescription,
     eventDate: args.eventDate,
     formData,
     meetingName: firstValue(formData, ['tasktitle']) || args.title || null,
@@ -129,12 +135,24 @@ export async function resolveBookedMeetingDetailsForForm(
 
   const eventDate = getBookedMeetingEventDate(bookedMeeting);
   const fallbackDescription = String(bookedMeeting.description || '').trim() || null;
+  const getCachedDescription = async () => {
+    if (!dependencies.getCachedMeetingDescription || !bookedMeeting.event_id) return null;
+    return (
+      String(
+        (await dependencies.getCachedMeetingDescription({
+          athleteId,
+          athleteMainId,
+          eventId: bookedMeeting.event_id,
+        })) || '',
+      ).trim() || null
+    );
+  };
 
   if (!bookedMeeting.event_id || !eventDate) {
     return buildResolvedMeetingDetails({
       bookedMeeting,
       title: String(bookedMeeting.title || '').trim(),
-      description: fallbackDescription,
+      description: fallbackDescription || (await getCachedDescription()),
       eventDate,
     });
   }
@@ -147,7 +165,10 @@ export async function resolveBookedMeetingDetailsForForm(
     return buildResolvedMeetingDetails({
       bookedMeeting,
       title: String(details.title || bookedMeeting.title || '').trim(),
-      description: String(details.description || '').trim() || fallbackDescription,
+      description:
+        String(details.description || '').trim() ||
+        fallbackDescription ||
+        (await getCachedDescription()),
       eventDate,
       formData: details.form_data,
     });
@@ -155,7 +176,7 @@ export async function resolveBookedMeetingDetailsForForm(
     return buildResolvedMeetingDetails({
       bookedMeeting,
       title: String(bookedMeeting.title || '').trim(),
-      description: fallbackDescription,
+      description: fallbackDescription || (await getCachedDescription()),
       eventDate,
     });
   }

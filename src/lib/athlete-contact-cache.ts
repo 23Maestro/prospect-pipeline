@@ -10,6 +10,7 @@ import {
 import {
   hasAthleteContactCacheRows,
   patchAthleteContactCacheRowsForAthlete,
+  readRows,
   upsertAthleteContactCacheRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
@@ -23,6 +24,40 @@ type Preferences = {
   supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
   supabaseSchema?: string;
+};
+
+export type AthleteContactCacheClientMatch = {
+  athleteKey: string;
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string;
+  contactId: string | null;
+  contactName: string;
+  relationshipLabel: string;
+  phone: string;
+  normalizedPhone: string;
+  crmStage: string | null;
+  taskStatus: string | null;
+  currentTaskTitle: string | null;
+};
+
+type AthleteContactCacheReadRow = {
+  athlete_key?: string | null;
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  athlete_name?: string | null;
+  contact_id?: string | null;
+  contact_name?: string | null;
+  relationship_label?: string | null;
+  phone?: string | null;
+  normalized_phone?: string | null;
+};
+
+type AthletePipelineStateReadRow = {
+  athlete_key?: string | null;
+  crm_stage?: string | null;
+  task_status?: string | null;
+  current_task_title?: string | null;
 };
 
 function readEnvFile(filePath: string): Record<string, string> {
@@ -96,6 +131,123 @@ function logPlanSkipped(plan: AthleteContactCacheSyncPlan) {
   searchLogger.info('ATHLETE_CONTACT_CACHE_SKIPPED', {
     feature: 'athlete-contact-cache',
     reason: plan.reason,
+  });
+}
+
+function uniqueNormalizedPhones(phones: string[]): string[] {
+  return Array.from(
+    new Set(
+      phones
+        .map((phone) => String(phone || '').replace(/\D/g, ''))
+        .map((phone) => (phone.length === 11 && phone.startsWith('1') ? phone.slice(1) : phone))
+        .filter((phone) => phone.length === 10),
+    ),
+  );
+}
+
+function postgrestInList(values: string[]): string {
+  return `(${values.map((value) => `"${value.replace(/"/g, '')}"`).join(',')})`;
+}
+
+async function readActiveContactCacheRowsForPhones(
+  config: SupabasePersistenceConfig,
+  phones: string[],
+): Promise<AthleteContactCacheReadRow[]> {
+  if (!phones.length) return [];
+  const matchedRows = await readRows<AthleteContactCacheReadRow>(
+    config,
+    'athlete_contact_cache',
+    [
+      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,normalized_phone',
+      'cache_status=eq.active',
+      `normalized_phone=in.${postgrestInList(phones)}`,
+      'order=last_seen_at.desc',
+    ].join('&'),
+  );
+
+  const athleteKeys = Array.from(
+    new Set(matchedRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
+  );
+  if (!athleteKeys.length) return matchedRows;
+
+  return readRows<AthleteContactCacheReadRow>(
+    config,
+    'athlete_contact_cache',
+    [
+      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,normalized_phone',
+      'cache_status=eq.active',
+      `athlete_key=in.${postgrestInList(athleteKeys)}`,
+      'order=last_seen_at.desc',
+    ].join('&'),
+  );
+}
+
+async function readPipelineStateByAthleteKey(
+  config: SupabasePersistenceConfig,
+  athleteKeys: string[],
+): Promise<Map<string, AthletePipelineStateReadRow>> {
+  if (!athleteKeys.length) return new Map();
+  const rows = await readRows<AthletePipelineStateReadRow>(
+    config,
+    'athlete_pipeline_state',
+    [
+      'select=athlete_key,crm_stage,task_status,current_task_title',
+      `athlete_key=in.${postgrestInList(athleteKeys)}`,
+    ].join('&'),
+  );
+  return new Map(rows.map((row) => [String(row.athlete_key || '').trim(), row]));
+}
+
+export async function lookupActiveAthleteContactCacheForPhones(
+  rawPhones: string[],
+): Promise<AthleteContactCacheClientMatch[]> {
+  const phones = uniqueNormalizedPhones(rawPhones);
+  if (!phones.length) return [];
+
+  const config = getSupabaseConfig();
+  if (!config) return [];
+
+  const cacheRows = await readActiveContactCacheRowsForPhones(config, phones);
+  const athleteKeys = Array.from(
+    new Set(cacheRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
+  );
+  const pipelineStateByKey = await readPipelineStateByAthleteKey(config, athleteKeys);
+
+  return cacheRows.flatMap((row) => {
+    const athleteKey = String(row.athlete_key || '').trim();
+    const athleteId = String(row.athlete_id || '').trim();
+    const athleteMainId = String(row.athlete_main_id || '').trim();
+    const athleteName = String(row.athlete_name || '').trim();
+    const contactName = String(row.contact_name || '').trim();
+    const normalizedPhone = String(row.normalized_phone || '').trim();
+    if (
+      !athleteKey ||
+      !athleteId ||
+      !athleteMainId ||
+      !athleteName ||
+      !contactName ||
+      !normalizedPhone
+    ) {
+      return [];
+    }
+
+    const pipelineState = pipelineStateByKey.get(athleteKey);
+    return [
+      {
+        athleteKey,
+        athleteId,
+        athleteMainId,
+        athleteName,
+        contactId: String(row.contact_id || '').trim() || null,
+        contactName,
+        relationshipLabel: String(row.relationship_label || '').trim() || 'Contact',
+        phone: String(row.phone || '').trim() || normalizedPhone,
+        normalizedPhone,
+        crmStage: String(pipelineState?.crm_stage || '').trim() || null,
+        taskStatus: String(pipelineState?.task_status || '').trim() || null,
+        currentTaskTitle: String(pipelineState?.current_task_title || '').trim() || null,
+      } satisfies AthleteContactCacheClientMatch,
+    ];
   });
 }
 

@@ -7,6 +7,11 @@ import { fetchContactsInGroup } from 'swift:../../swift/contacts';
 
 import { apiFetch } from './fastapi-client';
 import { fetchContactInfo, type ContactInfo } from './npid-mcp-adapter';
+import {
+  resolveStudentAthleteMessagesForPhones,
+  type StudentAthleteMessageAssociatedContact,
+  type StudentAthleteMessageResolution,
+} from './student-athlete-message-resolver';
 
 const DB_PATH = resolve(homedir(), 'Library/Messages/chat.db');
 const CLIENT_CONTACT_GROUP_CANDIDATES = ['ID Clients', 'ID Contacts'];
@@ -17,8 +22,8 @@ type Contact = {
   id: string;
   givenName: string;
   familyName: string;
-  phoneNumbers: { number: string; countryCode: string | null }[];
-  imageData: string | null;
+  phoneNumbers: { number: string; countryCode?: string | null }[];
+  imageData?: unknown;
 };
 
 export type ClientSegment = 'client' | 'pending';
@@ -28,6 +33,8 @@ type ContactSearchResult = {
   athleteMainId?: string | null;
   name?: string | null;
 };
+
+export type ClientDirectoryAssociatedContact = StudentAthleteMessageAssociatedContact;
 
 export type ClientDirectoryMatch = {
   normalizedPhone: string;
@@ -39,7 +46,9 @@ export type ClientDirectoryMatch = {
   currentTaskTitle?: string | null;
   contactId?: string | null;
   athleteMainId?: string | null;
-  source: 'contacts' | 'backend' | 'merged';
+  associatedClients?: ClientDirectoryAssociatedContact[];
+  ambiguity?: 'none' | 'multiple_athletes';
+  source: 'contacts' | 'backend' | 'contact_cache' | 'merged';
 };
 
 export type ClientInboxChat = {
@@ -239,9 +248,35 @@ function mergeMatch(
     currentTaskTitle: existing.currentTaskTitle || incoming.currentTaskTitle,
     contactId: existing.contactId || incoming.contactId,
     athleteMainId: existing.athleteMainId || incoming.athleteMainId,
+    associatedClients: mergeAssociatedContacts(
+      existing.associatedClients,
+      incoming.associatedClients,
+    ),
+    ambiguity:
+      existing.ambiguity === 'multiple_athletes' || incoming.ambiguity === 'multiple_athletes'
+        ? 'multiple_athletes'
+        : existing.ambiguity || incoming.ambiguity,
     segment: existing.segment === 'client' || incoming.segment === 'client' ? 'client' : 'pending',
     source: existing.source === incoming.source ? existing.source : 'merged',
   };
+}
+
+function mergeAssociatedContacts(
+  existing?: ClientDirectoryAssociatedContact[],
+  incoming?: ClientDirectoryAssociatedContact[],
+): ClientDirectoryAssociatedContact[] | undefined {
+  const merged = [...(existing || []), ...(incoming || [])].filter(
+    (contact) => contact.normalizedPhoneNumber,
+  );
+  if (!merged.length) return undefined;
+  return Array.from(
+    new Map(
+      merged.map((contact) => [
+        `${contact.role}:${contact.normalizedPhoneNumber}`,
+        contact,
+      ]),
+    ).values(),
+  );
 }
 
 type CachedClientIdentity = {
@@ -388,6 +423,31 @@ async function resolveBackendMatchForContact(args: {
   return null;
 }
 
+function mergeContactCacheMatches(
+  matchesByPhone: Map<string, ClientDirectoryMatch>,
+  resolutions: StudentAthleteMessageResolution[],
+) {
+  for (const resolution of resolutions) {
+    matchesByPhone.set(
+      resolution.normalizedPhone,
+      mergeMatch(matchesByPhone.get(resolution.normalizedPhone), {
+        normalizedPhone: resolution.normalizedPhone,
+        displayName: resolution.displayName,
+        athleteName: resolution.athleteName,
+        segment: 'client',
+        crmStage: resolution.crmStage,
+        taskStatus: resolution.taskStatus,
+        currentTaskTitle: resolution.currentTaskTitle,
+        contactId: resolution.contactId,
+        athleteMainId: resolution.athleteMainId,
+        associatedClients: resolution.associatedContacts,
+        ambiguity: resolution.ambiguity,
+        source: 'contact_cache',
+      }),
+    );
+  }
+}
+
 export async function loadClientDirectory(chats: SQLChat[] = []) {
   const groupContacts = await (async () => {
     for (const groupName of CLIENT_CONTACT_GROUP_CANDIDATES) {
@@ -401,6 +461,12 @@ export async function loadClientDirectory(chats: SQLChat[] = []) {
 
   const matchesByPhone = new Map<string, ClientDirectoryMatch>();
   const contactsByPhone = new Map<string, Contact>();
+  const chatPhones = Array.from(new Set(chats.flatMap((chat) => getChatParticipantPhones(chat))));
+  const contactCacheResolutions = await resolveStudentAthleteMessagesForPhones(chatPhones).catch(
+    () => [] as StudentAthleteMessageResolution[],
+  );
+
+  mergeContactCacheMatches(matchesByPhone, contactCacheResolutions);
 
   for (const contact of groupContacts) {
     for (const phone of contact.phoneNumbers) {
