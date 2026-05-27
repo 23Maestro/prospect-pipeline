@@ -4,11 +4,15 @@ import {
   Color,
   Detail,
   Form,
+  KeyEquivalent,
+  LaunchProps,
+  LaunchType,
   List,
   Toast,
   Clipboard,
   open,
   clearSearchBar,
+  launchCommand,
   showToast,
   useNavigation,
 } from '@raycast/api';
@@ -20,6 +24,7 @@ import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { exportDailyCallBlocks, type TaskCounts } from './daily-call-blocks';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
 import { VoicemailFollowUpMessageForm } from './components/follow-up-message-forms';
+import type { VoicemailRescheduleSlotOption } from './components/follow-up-message-forms';
 import { HeadScoutSchedulesRoot } from './head-scout-schedules';
 import type {
   MeetingSetSubmitResponse,
@@ -112,9 +117,14 @@ import { searchLogger } from './lib/logger';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
+  fetchHeadScoutSlots,
   fetchOpenMeetings,
+  filterVisibleHeadScoutSlots,
+  formatHeadScoutSlotForTimezone,
   HEAD_SCOUT_ORDER,
+  resolveAthleteTimezone,
   type BookedMeetingEvent,
+  type HeadScoutSlot,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
 import {
@@ -167,6 +177,14 @@ import {
 
 const FEATURE = 'scout-prep';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const CONTACT_CHOICE_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3'];
+
+type ScoutPrepLaunchContext = {
+  searchText?: string;
+  athleteName?: string | null;
+  contactId?: string | null;
+  athleteMainId?: string | null;
+};
 const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
   AL: 'Alabama',
   AK: 'Alaska',
@@ -613,7 +631,9 @@ function isConfirmedRescheduleMeetingStage(stageLabel?: string | null): boolean 
 }
 
 function isReschedulePendingStage(stageLabel?: string | null): boolean {
-  return classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome === 'resolution_pending';
+  return (
+    classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome === 'resolution_pending'
+  );
 }
 
 function needsMeetingSchedulingFields(stageLabel?: string | null): boolean {
@@ -684,9 +704,7 @@ function canCompleteTaskFromActionPanel(
   task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
 ): boolean {
   return (
-    isConfirmationCallTaskTitle(task) ||
-    isReschedulePendingTask(task) ||
-    isFollowUpTaskTitle(task)
+    isConfirmationCallTaskTitle(task) || isReschedulePendingTask(task) || isFollowUpTaskTitle(task)
   );
 }
 
@@ -707,7 +725,11 @@ function resolveDirectCompletionTask(
   }
 
   return (
-    getTopmostIncompleteTask((context?.tasks || []).filter(canCompleteTaskFromActionPanel)) || null
+    getTopmostIncompleteTask(
+      (context?.tasks || []).filter((candidate): candidate is ScoutAthleteTask =>
+        canCompleteTaskFromActionPanel(candidate),
+      ),
+    ) || null
   );
 }
 
@@ -774,6 +796,10 @@ async function completeSentTextTask(args: {
     assignedOwner: matchedTask.assigned_owner,
     description: matchedTask.description || getTaskDisplayTitle(matchedTask),
   });
+}
+
+function isTaskOnlyVoicemailVariant(variant: VoicemailFollowUpVariant): boolean {
+  return variant === 'no_show' || variant === 'reschedule_1' || variant === 'reschedule_2';
 }
 
 function SupabaseLifecycleStatusAction() {
@@ -859,7 +885,7 @@ async function persistVoicemailFollowUpMessageSent(args: {
   previousCrmStage?: string | null;
   previousTaskStatus?: string | null;
 }) {
-  if (args.variant === 'send_cal_link' || args.variant === 'no_show') {
+  if (args.variant === 'send_cal_link' || isTaskOnlyVoicemailVariant(args.variant)) {
     return;
   }
 
@@ -1275,7 +1301,69 @@ function ScoutPrepContactDetail({
 type VoicemailFollowUpFormValues = {
   recipientId?: string;
   variant?: VoicemailFollowUpVariant;
+  rescheduleSlot1Id?: string;
+  rescheduleSlot2Id?: string;
 };
+
+type RescheduleVoicemailSlotOption = VoicemailRescheduleSlotOption & {
+  scoutName: string;
+  messageLabel: string;
+};
+
+function normalizeNameKey(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^coach\s+/i, '')
+    .replace(/\s+/g, ' ');
+}
+
+function selectPreviousHeadScoutName(
+  events: BookedMeetingEvent[] = [],
+  context?: ScoutPrepContext | null,
+): string | null {
+  const sorted = [...events]
+    .filter((event) => String(event.assigned_owner || '').trim())
+    .sort((left, right) => String(right.start || '').localeCompare(String(left.start || '')));
+  return (
+    String(sorted[0]?.assigned_owner || '').trim() ||
+    String(context?.resolved.head_scout || '').trim() ||
+    null
+  );
+}
+
+function buildRescheduleVoicemailSlotOptions(args: {
+  slots: Array<HeadScoutSlot & { scout_name: string }>;
+  athleteTimezone?: string | null;
+  previousHeadScoutName?: string | null;
+}): RescheduleVoicemailSlotOption[] {
+  const previousKey = normalizeNameKey(args.previousHeadScoutName);
+  const visibleSlots = filterVisibleHeadScoutSlots(args.slots);
+  const matchedSlots = previousKey
+    ? visibleSlots.filter((slot) => normalizeNameKey(slot.scout_name) === previousKey)
+    : [];
+  const slots = matchedSlots.length ? matchedSlots : visibleSlots;
+
+  return slots.map((slot) => {
+    const display = formatHeadScoutSlotForTimezone(slot.start, slot.end, args.athleteTimezone);
+    const messageLabel = `${display.dateLabel} ${buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel)}`;
+    return {
+      id: slot.id,
+      title: `${slot.scout_name}: ${messageLabel}`,
+      subtitle: slot.scout_name,
+      scoutName: slot.scout_name,
+      messageLabel,
+    };
+  });
+}
+
+function buildRescheduleSlotStartLabel(timeRangeLabel: string, zoneLabel: string): string {
+  const [startRaw, rest = ''] = timeRangeLabel.split(/\s+-\s+/, 2);
+  const period = rest.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
+  const zone = zoneLabel || rest.match(/\b[A-Z]{2,4}\b$/)?.[0] || '';
+  const start = String(startRaw || '').trim();
+  return [start, period, zone].filter(Boolean).join(' ');
+}
 
 type MessageContactOption = {
   id: string;
@@ -1691,10 +1779,79 @@ function VoicemailFollowUpRecipientForm({
     crmStage,
     currentTask: currentTask || task.title || null,
   });
+  const [previousHeadScoutName, setPreviousHeadScoutName] = useState<string | null>(
+    String(context.resolved.head_scout || '').trim() || null,
+  );
+  const [rescheduleSlotOptions, setRescheduleSlotOptions] = useState<
+    RescheduleVoicemailSlotOption[]
+  >([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    const athleteId = String(task.contact_id || context.task.contact_id || '').trim();
+    const athleteMainId = String(
+      context.resolved.athlete_main_id || task.athlete_main_id || '',
+    ).trim();
+    const athleteTimezone = resolveAthleteTimezone(context.resolved.city, context.resolved.state);
+
+    async function loadRescheduleSlots() {
+      const [meetingResult, slotsResult] = await Promise.allSettled([
+        athleteId && athleteMainId
+          ? fetchAthleteBookedMeetings({ athleteId, athleteMainId })
+          : Promise.resolve(null),
+        fetchHeadScoutSlots(0),
+      ]);
+      if (!isMounted) return;
+
+      const events =
+        meetingResult.status === 'fulfilled' && meetingResult.value
+          ? meetingResult.value.events || []
+          : [];
+      const nextHeadScoutName = selectPreviousHeadScoutName(events, context);
+      const schedules = slotsResult.status === 'fulfilled' ? slotsResult.value.scouts || [] : [];
+      const slots = schedules.flatMap((schedule) =>
+        (schedule.slots || []).map((slot) => ({
+          ...slot,
+          scout_name: slot.scout_name || schedule.scout_name,
+        })),
+      );
+      setPreviousHeadScoutName(nextHeadScoutName);
+      setRescheduleSlotOptions(
+        buildRescheduleVoicemailSlotOptions({
+          slots,
+          athleteTimezone,
+          previousHeadScoutName: nextHeadScoutName,
+        }),
+      );
+    }
+
+    void loadRescheduleSlots().catch((error) => {
+      logFailure(
+        'SCOUT_PREP_RESCHEDULE_VOICEMAIL_SLOTS',
+        'load',
+        error instanceof Error ? error.message : String(error),
+        { contactId: athleteId, athleteMainId },
+      );
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [
+    context,
+    context.resolved.athlete_main_id,
+    context.resolved.city,
+    context.resolved.state,
+    context.resolved.head_scout,
+    context.task.contact_id,
+    task.athlete_main_id,
+    task.contact_id,
+  ]);
 
   async function openMessagesForRecipient(
     recipient?: (typeof recipients)[number],
     variant?: VoicemailFollowUpVariant,
+    formValues?: VoicemailFollowUpFormValues,
   ) {
     if (!recipient || !recipient.phones.length) {
       await showToast({
@@ -1722,6 +1879,10 @@ function VoicemailFollowUpRecipientForm({
       athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
       sport: context.resolved.sport,
     }).catch(() => null);
+    const selectedRescheduleSlots = [
+      rescheduleSlotOptions.find((slot) => slot.id === formValues?.rescheduleSlot1Id),
+      rescheduleSlotOptions.find((slot) => slot.id === formValues?.rescheduleSlot2Id),
+    ].filter((slot): slot is RescheduleVoicemailSlotOption => Boolean(slot));
 
     const body = buildVoicemailFollowUpBody(
       context,
@@ -1732,6 +1893,13 @@ function VoicemailFollowUpRecipientForm({
       undefined,
       deterministicHonorific || aiHonorific,
       athleteGender,
+      {
+        previousHeadScoutName:
+          selectedRescheduleSlots[0]?.scoutName ||
+          previousHeadScoutName ||
+          context.resolved.head_scout,
+        slots: selectedRescheduleSlots.map((slot) => slot.messageLabel),
+      },
     );
 
     logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
@@ -1772,16 +1940,26 @@ function VoicemailFollowUpRecipientForm({
             onMessageSentLabel={
               selectedVariant === 'no_show'
                 ? 'No sales stage change'
-                : selectedVariant.replace(/_/g, ' ')
+                : selectedVariant === 'reschedule_1' || selectedVariant === 'reschedule_2'
+                  ? 'Task only'
+                  : selectedVariant.replace(/_/g, ' ')
             }
             onMessageSentToastTitle={
-              selectedVariant === 'no_show' ? 'Completing No Show Task' : undefined
+              selectedVariant === 'no_show'
+                ? 'Completing No Show Task'
+                : selectedVariant === 'reschedule_1' || selectedVariant === 'reschedule_2'
+                  ? 'Completing Task'
+                  : undefined
             }
             onMessageSentFailureTitle={
-              selectedVariant === 'no_show' ? 'Sent, task not completed' : undefined
+              selectedVariant === 'no_show' ||
+              selectedVariant === 'reschedule_1' ||
+              selectedVariant === 'reschedule_2'
+                ? 'Sent, task not completed'
+                : undefined
             }
             onMessageSent={
-              selectedVariant === 'no_show'
+              isTaskOnlyVoicemailVariant(selectedVariant)
                 ? async () => {
                     await completeSentTextTask({
                       context,
@@ -1825,7 +2003,7 @@ function VoicemailFollowUpRecipientForm({
         variant: variant || defaultVariant,
       });
       try {
-        if (selectedVariant === 'no_show') {
+        if (isTaskOnlyVoicemailVariant(selectedVariant)) {
           await completeSentTextTask({
             context,
             task,
@@ -1843,16 +2021,15 @@ function VoicemailFollowUpRecipientForm({
       } catch (error) {
         await showToast({
           style: Toast.Style.Failure,
-          title:
-            selectedVariant === 'no_show'
-              ? 'Draft open, task not completed'
-              : 'Draft open, save failed',
+          title: isTaskOnlyVoicemailVariant(selectedVariant)
+            ? 'Draft open, task not completed'
+            : 'Draft open, save failed',
           message: error instanceof Error ? error.message : String(error),
         });
         return;
       }
       await finishFollowUpFlow(
-        selectedVariant === 'no_show' ? 'Completed' : 'Sent',
+        isTaskOnlyVoicemailVariant(selectedVariant) ? 'Completed' : 'Sent',
         recipient.name,
       );
     } catch (error) {
@@ -1882,7 +2059,7 @@ function VoicemailFollowUpRecipientForm({
   async function handleSubmit(values: VoicemailFollowUpFormValues) {
     const recipient =
       recipients.find((candidate) => candidate.id === values.recipientId) || recipients[0];
-    await openMessagesForRecipient(recipient, values.variant || defaultVariant);
+    await openMessagesForRecipient(recipient, values.variant || defaultVariant, values);
   }
 
   return (
@@ -1891,10 +2068,13 @@ function VoicemailFollowUpRecipientForm({
       recipients={recipients}
       defaultRecipientId={recipients[0]?.id}
       defaultVariant={defaultVariant}
+      rescheduleSlots={rescheduleSlotOptions}
       onSubmit={async (values) =>
         handleSubmit({
           recipientId: values.recipientId,
           variant: values.variant,
+          rescheduleSlot1Id: values.rescheduleSlot1Id,
+          rescheduleSlot2Id: values.rescheduleSlot2Id,
         })
       }
     />
@@ -2654,7 +2834,8 @@ export function PostCallUpdateForm({
         if (resolvedMeetingFor) {
           setSelectedMeetingFor(resolvedMeetingFor);
         }
-        const resolvedOpenEventId = resolvedBookedMeeting?.openEventId || bookedMeeting?.event_id || '';
+        const resolvedOpenEventId =
+          resolvedBookedMeeting?.openEventId || bookedMeeting?.event_id || '';
         if (resolvedOpenEventId) {
           setSelectedOpenMeetingId(resolvedOpenEventId);
         }
@@ -2733,7 +2914,8 @@ export function PostCallUpdateForm({
     [currentBookedMeeting],
   );
   const selectedBookedMeetingSlot = useMemo(
-    () => buildOpenMeetingSlotFromBookedMeeting(currentBookedMeeting, currentBookedMeetingStartTime),
+    () =>
+      buildOpenMeetingSlotFromBookedMeeting(currentBookedMeeting, currentBookedMeetingStartTime),
     [currentBookedMeeting, currentBookedMeetingStartTime],
   );
   const meetingSlotsForDropdown = useMemo(() => {
@@ -3787,6 +3969,43 @@ function ScoutPrepDetail({
     }
   }
 
+  async function handleOpenClientMessages() {
+    const activeContext =
+      context || (await ensureContext('Messages', task.athlete_name, 'Contact load failed'));
+    if (!activeContext) {
+      return;
+    }
+
+    const contacts = getProspectContactShortcutCandidates(activeContext).slice(0, 3);
+    if (!contacts.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No usable number',
+      });
+      return;
+    }
+
+    if (contacts.length === 1) {
+      await launchClientMessagesForScoutContact({
+        task,
+        context: activeContext,
+        contact: contacts[0],
+      });
+      return;
+    }
+
+    push(
+      <ClientMessageContactChooser
+        task={task}
+        context={activeContext}
+        contacts={contacts}
+        onSelect={(contact) =>
+          void launchClientMessagesForScoutContact({ task, context: activeContext, contact })
+        }
+      />,
+    );
+  }
+
   useEffect(() => {
     let active = true;
 
@@ -3865,6 +4084,12 @@ function ScoutPrepDetail({
             title="Voicemail Follow-Up"
             icon="💬"
             onAction={() => void handleVoicemailFollowUp()}
+          />
+          <Action
+            title="Open Client Messages"
+            icon="💬"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
+            onAction={() => void handleOpenClientMessages()}
           />
           <ActionPanel.Section title="Workflow">
             <Action
@@ -4009,6 +4234,74 @@ function ScoutPrepDetail({
       }
     />
   );
+}
+
+function ClientMessageContactChooser({
+  task,
+  context,
+  contacts,
+  onSelect,
+}: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+  contacts: ProspectContactShortcutCandidate[];
+  onSelect: (contact: ProspectContactShortcutCandidate) => void;
+}) {
+  return (
+    <List navigationTitle={`Client Messages • ${task.athlete_name}`}>
+      <List.Section title="Contact">
+        {contacts.map((contact, index) => {
+          const shortcutKey = CONTACT_CHOICE_SHORTCUT_KEYS[index];
+          return (
+            <List.Item
+              key={`${contact.id}:${contact.phone}`}
+              icon="💬"
+              title={`${index + 1}. ${contact.label} / ${contact.name}`}
+              subtitle={contact.phone}
+              accessories={[
+                {
+                  tag: {
+                    value:
+                      contact.id === 'studentAthlete'
+                        ? context.contactInfo.studentAthlete.name || task.athlete_name
+                        : contact.label,
+                    color: contact.id === 'studentAthlete' ? Color.Blue : Color.SecondaryText,
+                  },
+                },
+              ]}
+              actions={
+                <ActionPanel>
+                  <Action
+                    title="Open Client Messages"
+                    icon="💬"
+                    shortcut={shortcutKey ? { modifiers: [], key: shortcutKey } : undefined}
+                    onAction={() => onSelect(contact)}
+                  />
+                </ActionPanel>
+              }
+            />
+          );
+        })}
+      </List.Section>
+    </List>
+  );
+}
+
+async function launchClientMessagesForScoutContact(args: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+  contact: ProspectContactShortcutCandidate;
+}) {
+  await launchCommand({
+    name: 'client-message-inbox',
+    type: LaunchType.UserInitiated,
+    context: {
+      searchText: args.contact.name,
+      athleteName: args.context.contactInfo.studentAthlete.name || args.task.athlete_name,
+      contactName: args.contact.name,
+      normalizedPhone: args.contact.phone.replace(/\D/g, ''),
+    },
+  });
 }
 
 function ScoutPrepTaskItem({
@@ -4221,6 +4514,43 @@ function ScoutPrepTaskItem({
     }
   }
 
+  async function openClientMessagesForContact(
+    context: ScoutPrepContext,
+    contact: ProspectContactShortcutCandidate,
+  ) {
+    await launchClientMessagesForScoutContact({ task, context, contact });
+  }
+
+  async function handleOpenClientMessages() {
+    const context = await ensureTaskContext('Messages', 'Contact load failed');
+    if (!context) {
+      return;
+    }
+
+    const contacts = getProspectContactShortcutCandidates(context).slice(0, 3);
+    if (!contacts.length) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No usable number',
+      });
+      return;
+    }
+
+    if (contacts.length === 1) {
+      await openClientMessagesForContact(context, contacts[0]);
+      return;
+    }
+
+    push(
+      <ClientMessageContactChooser
+        task={task}
+        context={context}
+        contacts={contacts}
+        onSelect={(contact) => void openClientMessagesForContact(context, contact)}
+      />,
+    );
+  }
+
   const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
   const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
 
@@ -4247,6 +4577,12 @@ function ScoutPrepTaskItem({
             title="Voicemail Follow-Up"
             icon="💬"
             onAction={() => void handleVoicemailFollowUp()}
+          />
+          <Action
+            title="Open Client Messages"
+            icon="💬"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'm' }}
+            onAction={() => void handleOpenClientMessages()}
           />
           <ActionPanel.Section title="Workflow">
             <Action
@@ -4708,7 +5044,12 @@ function RecentProfileListItem({
   );
 }
 
-export default function ScoutPrepCommand() {
+export default function ScoutPrepCommand(
+  props?: Partial<LaunchProps<{ launchContext: ScoutPrepLaunchContext }>>,
+) {
+  const initialTaskSearchText = String(
+    props?.launchContext?.searchText || props?.launchContext?.athleteName || '',
+  ).trim();
   const [taskBuckets, setTaskBuckets] = useState<Record<ScoutTaskRange, ScoutPortalTask[]>>({
     todayPastDue: [],
     all: [],
@@ -4719,6 +5060,7 @@ export default function ScoutPrepCommand() {
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>('todayPastDue');
   const [taskListSort, setTaskListSort] = useState<TaskListSort>(null);
+  const [taskSearchText, setTaskSearchText] = useState(initialTaskSearchText);
   const [prospectSearchMode, setProspectSearchMode] = useState<ProspectSearchMode>('athlete');
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
@@ -5153,6 +5495,7 @@ export default function ScoutPrepCommand() {
     setTaskListFilter('todayPastDue');
     setTaskListSort(null);
     setSelectedTaskItemId(undefined);
+    setTaskSearchText('');
     setProspectSearchText('');
     setProspectResults([]);
     setIsProspectSearching(false);
@@ -5204,8 +5547,20 @@ export default function ScoutPrepCommand() {
                 : 'Prospect Search — Enter athlete name or email'
               : 'Search Task List'
       }
-      searchText={viewMode === 'prospect' ? prospectSearchText : undefined}
-      onSearchTextChange={viewMode === 'prospect' ? setProspectSearchText : undefined}
+      searchText={
+        viewMode === 'prospect'
+          ? prospectSearchText
+          : viewMode === 'tasks'
+            ? taskSearchText
+            : undefined
+      }
+      onSearchTextChange={
+        viewMode === 'prospect'
+          ? setProspectSearchText
+          : viewMode === 'tasks'
+            ? setTaskSearchText
+            : undefined
+      }
       selectedItemId={viewMode === 'tasks' ? selectedTaskItemId : undefined}
     >
       {viewMode === 'personalFollowUps' ? (

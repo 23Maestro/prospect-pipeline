@@ -34,13 +34,13 @@ flowchart TD
   C --> D["Lookup active athlete_contact_cache rows"]
   D --> E["StudentAthleteMessageResolver"]
   E --> F["Load current athlete_pipeline_state labels"]
-  F --> G["Merge macOS ID Clients / ID Contacts matches"]
-  G --> H["Optional backend parent-name enrichment for contact-group rows"]
-  H --> I["Render inbox rows"]
+  F --> G{"Active contact-cache match?"}
+  G -- "No" --> H["Hide chat"]
+  G -- "Yes" --> I["Render inbox row"]
   I --> J["Open local Raycast thread or Messages UI"]
 ```
 
-Current behavior: active `athlete_contact_cache` rows can admit a thread into Client Messages. The macOS contact groups still help with local contact display and fallback matching, but they are no longer the only inclusion gate.
+Current behavior: active `athlete_contact_cache` rows admit a thread into Client Messages. macOS contact groups are not the filter.
 
 ## Current Lifecycle And Cache Truth
 
@@ -83,12 +83,8 @@ flowchart TD
   B --> C["Normalize phone and athlete identity"]
   C --> D["Lookup athlete_contact_cache active rows"]
   C --> E["Read current lifecycle state"]
-  C --> F["Optional backend contact enrichment"]
-  C --> G["Optional macOS Contacts enrichment"]
   D --> H{"One active athlete match?"}
   E --> H
-  F --> H
-  G --> H
   H -- "Yes" --> I["Resolved student athlete, contact, thread"]
   H -- "Multiple" --> J["Show explicit disambiguation"]
   H -- "None" --> K["Fallback search or save contact"]
@@ -97,7 +93,7 @@ flowchart TD
   I --> N["Open Messages thread"]
 ```
 
-Current behavior: `athlete_contact_cache` plus lifecycle state is the natural gate. macOS Contacts helps display names and local reachability, but it is no longer the source deciding whether a client message belongs in the workflow.
+Current behavior: `athlete_contact_cache` plus lifecycle state is the gate. Other caches do not decide whether a client message belongs in the workflow.
 
 ## Remaining Gaps
 

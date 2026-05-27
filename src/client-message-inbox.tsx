@@ -4,8 +4,11 @@ import {
   Color,
   Form,
   Icon,
+  LaunchProps,
+  LaunchType,
   List,
   Toast,
+  launchCommand,
   popToRoot,
   showHUD,
   showToast,
@@ -33,6 +36,13 @@ import {
 import { openMessagesServiceClientInbox } from './lib/messages-service';
 
 const TAG_COLORS = [Color.Blue, Color.Green, Color.Magenta, Color.Orange, Color.Purple, Color.Red];
+
+type ClientMessageInboxLaunchContext = {
+  searchText?: string;
+  athleteName?: string;
+  contactName?: string;
+  normalizedPhone?: string;
+};
 
 function tagColorFor(value?: string | null): Color {
   const normalized = String(value || '').trim();
@@ -256,8 +266,16 @@ function ClientThread({ chat }: { chat: ClientInboxChat }) {
   );
 }
 
-export default function ClientMessageInboxCommand() {
-  const [searchText, setSearchText] = useState('');
+export default function ClientMessageInboxCommand(
+  props?: Partial<LaunchProps<{ launchContext: ClientMessageInboxLaunchContext }>>,
+) {
+  const initialSearchText = String(
+    props?.launchContext?.searchText ||
+      props?.launchContext?.contactName ||
+      props?.launchContext?.athleteName ||
+      '',
+  ).trim();
+  const [searchText, setSearchText] = useState(initialSearchText);
   const { push } = useNavigation();
   const {
     data: chats,
@@ -424,6 +442,19 @@ export default function ClientMessageInboxCommand() {
     );
   }
 
+  async function handleOpenScoutPrepDetails(chat: ClientInboxChat) {
+    await launchCommand({
+      name: 'scout-prep',
+      type: LaunchType.UserInitiated,
+      context: {
+        searchText: chat.clientMatch.athleteName || chat.displayName,
+        athleteName: chat.clientMatch.athleteName || null,
+        contactId: chat.clientMatch.contactId || null,
+        athleteMainId: chat.clientMatch.athleteMainId || null,
+      },
+    });
+  }
+
   return (
     <List
       navigationTitle="Client Message Inbox"
@@ -468,6 +499,12 @@ export default function ClientMessageInboxCommand() {
                 title="Send Follow-Up"
                 icon={Icon.Airplane}
                 onAction={() => push(<FollowUpDraftForm chat={chat} />)}
+              />
+              <Action
+                title="Open Scout Prep Details"
+                icon={Icon.TextDocument}
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
+                onAction={() => void handleOpenScoutPrepDetails(chat)}
               />
               <Action
                 title="Cal Follow-Up"
@@ -520,8 +557,8 @@ export default function ClientMessageInboxCommand() {
         title="No client chats found"
         description={
           directory?.generatedAt
-            ? `Existing ID Client threads are loaded first. Export enrichment updated ${directory.generatedAt}.`
-            : `No matching ID Client threads found yet. Export path: ${directory?.exportPath || ''}`
+            ? `Contact cache updated ${directory.generatedAt}.`
+            : 'No active contact-cache matches found.'
         }
         actions={
           <ActionPanel>
