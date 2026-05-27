@@ -150,7 +150,10 @@ import {
 } from './lib/athlete-contact-cache';
 import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-confirmation-cache-sync';
 import { sendClientMessage } from './lib/client-message-sandbox';
-import { resolveMaxPrepsScoutContext } from './lib/maxpreps-scout-context';
+import {
+  buildMaxPrepsSearchLabel,
+  resolveMaxPrepsScoutContext,
+} from './lib/maxpreps-scout-context';
 import {
   getCachedScoutPrepContext,
   getCachedScoutPrepMaxPrepsContext,
@@ -344,14 +347,11 @@ function formatStateForHighSchoolCopy(state?: string | null): string | null {
 }
 
 function buildHighSchoolCopyLabel(context?: ScoutPrepContext | null): string | null {
-  const highSchool = String(context?.resolved.high_school || '').trim();
-  if (!highSchool) {
-    return null;
-  }
-
-  const state = formatStateForHighSchoolCopy(context?.resolved.state);
-  const sport = titleCaseWords(context?.resolved.sport);
-  return [highSchool, state, sport ? `${sport} Team` : null].filter(Boolean).join(' ');
+  return buildMaxPrepsSearchLabel({
+    highSchool: context?.resolved.high_school,
+    state: context?.resolved.state,
+    sport: context?.resolved.sport,
+  });
 }
 
 function buildMaxPrepsCacheInput(
@@ -3755,6 +3755,12 @@ function ScoutPrepDetail({
         ...cacheInput,
         city: activeContext.resolved.city,
         state: formatStateForHighSchoolCopy(activeContext.resolved.state),
+        maxPrepsUrl: activeContext.resolved.maxpreps?.url || activeContext.resolved.maxpreps_url,
+        searchLabel: buildMaxPrepsSearchLabel({
+          highSchool: activeContext.resolved.high_school,
+          state: activeContext.resolved.state,
+          sport: activeContext.resolved.sport,
+        }),
       });
       if (!result) {
         toast.style = Toast.Style.Failure;

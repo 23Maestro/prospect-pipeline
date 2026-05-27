@@ -8,6 +8,7 @@ type Input = {
   state: string;
   sport: string;
   maxPrepsUrl?: string;
+  searchLabel?: string;
 };
 
 export const confirmation: Tool.Confirmation<Input> = async (input) => {
@@ -25,6 +26,7 @@ export const confirmation: Tool.Confirmation<Input> = async (input) => {
       { name: 'School', value: input.highSchool },
       { name: 'State', value: input.state },
       { name: 'Sport', value: input.sport },
+      { name: 'Search', value: input.searchLabel || 'School State Sport Team' },
       { name: 'URL', value: input.maxPrepsUrl || 'Search web' },
     ],
   };

@@ -8,6 +8,7 @@ export type MaxPrepsScoutContextInput = {
   state?: string | null;
   sport?: string | null;
   maxPrepsUrl?: string | null;
+  searchLabel?: string | null;
 };
 
 export type MaxPrepsScoutContext = {
@@ -18,6 +19,58 @@ export type MaxPrepsScoutContext = {
 };
 
 const FEATURE = 'maxpreps.scout-context';
+const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
+  AL: 'Alabama',
+  AK: 'Alaska',
+  AZ: 'Arizona',
+  AR: 'Arkansas',
+  CA: 'California',
+  CO: 'Colorado',
+  CT: 'Connecticut',
+  DE: 'Delaware',
+  FL: 'Florida',
+  GA: 'Georgia',
+  HI: 'Hawaii',
+  ID: 'Idaho',
+  IL: 'Illinois',
+  IN: 'Indiana',
+  IA: 'Iowa',
+  KS: 'Kansas',
+  KY: 'Kentucky',
+  LA: 'Louisiana',
+  ME: 'Maine',
+  MD: 'Maryland',
+  MA: 'Massachusetts',
+  MI: 'Michigan',
+  MN: 'Minnesota',
+  MS: 'Mississippi',
+  MO: 'Missouri',
+  MT: 'Montana',
+  NE: 'Nebraska',
+  NV: 'Nevada',
+  NH: 'New Hampshire',
+  NJ: 'New Jersey',
+  NM: 'New Mexico',
+  NY: 'New York',
+  NC: 'North Carolina',
+  ND: 'North Dakota',
+  OH: 'Ohio',
+  OK: 'Oklahoma',
+  OR: 'Oregon',
+  PA: 'Pennsylvania',
+  RI: 'Rhode Island',
+  SC: 'South Carolina',
+  SD: 'South Dakota',
+  TN: 'Tennessee',
+  TX: 'Texas',
+  UT: 'Utah',
+  VT: 'Vermont',
+  VA: 'Virginia',
+  WA: 'Washington',
+  WV: 'West Virginia',
+  WI: 'Wisconsin',
+  WY: 'Wyoming',
+};
 
 function logInfo(
   event: string,
@@ -53,6 +106,44 @@ function compactWhitespace(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function titleCaseWords(value?: string | null): string {
+  return clean(value)
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+}
+
+function cleanSearchLabelPart(value?: string | null): string {
+  return compactWhitespace(String(value || ''));
+}
+
+function formatSearchState(state?: string | null): string | null {
+  const rawState = clean(state);
+  if (!rawState) {
+    return null;
+  }
+
+  const normalized = rawState.toUpperCase();
+  return STATE_NAMES_BY_ABBREVIATION[normalized] || titleCaseWords(rawState);
+}
+
+export function buildMaxPrepsSearchLabel(input: {
+  highSchool?: string | null;
+  state?: string | null;
+  sport?: string | null;
+}): string | null {
+  const highSchool = cleanSearchLabelPart(input.highSchool);
+  if (!highSchool) {
+    return null;
+  }
+
+  const state = cleanSearchLabelPart(formatSearchState(input.state));
+  const sport = cleanSearchLabelPart(titleCaseWords(input.sport));
+  const sportTeam = sport ? (/\bteam$/i.test(sport) ? sport : `${sport} Team`) : null;
+  return [highSchool, state, sportTeam].filter(Boolean).join(' ');
+}
+
 function isMaxPrepsUrl(value: string): boolean {
   try {
     return new URL(value).hostname.replace(/^www\./, '') === 'maxpreps.com';
@@ -69,6 +160,10 @@ function decodeDuckDuckGoUrl(value: string): string | null {
   } catch {
     return value || null;
   }
+}
+
+function isMaxPrepsSeasonSlug(value?: string | null): boolean {
+  return /^(fall|winter|spring|summer)$/i.test(clean(value));
 }
 
 export function normalizeMaxPrepsTeamUrl(value?: string | null): string | null {
@@ -96,11 +191,57 @@ export function normalizeMaxPrepsTeamUrl(value?: string | null): string | null {
     }
   }
 
-  return `https://www.maxpreps.com/${parts.slice(0, 4).join('/')}/`;
+  if (parts.length < 4) {
+    return null;
+  }
+
+  const teamParts = parts.slice(0, 4);
+  if (isMaxPrepsSeasonSlug(parts[4])) {
+    teamParts.push(parts[4]);
+  }
+
+  return `https://www.maxpreps.com/${teamParts.join('/')}/`;
 }
 
-export function extractMaxPrepsUrlFromSearchMarkdown(markdown: string, sport?: string | null) {
-  const preferredSport = clean(sport).toLowerCase();
+export function maxPrepsSportSlugCandidates(sport?: string | null): string[] {
+  const normalized = clean(sport)
+    .toLowerCase()
+    .replace(/[’']/g, '')
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return [];
+  }
+
+  if (/^(mens|men|boys|boy)\s+soccer$/.test(normalized)) {
+    return ['soccer', 'boys-soccer'];
+  }
+
+  if (/^(womens|women|girls|girl)\s+soccer$/.test(normalized)) {
+    return ['soccer', 'girls-soccer'];
+  }
+
+  if (normalized === 'soccer') {
+    return ['soccer', 'boys-soccer', 'girls-soccer'];
+  }
+
+  const slug = normalized
+    .replace(/^(mens|men|womens|women|boys|boy|girls|girl)\s+/, '')
+    .replace(/\s+/g, '-');
+  return Array.from(new Set([slug].filter(Boolean)));
+}
+
+function urlIncludesSportSlug(url: string, slug: string): boolean {
+  try {
+    return new URL(url).pathname.toLowerCase().split('/').filter(Boolean).includes(slug);
+  } catch {
+    return false;
+  }
+}
+
+function extractMaxPrepsUrlsFromSearchMarkdown(markdown: string, sport?: string | null): string[] {
+  const sportSlugs = maxPrepsSportSlugCandidates(sport);
   const urls = Array.from(
     markdown.matchAll(
       /https%3A%2F%2Fwww\.maxpreps\.com%2F[^)&\s]+|https:\/\/www\.maxpreps\.com\/[^)\s]+/gi,
@@ -111,35 +252,29 @@ export function extractMaxPrepsUrlFromSearchMarkdown(markdown: string, sport?: s
     .filter((url): url is string => Boolean(url));
 
   const uniqueUrls = Array.from(new Set(urls));
-  return (
-    uniqueUrls.find((url) =>
-      preferredSport ? url.toLowerCase().includes(`/${preferredSport}/`) : true,
-    ) ||
-    uniqueUrls[0] ||
-    null
+  const preferredUrls = sportSlugs.flatMap((slug) =>
+    uniqueUrls.filter((url) => urlIncludesSportSlug(url, slug)),
   );
+  return Array.from(new Set([...preferredUrls, ...uniqueUrls]));
+}
+
+export function extractMaxPrepsUrlFromSearchMarkdown(markdown: string, sport?: string | null) {
+  return extractMaxPrepsUrlsFromSearchMarkdown(markdown, sport)[0] || null;
 }
 
 function buildSearchQuery(input: MaxPrepsScoutContextInput): string {
-  return [
-    clean(input.highSchool),
-    clean(input.state),
-    clean(input.sport),
-    'Team',
-  ]
-    .filter(Boolean)
-    .join(' ');
-}
-
-async function findMaxPrepsUrl(input: MaxPrepsScoutContextInput): Promise<string | null> {
-  const directUrl = normalizeMaxPrepsTeamUrl(input.maxPrepsUrl);
-  if (directUrl) {
-    return directUrl;
+  const searchLabel = clean(input.searchLabel);
+  if (searchLabel) {
+    return searchLabel;
   }
 
+  return buildMaxPrepsSearchLabel(input) || '';
+}
+
+async function searchMaxPrepsUrls(input: MaxPrepsScoutContextInput): Promise<string[]> {
   const query = buildSearchQuery(input);
   if (!query || !clean(input.highSchool) || !clean(input.state) || !clean(input.sport)) {
-    return null;
+    return [];
   }
 
   const searchUrl = `https://r.jina.ai/http://duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
@@ -156,12 +291,22 @@ async function findMaxPrepsUrl(input: MaxPrepsScoutContextInput): Promise<string
     throw new Error(markdown.slice(0, 200) || `Search HTTP ${response.status}`);
   }
 
-  const url = extractMaxPrepsUrlFromSearchMarkdown(markdown, input.sport);
+  const urls = extractMaxPrepsUrlsFromSearchMarkdown(markdown, input.sport);
   logInfo('MAXPREPS_LOOKUP', 'search', 'success', {
-    found: Boolean(url),
-    url,
+    found: urls.length > 0,
+    url: urls[0] || null,
+    candidates: urls.slice(0, 3),
   });
-  return url;
+  return urls;
+}
+
+async function findMaxPrepsUrls(input: MaxPrepsScoutContextInput): Promise<string[]> {
+  const directUrl = normalizeMaxPrepsTeamUrl(input.maxPrepsUrl);
+  if (directUrl) {
+    return [directUrl];
+  }
+
+  return searchMaxPrepsUrls(input);
 }
 
 export function parseMaxPrepsTeamHtml(html: string, url: string): MaxPrepsScoutContext | null {
@@ -218,11 +363,25 @@ export function parseMaxPrepsRosterHtml(html: string, athleteName?: string | nul
 export async function resolveMaxPrepsScoutContext(
   input: MaxPrepsScoutContextInput,
 ): Promise<MaxPrepsScoutContext | null> {
-  const url = await findMaxPrepsUrl(input);
-  if (!url) {
+  const urls = await findMaxPrepsUrls(input);
+  if (!urls.length) {
     return null;
   }
 
+  for (const url of urls.slice(0, 2)) {
+    const parsed = await resolveMaxPrepsTeamPage(url, input.athleteName);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+async function resolveMaxPrepsTeamPage(
+  url: string,
+  athleteName?: string | null,
+): Promise<MaxPrepsScoutContext | null> {
   logInfo('MAXPREPS_LOOKUP', 'team_page', 'start', { url });
   const response = await fetch(url, {
     headers: {
@@ -231,7 +390,11 @@ export async function resolveMaxPrepsScoutContext(
   });
   const html = await response.text();
   if (!response.ok) {
-    throw new Error(html.slice(0, 200) || `MaxPreps HTTP ${response.status}`);
+    logFailure('MAXPREPS_LOOKUP', 'team_page', `MaxPreps HTTP ${response.status}`, {
+      url,
+      html: html.slice(0, 500),
+    });
+    return null;
   }
 
   const parsed = parseMaxPrepsTeamHtml(html, url);
@@ -247,7 +410,7 @@ export async function resolveMaxPrepsScoutContext(
     },
   }).catch(() => null);
   const rosterHtml = rosterResponse?.ok ? await rosterResponse.text() : '';
-  const athleteContext = rosterHtml ? parseMaxPrepsRosterHtml(rosterHtml, input.athleteName) : null;
+  const athleteContext = rosterHtml ? parseMaxPrepsRosterHtml(rosterHtml, athleteName) : null;
 
   logInfo('MAXPREPS_LOOKUP', 'team_page', 'success', {
     mascot: parsed.mascot,
