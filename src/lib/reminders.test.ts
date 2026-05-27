@@ -84,6 +84,32 @@ test('mapAssociatedContactsToReminderOptions keeps parent1, student athlete, par
   );
 });
 
+test('mapAssociatedContactsToReminderOptions lets student athlete win a shared parent phone', () => {
+  const options = mapAssociatedContactsToReminderOptions([
+    {
+      role: 'parent1',
+      name: 'Robert Bailey',
+      relationshipLabel: 'Father',
+      normalizedPhoneNumber: '3105551111',
+    },
+    {
+      role: 'studentAthlete',
+      name: 'Jaylin Bailey',
+      relationshipLabel: 'Student Athlete',
+      normalizedPhoneNumber: '3105551111',
+    },
+  ]);
+
+  assert.deepEqual(options, [
+    {
+      id: 'studentAthlete',
+      label: 'Student Athlete',
+      name: 'Jaylin Bailey',
+      phone: '3105551111',
+    },
+  ]);
+});
+
 test('resolveClientReminderTarget returns an immediate option for single-thread matched contact', () => {
   const result = resolveClientReminderTarget({
     isGroup: false,

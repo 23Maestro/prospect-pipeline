@@ -215,7 +215,7 @@ test('Scout Prep client message and lifecycle flowcharts pin the current resolve
     'Legacy Client Messages Routing',
     'the contact group was the gate',
     'Implemented Client Messages Routing',
-    'active `athlete_contact_cache` rows can admit a thread into Client Messages',
+    'active `athlete_contact_cache` rows admit a thread into Client Messages',
     'ID Clients',
     'ID Contacts',
     'Current Lifecycle And Cache Truth',
@@ -225,7 +225,7 @@ test('Scout Prep client message and lifecycle flowcharts pin the current resolve
     'not lifecycle truth',
     'Target Resolver Shape',
     'StudentAthleteMessageResolver',
-    'plus lifecycle state is the natural gate',
+    'plus lifecycle state is the gate',
     'Ambiguous message matches are flagged for review',
   ].forEach((phrase) => assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))));
 });

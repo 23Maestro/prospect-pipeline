@@ -138,9 +138,15 @@ export function mapAssociatedContactsToReminderOptions(
     ];
   });
 
-  return Array.from(
-    new Map(mapped.map((option) => [`${option.id}:${option.phone}`, option])).values(),
-  ).sort((left, right) => {
+  const optionsByPhone = new Map<string, ReminderContactOption>();
+  for (const option of mapped) {
+    const existing = optionsByPhone.get(option.phone);
+    if (!existing || option.id === 'studentAthlete') {
+      optionsByPhone.set(option.phone, option);
+    }
+  }
+
+  return Array.from(optionsByPhone.values()).sort((left, right) => {
     const leftIndex = REMINDER_CONTACT_ORDER.indexOf(left.id);
     const rightIndex = REMINDER_CONTACT_ORDER.indexOf(right.id);
     const normalizedLeft = leftIndex === -1 ? Number.MAX_SAFE_INTEGER : leftIndex;
