@@ -211,7 +211,7 @@ test('scout prep contact cache is not usable without parent1', () => {
   );
 });
 
-test('scout prep display context cache is not usable when positions are missing', () => {
+test('scout prep display context cache remains usable when positions are missing', () => {
   const context = buildScoutPrepContext(buildScoutPrepTask());
   assert.equal(isScoutPrepContextCacheUsableForDisplay(context), true);
 
@@ -223,7 +223,7 @@ test('scout prep display context cache is not usable when positions are missing'
         positions: null,
       },
     }),
-    false,
+    true,
   );
 });
 

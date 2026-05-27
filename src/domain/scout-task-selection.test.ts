@@ -69,10 +69,18 @@ test('voicemail lifecycle selection prefers matching task and falls back for cal
 
   assert.equal(
     resolveVoicemailLifecycleTaskForCompletion(
-      [{ task_id: '404', title: 'Meeting Result - Res. Pending', completion_date: '' }],
+      [{ task_id: '404', title: 'Reschedule Pending', completion_date: '' }],
       'reschedule_pending',
     )?.task_id,
     '404',
+  );
+
+  assert.equal(
+    resolveVoicemailLifecycleTaskForCompletion(
+      [{ task_id: '405', title: 'Meeting Result - Res. Pending', completion_date: '' }],
+      'reschedule_pending',
+    ),
+    null,
   );
 });
 

@@ -445,6 +445,22 @@ test('Scout Prep post-call success refreshes before returning to command root', 
   assert.match(postCallFlow, /popViews\(pop, closeAfterSaveViews\);/);
 });
 
+test('Scout Prep task rows expose MaxPreps actions from the action panel', () => {
+  const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
+  const taskItemStart = commandSource.indexOf('function ScoutPrepTaskItem');
+  const taskItemEnd = commandSource.indexOf('export default function ScoutPrepCommand', taskItemStart);
+  const taskItem = commandSource.slice(taskItemStart, taskItemEnd);
+  const athleteInfo = taskItem.slice(
+    taskItem.indexOf('<ActionPanel.Section title="Athlete Info">'),
+    taskItem.indexOf('<ActionPanel.Section title="Athlete Note">'),
+  );
+
+  assert.match(athleteInfo, /title="Open MaxPreps Search"/);
+  assert.match(athleteInfo, /shortcut=\{\{ modifiers: \['cmd'\], key: 'h' \}\}/);
+  assert.match(athleteInfo, /title="Resolve MaxPreps Context"/);
+  assert.match(athleteInfo, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
+});
+
 test('Set Meetings reschedule actions pass the booked meeting into Scout Prep post-call form', () => {
   const source = fs.readFileSync('src/head-scout-schedules.tsx', 'utf8');
   const actionPanel = source.slice(

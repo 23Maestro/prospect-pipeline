@@ -631,7 +631,7 @@ export function isScoutPrepContactCacheUsable(contactInfo?: ContactInfo | null):
 export function isScoutPrepContextCacheUsableForDisplay(
   context?: ScoutPrepContext | null,
 ): boolean {
-  return Boolean(String(context?.resolved.positions || '').trim());
+  return Boolean(context?.contactInfo?.studentAthlete && context?.resolved);
 }
 
 export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<ScoutPrepContext> {

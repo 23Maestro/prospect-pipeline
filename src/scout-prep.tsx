@@ -4161,6 +4161,82 @@ function ScoutPrepTaskItem({
     );
   }
 
+  async function handleResolveMaxPrepsContextFromTask() {
+    const toast = await showLoadingToast('MaxPreps', task.athlete_name);
+    try {
+      const { context } = await loadScoutPrepContextForDisplay(task);
+      const highSchool = context.resolved.high_school || task.high_school;
+      const state = context.resolved.state || task.state;
+      const sport = context.resolved.sport || task.sport;
+      if (!highSchool || !state || !sport) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'Missing school context';
+        return;
+      }
+
+      const cacheInput = buildMaxPrepsCacheInput(context, task);
+      const cached = await getCachedScoutPrepMaxPrepsContext(cacheInput);
+      if (cached?.isFresh) {
+        const nextContext = mergeMaxPrepsContext(context, cached.data);
+        await setCachedScoutPrepContext(task, nextContext);
+        toast.style = Toast.Style.Success;
+        toast.title = 'MaxPreps cached';
+        toast.message = formatMaxPrepsToastMessage(cached.data);
+        return;
+      }
+
+      const result = await resolveMaxPrepsScoutContext({
+        athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
+        highSchool,
+        city: context.resolved.city,
+        state: formatStateForHighSchoolCopy(state),
+        sport,
+        maxPrepsUrl: context.resolved.maxpreps?.url || context.resolved.maxpreps_url,
+        searchLabel: buildMaxPrepsSearchLabel({
+          highSchool,
+          state,
+          sport,
+        }),
+      });
+      if (!result) {
+        toast.style = Toast.Style.Failure;
+        toast.title = 'No MaxPreps match';
+        return;
+      }
+
+      await setCachedScoutPrepMaxPrepsContext(cacheInput, result);
+      const nextContext = mergeMaxPrepsContext(context, result);
+      await setCachedScoutPrepContext(task, nextContext);
+      setTimeout(() => {
+        void syncAthleteContactCacheFromScoutPrepContext({
+          context: nextContext,
+          crmStage: null,
+          source: 'scout_prep_maxpreps_resolve',
+          seenAt: new Date().toISOString(),
+        }).catch((error) => {
+          logFailure(
+            'SCOUT_PREP_CONTACT_CACHE_SYNC',
+            'supabase-write',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: nextContext.task.contact_id,
+              athleteMainId:
+                nextContext.resolved.athlete_main_id || nextContext.task.athlete_main_id,
+              source: 'scout_prep_maxpreps_resolve',
+            },
+          );
+        });
+      }, 0);
+      toast.style = Toast.Style.Success;
+      toast.title = 'MaxPreps resolved';
+      toast.message = formatMaxPrepsToastMessage(result);
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'MaxPreps failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function loadTaskNotesContext(): Promise<ScoutPrepContext | null> {
     return ensureTaskContext('Loading notes', 'Missing ID');
   }
@@ -4269,6 +4345,11 @@ function ScoutPrepTaskItem({
 
   const { shortDate, taskTitle, taskColor, gradYearColor } = getTaskAccessoryMetadata(task);
   const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
+  const taskMaxPrepsSearchLabel = buildMaxPrepsSearchLabel({
+    highSchool: task.high_school,
+    state: task.state,
+    sport: task.sport,
+  });
 
   return (
     <List.Item
@@ -4395,6 +4476,22 @@ function ScoutPrepTaskItem({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
               url={buildScoutPrepPlayerIdUrl(task)}
             />
+            {taskMaxPrepsSearchLabel ? (
+              <Action
+                title="Open MaxPreps Search"
+                icon="🔎"
+                shortcut={{ modifiers: ['cmd'], key: 'h' }}
+                onAction={() => void triggerMaxPrepsSearch(taskMaxPrepsSearchLabel)}
+              />
+            ) : null}
+            {taskMaxPrepsSearchLabel ? (
+              <Action
+                title="Resolve MaxPreps Context"
+                icon="🏈"
+                shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                onAction={() => void handleResolveMaxPrepsContextFromTask()}
+              />
+            ) : null}
           </ActionPanel.Section>
           <ActionPanel.Section title="Athlete Note">
             <Action

@@ -173,13 +173,7 @@ export function isVoicemailLifecycleTaskMatch(
     return title === 'call attempt 3' || description.includes('third time');
   }
   if (variant === 'reschedule_pending') {
-    return (
-      title.includes('reschedule pending') ||
-      title.includes('res pending') ||
-      title.includes('res. pending') ||
-      description.includes('reschedule pending') ||
-      description.includes('res. pending')
-    );
+    return title === 'reschedule pending';
   }
 
   return false;

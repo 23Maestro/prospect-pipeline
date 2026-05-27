@@ -17,7 +17,8 @@ export type VoicemailFollowUpVariant =
   | 'call_attempt_1'
   | 'call_attempt_2'
   | 'call_attempt_3'
-  | 'reschedule_pending'
+  | 'reschedule_1'
+  | 'reschedule_2'
   | 'no_show'
   | 'send_cal_link';
 export type ConfirmationFollowUpVariant = 'confirmation_1' | 'confirmation_2';
@@ -193,49 +194,37 @@ export function resolveVoicemailFollowUpVariant(args: {
   crmStage?: string | null;
   currentTask?: string | null;
 }): VoicemailFollowUpVariant {
-  const rawCandidates = [args.currentTask, args.crmStage]
-    .map((value) => normalizeText(value))
-    .filter(Boolean);
+  const currentTask = normalizeText(args.currentTask);
+  const currentTaskTitle = currentTask
+    .replace(/^\(?sc move this task\)?\s*/i, '')
+    .replace(/[-_–—]+/g, ' ')
+    .replace(/[.,:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 
   if (
-    rawCandidates.some(
-      (value) =>
-        value.includes('left voice mail 3') ||
-        value.includes('left voicemail 3') ||
-        value.includes('call attempt 3'),
-    )
+    currentTask.includes('left voice mail 3') ||
+    currentTask.includes('left voicemail 3') ||
+    currentTask.includes('call attempt 3')
   ) {
     return 'call_attempt_3';
   }
 
-  if (
-    rawCandidates.some(
-      (value) =>
-        value.includes('reschedule pending') ||
-        value.includes('rescheduled pending') ||
-        value.includes('res. pending') ||
-        value.includes('meeting result res pending') ||
-        value.includes('meeting result - res pending') ||
-        value.includes('meeting result - res. pending'),
-    )
-  ) {
-    return 'reschedule_pending';
+  if (currentTaskTitle === 'reschedule pending') {
+    return 'reschedule_1';
   }
 
   if (
-    rawCandidates.some(
-      (value) =>
-        value.includes('no show') ||
-        value.includes('no-show') ||
-        value.includes('left voice mail 2') ||
-        value.includes('left voicemail 2') ||
-        value.includes('call attempt 2') ||
-        value.includes('second time') ||
-        value.includes('second voicemail') ||
-        value.includes('follow-up voicemail'),
-    )
+    currentTask.includes('no show') ||
+    currentTask.includes('no-show') ||
+    currentTask.includes('left voice mail 2') ||
+    currentTask.includes('left voicemail 2') ||
+    currentTask.includes('call attempt 2') ||
+    currentTask.includes('second time') ||
+    currentTask.includes('second voicemail') ||
+    currentTask.includes('follow-up voicemail')
   ) {
-    if (rawCandidates.some((value) => value.includes('no show') || value.includes('no-show'))) {
+    if (currentTask.includes('no show') || currentTask.includes('no-show')) {
       return 'no_show';
     }
     return 'call_attempt_2';
@@ -280,6 +269,8 @@ export function buildVoicemailFollowUpMessage(args: {
   athleteGender?: AthleteGender | null;
   signOffTitle?: string | null;
   closingLine?: string | null;
+  previousHeadScoutName?: string | null;
+  rescheduleSlots?: string[] | null;
   now?: Date;
 }): string {
   const greeting = String(args.greeting || '').trim() || 'Good morning there,';
@@ -291,22 +282,34 @@ export function buildVoicemailFollowUpMessage(args: {
     sport: args.sport,
     athleteGender: args.athleteGender,
   });
+  const athleteFirstName = firstName(args.athleteName) || args.athleteName.trim() || 'your athlete';
+  const previousHeadScoutName =
+    String(args.previousHeadScoutName || '')
+      .trim()
+      .replace(/^coach\s+/i, '') || 'the scout';
+  const rescheduleSlots = (args.rescheduleSlots || [])
+    .map((slot) => String(slot || '').trim())
+    .filter(Boolean)
+    .slice(0, 2);
 
   const lines =
     args.variant === 'send_cal_link'
       ? ['Great! Here’s the link to schedule a quick call:', CAL_BOOKING_URL]
-      : recipientType === 'student_athlete' && args.variant === 'reschedule_pending'
+      : args.variant === 'reschedule_1' || args.variant === 'reschedule_2'
         ? [
-            `${greeting} checking back on rescheduling your meeting with our Head Scout.`,
+            `${greeting} no worries.`,
             '',
-            'Choose what’s most relevant so I can be helpful:',
+            `Coach ${previousHeadScoutName} still has time set aside this week for ${athleteFirstName}:`,
             '',
-            '1 - still interested, just need to reschedule',
-            '2 - interested, but timing is bad right now',
-            '3 - no longer interested',
+            `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
+            `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,
+            '',
+            args.variant === 'reschedule_2'
+              ? `Let's avoid letting this sit another week. Which one works best?`
+              : 'Which one works best?',
           ]
-        : recipientType === 'student_athlete' && args.variant === 'no_show'
-          ? [
+      : recipientType === 'student_athlete' && args.variant === 'no_show'
+        ? [
               `${greeting} looks like we missed you for your meeting with our Head Scout.`,
               '',
               'Choose what’s most relevant so I can be helpful:',
@@ -330,22 +333,12 @@ export function buildVoicemailFollowUpMessage(args: {
               : recipientType === 'student_athlete'
                 ? [
                     `${greeting} this is ${senderName} with Prospect ID. I received your info about playing college ${scoutLabel}.`,
-                    '',
-                    'If you’re serious about this, have one of your parents call or text me.',
-                  ]
-                : args.variant === 'reschedule_pending'
+                  '',
+                  'If you’re serious about this, have one of your parents call or text me.',
+                ]
+                : args.variant === 'no_show'
                   ? [
-                      `${greeting} checking back on rescheduling ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
-                      '',
-                      'Choose what’s most relevant so I can be helpful:',
-                      '',
-                      '1 - still interested, just need to reschedule',
-                      '2 - interested, but timing is bad right now',
-                      '3 - no longer interested',
-                    ]
-                  : args.variant === 'no_show'
-                    ? [
-                        `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
+                      `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
                         '',
                         'Choose what’s most relevant so I can be helpful:',
                         '',

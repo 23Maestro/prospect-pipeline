@@ -11,9 +11,17 @@ type VoicemailRecipient = {
   name: string;
 };
 
-type VoicemailFollowUpFormValues = {
+export type VoicemailRescheduleSlotOption = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+};
+
+export type VoicemailFollowUpFormValues = {
   recipientId: string;
   variant: VoicemailFollowUpVariant;
+  rescheduleSlot1Id?: string;
+  rescheduleSlot2Id?: string;
 };
 
 type ConfirmationReminderFormValues = {
@@ -27,10 +35,18 @@ export function VoicemailFollowUpMessageForm(props: {
   recipients: VoicemailRecipient[];
   defaultRecipientId?: string;
   defaultVariant: VoicemailFollowUpVariant;
+  rescheduleSlots?: VoicemailRescheduleSlotOption[];
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedVariant, setSelectedVariant] = useState<VoicemailFollowUpVariant>(
+    props.defaultVariant,
+  );
   const isMountedRef = useRef(true);
+  const showRescheduleSlots =
+    selectedVariant === 'reschedule_1' || selectedVariant === 'reschedule_2';
+  const defaultSlot1Id = props.rescheduleSlots?.[0]?.id;
+  const defaultSlot2Id = props.rescheduleSlots?.[1]?.id || props.rescheduleSlots?.[0]?.id;
 
   useEffect(() => {
     return () => {
@@ -85,14 +101,48 @@ export function VoicemailFollowUpMessageForm(props: {
           />
         ))}
       </Form.Dropdown>
-      <Form.Dropdown id="variant" title="Follow-Up Type" defaultValue={props.defaultVariant}>
+      <Form.Dropdown
+        id="variant"
+        title="Follow-Up Type"
+        value={selectedVariant}
+        onChange={(value) => setSelectedVariant(value as VoicemailFollowUpVariant)}
+      >
         <Form.Dropdown.Item value="call_attempt_1" title="Attempt 1" />
         <Form.Dropdown.Item value="call_attempt_2" title="Attempt 2" />
         <Form.Dropdown.Item value="call_attempt_3" title="Attempt 3" />
-        <Form.Dropdown.Item value="reschedule_pending" title="Reschedule" />
+        <Form.Dropdown.Item value="reschedule_1" title="Reschedule 1" />
+        <Form.Dropdown.Item value="reschedule_2" title="Reschedule 2" />
         <Form.Dropdown.Item value="no_show" title="No Show" />
         <Form.Dropdown.Item value="send_cal_link" title="Send Cal Link" />
       </Form.Dropdown>
+      {showRescheduleSlots ? (
+        props.rescheduleSlots?.length ? (
+          <>
+            <Form.Dropdown id="rescheduleSlot1Id" title="Slot 1" defaultValue={defaultSlot1Id}>
+              {props.rescheduleSlots.map((slot) => (
+                <Form.Dropdown.Item
+                  key={slot.id}
+                  value={slot.id}
+                  title={slot.title}
+                  keywords={[slot.subtitle || ''].filter(Boolean)}
+                />
+              ))}
+            </Form.Dropdown>
+            <Form.Dropdown id="rescheduleSlot2Id" title="Slot 2" defaultValue={defaultSlot2Id}>
+              {props.rescheduleSlots.map((slot) => (
+                <Form.Dropdown.Item
+                  key={slot.id}
+                  value={slot.id}
+                  title={slot.title}
+                  keywords={[slot.subtitle || ''].filter(Boolean)}
+                />
+              ))}
+            </Form.Dropdown>
+          </>
+        ) : (
+          <Form.Description text="No resolved openings found yet. The message will use slot placeholders." />
+        )
+      ) : null}
     </Form>
   );
 }

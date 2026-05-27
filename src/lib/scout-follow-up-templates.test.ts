@@ -66,9 +66,16 @@ test('resolveVoicemailFollowUpVariant prefers no-show and later attempt states b
   assert.equal(
     resolveVoicemailFollowUpVariant({
       crmStage: 'Meeting Set',
-      currentTask: 'Meeting Result - Res. Pending',
+      currentTask: 'Reschedule Pending',
     }),
     'reschedule_pending',
+  );
+  assert.equal(
+    resolveVoicemailFollowUpVariant({
+      crmStage: 'Meeting Result - Res. Pending',
+      currentTask: 'Something Else',
+    }),
+    'call_attempt_1',
   );
   assert.equal(
     resolveVoicemailFollowUpVariant({ crmStage: 'Meeting Set', currentTask: 'Something Else' }),
