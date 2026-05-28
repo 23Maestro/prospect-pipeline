@@ -10,24 +10,34 @@ import {
 } from './scout-task-selection';
 
 export type ScoutPrepBatchOperation = {
-  id: 'call_attempt_2_voicemail' | 'call_attempt_3_voicemail';
+  id: 'call_attempt_2_voicemail' | 'call_attempt_3_voicemail' | 'not_interested_stage_completion';
+  kind: 'voicemail' | 'sales_stage_task_completion';
   label: string;
-  taskTitle: string;
-  variant: VoicemailFollowUpVariant;
+  taskTitle?: string;
+  variant?: VoicemailFollowUpVariant;
+  stageLabel?: string;
 };
 
 export const SCOUT_PREP_BATCH_OPERATIONS = {
   callAttempt2Voicemail: {
     id: 'call_attempt_2_voicemail',
+    kind: 'voicemail',
     label: 'Call Attempt 2 Voicemail',
     taskTitle: 'Call Attempt 2',
     variant: 'call_attempt_2',
   },
   callAttempt3Voicemail: {
     id: 'call_attempt_3_voicemail',
+    kind: 'voicemail',
     label: 'Call Attempt 3 Voicemail',
     taskTitle: 'Call Attempt 3',
     variant: 'call_attempt_3',
+  },
+  notInterestedStageCompletion: {
+    id: 'not_interested_stage_completion',
+    kind: 'sales_stage_task_completion',
+    label: 'No Interest + Complete',
+    stageLabel: 'Spoke to - Not Interested',
   },
 } satisfies Record<string, ScoutPrepBatchOperation>;
 
@@ -86,9 +96,37 @@ export function isScoutPrepBatchTaskEligible(
   task: Pick<ScoutPortalTask, 'title' | 'description' | 'completion_date'>,
   operation: ScoutPrepBatchOperation,
 ): boolean {
+  if (!isIncompleteTaskValue(task.completion_date)) {
+    return false;
+  }
+  if (operation.kind === 'sales_stage_task_completion') {
+    return !isMeetingSetTaskVariant(task);
+  }
+  return Boolean(operation.variant && isVoicemailLifecycleTaskMatch(task, operation.variant));
+}
+
+function normalizeBatchTaskText(task: Pick<ScoutPortalTask, 'title' | 'description'>): string {
+  return [task.title, task.description]
+    .map((value) => String(value || '').trim().toLowerCase())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/^\(?sc move this task\)?\s*/i, '')
+    .replace(/[._–—-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function isMeetingSetTaskVariant(task: Pick<ScoutPortalTask, 'title' | 'description'>): boolean {
+  const text = normalizeBatchTaskText(task);
   return (
-    isIncompleteTaskValue(task.completion_date) &&
-    isVoicemailLifecycleTaskMatch(task, operation.variant)
+    text.includes('meeting set') ||
+    text.includes('confirm the meeting') ||
+    text.includes('confirmation call') ||
+    text.includes('reschedule pending') ||
+    text.includes('rescheduled pending') ||
+    text.includes('res pending') ||
+    text.includes('rescheduled') ||
+    text.includes('meeting result')
   );
 }
 
@@ -110,19 +148,34 @@ export function sortScoutPrepBatchTasks<T extends ScoutPortalTask>(tasks: T[]): 
   });
 }
 
+export function getScoutPrepBatchGradYearOptions(tasks: ScoutPortalTask[]): string[] {
+  return Array.from(
+    new Set(
+      tasks
+        .map((task) => String(task.grad_year || '').trim())
+        .filter(Boolean),
+    ),
+  ).sort((left, right) => Number.parseInt(right, 10) - Number.parseInt(left, 10));
+}
+
 export function buildScoutPrepBatchPreflightRows(args: {
   operation: ScoutPrepBatchOperation;
   tasks: ScoutPortalTask[];
   limit: number;
+  gradYear?: string | null;
 }): ScoutPrepBatchRow[] {
   const limit = Math.max(1, args.limit);
-  return sortScoutPrepBatchTasks(args.tasks).slice(0, limit).map((task) => {
+  const gradYear = String(args.gradYear || '').trim();
+  const filteredTasks = gradYear
+    ? args.tasks.filter((task) => String(task.grad_year || '').trim() === gradYear)
+    : args.tasks;
+  return sortScoutPrepBatchTasks(filteredTasks).slice(0, limit).map((task) => {
     const eligible = isScoutPrepBatchTaskEligible(task, args.operation);
     return {
       task,
       operation: args.operation,
       status: eligible ? 'pending' : 'skipped',
-      message: eligible ? null : `Not an incomplete ${args.operation.taskTitle}`,
+      message: eligible ? null : `Not an incomplete ${args.operation.taskTitle || 'task'}`,
     };
   });
 }
@@ -131,7 +184,10 @@ export async function runScoutPrepBatchRow(args: {
   row: ScoutPrepBatchRow;
   context: ScoutPrepContext;
   resolveRecipient?: (context: ScoutPrepContext) => BatchRecipientResolution;
-  buildMessage: (recipient: VoicemailFollowUpRecipient, context: ScoutPrepContext) => string;
+  buildMessage: (
+    recipient: VoicemailFollowUpRecipient,
+    context: ScoutPrepContext,
+  ) => string | Promise<string>;
   sendMessage: (recipient: VoicemailFollowUpRecipient, message: string) => Promise<void>;
   persistMessageSent: () => Promise<void>;
 }): Promise<ScoutPrepBatchRow> {
@@ -152,7 +208,7 @@ export async function runScoutPrepBatchRow(args: {
   }
 
   try {
-    const message = args.buildMessage(recipientResolution.recipient, args.context);
+    const message = await args.buildMessage(recipientResolution.recipient, args.context);
     await args.sendMessage(recipientResolution.recipient, message);
     await args.persistMessageSent();
     return {

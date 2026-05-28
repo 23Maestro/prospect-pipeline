@@ -94,6 +94,27 @@ test('popup form data hydrates previous meeting-set payload fields', async () =>
   assert.equal(result?.meetingLength, '01:30');
 });
 
+test('uses booked event start time when popup form start time is missing', async () => {
+  const result = await resolveBookedMeetingDetailsForForm(
+    {
+      initialBookedMeeting: bookedMeeting({ start: '2026-05-22T20:00:00' }),
+    },
+    {
+      fetchBookedMeetingDetails: async () =>
+        details({
+          form_data: {
+            tasktitle: 'Existing Meeting Title',
+            assignedto: '1418529',
+            openeventid: '613999',
+            meetinglength: '01:00',
+          },
+        }),
+    },
+  );
+
+  assert.equal(result?.startTime, '20:00');
+});
+
 test('fetches current booked meeting when none is supplied', async () => {
   const past = bookedMeeting({
     event_id: 'evt_past',

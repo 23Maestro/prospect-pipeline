@@ -5,6 +5,7 @@ import {
   findNewestIncompleteConfirmationTask,
   findNewestIncompleteTaskByTitle,
   getIncompleteTasks,
+  getTaskSpecificUpdateVariant,
   getTopmostIncompleteTask,
   isIncompleteTaskValue,
   resolvePostCallTaskToComplete,
@@ -30,6 +31,26 @@ test('incomplete task helpers preserve topmost task and newest task semantics', 
     ['101', '100'],
   );
   assert.equal(findNewestIncompleteTaskByTitle(tasks, 'Confirmation Call')?.task_id, '101');
+});
+
+test('task-specific update variants match follow-up task title forms', () => {
+  assert.equal(
+    getTaskSpecificUpdateVariant({ title: '(SC Move This Task) Spoke to - Need to Follow Up' }),
+    'spoke_to_follow_up',
+  );
+  assert.equal(
+    getTaskSpecificUpdateVariant({ title: 'Spoke to - Need to Follow Up' }),
+    'spoke_to_follow_up',
+  );
+  assert.equal(
+    getTaskSpecificUpdateVariant({ title: 'Spoke to - I Need To Follow Up' }),
+    'spoke_to_follow_up',
+  );
+  assert.equal(
+    getTaskSpecificUpdateVariant({ title: 'SCHEDULED FOLLOW-UP' }),
+    'scheduled_follow_up',
+  );
+  assert.equal(getTaskSpecificUpdateVariant({ title: 'Call Attempt 2' }), null);
 });
 
 test('confirmation task selection chooses newest incomplete confirmation task', () => {

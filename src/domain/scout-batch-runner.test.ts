@@ -5,6 +5,7 @@ import type { ScoutPrepContext } from '../features/scout-prep/types';
 import {
   SCOUT_PREP_BATCH_OPERATIONS,
   buildScoutPrepBatchPreflightRows,
+  getScoutPrepBatchGradYearOptions,
   resolveBatchVoicemailRecipient,
   runScoutPrepBatchRow,
   sortScoutPrepBatchTasks,
@@ -174,6 +175,64 @@ test('batch task ordering puts colder younger grad years first', () => {
   );
 });
 
+test('not interested batch uses grad year filter and keeps colder ordering', () => {
+  const rows = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.notInterestedStageCompletion,
+    tasks: [
+      { task_id: '1', title: 'Call Attempt 2', athlete_name: '2030 Athlete', grad_year: '2030', completion_date: '' },
+      { task_id: '2', title: 'Call Attempt 3', athlete_name: '2029 Athlete', grad_year: '2029', completion_date: '' },
+      { task_id: '3', title: 'Call Attempt 2', athlete_name: '2030 Done', grad_year: '2030', completion_date: '05/01/2026' },
+    ],
+    gradYear: '2030',
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    rows.map((row) => [row.task.athlete_name, row.status]),
+    [
+      ['2030 Athlete', 'pending'],
+      ['2030 Done', 'skipped'],
+    ],
+  );
+});
+
+test('not interested batch excludes meeting-set task variants', () => {
+  const rows = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.notInterestedStageCompletion,
+    tasks: [
+      { task_id: '1', title: 'Call Attempt 2', athlete_name: 'Good Row', grad_year: '2030', completion_date: '' },
+      { task_id: '2', title: 'Confirmation Call', athlete_name: "I'zaiah Minters", grad_year: '2030', completion_date: '' },
+      { task_id: '3', title: 'Reschedule Pending', athlete_name: 'Reschedule Row', grad_year: '2030', completion_date: '' },
+      { task_id: '4', title: 'Meeting Set', athlete_name: 'Meeting Row', grad_year: '2030', completion_date: '' },
+      { task_id: '5', title: 'Meeting Result - Res. Pending', athlete_name: 'Result Row', grad_year: '2030', completion_date: '' },
+    ],
+    gradYear: '2030',
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    Object.fromEntries(rows.map((row) => [row.task.task_id, row.status])),
+    {
+      '1': 'pending',
+      '2': 'skipped',
+      '3': 'skipped',
+      '4': 'skipped',
+      '5': 'skipped',
+    },
+  );
+});
+
+test('batch grad year options sort youngest classes first', () => {
+  assert.deepEqual(
+    getScoutPrepBatchGradYearOptions([
+      { task_id: '1', title: 'Call Attempt 2', athlete_name: 'A', grad_year: '2029', completion_date: '' },
+      { task_id: '2', title: 'Call Attempt 3', athlete_name: 'B', grad_year: '2031', completion_date: '' },
+      { task_id: '3', title: 'Call Attempt 3', athlete_name: 'C', grad_year: '2030', completion_date: '' },
+    ]),
+    ['2031', '2030', '2029'],
+  );
+});
+
 test('batch row sends message before persistence and never persists after send failure', async () => {
   const calls: string[] = [];
   const context = buildContext();
@@ -222,4 +281,36 @@ test('batch row sends message before persistence and never persists after send f
 
   assert.equal(failed.status, 'failed');
   assert.deepEqual(calls, ['send']);
+});
+
+test('batch row waits for async message rendering before sending', async () => {
+  const calls: string[] = [];
+  const context = buildContext();
+  const row = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.callAttempt2Voicemail,
+    tasks: [{ task_id: '1', title: 'Call Attempt 2', athlete_name: 'Eligible', completion_date: '' }],
+    limit: 10,
+  })[0];
+
+  const sent = await runScoutPrepBatchRow({
+    row,
+    context,
+    resolveRecipient: () => ({
+      status: 'eligible',
+      recipient: { id: 'parent1', label: 'Parent 1', name: 'Jamie Smith', phones: ['651-555-1212'] },
+    }),
+    buildMessage: async () => {
+      calls.push('render');
+      return 'Rendered body';
+    },
+    sendMessage: async (_recipient, message) => {
+      calls.push(`send:${message}`);
+    },
+    persistMessageSent: async () => {
+      calls.push('persist');
+    },
+  });
+
+  assert.equal(sent.status, 'sent');
+  assert.deepEqual(calls, ['render', 'send:Rendered body', 'persist']);
 });

@@ -57,6 +57,35 @@ export function stripMoveThisTaskPrefix(taskTitle?: string | null): string | nul
   return cleaned || trimmed;
 }
 
+function normalizeTaskTitleForMatch(taskTitle?: string | null): string {
+  return String(stripMoveThisTaskPrefix(taskTitle) || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*[-–—]\s*/g, ' - ')
+    .replace(/\s+/g, ' ');
+}
+
+export type TaskSpecificUpdateVariant = 'spoke_to_follow_up' | 'scheduled_follow_up';
+
+export function getTaskSpecificUpdateVariant(
+  task?: Pick<ScoutTaskInput, 'title' | 'description'> | null,
+): TaskSpecificUpdateVariant | null {
+  const title = normalizeTaskTitleForMatch(task?.title);
+  if (title === 'spoke to - need to follow up' || title === 'spoke to - i need to follow up') {
+    return 'spoke_to_follow_up';
+  }
+  if (title === 'scheduled follow-up' || title === 'scheduled follow - up' || title === 'scheduled follow up') {
+    return 'scheduled_follow_up';
+  }
+  return null;
+}
+
+export function isTaskSpecificUpdateVariant(
+  task?: Pick<ScoutTaskInput, 'title' | 'description'> | null,
+): boolean {
+  return Boolean(getTaskSpecificUpdateVariant(task));
+}
+
 export function getIncompleteTasks<T extends ScoutTaskInput>(tasks: T[] = []): T[] {
   return sortNewestTaskIdFirst(
     tasks.filter((task) => isIncompleteTaskValue(task.completion_date) && taskId(task)),

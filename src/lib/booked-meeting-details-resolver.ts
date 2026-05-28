@@ -82,6 +82,17 @@ function firstValue(formData: Record<string, string>, keys: string[]): string | 
   return null;
 }
 
+function resolveBookedMeetingStartTime(
+  bookedMeeting: BookedMeetingEvent,
+  formData: Record<string, string>,
+): string | null {
+  const formStartTime = firstValue(formData, ['starttime', 'start_time']);
+  if (formStartTime) return formStartTime;
+
+  const start = String(bookedMeeting.start || '').trim();
+  return start.split('T')[1]?.slice(0, 5) || null;
+}
+
 function buildResolvedMeetingDetails(args: {
   bookedMeeting: BookedMeetingEvent;
   eventDate: string | null;
@@ -104,7 +115,7 @@ function buildResolvedMeetingDetails(args: {
       firstValue(formData, ['openeventid', 'open_event_id', 'existingtask']) ||
       String(args.bookedMeeting.event_id || '').trim() ||
       null,
-    startTime: firstValue(formData, ['starttime', 'start_time']),
+    startTime: resolveBookedMeetingStartTime(args.bookedMeeting, formData),
     meetingLength: firstValue(formData, ['meetinglength', 'meeting_length']),
   };
 }

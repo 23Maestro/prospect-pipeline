@@ -35,6 +35,45 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
         self.assertEqual(updated["completed_time"], "")
         self.assertNotIn("taskcompleted", updated)
 
+    def test_update_task_can_change_title_description_and_follow_up_date_without_completion(self):
+        form_data = {
+            "existingtask": "630353",
+            "tasktitle": "Spoke to - Need to Follow Up",
+            "taskdescription": "Original description",
+            "contact_task": "1497543",
+            "athlete_main_id": "953625",
+            "contact": "",
+            "duedate": "05/25/2026",
+            "duetime": "10:00",
+            "completedate": "05/25/2026",
+            "completed_time": "10:30",
+            "assignedto": "1408164",
+            "taskcompleted": "1",
+        }
+
+        updated = LegacyTranslator.apply_task_update(
+            form_data=form_data,
+            athlete_id="1497543",
+            athlete_main_id="953625",
+            task_title="SCHEDULED FOLLOW-UP",
+            description="Dad was busy running errands.",
+            due_date="05/26/2026",
+            due_time="14:04",
+            checkbox_fields=["taskcompleted"],
+        )
+
+        self.assertEqual(updated["existingtask"], "630353")
+        self.assertEqual(updated["tasktitle"], "SCHEDULED FOLLOW-UP")
+        self.assertEqual(updated["taskdescription"], "Dad was busy running errands.")
+        self.assertEqual(updated["duedate"], "05/26/2026")
+        self.assertEqual(updated["duetime"], "14:04")
+        self.assertEqual(updated["assignedto"], "1408164")
+        self.assertEqual(updated["contact_task"], "1497543")
+        self.assertEqual(updated["athlete_main_id"], "953625")
+        self.assertEqual(updated["completedate"], "")
+        self.assertEqual(updated["completed_time"], "")
+        self.assertNotIn("taskcompleted", updated)
+
     def test_create_completed_task_sets_repeat_payload(self):
         form_data = {
             "_token": "abc123",

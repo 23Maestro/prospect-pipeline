@@ -106,6 +106,7 @@ import {
 } from './domain/sales-stage-contract';
 import {
   isConfirmationCallTask,
+  getTaskSpecificUpdateVariant,
   getTopmostIncompleteTask,
   getVoicemailLifecycleStageLabel,
   getVoicemailLifecycleTaskTitle,
@@ -114,9 +115,11 @@ import {
 import {
   SCOUT_PREP_BATCH_OPERATIONS,
   buildScoutPrepBatchPreflightRows,
+  getScoutPrepBatchGradYearOptions,
   isScoutPrepBatchTaskEligible,
   resolveBatchVoicemailRecipient,
   runScoutPrepBatchRow,
+  type ScoutPrepBatchOperation,
   type ScoutPrepBatchRow,
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
@@ -2680,24 +2683,67 @@ function UpdateAthleteTaskForm({
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const currentTaskTitle = getTaskDisplayTitle(selectedTask);
+  const defaultTaskDescription = String(selectedTask.description || '').trim();
+  const taskUpdateVariant = getTaskSpecificUpdateVariant(selectedTask);
+  const canEditTaskPayload = Boolean(taskUpdateVariant);
+  const taskTitleInputPlaceholder =
+    taskUpdateVariant === 'scheduled_follow_up' ? 'SCHEDULED FOLLOW-UP' : 'Spoke to - Need to Follow Up';
 
-  async function handleUpdate(values: { dueDate?: Date }) {
+  function buildTaskFormValues(values: {
+    taskTitle?: string;
+    dueDate?: Date;
+    description?: string;
+    completeTask?: boolean;
+  }) {
+    const taskTitle = String(values.taskTitle || currentTaskTitle || '').trim();
+    const description = canEditTaskPayload ? String(values.description || '').trim() : null;
+    return {
+      taskTitle: canEditTaskPayload ? taskTitle || currentTaskTitle : null,
+      description,
+      dueDate: values.dueDate,
+      completeTask: Boolean(values.completeTask),
+    };
+  }
+
+  async function handleUpdate(values: {
+    taskTitle?: string;
+    dueDate?: Date;
+    description?: string;
+    completeTask?: boolean;
+  }) {
     if (isSaving) return;
     setIsSaving(true);
     const toast = await showLoadingToast('Saving', currentTaskTitle);
+    const formValues = buildTaskFormValues(values);
     try {
       await updateScoutPrepTask({
         taskId: selectedTask.task_id,
         contactTask,
         athleteMainId,
         athleteName: task.athlete_name,
-        dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
-        dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
+        taskTitle: formValues.taskTitle,
+        description: formValues.description,
+        dueDate: formValues.dueDate ? formatDateForLegacyInput(formValues.dueDate) : null,
+        dueTime: formValues.dueDate ? formatTimeForLegacyInput(formValues.dueDate) : null,
       });
+
+      if (formValues.completeTask) {
+        await completeScoutPrepTaskAfterVoicemail({
+          athleteId: contactTask,
+          athleteMainId,
+          athleteName: task.athlete_name,
+          contactTask,
+          taskTitle: formValues.taskTitle || currentTaskTitle,
+          assignedOwner: selectedTask.assigned_owner,
+          description: formValues.description || formValues.taskTitle || currentTaskTitle,
+          taskId: selectedTask.task_id,
+        });
+      }
+
       await completeScoutPrepMutationSuccess({
         toast,
-        title: 'Saved',
-        message: currentTaskTitle,
+        title: formValues.completeTask ? 'Saved and completed' : 'Saved',
+        message: formValues.taskTitle || currentTaskTitle,
         onReturnToRootList: onUpdated,
       });
     } catch (error) {
@@ -2739,25 +2785,48 @@ function UpdateAthleteTaskForm({
     }
   }
 
-  async function handleSetScheduledFollowUp(values: { dueDate?: Date }) {
+  async function handleSetScheduledFollowUp(values: {
+    taskTitle?: string;
+    dueDate?: Date;
+    description?: string;
+    completeTask?: boolean;
+  }) {
     if (isSaving) return;
     setIsSaving(true);
     const toast = await showLoadingToast('Saving', 'Follow-up');
+    const formValues = buildTaskFormValues({
+      ...values,
+      taskTitle: values.taskTitle || 'SCHEDULED FOLLOW-UP',
+    });
     try {
       await updateScoutPrepTask({
         taskId: selectedTask.task_id,
         contactTask,
         athleteMainId,
         athleteName: task.athlete_name,
-        taskTitle: 'SCHEDULED FOLLOW-UP',
-        description: selectedTask.description || currentTaskTitle,
-        dueDate: values.dueDate ? formatDateForLegacyInput(values.dueDate) : null,
-        dueTime: values.dueDate ? formatTimeForLegacyInput(values.dueDate) : null,
+        taskTitle: formValues.taskTitle,
+        description: formValues.description,
+        dueDate: formValues.dueDate ? formatDateForLegacyInput(formValues.dueDate) : null,
+        dueTime: formValues.dueDate ? formatTimeForLegacyInput(formValues.dueDate) : null,
       });
+
+      if (formValues.completeTask) {
+        await completeScoutPrepTaskAfterVoicemail({
+          athleteId: contactTask,
+          athleteMainId,
+          athleteName: task.athlete_name,
+          contactTask,
+          taskTitle: formValues.taskTitle || currentTaskTitle,
+          assignedOwner: selectedTask.assigned_owner,
+          description: formValues.description || formValues.taskTitle || currentTaskTitle,
+          taskId: selectedTask.task_id,
+        });
+      }
+
       await completeScoutPrepMutationSuccess({
         toast,
-        title: 'Saved',
-        message: 'SCHEDULED FOLLOW-UP',
+        title: formValues.completeTask ? 'Saved and completed' : 'Saved',
+        message: formValues.taskTitle || currentTaskTitle,
         onReturnToRootList: onUpdated,
       });
     } catch (error) {
@@ -2777,26 +2846,73 @@ function UpdateAthleteTaskForm({
           <Action.SubmitForm
             title={isSaving ? 'Saving…' : 'Save Task Update'}
             icon="🗓️"
-            onSubmit={(values) => void handleUpdate(values as { dueDate?: Date })}
+            onSubmit={(values) =>
+              void handleUpdate(
+                values as {
+                  taskTitle?: string;
+                  dueDate?: Date;
+                  description?: string;
+                  completeTask?: boolean;
+                },
+              )
+            }
           />
-          <Action.SubmitForm
-            title={isSaving ? 'Saving…' : 'SCHEDULED FOLLOW-UP'}
-            icon="📝"
-            onSubmit={(values) => void handleSetScheduledFollowUp(values as { dueDate?: Date })}
-          />
-          <Action
-            title={isCompleting ? 'Completing…' : 'Complete Task'}
-            icon="✅"
-            onAction={() => void handleCompleteTask()}
-          />
+          {canEditTaskPayload ? (
+            <Action.SubmitForm
+              title={isSaving ? 'Saving…' : 'SCHEDULED FOLLOW-UP'}
+              icon="📝"
+              onSubmit={(values) =>
+                void handleSetScheduledFollowUp(
+                  values as {
+                    taskTitle?: string;
+                    dueDate?: Date;
+                    description?: string;
+                    completeTask?: boolean;
+                  },
+                )
+              }
+            />
+          ) : null}
+          {!canEditTaskPayload ? (
+            <Action
+              title={isCompleting ? 'Completing…' : 'Complete Task'}
+              icon="✅"
+              onAction={() => void handleCompleteTask()}
+            />
+          ) : null}
         </ActionPanel>
       }
     >
+      {canEditTaskPayload ? (
+        <Form.TextField
+          id="taskTitle"
+          title="Task Title"
+          placeholder={taskTitleInputPlaceholder}
+          defaultValue={currentTaskTitle}
+        />
+      ) : (
+        <Form.Description title="Task Title" text={currentTaskTitle || 'Untitled task'} />
+      )}
+      {canEditTaskPayload ? (
+        <Form.TextArea
+          id="description"
+          title="Description"
+          placeholder="Describe what you talked about and move this task to the date to follow up."
+          defaultValue={defaultTaskDescription}
+        />
+      ) : null}
       <Form.DatePicker
         id="dueDate"
         title="Task Due Date"
         defaultValue={buildDefaultTaskDate(selectedTask.due_date)}
       />
+      {canEditTaskPayload ? (
+        <Form.Checkbox
+          id="completeTask"
+          label="Complete this task after saving"
+          defaultValue={false}
+        />
+      ) : null}
     </Form>
   );
 }
@@ -5536,25 +5652,168 @@ function isFatalScoutPrepBatchError(error: unknown): boolean {
   );
 }
 
+async function runScoutPrepStageCompletionBatchRow(args: {
+  row: ScoutPrepBatchRow;
+  context: ScoutPrepContext;
+  stageLabel: string;
+}): Promise<ScoutPrepBatchRow> {
+  if (args.row.status === 'skipped') {
+    return args.row;
+  }
+
+  try {
+    const athleteMainId = String(
+      args.row.task.athlete_main_id || args.context.resolved.athlete_main_id || '',
+    ).trim();
+    const athleteId = String(
+      args.row.task.athlete_id ||
+        args.row.task.contact_id ||
+        args.context.task.athlete_id ||
+        args.context.task.contact_id ||
+        '',
+    ).trim();
+    if (!athleteMainId || !athleteId) {
+      throw new Error('Missing athlete IDs');
+    }
+
+    const actionPlan = buildPostCallActionPlan({
+      athleteId,
+      athleteMainId,
+      athleteName: args.context.contactInfo.studentAthlete.name || args.row.task.athlete_name,
+      stageLabel: args.stageLabel,
+      tasks: args.context.tasks,
+      selectedTaskId: args.row.task.task_id,
+    });
+
+    await updateSalesStage({
+      athleteMainId,
+      athleteId,
+      athleteName: args.context.contactInfo.studentAthlete.name || args.row.task.athlete_name,
+      stage: actionPlan.laravelSalesStageUpdate?.stage || args.stageLabel,
+    });
+
+    const taskCompletion = actionPlan.laravelTaskCompletion;
+    if (!taskCompletion) {
+      throw new Error('No matching task to complete');
+    }
+
+    await completeScoutPrepTaskAfterVoicemail({
+      athleteId: taskCompletion.athleteId,
+      athleteMainId: taskCompletion.athleteMainId,
+      athleteName: args.context.contactInfo.studentAthlete.name || args.row.task.athlete_name,
+      contactTask: taskCompletion.contactTask,
+      taskId: taskCompletion.taskId,
+      crmStage: taskCompletion.crmStage,
+      taskTitle: taskCompletion.taskTitle,
+      assignedOwner: taskCompletion.assignedOwner,
+      description: taskCompletion.description,
+    });
+
+    return {
+      ...args.row,
+      status: 'sent',
+      message: args.stageLabel,
+    };
+  } catch (error) {
+    return {
+      ...args.row,
+      status: 'failed',
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function getScoutPrepBatchOperationById(operationId: string): ScoutPrepBatchOperation {
+  return (
+    Object.values(SCOUT_PREP_BATCH_OPERATIONS).find((candidate) => candidate.id === operationId) ||
+    SCOUT_PREP_BATCH_OPERATIONS.callAttempt3Voicemail
+  );
+}
+
+function ScoutPrepBatchSetupForm({
+  tasks,
+  operationId,
+  onOperationChange,
+  onConfirm,
+}: {
+  tasks: ScoutPortalTask[];
+  operationId: string;
+  onOperationChange: (operationId: string) => void;
+  onConfirm: (args: { operationId: string; gradYear?: string | null }) => void;
+}) {
+  const operation = getScoutPrepBatchOperationById(operationId);
+  const gradYearOptions = getScoutPrepBatchGradYearOptions(tasks);
+  const [selectedGradYear, setSelectedGradYear] = useState(gradYearOptions[0] || '');
+
+  useEffect(() => {
+    setSelectedGradYear(gradYearOptions[0] || '');
+  }, [operationId, gradYearOptions.join('|')]);
+
+  return (
+    <Form
+      navigationTitle="Batch Operations"
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm
+            title="Review Batch"
+            icon="🔎"
+            onSubmit={() =>
+              onConfirm({
+                operationId,
+                gradYear:
+                  operation.kind === 'sales_stage_task_completion' ? selectedGradYear : null,
+              })
+            }
+          />
+        </ActionPanel>
+      }
+    >
+      <Form.Dropdown id="operationId" title="Batch Operation" value={operationId} onChange={onOperationChange}>
+        {Object.values(SCOUT_PREP_BATCH_OPERATIONS).map((candidate) => (
+          <Form.Dropdown.Item key={candidate.id} title={candidate.label} value={candidate.id} />
+        ))}
+      </Form.Dropdown>
+      {operation.kind === 'sales_stage_task_completion' ? (
+        gradYearOptions.length ? (
+          <Form.Dropdown
+            id="gradYear"
+            title="Grad Year"
+            value={selectedGradYear}
+            onChange={setSelectedGradYear}
+          >
+            {gradYearOptions.map((gradYear) => (
+              <Form.Dropdown.Item key={gradYear} title={gradYear} value={gradYear} />
+            ))}
+          </Form.Dropdown>
+        ) : (
+          <Form.Description text="No grad years found in the current Scout Prep task list." />
+        )
+      ) : null}
+    </Form>
+  );
+}
+
 function ScoutPrepBatchPreflightList({
   tasks,
+  initialOperationId,
+  selectedGradYear,
   onComplete,
 }: {
   tasks: ScoutPortalTask[];
+  initialOperationId: string;
+  selectedGradYear?: string | null;
   onComplete: () => Promise<void> | void;
 }) {
-  const [operationId, setOperationId] = useState('call_attempt_3_voicemail');
-  const operation =
-    Object.values(SCOUT_PREP_BATCH_OPERATIONS).find((candidate) => candidate.id === operationId) ||
-    SCOUT_PREP_BATCH_OPERATIONS.callAttempt3Voicemail;
+  const operation = getScoutPrepBatchOperationById(initialOperationId);
   const initialRows = useMemo(
     () =>
       buildScoutPrepBatchPreflightRows({
         operation,
         tasks: tasks.filter((task) => isScoutPrepBatchTaskEligible(task, operation)),
+        gradYear: selectedGradYear,
         limit: SCOUT_PREP_BATCH_LIMIT,
       }),
-    [operation, tasks],
+    [operation, selectedGradYear, tasks],
   );
   const [rows, setRows] = useState<ScoutPrepBatchRow[]>(initialRows);
   const [isRunning, setIsRunning] = useState(false);
@@ -5582,11 +5841,19 @@ function ScoutPrepBatchPreflightList({
 
           try {
             const context = await loadScoutPrepContext(row.task);
-            const recipientResolution = resolveBatchVoicemailRecipient(context);
             if (!active) {
               return;
             }
 
+            if (operation.kind === 'sales_stage_task_completion') {
+              updateRow(row.task, () => ({
+                ...row,
+                message: operation.stageLabel || 'Spoke to - Not Interested',
+              }));
+              continue;
+            }
+
+            const recipientResolution = resolveBatchVoicemailRecipient(context);
             if (recipientResolution.status === 'skipped') {
               updateRow(row.task, () => ({
                 ...row,
@@ -5673,42 +5940,67 @@ function ScoutPrepBatchPreflightList({
           continue;
         }
 
-        const resultRow = await runScoutPrepBatchRow({
-          row: currentRow,
-          context,
-          buildMessage: (recipient) => {
-            const selectedParent =
-              recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
-            return buildVoicemailFollowUpBody(
-              context,
-              recipient.id,
-              operation.variant,
-              null,
-              currentRow.task.title || null,
-              undefined,
-              resolveParentHonorificFromRelationship(selectedParent?.relationship),
-            );
-          },
-          sendMessage: async (recipient, message) => {
-            const result = await sendClientMessage({
-              address: recipient.phones[0],
-              text: message,
-              serviceName: 'iMessage',
-            });
-            if (result !== 'Success') {
-              throw new Error(result);
-            }
-          },
-          persistMessageSent: async () => {
-            await persistVoicemailFollowUpMessageSent({
-              context,
-              task: currentRow.task,
-              variant: operation.variant,
-              previousCrmStage: null,
-              previousTaskStatus: currentRow.task.title || null,
-            });
-          },
-        });
+        const resultRow =
+          operation.kind === 'sales_stage_task_completion'
+            ? await runScoutPrepStageCompletionBatchRow({
+                row: currentRow,
+                context,
+                stageLabel: operation.stageLabel || 'Spoke to - Not Interested',
+              })
+            : await runScoutPrepBatchRow({
+                row: currentRow,
+                context,
+                buildMessage: async (recipient) => {
+                  const selectedParent =
+                    recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
+                  const deterministicHonorific = resolveParentHonorificFromRelationship(
+                    selectedParent?.relationship,
+                  );
+                  const aiHonorific =
+                    !deterministicHonorific && recipient.id !== 'studentAthlete'
+                      ? await resolveParentHonorificWithRayAI({
+                          parentName: selectedParent?.name || recipient.name,
+                          relationship: selectedParent?.relationship || null,
+                        }).catch(() => null)
+                      : null;
+                  const athleteGender = await resolveAthleteGenderWithRayAI({
+                    athleteName: context.contactInfo.studentAthlete.name || currentRow.task.athlete_name,
+                    sport: context.resolved.sport,
+                  }).catch(() => null);
+                  return buildVoicemailFollowUpBody(
+                    context,
+                    recipient.id,
+                    operation.variant,
+                    null,
+                    currentRow.task.title || null,
+                    undefined,
+                    deterministicHonorific || aiHonorific,
+                    athleteGender,
+                  );
+                },
+                sendMessage: async (recipient, message) => {
+                  const result = await sendClientMessage({
+                    address: recipient.phones[0],
+                    text: message,
+                    serviceName: 'iMessage',
+                  });
+                  if (result !== 'Success') {
+                    throw new Error(result);
+                  }
+                },
+                persistMessageSent: async () => {
+                  if (!operation.variant) {
+                    throw new Error('Missing voicemail variant');
+                  }
+                  await persistVoicemailFollowUpMessageSent({
+                    context,
+                    task: currentRow.task,
+                    variant: operation.variant,
+                    previousCrmStage: null,
+                    previousTaskStatus: currentRow.task.title || null,
+                  });
+                },
+              });
 
         updateRow(currentRow.task, () => resultRow);
         if (resultRow.status === 'failed' && isFatalScoutPrepBatchError(resultRow.message)) {
@@ -5733,26 +6025,22 @@ function ScoutPrepBatchPreflightList({
     }
   }
 
+  function removeBatchRow(row: ScoutPrepBatchRow) {
+    const rowId = buildScoutPrepTaskItemId(row.task);
+    if (isRunning || isChecking) {
+      return;
+    }
+
+    setRows((current) =>
+      current.filter((candidate) => buildScoutPrepTaskItemId(candidate.task) !== rowId),
+    );
+  }
+
   return (
     <List
       isLoading={isRunning || isChecking}
-      navigationTitle="Batch Voicemail Follow-Up"
-      searchBarPlaceholder={`Review ${operation.taskTitle} batch`}
-      searchBarAccessory={
-        <List.Dropdown
-          tooltip="Batch Operation"
-          value={operationId}
-          onChange={(value) => setOperationId(value)}
-        >
-          {Object.values(SCOUT_PREP_BATCH_OPERATIONS).map((candidate) => (
-            <List.Dropdown.Item
-              key={candidate.id}
-              title={candidate.taskTitle}
-              value={candidate.id}
-            />
-          ))}
-        </List.Dropdown>
-      }
+      navigationTitle="Batch Operations"
+      searchBarPlaceholder={`Review ${operation.label}`}
     >
       <List.Section
         title={operation.label}
@@ -5782,6 +6070,13 @@ function ScoutPrepBatchPreflightList({
                       onAction={() => void runBatch()}
                     />
                   ) : null}
+                  <Action
+                    title="Remove Selection"
+                    icon="🗑️"
+                    style={Action.Style.Destructive}
+                    shortcut={{ modifiers: ['ctrl'], key: 'x' }}
+                    onAction={() => removeBatchRow(row)}
+                  />
                   <Action title="Refresh Scout Tasks" icon="🔄" onAction={() => void onComplete()} />
                 </ActionPanel>
               }
@@ -5800,6 +6095,40 @@ function ScoutPrepBatchPreflightList({
         )}
       </List.Section>
     </List>
+  );
+}
+
+function ScoutPrepBatchRoot({
+  tasks,
+  onComplete,
+}: {
+  tasks: ScoutPortalTask[];
+  onComplete: () => Promise<void> | void;
+}) {
+  const [operationId, setOperationId] = useState(SCOUT_PREP_BATCH_OPERATIONS.callAttempt3Voicemail.id);
+  const [confirmedBatch, setConfirmedBatch] = useState<{
+    operationId: string;
+    gradYear?: string | null;
+  } | null>(null);
+
+  if (!confirmedBatch) {
+    return (
+      <ScoutPrepBatchSetupForm
+        tasks={tasks}
+        operationId={operationId}
+        onOperationChange={setOperationId}
+        onConfirm={setConfirmedBatch}
+      />
+    );
+  }
+
+  return (
+    <ScoutPrepBatchPreflightList
+      tasks={tasks}
+      initialOperationId={confirmedBatch.operationId}
+      selectedGradYear={confirmedBatch.gradYear}
+      onComplete={onComplete}
+    />
   );
 }
 
@@ -6123,7 +6452,7 @@ export default function ScoutPrepCommand(
 
   function buildBatchVoicemailTarget() {
     return (
-      <ScoutPrepBatchPreflightList
+      <ScoutPrepBatchRoot
         tasks={selectedTaskRows.map((row) => row.task)}
         onComplete={returnToRootTaskList}
       />
