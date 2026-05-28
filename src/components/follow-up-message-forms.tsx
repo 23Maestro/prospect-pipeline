@@ -1,6 +1,5 @@
 import { Action, ActionPanel, Form, showToast, Toast, useNavigation } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
 import type {
   ConfirmationFollowUpVariant,
   VoicemailFollowUpVariant,
@@ -29,7 +28,6 @@ export function VoicemailFollowUpMessageForm(props: {
   defaultRecipientId?: string;
   defaultVariant: VoicemailFollowUpVariant;
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
-  buildRescheduleTarget?: (values: VoicemailFollowUpFormValues) => ReactNode;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recipientId, setRecipientId] = useState(
@@ -80,20 +78,12 @@ export function VoicemailFollowUpMessageForm(props: {
       isLoading={isSubmitting}
       actions={
         <ActionPanel>
-          {isRescheduleVariant && props.buildRescheduleTarget ? (
-            <Action.Push
-              title="Choose Slots"
-              target={props.buildRescheduleTarget({
-                recipientId,
-                variant: selectedVariant,
-              })}
-            />
-          ) : (
-            <Action.SubmitForm
-              title={isSubmitting ? 'Sending...' : 'Send Message'}
-              onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
-            />
-          )}
+          <Action.SubmitForm
+            title={
+              isRescheduleVariant ? 'Choose Slots' : isSubmitting ? 'Sending...' : 'Send Message'
+            }
+            onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
+          />
         </ActionPanel>
       }
     >

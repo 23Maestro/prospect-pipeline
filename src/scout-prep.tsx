@@ -2168,17 +2168,6 @@ function VoicemailFollowUpRecipientForm({
       recipients={recipients}
       defaultRecipientId={recipients[0]?.id}
       defaultVariant={defaultVariant}
-      buildRescheduleTarget={(values) => {
-        const recipient =
-          recipients.find((candidate) => candidate.id === values.recipientId) || recipients[0];
-        return (
-          <RescheduleSlotSelectionGrid
-            task={task}
-            context={context}
-            onSlotsSelected={(slots) => openMessagesForRecipient(recipient, values.variant, slots)}
-          />
-        );
-      }}
       onSubmit={async (values) =>
         handleSubmit({
           recipientId: values.recipientId,
