@@ -3,8 +3,10 @@
 import fetch from 'node-fetch';
 import { buildWeeklyOperatorMeetingSetCandidates } from '../src/domain/booked-meeting-source.ts';
 import { buildSetMeetingConfirmationCacheRows } from '../src/domain/set-meeting-confirmation-cache.ts';
-import { upsertSetMeetingConfirmationCacheRows } from '../src/domain/supabase-persistence.ts';
-import { buildMeetingSetConfirmationIntendedSendDate } from '../src/lib/set-meeting-confirmation-cache-sync.ts';
+import {
+  readRows,
+  upsertSetMeetingConfirmationCacheRows,
+} from '../src/domain/supabase-persistence.ts';
 import { getGreetingForLocalTime } from '../src/domain/outreach-time-wording.ts';
 import { buildConfirmationMessage } from '../src/lib/scout-follow-up-templates.ts';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
@@ -85,6 +87,73 @@ function buildTodayThroughNextSundayWindow(now = new Date()) {
     start: formatDateKey(localNoonToday),
     end: formatDateKey(end),
   };
+}
+
+function getWallParts(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value || '';
+  const hour = Number.parseInt(value('hour'), 10);
+  return {
+    year: Number.parseInt(value('year'), 10),
+    month: Number.parseInt(value('month'), 10),
+    day: Number.parseInt(value('day'), 10),
+    weekday: value('weekday'),
+    hour: hour === 24 ? 0 : hour,
+    minute: Number.parseInt(value('minute'), 10) || 0,
+    second: Number.parseInt(value('second'), 10) || 0,
+  };
+}
+
+function zonedWallTimeToUtcDate(args) {
+  const expectedWallUtc = Date.UTC(
+    args.year,
+    args.month - 1,
+    args.day,
+    args.hour,
+    args.minute,
+    args.second || 0,
+  );
+  const initial = new Date(expectedWallUtc);
+  const actualWall = getWallParts(initial, args.timeZone);
+  const actualWallUtc = Date.UTC(
+    actualWall.year,
+    actualWall.month - 1,
+    actualWall.day,
+    actualWall.hour,
+    actualWall.minute,
+    actualWall.second,
+  );
+  return new Date(initial.getTime() - (actualWallUtc - expectedWallUtc));
+}
+
+function buildMeetingSetConfirmationIntendedSendDate(args) {
+  const meetingParts = getWallParts(args.meetingDate, args.meetingTimezone);
+  const meetingLocalNoon = new Date(
+    Date.UTC(meetingParts.year, meetingParts.month - 1, meetingParts.day, 12, 0, 0),
+  );
+  const sendLocalNoon = new Date(meetingLocalNoon);
+  if (meetingParts.weekday === 'Sat' || meetingParts.weekday === 'Sun') {
+    sendLocalNoon.setUTCDate(sendLocalNoon.getUTCDate() - 1);
+  }
+
+  return zonedWallTimeToUtcDate({
+    year: sendLocalNoon.getUTCFullYear(),
+    month: sendLocalNoon.getUTCMonth() + 1,
+    day: sendLocalNoon.getUTCDate(),
+    hour: 9,
+    minute: 0,
+    timeZone: args.meetingTimezone,
+  });
 }
 
 function normalizeIsoValue(value) {
@@ -198,6 +267,27 @@ async function fetchContactInfo(candidate) {
   );
 }
 
+async function fetchAthleteContactTimezone(candidate) {
+  const athleteKey = `${String(candidate.athleteId || '').trim()}:${String(candidate.athleteMainId || '').trim()}`;
+  if (!athleteKey.includes(':') || athleteKey.startsWith(':') || athleteKey.endsWith(':')) {
+    return null;
+  }
+  const rows = await readRows(
+    SUPABASE_CONFIG,
+    'athlete_contact_cache',
+    [
+      'select=timezone,timezone_label',
+      `athlete_key=eq.${encodeURIComponent(athleteKey)}`,
+      'limit=5',
+    ].join('&'),
+  );
+  for (const row of rows) {
+    const timezone = String(row.timezone || row.timezone_label || '').trim();
+    if (timezone) return timezone;
+  }
+  return null;
+}
+
 const windowRange = buildTodayThroughNextSundayWindow();
 const [scoutTaskPayload, bookedMeetingsPayload] = await Promise.all([
   apiFetch('/scout/tasks?range=thisWeek').catch(() => ({ tasks: [] })),
@@ -241,7 +331,10 @@ for (const [index, candidate] of candidates.entries()) {
     }
     const meetingDate = new Date(startsAt);
     const headScoutName = String(candidate.bookedMeeting.assignedOwner || '').trim();
-    const meetingTimezone = EASTERN_TIME_ZONE;
+    const meetingTimezone = await fetchAthleteContactTimezone(candidate);
+    if (!meetingTimezone) {
+      throw new Error('No athlete contact timezone found for confirmation cache');
+    }
     const intendedSendAt = buildMeetingSetConfirmationIntendedSendDate({
       meetingDate,
       meetingTimezone,

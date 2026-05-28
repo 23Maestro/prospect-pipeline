@@ -912,6 +912,11 @@ export function HeadScoutBookingsList({
             ).message;
       const supabaseConfig = getConfirmationCacheSupabaseConfig();
       if (supabaseConfig && candidate.bookedMeeting?.event_id) {
+        const meetingTimezone =
+          prepared.resolvedAppointment.meetingTimezone || candidate.meetingTimezone || '';
+        if (!meetingTimezone) {
+          throw new Error('Missing resolved meeting timezone for confirmation cache');
+        }
         const rows = buildSetMeetingConfirmationCacheRows({
           appointmentId: candidate.bookedMeeting.event_id,
           athleteId: candidate.athleteId,
@@ -921,7 +926,7 @@ export function HeadScoutBookingsList({
           recipientPhone: reminderRecipient.phones[0] || '',
           headScoutName: prepared.headScoutName || candidate.headScoutName || '',
           meetingStartsAt: candidate.bookedMeeting.start || null,
-          meetingTimezone: 'America/New_York',
+          meetingTimezone,
           confirmation1Message: confirmation1,
           confirmation2Message: confirmation2,
           adminUrl: candidate.adminUrl || '',

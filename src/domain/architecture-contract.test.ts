@@ -129,6 +129,19 @@ test('confirmation text actions auto-prefix booked meeting titles', () => {
   );
 });
 
+test('Set Meetings confirmation cache writes resolved appointment timezone', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
+  const confirmationFlow = headScoutSchedules.slice(
+    sendConfirmationStart,
+    headScoutSchedules.indexOf('function buildConfirmationTextForm', sendConfirmationStart),
+  );
+
+  assert.match(confirmationFlow, /prepared\.resolvedAppointment\.meetingTimezone/);
+  assert.match(confirmationFlow, /meetingTimezone,\s*confirmation1Message/s);
+  assert.doesNotMatch(confirmationFlow, /meetingTimezone:\s*['"]America\/New_York['"]/);
+});
+
 test('adapter files preserve legacy names and delegate domain meaning', () => {
   const salesStage = readRepoFile('src/lib/sales-stage.ts');
   assert.match(salesStage, /from '\.\.\/domain\/sales-stage-contract'/);
