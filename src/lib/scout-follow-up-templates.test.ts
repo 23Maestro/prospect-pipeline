@@ -298,6 +298,27 @@ test('buildVoicemailFollowUpMessage renders simple Cal link reply without signat
   assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
 });
 
+test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'parent_contact_intro',
+    greeting: 'Hi [ParentFirst],',
+    athleteName: 'Kapri',
+    senderName: 'Jerami Singleton',
+    sport: 'Basketball',
+  });
+
+  assert.equal(
+    message,
+    [
+      'Hi [ParentFirst], this is Jerami with Prospect ID.',
+      '',
+      'Kapri’s recruiting info came through.',
+      '',
+      'Would today or tomorrow work for a quick call?',
+    ].join('\n'),
+  );
+});
+
 test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', () => {
   const attempt1 = buildVoicemailFollowUpMessage({
     variant: 'call_attempt_1',

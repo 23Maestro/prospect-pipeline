@@ -723,6 +723,49 @@ test('buildVoicemailFollowUpBody: send Cal link option renders simple reply', ()
   );
 });
 
+test('buildVoicemailFollowUpBody: parent contact intro uses student athlete name only', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Kapri Johnson',
+      },
+      resolved: {
+        sport: 'Basketball',
+        city: 'Orlando',
+        state: 'FL',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Kapri Johnson',
+          email: null,
+          phone: '(407) 555-0000',
+        },
+        parent1: null,
+        parent2: null,
+      },
+    }),
+    undefined,
+    'parent_contact_intro',
+    null,
+    null,
+    new Date('2026-04-17T19:28:00Z'),
+  );
+
+  assert.equal(
+    body,
+    [
+      'Hi [ParentFirst], this is Jerami with Prospect ID.',
+      '',
+      'Kapri’s recruiting info came through.',
+      '',
+      'Would today or tomorrow work for a quick call?',
+    ].join('\n'),
+  );
+});
+
 test('buildVoicemailFollowUpBody: no show uses first name only', () => {
   const body = buildVoicemailFollowUpBody(
     buildContext({

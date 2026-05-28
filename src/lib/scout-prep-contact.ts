@@ -211,11 +211,13 @@ export function buildVoicemailFollowUpBody(
         : context.contactInfo.parent1?.name || context.contactInfo.parent2?.name,
     ) || 'there';
   const greeting =
-    selectedVariant === 'no_show'
-      ? `Hi ${noShowFirstName},`
-      : recipient?.id === 'studentAthlete'
-        ? `${dayGreeting} ${athleteFirstName},`
-        : `${dayGreeting} ${greetingName},`;
+    selectedVariant === 'parent_contact_intro'
+      ? 'Hi [ParentFirst],'
+      : selectedVariant === 'no_show'
+        ? `Hi ${noShowFirstName},`
+        : recipient?.id === 'studentAthlete'
+          ? `${dayGreeting} ${athleteFirstName},`
+          : `${dayGreeting} ${greetingName},`;
   const recipientType = recipient?.id === 'studentAthlete' ? 'student_athlete' : 'parent';
 
   return buildVoicemailFollowUpMessage({

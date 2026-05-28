@@ -27,6 +27,7 @@ export function VoicemailFollowUpMessageForm(props: {
   recipients: VoicemailRecipient[];
   defaultRecipientId?: string;
   defaultVariant: VoicemailFollowUpVariant;
+  previousMeetingText?: string | null;
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -39,12 +40,21 @@ export function VoicemailFollowUpMessageForm(props: {
   const isMountedRef = useRef(true);
   const isRescheduleVariant =
     selectedVariant === 'reschedule_1' || selectedVariant === 'reschedule_2';
+  const isParentContactIntro = selectedVariant === 'parent_contact_intro';
 
   useEffect(() => {
     return () => {
       isMountedRef.current = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isParentContactIntro) {
+      setRecipientId('search_all_contacts');
+    } else if (recipientId === 'search_all_contacts') {
+      setRecipientId(props.defaultRecipientId || props.recipients[0]?.id || '');
+    }
+  }, [isParentContactIntro, props.defaultRecipientId, props.recipients, recipientId]);
 
   async function handleSubmit(values?: Partial<VoicemailFollowUpFormValues>) {
     if (isSubmitting) {
@@ -80,7 +90,13 @@ export function VoicemailFollowUpMessageForm(props: {
         <ActionPanel>
           <Action.SubmitForm
             title={
-              isRescheduleVariant ? 'Choose Slots' : isSubmitting ? 'Sending...' : 'Send Message'
+              isRescheduleVariant
+                ? 'Choose Slots'
+                : isSubmitting
+                  ? 'Sending...'
+                  : isParentContactIntro
+                    ? 'Search Contacts'
+                    : 'Send Message'
             }
             onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
           />
@@ -89,17 +105,21 @@ export function VoicemailFollowUpMessageForm(props: {
     >
       <Form.Dropdown
         id="recipientId"
-        title="Who Did You Call?"
+        title={isParentContactIntro ? 'Parent Contact' : 'Who Did You Call?'}
         value={recipientId}
         onChange={setRecipientId}
       >
-        {props.recipients.map((recipient) => (
-          <Form.Dropdown.Item
-            key={recipient.id}
-            value={recipient.id}
-            title={`${recipient.label}: ${recipient.name}`}
-          />
-        ))}
+        {isParentContactIntro ? (
+          <Form.Dropdown.Item value="search_all_contacts" title="Search All Contacts" />
+        ) : (
+          props.recipients.map((recipient) => (
+            <Form.Dropdown.Item
+              key={recipient.id}
+              value={recipient.id}
+              title={`${recipient.label}: ${recipient.name}`}
+            />
+          ))
+        )}
       </Form.Dropdown>
       <Form.Dropdown
         id="variant"
@@ -114,7 +134,11 @@ export function VoicemailFollowUpMessageForm(props: {
         <Form.Dropdown.Item value="reschedule_2" title="Reschedule 2" />
         <Form.Dropdown.Item value="no_show" title="No Show" />
         <Form.Dropdown.Item value="send_cal_link" title="Send Cal Link" />
+        <Form.Dropdown.Item value="parent_contact_intro" title="Parent Intro" />
       </Form.Dropdown>
+      {isRescheduleVariant && props.previousMeetingText ? (
+        <Form.Description title="Previous Meeting" text={props.previousMeetingText} />
+      ) : null}
     </Form>
   );
 }

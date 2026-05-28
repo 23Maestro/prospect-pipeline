@@ -15,7 +15,6 @@ import {
   showToast,
   useNavigation,
 } from '@raycast/api';
-import { useForm } from '@raycast/utils';
 import { spawn } from 'node:child_process';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
@@ -344,6 +343,14 @@ function titleCaseWords(value?: string | null): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
     .join(' ');
+}
+
+function firstWord(value?: string | null): string {
+  return (
+    String(value || '')
+      .trim()
+      .split(/\s+/)[0] || ''
+  );
 }
 
 function formatStateForHighSchoolCopy(state?: string | null): string | null {
@@ -873,7 +880,11 @@ async function persistVoicemailFollowUpMessageSent(args: {
   previousCrmStage?: string | null;
   previousTaskStatus?: string | null;
 }) {
-  if (args.variant === 'send_cal_link' || isTaskOnlyVoicemailVariant(args.variant)) {
+  if (
+    args.variant === 'send_cal_link' ||
+    args.variant === 'parent_contact_intro' ||
+    isTaskOnlyVoicemailVariant(args.variant)
+  ) {
     return;
   }
 
@@ -1305,6 +1316,7 @@ function SingleRecipientMessageForm({
   contactOptions,
   defaultContactId,
   initialMessage,
+  searchAllContactsOnly = false,
   onMessageSent,
   onMessageSentLabel,
   onMessageSentToastTitle,
@@ -1317,6 +1329,7 @@ function SingleRecipientMessageForm({
   contactOptions?: MessageContactOption[];
   defaultContactId?: string;
   initialMessage: string;
+  searchAllContactsOnly?: boolean;
   onMessageSent?: () => Promise<void>;
   onMessageSentLabel?: string;
   onMessageSentToastTitle?: string;
@@ -1333,12 +1346,15 @@ function SingleRecipientMessageForm({
     [phone, recipientName],
   );
   const messageContacts = useMemo(() => {
+    if (searchAllContactsOnly) return [];
     return contactOptions?.length ? contactOptions : [fallbackContact];
-  }, [contactOptions, fallbackContact]);
+  }, [contactOptions, fallbackContact, searchAllContactsOnly]);
   const initialContactId =
     defaultContactId && messageContacts.some((contact) => contact.id === defaultContactId)
       ? defaultContactId
-      : messageContacts[0]?.id || fallbackContact.id;
+      : messageContacts[0]?.id || '';
+  const [contactId, setContactId] = useState(initialContactId);
+  const [message, setMessage] = useState(initialMessage);
   const [searchText, setSearchText] = useState('');
   const [searchedContacts, setSearchedContacts] = useState<MessageContactOption[]>([]);
   const [isSearchingContacts, setIsSearchingContacts] = useState(false);
@@ -1402,18 +1418,32 @@ function SingleRecipientMessageForm({
     ? [...messageContacts, ...searchedContacts]
     : messageContacts;
 
-  const { itemProps, handleSubmit } = useForm<{ contactId: string; message: string }>({
-    initialValues: { contactId: initialContactId, message: initialMessage },
-    async onSubmit(values) {
-      const selectedContact =
-        [...messageContacts, ...searchedContacts].find(
-          (contact) => contact.id === values.contactId,
-        ) ||
-        messageContacts[0] ||
-        fallbackContact;
+  function handleContactChange(value: string) {
+    setContactId(value);
+    const selectedContact = [...messageContacts, ...searchedContacts].find(
+      (contact) => contact.id === value,
+    );
+    if (selectedContact?.name && message.includes('[ParentFirst]')) {
+      setMessage(
+        message.replace(
+          /\[ParentFirst\]/g,
+          firstWord(selectedContact.name) || selectedContact.name,
+        ),
+      );
+    }
+  }
+
+  async function handleSubmit() {
+    try {
+      const selectedContact = [...messageContacts, ...searchedContacts].find(
+        (contact) => contact.id === contactId,
+      );
+      if (!selectedContact?.phone) {
+        throw new Error('Search and select a contact first.');
+      }
       const result = await sendClientMessage({
         address: selectedContact.phone,
-        text: values.message,
+        text: message,
         serviceName: 'iMessage',
       });
 
@@ -1446,8 +1476,14 @@ function SingleRecipientMessageForm({
           message: selectedContact.name,
         });
       }
-    },
-  });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Message not sent',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   return (
     <Form
@@ -1459,8 +1495,10 @@ function SingleRecipientMessageForm({
       }
     >
       <Form.Dropdown
-        {...itemProps.contactId}
-        title="Client"
+        id="contactId"
+        title={searchAllContactsOnly ? 'Search Contacts' : 'Client'}
+        value={contactId}
+        onChange={handleContactChange}
         filtering
         isLoading={isSearchingContacts}
         onSearchTextChange={setSearchText}
@@ -1473,7 +1511,7 @@ function SingleRecipientMessageForm({
           />
         ))}
       </Form.Dropdown>
-      <Form.TextArea {...itemProps.message} title="Message" />
+      <Form.TextArea id="message" title="Message" value={message} onChange={setMessage} />
     </Form>
   );
 }
@@ -1694,6 +1732,30 @@ function buildRescheduleVoicemailSlotOptions(args: {
         zoneLabel: display.zoneLabel,
       };
     });
+}
+
+function buildPreviousMeetingTextForReschedule(
+  resolved: ResolvedBookedMeetingDetails | null,
+  context: ScoutPrepContext,
+): string | null {
+  const meeting = resolved?.bookedMeeting;
+  if (!meeting) {
+    return null;
+  }
+
+  const athleteTimezone =
+    resolved.meetingTimezone ||
+    resolveAthleteTimezone(context.resolved.city, context.resolved.state);
+  const display =
+    meeting.start && meeting.end
+      ? formatHeadScoutSlotForTimezone(meeting.start, meeting.end, athleteTimezone)
+      : null;
+  const slotLabel = display
+    ? `${display.dateLabel} ${buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel)}`
+    : String(meeting.date_time_label || '').trim();
+  const scoutName = String(meeting.assigned_owner || '').trim();
+
+  return [slotLabel, scoutName].filter(Boolean).join(' • ') || null;
 }
 
 function isRescheduleVoicemailVariant(variant?: VoicemailFollowUpVariant | null): boolean {
@@ -1981,13 +2043,58 @@ function VoicemailFollowUpRecipientForm({
   const defaultVariant = resolveVoicemailFollowUpVariant({
     currentTask: currentTask || task.title || null,
   });
+  const [previousMeetingText, setPreviousMeetingText] = useState<string | null>(null);
+  const [isLoadingPreviousMeeting, setIsLoadingPreviousMeeting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const athleteId = String(task.contact_id || context.task.contact_id || '').trim();
+    const athleteMainId = String(
+      context.resolved.athlete_main_id || task.athlete_main_id || '',
+    ).trim();
+
+    async function loadPreviousMeeting() {
+      if (!athleteId || !athleteMainId) {
+        setPreviousMeetingText(null);
+        return;
+      }
+
+      setIsLoadingPreviousMeeting(true);
+      try {
+        const resolved = await resolveBookedMeetingDetailsForForm(
+          {
+            athleteId,
+            athleteMainId,
+          },
+          {
+            getCachedMeetingDescription: getCachedBookedMeetingDescription,
+          },
+        );
+        if (!active) return;
+        setPreviousMeetingText(buildPreviousMeetingTextForReschedule(resolved, context));
+      } catch {
+        if (!active) return;
+        setPreviousMeetingText(null);
+      } finally {
+        if (active) {
+          setIsLoadingPreviousMeeting(false);
+        }
+      }
+    }
+
+    void loadPreviousMeeting();
+    return () => {
+      active = false;
+    };
+  }, [context, task]);
 
   async function openMessagesForRecipient(
     recipient?: (typeof recipients)[number],
     variant?: VoicemailFollowUpVariant,
     selectedRescheduleSlots: RescheduleVoicemailSlotOption[] = [],
   ) {
-    if (!recipient || !recipient.phones.length) {
+    const selectedVariant = variant || defaultVariant;
+    if (selectedVariant !== 'parent_contact_intro' && (!recipient || !recipient.phones.length)) {
       await showToast({
         style: Toast.Style.Failure,
         title: 'No message contact',
@@ -1996,9 +2103,46 @@ function VoicemailFollowUpRecipientForm({
       return;
     }
 
+    async function finishFollowUpFlow(
+      toastTitle: string,
+      toastMessage?: string,
+      extraChildViews = 0,
+    ) {
+      await completeScoutPrepMutationSuccess({
+        title: toastTitle,
+        message: toastMessage,
+        onReturnToRootList: onComplete,
+      });
+      popViews(pop, closeAfterCompleteViews + extraChildViews);
+    }
+
+    if (selectedVariant === 'parent_contact_intro') {
+      const body = buildVoicemailFollowUpBody(
+        context,
+        undefined,
+        selectedVariant,
+        null,
+        currentTask || task.title || null,
+      );
+
+      push(
+        <SingleRecipientMessageForm
+          title={`Parent Intro • ${context.contactInfo.studentAthlete.name || task.athlete_name}`}
+          recipientName="Parent"
+          phone=""
+          contactOptions={[]}
+          initialMessage={body}
+          searchAllContactsOnly
+          onMessageSentComplete={async () => {
+            await finishFollowUpFlow('Sent', 'No Laravel update');
+          }}
+        />,
+      );
+      return;
+    }
+
     const selectedParent =
-      recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
-    const selectedVariant = variant || defaultVariant;
+      recipient?.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
     if (isRescheduleVoicemailVariant(selectedVariant) && selectedRescheduleSlots.length < 2) {
       push(
         <RescheduleSlotSelectionList
@@ -2027,7 +2171,7 @@ function VoicemailFollowUpRecipientForm({
 
     const body = buildVoicemailFollowUpBody(
       context,
-      recipient.id,
+      recipient?.id,
       selectedVariant,
       null,
       currentTask || task.title || null,
@@ -2052,19 +2196,6 @@ function VoicemailFollowUpRecipientForm({
       recipientCount: recipient.phones.length,
       variant: selectedVariant,
     });
-
-    async function finishFollowUpFlow(
-      toastTitle: string,
-      toastMessage?: string,
-      extraChildViews = 0,
-    ) {
-      await completeScoutPrepMutationSuccess({
-        title: toastTitle,
-        message: toastMessage,
-        onReturnToRootList: onComplete,
-      });
-      popViews(pop, closeAfterCompleteViews + extraChildViews);
-    }
 
     try {
       if (recipient.phones.length === 1 && recipient.id !== 'groupAll') {
@@ -2201,7 +2332,10 @@ function VoicemailFollowUpRecipientForm({
   async function handleSubmit(values: VoicemailFollowUpFormValues) {
     const recipient =
       recipients.find((candidate) => candidate.id === values.recipientId) || recipients[0];
-    await openMessagesForRecipient(recipient, values.variant || defaultVariant);
+    await openMessagesForRecipient(
+      values.variant === 'parent_contact_intro' ? undefined : recipient,
+      values.variant || defaultVariant,
+    );
   }
 
   return (
@@ -2210,6 +2344,9 @@ function VoicemailFollowUpRecipientForm({
       recipients={recipients}
       defaultRecipientId={recipients[0]?.id}
       defaultVariant={defaultVariant}
+      previousMeetingText={
+        isLoadingPreviousMeeting ? 'Loading...' : previousMeetingText || 'No booked meeting found'
+      }
       onSubmit={async (values) =>
         handleSubmit({
           recipientId: values.recipientId,
