@@ -4,6 +4,7 @@ import {
   Color,
   Detail,
   Form,
+  LaunchProps,
   LocalStorage,
   List,
   Toast,
@@ -74,6 +75,11 @@ const TIME_TAG_COLORS = [
   Color.Magenta,
   Color.Yellow,
 ];
+
+type ClientMessageLaunchContext = {
+  searchText?: string;
+  source?: string;
+};
 
 function tagColorFor(value?: string | null): Color {
   const normalized = String(value || '').trim();
@@ -865,6 +871,7 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
                   <Action
                     title="Open Scout Prep"
                     icon="📋"
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
                     onAction={() => void openScoutPrepFromClientMessage(chat)}
                   />
                 </ActionPanel.Section>
@@ -940,8 +947,14 @@ async function openScoutPrepFromClientMessage(chat: ClientInboxChat) {
   });
 }
 
-export default function ClientMessageInboxCommand() {
-  const [searchText, setSearchText] = useState('');
+export default function ClientMessageInboxCommand(
+  props: LaunchProps<{ launchContext?: ClientMessageLaunchContext }> = {} as LaunchProps<{
+    launchContext?: ClientMessageLaunchContext;
+  }>,
+) {
+  const launchContext = props.launchContext;
+  const initialSearchText = String(launchContext?.searchText || '').trim();
+  const [searchText, setSearchText] = useState(initialSearchText);
   const { push } = useNavigation();
   const {
     data: chats,

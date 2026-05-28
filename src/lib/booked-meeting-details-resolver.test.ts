@@ -24,7 +24,9 @@ function bookedMeeting(overrides: Partial<BookedMeetingEvent> = {}): BookedMeeti
   };
 }
 
-function details(overrides: Partial<BookedMeetingDetailsResponse> = {}): BookedMeetingDetailsResponse {
+function details(
+  overrides: Partial<BookedMeetingDetailsResponse> = {},
+): BookedMeetingDetailsResponse {
   return {
     success: true,
     event_id: 'evt_1',
@@ -105,7 +107,6 @@ test('fetches current booked meeting when none is supplied', async () => {
     description: null,
   });
   let requestedDetailsEventId = '';
-
   const result = await resolveBookedMeetingDetailsForForm(
     {
       athleteId: '1489000',
@@ -123,6 +124,32 @@ test('fetches current booked meeting when none is supplied', async () => {
   assert.equal(result?.bookedMeeting.event_id, 'evt_future');
   assert.equal(requestedDetailsEventId, 'evt_future');
   assert.equal(result?.description, 'Future popup description');
+});
+
+test('resolves booked meeting rows that only have eventlist labels', async () => {
+  const eventlistOnly = bookedMeeting({
+    event_id: 'evt_label_only',
+    start: '',
+    end: '',
+    assigned_owner: 'Ryan Lietz',
+    date_time_label: 'Mon 06/01/26 06:00 PM',
+    description: 'Eventlist-only description',
+  });
+  let requestedDetailsEventId = '';
+
+  const result = await resolveBookedMeetingDetailsForForm(
+    {
+      athleteId: '1489000',
+      athleteMainId: '951000',
+    },
+    {
+      fetchAthleteBookedMeetings: async () => meetingsResponse([eventlistOnly]),
+    },
+  );
+
+  assert.equal(result?.bookedMeeting.event_id, 'evt_label_only');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Ryan Lietz');
+  assert.equal(result?.description, 'Eventlist-only description');
 });
 
 test('falls back to booked event description when popup fetch fails', async () => {

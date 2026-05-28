@@ -762,6 +762,10 @@ async function quitMessagesApp() {
   }
 }
 
+function escapeAppleScriptString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 export async function sendClientMessage(args: {
   address: string;
   text: string;
@@ -772,8 +776,8 @@ export async function sendClientMessage(args: {
     tell application "Messages"
       try
         set targetService to (service 1 whose service type = ${args.serviceName === 'iMessage' ? 'iMessage' : 'SMS'})
-        set targetBuddy to participant "${args.address.replace(/"/g, '\\"')}" of targetService
-        send "${args.text.replace(/"/g, '\\"')}" to targetBuddy
+        set targetBuddy to participant "${escapeAppleScriptString(args.address)}" of targetService
+        send "${escapeAppleScriptString(args.text)}" to targetBuddy
         return "Success"
       on error errMsg
         return "Error: " & errMsg
@@ -781,9 +785,11 @@ export async function sendClientMessage(args: {
     end tell
   `;
 
-  const result = await runAppleScript(script);
-  if (result === 'Success' && !wasMessagesRunning) {
-    await quitMessagesApp();
+  try {
+    return await runAppleScript(script);
+  } finally {
+    if (!wasMessagesRunning) {
+      await quitMessagesApp();
+    }
   }
-  return result;
 }

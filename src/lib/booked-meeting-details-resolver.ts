@@ -40,8 +40,18 @@ export function selectCurrentBookedMeeting(
   now = new Date(),
 ): BookedMeetingEvent | null {
   const sorted = [...events]
-    .filter((event) => String(event.start || '').trim())
-    .sort((left, right) => String(left.start).localeCompare(String(right.start)));
+    .filter((event) =>
+      Boolean(
+        String(event.start || '').trim() ||
+        String(event.date_time_label || '').trim() ||
+        String(event.event_id || '').trim(),
+      ),
+    )
+    .sort((left, right) =>
+      String(left.start || left.date_time_label || left.event_id || '').localeCompare(
+        String(right.start || right.date_time_label || right.event_id || ''),
+      ),
+    );
   if (!sorted.length) return null;
 
   return (

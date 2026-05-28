@@ -149,10 +149,13 @@ test('Scout Prep meeting-set confirmation cache writer replaces appointment rows
     cacheSync.indexOf('export async function syncMeetingSetConfirmationCacheFromScoutPrep'),
   );
 
-  assert.match(syncFlow, /deleteRows\(config,\s*'set_meeting_confirmation_cache',\s*'appointment_id'/);
+  assert.match(
+    syncFlow,
+    /deleteRows\([\s\S]*?'set_meeting_confirmation_cache'[\s\S]*?'appointment_id'/,
+  );
   assert.match(syncFlow, /await upsertSetMeetingConfirmationCacheRows\(config, rows\)/);
   assert.ok(
-    syncFlow.indexOf("deleteRows(config, 'set_meeting_confirmation_cache', 'appointment_id'") <
+    syncFlow.indexOf('deleteRows(') <
       syncFlow.indexOf('upsertSetMeetingConfirmationCacheRows(config, rows)'),
   );
 });
@@ -295,12 +298,63 @@ test('Client Messages launches Scout Prep against the all-task bucket', () => {
   const clientMessages = readRepoFile('src/client-message-inbox.tsx');
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
 
+  assert.match(clientMessages, /LaunchProps<\{ launchContext\?: ClientMessageLaunchContext \}>/);
+  assert.match(clientMessages, /const initialSearchText = String\(launchContext\?\.searchText \|\| ''\)\.trim\(\)/);
   assert.match(clientMessages, /name: 'scout-prep'/);
   assert.match(clientMessages, /initialFilter: 'all'/);
   assert.match(clientMessages, /searchText: athleteName/);
-  assert.match(scoutPrep, /resolveInitialTaskListFilter\(launchContext\?\.initialFilter\)/);
+  assert.match(clientMessages, /title="Open Scout Prep"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 's' \}\}/);
+  assert.match(scoutPrep, /resolveInitialTaskListFilter\(launchContext\.initialFilter\)/);
   assert.match(scoutPrep, /const \[taskSearchText, setTaskSearchText\]/);
-  assert.match(scoutPrep, /viewMode === 'tasks'\s*\?\s*taskSearchText/);
+  assert.match(scoutPrep, /viewMode === 'prospect'\s*\?\s*prospectSearchText\s*:\s*taskSearchText/);
+});
+
+test('Scout Prep launches Client Messages against contact-cache matched threads', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+
+  assert.match(scoutPrep, /name: 'client-message-inbox'/);
+  assert.match(scoutPrep, /searchText: buildClientMessageSearchTextFromScoutPrepTask\(task\)/);
+  assert.match(scoutPrep, /source: 'scout-prep'/);
+  assert.match(scoutPrep, /title="Open Client Messages"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'm' \}\}/);
+});
+
+test('Scout Prep home keeps the preferred due-today sorted view as the root state', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const commandStart = scoutPrep.indexOf('export default function ScoutPrepCommand');
+  const command = scoutPrep.slice(commandStart);
+
+  assert.match(scoutPrep, /const DEFAULT_TASK_LIST_FILTER: TaskListFilter = 'todayPastDue';/);
+  assert.match(scoutPrep, /const DEFAULT_TASK_LIST_SORT: TaskListSort = \[/);
+  assert.match(scoutPrep, /\{ key: 'gradYear', direction: 'desc' \}/);
+  assert.match(scoutPrep, /\{ key: 'callAttempt', direction: 'asc' \}/);
+  assert.match(command, /useState<TaskListSort>\(DEFAULT_TASK_LIST_SORT\)/);
+  assert.match(command, /setTaskListFilter\(DEFAULT_TASK_LIST_FILTER\)/);
+  assert.match(command, /setTaskListSort\(DEFAULT_TASK_LIST_SORT\)/);
+  assert.doesNotMatch(command, /selectedSortLabel/);
+});
+
+test('Scout Prep pushed child views refresh the root list when popped', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const detailStart = scoutPrep.indexOf('function ScoutPrepDetail');
+  const taskItemStart = scoutPrep.indexOf('function ScoutPrepTaskItem');
+  const detail = scoutPrep.slice(detailStart, taskItemStart);
+  const taskItem = scoutPrep.slice(
+    taskItemStart,
+    scoutPrep.indexOf('function ProspectSearchListItem'),
+  );
+
+  assert.match(detail, /function refreshRootListOnPop\(\)/);
+  assert.match(detail, /push\([\s\S]*<PostCallUpdateForm[\s\S]*refreshRootListOnPop/);
+  assert.match(
+    detail,
+    /<Action\.Push[\s\S]*title="Update Task"[\s\S]*onPop=\{refreshRootListOnPop\}/,
+  );
+  assert.match(taskItem, /function resetRootListOnPop\(\)/);
+  assert.match(taskItem, /push\([\s\S]*<PostCallUpdateForm[\s\S]*resetRootListOnPop/);
+  assert.match(
+    taskItem,
+    /<Action\.Push[\s\S]*title="Contact Info"[\s\S]*onPop=\{resetRootListOnPop\}/,
+  );
 });
 
 test('Scout Prep pipeline cleanup contract defines when active clients end', () => {

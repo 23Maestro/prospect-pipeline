@@ -17,6 +17,17 @@ export type TaskBucketRow = {
   task: ScoutPortalTask;
 };
 
+export const TASK_LIST_PAGE_SIZE = 100;
+
+export function getTaskPageOffset(pageIndex: number, pageSize = TASK_LIST_PAGE_SIZE): number {
+  return Math.max(pageIndex, 0) * pageSize;
+}
+
+export function buildTaskPageLabel(pageIndex: number, pageSize = TASK_LIST_PAGE_SIZE): string {
+  const start = getTaskPageOffset(pageIndex, pageSize) + 1;
+  return `${start}-${start + pageSize - 1}`;
+}
+
 export function mapTaskListFilterToRange(filter: TaskListFilter): ScoutTaskRange {
   switch (filter) {
     case 'all':

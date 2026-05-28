@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildTaskBucketRows,
+  buildTaskPageLabel,
+  getTaskPageOffset,
   getTaskSectionTitle,
   mapTaskListFilterToRange,
   type ScoutTaskRange,
@@ -159,4 +161,11 @@ test('sort keys compound in the provided order', () => {
     rows.map((row) => row.task.athlete_name),
     ['Attempt 1 Senior', 'Attempt 1 Junior', 'Attempt 2 Senior', 'Attempt 2 Junior'],
   );
+});
+
+test('all page helpers expose stable 100-row windows', () => {
+  assert.equal(getTaskPageOffset(0, 100), 0);
+  assert.equal(getTaskPageOffset(2, 100), 200);
+  assert.equal(buildTaskPageLabel(0, 100), '1-100');
+  assert.equal(buildTaskPageLabel(2, 100), '201-300');
 });
