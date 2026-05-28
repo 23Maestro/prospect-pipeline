@@ -114,7 +114,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
   );
   assert.match(
     message,
-    /Wylie’s profile came through and I wanted to ask a few quick questions about his college soccer goals\./,
+    /Wylie’s soccer profile came through and I had a few quick questions about college goals\./,
   );
   assert.doesNotMatch(message, /I just left you a voicemail/);
   assert.match(message, /Would later today or tomorrow work for a quick 10-minute call\?/);
@@ -134,7 +134,7 @@ test('buildVoicemailFollowUpMessage uses female pronouns for softball templates'
 
   assert.match(
     message,
-    /Ava’s profile came through and I wanted to ask a few quick questions about her college softball goals\./,
+    /Ava’s softball profile came through and I had a few quick questions about college goals\./,
   );
   assert.doesNotMatch(message, /serious goal for him/);
 });
@@ -153,8 +153,11 @@ test('buildVoicemailFollowUpMessage renders attempt 2 calendar permission copy',
     now: new Date('2026-04-23T23:30:00Z'),
   });
 
-  assert.match(message, /^Good evening Mr\. Brown, any updates or questions on this\?/);
-  assert.match(message, /If I send you a calendar link, would that be more convenient\?/);
+  assert.match(
+    message,
+    /^Good evening Mr\. Brown, quick follow-up on Grayson’s football profile\./,
+  );
+  assert.match(message, /Would a calendar link be easier, or should I try you later today\?/);
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /I just tried you again/);
@@ -177,9 +180,9 @@ test('buildVoicemailFollowUpMessage renders no show triage copy', () => {
     message,
     /^Hi Jamie, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
   );
-  assert.match(message, /Choose what’s most relevant so I can be helpful:/);
-  assert.match(message, /1 - still interested, just need to reschedule/);
-  assert.match(message, /2 - interested, but timing is bad right now/);
+  assert.match(message, /Reply with the best fit:/);
+  assert.match(message, /1 - still interested, need to reschedule/);
+  assert.match(message, /2 - interested, timing is bad/);
   assert.match(message, /3 - no longer interested/);
   assert.doesNotMatch(message, /No worries, things come up/);
   assert.doesNotMatch(message, /Would tomorrow or Monday work better\?/);
@@ -205,6 +208,27 @@ test('buildVoicemailFollowUpMessage renders reschedule slot copy', () => {
   assert.match(message, /Which one works best\?/);
 });
 
+test('buildVoicemailFollowUpMessage renders second reschedule triage copy', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'reschedule_2',
+    greeting: 'Hi Jamie,',
+    athleteName: 'Aiden',
+    sport: 'Football',
+    previousHeadScoutName: 'Ryan Lietz',
+    rescheduleSlots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
+    now: new Date('2026-04-24T13:00:00Z'),
+  });
+
+  assert.match(
+    message,
+    /^Hi Jamie, checking once more so we can either reschedule or close this out\./,
+  );
+  assert.match(message, /1 - Thu May 28 3 PM EST/);
+  assert.match(message, /2 - Fri May 29 4 PM EST/);
+  assert.match(message, /3 - timing is not good right now/);
+  assert.match(message, /Which option works best\?/);
+});
+
 test('buildVoicemailFollowUpMessage uses no show triage for student athletes', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'no_show',
@@ -218,9 +242,9 @@ test('buildVoicemailFollowUpMessage uses no show triage for student athletes', (
     message,
     /^Hi Aiden, looks like we missed you for your meeting with our Head Scout\./,
   );
-  assert.match(message, /Choose what’s most relevant so I can be helpful:/);
-  assert.match(message, /1 - still interested, just need to reschedule/);
-  assert.match(message, /2 - interested, but timing is bad right now/);
+  assert.match(message, /Reply with the best fit:/);
+  assert.match(message, /1 - still interested, need to reschedule/);
+  assert.match(message, /2 - interested, timing is bad/);
   assert.match(message, /3 - no longer interested/);
   assert.doesNotMatch(message, /have one of your parents call or text me back/);
 });
@@ -238,11 +262,12 @@ test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {
 
   assert.match(
     message,
-    /^Good afternoon Ms\. Bowden, choose what’s most relevant so I can be helpful:/,
+    /^Good afternoon Ms\. Bowden, last quick follow-up on Andrajhez’s college football profile\./,
   );
-  assert.match(message, /1 - not interested whatsoever/);
-  assert.match(message, /2 - interested but bad timing/);
-  assert.match(message, /3 - interested and ready to learn about next steps/);
+  assert.match(message, /Reply with the best fit:/);
+  assert.match(message, /1 - interested, ready for next steps/);
+  assert.match(message, /2 - interested, bad timing/);
+  assert.match(message, /3 - not interested/);
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /I’ve tried a few times/);
   assert.doesNotMatch(message, /I’ll close this out for now\./);
@@ -262,7 +287,13 @@ test('buildVoicemailFollowUpMessage renders simple Cal link reply without signat
 
   assert.equal(
     message,
-    ['Great! Here’s the link to schedule a quick call:', CAL_BOOKING_URL].join('\n'),
+    [
+      'Here is the link to schedule a quick call:',
+      '',
+      CAL_BOOKING_URL,
+      '',
+      'Pick the time that works best.',
+    ].join('\n'),
   );
   assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
 });
@@ -291,13 +322,10 @@ test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', 
   });
 
   assert.match(attempt1, /I received your info about playing college football/);
-  assert.match(attempt1, /If you’re serious about this, have one of your parents call or text me/);
-  assert.match(attempt2, /Any updates or questions on playing college football/);
-  assert.match(
-    attempt2,
-    /If this is still something you want, have one of your parents call or text me/,
-  );
-  assert.match(attempt3, /Last follow-up on your college football profile/);
+  assert.match(attempt1, /If this is still a real goal, have a parent call or text me back/);
+  assert.match(attempt2, /quick follow-up on your college football profile/);
+  assert.match(attempt2, /If you still want help with next steps, have a parent call or text me/);
+  assert.match(attempt3, /last quick follow-up on your college football profile/);
   assert.doesNotMatch(attempt1, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(attempt2, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(attempt3, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -319,8 +347,8 @@ test('buildCallAttempt2Message fills athlete and recipient names', (t) => {
     gradYear: '2027',
   });
 
-  assert.match(message, /Good morning Mr\. Brown, any updates or questions on this\?/);
-  assert.match(message, /If I send you a calendar link, would that be more convenient\?/);
+  assert.match(message, /Good morning Mr\. Brown, quick follow-up on Grayson’s football profile\./);
+  assert.match(message, /Would a calendar link be easier, or should I try you later today\?/);
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /I just tried you again/);
@@ -346,7 +374,7 @@ test('buildConfirmationMessage fills coach and meeting time', () => {
       '',
       'He’ll call your cell at 2:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
       '',
-      'Save his contact so you know it’s him calling.',
+      'CONTACT CARD:',
     ].join('\n'),
   );
 });
@@ -369,7 +397,7 @@ test('buildConfirmationMessage uses tonight when first confirmation is for curre
       '',
       'He’ll call your cell at 7:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
       '',
-      'Save his contact so you know it’s him calling.',
+      'CONTACT CARD:',
     ].join('\n'),
   );
   assert.doesNotMatch(message, /tomorrow/);
@@ -402,11 +430,7 @@ test('buildConfirmationMessage renders short second confirmation copy', () => {
     now: new Date('2026-04-15T16:00:00.000Z'),
   });
 
-  assert.match(
-    message,
-    /Coach Luther Winfield still has you down for 4:00pm pacific on Friday afternoon\./,
-  );
-  assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
+  assert.equal(message, 'Please reply YES you can attend.');
   assert.doesNotMatch(message, /zoom code/);
 });
 
@@ -420,11 +444,7 @@ test('buildConfirmationMessage uses tomorrow for Friday confirmation 2 Saturday 
     now: new Date('2026-04-17T16:00:00.000Z'),
   });
 
-  assert.match(
-    message,
-    /Coach Luther Winfield still has you down for 4:00pm pacific tomorrow afternoon\./,
-  );
-  assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
+  assert.equal(message, 'Please reply YES you can attend.');
 });
 
 test('buildConfirmationMessage does not use tomorrow just because text is sent Friday', () => {
@@ -437,10 +457,7 @@ test('buildConfirmationMessage does not use tomorrow just because text is sent F
     now: new Date('2026-04-17T16:00:00.000Z'),
   });
 
-  assert.match(
-    message,
-    /Coach Ryan Lietz still has you down for 6:00pm central on Monday evening\./,
-  );
+  assert.equal(message, 'Please reply YES you can attend.');
   assert.doesNotMatch(message, /tomorrow/);
 });
 
@@ -454,11 +471,7 @@ test('buildConfirmationMessage uses tomorrow for Saturday confirmation 2 Sunday 
     now: new Date('2026-04-18T16:00:00.000Z'),
   });
 
-  assert.match(
-    message,
-    /Coach Ryan Lietz still has you down for 6:00pm central tomorrow evening\./,
-  );
-  assert.match(message, /Please reply YES to confirm you’ll be able to attend/);
+  assert.equal(message, 'Please reply YES you can attend.');
 });
 
 test('confirmation 1 and confirmation 2 use the same relative phrase resolver', () => {
@@ -482,7 +495,7 @@ test('confirmation 1 and confirmation 2 use the same relative phrase resolver', 
   });
 
   assert.match(confirmation1, /Prospect ID Zoom Meeting tonight 5\/2 at 7:00 PM ET/);
-  assert.match(confirmation2, /still has you down for 7:00pm eastern tonight\./);
+  assert.equal(confirmation2, 'Please reply YES you can attend.');
 });
 
 test('getReminderTimeLabel maps timezone labels to words', () => {

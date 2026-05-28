@@ -244,8 +244,6 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
   const parentFirstName = firstName(args.parentName) || args.parentName || 'Parent';
   const athleteFirstName = firstName(args.athleteName) || args.athleteName || 'your athlete';
   const sport = sportLabel(args.sport).toLowerCase();
-  const gender = args.athleteGender || resolveAthleteGenderFromSport(args.sport) || 'male';
-  const possessive = gender === 'female' ? 'her' : 'his';
   const selectedVariant = resolveVoicemailFollowUpVariant({
     crmStage: args.crmStage,
     currentTask: args.currentTask,
@@ -255,20 +253,18 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
     return [
       `Hi ${parentFirstName}, this is Jerami Singleton with Prospect ID.`,
       '',
-      `Quick follow-up on ${athleteFirstName}’s college ${sport} profile. If playing at the next level is still a serious goal, call or text me back when you can.`,
+      `Quick follow-up on ${athleteFirstName}’s college ${sport} profile.`,
       '',
-      'My number is 407-473-3637.',
+      'If this is still a real goal, call or text me back at 407-473-3637.',
     ].join('\n');
   }
 
   return [
-    `Hi ${parentFirstName}, this is Jerami Singleton, college ${sport} scout with Prospect ID.`,
+    `Hi ${parentFirstName}, this is Jerami Singleton with Prospect ID.`,
     '',
-    `I’m calling about ${athleteFirstName}’s college ${sport} profile and wanted to see if playing at the next level is still a serious goal.`,
+    `I called about ${athleteFirstName}’s college ${sport} profile.`,
     '',
-    `I had a few quick questions about ${possessive} academics and ${sport} talent.`,
-    '',
-    'You can call or text me back at 407-473-3637.',
+    'If playing at the next level is still a real goal, call or text me back at 407-473-3637.',
   ].join('\n');
 }
 

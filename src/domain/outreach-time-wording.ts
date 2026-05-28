@@ -18,7 +18,6 @@ const TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
   AST: 'America/Puerto_Rico',
 };
 
-
 const HUMAN_TIMEZONE_LABEL_TO_IANA: Record<string, string> = {
   EASTERN: 'America/New_York',
   ET: 'America/New_York',
@@ -79,6 +78,9 @@ export function resolveLegacyTimezoneLabelFromIana(timezone?: string | null): st
   if (TIMEZONE_LABEL_TO_IANA[upper]) {
     return upper;
   }
+  if (HUMAN_TIMEZONE_LABEL_TO_IANA[upper]) {
+    return IANA_TO_TIMEZONE_LABEL[HUMAN_TIMEZONE_LABEL_TO_IANA[upper]] || null;
+  }
   return IANA_TO_TIMEZONE_LABEL[trimmed] || null;
 }
 
@@ -108,7 +110,8 @@ function getParts(dateInput: TemporalInput, timezoneLabel?: string | null) {
     hour12: false,
   }).formatToParts(date);
 
-  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value || '';
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value || '';
   const year = Number.parseInt(value('year'), 10);
   const month = Number.parseInt(value('month'), 10);
   const day = Number.parseInt(value('day'), 10);

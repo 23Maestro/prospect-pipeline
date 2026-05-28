@@ -66,7 +66,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep caches both confirmation
   assert.equal(rows[0].kind, 'confirmation_1');
   assert.equal(rows[1].kind, 'confirmation_2');
   assert.match(rows[0].message_body, /Prospect ID Zoom Meeting/);
-  assert.match(rows[1].message_body, /Please reply YES/);
+  assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
 });
 
 test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when required mobile cache fields are missing', () => {
@@ -130,7 +130,6 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when meeting lengt
   );
 });
 
-
 test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekend cache messages for intended send day', () => {
   const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
     athleteId: '1489000',
@@ -151,7 +150,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekend cache mes
     rows[0].message_body,
     /Prospect ID Zoom Meeting tomorrow morning 5\/23 at 10:00 AM ET/,
   );
-  assert.match(rows[1].message_body, /still has you down for 10:00am eastern tomorrow morning/);
+  assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
 });
 
 test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekday cache messages for same-day send', () => {
@@ -171,17 +170,25 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekday cache mes
   });
 
   assert.match(rows[0].message_body, /Prospect ID Zoom Meeting tonight 5\/25 at 6:00 PM CT/);
-  assert.match(rows[1].message_body, /still has you down for 6:00pm central tonight/);
+  assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
 });
-
 
 test('central labels keep 7:00 PM CT and central wording for both confirmations', () => {
   const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
-    athleteId: '1489000', athleteMainId: '951000', athleteName: 'Avery Jones', context: buildContext(),
-    meetingSet: { openEventId: 'event-2', startsAt: '2026-05-25T19:00:00', meetingTimezone: 'Central', meetingLength: '01:00', headScout: 'Ryan Lietz' },
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    context: buildContext(),
+    meetingSet: {
+      openEventId: 'event-2',
+      startsAt: '2026-05-25T19:00:00',
+      meetingTimezone: 'Central',
+      meetingLength: '01:00',
+      headScout: 'Ryan Lietz',
+    },
     generatedAt: '2026-05-22T12:00:00.000Z',
   });
   assert.match(rows[0].message_body, /7:00 PM CT/);
-  assert.match(rows[1].message_body, /7:00pm central/);
+  assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
   assert.doesNotMatch(rows[0].message_body, /8:00 PM ET/);
 });

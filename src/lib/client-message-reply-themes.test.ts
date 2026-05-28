@@ -3,10 +3,14 @@ import assert from 'node:assert/strict';
 import {
   MISSED_CLIENT_REPLY_FLAGS,
   buildClientReplyThemeReviewSnapshot,
+  buildClientReplyThemeThreadMarkdown,
   classifyClientMessageTheme,
   clientReplyThemeReviewBucketLabel,
+  clientReplyThemeReviewDisplayName,
   clientReplyThemeReviewReasonLabel,
+  clientReplyThemeReviewReasonTagLabel,
   clientReplyThemeReviewToneLabel,
+  clientReplyThemeReviewToneTagColor,
   readCachedClientReplyThemeReviewSnapshot,
   writeCachedClientReplyThemeReviewSnapshot,
 } from './client-message-reply-themes.js';
@@ -345,6 +349,61 @@ test('client review hides diagnostic labels from main UI', () => {
   assert.doesNotMatch(visibleLabels, /\bNo Context\b/);
   assert.doesNotMatch(visibleLabels, /\bReminder Found\b/);
   assert.doesNotMatch(visibleLabels, /\bCalendar Found\b/);
+});
+
+test('client review uses definitive tone tag colors', () => {
+  assert.equal(clientReplyThemeReviewToneTagColor('rows'), 'red');
+  assert.equal(clientReplyThemeReviewToneTagColor('nearMisses'), 'blue');
+  assert.equal(clientReplyThemeReviewToneTagColor('ignoredHandled'), 'secondary');
+});
+
+test('client review suppresses redundant triple check reason tag', () => {
+  assert.equal(clientReplyThemeReviewReasonTagLabel('ignoredHandled', 'replied_after'), null);
+  assert.equal(clientReplyThemeReviewReasonTagLabel('rows', 'no_operator_reply'), 'Needs Action');
+});
+
+test('client review contact title falls back from phone to athlete name', () => {
+  assert.equal(
+    clientReplyThemeReviewDisplayName({
+      displayName: '+17163277123',
+      athleteName: 'Joseph Tombari',
+    }),
+    'Joseph Tombari',
+  );
+  assert.equal(
+    clientReplyThemeReviewDisplayName({
+      displayName: 'Morgan Armstrong',
+      athleteName: 'Avery Armstrong',
+    }),
+    'Morgan Armstrong',
+  );
+});
+
+test('client thread markdown renders all messages as dialogue', () => {
+  const markdown = buildClientReplyThemeThreadMarkdown({
+    clientName: 'Morgan Armstrong',
+    messages: [
+      message({
+        guid: 'operator',
+        body: 'Coach Ryan has Avery down for the meeting today at 5:00 PM.',
+        senderName: 'Me',
+        date: '2026-05-27T14:00:00.000Z',
+        isFromMe: true,
+      }),
+      message({
+        guid: 'client',
+        body: 'Can we reschedule?',
+        senderName: 'Morgan Armstrong',
+        date: '2026-05-27T15:00:00.000Z',
+      }),
+    ],
+  });
+
+  assert.match(markdown, /^# Morgan Armstrong/);
+  assert.match(markdown, /> \*\*Me\*\*/);
+  assert.match(markdown, /> Coach Ryan has Avery down/);
+  assert.match(markdown, /> \*\*Morgan Armstrong\*\*/);
+  assert.match(markdown, /> Can we reschedule\?/);
 });
 
 test('client reply theme review snapshot round-trips through cache storage', async () => {

@@ -138,13 +138,6 @@ export function resolveAthleteGenderFromSport(sport?: string | null): AthleteGen
   return null;
 }
 
-function athletePronouns(args: { sport?: string | null; athleteGender?: AthleteGender | null }) {
-  const gender = args.athleteGender || resolveAthleteGenderFromSport(args.sport) || 'male';
-  return gender === 'female'
-    ? { subject: 'she', object: 'her', possessive: 'her', child: 'daughter' }
-    : { subject: 'he', object: 'him', possessive: 'his', child: 'son' };
-}
-
 function buildNoShowNextBestDayLabel(now: Date): string {
   const candidate = new Date(now);
   candidate.setDate(candidate.getDate() + 2);
@@ -276,12 +269,7 @@ export function buildVoicemailFollowUpMessage(args: {
   const greeting = String(args.greeting || '').trim() || 'Good morning there,';
   const senderName = String(args.senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
   const scoutLabel = sportScoutLabel(args.sport);
-  const now = args.now || new Date();
   const recipientType = args.recipientType || 'parent';
-  const pronouns = athletePronouns({
-    sport: args.sport,
-    athleteGender: args.athleteGender,
-  });
   const athleteFirstName = firstName(args.athleteName) || args.athleteName.trim() || 'your athlete';
   const previousHeadScoutName =
     String(args.previousHeadScoutName || '')
@@ -294,74 +282,90 @@ export function buildVoicemailFollowUpMessage(args: {
 
   const lines =
     args.variant === 'send_cal_link'
-      ? ['Great! Here’s the link to schedule a quick call:', CAL_BOOKING_URL]
-      : args.variant === 'reschedule_1' || args.variant === 'reschedule_2'
+      ? [
+          'Here is the link to schedule a quick call:',
+          '',
+          CAL_BOOKING_URL,
+          '',
+          'Pick the time that works best.',
+        ]
+      : args.variant === 'reschedule_2'
         ? [
-            `${greeting} no worries.`,
-            '',
-            `Coach ${previousHeadScoutName} still has time set aside this week for ${athleteFirstName}:`,
+            `${greeting} checking once more so we can either reschedule or close this out.`,
             '',
             `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
             `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,
+            '3 - timing is not good right now',
             '',
-            args.variant === 'reschedule_2'
-              ? `Let's avoid letting this sit another week. Which one works best?`
-              : 'Which one works best?',
+            'Which option works best?',
           ]
-      : recipientType === 'student_athlete' && args.variant === 'no_show'
-        ? [
-              `${greeting} looks like we missed you for your meeting with our Head Scout.`,
+        : args.variant === 'reschedule_1'
+          ? [
+              `${greeting} no worries.`,
               '',
-              'Choose what’s most relevant so I can be helpful:',
+              `Coach ${previousHeadScoutName} still has time set aside this week for ${athleteFirstName}:`,
               '',
-              '1 - still interested, just need to reschedule',
-              '2 - interested, but timing is bad right now',
-              '3 - no longer interested',
+              `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
+              `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,
+              '',
+              'Which one works best?',
             ]
-          : recipientType === 'student_athlete' && args.variant === 'call_attempt_3'
+          : recipientType === 'student_athlete' && args.variant === 'no_show'
             ? [
-                `${greeting} this is ${senderName} with Prospect ID. Last follow-up on your college ${scoutLabel} profile.`,
+                `${greeting} looks like we missed you for your meeting with our Head Scout.`,
                 '',
-                'If playing in college is still a real goal, have one of your parents reach out. If not, no worries.',
+                'Reply with the best fit:',
+                '',
+                '1 - still interested, need to reschedule',
+                '2 - interested, timing is bad',
+                '3 - no longer interested',
               ]
-            : recipientType === 'student_athlete' && args.variant === 'call_attempt_2'
+            : recipientType === 'student_athlete' && args.variant === 'call_attempt_3'
               ? [
-                  `${greeting} this is ${senderName} with Prospect ID. Any updates or questions on playing college ${scoutLabel}?`,
+                  `${greeting} last quick follow-up on your college ${scoutLabel} profile.`,
                   '',
-                  'If this is still something you want, have one of your parents call or text me.',
+                  `If college ${scoutLabel} is still a real goal, have a parent call or text me. If not, no response needed.`,
                 ]
-              : recipientType === 'student_athlete'
+              : recipientType === 'student_athlete' && args.variant === 'call_attempt_2'
                 ? [
-                    `${greeting} this is ${senderName} with Prospect ID. I received your info about playing college ${scoutLabel}.`,
-                  '',
-                  'If you’re serious about this, have one of your parents call or text me.',
-                ]
-                : args.variant === 'no_show'
+                    `${greeting} quick follow-up on your college ${scoutLabel} profile.`,
+                    '',
+                    'If you still want help with next steps, have a parent call or text me.',
+                  ]
+                : recipientType === 'student_athlete'
                   ? [
-                      `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
+                      `${greeting} this is ${senderName} with Prospect ID. I received your info about playing college ${scoutLabel}.`,
+                      '',
+                      'If this is still a real goal, have a parent call or text me back.',
+                    ]
+                  : args.variant === 'no_show'
+                    ? [
+                        `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
                         '',
-                        'Choose what’s most relevant so I can be helpful:',
+                        'Reply with the best fit:',
                         '',
-                        '1 - still interested, just need to reschedule',
-                        '2 - interested, but timing is bad right now',
+                        '1 - still interested, need to reschedule',
+                        '2 - interested, timing is bad',
                         '3 - no longer interested',
                       ]
                     : args.variant === 'call_attempt_3'
                       ? [
-                          `${greeting} choose what’s most relevant so I can be helpful:`,
+                          `${greeting} last quick follow-up on ${athleteFirstName}’s college ${scoutLabel} profile.`,
                           '',
-                          '1 - not interested whatsoever',
-                          '2 - interested but bad timing',
-                          '3 - interested and ready to learn about next steps',
+                          'Reply with the best fit:',
+                          '',
+                          '1 - interested, ready for next steps',
+                          '2 - interested, bad timing',
+                          '3 - not interested',
                         ]
                       : args.variant === 'call_attempt_2'
                         ? [
-                            `${greeting} any updates or questions on this?`,
+                            `${greeting} quick follow-up on ${athleteFirstName}’s ${scoutLabel} profile.`,
                             '',
-                            'If I send you a calendar link, would that be more convenient?',
+                            'Would a calendar link be easier, or should I try you later today?',
                           ]
                         : [
-                            `${greeting} this is ${senderName} with Prospect ID. ${args.athleteName.trim() || 'Your athlete'}’s profile came through and I wanted to ask a few quick questions about ${pronouns.possessive} college ${scoutLabel} goals.`,
+                            `${greeting} this is ${senderName} with Prospect ID. ${athleteFirstName}’s ${scoutLabel} profile came through and I had a few quick questions about college goals.`,
                             '',
                             'Would later today or tomorrow work for a quick 10-minute call?',
                           ];
@@ -448,11 +452,7 @@ export function buildConfirmationMessage(args: {
         : `${currentGreeting},`;
 
   if ((args.variant || 'confirmation_1') === 'confirmation_2') {
-    return [
-      `Coach ${coachName} still has you down for ${meetingReminderPhrase}.`,
-      '',
-      'Please reply YES to confirm you’ll be able to attend',
-    ].join('\n');
+    return 'Please reply YES you can attend.';
   }
 
   return [
@@ -460,7 +460,7 @@ export function buildConfirmationMessage(args: {
     '',
     `He’ll call your cell at ${removeDayPeriod(confirmationClockLabel)} with the Zoom code. Be on a laptop or tablet so he can share his screen.`,
     '',
-    'Save his contact so you know it’s him calling.',
+    'CONTACT CARD:',
   ].join('\n');
 }
 

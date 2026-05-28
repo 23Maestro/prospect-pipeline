@@ -53,6 +53,7 @@ export type ClientReplyThemeReviewReason =
   | 'no_operator_reply'
   | 'replied_after'
   | 'follow_up_evidence';
+export type ClientReplyThemeReviewToneColor = 'red' | 'blue' | 'secondary';
 
 export type ClientReplyThemeNearMissRow = ClientReplyThemeReviewRow & {
   reason: ClientReplyThemeNearMissReason;
@@ -96,6 +97,70 @@ export function clientReplyThemeReviewReasonLabel(
 ): 'Needs Action' | 'Triple-Check' {
   if (reason === 'replied_after' || reason === 'follow_up_evidence') return 'Triple-Check';
   return 'Needs Action';
+}
+
+export function clientReplyThemeReviewToneTagColor(
+  bucket: ClientReplyThemeReviewBucketKey,
+): ClientReplyThemeReviewToneColor {
+  if (bucket === 'nearMisses') return 'blue';
+  if (bucket === 'ignoredHandled') return 'secondary';
+  return 'red';
+}
+
+export function clientReplyThemeReviewReasonTagLabel(
+  bucket: ClientReplyThemeReviewBucketKey,
+  reason: ClientReplyThemeReviewReason,
+): 'Needs Action' | 'Triple-Check' | null {
+  const label = clientReplyThemeReviewReasonLabel(reason);
+  return label === clientReplyThemeReviewToneLabel(bucket) ? null : label;
+}
+
+function looksLikePhone(value?: string | null): boolean {
+  return /^\+?\d[\d\s().-]{6,}$/.test(String(value || '').trim());
+}
+
+export function clientReplyThemeReviewDisplayName(row: {
+  displayName?: string | null;
+  athleteName?: string | null;
+  senderName?: string | null;
+  sender?: string | null;
+}): string {
+  const displayName = normalizeText(row.displayName);
+  const athleteName = normalizeText(row.athleteName);
+  const senderName = normalizeText(row.senderName);
+  const sender = normalizeText(row.sender);
+  if (displayName && !looksLikePhone(displayName)) return displayName;
+  if (senderName && senderName !== 'Me' && !looksLikePhone(senderName)) return senderName;
+  if (athleteName) return athleteName;
+  return displayName || sender || 'Client';
+}
+
+function markdownEscape(value?: string | null): string {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/`/g, '\\`')
+    .trim();
+}
+
+export function buildClientReplyThemeThreadMarkdown(args: {
+  clientName: string;
+  messages: Array<
+    Pick<ClientReplyThemeReviewMessageInput, 'body' | 'date' | 'senderName' | 'isFromMe'>
+  >;
+}): string {
+  const lines = [`# ${markdownEscape(args.clientName) || 'Client Thread'}`];
+  for (const message of args.messages) {
+    const body = normalizeText(message.body);
+    if (!body) continue;
+    const sender = message.isFromMe ? 'Me' : normalizeText(message.senderName) || args.clientName;
+    const date = normalizeText(message.date);
+    lines.push('');
+    lines.push(`> **${markdownEscape(sender)}**${date ? `  \n> ${markdownEscape(date)}` : ''}`);
+    for (const part of body.split(/\r?\n/)) {
+      lines.push(`> ${markdownEscape(part)}`);
+    }
+  }
+  return lines.join('\n');
 }
 
 const FLAG_PATTERNS: Record<ClientMessageTheme, RegExp> = {
