@@ -130,6 +130,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/sync-current-pipeline-to-supabase.test.mjs',
     'scripts/sync-booked-meetings-to-supabase.mjs',
     'scripts/sync-booked-meetings-to-supabase.test.mjs',
+    'scripts/scriptable/id-command-center.js',
+    'scripts/scriptable/id-prospect-search.js',
     'scripts/scriptable/share-prospect-contact-card.js',
     'src/domain/call-tracker-vercel-contract.ts',
     'src/domain/owner-proof-payload.ts',

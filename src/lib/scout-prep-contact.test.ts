@@ -767,6 +767,54 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
   assert.doesNotMatch(body, /^Hi Ms\./);
 });
 
+test('buildVoicemailFollowUpBody: reschedule includes previous head scout and selected slots', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Aiden Reed',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        head_scout: 'Ryan Lietz',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Aiden Reed',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Jamie Reed',
+          relationship: 'Mother',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'parent1',
+    'reschedule_1',
+    null,
+    'Reschedule Pending',
+    new Date('2026-04-24T13:00:00Z'),
+    null,
+    null,
+    {
+      previousHeadScoutName: 'Ryan Lietz',
+      slots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
+    },
+  );
+
+  assert.match(body, /Coach Ryan Lietz still has time set aside this week for Aiden:/);
+  assert.match(body, /1 - Thu May 28 3 PM EST/);
+  assert.match(body, /2 - Fri May 29 4 PM EST/);
+  assert.match(body, /Which one works best\?/);
+});
+
 test('buildMessagesComposeUrlForRecipients: supports group threads with deduped phone list', () => {
   const url = buildMessagesComposeUrlForRecipients(
     ['651-555-1212', '(651) 555-1212', '651-555-9898'],

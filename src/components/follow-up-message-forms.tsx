@@ -1,5 +1,6 @@
 import { Action, ActionPanel, Form, showToast, Toast, useNavigation } from '@raycast/api';
 import { useEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
 import type {
   ConfirmationFollowUpVariant,
   VoicemailFollowUpVariant,
@@ -11,17 +12,9 @@ type VoicemailRecipient = {
   name: string;
 };
 
-export type VoicemailRescheduleSlotOption = {
-  id: string;
-  title: string;
-  subtitle?: string | null;
-};
-
 export type VoicemailFollowUpFormValues = {
   recipientId: string;
   variant: VoicemailFollowUpVariant;
-  rescheduleSlot1Id?: string;
-  rescheduleSlot2Id?: string;
 };
 
 type ConfirmationReminderFormValues = {
@@ -35,18 +28,19 @@ export function VoicemailFollowUpMessageForm(props: {
   recipients: VoicemailRecipient[];
   defaultRecipientId?: string;
   defaultVariant: VoicemailFollowUpVariant;
-  rescheduleSlots?: VoicemailRescheduleSlotOption[];
   onSubmit: (values: VoicemailFollowUpFormValues) => Promise<void>;
+  buildRescheduleTarget?: (values: VoicemailFollowUpFormValues) => ReactNode;
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recipientId, setRecipientId] = useState(
+    props.defaultRecipientId || props.recipients[0]?.id || '',
+  );
   const [selectedVariant, setSelectedVariant] = useState<VoicemailFollowUpVariant>(
     props.defaultVariant,
   );
   const isMountedRef = useRef(true);
-  const showRescheduleSlots =
+  const isRescheduleVariant =
     selectedVariant === 'reschedule_1' || selectedVariant === 'reschedule_2';
-  const defaultSlot1Id = props.rescheduleSlots?.[0]?.id;
-  const defaultSlot2Id = props.rescheduleSlots?.[1]?.id || props.rescheduleSlots?.[0]?.id;
 
   useEffect(() => {
     return () => {
@@ -54,14 +48,19 @@ export function VoicemailFollowUpMessageForm(props: {
     };
   }, []);
 
-  async function handleSubmit(values: VoicemailFollowUpFormValues) {
+  async function handleSubmit(values?: Partial<VoicemailFollowUpFormValues>) {
     if (isSubmitting) {
       return;
     }
 
-    setIsSubmitting(true);
+    if (!isRescheduleVariant) {
+      setIsSubmitting(true);
+    }
     try {
-      await props.onSubmit(values);
+      await props.onSubmit({
+        recipientId: values?.recipientId || recipientId,
+        variant: values?.variant || selectedVariant,
+      });
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
@@ -69,7 +68,7 @@ export function VoicemailFollowUpMessageForm(props: {
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      if (isMountedRef.current) {
+      if (!isRescheduleVariant && isMountedRef.current) {
         setIsSubmitting(false);
       }
     }
@@ -81,17 +80,28 @@ export function VoicemailFollowUpMessageForm(props: {
       isLoading={isSubmitting}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title={isSubmitting ? 'Sending…' : 'Send Message'}
-            onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
-          />
+          {isRescheduleVariant && props.buildRescheduleTarget ? (
+            <Action.Push
+              title="Choose Slots"
+              target={props.buildRescheduleTarget({
+                recipientId,
+                variant: selectedVariant,
+              })}
+            />
+          ) : (
+            <Action.SubmitForm
+              title={isSubmitting ? 'Sending...' : 'Send Message'}
+              onSubmit={(values) => void handleSubmit(values as VoicemailFollowUpFormValues)}
+            />
+          )}
         </ActionPanel>
       }
     >
       <Form.Dropdown
         id="recipientId"
         title="Who Did You Call?"
-        defaultValue={props.defaultRecipientId || props.recipients[0]?.id}
+        value={recipientId}
+        onChange={setRecipientId}
       >
         {props.recipients.map((recipient) => (
           <Form.Dropdown.Item
@@ -115,34 +125,6 @@ export function VoicemailFollowUpMessageForm(props: {
         <Form.Dropdown.Item value="no_show" title="No Show" />
         <Form.Dropdown.Item value="send_cal_link" title="Send Cal Link" />
       </Form.Dropdown>
-      {showRescheduleSlots ? (
-        props.rescheduleSlots?.length ? (
-          <>
-            <Form.Dropdown id="rescheduleSlot1Id" title="Slot 1" defaultValue={defaultSlot1Id}>
-              {props.rescheduleSlots.map((slot) => (
-                <Form.Dropdown.Item
-                  key={slot.id}
-                  value={slot.id}
-                  title={slot.title}
-                  keywords={[slot.subtitle || ''].filter(Boolean)}
-                />
-              ))}
-            </Form.Dropdown>
-            <Form.Dropdown id="rescheduleSlot2Id" title="Slot 2" defaultValue={defaultSlot2Id}>
-              {props.rescheduleSlots.map((slot) => (
-                <Form.Dropdown.Item
-                  key={slot.id}
-                  value={slot.id}
-                  title={slot.title}
-                  keywords={[slot.subtitle || ''].filter(Boolean)}
-                />
-              ))}
-            </Form.Dropdown>
-          </>
-        ) : (
-          <Form.Description text="No resolved openings found yet. The message will use slot placeholders." />
-        )
-      ) : null}
     </Form>
   );
 }

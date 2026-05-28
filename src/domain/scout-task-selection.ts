@@ -172,7 +172,7 @@ export function isVoicemailLifecycleTaskMatch(
   if (variant === 'call_attempt_3') {
     return title === 'call attempt 3' || description.includes('third time');
   }
-  if (variant === 'reschedule_pending') {
+  if (variant === 'reschedule_1' || variant === 'reschedule_2') {
     return title === 'reschedule pending';
   }
 
@@ -183,7 +183,7 @@ export function getVoicemailLifecycleTaskTitle(variant: VoicemailFollowUpVariant
   if (variant === 'call_attempt_1') return 'Call Attempt 1';
   if (variant === 'call_attempt_2') return 'Call Attempt 2';
   if (variant === 'call_attempt_3') return 'Call Attempt 3';
-  if (variant === 'reschedule_pending') return 'Reschedule Pending';
+  if (variant === 'reschedule_1' || variant === 'reschedule_2') return 'Reschedule Pending';
   if (variant === 'no_show') return 'No Show';
   return null;
 }

@@ -4,6 +4,8 @@ import {
   Color,
   Detail,
   Form,
+  Grid,
+  Icon,
   List,
   LaunchProps,
   Toast,
@@ -114,9 +116,14 @@ import { searchLogger } from './lib/logger';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
+  fetchHeadScoutSlots,
   fetchOpenMeetings,
+  filterVisibleHeadScoutSlots,
+  formatHeadScoutSlotForTimezone,
   HEAD_SCOUT_ORDER,
+  resolveAthleteTimezone,
   type BookedMeetingEvent,
+  type HeadScoutSlot,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
 import {
@@ -865,11 +872,7 @@ async function persistVoicemailFollowUpMessageSent(args: {
   previousCrmStage?: string | null;
   previousTaskStatus?: string | null;
 }) {
-  if (
-    args.variant === 'send_cal_link' ||
-    args.variant === 'no_show' ||
-    args.variant === 'reschedule_pending'
-  ) {
+  if (args.variant === 'send_cal_link' || isTaskOnlyVoicemailVariant(args.variant)) {
     return;
   }
 
@@ -1612,6 +1615,88 @@ function buildMessageContactOptions(
   return options;
 }
 
+type RescheduleVoicemailSlotOption = {
+  id: string;
+  title: string;
+  subtitle?: string | null;
+  scoutName: string;
+  messageLabel: string;
+  isPreviousScout: boolean;
+};
+
+function normalizeNameKey(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^coach\s+/i, '')
+    .replace(/\s+/g, ' ');
+}
+
+function selectPreviousHeadScoutName(
+  events: BookedMeetingEvent[] = [],
+  context?: ScoutPrepContext | null,
+): string | null {
+  const sorted = [...events]
+    .filter((event) => String(event.assigned_owner || '').trim())
+    .sort((left, right) => String(right.start || '').localeCompare(String(left.start || '')));
+  return (
+    String(sorted[0]?.assigned_owner || '').trim() ||
+    String(context?.resolved.head_scout || '').trim() ||
+    null
+  );
+}
+
+function buildRescheduleSlotStartLabel(timeRangeLabel: string, zoneLabel: string): string {
+  const [startRaw, rest = ''] = timeRangeLabel.split(/\s+-\s+/, 2);
+  const period = rest.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
+  const zone = zoneLabel || rest.match(/\b[A-Z]{2,4}\b$/)?.[0] || '';
+  const start = String(startRaw || '').trim();
+  return [start, period, zone].filter(Boolean).join(' ');
+}
+
+function buildRescheduleVoicemailSlotOptions(args: {
+  slots: Array<HeadScoutSlot & { scout_name: string }>;
+  athleteTimezone?: string | null;
+  previousHeadScoutName?: string | null;
+}): RescheduleVoicemailSlotOption[] {
+  const previousKey = normalizeNameKey(args.previousHeadScoutName);
+  const visibleSlots = filterVisibleHeadScoutSlots(args.slots);
+  return [...visibleSlots]
+    .sort((left, right) => {
+      const leftPrevious = Boolean(
+        previousKey && normalizeNameKey(left.scout_name) === previousKey,
+      );
+      const rightPrevious = Boolean(
+        previousKey && normalizeNameKey(right.scout_name) === previousKey,
+      );
+      if (leftPrevious !== rightPrevious) return leftPrevious ? -1 : 1;
+      return left.start.localeCompare(right.start);
+    })
+    .map((slot) => {
+      const display = formatHeadScoutSlotForTimezone(slot.start, slot.end, args.athleteTimezone);
+      const messageLabel = `${display.dateLabel} ${buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel)}`;
+      const isPreviousScout = Boolean(
+        previousKey && normalizeNameKey(slot.scout_name) === previousKey,
+      );
+      return {
+        id: `${slot.scout_name}:${slot.id}`,
+        title: messageLabel,
+        subtitle: slot.scout_name,
+        scoutName: slot.scout_name,
+        messageLabel,
+        isPreviousScout,
+      };
+    });
+}
+
+function isRescheduleVoicemailVariant(variant?: VoicemailFollowUpVariant | null): boolean {
+  return variant === 'reschedule_1' || variant === 'reschedule_2';
+}
+
+function isTaskOnlyVoicemailVariant(variant?: VoicemailFollowUpVariant | null): boolean {
+  return variant === 'no_show' || isRescheduleVoicemailVariant(variant);
+}
+
 type ReminderRecipientFormValues = {
   recipientId?: string;
 };
@@ -1680,17 +1765,171 @@ async function getSelectedCrmStageLabel(athleteId?: string | null): Promise<stri
   );
 }
 
+function RescheduleSlotSelectionGrid({
+  task,
+  context,
+  onSlotsSelected,
+}: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+  onSlotsSelected: (slots: RescheduleVoicemailSlotOption[]) => Promise<void> | void;
+}) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [previousHeadScoutName, setPreviousHeadScoutName] = useState<string | null>(
+    String(context.resolved.head_scout || '').trim() || null,
+  );
+  const [slotOptions, setSlotOptions] = useState<RescheduleVoicemailSlotOption[]>([]);
+  const [slot1, setSlot1] = useState<RescheduleVoicemailSlotOption | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+
+  useEffect(() => {
+    let isMounted = true;
+    const athleteId = String(task.contact_id || context.task.contact_id || '').trim();
+    const athleteMainId = String(
+      context.resolved.athlete_main_id || task.athlete_main_id || '',
+    ).trim();
+    const athleteTimezone = resolveAthleteTimezone(context.resolved.city, context.resolved.state);
+
+    async function loadSlots() {
+      setIsLoading(true);
+      setErrorMessage(null);
+      try {
+        const [meetingResult, slotsResult] = await Promise.allSettled([
+          athleteId && athleteMainId
+            ? fetchAthleteBookedMeetings({ athleteId, athleteMainId })
+            : Promise.resolve(null),
+          fetchHeadScoutSlots(0),
+        ]);
+        if (!isMounted) return;
+
+        const events =
+          meetingResult.status === 'fulfilled' && meetingResult.value
+            ? meetingResult.value.events || []
+            : [];
+        const nextHeadScoutName = selectPreviousHeadScoutName(events, context);
+        const schedules = slotsResult.status === 'fulfilled' ? slotsResult.value.scouts || [] : [];
+        const slots = schedules.flatMap((schedule) =>
+          (schedule.slots || []).map((slot) => ({
+            ...slot,
+            scout_name: slot.scout_name || schedule.scout_name,
+          })),
+        );
+        setPreviousHeadScoutName(nextHeadScoutName);
+        setSlotOptions(
+          buildRescheduleVoicemailSlotOptions({
+            slots,
+            athleteTimezone,
+            previousHeadScoutName: nextHeadScoutName,
+          }),
+        );
+        if (slotsResult.status === 'rejected') {
+          setErrorMessage(
+            slotsResult.reason instanceof Error
+              ? slotsResult.reason.message
+              : String(slotsResult.reason),
+          );
+        }
+      } catch (error) {
+        if (!isMounted) return;
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+        setSlotOptions([]);
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadSlots();
+    return () => {
+      isMounted = false;
+    };
+  }, [context, reloadKey, task]);
+
+  const navigationTitle = slot1
+    ? `Pick Slot 2 • ${task.athlete_name}`
+    : `Pick Slot 1 • ${task.athlete_name}`;
+  const sectionTitle = slot1
+    ? `Slot 1: ${slot1.messageLabel}`
+    : previousHeadScoutName
+      ? `${previousHeadScoutName} first`
+      : 'Openings';
+
+  return (
+    <Grid
+      navigationTitle={navigationTitle}
+      isLoading={isLoading}
+      searchBarPlaceholder="Filter openings"
+      columns={4}
+      aspectRatio="3/2"
+      fit={Grid.Fit.Fill}
+      inset={Grid.Inset.Medium}
+    >
+      <Grid.Section title={sectionTitle}>
+        {slotOptions.map((slot, index) => (
+          <Grid.Item
+            key={`${slot.id}:${index}`}
+            content={{
+              value: slot.isPreviousScout ? '⭐' : '📅',
+              tooltip: slot.scoutName,
+            }}
+            title={`${index + 1}. ${slot.title}`}
+            subtitle={slot.scoutName}
+            keywords={[slot.scoutName, slot.messageLabel]}
+            actions={
+              <ActionPanel>
+                {!slot1 ? (
+                  <Action title="Use as Slot 1" icon="1️⃣" onAction={() => setSlot1(slot)} />
+                ) : (
+                  <Action
+                    title="Use as Slot 2"
+                    icon="2️⃣"
+                    onAction={() => void onSlotsSelected([slot1, slot])}
+                  />
+                )}
+                {slot1 ? (
+                  <Action title="Change Slot 1" icon="↩️" onAction={() => setSlot1(null)} />
+                ) : null}
+                <Action
+                  title="Refresh Openings"
+                  icon="🔄"
+                  shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                  onAction={() => setReloadKey((value) => value + 1)}
+                />
+              </ActionPanel>
+            }
+          />
+        ))}
+      </Grid.Section>
+      {!isLoading && !slotOptions.length ? (
+        <Grid.EmptyView
+          title="No openings"
+          description={errorMessage || 'No future openings found.'}
+          actions={
+            <ActionPanel>
+              <Action
+                title="Refresh Openings"
+                icon="🔄"
+                onAction={() => setReloadKey((value) => value + 1)}
+              />
+            </ActionPanel>
+          }
+        />
+      ) : null}
+    </Grid>
+  );
+}
+
 function VoicemailFollowUpRecipientForm({
   task,
   context,
-  crmStage,
   currentTask,
   onComplete,
   closeAfterCompleteViews = 1,
 }: {
   task: ScoutPortalTask;
   context: ScoutPrepContext;
-  crmStage?: string | null;
   currentTask?: string | null;
   onComplete?: () => Promise<void> | void;
   closeAfterCompleteViews?: number;
@@ -1698,13 +1937,13 @@ function VoicemailFollowUpRecipientForm({
   const { push, pop } = useNavigation();
   const recipients = getVoicemailFollowUpRecipients(context);
   const defaultVariant = resolveVoicemailFollowUpVariant({
-    crmStage,
     currentTask: currentTask || task.title || null,
   });
 
   async function openMessagesForRecipient(
     recipient?: (typeof recipients)[number],
     variant?: VoicemailFollowUpVariant,
+    selectedRescheduleSlots: RescheduleVoicemailSlotOption[] = [],
   ) {
     if (!recipient || !recipient.phones.length) {
       await showToast({
@@ -1718,6 +1957,17 @@ function VoicemailFollowUpRecipientForm({
     const selectedParent =
       recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
     const selectedVariant = variant || defaultVariant;
+    if (isRescheduleVoicemailVariant(selectedVariant) && selectedRescheduleSlots.length < 2) {
+      push(
+        <RescheduleSlotSelectionGrid
+          task={task}
+          context={context}
+          onSlotsSelected={(slots) => openMessagesForRecipient(recipient, selectedVariant, slots)}
+        />,
+      );
+      return;
+    }
+
     const deterministicHonorific = resolveParentHonorificFromRelationship(
       selectedParent?.relationship,
     );
@@ -1736,12 +1986,21 @@ function VoicemailFollowUpRecipientForm({
     const body = buildVoicemailFollowUpBody(
       context,
       recipient.id,
-      variant,
-      crmStage,
+      selectedVariant,
+      null,
       currentTask || task.title || null,
       undefined,
       deterministicHonorific || aiHonorific,
       athleteGender,
+      isRescheduleVoicemailVariant(selectedVariant)
+        ? {
+            previousHeadScoutName:
+              selectedRescheduleSlots[0]?.scoutName ||
+              String(context.resolved.head_scout || '').trim() ||
+              null,
+            slots: selectedRescheduleSlots.map((slot) => slot.messageLabel),
+          }
+        : undefined,
     );
 
     logInfo('SCOUT_PREP_MESSAGES_HANDOFF', 'open-compose', 'start', {
@@ -1749,7 +2008,7 @@ function VoicemailFollowUpRecipientForm({
       recipientId: recipient.id,
       recipientName: recipient.name,
       recipientCount: recipient.phones.length,
-      variant: variant || defaultVariant,
+      variant: selectedVariant,
     });
 
     async function finishFollowUpFlow(
@@ -1780,24 +2039,22 @@ function VoicemailFollowUpRecipientForm({
             defaultContactId={defaultContactId}
             initialMessage={body}
             onMessageSentLabel={
-              selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
-                ? 'No sales stage change'
+              isTaskOnlyVoicemailVariant(selectedVariant)
+                ? 'Task only'
                 : selectedVariant.replace(/_/g, ' ')
             }
             onMessageSentToastTitle={
               selectedVariant === 'no_show'
                 ? 'Completing No Show Task'
-                : selectedVariant === 'reschedule_pending'
+                : isRescheduleVoicemailVariant(selectedVariant)
                   ? 'Completing Reschedule Task'
                   : undefined
             }
             onMessageSentFailureTitle={
-              selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
-                ? 'Sent, task not completed'
-                : undefined
+              isTaskOnlyVoicemailVariant(selectedVariant) ? 'Sent, task not completed' : undefined
             }
             onMessageSent={
-              selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
+              isTaskOnlyVoicemailVariant(selectedVariant)
                 ? async () => {
                     await completeSentTextTask({
                       context,
@@ -1810,13 +2067,17 @@ function VoicemailFollowUpRecipientForm({
                       context,
                       task,
                       variant: selectedVariant,
-                      previousCrmStage: crmStage,
+                      previousCrmStage: null,
                       previousTaskStatus: currentTask || task.title || null,
                     });
                   }
             }
             onMessageSentComplete={async () => {
-              await finishFollowUpFlow('Sent', recipient.name, 1);
+              await finishFollowUpFlow(
+                'Sent',
+                recipient.name,
+                isRescheduleVoicemailVariant(selectedVariant) ? 2 : 1,
+              );
             }}
           />,
         );
@@ -1826,7 +2087,7 @@ function VoicemailFollowUpRecipientForm({
           recipientName: recipient.name,
           recipientCount: recipient.phones.length,
           mode: 'raycast-ui',
-          variant: variant || defaultVariant,
+          variant: selectedVariant,
         });
         return;
       }
@@ -1838,10 +2099,10 @@ function VoicemailFollowUpRecipientForm({
         recipientName: recipient.name,
         recipientCount: recipient.phones.length,
         mode,
-        variant: variant || defaultVariant,
+        variant: selectedVariant,
       });
       try {
-        if (selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending') {
+        if (isTaskOnlyVoicemailVariant(selectedVariant)) {
           await completeSentTextTask({
             context,
             task,
@@ -1852,26 +2113,24 @@ function VoicemailFollowUpRecipientForm({
             context,
             task,
             variant: selectedVariant,
-            previousCrmStage: crmStage,
+            previousCrmStage: null,
             previousTaskStatus: currentTask || task.title || null,
           });
         }
       } catch (error) {
         await showToast({
           style: Toast.Style.Failure,
-          title:
-            selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
-              ? 'Draft open, task not completed'
-              : 'Draft open, save failed',
+          title: isTaskOnlyVoicemailVariant(selectedVariant)
+            ? 'Draft open, task not completed'
+            : 'Draft open, save failed',
           message: error instanceof Error ? error.message : String(error),
         });
         return;
       }
       await finishFollowUpFlow(
-        selectedVariant === 'no_show' || selectedVariant === 'reschedule_pending'
-          ? 'Completed'
-          : 'Sent',
+        isTaskOnlyVoicemailVariant(selectedVariant) ? 'Completed' : 'Sent',
         recipient.name,
+        isRescheduleVoicemailVariant(selectedVariant) ? 1 : 0,
       );
     } catch (error) {
       await Clipboard.copy(body);
@@ -1886,7 +2145,7 @@ function VoicemailFollowUpRecipientForm({
           recipientName: recipient.name,
           recipientCount: recipient.phones.length,
           mode: 'clipboard-fallback',
-          variant: variant || defaultVariant,
+          variant: selectedVariant,
         },
       );
       await completeScoutPrepMutationSuccess({
@@ -1909,6 +2168,17 @@ function VoicemailFollowUpRecipientForm({
       recipients={recipients}
       defaultRecipientId={recipients[0]?.id}
       defaultVariant={defaultVariant}
+      buildRescheduleTarget={(values) => {
+        const recipient =
+          recipients.find((candidate) => candidate.id === values.recipientId) || recipients[0];
+        return (
+          <RescheduleSlotSelectionGrid
+            task={task}
+            context={context}
+            onSlotsSelected={(slots) => openMessagesForRecipient(recipient, values.variant, slots)}
+          />
+        );
+      }}
       onSubmit={async (values) =>
         handleSubmit({
           recipientId: values.recipientId,

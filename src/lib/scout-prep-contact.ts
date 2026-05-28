@@ -179,6 +179,10 @@ export function buildVoicemailFollowUpBody(
   now: Date = new Date(),
   honorificOverride?: ParentHonorific | null,
   athleteGender?: AthleteGender | null,
+  rescheduleContext?: {
+    previousHeadScoutName?: string | null;
+    slots?: string[] | null;
+  },
 ): string {
   const recipients = getVoicemailFollowUpRecipients(context);
   const recipient =
@@ -223,6 +227,8 @@ export function buildVoicemailFollowUpBody(
     gradYear,
     athleteGender,
     signOffTitle,
+    previousHeadScoutName: rescheduleContext?.previousHeadScoutName,
+    rescheduleSlots: rescheduleContext?.slots,
     now,
   });
 }

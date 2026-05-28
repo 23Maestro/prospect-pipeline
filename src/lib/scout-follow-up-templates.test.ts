@@ -68,7 +68,7 @@ test('resolveVoicemailFollowUpVariant prefers no-show and later attempt states b
       crmStage: 'Meeting Set',
       currentTask: 'Reschedule Pending',
     }),
-    'reschedule_pending',
+    'reschedule_1',
   );
   assert.equal(
     resolveVoicemailFollowUpVariant({
@@ -187,22 +187,22 @@ test('buildVoicemailFollowUpMessage renders no show triage copy', () => {
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
 });
 
-test('buildVoicemailFollowUpMessage renders reschedule triage copy', () => {
+test('buildVoicemailFollowUpMessage renders reschedule slot copy', () => {
   const message = buildVoicemailFollowUpMessage({
-    variant: 'reschedule_pending',
+    variant: 'reschedule_1',
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden',
     sport: 'Football',
+    previousHeadScoutName: 'Ryan Lietz',
+    rescheduleSlots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(
-    message,
-    /^Hi Jamie, checking back on rescheduling Aiden’s meeting with our Head Scout\./,
-  );
-  assert.match(message, /1 - still interested, just need to reschedule/);
-  assert.match(message, /2 - interested, but timing is bad right now/);
-  assert.match(message, /3 - no longer interested/);
+  assert.match(message, /^Hi Jamie, no worries\./);
+  assert.match(message, /Coach Ryan Lietz still has time set aside this week for Aiden:/);
+  assert.match(message, /1 - Thu May 28 3 PM EST/);
+  assert.match(message, /2 - Fri May 29 4 PM EST/);
+  assert.match(message, /Which one works best\?/);
 });
 
 test('buildVoicemailFollowUpMessage uses no show triage for student athletes', () => {
