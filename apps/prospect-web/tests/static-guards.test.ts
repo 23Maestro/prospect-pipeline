@@ -625,6 +625,16 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
 });
 
+test('prospect mobile contact search supports shortcut query params', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  assert.match(appText, /applyStartupSearchParams/);
+  assert.match(appText, /URLSearchParams\(window\.location\.search\)/);
+  assert.match(appText, /params\.get\('q'\)/);
+  assert.match(appText, /params\.get\('phone'\)/);
+  assert.match(appText, /runContactSearchQuery\(initialContactQuery, 'contact', \{ autoSelectSingle: true \}\)/);
+  assert.match(appText, /history\.replaceState\(\{\}, '', `\/prospect-mobile\/contact-search\?q=\$\{encodeURIComponent\(trimmedQuery\)\}`\)/);
+});
+
 test('home command center uses the reduced glowing shield svg', () => {
   const pageText = readFileSync(join(appRoot, 'app/page.tsx'), 'utf8');
   const stylesText = readFileSync(join(appRoot, 'app/globals.css'), 'utf8');

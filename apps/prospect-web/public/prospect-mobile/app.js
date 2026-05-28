@@ -25,7 +25,7 @@ const routes = {
 
 const state = {
   week: 'this',
-  route: routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings',
+  route: getInitialRoute(),
   routeRequestId: 0,
   isLoading: false,
   contactSearch: {
@@ -48,6 +48,8 @@ const content = document.querySelector('#content');
 const statusLine = document.querySelector('#status-line');
 const weekToolbar = document.querySelector('#week-toolbar');
 const FADE_DURATION_MS = 150;
+const initialContactQuery = applyStartupSearchParams();
+let initialContactSearchPending = Boolean(initialContactQuery);
 
 window.addEventListener('popstate', () => {
   setCurrentRoute(routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings');
@@ -94,6 +96,11 @@ async function loadRoute() {
     try {
       const renderedCount = await route.render(undefined, renderContext);
       if (!isActiveRoute(renderContext)) return;
+      if (routeKey === '/contact-search' && initialContactSearchPending) {
+        initialContactSearchPending = false;
+        await runContactSearchQuery(initialContactQuery, 'contact', { autoSelectSingle: true });
+        return;
+      }
       const count = typeof renderedCount === 'number' ? renderedCount : 0;
       setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
     } catch (error) {
@@ -502,26 +509,7 @@ function bindContactSearch(scope) {
     event.preventDefault();
     const form = event.currentTarget;
     const query = String(new FormData(form).get('query') || '').trim();
-    if (scope === 'schedule') {
-      state.scheduleSearch.query = query;
-      state.scheduleSearch.selectedId = '';
-    } else {
-      state.contactSearch.query = query;
-      state.contactSearch.selectedId = '';
-    }
-    if (!query) {
-      if (scope === 'schedule') state.scheduleSearch.results = [];
-      else state.contactSearch.results = [];
-      await rerenderSearchScope(scope);
-      return;
-    }
-
-    setStatus('Searching');
-    const results = groupContactSearchRows(await searchAthleteContactCache(query), query);
-    if (scope === 'schedule') state.scheduleSearch.results = results;
-    else state.contactSearch.results = results;
-    await rerenderSearchScope(scope);
-    setStatus(`${results.length} found`);
+    await runContactSearchQuery(query, scope);
   });
 
   document.querySelector('[data-schedule-search-cancel]')?.addEventListener('click', async () => {
@@ -539,6 +527,36 @@ function bindContactSearch(scope) {
       bindCopyButtons();
     });
   });
+}
+
+async function runContactSearchQuery(query, scope, options = {}) {
+  const trimmedQuery = String(query || '').trim();
+  if (scope === 'schedule') {
+    state.scheduleSearch.query = trimmedQuery;
+    state.scheduleSearch.selectedId = '';
+  } else {
+    state.contactSearch.query = trimmedQuery;
+    state.contactSearch.selectedId = '';
+  }
+  if (!trimmedQuery) {
+    if (scope === 'schedule') state.scheduleSearch.results = [];
+    else state.contactSearch.results = [];
+    await rerenderSearchScope(scope);
+    return;
+  }
+
+  setStatus('Searching');
+  const results = groupContactSearchRows(await searchAthleteContactCache(trimmedQuery), trimmedQuery);
+  if (scope === 'schedule') {
+    state.scheduleSearch.results = results;
+    if (options.autoSelectSingle && results.length === 1) state.scheduleSearch.selectedId = results[0].id;
+  } else {
+    state.contactSearch.results = results;
+    if (options.autoSelectSingle && results.length === 1) state.contactSearch.selectedId = results[0].id;
+    history.replaceState({}, '', `/prospect-mobile/contact-search?q=${encodeURIComponent(trimmedQuery)}`);
+  }
+  await rerenderSearchScope(scope);
+  setStatus(`${results.length} found`);
 }
 
 async function rerenderSearchScope(scope) {
@@ -1032,6 +1050,22 @@ function wait(ms) {
 
 function toWorkflowPath(pathname) {
   return String(pathname || '').replace(/^\/prospect-mobile/, '') || '/set-meetings';
+}
+
+function getInitialRoute() {
+  const route = toWorkflowPath(window.location.pathname);
+  if (routes[route]) return route;
+  const params = new URLSearchParams(window.location.search);
+  return params.get('q') || params.get('phone') ? '/contact-search' : '/set-meetings';
+}
+
+function applyStartupSearchParams() {
+  const params = new URLSearchParams(window.location.search);
+  const query = String(params.get('q') || params.get('phone') || '').trim();
+  if (!query) return '';
+  state.contactSearch.query = query;
+  state.contactSearch.selectedId = '';
+  return query;
 }
 
 if (document.readyState !== 'loading') {
