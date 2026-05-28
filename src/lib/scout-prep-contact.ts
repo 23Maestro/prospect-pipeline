@@ -251,11 +251,11 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
 
   if (selectedVariant === 'call_attempt_2' || selectedVariant === 'call_attempt_3') {
     return [
-      `Hi ${parentFirstName}, this is Jerami Singleton with Prospect ID.`,
+      `Hi ${parentFirstName}, Jerami with Prospect ID.`,
       '',
-      `Quick follow-up on ${athleteFirstName}’s college ${sport} profile.`,
+      `Checking back on ${athleteFirstName}’s college ${sport} profile.`,
       '',
-      'If this is still a real goal, call or text me back at 407-473-3637.',
+      'If this is still worth a conversation, call or text me back at 407-473-3637.',
     ].join('\n');
   }
 

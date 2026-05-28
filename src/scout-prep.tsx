@@ -120,6 +120,7 @@ import {
   fetchOpenMeetings,
   filterVisibleHeadScoutSlots,
   formatHeadScoutSlotForTimezone,
+  formatHeadScoutWeekLabel,
   HEAD_SCOUT_ORDER,
   resolveAthleteTimezone,
   type BookedMeetingEvent,
@@ -1622,6 +1623,9 @@ type RescheduleVoicemailSlotOption = {
   scoutName: string;
   messageLabel: string;
   isPreviousScout: boolean;
+  dateLabel: string;
+  timeLabel: string;
+  zoneLabel: string;
 };
 
 function normalizeNameKey(value?: string | null): string {
@@ -1685,6 +1689,9 @@ function buildRescheduleVoicemailSlotOptions(args: {
         scoutName: slot.scout_name,
         messageLabel,
         isPreviousScout,
+        dateLabel: display.dateLabel,
+        timeLabel: buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel),
+        zoneLabel: display.zoneLabel,
       };
     });
 }
@@ -1765,7 +1772,7 @@ async function getSelectedCrmStageLabel(athleteId?: string | null): Promise<stri
   );
 }
 
-function RescheduleSlotSelectionGrid({
+function RescheduleSlotSelectionList({
   task,
   context,
   onSlotsSelected,
@@ -1782,6 +1789,8 @@ function RescheduleSlotSelectionGrid({
   const [slotOptions, setSlotOptions] = useState<RescheduleVoicemailSlotOption[]>([]);
   const [slot1, setSlot1] = useState<RescheduleVoicemailSlotOption | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekLabel, setWeekLabel] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1799,7 +1808,7 @@ function RescheduleSlotSelectionGrid({
           athleteId && athleteMainId
             ? fetchAthleteBookedMeetings({ athleteId, athleteMainId })
             : Promise.resolve(null),
-          fetchHeadScoutSlots(0),
+          fetchHeadScoutSlots(weekOffset),
         ]);
         if (!isMounted) return;
 
@@ -1808,7 +1817,8 @@ function RescheduleSlotSelectionGrid({
             ? meetingResult.value.events || []
             : [];
         const nextHeadScoutName = selectPreviousHeadScoutName(events, context);
-        const schedules = slotsResult.status === 'fulfilled' ? slotsResult.value.scouts || [] : [];
+        const slotPayload = slotsResult.status === 'fulfilled' ? slotsResult.value : null;
+        const schedules = slotPayload?.scouts || [];
         const slots = schedules.flatMap((schedule) =>
           (schedule.slots || []).map((slot) => ({
             ...slot,
@@ -1822,6 +1832,11 @@ function RescheduleSlotSelectionGrid({
             athleteTimezone,
             previousHeadScoutName: nextHeadScoutName,
           }),
+        );
+        setWeekLabel(
+          slotPayload
+            ? formatHeadScoutWeekLabel(slotPayload.week_start, slotPayload.week_end)
+            : null,
         );
         if (slotsResult.status === 'rejected') {
           setErrorMessage(
@@ -1845,7 +1860,7 @@ function RescheduleSlotSelectionGrid({
     return () => {
       isMounted = false;
     };
-  }, [context, reloadKey, task]);
+  }, [context, reloadKey, task, weekOffset]);
 
   const navigationTitle = slot1
     ? `Pick Slot 2 • ${task.athlete_name}`
@@ -1855,28 +1870,53 @@ function RescheduleSlotSelectionGrid({
     : previousHeadScoutName
       ? `${previousHeadScoutName} first`
       : 'Openings';
+  const canGoBack = weekOffset > 0;
+
+  function showPreviousWeek() {
+    if (!canGoBack) return;
+    setSlot1(null);
+    setWeekOffset((value) => Math.max(0, value - 1));
+  }
+
+  function showNextWeek() {
+    setSlot1(null);
+    setWeekOffset((value) => value + 1);
+  }
+
+  const weekActions = (
+    <>
+      <Action
+        title="Next Week"
+        icon="➡️"
+        shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
+        onAction={showNextWeek}
+      />
+      {canGoBack ? (
+        <Action
+          title="This Week"
+          icon="⬅️"
+          shortcut={{ modifiers: ['cmd', 'shift'], key: 'arrowLeft' }}
+          onAction={showPreviousWeek}
+        />
+      ) : null}
+    </>
+  );
 
   return (
-    <Grid
+    <List
       navigationTitle={navigationTitle}
       isLoading={isLoading}
       searchBarPlaceholder="Filter openings"
-      columns={4}
-      aspectRatio="3/2"
-      fit={Grid.Fit.Fill}
-      inset={Grid.Inset.Medium}
     >
-      <Grid.Section title={sectionTitle}>
+      <List.Section title={sectionTitle} subtitle={weekLabel || undefined}>
         {slotOptions.map((slot, index) => (
-          <Grid.Item
+          <List.Item
             key={`${slot.id}:${index}`}
-            content={{
-              value: slot.isPreviousScout ? '⭐' : '📅',
-              tooltip: slot.scoutName,
-            }}
-            title={`${index + 1}. ${slot.title}`}
+            icon={slot.isPreviousScout ? '⭐' : '📅'}
+            title={`${index + 1}. ${slot.dateLabel}`}
             subtitle={slot.scoutName}
             keywords={[slot.scoutName, slot.messageLabel]}
+            accessories={[{ text: slot.timeLabel }, { text: slot.zoneLabel }]}
             actions={
               <ActionPanel>
                 {!slot1 ? (
@@ -1897,15 +1937,16 @@ function RescheduleSlotSelectionGrid({
                   shortcut={{ modifiers: ['cmd'], key: 'r' }}
                   onAction={() => setReloadKey((value) => value + 1)}
                 />
+                {weekActions}
               </ActionPanel>
             }
           />
         ))}
-      </Grid.Section>
+      </List.Section>
       {!isLoading && !slotOptions.length ? (
-        <Grid.EmptyView
+        <List.EmptyView
           title="No openings"
-          description={errorMessage || 'No future openings found.'}
+          description={errorMessage || `No openings found${weekLabel ? ` for ${weekLabel}` : ''}.`}
           actions={
             <ActionPanel>
               <Action
@@ -1913,11 +1954,12 @@ function RescheduleSlotSelectionGrid({
                 icon="🔄"
                 onAction={() => setReloadKey((value) => value + 1)}
               />
+              {weekActions}
             </ActionPanel>
           }
         />
       ) : null}
-    </Grid>
+    </List>
   );
 }
 
@@ -1959,7 +2001,7 @@ function VoicemailFollowUpRecipientForm({
     const selectedVariant = variant || defaultVariant;
     if (isRescheduleVoicemailVariant(selectedVariant) && selectedRescheduleSlots.length < 2) {
       push(
-        <RescheduleSlotSelectionGrid
+        <RescheduleSlotSelectionList
           task={task}
           context={context}
           onSlotsSelected={(slots) => openMessagesForRecipient(recipient, selectedVariant, slots)}

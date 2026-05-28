@@ -909,11 +909,33 @@ test('buildScoutPrepLeavingVoicemailBody: uses shorter voicemail for post-first-
     currentTask: 'Scheduled Follow Up Call the family second time and leave follow-up voicemail.',
   });
 
-  assert.match(body, /^Hi Jamie, this is Jerami Singleton with Prospect ID\./);
-  assert.match(body, /Quick follow-up on Bryson’s college football profile\./);
-  assert.match(body, /If this is still a real goal, call or text me back at 407-473-3637\./);
+  assert.match(body, /^Hi Jamie, Jerami with Prospect ID\./);
+  assert.match(body, /Checking back on Bryson’s college football profile\./);
+  assert.match(
+    body,
+    /If this is still worth a conversation, call or text me back at 407-473-3637\./,
+  );
   assert.doesNotMatch(body, /I had a few quick questions/);
+  assert.doesNotMatch(body, /scheduling link/);
   assert.doesNotMatch(body, /came across my desk/);
+});
+
+test('buildScoutPrepLeavingVoicemailBody: third attempt uses the same post-first-attempt voicemail', () => {
+  const body = buildScoutPrepLeavingVoicemailBody({
+    parentName: 'Jamie Smith',
+    athleteName: 'Bryson Smith',
+    sport: 'Football',
+    currentTask: 'Call Attempt 3',
+  });
+
+  assert.match(body, /^Hi Jamie, Jerami with Prospect ID\./);
+  assert.match(body, /Checking back on Bryson’s college football profile\./);
+  assert.match(
+    body,
+    /If this is still worth a conversation, call or text me back at 407-473-3637\./,
+  );
+  assert.doesNotMatch(body, /Last follow-up/);
+  assert.doesNotMatch(body, /scheduling link/);
 });
 
 test('buildScoutPrepCard: uses short appointment-setting call path', () => {
