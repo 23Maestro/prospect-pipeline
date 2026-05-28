@@ -4,6 +4,7 @@ import {
   Color,
   Form,
   Icon,
+  LocalStorage,
   List,
   Toast,
   LaunchType,
@@ -32,6 +33,16 @@ import {
   sendClientMessage,
   useClientInboxChats,
 } from './lib/client-message-sandbox';
+import {
+  buildClientReplyThemeReviewSnapshot,
+  clientReplyThemeReviewBucketLabel,
+  clientReplyThemeReviewReasonLabel,
+  clientReplyThemeReviewToneLabel,
+  writeCachedClientReplyThemeReviewSnapshot,
+  type ClientReplyThemeReviewBucketKey,
+  type ClientReplyThemeNearMissRow,
+  type ClientReplyThemeReviewRow,
+} from './lib/client-message-reply-themes';
 import { openMessagesServiceClientInbox } from './lib/messages-service';
 
 const TAG_COLORS = [Color.Blue, Color.Green, Color.Magenta, Color.Orange, Color.Purple, Color.Red];
@@ -253,6 +264,179 @@ function ClientThread({ chat }: { chat: ClientInboxChat }) {
       <List.EmptyView
         title="No messages found"
         description="This thread did not return any local Messages rows yet."
+      />
+    </List>
+  );
+}
+
+const clientReplyThemeReviewStorage = {
+  getItem: (key: string) => LocalStorage.getItem<string>(key),
+  setItem: (key: string, value: string) => LocalStorage.setItem(key, value),
+};
+
+function themeLabel(theme: ClientReplyThemeReviewRow['theme']): string {
+  if (theme === 'reschedule_request') return 'Reschedule';
+  return 'Call Back';
+}
+
+async function buildAndCacheReplyThemeReview(chats: ClientInboxChat[]) {
+  const messagesByChatGuidEntries = await Promise.all(
+    chats.map(async (chat) => {
+      const messages = await getClientThreadMessages(chat.guid, chat.displayName).catch(
+        () => [] as ClientThreadMessage[],
+      );
+      return [
+        chat.guid,
+        messages.map((message) => ({
+          guid: message.guid,
+          body: message.body,
+          date: message.date,
+          senderName: message.senderName,
+          sender: message.sender,
+          isFromMe: message.is_from_me,
+        })),
+      ] as const;
+    }),
+  );
+
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    chats: chats.map((chat) => ({
+      guid: chat.guid,
+      displayName: chat.displayName,
+      lastMessageDate: chat.last_message_date,
+      athleteName: chat.clientMatch.athleteName,
+      contactId: chat.clientMatch.contactId,
+      athleteMainId: chat.clientMatch.athleteMainId,
+      taskTitle: chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus,
+      matchedPhones: chat.matchedPhones,
+    })),
+    messagesByChatGuid: Object.fromEntries(messagesByChatGuidEntries),
+  });
+  await writeCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage, snapshot);
+  return snapshot;
+}
+
+function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
+  const { push } = useNavigation();
+  const { data: snapshot, isLoading, revalidate } = usePromise(buildAndCacheReplyThemeReview, [
+    chats,
+  ]);
+
+  function chatForRow(row: ClientReplyThemeReviewRow) {
+    return chats.find((chat) => chat.guid === row.chatGuid);
+  }
+
+  function renderRow(
+    row: ClientReplyThemeReviewRow | ClientReplyThemeNearMissRow,
+    bucket: ClientReplyThemeReviewBucketKey,
+  ) {
+    const chat = chatForRow(row);
+    const isTripleCheck = bucket === 'ignoredHandled';
+    return (
+      <List.Item
+        key={`${bucket}:${row.id}`}
+        title={row.displayName}
+        subtitle={row.messageBody}
+        accessories={[
+          {
+            tag: {
+              value: clientReplyThemeReviewToneLabel(bucket),
+              color:
+                bucket === 'nearMisses'
+                  ? Color.Blue
+                  : isTripleCheck
+                    ? Color.SecondaryText
+                    : Color.Orange,
+            },
+          },
+          {
+            tag: {
+              value: clientReplyThemeReviewReasonLabel(
+                isTripleCheck ? 'replied_after' : 'no_operator_reply',
+              ),
+              color: isTripleCheck ? Color.SecondaryText : Color.Yellow,
+            },
+          },
+          { tag: { value: themeLabel(row.theme), color: Color.Purple } },
+          ...(row.athleteName
+            ? [{ tag: { value: row.athleteName, color: tagColorFor(row.athleteName) } }]
+            : []),
+          ...(row.messageDate
+            ? [
+                {
+                  date: new Date(row.messageDate),
+                  tooltip: format(new Date(row.messageDate), 'PPpp'),
+                },
+              ]
+            : []),
+        ]}
+        actions={
+          <ActionPanel>
+            {chat && !isTripleCheck ? (
+              <>
+                <Action
+                  title="Create Follow-Up"
+                  icon={Icon.Airplane}
+                  onAction={() => push(<FollowUpDraftForm chat={chat} />)}
+                />
+                <Action
+                  title="Open Thread"
+                  icon={Icon.Message}
+                  onAction={() => push(<ClientThread chat={chat} />)}
+                />
+                <Action
+                  title="Open Scout Prep"
+                  icon={Icon.List}
+                  onAction={() => void openScoutPrepFromClientMessage(chat)}
+                />
+              </>
+            ) : chat ? (
+              <Action
+                title="Open Thread"
+                icon={Icon.Message}
+                onAction={() => push(<ClientThread chat={chat} />)}
+              />
+            ) : null}
+            <Action title="Refresh Review" icon={Icon.ArrowClockwise} onAction={revalidate} />
+          </ActionPanel>
+        }
+      />
+    );
+  }
+
+  return (
+    <List
+      navigationTitle="Review Follow Ups"
+      isLoading={isLoading}
+      searchBarPlaceholder="Search reply themes..."
+    >
+      <List.Section
+        title={`Review Follow Ups: ${clientReplyThemeReviewBucketLabel('rows')} (${snapshot?.rows.length || 0})`}
+      >
+        {(snapshot?.rows || []).map((row) => renderRow(row, 'rows'))}
+      </List.Section>
+      <List.Section
+        title={`Review Follow Ups: ${clientReplyThemeReviewBucketLabel('nearMisses')} (${snapshot?.nearMisses.length || 0})`}
+      >
+        {(snapshot?.nearMisses || []).map((row) => renderRow(row, 'nearMisses'))}
+      </List.Section>
+      <List.Section
+        title={`Review Follow Ups: ${clientReplyThemeReviewBucketLabel('ignoredHandled')} (${snapshot?.ignoredHandled.length || 0})`}
+      >
+        {(snapshot?.ignoredHandled || []).map((row) => renderRow(row, 'ignoredHandled'))}
+      </List.Section>
+      <List.EmptyView
+        title="No reply themes found"
+        description={
+          snapshot
+            ? `Reviewed ${snapshot.totalMessagesReviewed} messages across ${snapshot.totalChatsReviewed} cache-matched chats. Snapshot cached ${snapshot.generatedAt}.`
+            : 'Run the review to cache actionable reply themes.'
+        }
+        actions={
+          <ActionPanel>
+            <Action title="Refresh Review" icon={Icon.ArrowClockwise} onAction={revalidate} />
+          </ActionPanel>
+        }
       />
     </List>
   );
@@ -502,6 +686,11 @@ export default function ClientMessageInboxCommand() {
                 shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
                 onAction={() => void openScoutPrepFromClientMessage(chat)}
               />
+              <Action.Push
+                title="Review Follow Ups"
+                icon={Icon.Eye}
+                target={<ClientReplyThemeReview chats={chats || []} />}
+              />
               {chat.is_group ? (
                 <Action.Open
                   title="Open in Messages"
@@ -555,6 +744,11 @@ export default function ClientMessageInboxCommand() {
               title="Refresh Client Source"
               icon={Icon.ArrowClockwise}
               onAction={revalidateDirectory}
+            />
+            <Action.Push
+              title="Review Follow Ups"
+              icon={Icon.Eye}
+              target={<ClientReplyThemeReview chats={chats || []} />}
             />
           </ActionPanel>
         }
