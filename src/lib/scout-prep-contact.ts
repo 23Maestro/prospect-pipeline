@@ -182,6 +182,7 @@ export function buildVoicemailFollowUpBody(
   rescheduleContext?: {
     previousHeadScoutName?: string | null;
     slots?: string[] | null;
+    weekLabel?: string | null;
   },
 ): string {
   const recipients = getVoicemailFollowUpRecipients(context);
@@ -231,6 +232,7 @@ export function buildVoicemailFollowUpBody(
     signOffTitle,
     previousHeadScoutName: rescheduleContext?.previousHeadScoutName,
     rescheduleSlots: rescheduleContext?.slots,
+    rescheduleWeekLabel: rescheduleContext?.weekLabel,
     now,
   });
 }
@@ -264,7 +266,7 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
   return [
     `Hi ${parentFirstName}, this is Jerami Singleton with Prospect ID.`,
     '',
-    `I called about ${athleteFirstName}’s college ${sport} profile.`,
+    `I’m following up on ${athleteFirstName}’s college ${sport} profile.`,
     '',
     'If playing at the next level is still a real goal, call or text me back at 407-473-3637.',
   ].join('\n');

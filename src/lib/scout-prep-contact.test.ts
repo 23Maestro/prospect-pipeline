@@ -853,10 +853,11 @@ test('buildVoicemailFollowUpBody: reschedule includes previous head scout and se
     {
       previousHeadScoutName: 'Ryan Lietz',
       slots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
+      weekLabel: 'next week',
     },
   );
 
-  assert.match(body, /Coach Ryan Lietz still has time set aside this week for Aiden:/);
+  assert.match(body, /Coach Ryan Lietz still has time set aside next week for Aiden:/);
   assert.match(body, /1 - Thu May 28 3 PM EST/);
   assert.match(body, /2 - Fri May 29 4 PM EST/);
   assert.match(body, /Which one works best\?/);
@@ -909,7 +910,8 @@ test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and a
   });
 
   assert.match(body, /^Hi Jamie, this is Jerami Singleton/);
-  assert.match(body, /Bryson’s college football profile/);
+  assert.match(body, /I’m following up on Bryson’s college football profile\./);
+  assert.doesNotMatch(body, /I called about/);
   assert.match(
     body,
     /If playing at the next level is still a real goal, call or text me back at 407-473-3637\./,

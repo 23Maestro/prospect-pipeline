@@ -254,6 +254,89 @@ export function formatHeadScoutSlotTimeRange(start: string, end: string): string
   return `${formatTimePart(startTime)} - ${formatTimePart(endTime)} ${HEAD_SCOUT_TIMEZONE}`;
 }
 
+export function compactHeadScoutZoneLabel(value?: string | null): string {
+  const rawZone = String(value || '').trim();
+  if (rawZone === 'Eastern' || rawZone === 'EST' || rawZone === 'EDT') return 'ET';
+  if (rawZone === 'Central' || rawZone === 'CST' || rawZone === 'CDT') return 'CT';
+  if (rawZone === 'Mountain' || rawZone === 'MST' || rawZone === 'MDT') return 'MT';
+  if (rawZone === 'Pacific' || rawZone === 'PST' || rawZone === 'PDT') return 'PT';
+  return rawZone;
+}
+
+export function displayHeadScoutZoneLabel(value?: string | null): string {
+  const rawZone = String(value || '').trim();
+  if (rawZone === 'ET' || rawZone === 'EST' || rawZone === 'EDT') return 'Eastern';
+  if (rawZone === 'CT' || rawZone === 'CST' || rawZone === 'CDT') return 'Central';
+  if (rawZone === 'MT' || rawZone === 'MST' || rawZone === 'MDT') return 'Mountain';
+  if (rawZone === 'PT' || rawZone === 'PST' || rawZone === 'PDT') return 'Pacific';
+  return rawZone;
+}
+
+export function formatHeadScoutSlotStartLabel(timeRangeLabel: string, zoneLabel: string): string {
+  const [startRaw, rest = ''] = timeRangeLabel.split(/\s+-\s+/, 2);
+  const start = String(startRaw || '')
+    .trim()
+    .replace(/^0?(\d{1,2}):00\s*(AM|PM)$/i, '$1$2')
+    .replace(/^0?(\d{1,2}):([1-5]\d)\s*(AM|PM)$/i, '$1:$2$3')
+    .replace(/\b(am|pm)\b/i, (match) => match.toUpperCase());
+  const period = /(AM|PM)$/i.test(start) ? '' : rest.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
+  const rawZone =
+    zoneLabel || rest.match(/\b(Eastern|Central|Mountain|Pacific|[A-Z]{2,4})\b$/i)?.[1] || '';
+  const zone = compactHeadScoutZoneLabel(rawZone);
+  return [start, period, zone].filter(Boolean).join(' ');
+}
+
+function formatCompactClockLabel(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === 'hour')?.value || '';
+  const minute = parts.find((part) => part.type === 'minute')?.value || '00';
+  const dayPeriod = parts.find((part) => part.type === 'dayPeriod')?.value?.toUpperCase() || '';
+  return minute === '00' ? `${hour}${dayPeriod}` : `${hour}:${minute}${dayPeriod}`;
+}
+
+export function formatHeadScoutNaturalSlotLabel(
+  start: string,
+  end: string,
+  timeZone?: string | null,
+): { dateLabel: string; timeLabel: string; messageLabel: string; zoneLabel: string } {
+  const display = formatHeadScoutSlotForTimezone(start, end, timeZone);
+  const renderTimeZone = timeZone || 'America/New_York';
+  const parsedStart = easternLocalIsoToDate(start);
+  if (!parsedStart) {
+    const dateLabel =
+      display.dateLabel === 'Unknown Date'
+        ? display.dateLabel
+        : display.dateLabel.replace(/^[A-Za-z]{3},\s*/, '');
+    const timeLabel = formatHeadScoutSlotStartLabel(display.timeRangeLabel, display.zoneLabel);
+    return {
+      dateLabel,
+      timeLabel,
+      messageLabel: `${dateLabel} at ${timeLabel}`,
+      zoneLabel: compactHeadScoutZoneLabel(display.zoneLabel),
+    };
+  }
+
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: renderTimeZone,
+  }).format(parsedStart);
+  const zoneLabel = compactHeadScoutZoneLabel(display.zoneLabel);
+  const timeLabel = `${formatCompactClockLabel(parsedStart, renderTimeZone)} ${zoneLabel}`;
+  return {
+    dateLabel,
+    timeLabel,
+    messageLabel: `${dateLabel} at ${timeLabel}`,
+    zoneLabel,
+  };
+}
+
 export function formatHeadScoutWeekLabel(start: string, end: string): string {
   const startLabel = formatHeadScoutSlotDate(`${start}T00:00`).replace(/^[A-Za-z]{3},\s*/, '');
   const endDate = new Date(`${end}T00:00:00Z`);

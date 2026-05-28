@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { buildStudentAthleteMessageResolutions } from './student-athlete-message-resolver';
 import type { AthleteContactCacheClientMatch } from './athlete-contact-cache';
 
-function cacheRow(overrides: Partial<AthleteContactCacheClientMatch>): AthleteContactCacheClientMatch {
+function cacheRow(
+  overrides: Partial<AthleteContactCacheClientMatch>,
+): AthleteContactCacheClientMatch {
   return {
     athleteKey: 'athlete-1:main-1',
     athleteId: 'athlete-1',
@@ -17,13 +19,19 @@ function cacheRow(overrides: Partial<AthleteContactCacheClientMatch>): AthleteCo
     crmStage: 'Meeting Set',
     taskStatus: 'Meeting Set',
     currentTaskTitle: 'Confirmation Call',
+    timezone: 'America/Chicago',
+    timezoneLabel: 'CST',
     ...overrides,
   };
 }
 
 test('message resolver groups athlete family contacts for matched phones', () => {
   const resolutions = buildStudentAthleteMessageResolutions([
-    cacheRow({ contactName: 'Tiffany Jones', relationshipLabel: 'Mother', normalizedPhone: '6155551000' }),
+    cacheRow({
+      contactName: 'Tiffany Jones',
+      relationshipLabel: 'Mother',
+      normalizedPhone: '6155551000',
+    }),
     cacheRow({
       contactName: 'Avery Jones',
       relationshipLabel: 'Student Athlete',
@@ -37,6 +45,8 @@ test('message resolver groups athlete family contacts for matched phones', () =>
     ['parent1', 'studentAthlete'],
   );
   assert.equal(resolutions[0].athleteName, 'Avery Jones');
+  assert.equal(resolutions[0].timezone, 'America/Chicago');
+  assert.equal(resolutions[0].timezoneLabel, 'CST');
   assert.equal(resolutions[0].ambiguity, 'none');
 });
 

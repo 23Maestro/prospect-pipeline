@@ -1,7 +1,4 @@
-export const MISSED_CLIENT_REPLY_FLAGS = [
-  'reschedule_request',
-  'outreach_callback',
-] as const;
+export const MISSED_CLIENT_REPLY_FLAGS = ['reschedule_request', 'outreach_callback'] as const;
 
 export type ClientMessageTheme = (typeof MISSED_CLIENT_REPLY_FLAGS)[number];
 export type ClientMessageTemplateContext = 'confirmation' | 'outreach_attempt';
@@ -13,6 +10,8 @@ export type ClientReplyThemeReviewChatInput = {
   athleteName?: string | null;
   contactId?: string | null;
   athleteMainId?: string | null;
+  timezone?: string | null;
+  timezoneLabel?: string | null;
   taskTitle?: string | null;
   matchedPhones?: string[];
 };
@@ -40,6 +39,8 @@ export type ClientReplyThemeReviewRow = {
   athleteName: string | null;
   contactId: string | null;
   athleteMainId: string | null;
+  timezone: string | null;
+  timezoneLabel: string | null;
   taskTitle: string | null;
   matchedPhones: string[];
   followUpEvidence?: string[];
@@ -142,8 +143,61 @@ function markdownEscape(value?: string | null): string {
     .trim();
 }
 
+function compactTimezoneLabel(value?: string | null): string {
+  const raw = String(value || '').trim();
+  if (raw === 'Eastern' || raw === 'EST' || raw === 'EDT') return 'ET';
+  if (raw === 'Central' || raw === 'CST' || raw === 'CDT') return 'CT';
+  if (raw === 'Mountain' || raw === 'MST' || raw === 'MDT') return 'MT';
+  if (raw === 'Pacific' || raw === 'PST' || raw === 'PDT') return 'PT';
+  return raw;
+}
+
+function compactClockLabel(date: Date, timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === 'hour')?.value || '';
+  const minute = parts.find((part) => part.type === 'minute')?.value || '00';
+  const dayPeriod = parts.find((part) => part.type === 'dayPeriod')?.value?.toUpperCase() || '';
+  return minute === '00' ? `${hour}${dayPeriod}` : `${hour}:${minute}${dayPeriod}`;
+}
+
+export function formatClientReplyThemeMessageDate(
+  value?: string | null,
+  timeZone?: string | null,
+  timezoneLabel?: string | null,
+): string {
+  const raw = normalizeText(value);
+  if (!raw) return '';
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
+  const renderTimeZone = String(timeZone || '').trim() || 'America/New_York';
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    timeZone: renderTimeZone,
+  }).format(date);
+  const zoneLabel =
+    compactTimezoneLabel(timezoneLabel) ||
+    compactTimezoneLabel(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: renderTimeZone,
+        timeZoneName: 'short',
+      })
+        .formatToParts(date)
+        .find((part) => part.type === 'timeZoneName')?.value,
+    );
+  return `${dateLabel} at ${compactClockLabel(date, renderTimeZone)}${zoneLabel ? ` ${zoneLabel}` : ''}`;
+}
+
 export function buildClientReplyThemeThreadMarkdown(args: {
   clientName: string;
+  timeZone?: string | null;
+  timezoneLabel?: string | null;
   messages: Array<
     Pick<ClientReplyThemeReviewMessageInput, 'body' | 'date' | 'senderName' | 'isFromMe'>
   >;
@@ -153,9 +207,13 @@ export function buildClientReplyThemeThreadMarkdown(args: {
     const body = normalizeText(message.body);
     if (!body) continue;
     const sender = message.isFromMe ? 'Me' : normalizeText(message.senderName) || args.clientName;
-    const date = normalizeText(message.date);
+    const date = formatClientReplyThemeMessageDate(message.date, args.timeZone, args.timezoneLabel);
     lines.push('');
-    lines.push(`> **${markdownEscape(sender)}**${date ? `  \n> ${markdownEscape(date)}` : ''}`);
+    lines.push(`> **${markdownEscape(sender)}**`);
+    if (date) {
+      lines.push(`> ${markdownEscape(date)}`);
+      lines.push('>');
+    }
     for (const part of body.split(/\r?\n/)) {
       lines.push(`> ${markdownEscape(part)}`);
     }
@@ -280,6 +338,8 @@ export function buildClientReplyThemeReviewSnapshot(args: {
         athleteName: normalizeText(chat.athleteName) || null,
         contactId: normalizeText(chat.contactId) || null,
         athleteMainId: normalizeText(chat.athleteMainId) || null,
+        timezone: normalizeText(chat.timezone) || null,
+        timezoneLabel: normalizeText(chat.timezoneLabel) || null,
         taskTitle: normalizeText(chat.taskTitle) || null,
         matchedPhones: chat.matchedPhones || [],
       };

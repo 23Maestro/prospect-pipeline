@@ -5,7 +5,9 @@ import {
   buildBookedMeetingLookupWindow,
   buildHeadScoutWeekWindow,
   filterVisibleHeadScoutSlots,
+  formatHeadScoutNaturalSlotLabel,
   formatHeadScoutSlotDate,
+  formatHeadScoutSlotStartLabel,
   formatHeadScoutSlotTimeRange,
   getCurrentEasternSlotStamp,
   HEAD_SCOUT_ORDER,
@@ -116,6 +118,24 @@ test('formatHeadScoutSlotTimeRange renders EST 12-hour labels', () => {
   assert.equal(
     formatHeadScoutSlotTimeRange('2026-04-16T17:00', '2026-04-16T18:00'),
     '5:00 PM - 6:00 PM EST',
+  );
+});
+
+test('formatHeadScoutSlotStartLabel removes duplicate periods and compacts timezone', () => {
+  assert.equal(formatHeadScoutSlotStartLabel('5:00 PM - 6:00 PM EST', 'EST'), '5PM ET');
+  assert.equal(formatHeadScoutSlotStartLabel('6PM - 7PM Eastern', 'Eastern'), '6PM ET');
+  assert.equal(formatHeadScoutSlotStartLabel('6:30 PM - 7:30 PM Central', 'Central'), '6:30PM CT');
+});
+
+test('formatHeadScoutNaturalSlotLabel renders natural client-timezone labels', () => {
+  assert.deepEqual(
+    formatHeadScoutNaturalSlotLabel('2026-06-01T18:00', '2026-06-01T19:00', 'America/Chicago'),
+    {
+      dateLabel: 'Monday, June 1',
+      timeLabel: '5PM CT',
+      messageLabel: 'Monday, June 1 at 5PM CT',
+      zoneLabel: 'CT',
+    },
   );
 });
 

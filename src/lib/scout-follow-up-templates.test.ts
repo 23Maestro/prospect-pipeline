@@ -208,7 +208,26 @@ test('buildVoicemailFollowUpMessage renders reschedule slot copy', () => {
   assert.match(message, /Which one works best\?/);
 });
 
-test('buildVoicemailFollowUpMessage renders second reschedule triage copy', () => {
+test('buildVoicemailFollowUpMessage renders next-week reschedule slot copy', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'reschedule_1',
+    greeting: 'Hi Jamie,',
+    athleteName: 'Aiden',
+    sport: 'Football',
+    previousHeadScoutName: 'Ryan Lietz',
+    rescheduleSlots: ['Mon, Jun 1 6PM ET', 'Tue, Jun 2 6PM ET'],
+    rescheduleWeekLabel: 'next week',
+    now: new Date('2026-04-24T13:00:00Z'),
+  });
+
+  assert.match(message, /^Hi Jamie, no worries\./);
+  assert.match(message, /Coach Ryan Lietz still has time set aside next week for Aiden:/);
+  assert.match(message, /1 - Mon, Jun 1 6PM ET/);
+  assert.match(message, /2 - Tue, Jun 2 6PM ET/);
+  assert.match(message, /Which one works best\?/);
+});
+
+test('buildVoicemailFollowUpMessage renders second reschedule two-slot copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'reschedule_2',
     greeting: 'Hi Jamie,',
@@ -219,14 +238,12 @@ test('buildVoicemailFollowUpMessage renders second reschedule triage copy', () =
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(
-    message,
-    /^Hi Jamie, checking once more so we can either reschedule or close this out\./,
-  );
+  assert.match(message, /^Which one works best\?/);
   assert.match(message, /1 - Thu May 28 3 PM EST/);
   assert.match(message, /2 - Fri May 29 4 PM EST/);
-  assert.match(message, /3 - timing is not good right now/);
-  assert.match(message, /Which option works best\?/);
+  assert.doesNotMatch(message, /checking once more/);
+  assert.doesNotMatch(message, /3 - timing is not good right now/);
+  assert.doesNotMatch(message, /Which option works best\?/);
 });
 
 test('buildVoicemailFollowUpMessage uses no show triage for student athletes', () => {

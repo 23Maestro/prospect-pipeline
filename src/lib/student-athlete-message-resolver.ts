@@ -18,6 +18,8 @@ export type StudentAthleteMessageResolution = {
   crmStage: string | null;
   taskStatus: string | null;
   currentTaskTitle: string | null;
+  timezone: string | null;
+  timezoneLabel: string | null;
   associatedContacts: StudentAthleteMessageAssociatedContact[];
   ambiguity: 'none' | 'multiple_athletes';
   source: 'athlete_contact_cache';
@@ -39,7 +41,9 @@ function toDisplayName(value?: string | null): string {
 }
 
 function relationshipRole(row: AthleteContactCacheClientMatch): string {
-  const normalized = String(row.relationshipLabel || '').trim().toLowerCase();
+  const normalized = String(row.relationshipLabel || '')
+    .trim()
+    .toLowerCase();
   if (normalized.includes('student')) return 'studentAthlete';
   if (
     normalized.includes('father') ||
@@ -105,11 +109,11 @@ export function buildStudentAthleteMessageResolutions(
       crmStage: row.crmStage,
       taskStatus: row.taskStatus,
       currentTaskTitle: row.currentTaskTitle,
+      timezone: row.timezone,
+      timezoneLabel: row.timezoneLabel,
       associatedContacts,
       ambiguity:
-        (athleteKeysByPhone.get(row.normalizedPhone)?.size || 0) > 1
-          ? 'multiple_athletes'
-          : 'none',
+        (athleteKeysByPhone.get(row.normalizedPhone)?.size || 0) > 1 ? 'multiple_athletes' : 'none',
       source: 'athlete_contact_cache',
     } satisfies StudentAthleteMessageResolution;
   });

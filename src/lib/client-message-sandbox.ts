@@ -46,6 +46,8 @@ export type ClientDirectoryMatch = {
   currentTaskTitle?: string | null;
   contactId?: string | null;
   athleteMainId?: string | null;
+  timezone?: string | null;
+  timezoneLabel?: string | null;
   associatedClients?: ClientDirectoryAssociatedContact[];
   ambiguity?: 'none' | 'multiple_athletes';
   source: 'contacts' | 'backend' | 'contact_cache' | 'merged';
@@ -248,6 +250,8 @@ function mergeMatch(
     currentTaskTitle: existing.currentTaskTitle || incoming.currentTaskTitle,
     contactId: existing.contactId || incoming.contactId,
     athleteMainId: existing.athleteMainId || incoming.athleteMainId,
+    timezone: existing.timezone || incoming.timezone,
+    timezoneLabel: existing.timezoneLabel || incoming.timezoneLabel,
     associatedClients: mergeAssociatedContacts(
       existing.associatedClients,
       incoming.associatedClients,
@@ -271,10 +275,7 @@ function mergeAssociatedContacts(
   if (!merged.length) return undefined;
   return Array.from(
     new Map(
-      merged.map((contact) => [
-        `${contact.role}:${contact.normalizedPhoneNumber}`,
-        contact,
-      ]),
+      merged.map((contact) => [`${contact.role}:${contact.normalizedPhoneNumber}`, contact]),
     ).values(),
   );
 }
@@ -440,6 +441,8 @@ function mergeContactCacheMatches(
         currentTaskTitle: resolution.currentTaskTitle,
         contactId: resolution.contactId,
         athleteMainId: resolution.athleteMainId,
+        timezone: resolution.timezone,
+        timezoneLabel: resolution.timezoneLabel,
         associatedClients: resolution.associatedContacts,
         ambiguity: resolution.ambiguity,
         source: 'contact_cache',

@@ -39,6 +39,8 @@ export type AthleteContactCacheClientMatch = {
   crmStage: string | null;
   taskStatus: string | null;
   currentTaskTitle: string | null;
+  timezone: string | null;
+  timezoneLabel: string | null;
 };
 
 type AthleteContactCacheReadRow = {
@@ -51,6 +53,8 @@ type AthleteContactCacheReadRow = {
   relationship_label?: string | null;
   phone?: string | null;
   normalized_phone?: string | null;
+  timezone?: string | null;
+  timezone_label?: string | null;
 };
 
 type AthletePipelineStateReadRow = {
@@ -158,7 +162,7 @@ async function readActiveContactCacheRowsForPhones(
     config,
     'athlete_contact_cache',
     [
-      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,normalized_phone',
+      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,normalized_phone,timezone,timezone_label',
       'cache_status=eq.active',
       `normalized_phone=in.${postgrestInList(phones)}`,
       'order=last_seen_at.desc',
@@ -174,7 +178,7 @@ async function readActiveContactCacheRowsForPhones(
     config,
     'athlete_contact_cache',
     [
-      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,normalized_phone',
+      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,normalized_phone,timezone,timezone_label',
       'cache_status=eq.active',
       `athlete_key=in.${postgrestInList(athleteKeys)}`,
       'order=last_seen_at.desc',
@@ -246,6 +250,8 @@ export async function lookupActiveAthleteContactCacheForPhones(
         crmStage: String(pipelineState?.crm_stage || '').trim() || null,
         taskStatus: String(pipelineState?.task_status || '').trim() || null,
         currentTaskTitle: String(pipelineState?.current_task_title || '').trim() || null,
+        timezone: String(row.timezone || '').trim() || null,
+        timezoneLabel: String(row.timezone_label || '').trim() || null,
       } satisfies AthleteContactCacheClientMatch,
     ];
   });

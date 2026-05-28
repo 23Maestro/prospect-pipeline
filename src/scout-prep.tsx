@@ -16,7 +16,7 @@ import {
   useNavigation,
 } from '@raycast/api';
 import { spawn } from 'node:child_process';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { exportDailyCallBlocks, type TaskCounts } from './daily-call-blocks';
@@ -30,8 +30,6 @@ import type {
   RescheduleMeetingSubmitResponse,
   SalesStageOption,
   ScoutAthleteTask,
-  ScoutRecentProfile,
-  ScoutRecentProfileCheckStatus,
   ScoutPortalTask,
   ScoutPrepContext,
 } from './features/scout-prep/types';
@@ -55,9 +53,7 @@ import {
   buildScoutPrepMetadata,
   buildScoutPrepValues,
   completeScoutPrepTaskAfterVoicemail,
-  fetchAthleteTasks,
   fetchScoutPortalTaskBuckets,
-  fetchScoutRecentProfiles,
   findNewestIncompleteFollowUpTask,
   findNewestIncompleteConfirmationTask,
   isScoutPrepContextCacheUsableForDisplay,
@@ -118,6 +114,7 @@ import {
   fetchHeadScoutSlots,
   fetchOpenMeetings,
   filterVisibleHeadScoutSlots,
+  formatHeadScoutNaturalSlotLabel,
   formatHeadScoutSlotForTimezone,
   formatHeadScoutWeekLabel,
   HEAD_SCOUT_ORDER,
@@ -1664,6 +1661,7 @@ type RescheduleVoicemailSlotOption = {
   dateLabel: string;
   timeLabel: string;
   zoneLabel: string;
+  weekLabel: string;
 };
 
 function normalizeNameKey(value?: string | null): string {
@@ -1674,32 +1672,31 @@ function normalizeNameKey(value?: string | null): string {
     .replace(/\s+/g, ' ');
 }
 
-function selectPreviousHeadScoutName(
-  events: BookedMeetingEvent[] = [],
-  context?: ScoutPrepContext | null,
-): string | null {
-  const sorted = [...events]
-    .filter((event) => String(event.assigned_owner || '').trim())
-    .sort((left, right) => String(right.start || '').localeCompare(String(left.start || '')));
-  return (
-    String(sorted[0]?.assigned_owner || '').trim() ||
-    String(context?.resolved.head_scout || '').trim() ||
-    null
-  );
-}
+const RESCHEDULE_TIME_TAG_COLORS = [
+  Color.Blue,
+  Color.Green,
+  Color.Orange,
+  Color.Purple,
+  Color.Red,
+  Color.Magenta,
+  Color.Yellow,
+];
 
-function buildRescheduleSlotStartLabel(timeRangeLabel: string, zoneLabel: string): string {
-  const [startRaw, rest = ''] = timeRangeLabel.split(/\s+-\s+/, 2);
-  const period = rest.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
-  const zone = zoneLabel || rest.match(/\b[A-Z]{2,4}\b$/)?.[0] || '';
-  const start = String(startRaw || '').trim();
-  return [start, period, zone].filter(Boolean).join(' ');
+function rescheduleTimeTagColorFor(value?: string | null): Color {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+  const timeKey = normalized.match(/\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b/)?.[0] || normalized;
+  const total = timeKey.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return RESCHEDULE_TIME_TAG_COLORS[total % RESCHEDULE_TIME_TAG_COLORS.length];
 }
 
 function buildRescheduleVoicemailSlotOptions(args: {
   slots: Array<HeadScoutSlot & { scout_name: string }>;
   athleteTimezone?: string | null;
   previousHeadScoutName?: string | null;
+  weekLabel: string;
 }): RescheduleVoicemailSlotOption[] {
   const previousKey = normalizeNameKey(args.previousHeadScoutName);
   const visibleSlots = filterVisibleHeadScoutSlots(args.slots);
@@ -1715,21 +1712,21 @@ function buildRescheduleVoicemailSlotOptions(args: {
       return left.start.localeCompare(right.start);
     })
     .map((slot) => {
-      const display = formatHeadScoutSlotForTimezone(slot.start, slot.end, args.athleteTimezone);
-      const messageLabel = `${display.dateLabel} ${buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel)}`;
+      const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, args.athleteTimezone);
       const isPreviousScout = Boolean(
         previousKey && normalizeNameKey(slot.scout_name) === previousKey,
       );
       return {
         id: `${slot.scout_name}:${slot.id}`,
-        title: messageLabel,
+        title: display.messageLabel,
         subtitle: slot.scout_name,
         scoutName: slot.scout_name,
-        messageLabel,
+        messageLabel: display.messageLabel,
         isPreviousScout,
         dateLabel: display.dateLabel,
-        timeLabel: buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel),
+        timeLabel: display.timeLabel,
         zoneLabel: display.zoneLabel,
+        weekLabel: args.weekLabel,
       };
     });
 }
@@ -1746,13 +1743,10 @@ function buildPreviousMeetingTextForReschedule(
   const athleteTimezone =
     resolved.meetingTimezone ||
     resolveAthleteTimezone(context.resolved.city, context.resolved.state);
-  const display =
+  const slotLabel =
     meeting.start && meeting.end
-      ? formatHeadScoutSlotForTimezone(meeting.start, meeting.end, athleteTimezone)
-      : null;
-  const slotLabel = display
-    ? `${display.dateLabel} ${buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel)}`
-    : String(meeting.date_time_label || '').trim();
+      ? formatHeadScoutNaturalSlotLabel(meeting.start, meeting.end, athleteTimezone).messageLabel
+      : String(meeting.date_time_label || '').trim();
   const scoutName = String(meeting.assigned_owner || '').trim();
 
   return [slotLabel, scoutName].filter(Boolean).join(' • ') || null;
@@ -1853,6 +1847,7 @@ function RescheduleSlotSelectionList({
   const [reloadKey, setReloadKey] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekLabel, setWeekLabel] = useState<string | null>(null);
+  const [previousMeetingText, setPreviousMeetingText] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -1868,17 +1863,21 @@ function RescheduleSlotSelectionList({
       try {
         const [meetingResult, slotsResult] = await Promise.allSettled([
           athleteId && athleteMainId
-            ? fetchAthleteBookedMeetings({ athleteId, athleteMainId })
+            ? resolveBookedMeetingDetailsForForm(
+                { athleteId, athleteMainId },
+                { getCachedMeetingDescription: getCachedBookedMeetingDescription },
+              )
             : Promise.resolve(null),
           fetchHeadScoutSlots(weekOffset),
         ]);
         if (!isMounted) return;
 
-        const events =
-          meetingResult.status === 'fulfilled' && meetingResult.value
-            ? meetingResult.value.events || []
-            : [];
-        const nextHeadScoutName = selectPreviousHeadScoutName(events, context);
+        const resolvedMeeting =
+          meetingResult.status === 'fulfilled' && meetingResult.value ? meetingResult.value : null;
+        const nextHeadScoutName =
+          String(resolvedMeeting?.bookedMeeting?.assigned_owner || '').trim() ||
+          String(context.resolved.head_scout || '').trim() ||
+          null;
         const slotPayload = slotsResult.status === 'fulfilled' ? slotsResult.value : null;
         const schedules = slotPayload?.scouts || [];
         const slots = schedules.flatMap((schedule) =>
@@ -1888,11 +1887,13 @@ function RescheduleSlotSelectionList({
           })),
         );
         setPreviousHeadScoutName(nextHeadScoutName);
+        setPreviousMeetingText(buildPreviousMeetingTextForReschedule(resolvedMeeting, context));
         setSlotOptions(
           buildRescheduleVoicemailSlotOptions({
             slots,
             athleteTimezone,
             previousHeadScoutName: nextHeadScoutName,
+            weekLabel: weekOffset > 0 ? 'next week' : 'this week',
           }),
         );
         setWeekLabel(
@@ -1910,6 +1911,7 @@ function RescheduleSlotSelectionList({
       } catch (error) {
         if (!isMounted) return;
         setErrorMessage(error instanceof Error ? error.message : String(error));
+        setPreviousMeetingText(null);
         setSlotOptions([]);
       } finally {
         if (isMounted) {
@@ -1932,6 +1934,12 @@ function RescheduleSlotSelectionList({
     : previousHeadScoutName
       ? `${previousHeadScoutName} first`
       : 'Openings';
+  const sectionSubtitle = [
+    weekLabel,
+    previousMeetingText ? `Previous: ${previousMeetingText}` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
   const canGoBack = weekOffset > 0;
 
   function showPreviousWeek() {
@@ -1970,7 +1978,7 @@ function RescheduleSlotSelectionList({
       isLoading={isLoading}
       searchBarPlaceholder="Filter openings"
     >
-      <List.Section title={sectionTitle} subtitle={weekLabel || undefined}>
+      <List.Section title={sectionTitle} subtitle={sectionSubtitle || undefined}>
         {slotOptions.map((slot, index) => (
           <List.Item
             key={`${slot.id}:${index}`}
@@ -1978,7 +1986,9 @@ function RescheduleSlotSelectionList({
             title={`${index + 1}. ${slot.dateLabel}`}
             subtitle={slot.scoutName}
             keywords={[slot.scoutName, slot.messageLabel]}
-            accessories={[{ text: slot.timeLabel }, { text: slot.zoneLabel }]}
+            accessories={[
+              { tag: { value: slot.timeLabel, color: rescheduleTimeTagColorFor(slot.timeLabel) } },
+            ]}
             actions={
               <ActionPanel>
                 {!slot1 ? (
@@ -2185,6 +2195,7 @@ function VoicemailFollowUpRecipientForm({
               String(context.resolved.head_scout || '').trim() ||
               null,
             slots: selectedRescheduleSlots.map((slot) => slot.messageLabel),
+            weekLabel: selectedRescheduleSlots[0]?.weekLabel || null,
           }
         : undefined,
     );
@@ -2357,7 +2368,7 @@ function VoicemailFollowUpRecipientForm({
   );
 }
 
-type ViewMode = 'tasks' | 'recent' | 'prospect' | 'personalFollowUps';
+type ViewMode = 'tasks' | 'prospect';
 
 function cycleTaskListSort(current: TaskListSort, key: TaskListSortKey): TaskListSort {
   const currentRules = !current ? [] : Array.isArray(current) ? current : [current];
@@ -2404,14 +2415,6 @@ function getSortActionTitle(sort: TaskListSort, key: TaskListSortKey): string {
 function buildScoutPrepTaskItemId(task: ScoutPortalTask): string {
   return `task:${task.contact_id}:${task.title || 'task'}:${task.due_date || 'due'}`;
 }
-
-type RecentProfileRow = {
-  profile: ScoutRecentProfile;
-  task: ScoutPortalTask;
-  status: ScoutRecentProfileCheckStatus;
-  followUpTask?: ScoutAthleteTask | null;
-  error?: string | null;
-};
 
 type ProspectSearchMode = 'athlete' | 'parent';
 
@@ -4507,22 +4510,26 @@ function ScoutPrepTaskItem({
   dailyCallBlocksActionTitle,
   onExportDailyCallBlocks,
   onToggleProspectSearchMode,
-  onShowPersonalFollowUps,
+  personalFollowUpsTarget,
   onAddPersonalFollowUpFromTask,
   onSelectTaskListFilter,
   onCycleTaskListSort,
   onReturnToRootList,
+  onPushSecondaryList,
+  onSecondaryListPop,
 }: {
   task: ScoutPortalTask;
   taskListSort: TaskListSort;
   dailyCallBlocksActionTitle: string;
   onExportDailyCallBlocks: () => void;
   onToggleProspectSearchMode: () => void;
-  onShowPersonalFollowUps: () => void;
+  personalFollowUpsTarget: ReactNode;
   onAddPersonalFollowUpFromTask: (task: ScoutPortalTask) => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onCycleTaskListSort: (key: TaskListSortKey) => void;
   onReturnToRootList: () => void;
+  onPushSecondaryList: () => void;
+  onSecondaryListPop: () => void;
 }) {
   const { push, pop } = useNavigation();
   const [isCompletingTask, setIsCompletingTask] = useState(false);
@@ -4530,6 +4537,10 @@ function ScoutPrepTaskItem({
   async function returnToRootListAndCloseCurrentView() {
     await onReturnToRootList();
     popViews(pop, 1);
+  }
+
+  function resetRootListOnPop() {
+    void onReturnToRootList();
   }
 
   async function ensureTaskContext(
@@ -4807,6 +4818,7 @@ function ScoutPrepTaskItem({
             title="Build Scout Prep"
             icon="❇️"
             target={<ScoutPrepDetail task={task} onReturnToRootList={onReturnToRootList} />}
+            onPop={resetRootListOnPop}
           />
           <Action
             title="Voicemail Follow-Up"
@@ -4855,6 +4867,7 @@ function ScoutPrepTaskItem({
               target={
                 <UpdateAthleteTaskPicker task={task} onTaskMutationComplete={onReturnToRootList} />
               }
+              onPop={resetRootListOnPop}
             />
             <Action
               title="Duplicate Profile Check"
@@ -4870,11 +4883,13 @@ function ScoutPrepTaskItem({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'f' }}
               onAction={() => onAddPersonalFollowUpFromTask(task)}
             />
-            <Action
+            <Action.Push
               title="Personal Follow-Ups"
               icon="🕘"
               shortcut={{ modifiers: ['cmd'], key: 'f' }}
-              onAction={onShowPersonalFollowUps}
+              target={personalFollowUpsTarget}
+              onPush={onPushSecondaryList}
+              onPop={onSecondaryListPop}
             />
           </ActionPanel.Section>
           <ActionPanel.Section title="Athlete Info">
@@ -5072,6 +5087,7 @@ function ProspectSearchListItem({
               target={
                 <ScoutPrepDetail task={scoutPrepTask} onReturnToRootList={onReturnToRootList} />
               }
+              onPop={() => void onReturnToRootList()}
             />
           ) : null}
           <Action.OpenInBrowser
@@ -5260,6 +5276,7 @@ function PersonalFollowUpListItem({
               target={
                 <ScoutPrepDetail task={scoutPrepTask} onReturnToRootList={onReturnToRootList} />
               }
+              onPop={() => void onReturnToRootList()}
             />
           ) : null}
           <Action.OpenInBrowser
@@ -5308,74 +5325,81 @@ function PersonalFollowUpListItem({
   );
 }
 
-function RecentProfileListItem({
-  item,
-  onToggleRecentMode,
+function PersonalFollowUpsList({
   onReturnToRootList,
 }: {
-  item: RecentProfileRow;
-  onShowProspectSearch: () => void;
-  onToggleProspectSearchMode: () => void;
-  onToggleRecentMode: () => void;
-  onReturnToRootList: () => void;
+  onReturnToRootList: () => void | Promise<void>;
 }) {
-  const { task, followUpTask, profile, status, error } = item;
-  const statusLabel =
-    status === 'matched'
-      ? followUpTask?.title || 'Follow-Up Found'
-      : status === 'not_found'
-        ? 'Confirmation Call'
-        : status === 'error'
-          ? 'Task Check Failed'
-          : 'Checking Tasks';
-  const markdown = [
-    `# ${task.athlete_name}`,
-    '',
-    `- Status: ${statusLabel}`,
-    `- Task: ${followUpTask?.title || (status === 'not_found' ? 'Confirmation Call' : 'N/A')}`,
-    `- Due Date: ${followUpTask?.due_date || 'N/A'}`,
-    `- Description: ${followUpTask?.description || 'N/A'}`,
-    `- Sport: ${profile.sport || 'N/A'}`,
-    `- State: ${profile.state || 'N/A'}`,
-    `- Grad Year: ${profile.grad_year || 'N/A'}`,
-    `- Parents: ${profile.parent_names?.join(', ') || 'N/A'}`,
-    ...(error ? ['', `- Error: ${error}`] : []),
-  ].join('\n');
+  const { pop } = useNavigation();
+  const [searchText, setSearchText] = useState('');
+  const [personalFollowUps, setPersonalFollowUps] = useState<PersonalFollowUpEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  async function loadPersonalFollowUps() {
+    setIsLoading(true);
+    try {
+      setPersonalFollowUps(await listPersonalFollowUps());
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Follow-ups failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleRemovePersonalFollowUp(entry: PersonalFollowUpEntry) {
+    await removePersonalFollowUp(entry.id);
+    setPersonalFollowUps(await listPersonalFollowUps());
+    await showToast({
+      style: Toast.Style.Success,
+      title: 'Removed',
+    });
+  }
+
+  useEffect(() => {
+    void loadPersonalFollowUps();
+  }, []);
 
   return (
-    <List.Item
-      key={`recent-follow-up:${task.contact_id}:${task.athlete_main_id || 'missing-main-id'}`}
-      icon="🕘"
-      title={task.athlete_name}
-      subtitle={statusLabel}
-      detail={<List.Item.Detail markdown={markdown} />}
-      actions={
-        <ActionPanel>
-          <Action.Push
-            title="Build Scout Prep"
-            icon="❇️"
-            target={<ScoutPrepDetail task={task} onReturnToRootList={onReturnToRootList} />}
+    <List
+      isLoading={isLoading}
+      navigationTitle="Scout Prep — Personal Follow-Ups"
+      filtering
+      searchText={searchText}
+      onSearchTextChange={setSearchText}
+      searchBarPlaceholder="Personal Follow-Ups"
+    >
+      <List.Section title="Personal Follow-Ups" subtitle={String(personalFollowUps.length)}>
+        {personalFollowUps.length > 0 ? (
+          personalFollowUps.map((entry) => (
+            <PersonalFollowUpListItem
+              key={entry.id}
+              entry={entry}
+              onRemove={handleRemovePersonalFollowUp}
+              onExit={pop}
+              onReturnToRootList={onReturnToRootList}
+            />
+          ))
+        ) : (
+          <List.Item
+            icon="🕘"
+            title={isLoading ? 'Loading Follow-Ups' : 'No Personal Follow-Ups'}
+            subtitle={
+              isLoading ? 'Loading' : 'Save a prospect search result when you need to call back'
+            }
+            actions={
+              <ActionPanel>
+                <Action title="Back to Scout Prep" icon="↩️" onAction={pop} />
+                <SupabaseLifecycleStatusAction />
+              </ActionPanel>
+            }
           />
-          {followUpTask ? (
-            <Action.OpenInBrowser
-              title="Open Athlete Task Tab"
-              icon="🌏"
-              shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-              url={buildScoutPrepTaskUrl(task)}
-            />
-          ) : null}
-          <ActionPanel.Section title="Navigation">
-            <Action
-              title="Exit Recent Items"
-              icon="🕘"
-              shortcut={{ modifiers: ['cmd'], key: 'f' }}
-              onAction={onToggleRecentMode}
-            />
-            <SupabaseLifecycleStatusAction />
-          </ActionPanel.Section>
-        </ActionPanel>
-      }
-    />
+        )}
+      </List.Section>
+    </List>
   );
 }
 
@@ -5402,16 +5426,13 @@ export default function ScoutPrepCommand(
   const [prospectSearchText, setProspectSearchText] = useState('');
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
-  const [recentProfiles, setRecentProfiles] = useState<RecentProfileRow[]>([]);
-  const [isRecentFollowUpsLoading, setIsRecentFollowUpsLoading] = useState(false);
-  const [personalFollowUps, setPersonalFollowUps] = useState<PersonalFollowUpEntry[]>([]);
-  const [isPersonalFollowUpsLoading, setIsPersonalFollowUpsLoading] = useState(false);
   const [selectedTaskItemId, setSelectedTaskItemId] = useState<string | undefined>();
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
 
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
+  const listSearchText = viewMode === 'prospect' ? prospectSearchText : taskSearchText;
   const selectedTaskRows =
     viewMode === 'tasks'
       ? buildTaskBucketRows({
@@ -5570,181 +5591,6 @@ export default function ScoutPrepCommand(
     return () => clearTimeout(timer);
   }, [viewMode, prospectSearchText, prospectSearchMode]);
 
-  useEffect(() => {
-    if (viewMode !== 'recent') {
-      return;
-    }
-
-    let active = true;
-    setIsRecentFollowUpsLoading(true);
-
-    void (async () => {
-      try {
-        const profiles = await fetchScoutRecentProfiles();
-        logInfo('SCOUT_PREP_RECENT_PROFILES_ENRICH', 'profiles-loaded', 'success', {
-          rawRecentCount: profiles.length,
-        });
-
-        const rows = profiles.map((profile) => ({
-          profile,
-          task: {
-            contact_id: profile.athlete_id,
-            athlete_id: profile.athlete_id,
-            athlete_main_id: profile.athlete_main_id,
-            athlete_name: profile.athlete_name,
-            grad_year: profile.grad_year || null,
-            title: null,
-            description: null,
-          } satisfies ScoutPortalTask,
-          status: 'loading' as ScoutRecentProfileCheckStatus,
-          followUpTask: null,
-          error: null,
-        }));
-
-        if (!active) return;
-        setRecentProfiles(rows);
-        setIsRecentFollowUpsLoading(false);
-
-        let matched = 0;
-        let notFound = 0;
-        let failures = 0;
-
-        await Promise.all(
-          rows.map(async (row) => {
-            try {
-              const athleteTasks = await fetchAthleteTasks(
-                row.profile.athlete_id,
-                row.profile.athlete_main_id,
-              );
-              const followUpTask = findNewestIncompleteFollowUpTask(athleteTasks);
-              if (!active) return;
-
-              if (followUpTask) {
-                matched += 1;
-                setRecentProfiles((current) =>
-                  current.map((item) =>
-                    item.profile.athlete_id === row.profile.athlete_id &&
-                    item.profile.athlete_main_id === row.profile.athlete_main_id
-                      ? {
-                          ...item,
-                          status: 'matched',
-                          followUpTask,
-                          task: {
-                            ...item.task,
-                            task_id: followUpTask.task_id,
-                            due_date: followUpTask.due_date || null,
-                            completion_date: followUpTask.completion_date || null,
-                            assigned_owner: followUpTask.assigned_owner || null,
-                            title: followUpTask.title || null,
-                            description: followUpTask.description || null,
-                          },
-                        }
-                      : item,
-                  ),
-                );
-              } else {
-                notFound += 1;
-                setRecentProfiles((current) =>
-                  current.map((item) =>
-                    item.profile.athlete_id === row.profile.athlete_id &&
-                    item.profile.athlete_main_id === row.profile.athlete_main_id
-                      ? { ...item, status: 'not_found', followUpTask: null, error: null }
-                      : item,
-                  ),
-                );
-              }
-            } catch (error) {
-              failures += 1;
-              if (!active) return;
-              setRecentProfiles((current) =>
-                current.map((item) =>
-                  item.profile.athlete_id === row.profile.athlete_id &&
-                  item.profile.athlete_main_id === row.profile.athlete_main_id
-                    ? {
-                        ...item,
-                        status: 'error',
-                        followUpTask: null,
-                        error: error instanceof Error ? error.message : String(error),
-                      }
-                    : item,
-                ),
-              );
-            }
-          }),
-        );
-
-        logInfo('SCOUT_PREP_RECENT_PROFILES_ENRICH', 'task-checks', 'success', {
-          rawRecentCount: rows.length,
-          taskChecksAttempted: rows.length,
-          matchedCount: matched,
-          notFoundCount: notFound,
-          failedCount: failures,
-        });
-      } finally {
-        if (active) setIsRecentFollowUpsLoading(false);
-      }
-    })();
-
-    return () => {
-      active = false;
-    };
-  }, [viewMode]);
-
-  async function loadPersonalFollowUps() {
-    setIsPersonalFollowUpsLoading(true);
-    try {
-      setPersonalFollowUps(await listPersonalFollowUps());
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Follow-ups failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setIsPersonalFollowUpsLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (viewMode !== 'personalFollowUps') {
-      return;
-    }
-    void loadPersonalFollowUps();
-  }, [viewMode]);
-
-  function toggleRecentMode() {
-    setViewMode((current) => {
-      if (current === 'recent') {
-        // Exit recent → back to tasks
-        setRecentProfiles([]);
-        setIsRecentFollowUpsLoading(false);
-        return 'tasks';
-      }
-      // Enter recent from anywhere
-      setProspectSearchText('');
-      setProspectResults([]);
-      setIsProspectSearching(false);
-      setPersonalFollowUps([]);
-      setIsPersonalFollowUpsLoading(false);
-      return 'recent';
-    });
-  }
-
-  function showPersonalFollowUps() {
-    setViewMode('personalFollowUps');
-    setProspectSearchText('');
-    setProspectResults([]);
-    setIsProspectSearching(false);
-    setRecentProfiles([]);
-    setIsRecentFollowUpsLoading(false);
-  }
-
-  function exitPersonalFollowUps() {
-    setViewMode('tasks');
-    setPersonalFollowUps([]);
-    setIsPersonalFollowUpsLoading(false);
-  }
-
   function toggleProspectSearchMode() {
     setViewMode((current) => {
       if (current === 'prospect') {
@@ -5755,11 +5601,6 @@ export default function ScoutPrepCommand(
         setIsProspectSearching(false);
         return 'tasks';
       }
-      // Enter prospect from anywhere
-      setRecentProfiles([]);
-      setIsRecentFollowUpsLoading(false);
-      setPersonalFollowUps([]);
-      setIsPersonalFollowUpsLoading(false);
       return 'prospect';
     });
   }
@@ -5780,7 +5621,6 @@ export default function ScoutPrepCommand(
       return;
     }
 
-    setPersonalFollowUps(await listPersonalFollowUps());
     await showToast({
       style: Toast.Style.Success,
       title: 'Saved',
@@ -5810,20 +5650,10 @@ export default function ScoutPrepCommand(
       return;
     }
 
-    setPersonalFollowUps(await listPersonalFollowUps());
     await showToast({
       style: Toast.Style.Success,
       title: 'Saved',
       message: result.name || 'Personal follow-up',
-    });
-  }
-
-  async function handleRemovePersonalFollowUp(entry: PersonalFollowUpEntry) {
-    await removePersonalFollowUp(entry.id);
-    setPersonalFollowUps(await listPersonalFollowUps());
-    await showToast({
-      style: Toast.Style.Success,
-      title: 'Removed',
     });
   }
 
@@ -5854,6 +5684,27 @@ export default function ScoutPrepCommand(
     );
   }
 
+  function handleListSearchTextChange(text: string) {
+    if (viewMode === 'prospect') {
+      setProspectSearchText(text);
+      return;
+    }
+    setTaskSearchText(text);
+  }
+
+  function clearRootTaskSearchBeforePush() {
+    setTaskSearchText('');
+    setSelectedTaskItemId(undefined);
+  }
+
+  function buildPersonalFollowUpsTarget() {
+    return <PersonalFollowUpsList onReturnToRootList={returnToRootTaskList} />;
+  }
+
+  function handleSecondaryListPop() {
+    void returnToRootTaskList();
+  }
+
   async function returnToRootTaskList() {
     setViewMode('tasks');
     setTaskListFilter('todayPastDue');
@@ -5863,28 +5714,14 @@ export default function ScoutPrepCommand(
     setProspectSearchText('');
     setProspectResults([]);
     setIsProspectSearching(false);
-    setRecentProfiles([]);
-    setIsRecentFollowUpsLoading(false);
-    setPersonalFollowUps([]);
-    setIsPersonalFollowUpsLoading(false);
     await clearSearchBar({ forceScrollToTop: true });
     await loadTasks();
   }
 
   return (
     <List
-      isLoading={
-        isLoading || isProspectSearching || isRecentFollowUpsLoading || isPersonalFollowUpsLoading
-      }
-      navigationTitle={
-        viewMode === 'personalFollowUps'
-          ? 'Scout Prep — Personal Follow-Ups'
-          : viewMode === 'recent'
-            ? 'Scout Prep — Recent Items'
-            : viewMode === 'prospect'
-              ? 'Scout Prep Search'
-              : 'Scout Prep'
-      }
+      isLoading={isLoading || isProspectSearching}
+      navigationTitle={viewMode === 'prospect' ? 'Scout Prep Search' : 'Scout Prep'}
       searchBarAccessory={
         viewMode === 'tasks' ? (
           <List.Dropdown
@@ -5901,110 +5738,17 @@ export default function ScoutPrepCommand(
       }
       filtering={viewMode !== 'prospect'}
       searchBarPlaceholder={
-        viewMode === 'recent'
-          ? 'Recent Profiles'
-          : viewMode === 'personalFollowUps'
-            ? 'Personal Follow-Ups'
-            : viewMode === 'prospect'
-              ? prospectSearchMode === 'parent'
-                ? 'Parent Search — Enter parent name, email, or phone'
-                : 'Prospect Search — Enter athlete name or email'
-              : 'Search Task List'
-      }
-      searchText={
         viewMode === 'prospect'
-          ? prospectSearchText
-          : viewMode === 'tasks'
-            ? taskSearchText
-            : undefined
+          ? prospectSearchMode === 'parent'
+            ? 'Parent Search — Enter parent name, email, or phone'
+            : 'Prospect Search — Enter athlete name or email'
+          : 'Search Task List'
       }
-      onSearchTextChange={
-        viewMode === 'prospect'
-          ? setProspectSearchText
-          : viewMode === 'tasks'
-            ? setTaskSearchText
-            : undefined
-      }
+      searchText={listSearchText}
+      onSearchTextChange={handleListSearchTextChange}
       selectedItemId={viewMode === 'tasks' ? selectedTaskItemId : undefined}
     >
-      {viewMode === 'personalFollowUps' ? (
-        <List.Section title="Personal Follow-Ups" subtitle={String(personalFollowUps.length)}>
-          {personalFollowUps.length > 0 ? (
-            personalFollowUps.map((entry) => (
-              <PersonalFollowUpListItem
-                key={entry.id}
-                entry={entry}
-                onRemove={handleRemovePersonalFollowUp}
-                onExit={exitPersonalFollowUps}
-                onReturnToRootList={returnToRootTaskList}
-              />
-            ))
-          ) : (
-            <List.Item
-              icon="🕘"
-              title={isPersonalFollowUpsLoading ? 'Loading Follow-Ups' : 'No Personal Follow-Ups'}
-              subtitle={
-                isPersonalFollowUpsLoading
-                  ? 'Loading'
-                  : 'Save a prospect search result when you need to call back'
-              }
-              actions={
-                <ActionPanel>
-                  <Action
-                    title="Exit Personal Follow-Ups"
-                    icon="🕘"
-                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                    onAction={exitPersonalFollowUps}
-                  />
-                  <Action
-                    title="Prospect Search"
-                    icon="🔎"
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-                    onAction={toggleProspectSearchMode}
-                  />
-                  <SupabaseLifecycleStatusAction />
-                </ActionPanel>
-              }
-            />
-          )}
-        </List.Section>
-      ) : viewMode === 'recent' ? (
-        <List.Section title="Recent Profiles" subtitle={String(recentProfiles.length)}>
-          {recentProfiles.length > 0 ? (
-            recentProfiles.map((item) => (
-              <RecentProfileListItem
-                key={`recent:${item.profile.athlete_id}:${item.profile.athlete_main_id}`}
-                item={item}
-                onShowProspectSearch={toggleProspectSearchMode}
-                onToggleProspectSearchMode={toggleProspectSearchMode}
-                onToggleRecentMode={toggleRecentMode}
-                onReturnToRootList={returnToRootTaskList}
-              />
-            ))
-          ) : (
-            <List.Item
-              icon="🕘"
-              title={isRecentFollowUpsLoading ? 'Loading Recent Profiles' : 'No Recent Profiles'}
-              subtitle={
-                isRecentFollowUpsLoading
-                  ? 'Checking recent profiles for follow-up tasks'
-                  : 'No recent profiles found'
-              }
-              actions={
-                <ActionPanel>
-                  <Action
-                    title="Exit Recent Items"
-                    icon="🕘"
-                    shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                    onAction={toggleRecentMode}
-                  />
-                  <SupabaseLifecycleStatusAction />
-                </ActionPanel>
-              }
-            />
-          )}
-        </List.Section>
-      ) : viewMode === 'prospect' ? (
+      {viewMode === 'prospect' ? (
         <List.Section title={`Prospect Search`} subtitle={String(prospectResults.length)}>
           {prospectResults.length > 0 ? (
             prospectResults.map((result, index) => (
@@ -6048,11 +5792,13 @@ export default function ScoutPrepCommand(
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                     onAction={toggleProspectSearchModeType}
                   />
-                  <Action
+                  <Action.Push
                     title="Personal Follow-Ups"
                     icon="🕘"
                     shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                    onAction={showPersonalFollowUps}
+                    target={buildPersonalFollowUpsTarget()}
+                    onPush={clearRootTaskSearchBeforePush}
+                    onPop={handleSecondaryListPop}
                   />
                   <Action
                     title="Exit Prospect Search"
@@ -6107,11 +5853,13 @@ export default function ScoutPrepCommand(
                   shortcut={{ modifiers: ['opt'], key: '4' }}
                   onAction={() => selectTaskListFilter('all')}
                 />
-                <Action
+                <Action.Push
                   title="Personal Follow-Ups"
                   icon="🕘"
                   shortcut={{ modifiers: ['cmd'], key: 'f' }}
-                  onAction={showPersonalFollowUps}
+                  target={buildPersonalFollowUpsTarget()}
+                  onPush={clearRootTaskSearchBeforePush}
+                  onPop={handleSecondaryListPop}
                 />
                 <Action
                   title="Prospect Search"
@@ -6148,11 +5896,13 @@ export default function ScoutPrepCommand(
               dailyCallBlocksActionTitle={dailyCallBlocksActionTitle}
               onExportDailyCallBlocks={() => void handleExportDailyCallBlocks()}
               onToggleProspectSearchMode={toggleProspectSearchMode}
-              onShowPersonalFollowUps={showPersonalFollowUps}
+              personalFollowUpsTarget={buildPersonalFollowUpsTarget()}
               onAddPersonalFollowUpFromTask={(task) => void handleAddPersonalFollowUpFromTask(task)}
               onSelectTaskListFilter={selectTaskListFilter}
               onCycleTaskListSort={cycleSort}
               onReturnToRootList={returnToRootTaskList}
+              onPushSecondaryList={clearRootTaskSearchBeforePush}
+              onSecondaryListPop={handleSecondaryListPop}
             />
           ))}
         </List.Section>

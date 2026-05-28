@@ -4,8 +4,6 @@ import {
   Color,
   Detail,
   Form,
-  Grid,
-  Icon,
   LocalStorage,
   List,
   Toast,
@@ -51,22 +49,46 @@ import {
   type ClientReplyThemeReviewRow,
 } from './lib/client-message-reply-themes';
 import {
-  fetchAthleteBookedMeetings,
   fetchHeadScoutSlots,
   filterVisibleHeadScoutSlots,
-  formatHeadScoutSlotForTimezone,
-  type BookedMeetingEvent,
+  formatHeadScoutNaturalSlotLabel,
+  formatHeadScoutWeekLabel,
+  displayHeadScoutZoneLabel,
   type HeadScoutSlot,
 } from './lib/head-scout-schedules';
+import {
+  resolveBookedMeetingDetailsForForm,
+  type ResolvedBookedMeetingDetails,
+} from './lib/booked-meeting-details-resolver';
+import { getCachedBookedMeetingDescription } from './lib/booked-meeting-description-cache';
 import { openMessagesServiceClientInbox } from './lib/messages-service';
 import { buildVoicemailFollowUpMessage } from './lib/scout-follow-up-templates';
 
 const TAG_COLORS = [Color.Blue, Color.Green, Color.Magenta, Color.Orange, Color.Purple, Color.Red];
+const TIME_TAG_COLORS = [
+  Color.Blue,
+  Color.Green,
+  Color.Orange,
+  Color.Purple,
+  Color.Red,
+  Color.Magenta,
+  Color.Yellow,
+];
 
 function tagColorFor(value?: string | null): Color {
   const normalized = String(value || '').trim();
   const total = normalized.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return TAG_COLORS[total % TAG_COLORS.length];
+}
+
+function timeTagColorFor(value?: string | null): Color {
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, ' ');
+  const timeKey = normalized.match(/\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b/)?.[0] || normalized;
+  const total = timeKey.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return TIME_TAG_COLORS[total % TIME_TAG_COLORS.length];
 }
 
 function getMessagesUrl(
@@ -94,8 +116,8 @@ function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
       });
       await showToast({
         style: Toast.Style.Success,
-        title: 'Opened in Messages service',
-        message: `Draft ready for ${chat.displayName}`,
+        title: 'Draft ready',
+        message: chat.displayName,
       });
       pop();
     },
@@ -106,11 +128,7 @@ function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
       navigationTitle={`Send Follow-Up • ${chat.displayName}`}
       actions={
         <ActionPanel>
-          <Action.SubmitForm
-            title="Open in Messages Service"
-            icon={Icon.Message}
-            onSubmit={handleSubmit}
-          />
+          <Action.SubmitForm title="Open in Messages Service" icon="💬" onSubmit={handleSubmit} />
         </ActionPanel>
       }
     >
@@ -156,7 +174,7 @@ function ReminderRecipientForm({
         <ActionPanel>
           <Action.SubmitForm
             title={actionTitle}
-            icon={Icon.Calendar}
+            icon={includeDuration ? '📆' : '🔔'}
             onSubmit={() =>
               onSubmit({
                 recipientId,
@@ -225,7 +243,7 @@ function ReplyForm({ message, onSent }: { message: ClientThreadMessage; onSent: 
       navigationTitle={`Replying to ${message.senderName}`}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Send Reply" icon={Icon.Reply} onSubmit={handleSubmit} />
+          <Action.SubmitForm title="Send Reply" icon="↩️" onSubmit={handleSubmit} />
         </ActionPanel>
       }
     >
@@ -262,17 +280,19 @@ function ClientThread({ chat }: { chat: ClientInboxChat }) {
           ]}
           actions={
             <ActionPanel>
-              <Action
-                title="Reply"
-                icon={Icon.Reply}
-                onAction={() => push(<ReplyForm message={message} onSent={revalidate} />)}
-              />
-              <Action.Open
-                title="Open in Messages"
-                icon={Icon.Message}
-                target={getMessagesUrl(chat)}
-              />
-              <Action title="Refresh Thread" icon={Icon.ArrowClockwise} onAction={revalidate} />
+              <ActionPanel.Section title="Workflow">
+                <Action
+                  title="Reply"
+                  icon="↩️"
+                  onAction={() => push(<ReplyForm message={message} onSent={revalidate} />)}
+                />
+              </ActionPanel.Section>
+              <ActionPanel.Section title="Navigation">
+                <Action.Open title="Open in Messages" icon="💬" target={getMessagesUrl(chat)} />
+              </ActionPanel.Section>
+              <ActionPanel.Section title="Source">
+                <Action title="Refresh Thread" icon="🔄" onAction={revalidate} />
+              </ActionPanel.Section>
             </ActionPanel>
           }
         />
@@ -303,9 +323,11 @@ function reviewToneColor(bucket: ClientReplyThemeReviewBucketKey): Color {
 }
 
 function firstName(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .split(/\s+/)[0] || '';
+  return (
+    String(value || '')
+      .trim()
+      .split(/\s+/)[0] || ''
+  );
 }
 
 function normalizeNameKey(value?: string | null): string {
@@ -316,32 +338,22 @@ function normalizeNameKey(value?: string | null): string {
     .replace(/\s+/g, ' ');
 }
 
-function selectPreviousHeadScoutName(events: BookedMeetingEvent[] = []): string | null {
-  const sorted = [...events]
-    .filter((event) => String(event.assigned_owner || '').trim())
-    .sort((left, right) => String(right.start || '').localeCompare(String(left.start || '')));
-  return String(sorted[0]?.assigned_owner || '').trim() || null;
-}
-
-function buildRescheduleSlotStartLabel(timeRangeLabel: string, zoneLabel: string): string {
-  const [startRaw, rest = ''] = timeRangeLabel.split(/\s+-\s+/, 2);
-  const period = rest.match(/\b(AM|PM)\b/i)?.[1]?.toUpperCase();
-  const zone = zoneLabel || rest.match(/\b[A-Z]{2,4}\b$/)?.[0] || '';
-  const start = String(startRaw || '').trim();
-  return [start, period, zone].filter(Boolean).join(' ');
-}
-
 type ClientReviewRescheduleSlotOption = {
   id: string;
   title: string;
   scoutName: string;
   messageLabel: string;
   isPreviousScout: boolean;
+  dateLabel: string;
+  timeLabel: string;
+  weekLabel: string;
 };
 
 function buildClientReviewRescheduleSlotOptions(args: {
   slots: Array<HeadScoutSlot & { scout_name: string }>;
   previousHeadScoutName?: string | null;
+  clientTimezone?: string | null;
+  weekLabel: string;
 }): ClientReviewRescheduleSlotOption[] {
   const previousKey = normalizeNameKey(args.previousHeadScoutName);
   return filterVisibleHeadScoutSlots(args.slots)
@@ -356,18 +368,64 @@ function buildClientReviewRescheduleSlotOptions(args: {
       return left.start.localeCompare(right.start);
     })
     .map((slot) => {
-      const display = formatHeadScoutSlotForTimezone(slot.start, slot.end, null);
-      const messageLabel = `${display.dateLabel} ${buildRescheduleSlotStartLabel(display.timeRangeLabel, display.zoneLabel)}`;
+      const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, args.clientTimezone);
       return {
         id: `${slot.scout_name}:${slot.id}`,
-        title: messageLabel,
+        title: display.messageLabel,
         scoutName: slot.scout_name,
-        messageLabel,
-        isPreviousScout: Boolean(
-          previousKey && normalizeNameKey(slot.scout_name) === previousKey,
-        ),
+        messageLabel: display.messageLabel,
+        isPreviousScout: Boolean(previousKey && normalizeNameKey(slot.scout_name) === previousKey),
+        dateLabel: display.dateLabel,
+        timeLabel: display.timeLabel,
+        weekLabel: args.weekLabel,
       };
     });
+}
+
+function buildPreviousMeetingText(
+  resolved?: ResolvedBookedMeetingDetails | null,
+  fallbackTimezone?: string | null,
+): string | null {
+  const meeting = resolved?.bookedMeeting;
+  if (!meeting) return null;
+  const timeLabel =
+    meeting.start && meeting.end
+      ? formatHeadScoutNaturalSlotLabel(
+          meeting.start,
+          meeting.end,
+          resolved?.meetingTimezone || fallbackTimezone || null,
+        ).messageLabel
+      : String(meeting.date_time_label || '').trim();
+  const scoutName = String(meeting.assigned_owner || '').trim();
+  return [timeLabel, scoutName].filter(Boolean).join(' • ') || null;
+}
+
+function resolveReviewClientTimezone(
+  row: Pick<ClientReplyThemeReviewRow, 'timezone' | 'timezoneLabel'>,
+  chat: ClientInboxChat,
+  previousMeeting?: ResolvedBookedMeetingDetails | null,
+) {
+  const timezone =
+    String(
+      row.timezone || chat.clientMatch.timezone || previousMeeting?.meetingTimezone || '',
+    ).trim() || null;
+  const timezoneLabel =
+    displayHeadScoutZoneLabel(row.timezoneLabel || chat.clientMatch.timezoneLabel) ||
+    (timezone ? null : 'Eastern');
+  const inferredLabel = timezone
+    ? displayHeadScoutZoneLabel(
+        new Intl.DateTimeFormat('en-US', {
+          timeZone: timezone,
+          timeZoneName: 'short',
+        })
+          .formatToParts(new Date())
+          .find((part) => part.type === 'timeZoneName')?.value,
+      )
+    : null;
+  return {
+    timezone,
+    displayLabel: timezoneLabel || inferredLabel || 'Eastern',
+  };
 }
 
 function ClientThreadMarkdown({ chat }: { chat: ClientInboxChat }) {
@@ -383,18 +441,22 @@ function ClientThreadMarkdown({ chat }: { chat: ClientInboxChat }) {
       isLoading={isLoading}
       markdown={buildClientReplyThemeThreadMarkdown({
         clientName: title,
+        timeZone: chat.clientMatch.timezone,
+        timezoneLabel: chat.clientMatch.timezoneLabel,
         messages: messages || [],
       })}
       actions={
         <ActionPanel>
-          <Action.Open title="Open in Messages" icon={Icon.Message} target={getMessagesUrl(chat)} />
+          <ActionPanel.Section title="Navigation">
+            <Action.Open title="Open in Messages" icon="💬" target={getMessagesUrl(chat)} />
+          </ActionPanel.Section>
         </ActionPanel>
       }
     />
   );
 }
 
-function ClientReviewRescheduleSlotGrid({
+function ClientReviewRescheduleSlotList({
   chat,
   row,
 }: {
@@ -404,12 +466,19 @@ function ClientReviewRescheduleSlotGrid({
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previousHeadScoutName, setPreviousHeadScoutName] = useState<string | null>(null);
+  const [previousMeetingText, setPreviousMeetingText] = useState<string | null>(null);
   const [slots, setSlots] = useState<ClientReviewRescheduleSlotOption[]>([]);
   const [slot1, setSlot1] = useState<ClientReviewRescheduleSlotOption | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const [weekOffset, setWeekOffset] = useState(0);
+  const [weekLabel, setWeekLabel] = useState<string | null>(null);
+  const [clientTimezoneLabel, setClientTimezoneLabel] = useState<string | null>(
+    resolveReviewClientTimezone(row, chat).displayLabel,
+  );
 
   useEffect(() => {
     let isMounted = true;
+    const baseClientTimezone = resolveReviewClientTimezone(row, chat).timezone;
     async function loadSlots() {
       setIsLoading(true);
       setErrorMessage(null);
@@ -420,17 +489,21 @@ function ClientReviewRescheduleSlotGrid({
         ).trim();
         const [meetingResult, slotsResult] = await Promise.allSettled([
           athleteId && athleteMainId
-            ? fetchAthleteBookedMeetings({ athleteId, athleteMainId })
+            ? resolveBookedMeetingDetailsForForm(
+                { athleteId, athleteMainId },
+                { getCachedMeetingDescription: getCachedBookedMeetingDescription },
+              )
             : Promise.resolve(null),
-          fetchHeadScoutSlots(0),
+          fetchHeadScoutSlots(weekOffset),
         ]);
         if (!isMounted) return;
 
-        const events =
-          meetingResult.status === 'fulfilled' && meetingResult.value
-            ? meetingResult.value.events || []
-            : [];
-        const nextPreviousHeadScout = selectPreviousHeadScoutName(events);
+        const previousMeeting =
+          meetingResult.status === 'fulfilled' && meetingResult.value ? meetingResult.value : null;
+        const clientTimezone = resolveReviewClientTimezone(row, chat, previousMeeting);
+        const nextPreviousHeadScout =
+          String(previousMeeting?.bookedMeeting?.assigned_owner || '').trim() || null;
+        const slotPayload = slotsResult.status === 'fulfilled' ? slotsResult.value : null;
         const schedules = slotsResult.status === 'fulfilled' ? slotsResult.value.scouts || [] : [];
         const nextSlots = schedules.flatMap((schedule) =>
           (schedule.slots || []).map((slot) => ({
@@ -439,11 +512,20 @@ function ClientReviewRescheduleSlotGrid({
           })),
         );
         setPreviousHeadScoutName(nextPreviousHeadScout);
+        setClientTimezoneLabel(clientTimezone.displayLabel);
+        setPreviousMeetingText(buildPreviousMeetingText(previousMeeting, clientTimezone.timezone));
         setSlots(
           buildClientReviewRescheduleSlotOptions({
             slots: nextSlots,
             previousHeadScoutName: nextPreviousHeadScout,
+            clientTimezone: clientTimezone.timezone || baseClientTimezone,
+            weekLabel: weekOffset > 0 ? 'next week' : 'this week',
           }),
+        );
+        setWeekLabel(
+          slotPayload
+            ? formatHeadScoutWeekLabel(slotPayload.week_start, slotPayload.week_end)
+            : null,
         );
         if (slotsResult.status === 'rejected') {
           setErrorMessage(
@@ -455,6 +537,7 @@ function ClientReviewRescheduleSlotGrid({
       } catch (error) {
         if (!isMounted) return;
         setErrorMessage(error instanceof Error ? error.message : String(error));
+        setPreviousMeetingText(null);
         setSlots([]);
       } finally {
         if (isMounted) setIsLoading(false);
@@ -465,7 +548,7 @@ function ClientReviewRescheduleSlotGrid({
     return () => {
       isMounted = false;
     };
-  }, [chat, reloadKey, row]);
+  }, [chat, reloadKey, row, weekOffset]);
 
   async function openRescheduleDraft(selectedSlots: ClientReviewRescheduleSlotOption[]) {
     const contactName = clientReplyThemeReviewDisplayName(row);
@@ -476,6 +559,7 @@ function ClientReviewRescheduleSlotGrid({
       previousHeadScoutName:
         selectedSlots[0]?.scoutName || previousHeadScoutName || chat.clientMatch.displayName,
       rescheduleSlots: selectedSlots.map((slot) => slot.messageLabel),
+      rescheduleWeekLabel: selectedSlots[0]?.weekLabel || null,
     });
     await openMessagesServiceClientInbox({
       chatIdentifier: chat.chat_identifier,
@@ -494,66 +578,112 @@ function ClientReviewRescheduleSlotGrid({
     : previousHeadScoutName
       ? `${previousHeadScoutName} first`
       : 'Openings';
+  const sectionSubtitle = [
+    weekLabel,
+    clientTimezoneLabel ? `Client timezone: ${clientTimezoneLabel}` : null,
+    previousMeetingText ? `Previous: ${previousMeetingText}` : null,
+  ]
+    .filter(Boolean)
+    .join(' • ');
+  const canGoBack = weekOffset > 0;
+
+  function showPreviousWeek() {
+    if (!canGoBack) return;
+    setSlot1(null);
+    setWeekOffset((value) => Math.max(0, value - 1));
+  }
+
+  function showNextWeek() {
+    setSlot1(null);
+    setWeekOffset((value) => value + 1);
+  }
+
+  const weekActions = (
+    <>
+      <Action
+        title="Next Week"
+        icon="➡️"
+        shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
+        onAction={showNextWeek}
+      />
+      {canGoBack ? (
+        <Action
+          title="This Week"
+          icon="⬅️"
+          shortcut={{ modifiers: ['cmd', 'shift'], key: 'arrowLeft' }}
+          onAction={showPreviousWeek}
+        />
+      ) : null}
+    </>
+  );
 
   return (
-    <Grid
+    <List
       navigationTitle={`Reschedule • ${clientReplyThemeReviewDisplayName(row)}`}
       isLoading={isLoading}
       searchBarPlaceholder="Filter openings"
-      columns={4}
-      aspectRatio="3/2"
-      fit={Grid.Fit.Fill}
-      inset={Grid.Inset.Medium}
     >
-      <Grid.Section title={sectionTitle}>
+      <List.Section title={sectionTitle} subtitle={sectionSubtitle || undefined}>
         {slots.map((slot, index) => (
-          <Grid.Item
+          <List.Item
             key={`${slot.id}:${index}`}
-            content={{ value: slot.isPreviousScout ? '⭐' : '📅', tooltip: slot.scoutName }}
-            title={`${index + 1}. ${slot.title}`}
+            title={`${index + 1}. ${slot.dateLabel}`}
+            icon={slot.isPreviousScout ? '⭐' : '📅'}
             subtitle={slot.scoutName}
             keywords={[slot.scoutName, slot.messageLabel]}
+            accessories={[
+              { tag: { value: slot.timeLabel, color: timeTagColorFor(slot.timeLabel) } },
+              ...(slot.isPreviousScout ? [{ text: 'Previous scout' }] : []),
+            ]}
             actions={
               <ActionPanel>
-                {!slot1 ? (
-                  <Action title="Use as Slot 1" icon="1️⃣" onAction={() => setSlot1(slot)} />
-                ) : (
+                <ActionPanel.Section title="Workflow">
+                  {!slot1 ? (
+                    <Action title="Use as Slot 1" icon="1️⃣" onAction={() => setSlot1(slot)} />
+                  ) : (
+                    <Action
+                      title="Use as Slot 2"
+                      icon="2️⃣"
+                      onAction={() => void openRescheduleDraft([slot1, slot])}
+                    />
+                  )}
+                  {slot1 ? (
+                    <Action title="Change Slot 1" icon="↩️" onAction={() => setSlot1(null)} />
+                  ) : null}
+                </ActionPanel.Section>
+                <ActionPanel.Section title="Source">
                   <Action
-                    title="Use as Slot 2"
-                    icon="2️⃣"
-                    onAction={() => void openRescheduleDraft([slot1, slot])}
+                    title="Refresh Openings"
+                    icon="🔄"
+                    shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                    onAction={() => setReloadKey((value) => value + 1)}
                   />
-                )}
-                {slot1 ? (
-                  <Action title="Change Slot 1" icon="↩️" onAction={() => setSlot1(null)} />
-                ) : null}
-                <Action
-                  title="Refresh Openings"
-                  icon="🔄"
-                  shortcut={{ modifiers: ['cmd'], key: 'r' }}
-                  onAction={() => setReloadKey((value) => value + 1)}
-                />
+                  {weekActions}
+                </ActionPanel.Section>
               </ActionPanel>
             }
           />
         ))}
-      </Grid.Section>
+      </List.Section>
       {!isLoading && !slots.length ? (
-        <Grid.EmptyView
+        <List.EmptyView
           title="No openings"
-          description={errorMessage || 'No future openings found.'}
+          description={errorMessage || `No openings found${weekLabel ? ` for ${weekLabel}` : ''}.`}
           actions={
             <ActionPanel>
-              <Action
-                title="Refresh Openings"
-                icon="🔄"
-                onAction={() => setReloadKey((value) => value + 1)}
-              />
+              <ActionPanel.Section title="Source">
+                <Action
+                  title="Refresh Openings"
+                  icon="🔄"
+                  onAction={() => setReloadKey((value) => value + 1)}
+                />
+                {weekActions}
+              </ActionPanel.Section>
             </ActionPanel>
           }
         />
       ) : null}
-    </Grid>
+    </List>
   );
 }
 
@@ -585,6 +715,8 @@ async function buildAndCacheReplyThemeReview(chats: ClientInboxChat[]) {
       athleteName: chat.clientMatch.athleteName,
       contactId: chat.clientMatch.contactId,
       athleteMainId: chat.clientMatch.athleteMainId,
+      timezone: chat.clientMatch.timezone,
+      timezoneLabel: chat.clientMatch.timezoneLabel,
       taskTitle: chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus,
       matchedPhones: chat.matchedPhones,
     })),
@@ -596,9 +728,11 @@ async function buildAndCacheReplyThemeReview(chats: ClientInboxChat[]) {
 
 function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
   const { push } = useNavigation();
-  const { data: snapshot, isLoading, revalidate } = usePromise(buildAndCacheReplyThemeReview, [
-    chats,
-  ]);
+  const {
+    data: snapshot,
+    isLoading,
+    revalidate,
+  } = usePromise(buildAndCacheReplyThemeReview, [chats]);
 
   function chatForRow(row: ClientReplyThemeReviewRow) {
     return chats.find((chat) => chat.guid === row.chatGuid);
@@ -708,51 +842,45 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
           <ActionPanel>
             {chat && !isTripleCheck ? (
               <>
-                {canReschedule ? (
-                  <>
+                <ActionPanel.Section title="Workflow">
+                  {canReschedule ? (
                     <Action.Push
                       title="Choose Reschedule Slots"
                       icon="📅"
-                      target={<ClientReviewRescheduleSlotGrid chat={chat} row={row} />}
+                      target={<ClientReviewRescheduleSlotList chat={chat} row={row} />}
                     />
-                    <Action
-                      title="Create Reminder"
-                      icon="🔔"
-                      onAction={() => void handleCreateReminder(chat)}
-                    />
-                  </>
-                ) : (
+                  ) : null}
                   <Action
                     title="Create Reminder"
                     icon="🔔"
                     onAction={() => void handleCreateReminder(chat)}
                   />
-                )}
-                <Action.Push
-                  title="Open Thread"
-                  icon={Icon.Message}
-                  target={
-                    bucket === 'rows' ? (
-                      <ClientThreadMarkdown chat={chat} />
-                    ) : (
-                      <ClientThread chat={chat} />
-                    )
-                  }
-                />
-                <Action
-                  title="Open Scout Prep"
-                  icon={Icon.List}
-                  onAction={() => void openScoutPrepFromClientMessage(chat)}
-                />
+                </ActionPanel.Section>
+                <ActionPanel.Section title="Navigation">
+                  <Action.Push
+                    title="Open Thread"
+                    icon="💬"
+                    target={<ClientThreadMarkdown chat={chat} />}
+                  />
+                  <Action
+                    title="Open Scout Prep"
+                    icon="📋"
+                    onAction={() => void openScoutPrepFromClientMessage(chat)}
+                  />
+                </ActionPanel.Section>
               </>
             ) : chat ? (
-              <Action.Push
-                title="Open Thread"
-                icon={Icon.Message}
-                target={<ClientThread chat={chat} />}
-              />
+              <ActionPanel.Section title="Navigation">
+                <Action.Push
+                  title="Open Thread"
+                  icon="💬"
+                  target={<ClientThreadMarkdown chat={chat} />}
+                />
+              </ActionPanel.Section>
             ) : null}
-            <Action title="Refresh Review" icon={Icon.ArrowClockwise} onAction={revalidate} />
+            <ActionPanel.Section title="Source">
+              <Action title="Refresh Review" icon="🔄" onAction={revalidate} />
+            </ActionPanel.Section>
           </ActionPanel>
         }
       />
@@ -789,7 +917,9 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
         }
         actions={
           <ActionPanel>
-            <Action title="Refresh Review" icon={Icon.ArrowClockwise} onAction={revalidate} />
+            <ActionPanel.Section title="Source">
+              <Action title="Refresh Review" icon="🔄" onAction={revalidate} />
+            </ActionPanel.Section>
           </ActionPanel>
         }
       />
@@ -1013,49 +1143,30 @@ export default function ClientMessageInboxCommand() {
           ]}
           actions={
             <ActionPanel>
-              <Action
-                title="Open Client Thread"
-                icon={Icon.Message}
-                onAction={() => push(<ClientThread chat={chat} />)}
-              />
-              <Action
-                title="Send Follow-Up"
-                icon={Icon.Airplane}
-                onAction={() => push(<FollowUpDraftForm chat={chat} />)}
-              />
-              <Action
-                title="Cal Follow-Up"
-                icon={Icon.Phone}
-                shortcut={{ modifiers: ['cmd'], key: '3' }}
-                onAction={() => void handleCreateCalFollowUp(chat)}
-              />
-              <Action
-                title="Calendar Follow-Up"
-                icon={Icon.Calendar}
-                shortcut={{ modifiers: ['cmd'], key: '4' }}
-                onAction={() => void handleCreateAppleCalendarFollowUp(chat)}
-              />
-              <Action
-                title="Open Scout Prep"
-                icon={Icon.List}
-                shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
-                onAction={() => void openScoutPrepFromClientMessage(chat)}
-              />
-              <Action.Push
-                title="Review Follow Ups"
-                icon={Icon.Eye}
-                target={<ClientReplyThemeReview chats={chats || []} />}
-              />
-              {chat.is_group ? (
-                <Action.Open
-                  title="Open in Messages"
-                  icon={Icon.Bubble}
-                  target={getMessagesUrl(chat)}
+              <ActionPanel.Section title="Workflow">
+                <Action.Push
+                  title="Send Follow-Up"
+                  icon="✈️"
+                  target={<FollowUpDraftForm chat={chat} />}
                 />
-              ) : (
+                <Action
+                  title="Book Cal Follow-Up"
+                  icon="📞"
+                  shortcut={{ modifiers: ['cmd'], key: '3' }}
+                  onAction={() => void handleCreateCalFollowUp(chat)}
+                />
+                <Action
+                  title="Create Calendar Follow-Up"
+                  icon="📆"
+                  shortcut={{ modifiers: ['cmd'], key: '4' }}
+                  onAction={() => void handleCreateAppleCalendarFollowUp(chat)}
+                />
+              </ActionPanel.Section>
+              <ActionPanel.Section title="Navigation">
+                <Action.Push title="Open Thread" icon="💬" target={<ClientThread chat={chat} />} />
                 <Action
                   title="Open in Messages Service"
-                  icon={Icon.Bubble}
+                  icon="💬"
                   onAction={() =>
                     openMessagesServiceClientInbox({
                       chatIdentifier: chat.chat_identifier,
@@ -1063,18 +1174,30 @@ export default function ClientMessageInboxCommand() {
                     })
                   }
                 />
-              )}
-              <ActionPanel.Section>
+                {chat.is_group ? (
+                  <Action.Open title="Open in Messages" icon="💬" target={getMessagesUrl(chat)} />
+                ) : null}
+                <Action
+                  title="Open Scout Prep"
+                  icon="📋"
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
+                  onAction={() => void openScoutPrepFromClientMessage(chat)}
+                />
+              </ActionPanel.Section>
+              <ActionPanel.Section title="Review">
                 <Action.Push
-                  title="Export Client Message Inbox"
-                  icon={Icon.Upload}
+                  title="Review Follow Ups"
+                  icon="👀"
+                  target={<ClientReplyThemeReview chats={chats || []} />}
+                />
+              </ActionPanel.Section>
+              <ActionPanel.Section title="Source">
+                <Action.Push
+                  title="Export Inbox"
+                  icon="📤"
                   target={<ExportClientMessageInboxCommand />}
                 />
-                <Action
-                  title="Refresh Client Source"
-                  icon={Icon.ArrowClockwise}
-                  onAction={revalidateDirectory}
-                />
+                <Action title="Refresh Source" icon="🔄" onAction={revalidateDirectory} />
               </ActionPanel.Section>
             </ActionPanel>
           }
@@ -1090,21 +1213,21 @@ export default function ClientMessageInboxCommand() {
         }
         actions={
           <ActionPanel>
-            <Action.Push
-              title="Export Client Message Inbox"
-              icon={Icon.Upload}
-              target={<ExportClientMessageInboxCommand />}
-            />
-            <Action
-              title="Refresh Client Source"
-              icon={Icon.ArrowClockwise}
-              onAction={revalidateDirectory}
-            />
-            <Action.Push
-              title="Review Follow Ups"
-              icon={Icon.Eye}
-              target={<ClientReplyThemeReview chats={chats || []} />}
-            />
+            <ActionPanel.Section title="Review">
+              <Action.Push
+                title="Review Follow Ups"
+                icon="👀"
+                target={<ClientReplyThemeReview chats={chats || []} />}
+              />
+            </ActionPanel.Section>
+            <ActionPanel.Section title="Source">
+              <Action.Push
+                title="Export Inbox"
+                icon="📤"
+                target={<ExportClientMessageInboxCommand />}
+              />
+              <Action title="Refresh Source" icon="🔄" onAction={revalidateDirectory} />
+            </ActionPanel.Section>
           </ActionPanel>
         }
       />

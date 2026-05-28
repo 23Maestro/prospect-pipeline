@@ -265,6 +265,7 @@ export function buildVoicemailFollowUpMessage(args: {
   closingLine?: string | null;
   previousHeadScoutName?: string | null;
   rescheduleSlots?: string[] | null;
+  rescheduleWeekLabel?: string | null;
   now?: Date;
 }): string {
   const greeting = String(args.greeting || '').trim() || 'Good morning there,';
@@ -280,6 +281,7 @@ export function buildVoicemailFollowUpMessage(args: {
     .map((slot) => String(slot || '').trim())
     .filter(Boolean)
     .slice(0, 2);
+  const rescheduleWeekLabel = String(args.rescheduleWeekLabel || '').trim() || 'this week';
 
   const lines =
     args.variant === 'send_cal_link'
@@ -300,19 +302,16 @@ export function buildVoicemailFollowUpMessage(args: {
           ]
         : args.variant === 'reschedule_2'
           ? [
-              `${greeting} checking once more so we can either reschedule or close this out.`,
+              'Which one works best?',
               '',
               `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
               `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,
-              '3 - timing is not good right now',
-              '',
-              'Which option works best?',
             ]
           : args.variant === 'reschedule_1'
             ? [
                 `${greeting} no worries.`,
                 '',
-                `Coach ${previousHeadScoutName} still has time set aside this week for ${athleteFirstName}:`,
+                `Coach ${previousHeadScoutName} still has time set aside ${rescheduleWeekLabel} for ${athleteFirstName}:`,
                 '',
                 `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
                 `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,

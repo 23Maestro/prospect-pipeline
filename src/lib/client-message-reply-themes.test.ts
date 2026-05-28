@@ -23,6 +23,8 @@ function chat(overrides = {}) {
     athleteName: 'Avery Jones',
     contactId: '123',
     athleteMainId: '456',
+    timezone: 'America/Chicago',
+    timezoneLabel: 'CST',
     taskTitle: 'Reschedule Pending',
     matchedPhones: ['6155551212'],
     ...overrides,
@@ -80,6 +82,8 @@ test('flags only obvious missed reschedule replies after confirmation templates'
   assert.equal(snapshot.rows[0].templateContext, 'confirmation');
   assert.equal(snapshot.rows[0].chatGuid, 'chat-1');
   assert.equal(snapshot.rows[0].athleteName, 'Avery Jones');
+  assert.equal(snapshot.rows[0].timezone, 'America/Chicago');
+  assert.equal(snapshot.rows[0].timezoneLabel, 'CST');
 });
 
 test('flags only obvious missed callback replies after outreach attempt templates', () => {
@@ -382,6 +386,8 @@ test('client review contact title falls back from phone to athlete name', () => 
 test('client thread markdown renders all messages as dialogue', () => {
   const markdown = buildClientReplyThemeThreadMarkdown({
     clientName: 'Morgan Armstrong',
+    timeZone: 'America/Chicago',
+    timezoneLabel: 'CST',
     messages: [
       message({
         guid: 'operator',
@@ -401,9 +407,12 @@ test('client thread markdown renders all messages as dialogue', () => {
 
   assert.match(markdown, /^# Morgan Armstrong/);
   assert.match(markdown, /> \*\*Me\*\*/);
+  assert.match(markdown, /> Wednesday, May 27 at 9AM CT\n>/);
   assert.match(markdown, /> Coach Ryan has Avery down/);
   assert.match(markdown, /> \*\*Morgan Armstrong\*\*/);
+  assert.match(markdown, /> Wednesday, May 27 at 10AM CT\n>/);
   assert.match(markdown, /> Can we reschedule\?/);
+  assert.doesNotMatch(markdown, /2026-05-27T/);
 });
 
 test('client reply theme review snapshot round-trips through cache storage', async () => {
