@@ -7,6 +7,7 @@ import { getMeetingReminderRecipient } from '../domain/scout-contact-selection';
 import { getGreetingForLocalTime } from '../domain/outreach-time-wording';
 import { buildSetMeetingConfirmationCacheRows } from '../domain/set-meeting-confirmation-cache';
 import {
+  deleteRows,
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
@@ -219,9 +220,9 @@ export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
   const meetingTimezone = clean(args.meetingSet.meetingTimezone);
   const ianaTimeZone = resolveRequiredIanaTimeZone(meetingTimezone);
   const meetingStartsAt =
-    clean(args.meetingSetResult?.created_task?.due_date) ||
     clean(args.meetingSet.startsAt) ||
-    clean(args.meetingSet.startTime);
+    clean(args.meetingSet.startTime) ||
+    clean(args.meetingSetResult?.created_task?.due_date);
   const meetingDate = meetingStartsAt
     ? parseMeetingDateInTimezone(meetingStartsAt, ianaTimeZone)
     : null;
@@ -304,6 +305,12 @@ export async function syncMeetingSetConfirmationCacheFromScoutPrep(
   if (rows.length !== 2) {
     throw new Error(`Meeting Set confirmation cache expected 2 rows, built ${rows.length}`);
   }
+  await deleteRows(
+    config,
+    'set_meeting_confirmation_cache',
+    'appointment_id',
+    rows[0].appointment_id,
+  );
   await upsertSetMeetingConfirmationCacheRows(config, rows);
   return { enabled: true, count: rows.length };
 }

@@ -143,6 +143,20 @@ test('Set Meetings confirmation cache writes resolved appointment timezone', () 
   assert.doesNotMatch(confirmationFlow, /meetingTimezone:\s*['"]America\/New_York['"]/);
 });
 
+test('Scout Prep meeting-set confirmation cache writer replaces appointment rows', () => {
+  const cacheSync = readRepoFile('src/lib/set-meeting-confirmation-cache-sync.ts');
+  const syncFlow = cacheSync.slice(
+    cacheSync.indexOf('export async function syncMeetingSetConfirmationCacheFromScoutPrep'),
+  );
+
+  assert.match(syncFlow, /deleteRows\(config,\s*'set_meeting_confirmation_cache',\s*'appointment_id'/);
+  assert.match(syncFlow, /await upsertSetMeetingConfirmationCacheRows\(config, rows\)/);
+  assert.ok(
+    syncFlow.indexOf("deleteRows(config, 'set_meeting_confirmation_cache', 'appointment_id'") <
+      syncFlow.indexOf('upsertSetMeetingConfirmationCacheRows(config, rows)'),
+  );
+});
+
 test('adapter files preserve legacy names and delegate domain meaning', () => {
   const salesStage = readRepoFile('src/lib/sales-stage.ts');
   assert.match(salesStage, /from '\.\.\/domain\/sales-stage-contract'/);

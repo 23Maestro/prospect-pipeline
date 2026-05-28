@@ -192,3 +192,31 @@ test('central labels keep 7:00 PM CT and central wording for both confirmations'
   assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
   assert.doesNotMatch(rows[0].message_body, /8:00 PM ET/);
 });
+
+test('selected booked slot start wins over stale Laravel task due date', () => {
+  const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    context: buildContext(),
+    meetingSet: {
+      openEventId: 'event-3',
+      startsAt: '2026-05-28T23:00:00.000Z',
+      meetingTimezone: 'America/Chicago',
+      meetingLength: '01:00',
+      headScout: 'Ryan Lietz',
+    },
+    meetingSetResult: {
+      created_task: {
+        task_id: 'stale-task',
+        title: 'Confirmation Call',
+        due_date: '2026-05-29T00:00:00.000Z',
+      },
+    },
+    generatedAt: '2026-05-28T14:00:00.000Z',
+  });
+
+  assert.equal(rows[0].meeting_starts_at, '2026-05-28T23:00:00.000Z');
+  assert.match(rows[0].message_body, /6:00 PM CT/);
+  assert.doesNotMatch(rows[0].message_body, /7:00 PM CT/);
+});
