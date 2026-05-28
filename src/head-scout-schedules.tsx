@@ -79,6 +79,7 @@ import {
   loadScoutPrepContext,
 } from './lib/scout-prep';
 import {
+  deleteRows,
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
 } from './domain/supabase-persistence';
@@ -934,6 +935,12 @@ export function HeadScoutBookingsList({
           generatedAt: new Date().toISOString(),
           source: 'set_meetings_confirmation',
         });
+        await deleteRows(
+          supabaseConfig,
+          'set_meeting_confirmation_cache',
+          'appointment_id',
+          candidate.bookedMeeting.event_id,
+        );
         await upsertSetMeetingConfirmationCacheRows(supabaseConfig, rows);
       }
 

@@ -4,6 +4,7 @@ import fetch from 'node-fetch';
 import { buildWeeklyOperatorMeetingSetCandidates } from '../src/domain/booked-meeting-source.ts';
 import { buildSetMeetingConfirmationCacheRows } from '../src/domain/set-meeting-confirmation-cache.ts';
 import {
+  deleteRows,
   readRows,
   upsertSetMeetingConfirmationCacheRows,
 } from '../src/domain/supabase-persistence.ts';
@@ -397,6 +398,12 @@ for (const [index, candidate] of candidates.entries()) {
 }
 
 if (!DRY_RUN && rows.length) {
+  const appointmentIds = [
+    ...new Set(rows.map((row) => String(row.appointment_id || '').trim()).filter(Boolean)),
+  ];
+  for (const appointmentId of appointmentIds) {
+    await deleteRows(SUPABASE_CONFIG, 'set_meeting_confirmation_cache', 'appointment_id', appointmentId);
+  }
   await upsertSetMeetingConfirmationCacheRows(SUPABASE_CONFIG, rows);
 }
 

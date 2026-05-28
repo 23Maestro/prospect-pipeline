@@ -139,6 +139,7 @@ test('Set Meetings confirmation cache writes resolved appointment timezone', () 
 
   assert.match(confirmationFlow, /prepared\.resolvedAppointment\.meetingTimezone/);
   assert.match(confirmationFlow, /meetingTimezone,\s*confirmation1Message/s);
+  assert.match(confirmationFlow, /deleteRows\([\s\S]*?set_meeting_confirmation_cache/);
   assert.doesNotMatch(confirmationFlow, /meetingTimezone:\s*['"]America\/New_York['"]/);
 });
 
