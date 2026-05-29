@@ -45,6 +45,7 @@ export type ScoutTaskRange =
 export type ScoutPortalTaskFetchOptions = {
   start?: number;
   length?: number;
+  searchText?: string;
 };
 
 function logInfo(
@@ -81,6 +82,7 @@ export async function fetchScoutPortalTasks(
   const params = new URLSearchParams({ range });
   if (typeof options.start === 'number') params.set('start', String(options.start));
   if (typeof options.length === 'number') params.set('length', String(options.length));
+  if (options.searchText?.trim()) params.set('searchText', options.searchText.trim());
   const response = await apiFetch(`/scout/tasks?${params.toString()}`);
   if (!response.ok) {
     let message = `Failed to fetch scout tasks: ${response.status}`;
@@ -113,6 +115,7 @@ export async function fetchScoutPortalTasks(
     range,
     start: options.start ?? null,
     length: options.length ?? null,
+    searchText: options.searchText?.trim() || null,
   });
   return tasks;
 }

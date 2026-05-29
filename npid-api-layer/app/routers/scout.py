@@ -28,6 +28,7 @@ async def get_scout_portal_tasks(
     range: str = "todayPastDue",
     start: int | None = None,
     length: int | None = None,
+    searchText: str | None = None,
 ):
     """
     Fetch the scout task list shown by the dashboard task XHR.
@@ -47,6 +48,7 @@ async def get_scout_portal_tasks(
                 "range": range,
                 "start": start,
                 "length": length,
+                "searchText": searchText,
             },
         },
     )
@@ -57,6 +59,7 @@ async def get_scout_portal_tasks(
             range_value=range,
             start=start,
             length=length,
+            search_text=searchText,
         )
         response = await session.get(endpoint, params=params)
         logger.info(
@@ -71,6 +74,7 @@ async def get_scout_portal_tasks(
                     "range": range,
                     "start": start,
                     "length": length,
+                    "searchText": searchText,
                     "endpoint": endpoint,
                     "statusCode": response.status_code,
                     "contentType": response.headers.get("content-type"),
@@ -94,6 +98,7 @@ async def get_scout_portal_tasks(
                     "range": range,
                     "start": start,
                     "length": length,
+                    "searchText": searchText,
                     "count": len(tasks),
                 },
             },
@@ -115,6 +120,7 @@ async def get_scout_portal_tasks(
                     "range": range,
                     "start": start,
                     "length": length,
+                    "searchText": searchText,
                 },
             },
         )

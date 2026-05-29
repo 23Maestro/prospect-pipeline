@@ -309,9 +309,7 @@ export function buildVoicemailFollowUpMessage(args: {
             ]
           : args.variant === 'reschedule_1'
             ? [
-                `${greeting} no worries.`,
-                '',
-                `Coach ${previousHeadScoutName} still has time set aside ${rescheduleWeekLabel} for ${athleteFirstName}:`,
+                `Coach ${previousHeadScoutName} has me checking what works best to reschedule ${athleteFirstName}:`,
                 '',
                 `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
                 `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,

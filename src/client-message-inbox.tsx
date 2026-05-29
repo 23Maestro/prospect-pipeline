@@ -496,7 +496,7 @@ function ClientReviewRescheduleSlotList({
         const [meetingResult, slotsResult] = await Promise.allSettled([
           athleteId && athleteMainId
             ? resolveBookedMeetingDetailsForForm(
-                { athleteId, athleteMainId },
+                { athleteId, athleteMainId, source: 'appointment_truth' },
                 { getCachedMeetingDescription: getCachedBookedMeetingDescription },
               )
             : Promise.resolve(null),

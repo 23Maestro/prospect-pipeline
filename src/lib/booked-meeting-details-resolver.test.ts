@@ -216,3 +216,43 @@ test('returns null when no booked meeting can be resolved', async () => {
 
   assert.equal(result, null);
 });
+
+test('reschedule resolution reads appointment truth before Laravel booked meetings', async () => {
+  let laravelBookedMeetingsCalled = false;
+  const result = await resolveBookedMeetingDetailsForForm(
+    {
+      athleteId: '1497516',
+      athleteMainId: '953605',
+      source: 'appointment_truth',
+    },
+    {
+      fetchAthleteBookedMeetings: async () => {
+        laravelBookedMeetingsCalled = true;
+        return meetingsResponse([
+          bookedMeeting({
+            event_id: 'laravel-stale',
+            assigned_owner: 'Wrong Scout',
+            start: '2026-05-29T20:00:00',
+          }),
+        ]);
+      },
+      fetchAppointmentTruth: async () => ({
+        resolved_appointment_id: '613339',
+        current_source_event_id: '613339',
+        current_starts_at: '2026-05-28T21:00:00+00:00',
+        current_meeting_timezone: 'America/Chicago',
+        current_meeting_timezone_label: 'CST',
+        current_head_scout: 'Luther Winfield',
+        current_appointment_status: 'reschedule_pending',
+      }),
+    },
+  );
+
+  assert.equal(result?.bookedMeeting.event_id, '613339');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Luther Winfield');
+  assert.equal(result?.bookedMeeting.start, '2026-05-28T17:00');
+  assert.equal(result?.bookedMeeting.end, '2026-05-28T18:00');
+  assert.equal(result?.meetingTimezone, 'America/Chicago');
+  assert.equal(result?.openEventId, '613339');
+  assert.equal(laravelBookedMeetingsCalled, false);
+});

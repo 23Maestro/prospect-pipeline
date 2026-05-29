@@ -4,6 +4,22 @@ from app.translators.legacy import LegacyTranslator
 
 
 class TaskUpdateTranslatorTests(unittest.TestCase):
+    def test_portal_tasks_search_forwards_laravel_datatable_search(self):
+        endpoint, params = LegacyTranslator.portal_tasks_to_legacy(
+            assigned_to="1408164",
+            range_value="all",
+            start=0,
+            length=100,
+            search_text="Avery Jones",
+        )
+
+        self.assertEqual(endpoint, "/tasks/taskslist")
+        self.assertEqual(params["range"], "all")
+        self.assertEqual(params["assignedto"], "1408164")
+        self.assertEqual(params["start"], 0)
+        self.assertEqual(params["length"], 100)
+        self.assertEqual(params["search[value]"], "Avery Jones")
+
     def test_update_task_clears_completion_fields_and_only_changes_due_date(self):
         form_data = {
             "existingtask": "991",

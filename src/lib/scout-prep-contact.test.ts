@@ -857,7 +857,7 @@ test('buildVoicemailFollowUpBody: reschedule includes previous head scout and se
     },
   );
 
-  assert.match(body, /Coach Ryan Lietz still has time set aside next week for Aiden:/);
+  assert.match(body, /^Coach Ryan Lietz has me checking what works best to reschedule Aiden:/);
   assert.match(body, /1 - Thu May 28 3 PM EST/);
   assert.match(body, /2 - Fri May 29 4 PM EST/);
   assert.match(body, /Which one works best\?/);

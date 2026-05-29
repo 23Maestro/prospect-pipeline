@@ -222,6 +222,44 @@ test('not interested batch excludes meeting-set task variants', () => {
   );
 });
 
+test('reschedule pending batch targets only incomplete Reschedule Pending tasks', () => {
+  const rows = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.reschedulePendingVoicemail,
+    tasks: [
+      { task_id: '1', title: 'Reschedule Pending', athlete_name: 'Eligible', completion_date: '' },
+      {
+        task_id: '2',
+        title: 'Meeting Result - Res. Pending',
+        athlete_name: 'Wrong Surface',
+        completion_date: '',
+      },
+      {
+        task_id: '3',
+        title: 'Reschedule Pending',
+        athlete_name: 'Completed',
+        completion_date: '05/01/2026',
+      },
+      { task_id: '4', title: 'Call Attempt 3', athlete_name: 'Wrong Task', completion_date: '' },
+    ],
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    Object.fromEntries(rows.map((row) => [row.task.task_id, row.status])),
+    {
+      '1': 'pending',
+      '2': 'skipped',
+      '3': 'skipped',
+      '4': 'skipped',
+    },
+  );
+});
+
+test('reschedule pending batch is available as a preset', () => {
+  assert.equal(SCOUT_PREP_BATCH_OPERATIONS.reschedulePendingVoicemail.kind, 'reschedule_voicemail');
+  assert.equal(SCOUT_PREP_BATCH_OPERATIONS.reschedulePendingVoicemail.variant, 'reschedule_1');
+});
+
 test('batch grad year options sort youngest classes first', () => {
   assert.deepEqual(
     getScoutPrepBatchGradYearOptions([

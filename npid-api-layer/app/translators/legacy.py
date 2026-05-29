@@ -4242,6 +4242,7 @@ class LegacyTranslator:
         range_value: str = "todayPastDue",
         start: Optional[int] = None,
         length: Optional[int] = None,
+        search_text: Optional[str] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Build request for the dashboard task list XHR.
@@ -4256,6 +4257,8 @@ class LegacyTranslator:
             params["start"] = start
         if length is not None:
             params["length"] = length
+        if search_text and search_text.strip():
+            params["search[value]"] = search_text.strip()
         return endpoint, params
 
     @staticmethod

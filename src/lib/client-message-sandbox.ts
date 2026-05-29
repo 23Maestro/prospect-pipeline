@@ -103,6 +103,22 @@ type SQLMessage = {
   attachment_mime_type: string | null;
 };
 
+type RecentOutgoingMessageRow = {
+  rowid: number;
+  address: string | null;
+  body: string | null;
+  text: string | null;
+  error: number | null;
+  service: 'iMessage' | 'SMS' | null;
+};
+
+export type ClientMessageSendVerification = {
+  ok: boolean;
+  rowId?: number;
+  error?: string;
+  messageError?: number | null;
+};
+
 export type ClientThreadMessage = SQLMessage & {
   sender: string;
   senderName: string;
@@ -764,6 +780,88 @@ async function quitMessagesApp() {
 
 function escapeAppleScriptString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+function normalizeMessageBodyForSendVerification(value?: string | null): string {
+  return String(value || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .trim();
+}
+
+function formatAppleMessageDateThreshold(sentAfterMs: number): number {
+  const appleEpochOffsetSeconds = 978307200;
+  return Math.floor((sentAfterMs / 1000 - appleEpochOffsetSeconds) * 1000000000);
+}
+
+export async function verifyRecentClientMessageSend(args: {
+  address: string;
+  text: string;
+  sentAfterMs: number;
+  serviceName?: 'iMessage' | 'SMS';
+}): Promise<ClientMessageSendVerification> {
+  const expectedPhone = normalizePhoneForClientMatch(args.address);
+  const expectedBody = normalizeMessageBodyForSendVerification(args.text);
+  if (!expectedPhone) {
+    return { ok: false, error: 'Could not verify send: missing recipient phone.' };
+  }
+  if (!expectedBody) {
+    return { ok: false, error: 'Could not verify send: missing message body.' };
+  }
+
+  const threshold = formatAppleMessageDateThreshold(args.sentAfterMs - 3000);
+  const rows = await executeSQL<RecentOutgoingMessageRow>(
+    DB_PATH,
+    `
+    SELECT
+      message.ROWID as rowid,
+      handle.id as address,
+      hex(message.attributedBody) as body,
+      message.text as text,
+      message.error as error,
+      message.service as service
+    FROM message
+      LEFT JOIN handle ON message.handle_id = handle.ROWID
+    WHERE message.is_from_me = 1
+      AND message.date >= ${threshold}
+    ORDER BY message.date DESC
+    LIMIT 20
+    `,
+  );
+
+  const matchingRows = (rows || []).filter(
+    (row) => normalizePhoneForClientMatch(row.address) === expectedPhone,
+  );
+  if (!matchingRows.length) {
+    return { ok: false, error: 'Could not verify send: no recent outgoing Messages row.' };
+  }
+
+  const matchingBodyRow = matchingRows.find((row) => {
+    const decodedBody = normalizeMessageBodyForSendVerification(
+      row.text || decodeHexString(row.body || ''),
+    );
+    return decodedBody === expectedBody;
+  });
+  if (!matchingBodyRow) {
+    return {
+      ok: false,
+      rowId: matchingRows[0]?.rowid,
+      error: 'Could not verify send: recent outgoing Messages row body did not match.',
+      messageError: matchingRows[0]?.error ?? null,
+    };
+  }
+
+  const messageError = matchingBodyRow.error ?? 0;
+  if (messageError !== 0) {
+    return {
+      ok: false,
+      rowId: matchingBodyRow.rowid,
+      error: `Messages reported delivery error ${messageError}.`,
+      messageError,
+    };
+  }
+
+  return { ok: true, rowId: matchingBodyRow.rowid, messageError };
 }
 
 export async function sendClientMessage(args: {

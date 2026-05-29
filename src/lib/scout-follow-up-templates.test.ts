@@ -201,8 +201,9 @@ test('buildVoicemailFollowUpMessage renders reschedule slot copy', () => {
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(message, /^Hi Jamie, no worries\./);
-  assert.match(message, /Coach Ryan Lietz still has time set aside this week for Aiden:/);
+  assert.match(message, /^Coach Ryan Lietz has me checking what works best to reschedule Aiden:/);
+  assert.doesNotMatch(message, /Hi Jamie/);
+  assert.doesNotMatch(message, /no worries/i);
   assert.match(message, /1 - Thu May 28 3 PM EST/);
   assert.match(message, /2 - Fri May 29 4 PM EST/);
   assert.match(message, /Which one works best\?/);
@@ -220,8 +221,9 @@ test('buildVoicemailFollowUpMessage renders next-week reschedule slot copy', () 
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(message, /^Hi Jamie, no worries\./);
-  assert.match(message, /Coach Ryan Lietz still has time set aside next week for Aiden:/);
+  assert.match(message, /^Coach Ryan Lietz has me checking what works best to reschedule Aiden:/);
+  assert.doesNotMatch(message, /Hi Jamie/);
+  assert.doesNotMatch(message, /no worries/i);
   assert.match(message, /1 - Mon, Jun 1 6PM ET/);
   assert.match(message, /2 - Tue, Jun 2 6PM ET/);
   assert.match(message, /Which one works best\?/);

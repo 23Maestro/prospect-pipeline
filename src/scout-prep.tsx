@@ -55,6 +55,7 @@ import {
   buildScoutPrepMetadata,
   buildScoutPrepValues,
   completeScoutPrepTaskAfterVoicemail,
+  fetchScoutPortalTasks,
   fetchScoutPortalTaskBuckets,
   findNewestIncompleteFollowUpTask,
   findNewestIncompleteConfirmationTask,
@@ -66,9 +67,7 @@ import {
 } from './lib/scout-prep';
 import {
   TASK_LIST_PAGE_SIZE,
-  buildTaskPageLabel,
   buildTaskBucketRows,
-  getTaskPageOffset,
   getTaskSectionTitle,
   mapTaskListFilterToRange,
   type TaskListSort,
@@ -171,7 +170,7 @@ import {
   syncAthleteContactCacheFromScoutPrepContext,
 } from './lib/athlete-contact-cache';
 import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-confirmation-cache-sync';
-import { sendClientMessage } from './lib/client-message-sandbox';
+import { sendClientMessage, verifyRecentClientMessageSend } from './lib/client-message-sandbox';
 import {
   buildMaxPrepsSearchLabel,
   resolveMaxPrepsScoutContext,
@@ -1881,7 +1880,7 @@ function RescheduleSlotSelectionList({
         const [meetingResult, slotsResult] = await Promise.allSettled([
           athleteId && athleteMainId
             ? resolveBookedMeetingDetailsForForm(
-                { athleteId, athleteMainId },
+                { athleteId, athleteMainId, source: 'appointment_truth' },
                 { getCachedMeetingDescription: getCachedBookedMeetingDescription },
               )
             : Promise.resolve(null),
@@ -2092,6 +2091,7 @@ function VoicemailFollowUpRecipientForm({
           {
             athleteId,
             athleteMainId,
+            source: 'appointment_truth',
           },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,
@@ -2389,8 +2389,8 @@ type ViewMode = 'tasks' | 'prospect';
 
 const DEFAULT_TASK_LIST_FILTER: TaskListFilter = 'todayPastDue';
 const DEFAULT_TASK_LIST_SORT: TaskListSort = [
-  { key: 'gradYear', direction: 'desc' },
   { key: 'callAttempt', direction: 'asc' },
+  { key: 'gradYear', direction: 'asc' },
 ];
 
 function cycleTaskListSort(current: TaskListSort, key: TaskListSortKey): TaskListSort {
@@ -2667,27 +2667,32 @@ function getTaskAccessoryMetadata(task: ScoutPortalTask) {
   };
 }
 
+const SCHEDULED_FOLLOW_UP_TASK_TITLE = 'SCHEDULED FOLLOW-UP';
+
 function UpdateAthleteTaskForm({
   task,
   selectedTask,
   athleteMainId,
   contactTask,
+  initialTaskTitle,
   onUpdated,
 }: {
   task: ScoutPortalTask;
   selectedTask: ScoutAthleteTask;
   athleteMainId: string;
   contactTask: string;
+  initialTaskTitle?: string | null;
   onUpdated?: () => void | Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
-  const currentTaskTitle = getTaskDisplayTitle(selectedTask);
+  const currentTaskTitle = String(initialTaskTitle || getTaskDisplayTitle(selectedTask)).trim();
   const defaultTaskDescription = String(selectedTask.description || '').trim();
   const taskUpdateVariant = getTaskSpecificUpdateVariant(selectedTask);
-  const canEditTaskPayload = Boolean(taskUpdateVariant);
   const taskTitleInputPlaceholder =
-    taskUpdateVariant === 'scheduled_follow_up' ? 'SCHEDULED FOLLOW-UP' : 'Spoke to - Need to Follow Up';
+    taskUpdateVariant === 'scheduled_follow_up'
+      ? SCHEDULED_FOLLOW_UP_TASK_TITLE
+      : 'Spoke to - Need to Follow Up';
 
   function buildTaskFormValues(values: {
     taskTitle?: string;
@@ -2696,9 +2701,9 @@ function UpdateAthleteTaskForm({
     completeTask?: boolean;
   }) {
     const taskTitle = String(values.taskTitle || currentTaskTitle || '').trim();
-    const description = canEditTaskPayload ? String(values.description || '').trim() : null;
+    const description = String(values.description || '').trim();
     return {
-      taskTitle: canEditTaskPayload ? taskTitle || currentTaskTitle : null,
+      taskTitle: taskTitle || currentTaskTitle,
       description,
       dueDate: values.dueDate,
       completeTask: Boolean(values.completeTask),
@@ -2796,7 +2801,7 @@ function UpdateAthleteTaskForm({
     const toast = await showLoadingToast('Saving', 'Follow-up');
     const formValues = buildTaskFormValues({
       ...values,
-      taskTitle: values.taskTitle || 'SCHEDULED FOLLOW-UP',
+      taskTitle: SCHEDULED_FOLLOW_UP_TASK_TITLE,
     });
     try {
       await updateScoutPrepTask({
@@ -2845,7 +2850,7 @@ function UpdateAthleteTaskForm({
         <ActionPanel>
           <Action.SubmitForm
             title={isSaving ? 'Saving…' : 'Save Task Update'}
-            icon="🗓️"
+            icon={Icon.Calendar}
             onSubmit={(values) =>
               void handleUpdate(
                 values as {
@@ -2857,62 +2862,52 @@ function UpdateAthleteTaskForm({
               )
             }
           />
-          {canEditTaskPayload ? (
-            <Action.SubmitForm
-              title={isSaving ? 'Saving…' : 'SCHEDULED FOLLOW-UP'}
-              icon="📝"
-              onSubmit={(values) =>
-                void handleSetScheduledFollowUp(
-                  values as {
-                    taskTitle?: string;
-                    dueDate?: Date;
-                    description?: string;
-                    completeTask?: boolean;
-                  },
-                )
-              }
-            />
-          ) : null}
-          {!canEditTaskPayload ? (
-            <Action
-              title={isCompleting ? 'Completing…' : 'Complete Task'}
-              icon="✅"
-              onAction={() => void handleCompleteTask()}
-            />
-          ) : null}
+          <Action.SubmitForm
+            title={isSaving ? 'Saving…' : 'Set Scheduled Follow-Up'}
+            icon={Icon.Calendar}
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'f' }}
+            onSubmit={(values) =>
+              void handleSetScheduledFollowUp(
+                values as {
+                  taskTitle?: string;
+                  dueDate?: Date;
+                  description?: string;
+                  completeTask?: boolean;
+                },
+              )
+            }
+          />
+          <Action
+            title={isCompleting ? 'Completing…' : 'Complete Task'}
+            icon={Icon.CheckCircle}
+            onAction={() => void handleCompleteTask()}
+          />
         </ActionPanel>
       }
     >
-      {canEditTaskPayload ? (
-        <Form.TextField
-          id="taskTitle"
-          title="Task Title"
-          placeholder={taskTitleInputPlaceholder}
-          defaultValue={currentTaskTitle}
-        />
-      ) : (
-        <Form.Description title="Task Title" text={currentTaskTitle || 'Untitled task'} />
-      )}
-      {canEditTaskPayload ? (
-        <Form.TextArea
-          id="description"
-          title="Description"
-          placeholder="Describe what you talked about and move this task to the date to follow up."
-          defaultValue={defaultTaskDescription}
-        />
-      ) : null}
+      <Form.TextField
+        id="taskTitle"
+        title="Task Title"
+        placeholder={taskTitleInputPlaceholder}
+        defaultValue={currentTaskTitle}
+      />
+      <Form.TextArea
+        id="description"
+        title="Description"
+        placeholder="Describe what changed and what should happen next."
+        defaultValue={defaultTaskDescription}
+        autoFocus
+      />
       <Form.DatePicker
         id="dueDate"
         title="Task Due Date"
         defaultValue={buildDefaultTaskDate(selectedTask.due_date)}
       />
-      {canEditTaskPayload ? (
-        <Form.Checkbox
-          id="completeTask"
-          label="Complete this task after saving"
-          defaultValue={false}
-        />
-      ) : null}
+      <Form.Checkbox
+        id="completeTask"
+        label="Complete this task after saving"
+        defaultValue={false}
+      />
     </Form>
   );
 }
@@ -2972,7 +2967,10 @@ function UpdateAthleteTaskPicker({
   const commandContext = context ? buildScoutPrepCommandContext({ context }) : null;
   const incompleteTasks = commandContext?.tasks || [];
 
-  async function handleOpenTaskUpdate(selectedTask: ScoutAthleteTask) {
+  async function handleOpenTaskUpdate(
+    selectedTask: ScoutAthleteTask,
+    options: { initialTaskTitle?: string | null } = {},
+  ) {
     const athleteMainId = String(
       context?.resolved.athlete_main_id || task.athlete_main_id || '',
     ).trim();
@@ -2990,6 +2988,7 @@ function UpdateAthleteTaskPicker({
         selectedTask={selectedTask}
         athleteMainId={athleteMainId}
         contactTask={contactTask}
+        initialTaskTitle={options.initialTaskTitle}
         onUpdated={async () => {
           const loadedContext = await loadScoutPrepContext(task);
           setContext(loadedContext);
@@ -3080,12 +3079,22 @@ function UpdateAthleteTaskPicker({
                 <ActionPanel>
                   <Action
                     title="Update Task"
-                    icon="✏️"
+                    icon={Icon.Pencil}
                     onAction={() => void handleOpenTaskUpdate(candidate)}
                   />
                   <Action
+                    title="Set Scheduled Follow-Up"
+                    icon={Icon.Calendar}
+                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'f' }}
+                    onAction={() =>
+                      void handleOpenTaskUpdate(candidate, {
+                        initialTaskTitle: SCHEDULED_FOLLOW_UP_TASK_TITLE,
+                      })
+                    }
+                  />
+                  <Action
                     title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
-                    icon="✅"
+                    icon={Icon.CheckCircle}
                     onAction={() => void handleCompleteTaskFromList(candidate)}
                   />
                   {candidate.description ? (
@@ -3930,10 +3939,6 @@ function ScoutPrepDetail({
     popViews(pop, 1);
   }
 
-  function refreshRootListOnPop() {
-    void onReturnToRootList?.();
-  }
-
   async function syncContactCacheBestEffort(
     activeContext: ScoutPrepContext,
     crmStage: string | null,
@@ -4104,7 +4109,6 @@ function ScoutPrepDetail({
           await createForOption(selected, values.remindAt);
         }}
       />,
-      refreshRootListOnPop,
     );
   }
 
@@ -4130,7 +4134,6 @@ function ScoutPrepDetail({
         options={options}
         defaultOptionId={options.find((option) => option.id === 'parent1')?.id || options[0]?.id}
       />,
-      refreshRootListOnPop,
     );
   }
 
@@ -4160,7 +4163,6 @@ function ScoutPrepDetail({
         onComplete={onReturnToRootList}
         closeAfterCompleteViews={2}
       />,
-      refreshRootListOnPop,
     );
   }
 
@@ -4183,7 +4185,6 @@ function ScoutPrepDetail({
         )}
         athleteName={notesContext.contactInfo.studentAthlete.name || task.athlete_name}
       />,
-      refreshRootListOnPop,
     );
   }
 
@@ -4201,7 +4202,6 @@ function ScoutPrepDetail({
         athleteName={notesContext.contactInfo.studentAthlete.name || task.athlete_name}
         onComplete={() => pop()}
       />,
-      refreshRootListOnPop,
     );
   }
 
@@ -4507,8 +4507,7 @@ function ScoutPrepDetail({
                   task={task}
                   onSaved={onReturnToRootList}
                   closeAfterSaveViews={2}
-                />,
-                refreshRootListOnPop,
+                />
               )
             }
           />
@@ -4568,7 +4567,6 @@ function ScoutPrepDetail({
                   closeAfterMutationViews={2}
                 />
               }
-              onPop={refreshRootListOnPop}
             />
           </ActionPanel.Section>
           <ActionPanel.Section title="Athlete Info">
@@ -4577,7 +4575,6 @@ function ScoutPrepDetail({
               icon="☎️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
               target={<ScoutPrepContactDetail task={task} initialContext={context} />}
-              onPop={refreshRootListOnPop}
             />
             <Action
               title="Open Client Messages"
@@ -4674,9 +4671,6 @@ function ScoutPrepTaskItem({
   task,
   taskListFilter,
   taskListSort,
-  allTaskPageIndex,
-  canShowPreviousAllTaskPage,
-  canShowNextAllTaskPage,
   dailyCallBlocksActionTitle,
   batchVoicemailTarget,
   onExportDailyCallBlocks,
@@ -4684,18 +4678,12 @@ function ScoutPrepTaskItem({
   personalFollowUpsTarget,
   onAddPersonalFollowUpFromTask,
   onSelectTaskListFilter,
-  onSelectAllTaskPage,
   onCycleTaskListSort,
   onReturnToRootList,
-  onPushSecondaryList,
-  onSecondaryListPop,
 }: {
   task: ScoutPortalTask;
   taskListFilter: TaskListFilter;
   taskListSort: TaskListSort;
-  allTaskPageIndex: number;
-  canShowPreviousAllTaskPage: boolean;
-  canShowNextAllTaskPage: boolean;
   dailyCallBlocksActionTitle: string;
   batchVoicemailTarget: ReactNode;
   onExportDailyCallBlocks: () => void;
@@ -4703,11 +4691,8 @@ function ScoutPrepTaskItem({
   personalFollowUpsTarget: ReactNode;
   onAddPersonalFollowUpFromTask: (task: ScoutPortalTask) => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
-  onSelectAllTaskPage: (pageIndex: number) => void;
   onCycleTaskListSort: (key: TaskListSortKey) => void;
   onReturnToRootList: () => void;
-  onPushSecondaryList: () => void;
-  onSecondaryListPop: () => void;
 }) {
   const { push, pop } = useNavigation();
   const [isCompletingTask, setIsCompletingTask] = useState(false);
@@ -4715,10 +4700,6 @@ function ScoutPrepTaskItem({
   async function returnToRootListAndCloseCurrentView() {
     await onReturnToRootList();
     popViews(pop, 1);
-  }
-
-  function resetRootListOnPop() {
-    void onReturnToRootList();
   }
 
   async function ensureTaskContext(
@@ -4785,7 +4766,6 @@ function ScoutPrepTaskItem({
         onComplete={onReturnToRootList}
         closeAfterCompleteViews={1}
       />,
-      resetRootListOnPop,
     );
   }
 
@@ -4880,7 +4860,6 @@ function ScoutPrepTaskItem({
         athleteMainId={String(context.resolved.athlete_main_id || context.task.athlete_main_id)}
         athleteName={context.contactInfo.studentAthlete.name || task.athlete_name}
       />,
-      resetRootListOnPop,
     );
   }
 
@@ -4896,7 +4875,6 @@ function ScoutPrepTaskItem({
         athleteName={context.contactInfo.studentAthlete.name || task.athlete_name}
         onComplete={() => pop()}
       />,
-      resetRootListOnPop,
     );
   }
 
@@ -4999,7 +4977,6 @@ function ScoutPrepTaskItem({
             title="Build Scout Prep"
             icon="❇️"
             target={<ScoutPrepDetail task={task} onReturnToRootList={onReturnToRootList} />}
-            onPop={resetRootListOnPop}
           />
           <Action
             title="Voicemail Follow-Up"
@@ -5017,8 +4994,7 @@ function ScoutPrepTaskItem({
                     task={task}
                     onSaved={returnToRootListAndCloseCurrentView}
                     closeAfterSaveViews={0}
-                  />,
-                  resetRootListOnPop,
+                  />
                 )
               }
             />
@@ -5029,12 +5005,10 @@ function ScoutPrepTaskItem({
               onAction={onExportDailyCallBlocks}
             />
             <Action.Push
-              title="Batch Voicemail Follow-Up"
+              title="Batch Operations"
               icon="💬"
               shortcut={{ modifiers: ['cmd', 'shift'], key: '0' }}
               target={batchVoicemailTarget}
-              onPush={onPushSecondaryList}
-              onPop={onSecondaryListPop}
             />
             <Action
               title="Move CF Task"
@@ -5057,7 +5031,6 @@ function ScoutPrepTaskItem({
               target={
                 <UpdateAthleteTaskPicker task={task} onTaskMutationComplete={onReturnToRootList} />
               }
-              onPop={resetRootListOnPop}
             />
             <Action
               title="Duplicate Profile Check"
@@ -5078,8 +5051,6 @@ function ScoutPrepTaskItem({
               icon="🕘"
               shortcut={{ modifiers: ['cmd'], key: 'f' }}
               target={personalFollowUpsTarget}
-              onPush={onPushSecondaryList}
-              onPop={onSecondaryListPop}
             />
           </ActionPanel.Section>
           <ActionPanel.Section title="Athlete Info">
@@ -5094,7 +5065,6 @@ function ScoutPrepTaskItem({
               icon="☎️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'c' }}
               target={<ScoutPrepContactDetail task={task} />}
-              onPop={resetRootListOnPop}
             />
             <Action
               title="Open Client Messages"
@@ -5107,7 +5077,6 @@ function ScoutPrepTaskItem({
               icon="📅"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 's' }}
               target={<HeadScoutSchedulesRoot />}
-              onPop={resetRootListOnPop}
             />
             <Action.OpenInBrowser
               title="Open Athlete Admin Page"
@@ -5175,34 +5144,14 @@ function ScoutPrepTaskItem({
               onAction={() => onSelectTaskListFilter('future')}
             />
             <Action
-              title={`Show All ${buildTaskPageLabel(allTaskPageIndex)}`}
+              title="Show All"
               shortcut={{ modifiers: ['opt'], key: '4' }}
               onAction={() => onSelectTaskListFilter('all')}
             />
-            {taskListFilter === 'all' ? (
-              <>
-                {canShowPreviousAllTaskPage ? (
-                  <Action
-                    title={`Previous All ${buildTaskPageLabel(allTaskPageIndex - 1)}`}
-                    shortcut={{ modifiers: ['opt', 'shift'], key: 'return' }}
-                    onAction={() => onSelectAllTaskPage(allTaskPageIndex - 1)}
-                  />
-                ) : null}
-                {canShowNextAllTaskPage ? (
-                  <Action
-                    title={`Next All ${buildTaskPageLabel(allTaskPageIndex + 1)}`}
-                    shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-                    onAction={() => onSelectAllTaskPage(allTaskPageIndex + 1)}
-                  />
-                ) : null}
-              </>
-            ) : null}
             <Action
               title="Prospect Search"
               icon="🔎"
-              shortcut={
-                canShowNextAllTaskPage ? undefined : { modifiers: ['cmd', 'shift'], key: 'return' }
-              }
+              shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
               onAction={onToggleProspectSearchMode}
             />
             <SupabaseLifecycleStatusAction />
@@ -5305,7 +5254,6 @@ function ProspectSearchListItem({
               target={
                 <ScoutPrepDetail task={scoutPrepTask} onReturnToRootList={onReturnToRootList} />
               }
-              onPop={() => void onReturnToRootList()}
             />
           ) : null}
           <Action.OpenInBrowser
@@ -5494,7 +5442,6 @@ function PersonalFollowUpListItem({
               target={
                 <ScoutPrepDetail task={scoutPrepTask} onReturnToRootList={onReturnToRootList} />
               }
-              onPop={() => void onReturnToRootList()}
             />
           ) : null}
           <Action.OpenInBrowser
@@ -5653,11 +5600,278 @@ function getBatchRowStatusColor(row: ScoutPrepBatchRow): Color {
   }
 }
 
+function getBatchRowSubtitle(row: ScoutPrepBatchRow, operation: ScoutPrepBatchOperation): string {
+  if (operation.kind === 'reschedule_voicemail') {
+    return '';
+  }
+  return row.recipient?.name || row.message || getTaskDisplayTitle(row.task);
+}
+
+function formatBatchReviewMarkdownLine(value?: string | null): string {
+  return String(value || '')
+    .replace(/\\/g, '\\\\')
+    .replace(/\*/g, '\\*')
+    .replace(/_/g, '\\_')
+    .replace(/`/g, '\\`')
+    .replace(/\[/g, '\\[')
+    .replace(/\]/g, '\\]')
+    .trim();
+}
+
+function extractRescheduleMessageParts(message?: string | null): {
+  opener: string;
+  slots: string[];
+  close: string;
+} {
+  const lines = String(message || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const slots = lines.filter((line) => /^([12])\s*-/.test(line));
+  const firstSlotIndex = slots.length
+    ? lines.findIndex((line) => line === slots[0])
+    : -1;
+  const opener =
+    firstSlotIndex > 0
+      ? lines.slice(0, firstSlotIndex).join(' ')
+      : lines.find((line) => !/^([12])\s*-/.test(line)) || '';
+  const close =
+    firstSlotIndex >= 0
+      ? lines.slice(firstSlotIndex + slots.length).join(' ')
+      : lines.slice(1).join(' ');
+  return { opener, slots, close };
+}
+
+function buildBatchRowDetailMarkdown(
+  row: ScoutPrepBatchRow,
+  operation: ScoutPrepBatchOperation,
+): string {
+  if (operation.kind !== 'reschedule_voicemail') {
+    return row.message || getTaskDisplayTitle(row.task);
+  }
+
+  const recipient = row.recipient?.name || 'Recipient unresolved';
+  const previousMeeting = row.review?.previousMeetingLabel || 'Previous meeting unavailable';
+  const messageParts = extractRescheduleMessageParts(row.message);
+  const slots = row.review?.slotLabels?.length ? row.review.slotLabels : messageParts.slots;
+  const opener = messageParts.opener || 'Message still loading.';
+  const close = messageParts.close || 'Which one works best?';
+
+  return [
+    `## ${formatBatchReviewMarkdownLine(row.task.athlete_name || 'Unknown athlete')}`,
+    '',
+    `**Recipient:** ${formatBatchReviewMarkdownLine(recipient)}`,
+    '',
+    '### <u>Previous Booked Meeting</u>',
+    '',
+    `**_${formatBatchReviewMarkdownLine(previousMeeting)}_**`,
+    '',
+    '### <u>Outgoing Message</u>',
+    '',
+    `> ${formatBatchReviewMarkdownLine(opener)}`,
+    '>',
+    ...slots.map(
+      (slot, index) =>
+        `> **${index + 1} -** ${formatBatchReviewMarkdownLine(slot.replace(/^([12])\s*-\s*/, ''))}  `,
+    ),
+    '>',
+    `> ${formatBatchReviewMarkdownLine(close)}`,
+  ]
+    .join('\n')
+    .trim();
+}
+
 function isFatalScoutPrepBatchError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return /401|403|419|5\d\d|unauthorized|forbidden|session|csrf|login|laravel|service unavailable|bad gateway|gateway timeout|fetch failed|econnrefused|network/i.test(
     message,
   );
+}
+
+type RescheduleBatchPlan = {
+  previousMeeting: ResolvedBookedMeetingDetails;
+  previousMeetingText: string;
+  slots: RescheduleVoicemailSlotOption[];
+};
+
+const RESCHEDULE_BATCH_DIFFERENT_SCOUT_PENALTY = 2_500;
+const RESCHEDULE_BATCH_SHORT_NOTICE_HOURS = 24;
+const RESCHEDULE_BATCH_SHORT_NOTICE_PENALTY = 8_000;
+const RESCHEDULE_BATCH_SAME_WEEKEND_ON_LATE_WEEK_PENALTY = 1_500;
+const RESCHEDULE_BATCH_EARLIER_THAN_PREVIOUS_TIME_PENALTY = 45;
+
+function localMinutesForEasternStamp(start: string, timeZone?: string | null): number | null {
+  const parsed = easternLocalIsoToDate(start);
+  if (!parsed) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZone || 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(parsed);
+  const hour = Number.parseInt(parts.find((part) => part.type === 'hour')?.value || '', 10);
+  const minute = Number.parseInt(parts.find((part) => part.type === 'minute')?.value || '', 10);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return (hour === 24 ? 0 : hour) * 60 + minute;
+}
+
+function localWeekdayForDate(date: Date, timeZone?: string | null): number | null {
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: timeZone || 'America/New_York',
+    weekday: 'short',
+  }).format(date);
+  const weekdays: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return weekdays[weekday] ?? null;
+}
+
+function hoursUntilDate(date: Date, now = new Date()): number {
+  return (date.getTime() - now.getTime()) / (60 * 60 * 1000);
+}
+
+function scoreRescheduleBatchSlot(args: {
+  slot: HeadScoutSlot & { scout_name: string };
+  previousHeadScoutName: string | null;
+  targetMinutes: number | null;
+  clientTimezone: string | null;
+  weekOffset: number;
+  now?: Date;
+}): number {
+  const sameScout =
+    args.previousHeadScoutName &&
+    normalizeNameKey(args.slot.scout_name) === normalizeNameKey(args.previousHeadScoutName)
+      ? 0
+      : RESCHEDULE_BATCH_DIFFERENT_SCOUT_PENALTY;
+  const slotMinutes = localMinutesForEasternStamp(args.slot.start, args.clientTimezone);
+  const timeDistance =
+    slotMinutes !== null && args.targetMinutes !== null
+      ? Math.abs(slotMinutes - args.targetMinutes)
+      : 1_000;
+  const earlierThanPreviousTime =
+    slotMinutes !== null && args.targetMinutes !== null && slotMinutes < args.targetMinutes
+      ? RESCHEDULE_BATCH_EARLIER_THAN_PREVIOUS_TIME_PENALTY
+      : 0;
+  const slotDate = easternLocalIsoToDate(args.slot.start);
+  const noticeHours = slotDate ? hoursUntilDate(slotDate, args.now) : null;
+  const shortNotice =
+    noticeHours !== null && noticeHours < RESCHEDULE_BATCH_SHORT_NOTICE_HOURS
+      ? RESCHEDULE_BATCH_SHORT_NOTICE_PENALTY
+      : 0;
+  const currentWeekday = localWeekdayForDate(args.now || new Date(), args.clientTimezone);
+  const slotWeekday = slotDate ? localWeekdayForDate(slotDate, args.clientTimezone) : null;
+  const rushedWeekend =
+    args.weekOffset === 0 &&
+    currentWeekday !== null &&
+    currentWeekday >= 5 &&
+    (slotWeekday === 0 || slotWeekday === 6)
+      ? RESCHEDULE_BATCH_SAME_WEEKEND_ON_LATE_WEEK_PENALTY
+      : 0;
+  return sameScout + args.weekOffset * 100 + timeDistance + earlierThanPreviousTime + shortNotice + rushedWeekend;
+}
+
+async function buildRescheduleBatchPlan(args: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+}): Promise<RescheduleBatchPlan> {
+  const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
+  const athleteMainId = String(
+    args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
+  ).trim();
+  const previousMeeting = athleteId && athleteMainId
+    ? await resolveBookedMeetingDetailsForForm(
+        { athleteId, athleteMainId, source: 'appointment_truth' },
+        { getCachedMeetingDescription: getCachedBookedMeetingDescription },
+      )
+    : null;
+  if (!previousMeeting) {
+    throw new Error('Missing appointment truth for Reschedule Pending');
+  }
+
+  const clientTimezone =
+    previousMeeting.meetingTimezone ||
+    resolveAthleteTimezone(args.context.resolved.city, args.context.resolved.state);
+  const previousHeadScoutName =
+    String(previousMeeting.bookedMeeting.assigned_owner || '').trim() ||
+    String(args.context.resolved.head_scout || '').trim() ||
+    null;
+  const targetMinutes = localMinutesForEasternStamp(
+    previousMeeting.bookedMeeting.start,
+    clientTimezone,
+  );
+  const previousMeetingText =
+    buildPreviousMeetingTextForReschedule(previousMeeting, args.context) ||
+    [previousHeadScoutName, previousMeeting.bookedMeeting.start].filter(Boolean).join(' • ');
+  const now = new Date();
+
+  const slotPayloads = await Promise.all([fetchHeadScoutSlots(0), fetchHeadScoutSlots(1)]);
+  const scoredSlots = slotPayloads.flatMap((payload, weekOffset) => {
+    const rawSlots = (payload.scouts || []).flatMap((schedule) =>
+      (schedule.slots || []).map((slot) => ({
+        ...slot,
+        scout_name: slot.scout_name || schedule.scout_name,
+      })),
+    );
+    return filterVisibleHeadScoutSlots(rawSlots).map((slot) => ({ slot, weekOffset }));
+  });
+
+  const selected = scoredSlots
+    .sort((left, right) => {
+      const leftScore = scoreRescheduleBatchSlot({
+        slot: left.slot,
+        previousHeadScoutName,
+        targetMinutes,
+        clientTimezone,
+        weekOffset: left.weekOffset,
+        now,
+      });
+      const rightScore = scoreRescheduleBatchSlot({
+        slot: right.slot,
+        previousHeadScoutName,
+        targetMinutes,
+        clientTimezone,
+        weekOffset: right.weekOffset,
+        now,
+      });
+      if (leftScore !== rightScore) return leftScore - rightScore;
+      return left.slot.start.localeCompare(right.slot.start);
+    })
+    .slice(0, 2)
+    .sort((left, right) => left.slot.start.localeCompare(right.slot.start))
+    .map(({ slot, weekOffset }) => {
+      const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, clientTimezone);
+      const isPreviousScout = Boolean(
+        previousHeadScoutName && normalizeNameKey(slot.scout_name) === normalizeNameKey(previousHeadScoutName),
+      );
+      return {
+        id: `${slot.scout_name}:${slot.id}`,
+        title: display.messageLabel,
+        subtitle: slot.scout_name,
+        scoutName: slot.scout_name,
+        messageLabel: display.messageLabel,
+        isPreviousScout,
+        dateLabel: display.dateLabel,
+        timeLabel: display.timeLabel,
+        zoneLabel: display.zoneLabel,
+        weekLabel: weekOffset > 0 ? 'next week' : 'this week',
+      };
+    });
+
+  if (selected.length < 2) {
+    throw new Error('Missing two reschedule slot options');
+  }
+
+  return {
+    previousMeeting,
+    previousMeetingText,
+    slots: selected,
+  };
 }
 
 async function runScoutPrepStageCompletionBatchRow(args: {
@@ -5812,6 +6026,7 @@ function ScoutPrepBatchPreflightList({
   selectedGradYear?: string | null;
   onComplete: () => Promise<void> | void;
 }) {
+  const { push, pop } = useNavigation();
   const operation = getScoutPrepBatchOperationById(initialOperationId);
   const initialRows = useMemo(
     () =>
@@ -5868,6 +6083,33 @@ function ScoutPrepBatchPreflightList({
                 status: 'skipped',
                 recipient: null,
                 message: recipientResolution.message,
+              }));
+            } else if (operation.kind === 'reschedule_voicemail') {
+              const plan = await buildRescheduleBatchPlan({ task: row.task, context });
+              const message = buildVoicemailFollowUpBody(
+                context,
+                recipientResolution.recipient.id,
+                operation.variant,
+                null,
+                row.task.title || null,
+                undefined,
+                null,
+                null,
+                {
+                  previousHeadScoutName: plan.previousMeeting.bookedMeeting.assigned_owner,
+                  slots: plan.slots.map((slot) => slot.messageLabel),
+                  weekLabel: plan.slots[0]?.weekLabel || null,
+                },
+              );
+              updateRow(row.task, () => ({
+                ...row,
+                recipient: recipientResolution.recipient,
+                message,
+                review: {
+                  previousMeetingLabel: plan.previousMeetingText,
+                  previousCoachName: plan.previousMeeting.bookedMeeting.assigned_owner,
+                  slotLabels: plan.slots.map((slot) => slot.messageLabel),
+                },
               }));
             } else {
               updateRow(row.task, () => ({
@@ -5958,7 +6200,18 @@ function ScoutPrepBatchPreflightList({
             : await runScoutPrepBatchRow({
                 row: currentRow,
                 context,
+                resolveRecipient:
+                  operation.kind === 'reschedule_voicemail' && currentRow.recipient
+                    ? () => ({ status: 'eligible', recipient: currentRow.recipient! })
+                    : undefined,
                 buildMessage: async (recipient) => {
+                  if (operation.kind === 'reschedule_voicemail' && currentRow.message) {
+                    return currentRow.message;
+                  }
+                  const reschedulePlan =
+                    operation.kind === 'reschedule_voicemail'
+                      ? await buildRescheduleBatchPlan({ task: currentRow.task, context })
+                      : null;
                   const selectedParent =
                     recipient.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
                   const deterministicHonorific = resolveParentHonorificFromRelationship(
@@ -5984,9 +6237,18 @@ function ScoutPrepBatchPreflightList({
                     undefined,
                     deterministicHonorific || aiHonorific,
                     athleteGender,
+                    reschedulePlan
+                      ? {
+                          previousHeadScoutName:
+                            reschedulePlan.previousMeeting.bookedMeeting.assigned_owner,
+                          slots: reschedulePlan.slots.map((slot) => slot.messageLabel),
+                          weekLabel: reschedulePlan.slots[0]?.weekLabel || null,
+                        }
+                      : undefined,
                   );
                 },
                 sendMessage: async (recipient, message) => {
+                  const sentAfterMs = Date.now();
                   const result = await sendClientMessage({
                     address: recipient.phones[0],
                     text: message,
@@ -5995,18 +6257,35 @@ function ScoutPrepBatchPreflightList({
                   if (result !== 'Success') {
                     throw new Error(result);
                   }
+                  const verification = await verifyRecentClientMessageSend({
+                    address: recipient.phones[0],
+                    text: message,
+                    sentAfterMs,
+                    serviceName: 'iMessage',
+                  });
+                  if (!verification.ok) {
+                    throw new Error(verification.error || 'Messages send verification failed.');
+                  }
                 },
                 persistMessageSent: async () => {
                   if (!operation.variant) {
                     throw new Error('Missing voicemail variant');
                   }
-                  await persistVoicemailFollowUpMessageSent({
-                    context,
-                    task: currentRow.task,
-                    variant: operation.variant,
-                    previousCrmStage: null,
-                    previousTaskStatus: currentRow.task.title || null,
-                  });
+                  if (operation.kind === 'reschedule_voicemail') {
+                    await completeSentTextTask({
+                      context,
+                      task: currentRow.task,
+                      variant: operation.variant,
+                    });
+                  } else {
+                    await persistVoicemailFollowUpMessageSent({
+                      context,
+                      task: currentRow.task,
+                      variant: operation.variant,
+                      previousCrmStage: null,
+                      previousTaskStatus: currentRow.task.title || null,
+                    });
+                  }
                 },
               });
 
@@ -6028,6 +6307,7 @@ function ScoutPrepBatchPreflightList({
       toast.title = 'Batch complete';
       toast.message = operation.label;
       await onComplete();
+      pop();
     } finally {
       setIsRunning(false);
     }
@@ -6044,25 +6324,98 @@ function ScoutPrepBatchPreflightList({
     );
   }
 
+  async function reselectBatchRowSlots(row: ScoutPrepBatchRow) {
+    if (operation.kind !== 'reschedule_voicemail' || isRunning || isChecking) {
+      return;
+    }
+
+    const toast = await showLoadingToast('Loading slots', row.task.athlete_name || 'Reschedule');
+    try {
+      const context = await loadScoutPrepContext(row.task);
+      const recipientResolution = row.recipient
+        ? { status: 'eligible' as const, recipient: row.recipient }
+        : resolveBatchVoicemailRecipient(context);
+      if (recipientResolution.status === 'skipped') {
+        throw new Error(recipientResolution.message);
+      }
+
+      const plan = row.review?.previousMeetingLabel
+        ? null
+        : await buildRescheduleBatchPlan({ task: row.task, context });
+      const previousMeetingLabel =
+        row.review?.previousMeetingLabel || plan?.previousMeetingText || null;
+      const previousCoachName =
+        row.review?.previousCoachName ||
+        plan?.previousMeeting.bookedMeeting.assigned_owner ||
+        String(context.resolved.head_scout || '').trim() ||
+        null;
+
+      toast.style = Toast.Style.Success;
+      toast.title = 'Pick slots';
+      toast.message = row.task.athlete_name || undefined;
+      push(
+        <RescheduleSlotSelectionList
+          task={row.task}
+          context={context}
+          onSlotsSelected={(slots) => {
+            const message = buildVoicemailFollowUpBody(
+              context,
+              recipientResolution.recipient.id,
+              operation.variant,
+              null,
+              row.task.title || null,
+              undefined,
+              null,
+              null,
+              {
+                previousHeadScoutName: previousCoachName,
+                slots: slots.map((slot) => slot.messageLabel),
+                weekLabel: slots[0]?.weekLabel || null,
+              },
+            );
+            updateRow(row.task, (current) => ({
+              ...current,
+              status: 'pending',
+              recipient: recipientResolution.recipient,
+              message,
+              review: {
+                previousMeetingLabel,
+                previousCoachName,
+                slotLabels: slots.map((slot) => slot.messageLabel),
+              },
+            }));
+            pop();
+          }}
+        />,
+      );
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Slot load failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   return (
     <List
       isLoading={isRunning || isChecking}
+      isShowingDetail={operation.kind === 'reschedule_voicemail'}
       navigationTitle="Batch Operations"
       searchBarPlaceholder={`Review ${operation.label}`}
     >
       <List.Section
-        title={operation.label}
-        subtitle={`${pendingCount} ready / ${sentCount} sent / ${skippedCount} skipped / ${failedCount} failed`}
+        title={`${pendingCount} Ready / ${failedCount} Failed`}
+        subtitle={sentCount || skippedCount ? `${sentCount} Sent / ${skippedCount} Skipped` : undefined}
       >
         {rows.length ? (
           rows.map((row) => (
             <List.Item
               key={`${row.task.task_id || row.task.contact_id}:batch`}
               title={row.task.athlete_name || 'Unknown athlete'}
-              subtitle={row.recipient?.name || row.message || getTaskDisplayTitle(row.task)}
+              subtitle={getBatchRowSubtitle(row, operation) || undefined}
               accessories={[
                 { tag: { value: getBatchRowStatusText(row), color: getBatchRowStatusColor(row) } },
               ]}
+              detail={<List.Item.Detail markdown={buildBatchRowDetailMarkdown(row, operation)} />}
               actions={
                 <ActionPanel>
                   {pendingCount > 0 ? (
@@ -6076,6 +6429,14 @@ function ScoutPrepBatchPreflightList({
                       }
                       icon="💬"
                       onAction={() => void runBatch()}
+                    />
+                  ) : null}
+                  {operation.kind === 'reschedule_voicemail' && row.status === 'pending' ? (
+                    <Action
+                      title="Reselect Slots"
+                      icon="🗓️"
+                      shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                      onAction={() => void reselectBatchRowSlots(row)}
                     />
                   ) : null}
                   <Action
@@ -6092,8 +6453,8 @@ function ScoutPrepBatchPreflightList({
           ))
         ) : (
           <List.Item
-            title="No Call Attempt 3 Rows"
-            subtitle="Current task bucket has no incomplete Call Attempt 3 tasks."
+            title={`No ${operation.label} Rows`}
+            subtitle={`Current task bucket has no incomplete ${operation.label} tasks.`}
             actions={
               <ActionPanel>
                 <Action title="Refresh Scout Tasks" icon="🔄" onAction={() => void onComplete()} />
@@ -6159,7 +6520,6 @@ export default function ScoutPrepCommand(
   const [isLoading, setIsLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('tasks');
   const [taskListFilter, setTaskListFilter] = useState<TaskListFilter>(initialTaskListFilter);
-  const [allTaskPageIndex, setAllTaskPageIndex] = useState(0);
   const [taskSearchText, setTaskSearchText] = useState(initialTaskSearchText);
   const [taskListSort, setTaskListSort] = useState<TaskListSort>(DEFAULT_TASK_LIST_SORT);
   const [prospectSearchMode, setProspectSearchMode] = useState<ProspectSearchMode>('athlete');
@@ -6170,7 +6530,10 @@ export default function ScoutPrepCommand(
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
+  const allTaskSearchRequestIdRef = useRef(0);
 
+  const isAllTaskSearchFirst = taskListFilter === 'all';
+  const allTaskSearchText = taskSearchText.trim();
   const hasProspectSearchText = prospectSearchText.trim().length > 0;
   const listSearchText = viewMode === 'prospect' ? prospectSearchText : taskSearchText;
   const selectedTaskRows =
@@ -6188,14 +6551,8 @@ export default function ScoutPrepCommand(
   const callAttempt1Count = selectedTaskRows
     .map((row) => row.task)
     .filter(isCallAttempt1PortalTask).length;
-  const selectedTaskTitle =
-    taskListFilter === 'all'
-      ? `${selectedTaskTitleBase} ${buildTaskPageLabel(allTaskPageIndex)}`
-      : selectedTaskTitleBase;
+  const selectedTaskTitle = selectedTaskTitleBase;
   const selectedTaskSectionTitle = `${selectedTaskTitle} • Total Tasks: ${selectedTaskRows.length} | T1: ${callAttempt1Count} •`;
-  const canShowPreviousAllTaskPage = taskListFilter === 'all' && allTaskPageIndex > 0;
-  const canShowNextAllTaskPage =
-    taskListFilter === 'all' && selectedTaskRows.length === TASK_LIST_PAGE_SIZE;
   const dailyCallBlockCounts = useMemo(
     () => buildDailyCallBlockTaskCounts(taskBuckets.todayPastDue),
     [taskBuckets.todayPastDue],
@@ -6211,7 +6568,7 @@ export default function ScoutPrepCommand(
     return () => clearTimeout(timer);
   }, [selectedTaskItemId]);
 
-  const loadTasks = async (nextAllTaskPageIndex = allTaskPageIndex) => {
+  const loadTasks = async () => {
     if (loadTasksPromiseRef.current) {
       logInfo('SCOUT_PREP_TASK_LIST', 'reuse-inflight-load', 'start');
       return loadTasksPromiseRef.current;
@@ -6222,38 +6579,37 @@ export default function ScoutPrepCommand(
       try {
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'start');
         const taskBuckets = await fetchScoutPortalTaskBuckets(
-          ['todayPastDue', 'all', 'tomorrow', 'future'] as const,
-          {
-            all: {
-              start: getTaskPageOffset(nextAllTaskPageIndex),
-              length: TASK_LIST_PAGE_SIZE,
-            },
-          },
+          ['todayPastDue', 'tomorrow', 'future'] as const,
         );
         const nextTaskBuckets = {
           todayPastDue: [...taskBuckets.todayPastDue].reverse(),
-          all: [...taskBuckets.all],
           tomorrow: [...taskBuckets.tomorrow].reverse(),
           future: [...taskBuckets.future].reverse(),
         };
         const dailyCallBlockTasks = nextTaskBuckets.todayPastDue;
         await setCachedDailyCallBlockTaskCounts(buildDailyCallBlockTaskCounts(dailyCallBlockTasks));
-        setTaskBuckets(nextTaskBuckets);
+        setTaskBuckets((current) => ({
+          ...current,
+          ...nextTaskBuckets,
+        }));
         setTimeout(() => {
-          void seedMissingAthleteContactCacheFromTasks(nextTaskBuckets);
+          void seedMissingAthleteContactCacheFromTasks({
+            ...nextTaskBuckets,
+            all: [],
+          });
         }, 0);
         logInfo('SCOUT_PREP_TASK_LIST', 'load-list', 'success', {
           selectedRange,
           todayPastDueCount: nextTaskBuckets.todayPastDue.length,
-          allCount: nextTaskBuckets.all.length,
-          allPageIndex: nextAllTaskPageIndex,
-          allPageLabel: buildTaskPageLabel(nextAllTaskPageIndex),
           tomorrowCount: nextTaskBuckets.tomorrow.length,
           futureCount: nextTaskBuckets.future.length,
-          firstAthlete: nextTaskBuckets[selectedRange][0]?.athlete_name || null,
+          firstAthlete:
+            selectedRange === 'all' ? null : nextTaskBuckets[selectedRange][0]?.athlete_name || null,
           lastAthlete:
-            nextTaskBuckets[selectedRange][nextTaskBuckets[selectedRange].length - 1]
-              ?.athlete_name || null,
+            selectedRange === 'all'
+              ? null
+              : nextTaskBuckets[selectedRange][nextTaskBuckets[selectedRange].length - 1]
+                  ?.athlete_name || null,
         });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -6274,6 +6630,61 @@ export default function ScoutPrepCommand(
     return pendingLoad;
   };
 
+  const loadAllTaskSearch = async (searchText: string) => {
+    const requestId = ++allTaskSearchRequestIdRef.current;
+    setIsLoading(true);
+    try {
+      logInfo('SCOUT_PREP_TASK_LIST', 'load-all-search', 'start', {
+        searchText,
+      });
+      const allTasks = await fetchScoutPortalTasks('all', {
+        start: 0,
+        length: TASK_LIST_PAGE_SIZE,
+        searchText,
+      });
+      if (requestId !== allTaskSearchRequestIdRef.current) {
+        return;
+      }
+      setTaskBuckets((current) => ({
+        ...current,
+        all: [...allTasks],
+      }));
+      setTimeout(() => {
+        void seedMissingAthleteContactCacheFromTasks({
+          todayPastDue: [],
+          all: allTasks,
+          tomorrow: [],
+          future: [],
+        });
+      }, 0);
+      logInfo('SCOUT_PREP_TASK_LIST', 'load-all-search', 'success', {
+        allCount: allTasks.length,
+        searchText,
+      });
+    } catch (error) {
+      if (requestId !== allTaskSearchRequestIdRef.current) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      setTaskBuckets((current) => ({
+        ...current,
+        all: [],
+      }));
+      logFailure('SCOUT_PREP_TASK_LIST', 'load-all-search', message, {
+        searchText,
+      });
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Scout search failed',
+        message,
+      });
+    } finally {
+      if (requestId === allTaskSearchRequestIdRef.current) {
+        setIsLoading(false);
+      }
+    }
+  };
+
   useEffect(() => {
     if (initialLoadStartedRef.current) {
       return;
@@ -6281,6 +6692,28 @@ export default function ScoutPrepCommand(
     initialLoadStartedRef.current = true;
     void loadTasks();
   }, []);
+
+  useEffect(() => {
+    if (!isAllTaskSearchFirst) {
+      return;
+    }
+
+    if (!allTaskSearchText) {
+      allTaskSearchRequestIdRef.current += 1;
+      setTaskBuckets((current) => ({
+        ...current,
+        all: [],
+      }));
+      setIsLoading(false);
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void loadAllTaskSearch(allTaskSearchText);
+    }, 350);
+
+    return () => clearTimeout(timer);
+  }, [isAllTaskSearchFirst, allTaskSearchText]);
 
   const handleExportDailyCallBlocks = async () => {
     await exportDailyCallBlocks(dailyCallBlockCounts);
@@ -6412,6 +6845,14 @@ export default function ScoutPrepCommand(
 
   function selectTaskListFilter(filter: TaskListFilter) {
     setTaskListFilter(filter);
+    if (filter === 'all') {
+      setSelectedTaskItemId(undefined);
+      return;
+    }
+    setTaskBuckets((current) => ({
+      ...current,
+      all: [],
+    }));
     selectFirstTaskRow(
       buildTaskBucketRows({
         filter,
@@ -6419,14 +6860,6 @@ export default function ScoutPrepCommand(
         sort: taskListSort,
       }),
     );
-  }
-
-  function selectAllTaskPage(pageIndex: number) {
-    const nextPageIndex = Math.max(pageIndex, 0);
-    setAllTaskPageIndex(nextPageIndex);
-    setTaskListFilter('all');
-    setSelectedTaskItemId(undefined);
-    void loadTasks(nextPageIndex);
   }
 
   function cycleSort(key: TaskListSortKey) {
@@ -6449,40 +6882,49 @@ export default function ScoutPrepCommand(
     setTaskSearchText(text);
   }
 
-  function clearRootTaskSearchBeforePush() {
-    setTaskSearchText('');
-    setSelectedTaskItemId(undefined);
-  }
-
   function buildPersonalFollowUpsTarget() {
     return <PersonalFollowUpsList onReturnToRootList={returnToRootTaskList} />;
+  }
+
+  function buildBatchSourceTasks(): ScoutPortalTask[] {
+    const seen = new Set<string>();
+    return [
+      ...taskBuckets.todayPastDue,
+      ...taskBuckets.all,
+      ...taskBuckets.tomorrow,
+      ...taskBuckets.future,
+    ].filter((task) => {
+      const key = buildScoutPrepTaskItemId(task);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }
 
   function buildBatchVoicemailTarget() {
     return (
       <ScoutPrepBatchRoot
-        tasks={selectedTaskRows.map((row) => row.task)}
+        tasks={buildBatchSourceTasks()}
         onComplete={returnToRootTaskList}
       />
     );
   }
 
-  function handleSecondaryListPop() {
-    void returnToRootTaskList();
-  }
-
   async function returnToRootTaskList() {
     setViewMode('tasks');
     setTaskListFilter(DEFAULT_TASK_LIST_FILTER);
-    setAllTaskPageIndex(0);
     setTaskSearchText('');
     setTaskListSort(DEFAULT_TASK_LIST_SORT);
     setSelectedTaskItemId(undefined);
     setProspectSearchText('');
     setProspectResults([]);
     setIsProspectSearching(false);
+    setTaskBuckets((current) => ({
+      ...current,
+      all: [],
+    }));
     await clearSearchBar({ forceScrollToTop: true });
-    await loadTasks(0);
+    await loadTasks();
   }
 
   return (
@@ -6499,7 +6941,7 @@ export default function ScoutPrepCommand(
             <List.Dropdown.Item title="Today/PastDue" value="todayPastDue" />
             <List.Dropdown.Item title="Tomorrow" value="tomorrow" />
             <List.Dropdown.Item title="Future" value="future" />
-            <List.Dropdown.Item title={`All ${buildTaskPageLabel(allTaskPageIndex)}`} value="all" />
+            <List.Dropdown.Item title="All" value="all" />
           </List.Dropdown>
         ) : undefined
       }
@@ -6564,8 +7006,6 @@ export default function ScoutPrepCommand(
                     icon="🕘"
                     shortcut={{ modifiers: ['cmd'], key: 'f' }}
                     target={buildPersonalFollowUpsTarget()}
-                    onPush={clearRootTaskSearchBeforePush}
-                    onPop={handleSecondaryListPop}
                   />
                   <Action
                     title="Exit Prospect Search"
@@ -6581,12 +7021,18 @@ export default function ScoutPrepCommand(
       ) : !hasTaskModeResults ? (
         <List.EmptyView
           title={
-            taskListFilter === 'todayPastDue'
+            taskListFilter === 'all' && !allTaskSearchText
+              ? 'Search all assigned tasks'
+              : taskListFilter === 'todayPastDue'
               ? 'No items found'
               : `No ${selectedSectionTitle.toLowerCase()} items found`
           }
           description={
-            taskListFilter === 'todayPastDue'
+            taskListFilter === 'all' && !allTaskSearchText
+              ? 'Type an athlete, task, school, sport, or related text to search Laravel assigned tasks.'
+              : taskListFilter === 'all'
+                ? 'No assigned tasks matched that search.'
+                : taskListFilter === 'todayPastDue'
               ? 'There are no active Scout Prep tasks due today or past due.'
               : `The ${selectedSectionTitle.toLowerCase()} task bucket is empty.`
           }
@@ -6616,52 +7062,26 @@ export default function ScoutPrepCommand(
                   onAction={() => selectTaskListFilter('future')}
                 />
                 <Action
-                  title={`Show All ${buildTaskPageLabel(allTaskPageIndex)}`}
+                  title="Show All"
                   shortcut={{ modifiers: ['opt'], key: '4' }}
                   onAction={() => selectTaskListFilter('all')}
                 />
-                {taskListFilter === 'all' ? (
-                  <>
-                    {canShowPreviousAllTaskPage ? (
-                      <Action
-                        title={`Previous All ${buildTaskPageLabel(allTaskPageIndex - 1)}`}
-                        shortcut={{ modifiers: ['opt', 'shift'], key: 'return' }}
-                        onAction={() => selectAllTaskPage(allTaskPageIndex - 1)}
-                      />
-                    ) : null}
-                    {canShowNextAllTaskPage ? (
-                      <Action
-                        title={`Next All ${buildTaskPageLabel(allTaskPageIndex + 1)}`}
-                        shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
-                        onAction={() => selectAllTaskPage(allTaskPageIndex + 1)}
-                      />
-                    ) : null}
-                  </>
-                ) : null}
                 <Action.Push
-                  title="Batch Voicemail Follow-Up"
+                  title="Batch Operations"
                   icon="💬"
                   shortcut={{ modifiers: ['cmd', 'shift'], key: '0' }}
                   target={buildBatchVoicemailTarget()}
-                  onPush={clearRootTaskSearchBeforePush}
-                  onPop={handleSecondaryListPop}
                 />
                 <Action.Push
                   title="Personal Follow-Ups"
                   icon="🕘"
                   shortcut={{ modifiers: ['cmd'], key: 'f' }}
                   target={buildPersonalFollowUpsTarget()}
-                  onPush={clearRootTaskSearchBeforePush}
-                  onPop={handleSecondaryListPop}
                 />
                 <Action
                   title="Prospect Search"
                   icon="🔎"
-                  shortcut={
-                    canShowNextAllTaskPage
-                      ? undefined
-                      : { modifiers: ['cmd', 'shift'], key: 'return' }
-                  }
+                  shortcut={{ modifiers: ['cmd', 'shift'], key: 'return' }}
                   onAction={toggleProspectSearchMode}
                 />
                 <SupabaseLifecycleStatusAction />
@@ -6691,9 +7111,6 @@ export default function ScoutPrepCommand(
               task={row.task}
               taskListFilter={taskListFilter}
               taskListSort={taskListSort}
-              allTaskPageIndex={allTaskPageIndex}
-              canShowPreviousAllTaskPage={canShowPreviousAllTaskPage}
-              canShowNextAllTaskPage={canShowNextAllTaskPage}
               dailyCallBlocksActionTitle={dailyCallBlocksActionTitle}
               batchVoicemailTarget={buildBatchVoicemailTarget()}
               onExportDailyCallBlocks={() => void handleExportDailyCallBlocks()}
@@ -6701,11 +7118,8 @@ export default function ScoutPrepCommand(
               personalFollowUpsTarget={buildPersonalFollowUpsTarget()}
               onAddPersonalFollowUpFromTask={(task) => void handleAddPersonalFollowUpFromTask(task)}
               onSelectTaskListFilter={selectTaskListFilter}
-              onSelectAllTaskPage={selectAllTaskPage}
               onCycleTaskListSort={cycleSort}
               onReturnToRootList={returnToRootTaskList}
-              onPushSecondaryList={clearRootTaskSearchBeforePush}
-              onSecondaryListPop={handleSecondaryListPop}
             />
           ))}
         </List.Section>

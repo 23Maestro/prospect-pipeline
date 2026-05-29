@@ -10,8 +10,12 @@ import {
 } from './scout-task-selection';
 
 export type ScoutPrepBatchOperation = {
-  id: 'call_attempt_2_voicemail' | 'call_attempt_3_voicemail' | 'not_interested_stage_completion';
-  kind: 'voicemail' | 'sales_stage_task_completion';
+  id:
+    | 'call_attempt_2_voicemail'
+    | 'call_attempt_3_voicemail'
+    | 'not_interested_stage_completion'
+    | 'reschedule_pending_voicemail';
+  kind: 'voicemail' | 'sales_stage_task_completion' | 'reschedule_voicemail';
   label: string;
   taskTitle?: string;
   variant?: VoicemailFollowUpVariant;
@@ -39,6 +43,13 @@ export const SCOUT_PREP_BATCH_OPERATIONS = {
     label: 'No Interest + Complete',
     stageLabel: 'Spoke to - Not Interested',
   },
+  reschedulePendingVoicemail: {
+    id: 'reschedule_pending_voicemail',
+    kind: 'reschedule_voicemail',
+    label: 'Reschedule Pending',
+    taskTitle: 'Reschedule Pending',
+    variant: 'reschedule_1',
+  },
 } satisfies Record<string, ScoutPrepBatchOperation>;
 
 export type ScoutPrepBatchRowStatus = 'pending' | 'sending' | 'sent' | 'skipped' | 'failed';
@@ -49,6 +60,11 @@ export type ScoutPrepBatchRow = {
   status: ScoutPrepBatchRowStatus;
   recipient?: VoicemailFollowUpRecipient | null;
   message?: string | null;
+  review?: {
+    previousMeetingLabel?: string | null;
+    previousCoachName?: string | null;
+    slotLabels?: string[];
+  } | null;
 };
 
 export type BatchRecipientResolution =
@@ -101,6 +117,9 @@ export function isScoutPrepBatchTaskEligible(
   }
   if (operation.kind === 'sales_stage_task_completion') {
     return !isMeetingSetTaskVariant(task);
+  }
+  if (operation.kind === 'reschedule_voicemail') {
+    return normalizeBatchTaskText(task).includes('reschedule pending');
   }
   return Boolean(operation.variant && isVoicemailLifecycleTaskMatch(task, operation.variant));
 }
