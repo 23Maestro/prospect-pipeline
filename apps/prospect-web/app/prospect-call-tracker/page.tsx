@@ -69,6 +69,9 @@ export default function ProspectCallTrackerPage() {
             </a>
             <strong>SC: Calls</strong>
           </div>
+          <a className="topbar-link" href="/prospect-meetings">
+            Meetings
+          </a>
         </header>
 
         <section className="page-head">

@@ -21,6 +21,8 @@ test('prospect-call-tracker and prospect-mobile static assets are served from Ve
     'public/prospect-call-tracker/data-contract.json',
     'public/prospect-call-tracker/weekly-results/index.json',
     'public/prospect-call-tracker/styles.css',
+    'public/prospect-meetings/app.js',
+    'public/prospect-meetings/styles.css',
     'public/prospect-call-tracker/prospect-pipeline.png',
     'public/prospect-mobile/app.js',
     'public/prospect-mobile/styles.css',
@@ -122,6 +124,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/backsync-lifecycle-call-activity-events.mjs',
     'scripts/lifecycle-call-tracker-backsync-core.mjs',
     'scripts/lifecycle-call-tracker-backsync-core.test.mjs',
+    'scripts/honest-test-report.mjs',
+    'scripts/honest-test-report.test.mjs',
     'scripts/repair-call-event-owner-proof.mjs',
     'scripts/sync-supabase-pipeline.sh',
     'scripts/sync-supabase-pipeline.test.mjs',
@@ -493,6 +497,60 @@ test('call tracker archive writer uses the live browser contract and source-owne
   assert.match(migrationText, /source_post' = '\/sales\/meeting-set'/);
 });
 
+test('meetings readback page is live, read-only, and server-backed', () => {
+  const pageText = readFileSync(join(appRoot, 'app/prospect-meetings/page.tsx'), 'utf8');
+  const routeText = readFileSync(join(appRoot, 'app/api/meeting-readback-data/route.ts'), 'utf8');
+  const appText = readFileSync(join(appRoot, 'public/prospect-meetings/app.js'), 'utf8');
+  const stylesText = readFileSync(join(appRoot, 'public/prospect-meetings/styles.css'), 'utf8');
+  const browserText = `${pageText}\n${appText}\n${stylesText}`;
+  const newCodeText = `${pageText}\n${routeText}\n${appText}\n${stylesText}`;
+
+  assert.match(routeText, /export const dynamic = 'force-dynamic'/);
+  assert.match(routeText, /cache: 'no-store'/);
+  assert.match(routeText, /cache-control', 'no-store, max-age=0'/);
+  assert.match(appText, /const CONTRACT_URL = '\/api\/meeting-readback-data'/);
+  assert.match(pageText, /SC: Meetings/);
+  assert.match(pageText, /data-mode="meetings"/);
+  assert.match(pageText, /data-mode="lifecycle"/);
+  assert.match(pageText, /True Meetings Set/);
+  assert.match(pageText, /Show Rate/);
+  assert.match(pageText, /Closed Won/);
+  assert.match(pageText, /Closed Lost/);
+  assert.match(pageText, /Follow Up/);
+  assert.match(pageText, /No Show \/ Canceled/);
+  assert.doesNotMatch(pageText, /Showed \/ Resulted/);
+  assert.doesNotMatch(pageText, /Upcoming \/ Pending/);
+  assert.doesNotMatch(pageText, /Needs Review/);
+  assert.match(pageText, /id="meetingsBody"/);
+  assert.match(pageText, /id="lifecycleBody"/);
+  assert.doesNotMatch(pageText, /<th>Proof<\/th>/);
+  assert.doesNotMatch(pageText, /Read-only live Supabase check/);
+  assert.match(routeText, /active_athlete_meeting_truth/);
+  assert.match(routeText, /summaryFor\(sourceSummary, currentMeetings, meetings, generatedAt\)/);
+  assert.match(routeText, /sourceSummary\.meetings_set/);
+  assert.match(routeText, /countsAsPostMeetingOutcome/);
+  assert.match(routeText, /actual_meeting_follow_up/);
+  assert.match(routeText, /showRate/);
+  assert.match(routeText, /currentMonthRange\(generatedAt\)/);
+  assert.match(appText, /function sourceText\(row\)/);
+  assert.match(appText, /Current Meeting Truth/);
+  assert.match(appText, /Lifecycle Events/);
+  assert.doesNotMatch(appText, /Created \$\{row\.createdAtLabel\}/);
+  assert.match(stylesText, /\.status-chip\.won/);
+  assert.match(stylesText, /\.status-chip\.bad/);
+  assert.match(stylesText, /\.status-chip\.pending/);
+  assert.match(stylesText, /\.summary-grid \{[\s\S]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.doesNotMatch(stylesText, /\.summary-grid \{[\s\S]*overflow-x: auto/);
+  assert.match(pageText, /href="\/prospect-call-tracker"/);
+  assert.match(readFileSync(join(appRoot, 'app/prospect-call-tracker/page.tsx'), 'utf8'), /href="\/prospect-meetings"/);
+  assert.doesNotMatch(browserText, /SUPABASE_(?:SECRET|SERVICE_ROLE)_KEY/);
+  assert.doesNotMatch(browserText, /SUPABASE_SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY/);
+  assert.doesNotMatch(appText, /\/rest\/v1\//);
+  assert.doesNotMatch(appText, /createClient|SUPABASE_/);
+  assert.doesNotMatch(newCodeText, /\b(?:POST|PUT|PATCH|DELETE)\b/);
+  assert.doesNotMatch(newCodeText, /npm run (?:sync|repair|backfill|archive|deploy)|fetch\([^)]*(?:sync|repair|backfill|archive|cron|deploy)/i);
+});
+
 test('call tracker commission is a flat twenty percent of revenue', () => {
   const pageRouteText = readFileSync(join(appRoot, 'app/api/call-tracker-data/route.ts'), 'utf8');
   const appText = readFileSync(join(appRoot, 'public/prospect-call-tracker/app.js'), 'utf8');
@@ -642,9 +700,14 @@ test('home command center uses the reduced glowing shield svg', () => {
   const stylesText = readFileSync(join(appRoot, 'app/globals.css'), 'utf8');
 
   assert.match(pageText, /Command Center/);
+  assert.match(pageText, /href: '\/prospect-call-tracker'[\s\S]*title: 'Prospect Call Tracker'/);
+  assert.match(pageText, /href: '\/prospect-mobile'[\s\S]*title: 'Prospect Mobile'/);
+  assert.match(pageText, /href: '\/prospect-meetings'[\s\S]*title: 'SC: Meetings'/);
   assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
   assert.match(pageText, /alt="Prospect ID"/);
   assert.doesNotMatch(pageText, /\/prospect-call-tracker\/prospect-pipeline\.png/);
+  assert.match(stylesText, /\.home-actions a \{[\s\S]*background: #0a0a0a;[\s\S]*color: var\(--geist-text\);/);
+  assert.doesNotMatch(stylesText, /\.home-actions a \+ a/);
   assert.match(stylesText, /\.home-mark \{[\s\S]*width: 28px;[\s\S]*height: 28px;/);
   assert.match(stylesText, /\.home-mark \{[\s\S]*drop-shadow\(0 0 20px rgba\(0, 112, 243, 0\.28\)\)/);
 });

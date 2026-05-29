@@ -137,9 +137,14 @@ a {
   text-decoration: none;
 }
 
-.home-actions a + a {
+.home-actions a {
   background: #0a0a0a;
   color: var(--geist-text);
+}
+
+.home-actions a:first-child {
+  background: #fff;
+  color: #000;
 }
 
 .home-panel {

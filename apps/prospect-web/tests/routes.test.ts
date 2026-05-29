@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { GET as callTrackerDataGET } from '../app/api/call-tracker-data/route';
+import { GET as meetingReadbackDataGET } from '../app/api/meeting-readback-data/route';
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
@@ -668,4 +669,199 @@ test('/api/call-tracker-data calculates paycheck commission as twenty percent of
     payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Failed Payment Athlete'),
     false,
   );
+});
+
+test('/api/meeting-readback-data returns meeting-only live readback rows', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([{ meetings_set: 4, closed_won: 1 }]);
+    }
+    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+      return Response.json([
+        {
+          athlete_name: 'Meeting Athlete',
+          occurred_at: '2026-05-29T15:00:00+00:00',
+          event_at: '2026-05-29T15:00:00+00:00',
+          reporting_at: '2026-05-29T15:00:00+00:00',
+          reporting_date_et: '2026-05-29',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          source: 'call_tracker_events_owner_context',
+          appointment_id: 'appt-1',
+          booked_event_title: 'Meeting Athlete Football 2027 TX',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Jerami Singleton',
+          resolved_owner_source_field: 'task.assigned_owner',
+          can_materialize_for_active_operator: true,
+          created_at: '2026-05-29T14:50:00+00:00',
+        },
+        {
+          athlete_name: 'Call Only Athlete',
+          occurred_at: '2026-05-29T16:00:00+00:00',
+          event_at: '2026-05-29T16:00:00+00:00',
+          tracker_outcome: 'spoke_follow_up',
+          raw_crm_stage: 'Spoke to - Follow Up',
+          raw_task_status: 'Spoke to - Follow Up',
+          raw_event_type: 'call_activity',
+          source: 'call_activity',
+          materialization_status: 'operator_task',
+          created_at: '2026-05-29T16:00:00+00:00',
+        },
+        {
+          athlete_name: 'Won Athlete',
+          occurred_at: '2026-05-29T17:00:00+00:00',
+          event_at: '2026-05-29T17:00:00+00:00',
+          tracker_outcome: 'closed_won',
+          raw_crm_stage: 'Closed Won',
+          raw_task_status: 'Closed Won',
+          raw_event_type: 'meeting_result',
+          source: 'call_tracker_events_owner_context',
+          appointment_id: 'appt-won',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          created_at: '2026-05-29T17:00:00+00:00',
+        },
+        {
+          athlete_name: 'Lost Athlete',
+          occurred_at: '2026-05-29T18:00:00+00:00',
+          event_at: '2026-05-29T18:00:00+00:00',
+          tracker_outcome: 'closed_lost',
+          raw_crm_stage: 'Closed Lost',
+          raw_task_status: 'Closed Lost',
+          raw_event_type: 'meeting_result',
+          source: 'call_tracker_events_owner_context',
+          appointment_id: 'appt-lost',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          created_at: '2026-05-29T18:00:00+00:00',
+        },
+        {
+          athlete_name: 'Follow Up Athlete',
+          occurred_at: '2026-05-29T19:00:00+00:00',
+          event_at: '2026-05-29T19:00:00+00:00',
+          tracker_outcome: 'actual_meeting_follow_up',
+          raw_crm_stage: 'Actual Meeting - Follow Up',
+          raw_task_status: 'Actual Meeting - Follow Up',
+          raw_event_type: 'meeting_result',
+          source: 'call_tracker_events_owner_context',
+          appointment_id: 'appt-follow-up',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          created_at: '2026-05-29T19:00:00+00:00',
+        },
+        {
+          athlete_name: 'No Show Athlete',
+          occurred_at: '2026-05-29T20:00:00+00:00',
+          event_at: '2026-05-29T20:00:00+00:00',
+          tracker_outcome: 'no_show',
+          raw_crm_stage: 'No Show',
+          raw_task_status: 'No Show',
+          raw_event_type: 'meeting_result',
+          source: 'call_tracker_events_owner_context',
+          appointment_id: 'appt-no-show',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          created_at: '2026-05-29T20:00:00+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/active_athlete_meeting_truth?')) {
+      return Response.json([
+        {
+          athlete_name: 'Current Athlete',
+          crm_stage: 'Meeting Set',
+          task_status: 'confirmation_call',
+          operator_owner: 'Jerami Singleton',
+          current_head_scout: 'Ryan Lietz',
+          current_appointment_id: 'current-appt-1',
+          resolved_appointment_id: 'current-appt-1',
+          current_source_event_id: 'event-current-1',
+          current_starts_at: '2026-05-30T15:00:00+00:00',
+          current_meeting_timezone: 'America/New_York',
+          current_meeting_timezone_label: 'EST',
+          current_appointment_status: 'scheduled',
+          current_appointment_role: 'initial_set',
+          resolution_source: 'current_appointment_pointer',
+          pipeline_updated_at: '2026-05-29T13:00:00+00:00',
+          appointment_updated_at: '2026-05-29T13:00:00+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([
+        {
+          id: 'life-1',
+          event_type: 'meeting_set',
+          crm_stage: 'Meeting Set',
+          task_status: 'confirmation_call',
+          payload_json: {
+            athlete_name: 'Lifecycle Athlete',
+            appointment_id: 'appt-life',
+            booked_event_title: 'Lifecycle Athlete Soccer 2026 GA',
+            materialization_status: 'operator_task',
+            active_operator_name: 'Jerami Singleton',
+            task_assigned_owner: 'Jerami Singleton',
+          },
+          created_at: '2026-05-29T13:00:00+00:00',
+        },
+        {
+          id: 'life-2',
+          event_type: 'call_activity',
+          crm_stage: 'Spoke to - Follow Up',
+          task_status: 'Call Attempt 1',
+          payload_json: {},
+          created_at: '2026-05-29T12:00:00+00:00',
+        },
+      ]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await meetingReadbackDataGET();
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store, max-age=0');
+  const payload = await response.json();
+  assert.equal(payload.contract, 'prospect-meetings-readback');
+  assert.equal(payload.data.summary.trueMeetingsSet, 4);
+  assert.equal(payload.data.summary.showedResulted, 3);
+  assert.equal(payload.data.summary.showRate, 75);
+  assert.equal(payload.data.summary.closedWon, 1);
+  assert.equal(payload.data.summary.closedLost, 1);
+  assert.equal(payload.data.summary.followUp, 1);
+  assert.equal(payload.data.summary.noShowCanceled, 1);
+  assert.equal(payload.data.summary.meetingsSet, 4);
+  assert.equal(payload.data.summary.needsReview, 0);
+  assert.equal(payload.data.meetings.length, 6);
+  assert.equal(payload.data.meetings[0].athleteName, 'Current Athlete');
+  assert.equal(payload.data.meetings[0].meetingStatus, 'Meeting Set');
+  assert.equal(payload.data.meetings[0].proof, 'Verified For Me');
+  assert.equal(payload.data.lifecycle.length, 1);
+  assert.equal(payload.data.lifecycle[0].lifecycleEvent, 'Meeting Set');
+  assert.equal(payload.data.lifecycle[0].source, 'lifecycle_events');
+  assert.equal(payload.data.supabaseReads.activeMeetingView, 'active_athlete_meeting_truth');
+  assert.equal(
+    payload.data.meetings.some((row: { athleteName?: string }) => row.athleteName === 'Call Only Athlete'),
+    false,
+  );
+  assert.equal(payload.data.generatedAt.endsWith('Z'), true);
+  assert.equal(calls.length, 4);
+  assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
+  assert.equal(calls.every((call) => call.init?.cache === 'no-store'), true);
 });

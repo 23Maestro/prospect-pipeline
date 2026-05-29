@@ -7,6 +7,12 @@ This repo is a Prospect ID workflow extension. Code review should protect behavi
 - Supabase is extension persistence and reporting.
 - Vercel / Next.js is the web adapter.
 - Domain modules define ownership, operator context, athlete identity, task meaning, meeting meaning, outreach wording, materialization, and reporting meaning.
+## Honest Reporting Gate
+`npm test` is the local deterministic report gate. It runs existing tests and writes `.tmp/honest-test-report.json`.
+
+During review, agents must not turn a failed report into a new fix unless the user explicitly asks for implementation. Report the failing suite, the suspected boundary, and the missing proof.
+
+`npm test` must not run sync, repair, backfill write mode, live API mutation, Laravel mutation, Supabase mutation, or deployment commands. Live readback remains a separate manual proof step and must be named separately from local test proof.
 ## Adapter Rules
 Adapters may fetch, translate, render, proxy, and persist.
 Adapters must not redefine:

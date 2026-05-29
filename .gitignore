@@ -86,6 +86,7 @@ public
 swift/contacts/.raycast-swift-build/
 
 # Temporary folders
+.tmp/
 tmp/
 temp/
 

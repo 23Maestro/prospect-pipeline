@@ -9,6 +9,10 @@ const surfaces = [
     href: '/prospect-mobile',
     title: 'Prospect Mobile',
   },
+  {
+    href: '/prospect-meetings',
+    title: 'SC: Meetings',
+  },
 ];
 
 export default function HomePage() {
