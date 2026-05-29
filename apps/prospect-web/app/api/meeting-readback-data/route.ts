@@ -46,12 +46,31 @@ const eventFields = [
 ];
 
 const lifecycleFields = [
-  'id',
+  'lifecycle_event_id',
+  'athlete_key',
+  'athlete_id',
+  'athlete_main_id',
+  'athlete_name',
   'event_type',
-  'crm_stage',
-  'task_status',
+  'raw_crm_stage',
+  'raw_task_status',
+  'normalized_stage',
+  'operator_status',
+  'meeting_lifecycle',
+  'pipeline_bucket',
+  'next_action',
+  'is_active_or_monitoring',
+  'is_terminal',
+  'indicates_showed',
+  'counts_as_enrollment',
+  'appointment_id',
+  'event_title',
+  'operator_owner',
+  'head_scout',
+  'event_source',
+  'revenue_cents',
   PAYLOAD_FIELD,
-  'created_at',
+  'event_at',
 ];
 
 const activeMeetingFields = [
@@ -229,11 +248,14 @@ function isLifecycleMeetingRow(row: Record<string, any>) {
   const body = payload(row);
   const values = [
     row.event_type,
-    row.crm_stage,
-    row.task_status,
+    row.raw_crm_stage,
+    row.raw_task_status,
+    row.normalized_stage,
+    row.meeting_lifecycle,
+    row.pipeline_bucket,
     body.tracker_outcome,
-    body.appointment_id,
-    body.booked_event_title,
+    row.appointment_id,
+    row.event_title,
   ]
     .map(normalizeKey)
     .join(' ');
@@ -294,21 +316,30 @@ function lifecycleRow(row: Record<string, any>) {
     ['event_at'],
     ['reporting_at'],
     ['$row', 'created_at'],
-  ]) || row.created_at;
+  ]) || row.event_at || row.created_at;
   return {
     when,
     whenLabel: etLabel(when),
-    athleteName: firstValue(row, [['athlete_name'], ['name']]) || 'Unknown Athlete',
-    lifecycleEvent: labelFor(row.event_type || body.tracker_outcome || row.crm_stage || row.task_status),
-    crmStage: labelFor(row.crm_stage),
-    taskStatus: labelFor(row.task_status),
+    athleteName: firstValue(row, [['$row', 'athlete_name'], ['athlete_name'], ['name']]) || 'Unknown Athlete',
+    lifecycleEvent: labelFor(row.normalized_stage || row.event_type || body.tracker_outcome || row.raw_crm_stage || row.raw_task_status),
+    crmStage: labelFor(row.raw_crm_stage),
+    taskStatus: labelFor(row.raw_task_status),
     proof: proofLabel(row),
-    source: 'lifecycle_events',
-    appointmentId: body.appointment_id || body.booked_event_id || '',
-    meetingTitle: body.booked_event_title || body.task_title || '',
-    createdAt: row.created_at || null,
-    createdAtLabel: etLabel(row.created_at || null),
+    source: 'athlete_lifecycle_timeline',
+    appointmentId: row.appointment_id || body.appointment_id || body.booked_event_id || '',
+    meetingTitle: row.event_title || body.booked_event_title || body.task_title || '',
+    createdAt: row.event_at || row.created_at || null,
+    createdAtLabel: etLabel(row.event_at || row.created_at || null),
     rawEventType: row.event_type || null,
+    normalizedStage: row.normalized_stage || null,
+    operatorStatus: row.operator_status || null,
+    meetingLifecycle: row.meeting_lifecycle || null,
+    pipelineBucket: row.pipeline_bucket || null,
+    nextAction: row.next_action || null,
+    isActiveOrMonitoring: row.is_active_or_monitoring === true,
+    isTerminal: row.is_terminal === true,
+    indicatesShowed: row.indicates_showed === true,
+    countsAsEnrollment: row.counts_as_enrollment === true,
   };
 }
 
@@ -360,11 +391,12 @@ async function buildMeetingReadback() {
   const summaryView = 'call_tracker_summary';
   const eventView = 'call_tracker_events_owner_context';
   const activeMeetingView = 'active_athlete_meeting_truth';
+  const lifecycleView = 'athlete_lifecycle_timeline';
   const [summaryRows, eventRows, activeMeetingRows, lifecycleRows] = await Promise.all([
     supabaseGet(`${summaryView}?select=*`),
     supabaseGet([`${eventView}?select=${encodeURIComponent(eventFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
     supabaseGet([`${activeMeetingView}?select=${encodeURIComponent(activeMeetingFields.join(','))}`, 'order=current_starts_at.asc', `limit=${EVENT_LIMIT}`].join('&')),
-    supabaseGet([`lifecycle_events?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=created_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
+    supabaseGet([`${lifecycleView}?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
   ]);
   const currentMeetings = (Array.isArray(activeMeetingRows) ? activeMeetingRows : [])
     .map(currentMeetingRow)
@@ -396,7 +428,7 @@ async function buildMeetingReadback() {
         summaryView,
         eventView,
         activeMeetingView,
-        lifecycleSourceTable: 'lifecycle_events',
+        lifecycleView,
       },
       summary: summaryFor(sourceSummary, currentMeetings, meetings, generatedAt),
       sourceSummary,

@@ -180,12 +180,14 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260519015000_repair_rescheduled_meeting_set_flags.sql',
     'supabase/migrations/20260519016000_call_tracker_reschedule_preserves_first_meeting_set.sql',
     'supabase/migrations/20260519017000_call_tracker_restore_reconcile_clock_and_first_reschedule_identity.sql',
+    'supabase/migrations/20260529163000_athlete_lifecycle_timeline.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
     'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
     'supabase/tests/call-tracker-counting-contract.test.mjs',
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
     'supabase/tests/meeting-set-materialization-backsync.test.mjs',
+    'supabase/tests/athlete-lifecycle-timeline-contract.test.mjs',
   ]);
   const forbiddenPrefixes = ['npid-api-layer/', 'scripts/', 'supabase/', 'src/'];
   const offenders = changedFiles.filter(
@@ -526,6 +528,8 @@ test('meetings readback page is live, read-only, and server-backed', () => {
   assert.doesNotMatch(pageText, /<th>Proof<\/th>/);
   assert.doesNotMatch(pageText, /Read-only live Supabase check/);
   assert.match(routeText, /active_athlete_meeting_truth/);
+  assert.match(routeText, /athlete_lifecycle_timeline/);
+  assert.doesNotMatch(routeText, /lifecycle_events\?select/);
   assert.match(routeText, /summaryFor\(sourceSummary, currentMeetings, meetings, generatedAt\)/);
   assert.match(routeText, /sourceSummary\.meetings_set/);
   assert.match(routeText, /countsAsPostMeetingOutcome/);
@@ -534,7 +538,7 @@ test('meetings readback page is live, read-only, and server-backed', () => {
   assert.match(routeText, /currentMonthRange\(generatedAt\)/);
   assert.match(appText, /function sourceText\(row\)/);
   assert.match(appText, /Current Meeting Truth/);
-  assert.match(appText, /Lifecycle Events/);
+  assert.match(appText, /Athlete Lifecycle Timeline/);
   assert.doesNotMatch(appText, /Created \$\{row\.createdAtLabel\}/);
   assert.match(stylesText, /\.status-chip\.won/);
   assert.match(stylesText, /\.status-chip\.bad/);
