@@ -3702,10 +3702,15 @@ export function PostCallUpdateForm({
             headScout: rescheduleHeadScout,
             currentTaskId: rescheduleMeetingResult.created_task?.task_id || null,
             currentTaskTitle: rescheduleMeetingResult.created_task?.title || null,
+            previousAppointmentId: initialBookedMeeting?.event_id || null,
             appointmentId: rescheduleMeetingPayload.open_event_id,
             sourceEventId: rescheduleMeetingPayload.open_event_id,
             startsAt: rescheduleStartsAt,
             dueAt: rescheduleStartsAt,
+            payload: {
+              meeting_timezone: rescheduleMeetingPayload.meeting_timezone,
+              previous_appointment_id: initialBookedMeeting?.event_id || null,
+            },
           });
         } catch (error) {
           logFailure(

@@ -14,6 +14,7 @@ import { taskStatusForStage } from '../domain/supabase-lifecycle-translator';
 import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner-resolution';
 import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
 import { buildCallActivityFact } from '../domain/call-tracker-facts';
+import { resolveOwnerByName } from '../domain/owners';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
@@ -45,6 +46,18 @@ type AppointmentSnapshot = {
   startsAt?: string | null;
   status?: string | null;
   sourceEventId?: string | null;
+  meetingTimezone?: string | null;
+  meetingTimezoneLabel?: string | null;
+  calendarTimezone?: string | null;
+  previousAppointmentId?: string | null;
+  originalAppointmentId?: string | null;
+  rescheduleSequence?: number | null;
+  operatorOwner?: string | null;
+  operatorOwnerKey?: string | null;
+  appointmentRole?: string | null;
+  statusReason?: string | null;
+  sourceSystem?: string | null;
+  sourcePayload?: Record<string, unknown> | null;
 };
 
 type PipelineStateSnapshot = {
@@ -168,6 +181,7 @@ type RescheduledWriteArgs = PipelineActor & {
   sourceEventId?: string | null;
   startsAt?: string | null;
   dueAt?: string | null;
+  payload?: Record<string, unknown>;
 };
 
 type AthletesRow = {
@@ -200,6 +214,19 @@ type AppointmentRow = {
   starts_at: string | null;
   status: string | null;
   source_event_id: string | null;
+  meeting_timezone: string | null;
+  meeting_timezone_label: string | null;
+  calendar_timezone: string | null;
+  previous_appointment_id: string | null;
+  original_appointment_id: string | null;
+  reschedule_sequence: number;
+  operator_owner: string | null;
+  operator_owner_key: string | null;
+  head_scout_key: string | null;
+  appointment_role: string | null;
+  status_reason: string | null;
+  source_system: string | null;
+  source_payload: Record<string, unknown>;
   updated_at: string;
 };
 
@@ -428,6 +455,15 @@ function payloadOwnerProof(payload?: Record<string, unknown> | null): string | n
   );
 }
 
+function payloadString(payload: Record<string, unknown>, key: string): string | null {
+  return normalizeValue(payload[key] as string | null | undefined);
+}
+
+function payloadNumber(payload: Record<string, unknown>, key: string): number | null {
+  const value = Number(payload[key]);
+  return Number.isFinite(value) ? value : null;
+}
+
 function lifecycleMutationEventType(sourcePost: LifecycleMutationSourcePost): string {
   if (sourcePost === '/sales/stage') return 'sales_stage_changed';
   if (sourcePost === '/tasks/complete') return 'task_completed';
@@ -599,6 +635,20 @@ export function buildAppointmentId(args: {
   return `appointment:${buildAthleteKey(args.athleteId, args.athleteMainId)}`;
 }
 
+export function buildReminderDedupeKey(args: {
+  appointmentId: string;
+  kind: string;
+  suffix: string;
+  sendAt?: string | null;
+}): string {
+  return [
+    args.appointmentId.trim(),
+    args.kind.trim(),
+    args.suffix.trim(),
+    normalizeIsoValue(args.sendAt) || 'none',
+  ].join(':');
+}
+
 function buildAthleteRow(actor: PipelineActor, updatedAt: string): AthletesRow {
   return {
     athlete_key: buildAthleteKey(actor.athleteId, actor.athleteMainId),
@@ -628,26 +678,42 @@ function buildPipelineStateRow(
   };
 }
 
-function buildAppointmentRow(
+export function buildAppointmentRow(
   actor: PipelineActor,
   appointment: AppointmentSnapshot,
   updatedAt: string,
 ): AppointmentRow {
+  const appointmentId = buildAppointmentId({
+    athleteId: actor.athleteId,
+    athleteMainId: actor.athleteMainId,
+    appointmentId: appointment.appointmentId,
+    sourceEventId: appointment.sourceEventId,
+    startsAt: appointment.startsAt,
+  });
+  const headScout = normalizeValue(appointment.headScout);
+  const resolvedHeadScout = resolveOwnerByName(headScout);
   return {
-    id: buildAppointmentId({
-      athleteId: actor.athleteId,
-      athleteMainId: actor.athleteMainId,
-      appointmentId: appointment.appointmentId,
-      sourceEventId: appointment.sourceEventId,
-      startsAt: appointment.startsAt,
-    }),
+    id: appointmentId,
     athlete_key: buildAthleteKey(actor.athleteId, actor.athleteMainId),
     athlete_id: actor.athleteId.trim(),
     athlete_main_id: actor.athleteMainId.trim(),
-    head_scout: normalizeValue(appointment.headScout),
+    head_scout: headScout,
     starts_at: normalizeIsoValue(appointment.startsAt),
     status: normalizeValue(appointment.status),
     source_event_id: normalizeValue(appointment.sourceEventId),
+    meeting_timezone: normalizeValue(appointment.meetingTimezone),
+    meeting_timezone_label: normalizeValue(appointment.meetingTimezoneLabel),
+    calendar_timezone: normalizeValue(appointment.calendarTimezone),
+    previous_appointment_id: normalizeValue(appointment.previousAppointmentId),
+    original_appointment_id: normalizeValue(appointment.originalAppointmentId),
+    reschedule_sequence: Math.max(0, Math.trunc(Number(appointment.rescheduleSequence || 0))),
+    operator_owner: normalizeValue(appointment.operatorOwner),
+    operator_owner_key: normalizeValue(appointment.operatorOwnerKey),
+    head_scout_key: resolvedHeadScout?.ownerKey || null,
+    appointment_role: normalizeValue(appointment.appointmentRole),
+    status_reason: normalizeValue(appointment.statusReason),
+    source_system: normalizeValue(appointment.sourceSystem),
+    source_payload: appointment.sourcePayload || {},
     updated_at: updatedAt,
   };
 }
@@ -1077,6 +1143,21 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
       headScout: args.headScout,
       startsAt: args.startsAt,
       status: 'scheduled',
+      meetingTimezone: args.meetingTimezone,
+      meetingTimezoneLabel: payloadString(mutationPayload, 'meeting_timezone_label'),
+      calendarTimezone: payloadString(mutationPayload, 'calendar_timezone'),
+      originalAppointmentId: appointmentId,
+      rescheduleSequence: 0,
+      operatorOwner: payloadString(mutationPayload, 'operator_owner'),
+      operatorOwnerKey: payloadString(mutationPayload, 'operator_owner_key'),
+      appointmentRole: 'initial_set',
+      statusReason: 'meeting_set_written',
+      sourceSystem: 'scout_prep_action',
+      sourcePayload: {
+        source_event_id: normalizeValue(args.sourceEventId || args.appointmentId),
+        meeting_name: normalizeValue(args.meetingName),
+        owner_proof: payloadOwnerProof(mutationPayload),
+      },
     },
     state: {
       crmStage: args.crmStage,
@@ -1107,6 +1188,8 @@ export async function recordConfirmationQueued(
       startsAt: args.startsAt,
       status: 'confirmation_queued',
       sourceEventId: args.appointmentId,
+      appointmentRole: 'confirmation',
+      statusReason: 'confirmation_queued',
     },
     state: {
       crmStage: args.crmStage,
@@ -1135,6 +1218,8 @@ export async function recordConfirmationSent(
       headScout: args.headScout,
       status: 'confirmation_sent',
       sourceEventId: args.appointmentId,
+      appointmentRole: 'confirmation',
+      statusReason: 'confirmation_sent',
     },
     state: {
       crmStage: args.crmStage,
@@ -1175,11 +1260,13 @@ export async function recordVoicemailFollowUpSent(
 
 export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ enabled: boolean }> {
   const appointmentId = buildAppointmentId(args);
+  const previousAppointmentId = normalizeValue(args.previousAppointmentId);
+  const payload = args.payload || {};
   return writeLifecycle({
     athlete: args,
     eventType: 'rescheduled',
     payload: {
-      previous_appointment_id: normalizeValue(args.previousAppointmentId),
+      previous_appointment_id: previousAppointmentId,
       due_at: normalizeIsoValue(args.dueAt),
       starts_at: normalizeIsoValue(args.startsAt),
     },
@@ -1189,6 +1276,22 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
       startsAt: args.startsAt,
       status: 'rescheduled',
       sourceEventId: args.sourceEventId || args.appointmentId,
+      meetingTimezone: payloadString(payload, 'meeting_timezone'),
+      meetingTimezoneLabel: payloadString(payload, 'meeting_timezone_label'),
+      calendarTimezone: payloadString(payload, 'calendar_timezone'),
+      previousAppointmentId,
+      originalAppointmentId:
+        payloadString(payload, 'original_appointment_id') || previousAppointmentId || appointmentId,
+      rescheduleSequence: payloadNumber(payload, 'reschedule_sequence') || (previousAppointmentId ? 1 : 0),
+      operatorOwner: payloadString(payload, 'operator_owner'),
+      operatorOwnerKey: payloadString(payload, 'operator_owner_key'),
+      appointmentRole: 'reschedule',
+      statusReason: 'rescheduled_written',
+      sourceSystem: 'scout_prep_action',
+      sourcePayload: {
+        source_event_id: normalizeValue(args.sourceEventId || args.appointmentId),
+        previous_appointment_id: previousAppointmentId,
+      },
     },
     state: {
       crmStage: args.crmStage,

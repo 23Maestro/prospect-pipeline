@@ -11,6 +11,7 @@ import {
   type ActivityKind,
 } from './scout-task-classifier';
 import { classifyMeetingSetStage } from './sales-stage-contract';
+import { resolveOwnerByName } from './owners';
 
 function normalizeValue(value?: string | number | null): string | null {
   const trimmed = String(value || '').trim();
@@ -80,6 +81,19 @@ export type AppointmentSnapshotRow = {
   starts_at: string | null;
   status: string | null;
   source_event_id: string | null;
+  meeting_timezone?: string | null;
+  meeting_timezone_label?: string | null;
+  calendar_timezone?: string | null;
+  previous_appointment_id?: string | null;
+  original_appointment_id?: string | null;
+  reschedule_sequence?: number;
+  operator_owner?: string | null;
+  operator_owner_key?: string | null;
+  head_scout_key?: string | null;
+  appointment_role?: string | null;
+  status_reason?: string | null;
+  source_system?: string | null;
+  source_payload?: Record<string, unknown>;
   updated_at: string;
 };
 
@@ -212,18 +226,45 @@ export function buildAppointmentSnapshot(args: {
   headScout?: string | null;
   startsAt?: string | null;
   status?: string | null;
+  meetingTimezone?: string | null;
+  meetingTimezoneLabel?: string | null;
+  calendarTimezone?: string | null;
+  previousAppointmentId?: string | null;
+  originalAppointmentId?: string | null;
+  rescheduleSequence?: number | null;
+  operatorOwner?: string | null;
+  operatorOwnerKey?: string | null;
+  appointmentRole?: string | null;
+  statusReason?: string | null;
+  sourceSystem?: string | null;
+  sourcePayload?: Record<string, unknown> | null;
   updatedAt?: string;
 }): AppointmentSnapshotRow {
   const identity = validateAthleteIdentity(args);
+  const headScout = normalizeValue(args.headScout);
+  const headScoutOwner = resolveOwnerByName(headScout);
   return {
     id: buildAppointmentId(args),
     athlete_key: identity.athleteKey,
     athlete_id: identity.athleteId,
     athlete_main_id: identity.athleteMainId,
-    head_scout: normalizeValue(args.headScout),
+    head_scout: headScout,
     starts_at: normalizeIsoValue(args.startsAt),
     status: normalizeValue(args.status),
     source_event_id: normalizeValue(args.sourceEventId),
+    meeting_timezone: normalizeValue(args.meetingTimezone),
+    meeting_timezone_label: normalizeValue(args.meetingTimezoneLabel),
+    calendar_timezone: normalizeValue(args.calendarTimezone),
+    previous_appointment_id: normalizeValue(args.previousAppointmentId),
+    original_appointment_id: normalizeValue(args.originalAppointmentId),
+    reschedule_sequence: Math.max(0, Math.trunc(Number(args.rescheduleSequence || 0))),
+    operator_owner: normalizeValue(args.operatorOwner),
+    operator_owner_key: normalizeValue(args.operatorOwnerKey),
+    head_scout_key: headScoutOwner?.ownerKey || null,
+    appointment_role: normalizeValue(args.appointmentRole),
+    status_reason: normalizeValue(args.statusReason),
+    source_system: normalizeValue(args.sourceSystem),
+    source_payload: args.sourcePayload || {},
     updated_at: args.updatedAt || new Date().toISOString(),
   };
 }

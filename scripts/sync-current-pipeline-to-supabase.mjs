@@ -379,6 +379,23 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
         starts_at: String(appointmentMeeting.start || '').trim() || null,
         status: currentAppointmentStatus,
         source_event_id: appointmentId,
+        meeting_timezone: null,
+        meeting_timezone_label: null,
+        calendar_timezone: null,
+        previous_appointment_id: null,
+        original_appointment_id: appointmentId,
+        reschedule_sequence: 0,
+        operator_owner: ownership.context.activeOperator.personName,
+        operator_owner_key: ownership.context.activeOperator.operatorKey,
+        head_scout_key: ownership.context.headScout?.ownerKey || null,
+        appointment_role: selectedStageIsMeetingSet ? 'initial_set' : 'unknown',
+        status_reason: 'sync_current_pipeline',
+        source_system: 'sync_current_pipeline',
+        source_payload: {
+          sync_run_id: RUN_ID,
+          owner_proof: ownership.context.ownerProof,
+          current_appointment_id: appointmentId,
+        },
         updated_at: new Date().toISOString(),
       });
     }

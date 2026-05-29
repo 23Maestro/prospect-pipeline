@@ -22,6 +22,10 @@ import {
   taskStatusForStage,
 } from '../src/domain/supabase-lifecycle-translator.ts';
 import { classifyMeetingSetStage } from '../src/domain/sales-stage-contract.ts';
+import {
+  resolveIanaTimeZoneFromLegacyLabel,
+  resolveLegacyTimezoneLabelFromIana,
+} from '../src/domain/outreach-time-wording.ts';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
@@ -61,6 +65,20 @@ function normalizeIsoValue(value) {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function normalizeMeetingTimezone(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  if (['SELECT RECRUIT TIME ZONE', 'SELECT TIME ZONE', 'SELECT TIMEZONE'].includes(trimmed.toUpperCase())) {
+    return null;
+  }
+  return resolveIanaTimeZoneFromLegacyLabel(trimmed);
+}
+
+function resolveTimezoneLabel(timezone) {
+  const normalized = normalizeMeetingTimezone(timezone);
+  return normalized ? resolveLegacyTimezoneLabelFromIana(normalized) : null;
 }
 
 function buildWeekWindow(weekOffset = Number.parseInt(process.env.WEEK_OFFSET || '0', 10) || 0) {
@@ -171,6 +189,20 @@ async function verifyCandidateBookedMeeting(candidate) {
   ) || null;
 }
 
+function getBookedMeetingEventDate(meeting) {
+  return String(meeting?.start || '').split('T')[0] || null;
+}
+
+async function fetchBookedMeetingTimezone(event) {
+  const eventId = String(event?.event_id || '').trim();
+  const eventDate = getBookedMeetingEventDate(event);
+  if (!eventId || !eventDate) return null;
+  const params = new URLSearchParams({ event_id: eventId, event_date: eventDate });
+  const details = await apiFetch(`/calendar/booked-meeting/details?${params.toString()}`);
+  return normalizeMeetingTimezone(details?.form_data?.meetingtimezone) ||
+    normalizeMeetingTimezone(details?.form_data?.recruittimezone);
+}
+
 const weekWindow = buildWeekWindow();
 const [scoutTaskPayload, bookedMeetingsPayload] = await Promise.all([
   apiFetch('/scout/tasks?range=thisWeek').catch(() => ({ tasks: [] })),
@@ -235,6 +267,11 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
     const appointmentId = String(event.event_id || '').trim();
     const startsAt = normalizeIsoValue(event.start);
     const appointmentStatus = appointmentStatusForTitleOrStage(crmStage, event.title) || 'scheduled';
+    const meetingTimezone = await fetchBookedMeetingTimezone(event);
+    if (!meetingTimezone && ['scheduled', 'rescheduled'].includes(appointmentStatus)) {
+      throw new Error('Booked meeting is missing required meeting timezone');
+    }
+    const meetingTimezoneLabel = resolveTimezoneLabel(meetingTimezone);
     const currentTaskId = String(latestIncompleteConfirmationTask?.task_id || '').trim() || null;
     const currentTaskTitle = buildCurrentTaskTitle(latestIncompleteConfirmationTask);
     const dueAt =
@@ -246,17 +283,6 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       athleteId: candidate.athleteId,
       athleteMainId: candidate.athleteMainId,
       athleteName: candidate.athleteName,
-      updatedAt,
-    }));
-
-    appointmentsById.set(appointmentId, buildAppointmentSnapshot({
-      athleteId: candidate.athleteId,
-      athleteMainId: candidate.athleteMainId,
-      appointmentId,
-      sourceEventId: appointmentId,
-      headScout: candidate.bookedMeeting.assignedOwner,
-      startsAt,
-      status: appointmentStatus,
       updatedAt,
     }));
 
@@ -318,6 +344,32 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
         basePayload,
       }),
     };
+
+    appointmentsById.set(appointmentId, buildAppointmentSnapshot({
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      appointmentId,
+      sourceEventId: appointmentId,
+      headScout: candidate.bookedMeeting.assignedOwner,
+      startsAt,
+      status: appointmentStatus,
+      meetingTimezone,
+      meetingTimezoneLabel,
+      originalAppointmentId: appointmentId,
+      rescheduleSequence: 0,
+      operatorOwner: payload.operator_owner,
+      operatorOwnerKey: payload.operator_owner_key,
+      appointmentRole: classifyMeetingSetStage(crmStage) ? 'initial_set' : 'unknown',
+      statusReason: 'sync_booked_meetings',
+      sourceSystem: 'sync_booked_meetings',
+      sourcePayload: {
+        sync_run_id: RUN_ID,
+        owner_proof: payload.owner_proof,
+        booked_event_id: appointmentId,
+        meeting_timezone_source: meetingTimezone ? 'booked_meeting_details' : null,
+      },
+      updatedAt,
+    }));
 
     if (classifyMeetingSetStage(crmStage)) {
       // Clock contract: lifecycle_events.created_at is when this athlete became Meeting Set.

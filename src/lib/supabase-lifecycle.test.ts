@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import {
   buildLifecycleMutationEvent,
+  buildAppointmentRow,
   buildAppointmentId,
   buildAthleteKey,
   buildReminderDedupeKey,
@@ -34,6 +35,80 @@ test('buildAppointmentId falls back to athlete key + starts_at', () => {
     }),
     'appointment:123:456:2026-04-21T14:00:00.000Z',
   );
+});
+
+test('appointment row carries durable appointment truth fields', () => {
+  const row = buildAppointmentRow(
+    {
+      athleteId: '1490881',
+      athleteMainId: '952706',
+      athleteName: 'Richard Hayes',
+    },
+    {
+      appointmentId: '611014',
+      headScout: 'Ryan Lietz',
+      startsAt: '2026-05-15T18:00:00-05:00',
+      status: 'scheduled',
+      sourceEventId: '611014',
+      meetingTimezone: 'America/Chicago',
+      meetingTimezoneLabel: 'CST',
+      calendarTimezone: 'America/New_York',
+      originalAppointmentId: '611014',
+      rescheduleSequence: 0,
+      operatorOwner: 'Jerami Singleton',
+      operatorOwnerKey: 'jerami_singleton',
+      appointmentRole: 'initial_set',
+      statusReason: 'meeting_set_written',
+      sourceSystem: 'scout_prep_action',
+      sourcePayload: {
+        owner_proof: 'raycast_operator_context',
+      },
+    },
+    '2026-05-15T17:30:00.000Z',
+  );
+
+  assert.equal(row.id, '611014');
+  assert.equal(row.meeting_timezone, 'America/Chicago');
+  assert.equal(row.meeting_timezone_label, 'CST');
+  assert.equal(row.calendar_timezone, 'America/New_York');
+  assert.equal(row.original_appointment_id, '611014');
+  assert.equal(row.previous_appointment_id, null);
+  assert.equal(row.reschedule_sequence, 0);
+  assert.equal(row.operator_owner, 'Jerami Singleton');
+  assert.equal(row.operator_owner_key, 'jerami_singleton');
+  assert.equal(row.head_scout, 'Ryan Lietz');
+  assert.equal(row.head_scout_key, 'ryan_lietz');
+  assert.equal(row.appointment_role, 'initial_set');
+  assert.equal(row.source_system, 'scout_prep_action');
+});
+
+test('rescheduled appointment row carries previous and original appointment ids', () => {
+  const row = buildAppointmentRow(
+    {
+      athleteId: '1490881',
+      athleteMainId: '952706',
+      athleteName: 'Richard Hayes',
+    },
+    {
+      appointmentId: '622222',
+      headScout: 'Luther Winfield',
+      startsAt: '2026-05-20T18:00:00-05:00',
+      status: 'rescheduled',
+      sourceEventId: '622222',
+      previousAppointmentId: '611014',
+      originalAppointmentId: '611014',
+      rescheduleSequence: 1,
+      appointmentRole: 'reschedule',
+      sourceSystem: 'scout_prep_action',
+    },
+    '2026-05-15T17:30:00.000Z',
+  );
+
+  assert.equal(row.previous_appointment_id, '611014');
+  assert.equal(row.original_appointment_id, '611014');
+  assert.equal(row.reschedule_sequence, 1);
+  assert.equal(row.appointment_role, 'reschedule');
+  assert.equal(row.head_scout_key, 'luther_winfield');
 });
 
 test('buildReminderDedupeKey normalizes send_at', () => {
