@@ -3710,6 +3710,9 @@ export function PostCallUpdateForm({
             payload: {
               meeting_timezone: rescheduleMeetingPayload.meeting_timezone,
               previous_appointment_id: initialBookedMeeting?.event_id || null,
+              operator_owner: actionPlan.ownerContext.activeOperator.personName,
+              operator_owner_key: actionPlan.ownerContext.activeOperator.operatorKey,
+              owner_proof: actionPlan.ownerContext.ownerProof || 'raycast_operator_context',
             },
           });
         } catch (error) {

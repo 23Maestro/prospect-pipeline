@@ -15,6 +15,10 @@ import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner
 import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
 import { buildCallActivityFact } from '../domain/call-tracker-facts';
 import { resolveOwnerByName } from '../domain/owners';
+import {
+  assertAppointmentTruthWrite,
+  mergeAppointmentTruthRow,
+} from '../domain/appointment-truth';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
@@ -1003,8 +1007,15 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
     });
 
     if (appointmentRow) {
+      const [existingAppointment] = await queryTable<AppointmentRow>(
+        config,
+        'appointments',
+        `select=*&id=eq.${encodeURIComponent(appointmentRow.id)}&limit=1`,
+      );
+      const rowToWrite = mergeAppointmentTruthRow(existingAppointment, appointmentRow);
+      assertAppointmentTruthWrite(rowToWrite);
       await request(config, 'appointments', {
-        rows: [appointmentRow],
+        rows: [rowToWrite],
         onConflict: 'id',
       });
     }

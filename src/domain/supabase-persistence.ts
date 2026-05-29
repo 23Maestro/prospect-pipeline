@@ -1,3 +1,9 @@
+import {
+  assertAppointmentTruthWrite,
+  asAppointmentTruthRow,
+  mergeAppointmentTruthRow,
+} from './appointment-truth';
+
 export type SupabasePersistenceConfig = {
   url: string;
   key: string;
@@ -21,6 +27,46 @@ type RequestArgs = {
 
 function normalizeSchema(schema?: string | null): string {
   return String(schema || '').trim() || 'public';
+}
+
+function asRecord(row: unknown): Record<string, unknown> | null {
+  return row && typeof row === 'object' && !Array.isArray(row)
+    ? (row as Record<string, unknown>)
+    : null;
+}
+
+async function preserveAppointmentTruthBeforeUpsert(
+  config: SupabasePersistenceConfig,
+  rows: unknown[],
+): Promise<unknown[]> {
+  const rowRecords = rows.map(asRecord).filter(Boolean) as Record<string, unknown>[];
+  const ids = Array.from(new Set(rowRecords.map((row) => String(row.id || '').trim()).filter(Boolean)));
+  if (!ids.length) return rows;
+
+  const quotedIds = ids.map((id) => `"${id.replace(/"/g, '\\"')}"`).join(',');
+  const existingRows = await readRows<Record<string, unknown>>(
+    config,
+    'appointments',
+    `select=*&id=in.(${quotedIds})`,
+  );
+  const existingById = new Map<string, Record<string, unknown>>();
+  for (const row of existingRows) {
+    const id = String(row.id || '').trim();
+    if (id) existingById.set(id, row);
+  }
+
+  return rows.map((row) => {
+    const record = asRecord(row);
+    if (!record) return row;
+    const id = String(record.id || '').trim();
+    const merged = mergeAppointmentTruthRow(existingById.get(id), {
+      ...record,
+      id,
+    });
+    const appointmentTruth = asAppointmentTruthRow(merged);
+    if (appointmentTruth) assertAppointmentTruthWrite(appointmentTruth);
+    return merged;
+  });
 }
 
 export async function supabaseRequest<T = unknown>(
@@ -85,8 +131,9 @@ export function upsertAthletes(config: SupabasePersistenceConfig, rows: unknown[
   return writeRows(config, 'athletes', rows, 'athlete_key');
 }
 
-export function upsertAppointments(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'appointments', rows, 'id');
+export async function upsertAppointments(config: SupabasePersistenceConfig, rows: unknown[]) {
+  const mergedRows = await preserveAppointmentTruthBeforeUpsert(config, rows);
+  return writeRows(config, 'appointments', mergedRows, 'id');
 }
 
 export function upsertAthletePipelineState(config: SupabasePersistenceConfig, rows: unknown[]) {

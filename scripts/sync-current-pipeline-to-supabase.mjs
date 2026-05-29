@@ -11,7 +11,6 @@ import { buildOwnerProofPayload } from '../src/domain/owner-proof-payload.ts';
 import {
   insertMeetingSetEventsOnce,
   readRows,
-  upsertAppointments,
   upsertAthletePipelineState,
   upsertAthletes,
   upsertCallActivityEvents,
@@ -231,7 +230,6 @@ for (const row of existingMeetingSetRows) {
 }
 
 const athletesByKey = new Map();
-const appointmentsById = new Map();
 const callActivityRows = [];
 const meetingSetRows = [];
 const stateCandidatesByAthlete = new Map();
@@ -239,6 +237,7 @@ const failures = [];
 const staleSkipped = [];
 const ownerSkipped = [];
 const clockSkipped = [];
+const weakAppointmentSkipped = [];
 
 for (const [index, pipelineTask] of pipelineTasks.entries()) {
   const athleteId = String(
@@ -370,33 +369,12 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
     });
 
     if (appointmentId) {
-      appointmentsById.set(appointmentId, {
-        id: appointmentId,
+      weakAppointmentSkipped.push({
         athlete_key: athleteKey,
-        athlete_id: athleteId,
-        athlete_main_id: athleteMainId,
-        head_scout: headScout,
-        starts_at: String(appointmentMeeting.start || '').trim() || null,
+        athlete_name: athleteName,
+        appointment_id: appointmentId,
         status: currentAppointmentStatus,
-        source_event_id: appointmentId,
-        meeting_timezone: null,
-        meeting_timezone_label: null,
-        calendar_timezone: null,
-        previous_appointment_id: null,
-        original_appointment_id: appointmentId,
-        reschedule_sequence: 0,
-        operator_owner: ownership.context.activeOperator.personName,
-        operator_owner_key: ownership.context.activeOperator.operatorKey,
-        head_scout_key: ownership.context.headScout?.ownerKey || null,
-        appointment_role: selectedStageIsMeetingSet ? 'initial_set' : 'unknown',
-        status_reason: 'sync_current_pipeline',
-        source_system: 'sync_current_pipeline',
-        source_payload: {
-          sync_run_id: RUN_ID,
-          owner_proof: ownership.context.ownerProof,
-          current_appointment_id: appointmentId,
-        },
-        updated_at: new Date().toISOString(),
+        reason: 'current_pipeline_sync_does_not_have_meeting_timezone',
       });
     }
 
@@ -583,7 +561,6 @@ const athletePipelineStateRows = Array.from(stateCandidatesByAthlete.entries()).
 );
 
 await upsertAthletes(SUPABASE_CONFIG, [...athletesByKey.values()]);
-await upsertAppointments(SUPABASE_CONFIG, [...appointmentsById.values()]);
 await upsertAthletePipelineState(SUPABASE_CONFIG, athletePipelineStateRows);
 await upsertCallActivityEvents(SUPABASE_CONFIG, callActivityRows);
 await insertMeetingSetEventsOnce(SUPABASE_CONFIG, meetingSetRows);
@@ -594,10 +571,11 @@ console.log(
       runId: RUN_ID,
       pipelineTaskCount: pipelineTasks.length,
       uniqueAthletes: athletesByKey.size,
-      appointmentsUpserted: appointmentsById.size,
+      appointmentsUpserted: 0,
           callActivityEventsUpserted: callActivityRows.length,
           meetingSetEventsInsertedOnce: meetingSetRows.length,
           athletePipelineStateUpserted: athletePipelineStateRows.length,
+          weakAppointmentSkipped,
           staleSkipped,
           ownerSkipped,
           clockSkipped,

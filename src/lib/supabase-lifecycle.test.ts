@@ -9,6 +9,7 @@ import {
   buildReminderDedupeKey,
   resolveLifecycleRetentionDecision,
 } from './supabase-lifecycle';
+import { mergeAppointmentTruthRow } from '../domain/appointment-truth';
 
 test('buildAthleteKey keeps athlete and main id together', () => {
   assert.equal(buildAthleteKey('123', '456'), '123:456');
@@ -109,6 +110,65 @@ test('rescheduled appointment row carries previous and original appointment ids'
   assert.equal(row.reschedule_sequence, 1);
   assert.equal(row.appointment_role, 'reschedule');
   assert.equal(row.head_scout_key, 'luther_winfield');
+});
+
+test('appointment truth merge preserves durable fields when support writes omit them', () => {
+  const existing = buildAppointmentRow(
+    {
+      athleteId: '1490881',
+      athleteMainId: '952706',
+      athleteName: 'Richard Hayes',
+    },
+    {
+      appointmentId: '611014',
+      headScout: 'Ryan Lietz',
+      startsAt: '2026-05-15T18:00:00-05:00',
+      status: 'scheduled',
+      sourceEventId: '611014',
+      meetingTimezone: 'America/Chicago',
+      meetingTimezoneLabel: 'CST',
+      originalAppointmentId: '611014',
+      operatorOwner: 'Jerami Singleton',
+      operatorOwnerKey: 'jerami_singleton',
+      appointmentRole: 'initial_set',
+      sourceSystem: 'scout_prep_action',
+      sourcePayload: { owner_proof: 'raycast_operator_context' },
+    },
+    '2026-05-15T17:30:00.000Z',
+  );
+  const confirmationWrite = buildAppointmentRow(
+    {
+      athleteId: '1490881',
+      athleteMainId: '952706',
+      athleteName: 'Richard Hayes',
+    },
+    {
+      appointmentId: '611014',
+      headScout: 'Ryan Lietz',
+      status: 'confirmation_sent',
+      sourceEventId: '611014',
+      appointmentRole: 'confirmation',
+      statusReason: 'confirmation_sent',
+      sourcePayload: { message_variant: 'confirmation_1' },
+    },
+    '2026-05-15T18:00:00.000Z',
+  );
+
+  const merged = mergeAppointmentTruthRow(existing, confirmationWrite);
+
+  assert.equal(merged.status, 'confirmation_sent');
+  assert.equal(merged.status_reason, 'confirmation_sent');
+  assert.equal(merged.meeting_timezone, 'America/Chicago');
+  assert.equal(merged.meeting_timezone_label, 'CST');
+  assert.equal(merged.starts_at, '2026-05-15T23:00:00.000Z');
+  assert.equal(merged.original_appointment_id, '611014');
+  assert.equal(merged.operator_owner, 'Jerami Singleton');
+  assert.equal(merged.operator_owner_key, 'jerami_singleton');
+  assert.equal(merged.appointment_role, 'confirmation');
+  assert.deepEqual(merged.source_payload, {
+    owner_proof: 'raycast_operator_context',
+    message_variant: 'confirmation_1',
+  });
 });
 
 test('buildReminderDedupeKey normalizes send_at', () => {
