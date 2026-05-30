@@ -39,11 +39,27 @@ type PipelineStateRow = {
   athlete_key: string | null;
   athlete_id: string | null;
   athlete_main_id: string | null;
+  athlete_name?: string | null;
   crm_stage: string | null;
   task_status: string | null;
   head_scout: string | null;
   current_appointment_id: string | null;
   updated_at: string | null;
+};
+
+type LifecycleCurrentRow = {
+  athlete_key: string | null;
+  athlete_id: string | null;
+  athlete_main_id: string | null;
+  athlete_name: string | null;
+  raw_crm_stage: string | null;
+  raw_task_status: string | null;
+  normalized_stage: string | null;
+  is_terminal: boolean | null;
+  current_resolved_appointment_id: string | null;
+  current_starts_at: string | null;
+  current_head_scout: string | null;
+  event_at: string | null;
 };
 
 type AthleteRow = {
@@ -143,6 +159,22 @@ async function readCurrentPipelineRows(
   );
 }
 
+async function readLifecycleCurrentRows(
+  config: SupabasePersistenceConfig,
+): Promise<LifecycleCurrentRow[]> {
+  return readRows<LifecycleCurrentRow>(
+    config,
+    'athlete_lifecycle_current',
+    [
+      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,raw_crm_stage,raw_task_status,normalized_stage,is_terminal,current_resolved_appointment_id,current_starts_at,current_head_scout,event_at',
+      'is_terminal=eq.false',
+      'normalized_stage=in.(meeting_follow_up,reschedule_pending)',
+      'order=event_at.desc',
+      'limit=1000',
+    ].join('&'),
+  );
+}
+
 async function readAthleteRows(config: SupabasePersistenceConfig): Promise<AthleteRow[]> {
   return readRows<AthleteRow>(
     config,
@@ -169,6 +201,47 @@ function buildPendingClientSourceEventId(row: PipelineStateRow): string {
   const athleteKey = String(row.athlete_key || `${row.athlete_id}:${row.athlete_main_id}`).trim();
   const appointmentId = String(row.current_appointment_id || 'no-current-appointment').trim();
   return `pending-client:${athleteKey}:${appointmentId}`;
+}
+
+function lifecycleCurrentRowToPipelineState(row: LifecycleCurrentRow): PipelineStateRow | null {
+  const athleteKey = String(row.athlete_key || '').trim();
+  const athleteId = String(row.athlete_id || '').trim();
+  const athleteMainId = String(row.athlete_main_id || '').trim();
+  const appointmentId = String(row.current_resolved_appointment_id || '').trim();
+  if (!athleteKey || !athleteId || !athleteMainId || !appointmentId) return null;
+
+  return {
+    athlete_key: athleteKey,
+    athlete_id: athleteId,
+    athlete_main_id: athleteMainId,
+    athlete_name: String(row.athlete_name || '').trim() || null,
+    crm_stage: row.raw_crm_stage,
+    task_status: row.raw_task_status || row.normalized_stage,
+    head_scout: row.current_head_scout,
+    current_appointment_id: appointmentId,
+    updated_at: row.event_at,
+  };
+}
+
+function mergeLifecycleAndPipelineRows(
+  lifecycleRows: LifecycleCurrentRow[],
+  pipelineRows: PipelineStateRow[],
+): PipelineStateRow[] {
+  const rows: PipelineStateRow[] = [];
+  const seen = new Set<string>();
+  const add = (row: PipelineStateRow | null) => {
+    if (!row) return;
+    const athleteKey = String(row.athlete_key || '').trim();
+    const appointmentId = String(row.current_appointment_id || '').trim();
+    const key = `${athleteKey}:${appointmentId}`;
+    if (!athleteKey || !appointmentId || seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  };
+
+  lifecycleRows.forEach((row) => add(lifecycleCurrentRowToPipelineState(row)));
+  pipelineRows.forEach(add);
+  return rows;
 }
 
 async function buildConfirmedRowsFromPipelineState(
@@ -274,7 +347,10 @@ async function buildConfirmedRowsFromPipelineState(
         aiVerdict,
         athleteId,
         athleteMainId,
-        athleteName: athleteNameByKey.get(String(state.athlete_key || '').trim()) || null,
+        athleteName:
+          String(state.athlete_name || '').trim() ||
+          athleteNameByKey.get(String(state.athlete_key || '').trim()) ||
+          null,
       }),
     );
   }
@@ -294,7 +370,8 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
   }
 
   const now = new Date();
-  const [stateRows, athleteRows] = await Promise.all([
+  const [lifecycleRows, pipelineRows, athleteRows] = await Promise.all([
+    readLifecycleCurrentRows(config),
     readCurrentPipelineRows(config),
     readAthleteRows(config),
   ]);
@@ -304,7 +381,12 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       String(row.athlete_name || '').trim(),
     ]),
   );
-  const scan = await buildConfirmedRowsFromPipelineState(stateRows, athleteNameByKey, config, now);
+  const scan = await buildConfirmedRowsFromPipelineState(
+    mergeLifecycleAndPipelineRows(lifecycleRows, pipelineRows),
+    athleteNameByKey,
+    config,
+    now,
+  );
 
   if (scan.rows.length) {
     await upsertPendingClientWatchlistRows(config, scan.rows);

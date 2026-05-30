@@ -218,6 +218,14 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
   );
 });
 
+test('pending client loader uses lifecycle current appointment pointers before pipeline fallback', () => {
+  const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.match(source, /athlete_lifecycle_current/);
+  assert.match(source, /current_resolved_appointment_id/);
+  assert.match(source, /mergeLifecycleAndPipelineRows/);
+  assert.match(source, /readCurrentPipelineRows/);
+});
+
 test('pending client review title accepts only FU prefixes', () => {
   assert.equal(isPendingClientReviewEventTitle('(FU) Avery Jones Football 2027 TN'), true);
   assert.equal(isPendingClientReviewEventTitle('(FU)*2 Avery Jones Football 2027 TN'), true);

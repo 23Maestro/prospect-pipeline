@@ -391,7 +391,7 @@ async function fetchAthleteProfile(row) {
   return apiFetch(`/athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true`).catch(() => ({}));
 }
 
-const [stateRows, athleteRows] = await Promise.all([
+const [pipelineStateRows, lifecycleCurrentRows, athleteRows] = await Promise.all([
   supabaseRequest(
     [
       'athlete_pipeline_state?select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,head_scout,current_task_id,current_task_title,current_appointment_id,updated_at',
@@ -399,14 +399,23 @@ const [stateRows, athleteRows] = await Promise.all([
       'limit=1000',
     ].join('&'),
   ),
+  supabaseRequest(
+    [
+      'athlete_lifecycle_current?select=athlete_key,athlete_id,athlete_main_id,athlete_name,raw_crm_stage,raw_task_status,normalized_stage,is_terminal,current_resolved_appointment_id,current_starts_at,current_head_scout,event_at',
+      'is_terminal=eq.false',
+      'normalized_stage=in.(meeting_follow_up,reschedule_pending)',
+      'order=event_at.desc',
+      'limit=1000',
+    ].join('&'),
+  ),
   supabaseRequest('athletes?select=athlete_key,athlete_name&limit=1000'),
 ]);
 
 const athleteNameByKey = new Map(
-  (Array.isArray(athleteRows) ? athleteRows : []).map((row) => [
-    String(row.athlete_key || '').trim(),
-    String(row.athlete_name || '').trim(),
-  ]),
+  [
+    ...(Array.isArray(athleteRows) ? athleteRows : []),
+    ...(Array.isArray(lifecycleCurrentRows) ? lifecycleCurrentRows : []),
+  ].map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()]),
 );
 const lifecycleEvents = [];
 const postMeetingOutcomeFacts = [];
@@ -420,6 +429,67 @@ const updated = [];
 const unchanged = [];
 const cleaned = [];
 const now = new Date().toISOString();
+
+function lifecycleCurrentRowToPipelineState(row) {
+  const athleteKey = String(row?.athlete_key || '').trim();
+  const athleteId = String(row?.athlete_id || '').trim();
+  const athleteMainId = String(row?.athlete_main_id || '').trim();
+  const appointmentId = String(row?.current_resolved_appointment_id || '').trim();
+  if (!athleteKey || !athleteId || !athleteMainId || !appointmentId) return null;
+
+  return {
+    athlete_key: athleteKey,
+    athlete_id: athleteId,
+    athlete_main_id: athleteMainId,
+    crm_stage: row.raw_crm_stage || null,
+    task_status: row.raw_task_status || row.normalized_stage || null,
+    head_scout: row.current_head_scout || null,
+    current_task_id: null,
+    current_task_title: row.raw_task_status || row.normalized_stage || null,
+    current_appointment_id: appointmentId,
+    updated_at: row.event_at || now,
+  };
+}
+
+function mergeLifecycleAndPipelineRows(lifecycleRows, pipelineRows) {
+  const rows = [];
+  const seen = new Set();
+  const rowIndexByAthleteKey = new Map();
+  const add = (row) => {
+    if (!row) return;
+    const athleteKey = String(row.athlete_key || '').trim();
+    const appointmentId = String(row.current_appointment_id || '').trim();
+    const key = `${athleteKey}:${appointmentId || 'no-current-appointment'}`;
+    if (!athleteKey || seen.has(key)) return;
+    seen.add(key);
+    rowIndexByAthleteKey.set(athleteKey, rows.length);
+    rows.push(row);
+  };
+
+  (Array.isArray(pipelineRows) ? pipelineRows : []).forEach(add);
+  (Array.isArray(lifecycleRows) ? lifecycleRows : []).forEach((row) => {
+    const lifecycleRow = lifecycleCurrentRowToPipelineState(row);
+    if (!lifecycleRow) return;
+    const athleteKey = String(lifecycleRow.athlete_key || '').trim();
+    const existingIndex = rowIndexByAthleteKey.get(athleteKey);
+    const existing = existingIndex === undefined ? null : rows[existingIndex];
+    if (existing && !String(existing.current_appointment_id || '').trim()) {
+      rows[existingIndex] = {
+        ...lifecycleRow,
+        ...existing,
+        crm_stage: existing.crm_stage || lifecycleRow.crm_stage,
+        task_status: existing.task_status || lifecycleRow.task_status,
+        head_scout: existing.head_scout || lifecycleRow.head_scout,
+        current_appointment_id: lifecycleRow.current_appointment_id,
+      };
+      return;
+    }
+    add(lifecycleRow);
+  });
+  return rows;
+}
+
+const stateRows = mergeLifecycleAndPipelineRows(lifecycleCurrentRows, pipelineStateRows);
 
 function queueStateDelete(athleteKey, reason) {
   const key = String(athleteKey || '').trim();

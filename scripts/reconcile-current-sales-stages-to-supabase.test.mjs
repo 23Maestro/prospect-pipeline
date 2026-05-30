@@ -67,6 +67,13 @@ test('current sales-stage reconciler prepares pending-client watchlist rows for 
   assert.match(source, /pendingClientWatchlistUpserted/);
 });
 
+test('current sales-stage reconciler uses lifecycle current appointment pointers before pipeline fallback', () => {
+  assert.match(source, /athlete_lifecycle_current/);
+  assert.match(source, /current_resolved_appointment_id/);
+  assert.match(source, /mergeLifecycleAndPipelineRows/);
+  assert.match(source, /lifecycleCurrentRowToPipelineState/);
+});
+
 test('current sales-stage reconciler deletes canceled active state after twenty one days', () => {
   assert.match(source, /lifecycleTextIncludesAny\(stageText, \['canceled', 'cancelled'\]\)/);
   assert.match(source, /row\.task_status === 'canceled'/);
