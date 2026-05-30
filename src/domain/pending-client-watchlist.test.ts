@@ -242,6 +242,14 @@ test('pending client lifecycle starts from CRM stage and uses event notes as rea
     }).eligible,
     false,
   );
+  assert.equal(
+    classifyPendingClientLifecycle({
+      crmStage: 'Meeting Result - Res. Pending',
+      reviewEventTitle: 'Booked Meeting - Raul Agramonte Football 2027 FL',
+      reviewDescription: '',
+    }).eligible,
+    true,
+  );
 });
 
 test('no-show evidence accepts legacy title prefixes and CRM no-show stages', () => {

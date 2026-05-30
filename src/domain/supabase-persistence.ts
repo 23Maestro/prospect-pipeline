@@ -35,6 +35,10 @@ function asRecord(row: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function quotePostgrestInValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 async function preserveAppointmentTruthBeforeUpsert(
   config: SupabasePersistenceConfig,
   rows: unknown[],
@@ -66,6 +70,47 @@ async function preserveAppointmentTruthBeforeUpsert(
     const appointmentTruth = asAppointmentTruthRow(merged);
     if (appointmentTruth) assertAppointmentTruthWrite(appointmentTruth);
     return merged;
+  });
+}
+
+async function preservePendingClientWatchlistBeforeUpsert(
+  config: SupabasePersistenceConfig,
+  rows: unknown[],
+): Promise<unknown[]> {
+  const rowRecords = rows.map(asRecord).filter(Boolean) as Record<string, unknown>[];
+  const sourceEventIds = Array.from(
+    new Set(rowRecords.map((row) => String(row.source_event_id || '').trim()).filter(Boolean)),
+  );
+  if (!sourceEventIds.length) return rows;
+
+  const existingRows = await readRows<Record<string, unknown>>(
+    config,
+    'pending_client_watchlist',
+    [
+      'select=source_event_id,status,first_seen_at,resolved_at,resolved_by_operator,resolved_by_operator_key',
+      `source_event_id=in.(${sourceEventIds.map(quotePostgrestInValue).join(',')})`,
+    ].join('&'),
+  );
+  const existingBySourceEventId = new Map(
+    existingRows.map((row) => [String(row.source_event_id || '').trim(), row]),
+  );
+
+  return rows.flatMap((row) => {
+    const record = asRecord(row);
+    if (!record) return [row];
+    const sourceEventId = String(record.source_event_id || '').trim();
+    const existing = existingBySourceEventId.get(sourceEventId);
+    const status = String(existing?.status || '').trim();
+    if (status === 'resolved' || status === 'expired') return [];
+    return [
+      {
+        ...record,
+        first_seen_at: existing?.first_seen_at || record.first_seen_at,
+        resolved_at: existing?.resolved_at || null,
+        resolved_by_operator: existing?.resolved_by_operator || null,
+        resolved_by_operator_key: existing?.resolved_by_operator_key || null,
+      },
+    ];
   });
 }
 
@@ -163,11 +208,12 @@ export function upsertSetMeetingConfirmationCacheRows(
   return writeRows(config, 'set_meeting_confirmation_cache', rows, 'dedupe_key');
 }
 
-export function upsertPendingClientWatchlistRows(
+export async function upsertPendingClientWatchlistRows(
   config: SupabasePersistenceConfig,
   rows: unknown[],
 ) {
-  return writeRows(config, 'pending_client_watchlist', rows, 'source_event_id');
+  const preservedRows = await preservePendingClientWatchlistBeforeUpsert(config, rows);
+  return writeRows(config, 'pending_client_watchlist', preservedRows, 'source_event_id');
 }
 
 export function upsertAthleteContactCacheRows(config: SupabasePersistenceConfig, rows: unknown[]) {

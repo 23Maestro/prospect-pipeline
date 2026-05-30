@@ -59,6 +59,14 @@ test('current sales-stage reconciler keeps ended active meetings in soft archive
   assert.doesNotMatch(source, /queueStateDelete\(row\.athlete_key, 'awaiting_post_meeting_update'\)/);
 });
 
+test('current sales-stage reconciler prepares pending-client watchlist rows for post-meeting follow-up states', () => {
+  assert.match(source, /upsertPendingClientWatchlistRows/);
+  assert.match(source, /enqueuePendingClientWatchlistRow/);
+  assert.match(source, /classifyPendingClientLifecycle/);
+  assert.match(source, /selectLatestPendingClientReviewEvent/);
+  assert.match(source, /pendingClientWatchlistUpserted/);
+});
+
 test('current sales-stage reconciler deletes canceled active state after twenty one days', () => {
   assert.match(source, /lifecycleTextIncludesAny\(stageText, \['canceled', 'cancelled'\]\)/);
   assert.match(source, /row\.task_status === 'canceled'/);

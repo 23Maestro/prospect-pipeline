@@ -35,16 +35,6 @@ export type PendingClientWatchlistLoadResult = {
   aiUnavailableCount: number;
 };
 
-type ExistingPendingClientRow = Pick<
-  PendingClientWatchlistRow,
-  | 'source_event_id'
-  | 'status'
-  | 'first_seen_at'
-  | 'resolved_at'
-  | 'resolved_by_operator'
-  | 'resolved_by_operator_key'
->;
-
 type PipelineStateRow = {
   athlete_key: string | null;
   athlete_id: string | null;
@@ -198,20 +188,9 @@ async function buildConfirmedRowsFromPipelineState(
   for (const state of stateRows) {
     const athleteId = String(state.athlete_id || '').trim();
     const athleteMainId = String(state.athlete_main_id || '').trim();
+    const currentAppointmentId = String(state.current_appointment_id || '').trim();
     if (!athleteId || !athleteMainId) continue;
-
-    const salesStage = (await fetchSelectedSalesStage(athleteId)) || state.crm_stage || '';
-    if (shouldResolvePendingClientForLifecycle({ crmStage: salesStage })) {
-      await patchPendingClientWatchlistRow(
-        config,
-        buildPendingClientSourceEventId(state),
-        buildPendingClientResolvedPatch(),
-      ).catch(() => undefined);
-      continue;
-    }
-
-    const initialDecision = classifyPendingClientLifecycle({ crmStage: salesStage });
-    if (!initialDecision.eligible) continue;
+    if (!currentAppointmentId) continue;
 
     const athleteMeetings = await fetchAthleteBookedMeetings({
       athleteId,
@@ -219,7 +198,7 @@ async function buildConfirmedRowsFromPipelineState(
     }).catch(() => ({ events: [] }));
     const currentMeeting =
       (athleteMeetings.events || []).find(
-        (event) => String(event.event_id || '').trim() === String(state.current_appointment_id || '').trim(),
+        (event) => String(event.event_id || '').trim() === currentAppointmentId,
       ) ||
       (athleteMeetings.events || [])
         .filter((event) => isEnded(event.end || event.start, now))
@@ -227,6 +206,7 @@ async function buildConfirmedRowsFromPipelineState(
       null;
     if (!currentMeeting || !isEnded(currentMeeting.end || currentMeeting.start, now)) continue;
 
+    const salesStage = (await fetchSelectedSalesStage(athleteId)) || state.crm_stage || '';
     if (
       shouldResolvePendingClientForLifecycle({
         crmStage: salesStage,
@@ -307,43 +287,6 @@ async function buildConfirmedRowsFromPipelineState(
   };
 }
 
-function quotePostgrestInValue(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
-
-async function buildRowsForUpsert(
-  config: SupabasePersistenceConfig,
-  rows: PendingClientWatchlistRow[],
-): Promise<PendingClientWatchlistRow[]> {
-  if (!rows.length) return [];
-
-  const existingRows = await readRows<ExistingPendingClientRow>(
-    config,
-    'pending_client_watchlist',
-    [
-      'select=source_event_id,status,first_seen_at,resolved_at,resolved_by_operator,resolved_by_operator_key',
-      `source_event_id=in.(${rows.map((row) => quotePostgrestInValue(row.source_event_id)).join(',')})`,
-    ].join('&'),
-  );
-  const existingByEventId = new Map(existingRows.map((row) => [row.source_event_id, row]));
-
-  return rows.flatMap((row) => {
-    const existing = existingByEventId.get(row.source_event_id);
-    if (existing?.status === 'resolved' || existing?.status === 'expired') {
-      return [];
-    }
-    return [
-      {
-        ...row,
-        first_seen_at: existing?.first_seen_at || row.first_seen_at,
-        resolved_at: existing?.resolved_at || null,
-        resolved_by_operator: existing?.resolved_by_operator || null,
-        resolved_by_operator_key: existing?.resolved_by_operator_key || null,
-      },
-    ];
-  });
-}
-
 export async function loadPendingClientWatchlist(): Promise<PendingClientWatchlistLoadResult> {
   const config = getSupabaseConfig();
   if (!config) {
@@ -364,7 +307,7 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
   const scan = await buildConfirmedRowsFromPipelineState(stateRows, athleteNameByKey, config, now);
 
   if (scan.rows.length) {
-    await upsertPendingClientWatchlistRows(config, await buildRowsForUpsert(config, scan.rows));
+    await upsertPendingClientWatchlistRows(config, scan.rows);
   }
 
   const activeRows = await readRows<PendingClientWatchlistRow>(

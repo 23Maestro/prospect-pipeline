@@ -192,13 +192,16 @@ export function classifyPendingClientLifecycle(args: {
   reviewDescription?: string | null;
 }): PendingClientLifecycleDecision {
   const lifecycle = resolveSalesLifecycle(args.crmStage);
-  if (lifecycle.normalizedStage !== 'meeting_follow_up') {
+  if (
+    lifecycle.normalizedStage !== 'meeting_follow_up' &&
+    lifecycle.normalizedStage !== 'reschedule_pending'
+  ) {
     return {
       eligible: false,
       normalizedStage: lifecycle.normalizedStage,
       operatorStatus: lifecycle.operatorStatus,
       lifecycleReason: lifecycle.reason,
-      reason: `CRM lifecycle is ${lifecycle.normalizedStage}, not pending-client follow-up.`,
+      reason: `CRM lifecycle is ${lifecycle.normalizedStage}, not pending-client follow-up or reschedule.`,
     };
   }
   return {
@@ -206,9 +209,13 @@ export function classifyPendingClientLifecycle(args: {
     normalizedStage: lifecycle.normalizedStage,
     operatorStatus: lifecycle.operatorStatus,
     lifecycleReason: lifecycle.reason,
-    reason: isPendingClientReviewEventTitle(args.reviewEventTitle) && hasPendingClientWatchNote(args.reviewDescription)
-      ? 'CRM lifecycle and post-meeting (FU) note identify a pending client.'
-      : 'CRM lifecycle identifies a pending client; event-list note is not populated yet.',
+    reason:
+      isPendingClientReviewEventTitle(args.reviewEventTitle) &&
+      hasPendingClientWatchNote(args.reviewDescription)
+        ? 'CRM lifecycle and post-meeting (FU) note identify a pending client.'
+        : lifecycle.normalizedStage === 'reschedule_pending'
+          ? 'CRM lifecycle identifies a reschedule-pending client; event-list note is not populated yet.'
+          : 'CRM lifecycle identifies a pending client; event-list note is not populated yet.',
   };
 }
 

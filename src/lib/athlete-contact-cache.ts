@@ -59,9 +59,11 @@ type AthleteContactCacheReadRow = {
 
 type AthletePipelineStateReadRow = {
   athlete_key?: string | null;
-  crm_stage?: string | null;
-  task_status?: string | null;
-  current_task_title?: string | null;
+  raw_crm_stage?: string | null;
+  raw_task_status?: string | null;
+  next_action?: string | null;
+  is_terminal?: boolean | null;
+  normalized_stage?: string | null;
 };
 
 function readEnvFile(filePath: string): Record<string, string> {
@@ -186,20 +188,27 @@ async function readActiveContactCacheRowsForPhones(
   );
 }
 
-async function readPipelineStateByAthleteKey(
+async function readLifecycleCurrentByAthleteKey(
   config: SupabasePersistenceConfig,
   athleteKeys: string[],
 ): Promise<Map<string, AthletePipelineStateReadRow>> {
   if (!athleteKeys.length) return new Map();
   const rows = await readRows<AthletePipelineStateReadRow>(
     config,
-    'athlete_pipeline_state',
+    'athlete_lifecycle_current',
     [
-      'select=athlete_key,crm_stage,task_status,current_task_title',
+      'select=athlete_key,raw_crm_stage,raw_task_status,next_action,is_terminal,normalized_stage',
       `athlete_key=in.${postgrestInList(athleteKeys)}`,
     ].join('&'),
   );
   return new Map(rows.map((row) => [String(row.athlete_key || '').trim(), row]));
+}
+
+function shouldAdmitContactCacheMatch(lifecycle?: AthletePipelineStateReadRow): boolean {
+  if (!lifecycle) return true;
+  if (lifecycle.is_terminal === true) return false;
+  const normalizedStage = String(lifecycle.normalized_stage || '').trim();
+  return normalizedStage !== 'inactive';
 }
 
 export async function lookupActiveAthleteContactCacheForPhones(
@@ -215,7 +224,7 @@ export async function lookupActiveAthleteContactCacheForPhones(
   const athleteKeys = Array.from(
     new Set(cacheRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
   );
-  const pipelineStateByKey = await readPipelineStateByAthleteKey(config, athleteKeys);
+  const lifecycleByKey = await readLifecycleCurrentByAthleteKey(config, athleteKeys);
 
   return cacheRows.flatMap((row) => {
     const athleteKey = String(row.athlete_key || '').trim();
@@ -235,7 +244,11 @@ export async function lookupActiveAthleteContactCacheForPhones(
       return [];
     }
 
-    const pipelineState = pipelineStateByKey.get(athleteKey);
+    const lifecycle = lifecycleByKey.get(athleteKey);
+    if (!shouldAdmitContactCacheMatch(lifecycle)) {
+      return [];
+    }
+
     return [
       {
         athleteKey,
@@ -247,9 +260,9 @@ export async function lookupActiveAthleteContactCacheForPhones(
         relationshipLabel: String(row.relationship_label || '').trim() || 'Contact',
         phone: String(row.phone || '').trim() || normalizedPhone,
         normalizedPhone,
-        crmStage: String(pipelineState?.crm_stage || '').trim() || null,
-        taskStatus: String(pipelineState?.task_status || '').trim() || null,
-        currentTaskTitle: String(pipelineState?.current_task_title || '').trim() || null,
+        crmStage: String(lifecycle?.raw_crm_stage || '').trim() || null,
+        taskStatus: String(lifecycle?.raw_task_status || '').trim() || null,
+        currentTaskTitle: String(lifecycle?.next_action || '').trim() || null,
         timezone: String(row.timezone || '').trim() || null,
         timezoneLabel: String(row.timezone_label || '').trim() || null,
       } satisfies AthleteContactCacheClientMatch,

@@ -6,7 +6,16 @@
 import fetch from 'node-fetch';
 import { randomUUID } from 'node:crypto';
 import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';
-import { upsertPostMeetingOutcomeFacts } from '../src/domain/supabase-persistence.ts';
+import {
+  upsertPendingClientWatchlistRows,
+  upsertPostMeetingOutcomeFacts,
+} from '../src/domain/supabase-persistence.ts';
+import {
+  buildPendingClientWatchlistRow,
+  classifyPendingClientLifecycle,
+  findPendingClientSignals,
+  selectLatestPendingClientReviewEvent,
+} from '../src/domain/pending-client-watchlist.ts';
 import {
   appointmentStatusForTitleOrStage,
   crmStageForOutcome,
@@ -401,6 +410,8 @@ const athleteNameByKey = new Map(
 );
 const lifecycleEvents = [];
 const postMeetingOutcomeFacts = [];
+const pendingClientWatchlistRows = [];
+const pendingClientWatchlistSourceIds = new Set();
 const statePatches = [];
 const stateDeletes = [];
 const appointmentPatches = [];
@@ -415,6 +426,53 @@ function queueStateDelete(athleteKey, reason) {
   if (!key) return;
   if (stateDeletes.some((entry) => entry.athleteKey === key)) return;
   stateDeletes.push({ athleteKey: key, reason });
+}
+
+function enqueuePendingClientWatchlistRow(args) {
+  const {
+    row,
+    athleteName,
+    crmStage,
+    selectedStageLabel,
+    bookedMeeting,
+    bookedMeetings,
+    appointmentId,
+  } = args;
+  const pendingClientDecision = classifyPendingClientLifecycle({
+    crmStage,
+    reviewEventTitle: bookedMeeting?.title || null,
+    reviewDescription: bookedMeeting?.description || '',
+  });
+  if (!pendingClientDecision.eligible) return;
+
+  const sourceEventId = `pending-client:${row.athlete_key}:${appointmentId || 'no-current-appointment'}`;
+  if (pendingClientWatchlistSourceIds.has(sourceEventId)) return;
+
+  const reviewEvent = selectLatestPendingClientReviewEvent(bookedMeeting, bookedMeetings);
+  const description = reviewEvent?.description || bookedMeeting?.description || pendingClientDecision.reason;
+  pendingClientWatchlistSourceIds.add(sourceEventId);
+  pendingClientWatchlistRows.push(
+    buildPendingClientWatchlistRow({
+      event: {
+        event_id: sourceEventId,
+        title: reviewEvent?.title || bookedMeeting?.title || crmStage,
+        assigned_owner: reviewEvent?.assigned_owner || bookedMeeting?.assigned_owner || row.head_scout,
+        start: reviewEvent?.start || bookedMeeting?.start,
+        end: reviewEvent?.end || bookedMeeting?.end || null,
+        date_time_label: reviewEvent?.date_time_label || bookedMeeting?.date_time_label || null,
+      },
+      description: [
+        `Sales Stage: ${crmStage || selectedStageLabel || 'Unknown'}`,
+        `Lifecycle: ${pendingClientDecision.normalizedStage}`,
+        description,
+      ].join('\n\n'),
+      matchedSignals: findPendingClientSignals(description),
+      aiVerdict: 'pending_client',
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName,
+    }),
+  );
 }
 
 for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()) {
@@ -580,6 +638,18 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         latest_task_owner: latestTask?.assigned_owner || null,
       });
       continue;
+    }
+
+    if (!shouldArchiveActiveState && !retentionDecision.shouldArchive) {
+      enqueuePendingClientWatchlistRow({
+        row,
+        athleteName,
+        crmStage: nextCrmStage,
+        selectedStageLabel,
+        bookedMeeting,
+        bookedMeetings,
+        appointmentId: liveEventId || row.current_appointment_id,
+      });
     }
 
     if (!stageChanged && !liveEventChanged && !shouldArchiveActiveState && !retentionDecision.shouldArchive) {
@@ -759,6 +829,7 @@ for (const patch of appointmentPatches) {
 
 await supabaseWrite('lifecycle_events', lifecycleEvents);
 await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, postMeetingOutcomeFacts);
+await upsertPendingClientWatchlistRows(SUPABASE_CONFIG, pendingClientWatchlistRows);
 
 for (const deletion of stateDeletes) {
   await supabaseDelete('athlete_pipeline_state', 'athlete_key', deletion.athleteKey);
@@ -779,6 +850,7 @@ console.log(
       unchangedCount: unchanged.length,
       lifecycleEventsInserted: lifecycleEvents.length,
       postMeetingOutcomeFactsUpserted: postMeetingOutcomeFacts.length,
+      pendingClientWatchlistUpserted: pendingClientWatchlistRows.length,
       activeStateDeleted: stateDeletes.length,
       failures,
       cleaned,

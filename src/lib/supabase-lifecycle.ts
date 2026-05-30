@@ -306,6 +306,11 @@ export type ActiveMeetingFallbackRow = {
   updatedAt: string;
 };
 
+function isEndedAppointmentTimestamp(value?: string | null, now = Date.now()): boolean {
+  const timestamp = value ? Date.parse(value) : Number.NaN;
+  return !Number.isNaN(timestamp) && timestamp <= now;
+}
+
 function logInfo(
   event: string,
   step: string,
@@ -1469,6 +1474,10 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
         }).catch(() => undefined);
         continue;
       }
+    }
+
+    if (isEndedAppointmentTimestamp(appointmentStartsAt, now)) {
+      continue;
     }
 
     results.push({

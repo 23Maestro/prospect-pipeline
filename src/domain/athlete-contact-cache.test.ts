@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import test from 'node:test';
 import type { ScoutPrepContext } from '../features/scout-prep/types';
 import {
@@ -129,4 +130,11 @@ test('inactive lifecycle stages soft-inactivate cache rows', () => {
   assertSoftInactivatePlan(plan);
   assert.equal(plan.athleteKey, '1489000:951000');
   assert.match(plan.inactiveReason, /inactive/i);
+});
+
+test('client-message contact cache admission reads lifecycle current instead of pipeline state labels', () => {
+  const source = fs.readFileSync('src/lib/athlete-contact-cache.ts', 'utf8');
+  assert.match(source, /athlete_lifecycle_current/);
+  assert.match(source, /shouldAdmitContactCacheMatch/);
+  assert.doesNotMatch(source, /'athlete_pipeline_state'/);
 });
