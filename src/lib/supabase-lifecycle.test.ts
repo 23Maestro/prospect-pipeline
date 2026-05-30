@@ -561,7 +561,7 @@ test('Scout Prep voicemail follow-up persistence is shared across recipient mode
   );
 });
 
-test('Scout Prep post-call success refreshes before returning to command root', () => {
+test('Scout Prep post-call success closes pushed form before refreshing command root', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
   const helper = commandSource.slice(
     commandSource.indexOf('async function completeScoutPrepMutationSuccess'),
@@ -574,11 +574,11 @@ test('Scout Prep post-call success refreshes before returning to command root', 
     commandSource.indexOf('return (', submitStart),
   );
 
-  assert.match(helper, /await args\.onReturnToRootList\?\.\(args\.rootListOptions\);/);
+  assert.match(helper, /await args\.onReturnToRootList\?\.\(\);/);
   assert.doesNotMatch(helper, /popToRoot/);
-  assert.match(postCallFlow, /completeScoutPrepMutationSuccess\(\{[\s\S]*onReturnToRootList: onSaved/);
-  assert.match(postCallFlow, /rootListOptions: taskCompletionMessage[\s\S]*suppressTaskIds/);
-  assert.match(postCallFlow, /popViews\(pop, closeAfterSaveViews\);/);
+  assert.match(postCallFlow, /completeScoutPrepMutationSuccess\(\{[\s\S]*title:/);
+  assert.doesNotMatch(postCallFlow, /onReturnToRootList: onSaved/);
+  assert.match(postCallFlow, /popViews\(pop, closeAfterSaveViews\);[\s\S]*await onSaved\?\.\(\);/);
 });
 
 test('Scout Prep task rows expose MaxPreps actions from the action panel', () => {

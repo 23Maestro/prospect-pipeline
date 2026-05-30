@@ -19,6 +19,7 @@ import {
 } from '@raycast/api';
 import { spawn } from 'node:child_process';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { runAppleScript } from '@raycast/utils';
 import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { exportDailyCallBlocks, type TaskCounts } from './daily-call-blocks';
@@ -123,6 +124,7 @@ import {
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
 import { searchLogger } from './lib/logger';
+import { getNaturalZoneLabel, resolveTimezone } from './lib/scout-prep-ai';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
@@ -285,20 +287,11 @@ async function showLoadingToast(title: string, message?: string) {
   });
 }
 
-type RootTaskListRefreshOptions = {
-  suppressTaskIds?: Array<string | number | null | undefined>;
-};
-
-type RootTaskListRefreshHandler = (
-  options?: RootTaskListRefreshOptions,
-) => void | Promise<void>;
-
 async function completeScoutPrepMutationSuccess(args: {
   toast?: Toast;
   title: string;
   message?: string;
-  onReturnToRootList?: RootTaskListRefreshHandler;
-  rootListOptions?: RootTaskListRefreshOptions;
+  onReturnToRootList?: () => void | Promise<void>;
 }) {
   if (args.toast) {
     args.toast.style = Toast.Style.Success;
@@ -311,7 +304,7 @@ async function completeScoutPrepMutationSuccess(args: {
       message: args.message,
     });
   }
-  await args.onReturnToRootList?.(args.rootListOptions);
+  await args.onReturnToRootList?.();
 }
 
 function popViews(pop: () => void, count: number) {
@@ -1071,6 +1064,7 @@ function formatProspectContactRoles(candidates: ProspectContactShortcutCandidate
 
 async function createProspectContactsBatch(
   candidates: ProspectContactShortcutCandidate[],
+  contactNote: string,
 ): Promise<ProspectContactBatchSummary> {
   if (!candidates.length) {
     throw new Error('No eligible contacts found');
@@ -1097,6 +1091,12 @@ async function createProspectContactsBatch(
     args.filter((_, index) => index % 3 === 0),
     args.filter((_, index) => index % 3 === 1),
     args.filter((_, index) => index % 3 === 2),
+  );
+  await appendProspectContactNotes(
+    uniqueCandidates.map((candidate) => ({
+      phone: candidate.phone,
+      note: contactNote,
+    })),
   );
 
   const candidateByKey = new Map(
@@ -1136,6 +1136,86 @@ async function createProspectContactsBatch(
     existingCount: results.filter((result) => result.status === 'exists').length,
     groupNames,
   };
+}
+
+function escapeAppleScriptString(value: string): string {
+  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
+async function appendProspectContactNotes(items: Array<{ phone: string; note: string }>) {
+  const rows = items
+    .map((item) => ({
+      phone: item.phone.replace(/\D/g, ''),
+      note: item.note.trim(),
+    }))
+    .filter((item) => item.phone.length === 10 && item.note);
+  if (!rows.length) {
+    return;
+  }
+
+  const phoneList = rows.map((item) => `"${escapeAppleScriptString(item.phone)}"`).join(', ');
+  const noteList = rows.map((item) => `"${escapeAppleScriptString(item.note)}"`).join(', ');
+  await runAppleScript(`
+on digitsOnly(rawValue)
+  set allowedCharacters to "0123456789"
+  set outputValue to ""
+  repeat with i from 1 to length of rawValue
+    set currentCharacter to character i of rawValue
+    if allowedCharacters contains currentCharacter then set outputValue to outputValue & currentCharacter
+  end repeat
+  if length of outputValue is 11 and outputValue starts with "1" then return text 2 thru -1 of outputValue
+  return outputValue
+end digitsOnly
+
+set targetPhones to {${phoneList}}
+set targetNotes to {${noteList}}
+
+tell application "Contacts"
+  set targetGroup to missing value
+  repeat with candidateGroup in groups
+    set groupName to name of candidateGroup
+    set normalizedName to groupName as text
+    if normalizedName is "ID Contacts" then
+      set targetGroup to candidateGroup
+      exit repeat
+    end if
+    if targetGroup is missing value and normalizedName contains "ID" then set targetGroup to candidateGroup
+  end repeat
+  if targetGroup is missing value then error "No ID Contacts group found"
+
+  repeat with targetIndex from 1 to count of targetPhones
+    set targetPhone to item targetIndex of targetPhones
+    set targetNote to item targetIndex of targetNotes
+    repeat with contactPerson in people of targetGroup
+      set matchedContact to false
+      repeat with contactPhone in phones of contactPerson
+        if my digitsOnly(value of contactPhone as text) is targetPhone then set matchedContact to true
+      end repeat
+      if matchedContact then
+        set existingNote to note of contactPerson
+        if existingNote is missing value then set existingNote to ""
+        if existingNote does not contain targetNote then
+          if existingNote is "" then
+            set note of contactPerson to targetNote
+          else
+            set note of contactPerson to existingNote & linefeed & targetNote
+          end if
+        end if
+      end if
+    end repeat
+  end repeat
+  save
+end tell
+`);
+}
+
+function buildProspectContactAdminNote(context: ScoutPrepContext, adminUrl: string): string {
+  const timezone = resolveTimezone(context.resolved.city, context.resolved.state);
+  const zoneLabel = timezone ? getNaturalZoneLabel(timezone) : 'Unknown';
+  const athleteName =
+    context.contactInfo.studentAthlete.name || context.task.athlete_name || 'Student Athlete';
+
+  return [`Time Zone: ${zoneLabel}`, `Student Athlete: ${athleteName}; ${adminUrl}`].join('\n');
 }
 
 async function openMessagesDraftForRecipients(phones: string[], body: string): Promise<'url'> {
@@ -1212,7 +1292,16 @@ function ScoutPrepContactDetail({
     setIsCreatingContact(true);
     const toast = await showLoadingToast('Create all contacts', roleLabel);
     try {
-      const summary = await createProspectContactsBatch(contactCandidates);
+      const summary = await createProspectContactsBatch(
+        contactCandidates,
+        buildProspectContactAdminNote(
+          context,
+          buildScoutPrepAdminUrl(
+            task,
+            context.resolved.athlete_main_id || context.task.athlete_main_id,
+          ),
+        ),
+      );
       toast.style = Toast.Style.Success;
       toast.title = 'Contacts ready';
 
@@ -2070,7 +2159,7 @@ function VoicemailFollowUpRecipientForm({
   task: ScoutPortalTask;
   context: ScoutPrepContext;
   currentTask?: string | null;
-  onComplete?: RootTaskListRefreshHandler;
+  onComplete?: () => Promise<void> | void;
   closeAfterCompleteViews?: number;
 }) {
   const { push, pop } = useNavigation();
@@ -2147,9 +2236,9 @@ function VoicemailFollowUpRecipientForm({
       await completeScoutPrepMutationSuccess({
         title: toastTitle,
         message: toastMessage,
-        onReturnToRootList: onComplete,
       });
       popViews(pop, closeAfterCompleteViews + extraChildViews);
+      await onComplete?.();
     }
 
     if (selectedVariant === 'parent_contact_intro') {
@@ -2361,8 +2450,9 @@ function VoicemailFollowUpRecipientForm({
       await completeScoutPrepMutationSuccess({
         title: 'Sent',
         message: 'Copied to clipboard.',
-        onReturnToRootList: onComplete,
       });
+      popViews(pop, closeAfterCompleteViews);
+      await onComplete?.();
     }
   }
 
@@ -2435,19 +2525,6 @@ function getSortActionTitle(sort: TaskListSort, key: TaskListSortKey): string {
 
 function buildScoutPrepTaskItemId(task: ScoutPortalTask): string {
   return `task:${task.contact_id}:${task.title || 'task'}:${task.due_date || 'due'}`;
-}
-
-function normalizeScoutPrepTaskId(taskId?: string | number | null): string | null {
-  const normalized = String(taskId || '').trim();
-  return normalized || null;
-}
-
-function hasSuppressedScoutPrepTaskId(
-  task: ScoutPortalTask,
-  suppressedTaskIds: ReadonlySet<string>,
-): boolean {
-  const taskId = normalizeScoutPrepTaskId(task.task_id);
-  return Boolean(taskId && suppressedTaskIds.has(taskId));
 }
 
 type ProspectSearchMode = 'athlete' | 'parent';
@@ -2704,7 +2781,7 @@ function UpdateAthleteTaskForm({
   athleteMainId: string;
   contactTask: string;
   initialTaskTitle?: string | null;
-  onUpdated?: RootTaskListRefreshHandler;
+  onUpdated?: () => void | Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -2771,11 +2848,8 @@ function UpdateAthleteTaskForm({
         toast,
         title: formValues.completeTask ? 'Saved and completed' : 'Saved',
         message: formValues.taskTitle || currentTaskTitle,
-        onReturnToRootList: onUpdated,
-        rootListOptions: formValues.completeTask
-          ? { suppressTaskIds: [selectedTask.task_id] }
-          : undefined,
       });
+      await onUpdated?.();
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Save failed';
@@ -2804,9 +2878,8 @@ function UpdateAthleteTaskForm({
         toast,
         title: 'Completed',
         message: currentTaskTitle,
-        onReturnToRootList: onUpdated,
-        rootListOptions: { suppressTaskIds: [selectedTask.task_id] },
       });
+      await onUpdated?.();
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Complete failed';
@@ -2858,11 +2931,8 @@ function UpdateAthleteTaskForm({
         toast,
         title: formValues.completeTask ? 'Saved and completed' : 'Saved',
         message: formValues.taskTitle || currentTaskTitle,
-        onReturnToRootList: onUpdated,
-        rootListOptions: formValues.completeTask
-          ? { suppressTaskIds: [selectedTask.task_id] }
-          : undefined,
       });
+      await onUpdated?.();
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Save failed';
@@ -2949,7 +3019,7 @@ function UpdateAthleteTaskPicker({
 }: {
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
-  onTaskMutationComplete?: RootTaskListRefreshHandler;
+  onTaskMutationComplete?: () => void | Promise<void>;
   closeAfterMutationViews?: number;
 }) {
   const { push, pop } = useNavigation();
@@ -3019,10 +3089,8 @@ function UpdateAthleteTaskPicker({
         contactTask={contactTask}
         initialTaskTitle={options.initialTaskTitle}
         onUpdated={async () => {
-          const loadedContext = await loadScoutPrepContext(task);
-          setContext(loadedContext);
-          await onTaskMutationComplete?.();
           popViews(pop, closeAfterMutationViews + 1);
+          await onTaskMutationComplete?.();
         }}
       />,
     );
@@ -3073,8 +3141,8 @@ function UpdateAthleteTaskPicker({
         title: 'Completed',
         message: getTaskDisplayTitle(selectedTask),
         onReturnToRootList: async () => {
-          await onTaskMutationComplete?.({ suppressTaskIds: [selectedTask.task_id] });
           popViews(pop, closeAfterMutationViews);
+          await onTaskMutationComplete?.();
         },
       });
     } catch (error) {
@@ -3160,7 +3228,7 @@ export function PostCallUpdateForm({
   closeAfterSaveViews = 1,
 }: {
   task: ScoutPortalTask;
-  onSaved?: RootTaskListRefreshHandler;
+  onSaved?: () => void | Promise<void>;
   initialStageLabel?: string;
   initialBookedMeeting?: BookedMeetingEvent | null;
   closeAfterSaveViews?: number;
@@ -3819,12 +3887,9 @@ export function PostCallUpdateForm({
                 ? 'Email sent'
                 : 'Saved'
               : stageLabel),
-        onReturnToRootList: onSaved,
-        rootListOptions: taskCompletionMessage
-          ? { suppressTaskIds: [taskCompletion?.taskId, task.task_id] }
-          : undefined,
       });
       popViews(pop, closeAfterSaveViews);
+      await onSaved?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.style = Toast.Style.Failure;
@@ -3953,7 +4018,7 @@ function ScoutPrepDetail({
   onReturnToRootList,
 }: {
   task: ScoutPortalTask;
-  onReturnToRootList?: RootTaskListRefreshHandler;
+  onReturnToRootList?: () => void;
 }) {
   const { push, pop } = useNavigation();
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
@@ -3967,8 +4032,8 @@ function ScoutPrepDetail({
   const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
 
   async function returnToRootListAndCloseDetail() {
-    await onReturnToRootList?.();
     popViews(pop, 1);
+    await onReturnToRootList?.();
   }
 
   async function syncContactCacheBestEffort(
@@ -4295,7 +4360,6 @@ function ScoutPrepDetail({
         title: 'Completed',
         message: getTaskDisplayTitle(completedTask),
         onReturnToRootList: returnToRootListAndCloseDetail,
-        rootListOptions: { suppressTaskIds: [completedTask.task_id, task.task_id] },
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -4725,14 +4789,14 @@ function ScoutPrepTaskItem({
   onAddPersonalFollowUpFromTask: (task: ScoutPortalTask) => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onCycleTaskListSort: (key: TaskListSortKey) => void;
-  onReturnToRootList: RootTaskListRefreshHandler;
+  onReturnToRootList: () => void;
 }) {
   const { push, pop } = useNavigation();
   const [isCompletingTask, setIsCompletingTask] = useState(false);
 
-  async function returnToRootListAndCloseCurrentView(options?: RootTaskListRefreshOptions) {
-    await onReturnToRootList(options);
+  async function returnToRootListAndCloseCurrentView() {
     popViews(pop, 1);
+    await onReturnToRootList();
   }
 
   async function ensureTaskContext(
@@ -4766,7 +4830,6 @@ function ScoutPrepTaskItem({
         title: 'Completed',
         message: getTaskDisplayTitle(completedTask),
         onReturnToRootList,
-        rootListOptions: { suppressTaskIds: [completedTask.task_id, task.task_id] },
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -5225,7 +5288,7 @@ function ProspectSearchListItem({
   onToggleProspectSearchModeType: () => void;
   onToggleProspectSearchMode: () => void;
   onAddPersonalFollowUp: (result: ProspectResult, searchMode: ProspectSearchMode) => void;
-  onReturnToRootList: RootTaskListRefreshHandler;
+  onReturnToRootList: () => void;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
   const location = [result.city, result.state].filter(Boolean).join(', ');
@@ -5332,7 +5395,7 @@ function PersonalFollowUpListItem({
   entry: PersonalFollowUpEntry;
   onRemove: (entry: PersonalFollowUpEntry) => void;
   onExit: () => void;
-  onReturnToRootList: RootTaskListRefreshHandler;
+  onReturnToRootList: () => void;
 }) {
   const { push } = useNavigation();
   const { result, searchMode } = entry;
@@ -5527,7 +5590,7 @@ function PersonalFollowUpListItem({
 function PersonalFollowUpsList({
   onReturnToRootList,
 }: {
-  onReturnToRootList: RootTaskListRefreshHandler;
+  onReturnToRootList: () => void | Promise<void>;
 }) {
   const { pop } = useNavigation();
   const [searchText, setSearchText] = useState('');
@@ -6058,7 +6121,7 @@ function ScoutPrepBatchPreflightList({
   tasks: ScoutPortalTask[];
   initialOperationId: string;
   selectedGradYear?: string | null;
-  onComplete: RootTaskListRefreshHandler;
+  onComplete: () => Promise<void> | void;
 }) {
   const { push, pop } = useNavigation();
   const operation = getScoutPrepBatchOperationById(initialOperationId);
@@ -6340,8 +6403,8 @@ function ScoutPrepBatchPreflightList({
       toast.style = Toast.Style.Success;
       toast.title = 'Batch complete';
       toast.message = operation.label;
-      await onComplete();
       pop();
+      await onComplete();
     } finally {
       setIsRunning(false);
     }
@@ -6506,7 +6569,7 @@ function ScoutPrepBatchRoot({
   onComplete,
 }: {
   tasks: ScoutPortalTask[];
-  onComplete: RootTaskListRefreshHandler;
+  onComplete: () => Promise<void> | void;
 }) {
   const [operationId, setOperationId] = useState(SCOUT_PREP_BATCH_OPERATIONS.callAttempt3Voicemail.id);
   const [confirmedBatch, setConfirmedBatch] = useState<{
@@ -6561,9 +6624,6 @@ export default function ScoutPrepCommand(
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
   const [selectedTaskItemId, setSelectedTaskItemId] = useState<string | undefined>();
-  const [suppressedTaskIds, setSuppressedTaskIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
@@ -6579,7 +6639,7 @@ export default function ScoutPrepCommand(
           filter: taskListFilter,
           taskBuckets,
           sort: taskListSort,
-        }).filter((row) => !hasSuppressedScoutPrepTaskId(row.task, suppressedTaskIds))
+        })
       : [];
   const hasTaskModeResults = selectedTaskRows.length > 0;
   const selectedRange = mapTaskListFilterToRange(taskListFilter);
@@ -6666,16 +6726,6 @@ export default function ScoutPrepCommand(
     loadTasksPromiseRef.current = pendingLoad;
     return pendingLoad;
   };
-
-  function rememberSuppressedTaskIds(taskIds?: RootTaskListRefreshOptions['suppressTaskIds']) {
-    const normalizedTaskIds = (taskIds || [])
-      .map((taskId) => normalizeScoutPrepTaskId(taskId))
-      .filter((taskId): taskId is string => Boolean(taskId));
-    if (!normalizedTaskIds.length) {
-      return;
-    }
-    setSuppressedTaskIds((current) => new Set([...current, ...normalizedTaskIds]));
-  }
 
   const loadAllTaskSearch = async (searchText: string) => {
     const requestId = ++allTaskSearchRequestIdRef.current;
@@ -6957,8 +7007,7 @@ export default function ScoutPrepCommand(
     );
   }
 
-  async function returnToRootTaskList(options: RootTaskListRefreshOptions = {}) {
-    rememberSuppressedTaskIds(options.suppressTaskIds);
+  async function returnToRootTaskList() {
     setViewMode('tasks');
     setTaskListFilter(DEFAULT_TASK_LIST_FILTER);
     setTaskSearchText('');

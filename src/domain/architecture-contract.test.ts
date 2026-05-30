@@ -369,17 +369,15 @@ test('Scout Prep mutations refresh the root list without resetting cancelled nav
     scoutPrep.indexOf('type ViewMode ='),
   );
 
-  assert.match(
-    scoutPrep,
-    /async function returnToRootTaskList\(options: RootTaskListRefreshOptions = \{\}\)/,
-  );
-  assert.match(scoutPrep, /rememberSuppressedTaskIds\(options\.suppressTaskIds\)/);
-  assert.match(scoutPrep, /hasSuppressedScoutPrepTaskId\(row\.task, suppressedTaskIds\)/);
+  assert.match(scoutPrep, /async function returnToRootTaskList\(\)/);
+  assert.match(detail, /async function returnToRootListAndCloseDetail\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\?\.\(\);/);
   assert.match(detail, /<PostCallUpdateForm[\s\S]*onSaved=\{onReturnToRootList\}/);
+  assert.match(taskItem, /async function returnToRootListAndCloseCurrentView\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\(\);/);
   assert.match(taskItem, /<PostCallUpdateForm[\s\S]*onSaved=\{returnToRootListAndCloseCurrentView\}/);
   assert.match(taskItem, /<VoicemailFollowUpRecipientForm[\s\S]*onComplete=\{onReturnToRootList\}/);
   assert.match(voicemail, /finishFollowUpFlow\([\s\S]*completeScoutPrepMutationSuccess/);
-  assert.match(voicemail, /onReturnToRootList: onComplete/);
+  assert.match(voicemail, /finishFollowUpFlow\([\s\S]*popViews\(pop, closeAfterCompleteViews \+ extraChildViews\);[\s\S]*await onComplete\?\.\(\);/);
+  assert.doesNotMatch(voicemail, /onReturnToRootList: onComplete/);
 
   assert.match(
     voicemail,
