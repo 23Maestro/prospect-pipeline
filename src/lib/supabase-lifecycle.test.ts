@@ -574,9 +574,10 @@ test('Scout Prep post-call success refreshes before returning to command root', 
     commandSource.indexOf('return (', submitStart),
   );
 
-  assert.match(helper, /await args\.onReturnToRootList\?\.\(\);/);
+  assert.match(helper, /await args\.onReturnToRootList\?\.\(args\.rootListOptions\);/);
   assert.doesNotMatch(helper, /popToRoot/);
   assert.match(postCallFlow, /completeScoutPrepMutationSuccess\(\{[\s\S]*onReturnToRootList: onSaved/);
+  assert.match(postCallFlow, /rootListOptions: taskCompletionMessage[\s\S]*suppressTaskIds/);
   assert.match(postCallFlow, /popViews\(pop, closeAfterSaveViews\);/);
 });
 

@@ -5,6 +5,7 @@ FastAPI endpoints for scout-prep task list functionality.
 
 from fastapi import APIRouter, HTTPException, Request
 import logging
+import re
 
 from app.models.schemas import ScoutPortalTasksResponse, ScoutRecentProfilesResponse
 from app.translators.legacy import LegacyTranslator
@@ -13,6 +14,46 @@ from app.session import NPIDSession
 router = APIRouter(tags=["scout"])
 logger = logging.getLogger(__name__)
 FEATURE = "scout-tasks"
+
+
+def filter_scout_tasks_by_search(tasks: list[dict], search_text: str | None) -> list[dict]:
+    query = normalize_scout_task_search_text(search_text)
+    terms = [term for term in query.split() if term]
+    if not terms:
+        return tasks
+
+    searchable_fields = (
+        "athlete_name",
+        "contact",
+        "title",
+        "description",
+        "sport",
+        "sport_name",
+        "high_school",
+        "high_school_city",
+        "city",
+        "state",
+        "high_school_state",
+        "grad_year",
+        "user",
+        "assigned_owner",
+    )
+    matches: list[dict] = []
+    for task in tasks:
+        text = normalize_scout_task_search_text(
+            " ".join(str(task.get(field) or "") for field in searchable_fields)
+        )
+        words = text.split()
+        if query in text or all(
+            any(word.startswith(term) for word in words) if len(term) <= 2 else term in text
+            for term in terms
+        ):
+            matches.append(task)
+    return matches
+
+
+def normalize_scout_task_search_text(value: str | None) -> str:
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", str(value or "").lower()).split())
 
 
 def get_session(request: Request) -> NPIDSession:
@@ -57,8 +98,8 @@ async def get_scout_portal_tasks(
         endpoint, params = translator.portal_tasks_to_legacy(
             assigned_to=assignedto,
             range_value=range,
-            start=start,
-            length=length,
+            start=None if searchText else start,
+            length=None if searchText else length,
             search_text=searchText,
         )
         response = await session.get(endpoint, params=params)
@@ -83,6 +124,7 @@ async def get_scout_portal_tasks(
         )
         result = translator.parse_portal_tasks_response(response.text)
         tasks = result.get("tasks", [])
+        tasks = filter_scout_tasks_by_search(tasks, searchText)
         if length is not None and len(tasks) > length:
             page_start = max(start or 0, 0)
             tasks = tasks[page_start:page_start + max(length, 0)]

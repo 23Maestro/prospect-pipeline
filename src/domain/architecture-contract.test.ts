@@ -369,7 +369,12 @@ test('Scout Prep mutations refresh the root list without resetting cancelled nav
     scoutPrep.indexOf('type ViewMode ='),
   );
 
-  assert.match(scoutPrep, /async function returnToRootTaskList\(\)/);
+  assert.match(
+    scoutPrep,
+    /async function returnToRootTaskList\(options: RootTaskListRefreshOptions = \{\}\)/,
+  );
+  assert.match(scoutPrep, /rememberSuppressedTaskIds\(options\.suppressTaskIds\)/);
+  assert.match(scoutPrep, /hasSuppressedScoutPrepTaskId\(row\.task, suppressedTaskIds\)/);
   assert.match(detail, /<PostCallUpdateForm[\s\S]*onSaved=\{onReturnToRootList\}/);
   assert.match(taskItem, /<PostCallUpdateForm[\s\S]*onSaved=\{returnToRootListAndCloseCurrentView\}/);
   assert.match(taskItem, /<VoicemailFollowUpRecipientForm[\s\S]*onComplete=\{onReturnToRootList\}/);

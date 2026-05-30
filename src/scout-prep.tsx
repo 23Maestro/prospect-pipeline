@@ -285,11 +285,20 @@ async function showLoadingToast(title: string, message?: string) {
   });
 }
 
+type RootTaskListRefreshOptions = {
+  suppressTaskIds?: Array<string | number | null | undefined>;
+};
+
+type RootTaskListRefreshHandler = (
+  options?: RootTaskListRefreshOptions,
+) => void | Promise<void>;
+
 async function completeScoutPrepMutationSuccess(args: {
   toast?: Toast;
   title: string;
   message?: string;
-  onReturnToRootList?: () => void | Promise<void>;
+  onReturnToRootList?: RootTaskListRefreshHandler;
+  rootListOptions?: RootTaskListRefreshOptions;
 }) {
   if (args.toast) {
     args.toast.style = Toast.Style.Success;
@@ -302,7 +311,7 @@ async function completeScoutPrepMutationSuccess(args: {
       message: args.message,
     });
   }
-  await args.onReturnToRootList?.();
+  await args.onReturnToRootList?.(args.rootListOptions);
 }
 
 function popViews(pop: () => void, count: number) {
@@ -2061,7 +2070,7 @@ function VoicemailFollowUpRecipientForm({
   task: ScoutPortalTask;
   context: ScoutPrepContext;
   currentTask?: string | null;
-  onComplete?: () => Promise<void> | void;
+  onComplete?: RootTaskListRefreshHandler;
   closeAfterCompleteViews?: number;
 }) {
   const { push, pop } = useNavigation();
@@ -2428,6 +2437,19 @@ function buildScoutPrepTaskItemId(task: ScoutPortalTask): string {
   return `task:${task.contact_id}:${task.title || 'task'}:${task.due_date || 'due'}`;
 }
 
+function normalizeScoutPrepTaskId(taskId?: string | number | null): string | null {
+  const normalized = String(taskId || '').trim();
+  return normalized || null;
+}
+
+function hasSuppressedScoutPrepTaskId(
+  task: ScoutPortalTask,
+  suppressedTaskIds: ReadonlySet<string>,
+): boolean {
+  const taskId = normalizeScoutPrepTaskId(task.task_id);
+  return Boolean(taskId && suppressedTaskIds.has(taskId));
+}
+
 type ProspectSearchMode = 'athlete' | 'parent';
 
 type ScoutPrepLaunchContext = {
@@ -2682,7 +2704,7 @@ function UpdateAthleteTaskForm({
   athleteMainId: string;
   contactTask: string;
   initialTaskTitle?: string | null;
-  onUpdated?: () => void | Promise<void>;
+  onUpdated?: RootTaskListRefreshHandler;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
@@ -2750,6 +2772,9 @@ function UpdateAthleteTaskForm({
         title: formValues.completeTask ? 'Saved and completed' : 'Saved',
         message: formValues.taskTitle || currentTaskTitle,
         onReturnToRootList: onUpdated,
+        rootListOptions: formValues.completeTask
+          ? { suppressTaskIds: [selectedTask.task_id] }
+          : undefined,
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -2780,6 +2805,7 @@ function UpdateAthleteTaskForm({
         title: 'Completed',
         message: currentTaskTitle,
         onReturnToRootList: onUpdated,
+        rootListOptions: { suppressTaskIds: [selectedTask.task_id] },
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -2833,6 +2859,9 @@ function UpdateAthleteTaskForm({
         title: formValues.completeTask ? 'Saved and completed' : 'Saved',
         message: formValues.taskTitle || currentTaskTitle,
         onReturnToRootList: onUpdated,
+        rootListOptions: formValues.completeTask
+          ? { suppressTaskIds: [selectedTask.task_id] }
+          : undefined,
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -2920,7 +2949,7 @@ function UpdateAthleteTaskPicker({
 }: {
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
-  onTaskMutationComplete?: () => void | Promise<void>;
+  onTaskMutationComplete?: RootTaskListRefreshHandler;
   closeAfterMutationViews?: number;
 }) {
   const { push, pop } = useNavigation();
@@ -3044,7 +3073,7 @@ function UpdateAthleteTaskPicker({
         title: 'Completed',
         message: getTaskDisplayTitle(selectedTask),
         onReturnToRootList: async () => {
-          await onTaskMutationComplete?.();
+          await onTaskMutationComplete?.({ suppressTaskIds: [selectedTask.task_id] });
           popViews(pop, closeAfterMutationViews);
         },
       });
@@ -3131,7 +3160,7 @@ export function PostCallUpdateForm({
   closeAfterSaveViews = 1,
 }: {
   task: ScoutPortalTask;
-  onSaved?: () => void | Promise<void>;
+  onSaved?: RootTaskListRefreshHandler;
   initialStageLabel?: string;
   initialBookedMeeting?: BookedMeetingEvent | null;
   closeAfterSaveViews?: number;
@@ -3791,6 +3820,9 @@ export function PostCallUpdateForm({
                 : 'Saved'
               : stageLabel),
         onReturnToRootList: onSaved,
+        rootListOptions: taskCompletionMessage
+          ? { suppressTaskIds: [taskCompletion?.taskId, task.task_id] }
+          : undefined,
       });
       popViews(pop, closeAfterSaveViews);
     } catch (error) {
@@ -3921,7 +3953,7 @@ function ScoutPrepDetail({
   onReturnToRootList,
 }: {
   task: ScoutPortalTask;
-  onReturnToRootList?: () => void;
+  onReturnToRootList?: RootTaskListRefreshHandler;
 }) {
   const { push, pop } = useNavigation();
   const [markdown, setMarkdown] = useState<string>('Loading scout prep...');
@@ -4263,6 +4295,7 @@ function ScoutPrepDetail({
         title: 'Completed',
         message: getTaskDisplayTitle(completedTask),
         onReturnToRootList: returnToRootListAndCloseDetail,
+        rootListOptions: { suppressTaskIds: [completedTask.task_id, task.task_id] },
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -4692,13 +4725,13 @@ function ScoutPrepTaskItem({
   onAddPersonalFollowUpFromTask: (task: ScoutPortalTask) => void;
   onSelectTaskListFilter: (filter: TaskListFilter) => void;
   onCycleTaskListSort: (key: TaskListSortKey) => void;
-  onReturnToRootList: () => void;
+  onReturnToRootList: RootTaskListRefreshHandler;
 }) {
   const { push, pop } = useNavigation();
   const [isCompletingTask, setIsCompletingTask] = useState(false);
 
-  async function returnToRootListAndCloseCurrentView() {
-    await onReturnToRootList();
+  async function returnToRootListAndCloseCurrentView(options?: RootTaskListRefreshOptions) {
+    await onReturnToRootList(options);
     popViews(pop, 1);
   }
 
@@ -4733,6 +4766,7 @@ function ScoutPrepTaskItem({
         title: 'Completed',
         message: getTaskDisplayTitle(completedTask),
         onReturnToRootList,
+        rootListOptions: { suppressTaskIds: [completedTask.task_id, task.task_id] },
       });
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -5191,7 +5225,7 @@ function ProspectSearchListItem({
   onToggleProspectSearchModeType: () => void;
   onToggleProspectSearchMode: () => void;
   onAddPersonalFollowUp: (result: ProspectResult, searchMode: ProspectSearchMode) => void;
-  onReturnToRootList: () => void;
+  onReturnToRootList: RootTaskListRefreshHandler;
 }) {
   const scoutPrepTask = buildScoutPrepTaskFromProspect(result);
   const location = [result.city, result.state].filter(Boolean).join(', ');
@@ -5298,7 +5332,7 @@ function PersonalFollowUpListItem({
   entry: PersonalFollowUpEntry;
   onRemove: (entry: PersonalFollowUpEntry) => void;
   onExit: () => void;
-  onReturnToRootList: () => void;
+  onReturnToRootList: RootTaskListRefreshHandler;
 }) {
   const { push } = useNavigation();
   const { result, searchMode } = entry;
@@ -5493,7 +5527,7 @@ function PersonalFollowUpListItem({
 function PersonalFollowUpsList({
   onReturnToRootList,
 }: {
-  onReturnToRootList: () => void | Promise<void>;
+  onReturnToRootList: RootTaskListRefreshHandler;
 }) {
   const { pop } = useNavigation();
   const [searchText, setSearchText] = useState('');
@@ -6024,7 +6058,7 @@ function ScoutPrepBatchPreflightList({
   tasks: ScoutPortalTask[];
   initialOperationId: string;
   selectedGradYear?: string | null;
-  onComplete: () => Promise<void> | void;
+  onComplete: RootTaskListRefreshHandler;
 }) {
   const { push, pop } = useNavigation();
   const operation = getScoutPrepBatchOperationById(initialOperationId);
@@ -6472,7 +6506,7 @@ function ScoutPrepBatchRoot({
   onComplete,
 }: {
   tasks: ScoutPortalTask[];
-  onComplete: () => Promise<void> | void;
+  onComplete: RootTaskListRefreshHandler;
 }) {
   const [operationId, setOperationId] = useState(SCOUT_PREP_BATCH_OPERATIONS.callAttempt3Voicemail.id);
   const [confirmedBatch, setConfirmedBatch] = useState<{
@@ -6527,6 +6561,9 @@ export default function ScoutPrepCommand(
   const [prospectResults, setProspectResults] = useState<ProspectResult[]>([]);
   const [isProspectSearching, setIsProspectSearching] = useState(false);
   const [selectedTaskItemId, setSelectedTaskItemId] = useState<string | undefined>();
+  const [suppressedTaskIds, setSuppressedTaskIds] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
   const prospectSearchRequestIdRef = useRef(0);
@@ -6542,7 +6579,7 @@ export default function ScoutPrepCommand(
           filter: taskListFilter,
           taskBuckets,
           sort: taskListSort,
-        })
+        }).filter((row) => !hasSuppressedScoutPrepTaskId(row.task, suppressedTaskIds))
       : [];
   const hasTaskModeResults = selectedTaskRows.length > 0;
   const selectedRange = mapTaskListFilterToRange(taskListFilter);
@@ -6629,6 +6666,16 @@ export default function ScoutPrepCommand(
     loadTasksPromiseRef.current = pendingLoad;
     return pendingLoad;
   };
+
+  function rememberSuppressedTaskIds(taskIds?: RootTaskListRefreshOptions['suppressTaskIds']) {
+    const normalizedTaskIds = (taskIds || [])
+      .map((taskId) => normalizeScoutPrepTaskId(taskId))
+      .filter((taskId): taskId is string => Boolean(taskId));
+    if (!normalizedTaskIds.length) {
+      return;
+    }
+    setSuppressedTaskIds((current) => new Set([...current, ...normalizedTaskIds]));
+  }
 
   const loadAllTaskSearch = async (searchText: string) => {
     const requestId = ++allTaskSearchRequestIdRef.current;
@@ -6910,7 +6957,8 @@ export default function ScoutPrepCommand(
     );
   }
 
-  async function returnToRootTaskList() {
+  async function returnToRootTaskList(options: RootTaskListRefreshOptions = {}) {
+    rememberSuppressedTaskIds(options.suppressTaskIds);
     setViewMode('tasks');
     setTaskListFilter(DEFAULT_TASK_LIST_FILTER);
     setTaskSearchText('');

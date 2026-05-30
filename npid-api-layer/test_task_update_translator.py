@@ -1,6 +1,7 @@
 import unittest
 
 from app.translators.legacy import LegacyTranslator
+from app.routers.scout import filter_scout_tasks_by_search
 
 
 class TaskUpdateTranslatorTests(unittest.TestCase):
@@ -19,6 +20,38 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
         self.assertEqual(params["start"], 0)
         self.assertEqual(params["length"], 100)
         self.assertEqual(params["search[value]"], "Avery Jones")
+
+    def test_filter_scout_tasks_by_search_matches_task_fields_before_pagination(self):
+        tasks = [
+            {
+                "athlete_name": "Avery Jones",
+                "title": "Call Attempt 1",
+                "description": "Football follow up",
+                "high_school": "North High",
+            },
+            {
+                "athlete_name": "Jamarcus Patterson",
+                "title": "Call Attempt 2",
+                "description": "Football family",
+                "high_school": "East High",
+            },
+            {
+                "athlete_name": "Marcus Garcia",
+                "title": "Enrollment Follow Up",
+                "description": "Baseball family",
+                "high_school": "West High",
+            },
+            {
+                "athlete_name": "Other Athlete",
+                "title": "Call Attempt 2",
+                "description": "Basketball",
+                "high_school": "South High",
+            },
+        ]
+
+        matches = filter_scout_tasks_by_search(tasks, "Marcus G")
+
+        self.assertEqual(matches, [tasks[2]])
 
     def test_update_task_clears_completion_fields_and_only_changes_due_date(self):
         form_data = {
