@@ -87,6 +87,8 @@ export async function confirmPendingClientWithRayAI(args: {
       'Return exactly pending_client or an empty string.',
       'Return pending_client only when this note means the family should be watched because payment or enrollment may be coming soon.',
       'Accept direct payment/enrollment intent, invoice/payment timing, full-payment/package language, or upgrade/payment-plan language.',
+      'Accept notes naming Elite, Icon, Premium, Legend, Elite ID, Icon ID, Premium ID, or Legend ID.',
+      'Accept subscription terms such as 12 payments, monthly payments, post date, parent bill date, paid, pending, or invoice when connected to a product/package.',
       'Reject generic interest, generic follow-up, call-back reminders, or notes like follow up with dad.',
       `Title: ${String(args.title || '').trim()}`,
       `Matched deterministic signals: ${(args.matchedSignals || []).join(', ') || 'none'}`,

@@ -23,6 +23,10 @@ export type ResolvedBookedMeetingDetails = {
   meetingLength: string | null;
 };
 
+export type ResolvedAppointmentTruthMeetingDetails = ResolvedBookedMeetingDetails & {
+  meetingTimezone: string;
+};
+
 type ResolverDependencies = {
   fetchAthleteBookedMeetings?: typeof fetchAthleteBookedMeetings;
   fetchBookedMeetingDetails?: typeof fetchBookedMeetingDetails;
@@ -239,13 +243,14 @@ function buildAppointmentTruthMeeting(
   row: ActiveAthleteMeetingTruthRow,
 ): ResolvedBookedMeetingDetails | null {
   const startsAt = toEasternLocalStamp(row.current_starts_at);
+  const meetingTimezone = clean(row.current_meeting_timezone);
   const appointmentId =
     String(row.current_source_event_id || '').trim() ||
     String(row.resolved_appointment_id || '').trim() ||
     String(row.current_appointment_id || '').trim();
   const headScout = String(row.current_head_scout || '').trim();
 
-  if (!startsAt || !appointmentId || !headScout) {
+  if (!startsAt || !meetingTimezone || !appointmentId || !headScout) {
     return null;
   }
 
@@ -265,7 +270,7 @@ function buildAppointmentTruthMeeting(
     description: null,
     eventDate: startsAt.split('T')[0] || null,
     formData: {
-      meetingtimezone: String(row.current_meeting_timezone || '').trim(),
+      meetingtimezone: meetingTimezone,
       openeventid: appointmentId,
       meetinglength: '01:00',
     },
@@ -387,4 +392,32 @@ export async function resolveBookedMeetingDetailsForForm(
       eventDate,
     });
   }
+}
+
+export async function resolveRequiredAppointmentTruthMeeting(
+  args: {
+    athleteId?: string | null;
+    athleteMainId?: string | null;
+  },
+  dependencies: Pick<ResolverDependencies, 'fetchAppointmentTruth' | 'getCachedMeetingDescription'> = {},
+): Promise<ResolvedAppointmentTruthMeetingDetails> {
+  const athleteId = clean(args.athleteId);
+  const athleteMainId = clean(args.athleteMainId);
+  const resolved = await resolveBookedMeetingDetailsForForm(
+    {
+      athleteId,
+      athleteMainId,
+      source: 'appointment_truth',
+    },
+    dependencies,
+  );
+  if (!resolved?.meetingTimezone) {
+    throw new Error(
+      `Missing appointment truth timezone for athlete ${athleteId || '(missing athlete id)'}:${athleteMainId || '(missing athlete main id)'}`,
+    );
+  }
+  return {
+    ...resolved,
+    meetingTimezone: resolved.meetingTimezone,
+  };
 }

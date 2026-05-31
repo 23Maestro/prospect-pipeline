@@ -608,15 +608,28 @@ test('Set Meetings reschedule actions pass the booked meeting into Scout Prep po
   assert.match(actionPanel, /initialStageLabel="Meeting Result - Rescheduled"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
 });
 
-test('Scout Prep Reschedule Pending caches booked meeting description before Laravel stage update', () => {
+test('Set Meetings prefix actions use command Y U H J N shortcuts', () => {
+  const source = fs.readFileSync('src/head-scout-schedules.tsx', 'utf8');
+  assert.match(source, /APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent\[\] = \['y', 'u', 'h', 'j', 'n'\]/);
+  assert.match(source, /modifiers: \['cmd'\], key: APPOINTMENT_SHORTCUT_KEYS\[index\]/);
+  assert.doesNotMatch(source, /modifiers: \['opt'\], key: APPOINTMENT_SHORTCUT_KEYS\[index\]/);
+});
+
+test('Scout Prep Reschedule Pending requires notes and performs stage plus two Notes-tab writes', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
   const postCallFlow = commandSource.slice(
     commandSource.indexOf('async function handleSubmit'),
-    commandSource.indexOf('const salesStageResult = await updateSalesStage({'),
+    commandSource.indexOf('try {', commandSource.indexOf('await addAthleteNote')),
   );
 
+  assert.match(commandSource, /id="reschedulePendingNoteTitle"/);
+  assert.match(commandSource, /id="reschedulePendingNoteDescription"/);
   assert.match(postCallFlow, /cacheMeetingDescriptionForReschedulePending\(\{/);
   assert.match(postCallFlow, /isReschedulePendingStage\(stageLabel\)/);
+  assert.match(postCallFlow, /const salesStageResult = await updateSalesStage\(\{/);
+  assert.match(postCallFlow, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: 'RSP And Scout Notes'/s);
+  assert.match(postCallFlow, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: reschedulePendingOperatorNoteTitle/s);
+  assert.ok(postCallFlow.indexOf('const salesStageResult = await updateSalesStage({') < postCallFlow.indexOf("title: 'RSP And Scout Notes'"));
 });
 
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {

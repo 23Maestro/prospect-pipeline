@@ -8,8 +8,7 @@ import {
   HEAD_SCOUT_ORDER,
   type BookedMeetingEvent,
 } from './head-scout-schedules';
-import { mapTimezoneToLegacyRecruitZone } from './scout-prep-contact';
-import { resolveTimezone } from './scout-prep-ai';
+import { resolveBookedMeetingDetailsForForm } from './booked-meeting-details-resolver';
 import {
   isActiveMeetingQueueItem,
   resolveSalesLifecycle,
@@ -454,8 +453,13 @@ export async function hydrateResolvedAppointment(
     }
   }
 
-  const meetingTimezone =
-    mapTimezoneToLegacyRecruitZone(resolveTimezone(resolvedCity, resolvedState)) || 'EST';
+  const appointmentTruth = String(args.athleteMainId || '').trim()
+    ? await resolveBookedMeetingDetailsForForm({
+        athleteId: args.athleteId,
+        athleteMainId: args.athleteMainId,
+        source: 'appointment_truth',
+      }).catch(() => null)
+    : null;
 
   return resolveAppointmentLifecycle({
     athleteId: args.athleteId,
@@ -466,7 +470,7 @@ export async function hydrateResolvedAppointment(
     bookedMeetingTitle,
     bookedMeetings,
     followUpTask: args.followUpTask,
-    meetingTimezone,
+    meetingTimezone: appointmentTruth?.meetingTimezone || null,
     now: args.now,
   });
 }

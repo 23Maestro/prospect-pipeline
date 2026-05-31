@@ -606,6 +606,15 @@ export async function prepareConfirmationFollowUp(args: {
       resolvedAppointment,
     };
   }
+  if (!resolvedAppointment.meetingTimezone) {
+    return {
+      dueAt,
+      message: 'Missing appointment truth timezone for confirmation follow-up.',
+      headScoutName,
+      canDraft: false,
+      resolvedAppointment,
+    };
+  }
 
   const message = buildConfirmationMessage({
     variant: args.reminderVariant || 'confirmation_1',

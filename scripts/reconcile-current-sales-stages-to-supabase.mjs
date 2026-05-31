@@ -12,8 +12,11 @@ import {
 } from '../src/domain/supabase-persistence.ts';
 import {
   buildPendingClientWatchlistRow,
+  buildPendingClientEvidenceDescription,
+  classifyPendingClientActionTag,
   classifyPendingClientLifecycle,
   findPendingClientSignals,
+  selectLatestPendingClientNote,
   selectLatestPendingClientReviewEvent,
 } from '../src/domain/pending-client-watchlist.ts';
 import {
@@ -387,6 +390,18 @@ async function fetchAthleteTasks(row) {
   return Array.isArray(payload.tasks) ? payload.tasks : [];
 }
 
+async function fetchAthleteNotes(row) {
+  const payload = await apiFetch('/notes/list', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      athlete_id: row.athlete_id,
+      athlete_main_id: row.athlete_main_id,
+    }),
+  }).catch(() => ({ notes: [] }));
+  return Array.isArray(payload.notes) ? payload.notes : [];
+}
+
 async function fetchAthleteProfile(row) {
   return apiFetch(`/athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true`).catch(() => ({}));
 }
@@ -507,11 +522,13 @@ function enqueuePendingClientWatchlistRow(args) {
     bookedMeeting,
     bookedMeetings,
     appointmentId,
+    notes,
   } = args;
+  const notesTabEntry = selectLatestPendingClientNote(notes);
   const pendingClientDecision = classifyPendingClientLifecycle({
     crmStage,
-    reviewEventTitle: bookedMeeting?.title || null,
-    reviewDescription: bookedMeeting?.description || '',
+    reviewEventTitle: notesTabEntry?.metadata || bookedMeeting?.title || null,
+    reviewDescription: notesTabEntry?.description || '',
   });
   if (!pendingClientDecision.eligible) return;
 
@@ -519,13 +536,25 @@ function enqueuePendingClientWatchlistRow(args) {
   if (pendingClientWatchlistSourceIds.has(sourceEventId)) return;
 
   const reviewEvent = selectLatestPendingClientReviewEvent(bookedMeeting, bookedMeetings);
-  const description = reviewEvent?.description || bookedMeeting?.description || pendingClientDecision.reason;
+  const description = buildPendingClientEvidenceDescription({
+    notesTabEntry,
+    reviewEvent,
+    missingMessage: 'No usable Notes tab or post-meeting event-list entry found for this post-meeting state.',
+  });
+  const hasEvidence = Boolean(notesTabEntry || reviewEvent);
+  const matchedSignals = findPendingClientSignals(description);
+  const actionTag = classifyPendingClientActionTag({
+    normalizedStage: pendingClientDecision.normalizedStage,
+    description,
+    matchedSignals,
+    hasEvidence,
+  });
   pendingClientWatchlistSourceIds.add(sourceEventId);
   pendingClientWatchlistRows.push(
     buildPendingClientWatchlistRow({
       event: {
         event_id: sourceEventId,
-        title: reviewEvent?.title || bookedMeeting?.title || crmStage,
+        title: notesTabEntry?.metadata || reviewEvent?.title || bookedMeeting?.title || crmStage,
         assigned_owner: reviewEvent?.assigned_owner || bookedMeeting?.assigned_owner || row.head_scout,
         start: reviewEvent?.start || bookedMeeting?.start,
         end: reviewEvent?.end || bookedMeeting?.end || null,
@@ -534,9 +563,14 @@ function enqueuePendingClientWatchlistRow(args) {
       description: [
         `Sales Stage: ${crmStage || selectedStageLabel || 'Unknown'}`,
         `Lifecycle: ${pendingClientDecision.normalizedStage}`,
+        `Pending Tag: ${actionTag}`,
+        reviewEvent?.title ? `Event List: ${reviewEvent.title}` : null,
+        notesTabEntry?.title ? `Notes Tab: ${notesTabEntry.title}` : 'Notes Tab: missing',
+        notesTabEntry?.metadata ? `Scout Note: ${notesTabEntry.metadata}` : null,
         description,
-      ].join('\n\n'),
-      matchedSignals: findPendingClientSignals(description),
+      ].filter(Boolean).join('\n\n'),
+      matchedSignals,
+      actionTag,
       aiVerdict: 'pending_client',
       athleteId: row.athlete_id,
       athleteMainId: row.athlete_main_id,
@@ -550,10 +584,11 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
   console.error(`[${index + 1}/${stateRows.length}] ${athleteName || row.athlete_key}`);
 
   try {
-    const [stagePayload, bookedMeetings, tasks, resolvedProfile] = await Promise.all([
+    const [stagePayload, bookedMeetings, tasks, notes, resolvedProfile] = await Promise.all([
       apiFetch(`/sales/stages/${encodeURIComponent(row.athlete_id)}`),
       fetchAthleteBookedMeetings(row),
       fetchAthleteTasks(row),
+      fetchAthleteNotes(row),
       fetchAthleteProfile(row),
     ]);
     const selectedStage = getSelectedSalesStage(stagePayload);
@@ -719,6 +754,7 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         bookedMeeting,
         bookedMeetings,
         appointmentId: liveEventId || row.current_appointment_id,
+        notes,
       });
     }
 

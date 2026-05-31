@@ -61,6 +61,14 @@ test('canonical appointment truth and anomaly views exist', () => {
   }
 });
 
+test('active athlete meeting truth keeps timezone sourced from appointments', () => {
+  assert.doesNotMatch(sql, /confirmation_support/i);
+  assert.doesNotMatch(sql, /contact_support/i);
+  assert.doesNotMatch(sql, /current_cache\.meeting_timezone/i);
+  assert.doesNotMatch(sql, /previous_cache\.meeting_timezone/i);
+  assert.doesNotMatch(sql, /athlete_contact_cache[\s\S]*current_meeting_timezone/i);
+});
+
 test('anomaly view exposes the appointment truth repair queue', () => {
   for (const reason of [
     'missing_current_appointment_pointer',

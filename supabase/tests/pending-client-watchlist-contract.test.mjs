@@ -11,6 +11,11 @@ const rlsMigration = readFileSync(
   new URL(`../migrations/${rlsMigrationName}`, import.meta.url),
   'utf8',
 );
+const actionTagMigrationName = '20260530130000_pending_client_watchlist_action_tag.sql';
+const actionTagMigration = readFileSync(
+  new URL(`../migrations/${actionTagMigrationName}`, import.meta.url),
+  'utf8',
+);
 
 test('pending_client_watchlist is isolated from call tracker storage and views', () => {
   assert.match(migration, /create table if not exists public\.pending_client_watchlist/i);
@@ -26,13 +31,23 @@ test('pending_client_watchlist is isolated from call tracker storage and views',
 
 test('call tracker migrations do not reference pending_client_watchlist', () => {
   const offenders = readdirSync(migrationDir)
-    .filter((file) => file.endsWith('.sql') && ![migrationName, rlsMigrationName].includes(file))
+    .filter((file) => file.endsWith('.sql') && ![migrationName, rlsMigrationName, actionTagMigrationName].includes(file))
     .flatMap((file) => {
       const text = readFileSync(join(migrationDir.pathname, file), 'utf8');
       return /pending_client_watchlist/i.test(text) ? [basename(file)] : [];
     });
 
   assert.deepEqual(offenders, []);
+});
+
+test('pending_client_watchlist stores one helper action tag without touching lifecycle tables', () => {
+  assert.match(actionTagMigration, /add column if not exists action_tag text not null default 'Missing Notes'/i);
+  assert.match(actionTagMigration, /Operator Input/);
+  assert.match(actionTagMigration, /Scout Update/);
+  assert.match(actionTagMigration, /Payment Watch/);
+  assert.match(actionTagMigration, /Missing Notes/);
+  assert.doesNotMatch(actionTagMigration, /athlete_pipeline_state/i);
+  assert.doesNotMatch(actionTagMigration, /lifecycle_events/i);
 });
 
 test('pending_client_watchlist is protected by RLS and service-role only grants', () => {

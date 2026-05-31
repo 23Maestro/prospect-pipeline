@@ -11,6 +11,11 @@ export const PENDING_CLIENT_LIST_LIMIT = 5;
 
 export type PendingClientAIVerdict = 'pending_client';
 export type PendingClientWatchlistStatus = 'watching' | 'resolved' | 'expired';
+export type PendingClientActionTag =
+  | 'Operator Input'
+  | 'Scout Update'
+  | 'Payment Watch'
+  | 'Missing Notes';
 
 export type PendingClientEventInput = {
   event_id?: string | number | null;
@@ -20,6 +25,14 @@ export type PendingClientEventInput = {
   end?: string | null;
   date_time_label?: string | null;
   description?: string | null;
+};
+
+export type PendingClientNoteInput = {
+  title?: string | null;
+  description?: string | null;
+  metadata?: string | null;
+  created_by?: string | null;
+  created_at?: string | null;
 };
 
 export type SetMeetingConfirmationCacheRowInput = {
@@ -91,6 +104,7 @@ export type PendingClientWatchlistRow = PendingClientOwnerSnapshot & {
   event_end: string | null;
   description: string;
   matched_signals: string[];
+  action_tag: PendingClientActionTag;
   ai_verdict: PendingClientAIVerdict;
   status: PendingClientWatchlistStatus;
   first_seen_at: string;
@@ -113,6 +127,7 @@ const SIGNALS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'post date', pattern: /\bpost\s+date\b/i },
   { label: 'elite', pattern: /\belite\b/i },
   { label: 'icon', pattern: /\bicon\b/i },
+  { label: 'premium', pattern: /\bpremium\b/i },
   { label: 'legend', pattern: /\blegend\b/i },
 ];
 
@@ -121,6 +136,10 @@ const SPORT_BOUNDARY_PATTERN =
 
 function normalizeText(value?: string | number | null): string {
   return String(value || '').trim();
+}
+
+function normalizeComparableText(value?: string | number | null): string {
+  return normalizeText(value).replace(/\s+/g, ' ');
 }
 
 function parseDateMs(value?: string | null): number {
@@ -159,7 +178,8 @@ export function isPendingClientFollowUpTitle(title?: string | null): boolean {
 }
 
 export function isPendingClientReviewEventTitle(title?: string | null): boolean {
-  return /^\(FU\)(?:\*\d+)?\s+/i.test(normalizeText(title));
+  const trimmed = normalizeText(title);
+  return isPendingClientFollowUpTitle(trimmed) || /\bfollow\s*up\b/i.test(trimmed);
 }
 
 export function hasStrictNoShowEvidence(args: {
@@ -310,7 +330,37 @@ export function findPendingClientSignals(description?: string | null): string[] 
 }
 
 export function hasPendingClientWatchNote(description?: string | null): boolean {
-  return Boolean(normalizeText(description));
+  const text = normalizeComparableText(description);
+  return Boolean(text) && text !== 'Date Created By Title Description';
+}
+
+function noteTimeValue(note: PendingClientNoteInput): number {
+  const direct = parseDateMs(note.created_at);
+  if (!Number.isNaN(direct)) return direct;
+  const title = normalizeText(note.title);
+  const match = title.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return 0;
+  const month = Number.parseInt(match[1], 10) - 1;
+  const day = Number.parseInt(match[2], 10);
+  const rawYear = Number.parseInt(match[3], 10);
+  const year = match[3].length === 2 ? 2000 + rawYear : rawYear;
+  let hour = Number.parseInt(match[4], 10);
+  const minute = Number.parseInt(match[5], 10);
+  const meridiem = match[6].toUpperCase();
+  if (meridiem === 'PM' && hour < 12) hour += 12;
+  if (meridiem === 'AM' && hour === 12) hour = 0;
+  const parsed = new Date(year, month, day, hour, minute).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+export function selectLatestPendingClientNote<T extends PendingClientNoteInput>(
+  notes: T[],
+): T | null {
+  return (
+    (Array.isArray(notes) ? notes : [])
+      .filter((note) => hasPendingClientWatchNote(note.description))
+      .sort((left, right) => noteTimeValue(right) - noteTimeValue(left))[0] || null
+  );
 }
 
 export function selectLatestPendingClientReviewEvent<T extends PendingClientEventInput>(
@@ -342,6 +392,37 @@ export function selectLatestPendingClientReviewEvent<T extends PendingClientEven
         normalizeText(right.start).localeCompare(normalizeText(left.start)),
       )[0] || null
   );
+}
+
+export function buildPendingClientEvidenceDescription(args: {
+  notesTabEntry?: PendingClientNoteInput | null;
+  reviewEvent?: PendingClientEventInput | null;
+  missingMessage?: string;
+}): string {
+  const parts = [
+    args.reviewEvent?.description && hasPendingClientWatchNote(args.reviewEvent.description)
+      ? `Event List: ${normalizeText(args.reviewEvent.description)}`
+      : null,
+    args.notesTabEntry?.description && hasPendingClientWatchNote(args.notesTabEntry.description)
+      ? `Notes Tab: ${normalizeText(args.notesTabEntry.description)}`
+      : null,
+  ].filter(Boolean);
+  return parts.length ? parts.join('\n\n') : args.missingMessage || 'Missing usable notes.';
+}
+
+export function classifyPendingClientActionTag(args: {
+  normalizedStage?: string | null;
+  description?: string | null;
+  matchedSignals?: string[] | null;
+  hasEvidence?: boolean;
+}): PendingClientActionTag {
+  const hasEvidence = args.hasEvidence ?? hasPendingClientWatchNote(args.description);
+  if (!hasEvidence) {
+    return args.normalizedStage === 'reschedule_pending' ? 'Operator Input' : 'Missing Notes';
+  }
+  if ((args.matchedSignals || []).length > 0) return 'Payment Watch';
+  if (args.normalizedStage === 'reschedule_pending') return 'Operator Input';
+  return 'Scout Update';
 }
 
 export function normalizePendingClientAIVerdict(
@@ -405,6 +486,7 @@ export function buildPendingClientWatchlistRow(args: {
   event: PendingClientEventInput;
   description: string;
   matchedSignals: string[];
+  actionTag: PendingClientActionTag;
   aiVerdict: PendingClientAIVerdict;
   athleteId?: string | null;
   athleteMainId?: string | null;
@@ -432,6 +514,7 @@ export function buildPendingClientWatchlistRow(args: {
     event_end: normalizeText(args.event.end) || null,
     description: args.description,
     matched_signals: args.matchedSignals,
+    action_tag: args.actionTag,
     ai_verdict: args.aiVerdict,
     status: 'watching',
     first_seen_at: nowIso,

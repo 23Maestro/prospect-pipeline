@@ -4,9 +4,12 @@ import fs from 'node:fs';
 
 import {
   buildPendingClientOwnerSnapshot,
+  buildPendingClientEvidenceDescription,
   buildPendingClientResolvedPatch,
+  buildPendingClientWatchlistRow,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
+  classifyPendingClientActionTag,
   classifyPendingClientLifecycle,
   filterReadySetMeetingConfirmationGroups,
   filterPendingClientCandidateEvents,
@@ -17,6 +20,7 @@ import {
   normalizePendingClientAIVerdict,
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
+  selectLatestPendingClientNote,
 } from './pending-client-watchlist';
 
 test('pending client event filter keeps recent follow-up rows across all scouts', () => {
@@ -81,6 +85,11 @@ test('pending client signal matcher is broad but excludes generic interest notes
     'elite',
     'legend',
   ]);
+  assert.deepEqual(findPendingClientSignals('Premium with a post date.'), [
+    'post date',
+    'premium',
+  ]);
+  assert.deepEqual(findPendingClientSignals('Icon subscription.'), ['icon']);
   assert.deepEqual(findPendingClientSignals('Come aboard with $179 12 month upgrade.'), [
     'upgrade',
     '$',
@@ -101,6 +110,31 @@ test('pending client watch note keeps real follow-up descriptions without paymen
   assert.equal(hasPendingClientWatchNote(description), true);
   assert.equal(hasPendingClientWatchNote(''), false);
   assert.equal(hasPendingClientWatchNote('   \n  '), false);
+  assert.equal(hasPendingClientWatchNote('Date\nCreated By\nTitle\nDescription'), false);
+  assert.equal(hasPendingClientWatchNote('Date Created By Title Description'), false);
+});
+
+test('pending client notes source chooses the latest real notes-tab entry', () => {
+  const note = selectLatestPendingClientNote([
+    {
+      title: 'Notes',
+      description: 'Date\nCreated By\nTitle\nDescription',
+      metadata: null,
+    },
+    {
+      title: '05/28/26 09:03 PM',
+      description: 'Family will reach back out. Give them a few weeks.',
+      metadata: 'Luther Winfield | Meeting Rescheduled Pending',
+    },
+    {
+      title: '05/29/26 09:03 PM',
+      description: 'Need a few days on Elite package.',
+      metadata: 'Luther Winfield | Follow Up',
+    },
+  ]);
+
+  assert.equal(note?.description, 'Need a few days on Elite package.');
+  assert.equal(note?.metadata, 'Luther Winfield | Follow Up');
 });
 
 test('pending client review note chooses latest follow-up event after the meeting', () => {
@@ -146,6 +180,85 @@ test('pending client review note chooses latest follow-up event after the meetin
 
   assert.equal(review?.event_id, '628744');
   assert.equal(review?.description, 'Family wanted a few days (Elite)');
+});
+
+test('pending client evidence uses post-meeting event list and notes tab, not meeting description', () => {
+  const description = buildPendingClientEvidenceDescription({
+    reviewEvent: {
+      title: '(FU) Ryan Leeds Football 2027 TX',
+      description: 'Follow up with his family in two months. They want Legend.',
+    },
+    notesTabEntry: {
+      title: '05/30/26 10:00 AM',
+      description: 'Family asked for the Elite package payment options.',
+    },
+  });
+
+  assert.match(description, /Event List: Follow up with his family in two months/);
+  assert.match(description, /Notes Tab: Family asked for the Elite package payment options/);
+  assert.doesNotMatch(description, /Original prep notes/);
+});
+
+test('pending client action tags stay to four visible helper states', () => {
+  assert.equal(
+    classifyPendingClientActionTag({
+      normalizedStage: 'meeting_follow_up',
+      description: 'Family wants Legend and asked about payment timing.',
+      matchedSignals: ['legend', 'payment'],
+    }),
+    'Payment Watch',
+  );
+  assert.equal(
+    classifyPendingClientActionTag({
+      normalizedStage: 'meeting_follow_up',
+      description: 'Follow up with the family in two months.',
+      matchedSignals: [],
+    }),
+    'Scout Update',
+  );
+  assert.equal(
+    classifyPendingClientActionTag({
+      normalizedStage: 'reschedule_pending',
+      description: 'Dad said the family needs to reschedule.',
+      matchedSignals: [],
+    }),
+    'Operator Input',
+  );
+  assert.equal(
+    classifyPendingClientActionTag({
+      normalizedStage: 'meeting_follow_up',
+      description: 'Date\nCreated By\nTitle\nDescription',
+      matchedSignals: [],
+      hasEvidence: false,
+    }),
+    'Missing Notes',
+  );
+});
+
+test('pending client watchlist row persists the helper action tag', () => {
+  const row = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'pending-client:1',
+      title: '(FU) Ryan Leeds Football 2027 TX',
+      assigned_owner: 'Ryan Lietz',
+      start: '2026-05-30T10:00',
+      end: '2026-05-30T10:30',
+    },
+    description: 'Family wants Legend and asked about payment timing.',
+    matchedSignals: ['legend', 'payment'],
+    actionTag: 'Payment Watch',
+    aiVerdict: 'pending_client',
+    activeOperator: {
+      operatorKey: 'jerami_singleton',
+      personName: 'Jerami Singleton',
+      legacyUserId: '1408164',
+      taskAssignedOwnerName: 'Jerami Singleton',
+      dashboardTrackingEnabled: true,
+      senderName: 'Jerami Singleton',
+    },
+  });
+
+  assert.equal(row.action_tag, 'Payment Watch');
 });
 
 test('pending client source keeps only ready Jerami-owned set meeting cache groups', () => {
@@ -224,12 +337,16 @@ test('pending client loader uses lifecycle current appointment pointers before p
   assert.match(source, /current_resolved_appointment_id/);
   assert.match(source, /mergeLifecycleAndPipelineRows/);
   assert.match(source, /readCurrentPipelineRows/);
+  assert.match(source, /fetchAthleteNotes/);
+  assert.match(source, /buildPendingClientEvidenceDescription/);
+  assert.doesNotMatch(source, /currentMeeting\\.description/);
 });
 
-test('pending client review title accepts only FU prefixes', () => {
+test('pending client review title accepts FU and follow-up event-list titles', () => {
   assert.equal(isPendingClientReviewEventTitle('(FU) Avery Jones Football 2027 TN'), true);
   assert.equal(isPendingClientReviewEventTitle('(FU)*2 Avery Jones Football 2027 TN'), true);
-  assert.equal(isPendingClientReviewEventTitle('Follow Up - Avery Jones Football 2027 TN'), false);
+  assert.equal(isPendingClientReviewEventTitle('Follow Up - Avery Jones Football 2027 TN'), true);
+  assert.equal(isPendingClientReviewEventTitle('Follow up with the family in August'), true);
   assert.equal(isPendingClientReviewEventTitle('Booked Meeting Avery Jones'), false);
 });
 

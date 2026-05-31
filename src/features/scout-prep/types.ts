@@ -56,6 +56,8 @@ export type ScoutPrepContext = {
     high_school?: string | null;
     city?: string | null;
     state?: string | null;
+    timezone?: string | null;
+    timezone_label?: string | null;
     positions?: string | null;
     gpa?: string | null;
     head_scout?: string | null;

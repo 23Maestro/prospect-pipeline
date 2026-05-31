@@ -31,6 +31,8 @@ import {
   setCachedScoutPrepMeasurables,
   type ScoutPrepMeasurables,
 } from './scout-prep-cache';
+import { resolveLegacyTimezoneLabelFromIana } from '../domain/outreach-time-wording';
+import { resolveBookedMeetingDetailsForForm } from './booked-meeting-details-resolver';
 
 const FEATURE = 'scout-prep';
 export type ScoutTaskRange =
@@ -727,6 +729,15 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
     );
   }
 
+  const resolvedCity = task.city || athleteDetails?.city || null;
+  const resolvedState = task.state || athleteDetails?.state || null;
+  const appointmentTruth = await resolveBookedMeetingDetailsForForm({
+    athleteId,
+    athleteMainId,
+    source: 'appointment_truth',
+  }).catch(() => null);
+  const resolvedTimezone = appointmentTruth?.meetingTimezone || null;
+
   return {
     task,
     resolved: {
@@ -734,8 +745,10 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
       athlete_main_id: athleteDetails?.athlete_main_id || athleteMainId,
       sport: task.sport || athleteDetails?.sport || null,
       high_school: task.high_school || athleteDetails?.high_school || null,
-      city: task.city || athleteDetails?.city || null,
-      state: task.state || athleteDetails?.state || null,
+      city: resolvedCity,
+      state: resolvedState,
+      timezone: resolvedTimezone,
+      timezone_label: resolveLegacyTimezoneLabelFromIana(resolvedTimezone),
       positions: athleteDetails?.positions || null,
       gpa: athleteDetails?.gpa || null,
       head_scout: athleteDetails?.head_scout || null,

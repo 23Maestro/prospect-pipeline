@@ -63,8 +63,13 @@ test('current sales-stage reconciler prepares pending-client watchlist rows for 
   assert.match(source, /upsertPendingClientWatchlistRows/);
   assert.match(source, /enqueuePendingClientWatchlistRow/);
   assert.match(source, /classifyPendingClientLifecycle/);
+  assert.match(source, /selectLatestPendingClientNote/);
   assert.match(source, /selectLatestPendingClientReviewEvent/);
+  assert.match(source, /buildPendingClientEvidenceDescription/);
+  assert.match(source, /classifyPendingClientActionTag/);
   assert.match(source, /pendingClientWatchlistUpserted/);
+  assert.match(source, /fetchAthleteNotes/);
+  assert.doesNotMatch(source, /bookedMeeting\?\.description \|\| pendingClientDecision\.reason/);
 });
 
 test('current sales-stage reconciler uses lifecycle current appointment pointers before pipeline fallback', () => {

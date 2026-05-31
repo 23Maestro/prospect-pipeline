@@ -4,9 +4,12 @@ import path from 'path';
 import {
   buildPendingClientResolvedPatch,
   buildPendingClientWatchlistRow,
+  buildPendingClientEvidenceDescription,
+  classifyPendingClientActionTag,
   classifyPendingClientLifecycle,
   findPendingClientSignals,
   PENDING_CLIENT_LIST_LIMIT,
+  selectLatestPendingClientNote,
   selectLatestPendingClientReviewEvent,
   shouldResolvePendingClientForLifecycle,
   type PendingClientWatchlistRow,
@@ -20,6 +23,7 @@ import {
 import { confirmPendingClientWithRayAI } from './raycast-ai';
 import { fetchAthleteBookedMeetings } from './head-scout-schedules';
 import { fetchCuratedSalesStageOptions } from './sales-stage';
+import { fetchAthleteNotes } from './npid-mcp-adapter';
 
 type Preferences = {
   supabaseUrl?: string;
@@ -192,6 +196,11 @@ async function fetchSelectedSalesStage(athleteId: string): Promise<string | null
   }
 }
 
+async function fetchLatestPendingClientNote(athleteId: string, athleteMainId: string) {
+  const notes = await fetchAthleteNotes(athleteId, athleteMainId).catch(() => []);
+  return selectLatestPendingClientNote(notes);
+}
+
 function isEnded(value?: string | null, now = new Date()): boolean {
   const parsed = Date.parse(String(value || ''));
   return !Number.isNaN(parsed) && parsed <= now.getTime();
@@ -304,21 +313,33 @@ async function buildConfirmedRowsFromPipelineState(
       },
       athleteMeetings.events || [],
     );
+    const notesTabEntry = await fetchLatestPendingClientNote(athleteId, athleteMainId);
 
     const decision = classifyPendingClientLifecycle({
       crmStage: salesStage,
-      reviewEventTitle: reviewEvent?.title || currentMeeting.title,
-      reviewDescription: reviewEvent?.description || currentMeeting.description || '',
+      reviewEventTitle: notesTabEntry?.metadata || reviewEvent?.title || currentMeeting.title,
+      reviewDescription: notesTabEntry?.description || '',
     });
     if (!decision.eligible) continue;
 
-    const description = reviewEvent?.description || currentMeeting.description || '';
+    const description = buildPendingClientEvidenceDescription({
+      notesTabEntry,
+      reviewEvent,
+      missingMessage: 'No usable Notes tab or post-meeting event-list entry found for this post-meeting state.',
+    });
+    const hasEvidence = Boolean(notesTabEntry || reviewEvent);
     const matchedSignals = findPendingClientSignals(description);
+    const actionTag = classifyPendingClientActionTag({
+      normalizedStage: decision.normalizedStage,
+      description,
+      matchedSignals,
+      hasEvidence,
+    });
 
     let aiVerdict: 'pending_client' | null = 'pending_client';
     if (matchedSignals.length) {
       aiVerdict = await confirmPendingClientWithRayAI({
-        title: reviewEvent?.title || currentMeeting.title,
+        title: notesTabEntry?.metadata || reviewEvent?.title || currentMeeting.title,
         description: [`Sales Stage: ${salesStage || 'Unknown'}`, description].join('\n'),
         matchedSignals,
       });
@@ -341,9 +362,14 @@ async function buildConfirmedRowsFromPipelineState(
         description: [
           `Sales Stage: ${salesStage || 'Unknown'}`,
           `Lifecycle: ${decision.normalizedStage}`,
+          `Pending Tag: ${actionTag}`,
+          reviewEvent?.title ? `Event List: ${reviewEvent.title}` : null,
+          notesTabEntry?.title ? `Notes Tab: ${notesTabEntry.title}` : 'Notes Tab: missing',
+          notesTabEntry?.metadata ? `Scout Note: ${notesTabEntry.metadata}` : null,
           description || decision.reason,
-        ].join('\n\n'),
+        ].filter(Boolean).join('\n\n'),
         matchedSignals,
+        actionTag,
         aiVerdict,
         athleteId,
         athleteMainId,

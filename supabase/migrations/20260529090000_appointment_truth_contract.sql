@@ -152,22 +152,6 @@ with active_statuses(status) as (
     ('confirmation_queued'),
     ('confirmation_sent')
 ),
-confirmation_support as (
-  select
-    appointment_id,
-    max(meeting_timezone) filter (where nullif(meeting_timezone, '') is not null) as meeting_timezone,
-    max(meeting_starts_at) as meeting_starts_at
-  from public.set_meeting_confirmation_cache
-  group by appointment_id
-),
-contact_support as (
-  select
-    athlete_key,
-    max(timezone) filter (where nullif(timezone, '') is not null) as timezone,
-    max(timezone_label) filter (where nullif(timezone_label, '') is not null) as timezone_label
-  from public.athlete_contact_cache
-  group by athlete_key
-),
 latest_active_appointment as (
   select distinct on (appointment.athlete_key)
     appointment.*
@@ -192,17 +176,14 @@ select
   state.current_appointment_id,
   coalesce(current_appt.id, latest_appt.id) as resolved_appointment_id,
   coalesce(current_appt.source_event_id, latest_appt.source_event_id) as current_source_event_id,
-  coalesce(current_appt.starts_at, latest_appt.starts_at, current_cache.meeting_starts_at) as current_starts_at,
+  coalesce(current_appt.starts_at, latest_appt.starts_at) as current_starts_at,
   coalesce(
     current_appt.meeting_timezone,
-    latest_appt.meeting_timezone,
-    current_cache.meeting_timezone,
-    contact_support.timezone
+    latest_appt.meeting_timezone
   ) as current_meeting_timezone,
   coalesce(
     current_appt.meeting_timezone_label,
-    latest_appt.meeting_timezone_label,
-    contact_support.timezone_label
+    latest_appt.meeting_timezone_label
   ) as current_meeting_timezone_label,
   coalesce(current_appt.calendar_timezone, latest_appt.calendar_timezone) as current_calendar_timezone,
   coalesce(current_appt.status, latest_appt.status) as current_appointment_status,
@@ -210,8 +191,8 @@ select
   coalesce(current_appt.previous_appointment_id, latest_appt.previous_appointment_id) as previous_appointment_id,
   previous_appt.source_event_id as previous_source_event_id,
   previous_appt.starts_at as previous_starts_at,
-  coalesce(previous_appt.meeting_timezone, previous_cache.meeting_timezone, contact_support.timezone) as previous_meeting_timezone,
-  coalesce(previous_appt.meeting_timezone_label, contact_support.timezone_label) as previous_meeting_timezone_label,
+  previous_appt.meeting_timezone as previous_meeting_timezone,
+  previous_appt.meeting_timezone_label as previous_meeting_timezone_label,
   previous_appt.head_scout as previous_head_scout,
   previous_appt.head_scout_key as previous_head_scout_key,
   coalesce(current_appt.original_appointment_id, latest_appt.original_appointment_id, coalesce(current_appt.id, latest_appt.id)) as original_appointment_id,
@@ -232,12 +213,6 @@ left join latest_active_appointment latest_appt
   on latest_appt.athlete_key = state.athlete_key
 left join public.appointments previous_appt
   on previous_appt.id = coalesce(current_appt.previous_appointment_id, latest_appt.previous_appointment_id)
-left join confirmation_support current_cache
-  on current_cache.appointment_id = coalesce(current_appt.id, latest_appt.id)
-left join confirmation_support previous_cache
-  on previous_cache.appointment_id = previous_appt.id
-left join contact_support
-  on contact_support.athlete_key = state.athlete_key
 where state.current_appointment_id is not null
    or latest_appt.id is not null
    or state.crm_stage in ('Meeting Set', 'Meeting Set - Rescheduled', 'Rescheduled', 'Meeting Result - Res. Pending')

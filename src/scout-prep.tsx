@@ -124,7 +124,7 @@ import {
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
 import { searchLogger } from './lib/logger';
-import { getNaturalZoneLabel, resolveTimezone } from './lib/scout-prep-ai';
+import { getNaturalZoneLabel } from './lib/scout-prep-ai';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
@@ -135,13 +135,13 @@ import {
   formatHeadScoutSlotForTimezone,
   formatHeadScoutWeekLabel,
   HEAD_SCOUT_ORDER,
-  resolveAthleteTimezone,
   type BookedMeetingEvent,
   type HeadScoutSlot,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
 import {
   resolveBookedMeetingDetailsForForm,
+  resolveRequiredAppointmentTruthMeeting,
   selectCurrentBookedMeeting,
   type ResolvedBookedMeetingDetails,
 } from './lib/booked-meeting-details-resolver';
@@ -149,6 +149,7 @@ import {
   cacheBookedMeetingDescription,
   getCachedBookedMeetingDescription,
 } from './lib/booked-meeting-description-cache';
+import { addAthleteNote } from './lib/npid-mcp-adapter';
 import {
   resolveVoicemailFollowUpVariant,
   type VoicemailFollowUpVariant,
@@ -662,13 +663,13 @@ async function cacheMeetingDescriptionForReschedulePending(args: {
   athleteId: string;
   athleteMainId: string;
   initialBookedMeeting?: BookedMeetingEvent | null;
-}): Promise<void> {
+}): Promise<string | null> {
   const resolved = await resolveBookedMeetingDetailsForForm({
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
     initialBookedMeeting: args.initialBookedMeeting || null,
   });
-  if (!resolved?.description) return;
+  if (!resolved?.description) return null;
 
   await cacheBookedMeetingDescription({
     athleteId: args.athleteId,
@@ -676,6 +677,11 @@ async function cacheMeetingDescriptionForReschedulePending(args: {
     eventId: resolved.openEventId || resolved.bookedMeeting.event_id,
     description: resolved.description,
   });
+  return resolved.description;
+}
+
+function getReschedulePendingOperatorNoteTitle(value?: string | null): string {
+  return String(value || '').trim() || 'Reschedule Pending Reason';
 }
 
 function getTaskDisplayTitle(
@@ -1064,6 +1070,7 @@ function formatProspectContactRoles(candidates: ProspectContactShortcutCandidate
 
 async function createProspectContactsBatch(
   candidates: ProspectContactShortcutCandidate[],
+  adminUrl: string,
   contactNote: string,
 ): Promise<ProspectContactBatchSummary> {
   if (!candidates.length) {
@@ -1095,6 +1102,7 @@ async function createProspectContactsBatch(
   await appendProspectContactNotes(
     uniqueCandidates.map((candidate) => ({
       phone: candidate.phone,
+      url: adminUrl,
       note: contactNote,
     })),
   );
@@ -1142,18 +1150,20 @@ function escapeAppleScriptString(value: string): string {
   return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
-async function appendProspectContactNotes(items: Array<{ phone: string; note: string }>) {
+async function appendProspectContactNotes(items: Array<{ phone: string; url: string; note: string }>) {
   const rows = items
     .map((item) => ({
       phone: item.phone.replace(/\D/g, ''),
+      url: item.url.trim(),
       note: item.note.trim(),
     }))
-    .filter((item) => item.phone.length === 10 && item.note);
+    .filter((item) => item.phone.length === 10 && item.url && item.note);
   if (!rows.length) {
     return;
   }
 
   const phoneList = rows.map((item) => `"${escapeAppleScriptString(item.phone)}"`).join(', ');
+  const urlList = rows.map((item) => `"${escapeAppleScriptString(item.url)}"`).join(', ');
   const noteList = rows.map((item) => `"${escapeAppleScriptString(item.note)}"`).join(', ');
   await runAppleScript(`
 on digitsOnly(rawValue)
@@ -1168,6 +1178,7 @@ on digitsOnly(rawValue)
 end digitsOnly
 
 set targetPhones to {${phoneList}}
+set targetUrls to {${urlList}}
 set targetNotes to {${noteList}}
 
 tell application "Contacts"
@@ -1185,6 +1196,7 @@ tell application "Contacts"
 
   repeat with targetIndex from 1 to count of targetPhones
     set targetPhone to item targetIndex of targetPhones
+    set targetUrl to item targetIndex of targetUrls
     set targetNote to item targetIndex of targetNotes
     repeat with contactPerson in people of targetGroup
       set matchedContact to false
@@ -1192,15 +1204,11 @@ tell application "Contacts"
         if my digitsOnly(value of contactPhone as text) is targetPhone then set matchedContact to true
       end repeat
       if matchedContact then
+        set home page of contactPerson to targetUrl
         set existingNote to note of contactPerson
         if existingNote is missing value then set existingNote to ""
-        if existingNote does not contain targetNote then
-          if existingNote is "" then
-            set note of contactPerson to targetNote
-          else
-            set note of contactPerson to existingNote & linefeed & targetNote
-          end if
-        end if
+        if existingNote contains targetUrl then set existingNote to ""
+        if existingNote does not contain targetNote then set note of contactPerson to targetNote
       end if
     end repeat
   end repeat
@@ -1209,13 +1217,16 @@ end tell
 `);
 }
 
-function buildProspectContactAdminNote(context: ScoutPrepContext, adminUrl: string): string {
-  const timezone = resolveTimezone(context.resolved.city, context.resolved.state);
-  const zoneLabel = timezone ? getNaturalZoneLabel(timezone) : 'Unknown';
+function buildProspectContactAdminNote(context: ScoutPrepContext): string {
+  const timezone = String(context.resolved.timezone || '').trim();
+  if (!timezone) {
+    throw new Error('Contact note requires appointment truth timezone.');
+  }
+  const zoneLabel = getNaturalZoneLabel(timezone);
   const athleteName =
     context.contactInfo.studentAthlete.name || context.task.athlete_name || 'Student Athlete';
 
-  return [`Time Zone: ${zoneLabel}`, `Student Athlete: ${athleteName}; ${adminUrl}`].join('\n');
+  return [`Timezone: ${zoneLabel}`, '', athleteName].join('\n');
 }
 
 async function openMessagesDraftForRecipients(phones: string[], body: string): Promise<'url'> {
@@ -1294,13 +1305,11 @@ function ScoutPrepContactDetail({
     try {
       const summary = await createProspectContactsBatch(
         contactCandidates,
-        buildProspectContactAdminNote(
-          context,
-          buildScoutPrepAdminUrl(
-            task,
-            context.resolved.athlete_main_id || context.task.athlete_main_id,
-          ),
+        buildScoutPrepAdminUrl(
+          task,
+          context.resolved.athlete_main_id || context.task.athlete_main_id,
         ),
+        buildProspectContactAdminNote(context),
       );
       toast.style = Toast.Style.Success;
       toast.title = 'Contacts ready';
@@ -1854,9 +1863,10 @@ function buildPreviousMeetingTextForReschedule(
     return null;
   }
 
-  const athleteTimezone =
-    resolved.meetingTimezone ||
-    resolveAthleteTimezone(context.resolved.city, context.resolved.state);
+  const athleteTimezone = resolved.meetingTimezone;
+  if (!athleteTimezone) {
+    throw new Error('Missing appointment truth timezone for Reschedule Pending');
+  }
   const slotLabel =
     meeting.start && meeting.end
       ? formatHeadScoutNaturalSlotLabel(meeting.start, meeting.end, athleteTimezone).messageLabel
@@ -1969,16 +1979,14 @@ function RescheduleSlotSelectionList({
     const athleteMainId = String(
       context.resolved.athlete_main_id || task.athlete_main_id || '',
     ).trim();
-    const athleteTimezone = resolveAthleteTimezone(context.resolved.city, context.resolved.state);
-
     async function loadSlots() {
       setIsLoading(true);
       setErrorMessage(null);
       try {
         const [meetingResult, slotsResult] = await Promise.allSettled([
           athleteId && athleteMainId
-            ? resolveBookedMeetingDetailsForForm(
-                { athleteId, athleteMainId, source: 'appointment_truth' },
+            ? resolveRequiredAppointmentTruthMeeting(
+                { athleteId, athleteMainId },
                 { getCachedMeetingDescription: getCachedBookedMeetingDescription },
               )
             : Promise.resolve(null),
@@ -1988,6 +1996,9 @@ function RescheduleSlotSelectionList({
 
         const resolvedMeeting =
           meetingResult.status === 'fulfilled' && meetingResult.value ? meetingResult.value : null;
+        if (!resolvedMeeting?.meetingTimezone) {
+          throw new Error('Missing appointment truth timezone for Reschedule Pending');
+        }
         const nextHeadScoutName =
           String(resolvedMeeting?.bookedMeeting?.assigned_owner || '').trim() ||
           String(context.resolved.head_scout || '').trim() ||
@@ -2005,7 +2016,7 @@ function RescheduleSlotSelectionList({
         setSlotOptions(
           buildRescheduleVoicemailSlotOptions({
             slots,
-            athleteTimezone,
+            athleteTimezone: resolvedMeeting.meetingTimezone,
             previousHeadScoutName: nextHeadScoutName,
             weekLabel: weekOffset > 0 ? 'next week' : 'this week',
           }),
@@ -2185,11 +2196,10 @@ function VoicemailFollowUpRecipientForm({
 
       setIsLoadingPreviousMeeting(true);
       try {
-        const resolved = await resolveBookedMeetingDetailsForForm(
+        const resolved = await resolveRequiredAppointmentTruthMeeting(
           {
             athleteId,
             athleteMainId,
-            source: 'appointment_truth',
           },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,
@@ -3589,6 +3599,29 @@ export function PostCallUpdateForm({
       }
 
       const preUpdateContext = context || (await loadScoutPrepContext(task));
+      let reschedulePendingMeetingDescription: string | null = null;
+      const isReschedulePendingUpdate = isReschedulePendingStage(stageLabel);
+      const reschedulePendingOperatorNoteTitle = getReschedulePendingOperatorNoteTitle(
+        values.reschedulePendingNoteTitle,
+      );
+      const reschedulePendingOperatorNoteDescription = String(
+        values.reschedulePendingNoteDescription || '',
+      ).trim();
+
+      if (isReschedulePendingUpdate) {
+        if (!reschedulePendingOperatorNoteDescription) {
+          throw new Error('Reschedule Pending requires a note description for why they rescheduled');
+        }
+        reschedulePendingMeetingDescription = await cacheMeetingDescriptionForReschedulePending({
+          athleteId,
+          athleteMainId,
+          initialBookedMeeting,
+        });
+        if (!reschedulePendingMeetingDescription) {
+          throw new Error('Missing saved meeting description for RSP And Scout Notes');
+        }
+      }
+
       let meetingSetResult: MeetingSetSubmitResponse | null = null;
       let meetingSetInput: Parameters<typeof buildPostCallActionPlan>[0]['meetingSet'] = undefined;
       let rescheduleMeetingResult: RescheduleMeetingSubmitResponse | null = null;
@@ -3686,34 +3719,26 @@ export function PostCallUpdateForm({
         meetingSet: meetingSetInput,
       });
 
-      if (isReschedulePendingStage(stageLabel)) {
-        try {
-          await cacheMeetingDescriptionForReschedulePending({
-            athleteId,
-            athleteMainId,
-            initialBookedMeeting,
-          });
-        } catch (error) {
-          logFailure(
-            'SCOUT_PREP_RSP_MEETING_DESCRIPTION_CACHE',
-            'best-effort',
-            error instanceof Error ? error.message : String(error),
-            {
-              contactId: athleteId,
-              athleteMainId,
-              stageLabel,
-              appointmentId: initialBookedMeeting?.event_id || null,
-            },
-          );
-        }
-      }
-
       const salesStageResult = await updateSalesStage({
         athleteMainId,
         athleteId,
         athleteName: preUpdateContext.contactInfo.studentAthlete.name || task.athlete_name,
         stage: basePlan.laravelSalesStageUpdate?.stage || stageLabel,
       });
+      if (isReschedulePendingUpdate) {
+        await addAthleteNote({
+          athleteId,
+          athleteMainId,
+          title: 'RSP And Scout Notes',
+          description: reschedulePendingMeetingDescription || '',
+        });
+        await addAthleteNote({
+          athleteId,
+          athleteMainId,
+          title: reschedulePendingOperatorNoteTitle,
+          description: reschedulePendingOperatorNoteDescription,
+        });
+      }
       try {
         await syncAthleteContactCacheFromScoutPrepContext({
           context: preUpdateContext,
@@ -4007,6 +4032,23 @@ export function PostCallUpdateForm({
               />
             </>
           )}
+        </>
+      ) : null}
+
+      {isReschedulePendingStage(selectedStageLabel) ? (
+        <>
+          <Form.Separator />
+          <Form.Description text="Reschedule Pending writes the stage update, saves the meeting description to Notes, and saves your reschedule reason." />
+          <Form.TextField
+            id="reschedulePendingNoteTitle"
+            title="Note Title"
+            defaultValue="Reschedule Pending Reason"
+          />
+          <Form.TextArea
+            id="reschedulePendingNoteDescription"
+            title="Why They Rescheduled"
+            placeholder="Add the title and description reason that should live in the athlete Notes tab."
+          />
         </>
       ) : null}
     </Form>
@@ -5882,8 +5924,8 @@ async function buildRescheduleBatchPlan(args: {
     args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
   ).trim();
   const previousMeeting = athleteId && athleteMainId
-    ? await resolveBookedMeetingDetailsForForm(
-        { athleteId, athleteMainId, source: 'appointment_truth' },
+    ? await resolveRequiredAppointmentTruthMeeting(
+        { athleteId, athleteMainId },
         { getCachedMeetingDescription: getCachedBookedMeetingDescription },
       )
     : null;
@@ -5891,9 +5933,7 @@ async function buildRescheduleBatchPlan(args: {
     throw new Error('Missing appointment truth for Reschedule Pending');
   }
 
-  const clientTimezone =
-    previousMeeting.meetingTimezone ||
-    resolveAthleteTimezone(args.context.resolved.city, args.context.resolved.state);
+  const clientTimezone = previousMeeting.meetingTimezone;
   const previousHeadScoutName =
     String(previousMeeting.bookedMeeting.assigned_owner || '').trim() ||
     String(args.context.resolved.head_scout || '').trim() ||

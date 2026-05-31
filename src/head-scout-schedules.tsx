@@ -124,7 +124,7 @@ export type HeadScoutBookingsListProps = {
   weeklyMeetingsOnly?: boolean;
 };
 
-const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5'];
+const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['y', 'u', 'h', 'j', 'n'];
 const SCOUT_GRID_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5', '6'];
 const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
   { title: 'Copy James Card', scoutName: 'James Holcomb' },
@@ -533,11 +533,10 @@ async function hydrateWeeklyCandidatesFromAthleteMeetings(
 function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows'][number]): string {
   const scout = row.head_scout || 'Scout unresolved';
   const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown date';
-  const signals = row.matched_signals?.length ? row.matched_signals.join(', ') : 'no signals';
   return [
     `${row.athlete_name || 'Unknown Athlete'} • ${scout} • ${eventDate}`,
     row.event_title,
-    `Signals: ${signals}`,
+    `Tag: ${row.action_tag || 'Missing Notes'}`,
     row.description,
   ]
     .filter(Boolean)
@@ -549,13 +548,14 @@ function buildPendingClientDetailMarkdown(
 ): string {
   const scout = row.head_scout || 'Scout unresolved';
   const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown date';
-  const signals = row.matched_signals?.length ? row.matched_signals.join(', ') : 'No payment tags';
+  const signals = row.matched_signals?.length ? row.matched_signals.join(', ') : 'None';
   return [
     `# ${row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Unknown Athlete'}`,
     '',
     `**Scout:** ${scout}`,
     `**Meeting:** ${eventDate}`,
-    `**Tags:** ${signals}`,
+    `**Pending Tag:** ${row.action_tag || 'Missing Notes'}`,
+    `**Payment Signals:** ${signals}`,
     '',
     '## Event Note',
     '',
@@ -607,7 +607,7 @@ function PendingClientsWatchlist() {
     try {
       await markPendingClientResolved(sourceEventId);
       toast.style = Toast.Style.Success;
-      toast.title = 'Resolved';
+      toast.title = 'Removed';
       toast.message = 'Hidden from watchlist';
       setRefreshTick((current) => current + 1);
     } catch (error) {
@@ -636,6 +636,7 @@ function PendingClientsWatchlist() {
           {rows.map((row) => {
             const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : null;
             const signals = row.matched_signals || [];
+            const actionTag = row.action_tag || 'Missing Notes';
             return (
               <List.Item
                 key={row.source_event_id}
@@ -647,17 +648,18 @@ function PendingClientsWatchlist() {
                   row.head_scout || '',
                   row.event_title || '',
                   row.description || '',
+                  actionTag,
                   ...signals,
                 ]}
                 accessories={[
-                  ...(signals[0] ? [{ tag: signals[0] }] : []),
+                  { tag: actionTag },
                   ...(eventDate ? [{ text: eventDate }] : []),
                 ]}
                 detail={<List.Item.Detail markdown={buildPendingClientDetailMarkdown(row)} />}
                 actions={
                   <ActionPanel>
                     <Action
-                      title={resolvingId === row.source_event_id ? 'Resolving…' : 'Mark Resolved'}
+                      title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove From Pending'}
                       icon={Icon.CheckCircle}
                       onAction={() => void handleMarkResolved(row.source_event_id)}
                     />
@@ -1165,7 +1167,7 @@ export function HeadScoutBookingsList({
                               icon={Icon.Pencil}
                               shortcut={
                                 index < APPOINTMENT_SHORTCUT_KEYS.length
-                                  ? { modifiers: ['opt'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
+                                  ? { modifiers: ['cmd'], key: APPOINTMENT_SHORTCUT_KEYS[index] }
                                   : undefined
                               }
                               onAction={() => void handleMarkMeeting(candidate, prefix)}

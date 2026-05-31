@@ -1,7 +1,6 @@
 import type { ScoutPrepContext } from '../features/scout-prep/types';
 import { getProspectContactShortcutCandidates } from './scout-contact-selection';
 import { resolveSalesLifecycle } from '../lib/sales-lifecycle';
-import { resolveTimezone } from '../lib/scout-prep-ai';
 
 export type AthleteContactCacheStatus = 'active' | 'inactive';
 
@@ -53,26 +52,6 @@ type BuildPlanArgs = {
 };
 
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
-const LEGACY_RECRUIT_TIMEZONE_BY_IANA: Record<string, string> = {
-  'America/New_York': 'EST',
-  'America/Detroit': 'EST',
-  'America/Indiana/Indianapolis': 'EST',
-  'America/Kentucky/Louisville': 'EST',
-  'America/Chicago': 'CST',
-  'America/Indiana/Knox': 'CST',
-  'America/Menominee': 'CST',
-  'America/North_Dakota/Beulah': 'CST',
-  'America/North_Dakota/Center': 'CST',
-  'America/North_Dakota/New_Salem': 'CST',
-  'America/Denver': 'MST',
-  'America/Boise': 'MST',
-  'America/Phoenix': 'MST',
-  'America/Los_Angeles': 'PST',
-  'America/Anchorage': 'AKST',
-  'Pacific/Honolulu': 'HST',
-  'America/Halifax': 'AST',
-};
-
 function clean(value?: string | null): string {
   return String(value || '').trim();
 }
@@ -86,10 +65,6 @@ function buildAthleteAdminUrl(contactId: string, athleteMainId?: string | null):
     params.set('athlete_main_id', normalizedAthleteMainId);
   }
   return `${DASHBOARD_BASE_URL}/admin/athletes?${params.toString()}`;
-}
-
-function mapTimezoneToLegacyRecruitZone(timezone?: string | null): string | null {
-  return timezone ? LEGACY_RECRUIT_TIMEZONE_BY_IANA[timezone] || null : null;
 }
 
 export function buildAthleteContactCacheKey(athleteId: string, athleteMainId: string): string {
@@ -133,8 +108,11 @@ export function buildAthleteContactCacheSyncPlan(
   const contactId = clean(args.context.contactInfo.contactId || args.context.task.contact_id);
   const adminUrl = buildAthleteAdminUrl(contactId || athleteId, athleteMainId);
   const taskUrl = clean(args.context.task.athlete_task_url) || null;
-  const timezone = resolveTimezone(args.context.resolved.city, args.context.resolved.state);
-  const timezoneLabel = mapTimezoneToLegacyRecruitZone(timezone);
+  const timezone = clean(args.context.resolved.timezone);
+  if (!timezone) {
+    return { action: 'skip', reason: 'missing_resolved_timezone' };
+  }
+  const timezoneLabel = clean(args.context.resolved.timezone_label) || null;
   const byPhone = new Map<string, AthleteContactCacheRow>();
 
   for (const candidate of getProspectContactShortcutCandidates(args.context)) {

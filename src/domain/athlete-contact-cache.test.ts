@@ -35,6 +35,8 @@ function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
       athlete_main_id: '951000',
       city: 'Nashville',
       state: 'TN',
+      timezone: 'America/Chicago',
+      timezone_label: 'CST',
     },
     contactInfo: {
       contactId: '1489000',
@@ -87,6 +89,25 @@ test('buildAthleteContactCacheSyncPlan builds active rows from Scout Prep contac
   assert.equal(plan.rows[0].cache_status, 'active');
   assert.equal(plan.rows[0].timezone, 'America/Chicago');
   assert.equal(plan.rows[0].timezone_label, 'CST');
+});
+
+test('active contact cache rows require resolved timezone going forward', () => {
+  const plan = buildAthleteContactCacheSyncPlan({
+    context: buildContext({
+      resolved: {
+        athlete_id: '1489000',
+        athlete_main_id: '951000',
+        city: '',
+        state: '',
+      },
+    }),
+    crmStage: 'Call Attempt 1',
+    source: 'scout_prep',
+    seenAt: '2026-05-14T18:00:00.000Z',
+  });
+
+  assert.equal(plan.action, 'skip');
+  assert.equal(plan.reason, 'missing_resolved_timezone');
 });
 
 test('duplicate same-athlete phones keep one cache row and let student athlete win', () => {
