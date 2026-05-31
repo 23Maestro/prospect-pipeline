@@ -43,6 +43,8 @@ export type ClientReplyThemeReviewRow = {
   timezoneLabel: string | null;
   taskTitle: string | null;
   matchedPhones: string[];
+  operatorRepliedAfter: boolean;
+  operatorRescheduleOfferAfter: boolean;
   followUpEvidence?: string[];
 };
 
@@ -134,6 +136,70 @@ export function clientReplyThemeReviewDisplayName(row: {
   if (senderName && senderName !== 'Me' && !looksLikePhone(senderName)) return senderName;
   if (athleteName) return athleteName;
   return displayName || sender || 'Client';
+}
+
+function normalizeMatchText(value?: string | null): string {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export type PendingClientReplyThemeMatchInput = {
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  athlete_name?: string | null;
+  event_title?: string | null;
+};
+
+export type PendingClientReplyThemeState = {
+  status: 'needs_reply' | 'awaiting_reschedule';
+  row: ClientReplyThemeReviewRow;
+};
+
+function clientReplyThemeRowMatchesPendingClient(
+  row: ClientReplyThemeReviewRow,
+  pendingClient: PendingClientReplyThemeMatchInput,
+): boolean {
+  const pendingAthleteMainId = normalizeText(pendingClient.athlete_main_id);
+  if (pendingAthleteMainId && normalizeText(row.athleteMainId) === pendingAthleteMainId) {
+    return true;
+  }
+
+  const pendingAthleteId = normalizeText(pendingClient.athlete_id);
+  if (pendingAthleteId && normalizeText(row.contactId) === pendingAthleteId) {
+    return true;
+  }
+
+  const pendingName = normalizeMatchText(pendingClient.athlete_name || pendingClient.event_title);
+  if (!pendingName) return false;
+
+  return [row.athleteName, row.displayName, row.senderName]
+    .map(normalizeMatchText)
+    .filter(Boolean)
+    .some(
+      (candidateName) =>
+        candidateName === pendingName ||
+        candidateName.includes(pendingName) ||
+        pendingName.includes(candidateName),
+    );
+}
+
+export function findPendingClientReplyThemeState(
+  pendingClient: PendingClientReplyThemeMatchInput,
+  snapshot?: ClientReplyThemeReviewSnapshot | null,
+): PendingClientReplyThemeState | null {
+  const rows = snapshot?.rows || [];
+  const match = rows.find(
+    (row) =>
+      row.theme === 'reschedule_request' &&
+      clientReplyThemeRowMatchesPendingClient(row, pendingClient),
+  );
+  if (!match) return null;
+  return {
+    status: match.operatorRescheduleOfferAfter ? 'awaiting_reschedule' : 'needs_reply',
+    row: match,
+  };
 }
 
 function markdownEscape(value?: string | null): string {
@@ -234,6 +300,14 @@ const TEMPLATE_PATTERNS: Record<ClientMessageTemplateContext, RegExp> = {
     /\b(profile\s+came\s+through|college\s+.+\s+goals|would\s+later\s+today\s+or\s+tomorrow\s+work|last\s+follow-up|any\s+updates\s+or\s+questions|quick\s+(10\s+minute|ten\s+minute)?\s*call|wanted\s+to\s+connect|prospect\s+id.+call|call\s+about)\b/i,
 };
 
+const RESCHEDULE_OFFER_PATTERNS: readonly RegExp[] = [
+  /\b(?:here\s+are|got|have|found|checking|send(?:ing)?|offer(?:ing)?)\s+(?:you\s+)?(?:a\s+)?(?:couple|few|two|2|some)?\s*(?:new\s+)?(?:options?|times?|slots?|openings?)\b/i,
+  /\b(?:would|does|do)\s+(?:any\s+of\s+)?(?:these|those|this|that)\s+(?:times?|slots?|options?|openings?)\s+work\b/i,
+  /\b(?:choose|pick|reply|text)\s+(?:1|one|2|two|which|what)\b[\s\S]*\b(?:reschedule|work|works|slot|time|option)\b/i,
+  /\bcoach\s+.+\bchecking\s+what\s+works\s+best\s+to\s+reschedule\b/i,
+  /\b\d\s*[-.)]\s*[^.\n]*(?:am|pm|et|ct|mt|pt|eastern|central|mountain|pacific)\b/i,
+];
+
 function normalizeText(value?: string | null): string {
   return String(value || '').trim();
 }
@@ -268,6 +342,19 @@ function templateContextForOutbound(text?: string | null): ClientMessageTemplate
   if (TEMPLATE_PATTERNS.confirmation.test(normalized)) return 'confirmation';
   if (TEMPLATE_PATTERNS.outreach_attempt.test(normalized)) return 'outreach_attempt';
   return null;
+}
+
+export function isOperatorRescheduleOffer(text?: string | null): boolean {
+  const normalized = normalizeText(text);
+  if (!normalized) return false;
+  if (
+    !/\b(reschedule|new\s+time|different\s+time|slots?|options?|openings?|times?)\b/i.test(
+      normalized,
+    )
+  ) {
+    return false;
+  }
+  return RESCHEDULE_OFFER_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
 function flagMatchesTemplateContext(
@@ -321,6 +408,12 @@ export function buildClientReplyThemeReviewSnapshot(args: {
           normalizeText(candidate.date) > messageDate &&
           normalizeText(candidate.body),
       );
+      const operatorRescheduleOfferAfter = messages.some(
+        (candidate) =>
+          candidate.isFromMe &&
+          normalizeText(candidate.date) > messageDate &&
+          isOperatorRescheduleOffer(candidate.body),
+      );
       const keepPendingRescheduleVisible =
         candidateTheme === 'reschedule_request' && isPendingRescheduleContext(chat.taskTitle);
 
@@ -342,6 +435,8 @@ export function buildClientReplyThemeReviewSnapshot(args: {
         timezoneLabel: normalizeText(chat.timezoneLabel) || null,
         taskTitle: normalizeText(chat.taskTitle) || null,
         matchedPhones: chat.matchedPhones || [],
+        operatorRepliedAfter,
+        operatorRescheduleOfferAfter,
       };
 
       if (theme && latestTemplateContext) {

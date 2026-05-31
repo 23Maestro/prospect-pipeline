@@ -601,6 +601,7 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /buildBookedMeetingEventDate\(event\.start, event\.meeting_timezone\)/);
   assert.match(appText, /ordinalSuffix/);
   assert.match(appText, /\/api\/set-meeting-confirmation-prefix/);
+  assert.match(appText, /\/api\/post-meeting-outcome/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\)"/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\*2\)"/);
   assert.match(appText, /data-confirmation-modal/);
@@ -610,10 +611,14 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /clipboardIconSvg/);
   assert.match(appText, /scriptable:\/\/\/run\/share-prospect-contact-card/);
   assert.match(appText, /data-admin-modal/);
+  assert.match(appText, /data-athlete-id/);
+  assert.match(appText, /data-athlete-main-id/);
+  assert.match(appText, /data-post-meeting-reason/);
   assert.match(appText, /data-prefix-action="\(CF\)"/);
   assert.match(appText, /data-prefix-action="\(RSP\)"/);
   assert.match(appText, /data-prefix-action="\(CAN\)"/);
   assert.match(appText, /showAdminModal/);
+  assert.match(appText, /updatePostMeetingOutcome/);
   assert.doesNotMatch(appText, /\/api\/set-meetings/);
   assert.equal(setMeetingsRouteExists, false);
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);

@@ -8,6 +8,7 @@ import {
   Grid,
   Icon,
   type KeyEquivalent,
+  LocalStorage,
   List,
   open,
   showHUD,
@@ -91,6 +92,12 @@ import {
   setCachedSetMeetings,
   shouldRenderCachedSetMeetingsSnapshot,
 } from './lib/set-meetings-cache';
+import {
+  findPendingClientReplyThemeState,
+  readCachedClientReplyThemeReviewSnapshot,
+  type ClientReplyThemeReviewSnapshot,
+  type PendingClientReplyThemeState,
+} from './lib/client-message-reply-themes';
 
 function getConfirmationCacheSupabaseConfig(): SupabasePersistenceConfig | null {
   const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
@@ -112,6 +119,11 @@ type HeadScoutSchedulesRootProps = {
 };
 
 type PendingClientWatchlistRow = PendingClientWatchlistLoadResult['rows'][number];
+
+const clientReplyThemeReviewStorage = {
+  getItem: (key: string) => LocalStorage.getItem<string>(key),
+  setItem: (key: string, value: string) => LocalStorage.setItem(key, value),
+};
 
 type HeadScoutScheduleListProps = {
   scout: HeadScoutSchedule;
@@ -575,10 +587,20 @@ function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows']
     .join('\n');
 }
 
-function getPendingClientDisplayTag(row: PendingClientWatchlistLoadResult['rows'][number]): {
+function getPendingClientDisplayTag(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+  replyState?: PendingClientReplyThemeState | null,
+): {
   label: string;
   color: Color;
 } {
+  if (replyState?.status === 'needs_reply') {
+    return { label: 'Needs Reply', color: Color.Red };
+  }
+  if (replyState?.status === 'awaiting_reschedule') {
+    return { label: 'Awaiting RSP', color: Color.Yellow };
+  }
+
   switch (row.action_tag) {
     case 'Payment Watch':
       return { label: 'Payment', color: Color.Green };
@@ -821,6 +843,8 @@ function PendingClientRescheduleFollowUp({
 
 function PendingClientsWatchlist() {
   const [result, setResult] = useState<PendingClientWatchlistLoadResult | null>(null);
+  const [replyThemeSnapshot, setReplyThemeSnapshot] =
+    useState<ClientReplyThemeReviewSnapshot | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -831,9 +855,13 @@ function PendingClientsWatchlist() {
     async function load() {
       setIsLoading(true);
       try {
-        const loaded = await loadPendingClientWatchlist();
+        const [loaded, reviewSnapshot] = await Promise.all([
+          loadPendingClientWatchlist(),
+          readCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage),
+        ]);
         if (!cancelled) {
           setResult(loaded);
+          setReplyThemeSnapshot(reviewSnapshot);
         }
       } catch (error) {
         if (!cancelled) {
@@ -843,6 +871,7 @@ function PendingClientsWatchlist() {
             message: error instanceof Error ? error.message : String(error),
           });
           setResult({ rows: [], scannedCount: 0, confirmedCount: 0, aiUnavailableCount: 0 });
+          setReplyThemeSnapshot(null);
         }
       } finally {
         if (!cancelled) {
@@ -891,7 +920,8 @@ function PendingClientsWatchlist() {
           {rows.map((row) => {
             const signals = row.matched_signals || [];
             const actionTag = row.action_tag || 'Missing Notes';
-            const displayTag = getPendingClientDisplayTag(row);
+            const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
+            const displayTag = getPendingClientDisplayTag(row, replyState);
             return (
               <List.Item
                 key={row.source_event_id}

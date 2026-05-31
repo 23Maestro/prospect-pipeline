@@ -182,7 +182,7 @@ async function renderSetMeetings(payload, renderContext) {
             </a>
             ${
               event.admin_url || eventId
-                ? `<button class="link-button admin-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
+                ? `<button class="link-button admin-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-id="${escapeAttribute(event.athlete_id || '')}" data-athlete-main-id="${escapeAttribute(event.athlete_main_id || '')}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
                 : ''
             }
             <button class="copy-button" type="button" data-copy="${escapeAttribute(copyText)}">Copy</button>
@@ -899,6 +899,8 @@ function showAdminModal(button) {
   const eventId = button.getAttribute('data-event-id') || '';
   const eventDate = button.getAttribute('data-event-date') || '';
   const adminUrl = button.getAttribute('data-admin-url') || '';
+  const athleteId = button.getAttribute('data-athlete-id') || '';
+  const athleteMainId = button.getAttribute('data-athlete-main-id') || '';
   const athleteName = button.getAttribute('data-athlete-name') || 'Meeting';
   const headScout = button.getAttribute('data-head-scout') || '';
 
@@ -910,6 +912,10 @@ function showAdminModal(button) {
       <div class="modal-header">
         <h2 class="modal-title">${escapeHtml(athleteName)}</h2>
         <p class="modal-subtitle">${escapeHtml(headScout)}</p>
+      </div>
+      <div class="field">
+        <label for="post-meeting-reason">RSP/CAN Note</label>
+        <textarea id="post-meeting-reason" data-post-meeting-reason placeholder="Why they need follow-up"></textarea>
       </div>
       <div class="modal-actions">
         <button class="modal-button success" type="button" data-prefix-action="(CF)">Set (CF)</button>
@@ -932,8 +938,33 @@ function showAdminModal(button) {
   modal.querySelectorAll('[data-prefix-action]').forEach((prefixButton) => {
     prefixButton.addEventListener('click', async () => {
       const prefix = prefixButton.getAttribute('data-prefix-action') || '';
+      const noteDescription = modal.querySelector('[data-post-meeting-reason]')?.value?.trim() || '';
+      if ((prefix === '(RSP)' || prefix === '(CAN)') && !noteDescription) {
+        setStatus(prefix === '(RSP)' ? 'Add reschedule reason' : 'Add cancel reason');
+        modal.querySelector('[data-post-meeting-reason]')?.focus();
+        return;
+      }
       prefixButton.disabled = true;
-      await updateMeetingPrefix({ eventId, eventDate, prefix });
+      if (prefix === '(RSP)' || prefix === '(CAN)') {
+        const saved = await updatePostMeetingOutcome({
+          eventId,
+          eventDate,
+          prefix,
+          athleteId,
+          athleteMainId,
+          operatorNoteDescription: noteDescription,
+        });
+        if (!saved) {
+          prefixButton.disabled = false;
+          return;
+        }
+      } else {
+        const saved = await updateMeetingPrefix({ eventId, eventDate, prefix });
+        if (!saved) {
+          prefixButton.disabled = false;
+          return;
+        }
+      }
       closeAdminModal();
     });
   });
@@ -961,7 +992,7 @@ document.addEventListener('keydown', (event) => {
 });
 
 async function updateMeetingPrefix({ eventId, eventDate, prefix }) {
-  if (!eventId || !eventDate || !prefix) return;
+  if (!eventId || !eventDate || !prefix) return false;
 
   try {
     const response = await fetch('/api/set-meeting-confirmation-prefix', {
@@ -978,8 +1009,48 @@ async function updateMeetingPrefix({ eventId, eventDate, prefix }) {
       throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
     }
     setStatus(`Saved ${prefix}`);
+    return true;
   } catch (error) {
     setStatus(`Prefix failed: ${error.message || error}`);
+    return false;
+  }
+}
+
+async function updatePostMeetingOutcome({
+  eventId,
+  eventDate,
+  prefix,
+  athleteId,
+  athleteMainId,
+  operatorNoteDescription,
+}) {
+  if (!eventId || !eventDate || !prefix || !athleteId || !athleteMainId || !operatorNoteDescription) {
+    setStatus('Missing outcome fields');
+    return false;
+  }
+
+  try {
+    const response = await fetch('/api/post-meeting-outcome', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        event_id: eventId,
+        event_date: eventDate,
+        prefix,
+        athlete_id: athleteId,
+        athlete_main_id: athleteMainId,
+        operator_note_description: operatorNoteDescription,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    }
+    setStatus(prefix === '(RSP)' ? 'RSP saved' : 'CAN saved');
+    return true;
+  } catch (error) {
+    setStatus(`Outcome failed: ${error.message || error}`);
+    return false;
   }
 }
 

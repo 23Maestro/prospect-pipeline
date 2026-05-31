@@ -11,6 +11,8 @@ import {
   clientReplyThemeReviewReasonTagLabel,
   clientReplyThemeReviewToneLabel,
   clientReplyThemeReviewToneTagColor,
+  findPendingClientReplyThemeState,
+  isOperatorRescheduleOffer,
   readCachedClientReplyThemeReviewSnapshot,
   writeCachedClientReplyThemeReviewSnapshot,
 } from './client-message-reply-themes.js';
@@ -225,6 +227,7 @@ test('keeps reschedule visible when task context is still pending reschedule des
 
   assert.equal(snapshot.rows.length, 1);
   assert.equal(snapshot.rows[0].theme, 'reschedule_request');
+  assert.equal(snapshot.rows[0].operatorRepliedAfter, true);
   assert.equal(snapshot.ignoredHandled.length, 0);
 });
 
@@ -256,9 +259,117 @@ test('pending reschedule remains urgent after operator reply', () => {
   });
 
   assert.equal(snapshot.rows.length, 1);
+  assert.equal(snapshot.rows[0].operatorRepliedAfter, true);
   assert.equal(clientReplyThemeReviewBucketLabel('rows'), 'Urgent');
   assert.equal(clientReplyThemeReviewToneLabel('rows'), 'Urgent');
   assert.equal(snapshot.ignoredHandled.length, 0);
+});
+
+test('pending client reply theme state distinguishes needs reply from awaiting reschedule', () => {
+  const needsReplySnapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-05-27T17:00:00.000Z',
+    chats: [chat({ athleteMainId: '456', taskTitle: 'Reschedule Pending' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'confirmation',
+          body: 'Coach Ryan has Avery down for the meeting today at 5:00 PM.',
+          date: '2026-05-27T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'actionable',
+          body: 'Can we reschedule?',
+          date: '2026-05-27T15:00:00.000Z',
+        }),
+      ],
+    },
+  });
+  assert.equal(
+    findPendingClientReplyThemeState(
+      { event_title: 'Follow Up - Avery Jones Football 2029' },
+      needsReplySnapshot,
+    )?.status,
+    'needs_reply',
+  );
+
+  const awaitingSnapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-05-27T17:00:00.000Z',
+    chats: [chat({ athleteMainId: '456', taskTitle: 'Meeting Result - Res. Pending' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'confirmation',
+          body: 'Coach Ryan has Avery down for the meeting today at 5:00 PM.',
+          date: '2026-05-27T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'actionable',
+          body: 'Can we reschedule?',
+          date: '2026-05-27T15:00:00.000Z',
+        }),
+        message({
+          guid: 'later-outbound',
+          body: 'Coach Ryan has me checking what works best to reschedule Avery:\n1 - Thu 3PM ET\n2 - Fri 4PM ET',
+          date: '2026-05-27T16:00:00.000Z',
+          isFromMe: true,
+        }),
+      ],
+    },
+  });
+  assert.equal(
+    findPendingClientReplyThemeState(
+      { athlete_main_id: '456', athlete_name: 'Avery Jones' },
+      awaitingSnapshot,
+    )?.status,
+    'awaiting_reschedule',
+  );
+});
+
+test('pending client reply theme state requires true reschedule offer language', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-05-27T17:00:00.000Z',
+    chats: [chat({ athleteMainId: '456', taskTitle: 'Meeting Result - Res. Pending' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'confirmation',
+          body: 'Coach Ryan has Avery down for the meeting today at 5:00 PM.',
+          date: '2026-05-27T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'actionable',
+          body: 'Can we reschedule?',
+          date: '2026-05-27T15:00:00.000Z',
+        }),
+        message({
+          guid: 'generic-outbound',
+          body: 'No problem, I will check.',
+          date: '2026-05-27T16:00:00.000Z',
+          isFromMe: true,
+        }),
+      ],
+    },
+  });
+
+  assert.equal(snapshot.rows[0].operatorRepliedAfter, true);
+  assert.equal(snapshot.rows[0].operatorRescheduleOfferAfter, false);
+  assert.equal(
+    findPendingClientReplyThemeState(
+      { athlete_main_id: '456', athlete_name: 'Avery Jones' },
+      snapshot,
+    )?.status,
+    'needs_reply',
+  );
+  assert.equal(isOperatorRescheduleOffer('No problem, I will check.'), false);
+  assert.equal(
+    isOperatorRescheduleOffer(
+      'Here are two new times to reschedule: 1 - Thu 3PM ET, 2 - Fri 4PM ET',
+    ),
+    true,
+  );
 });
 
 test('does not flag actionable wording without the matching outbound template context', () => {

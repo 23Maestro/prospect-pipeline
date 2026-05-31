@@ -4,6 +4,7 @@ import { GET as callTrackerDataGET } from '../app/api/call-tracker-data/route';
 import { GET as meetingReadbackDataGET } from '../app/api/meeting-readback-data/route';
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
+import { POST as postMeetingOutcomePOST } from '../app/api/post-meeting-outcome/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
 
 const originalEnv = { ...process.env };
@@ -208,6 +209,112 @@ test('/api/set-meeting-confirmation-prefix forwards admin modal prefixes to Fast
     event_id: '628106',
     event_date: '2026-05-16',
     prefix: '(CAN)',
+  });
+});
+
+test('/api/post-meeting-outcome writes prefix, stage, scout note, and operator note', async () => {
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.includes('/calendar/booked-meeting/details?')) {
+      return Response.json({
+        success: true,
+        event_id: '628106',
+        title: 'Jamiya Turner',
+        description: 'Head Scout notes from booked meeting',
+      });
+    }
+    if (requestUrl.endsWith('/calendar/booked-meeting/title')) {
+      return Response.json({
+        success: true,
+        event_id: '628106',
+        prefix: '(RSP)',
+        updated_title: '(RSP) Jamiya Turner',
+      });
+    }
+    if (requestUrl.endsWith('/sales/stage')) {
+      return Response.json({
+        success: true,
+        stage: 'Meeting Result - Res. Pending',
+        athlete_id: '149',
+        athlete_main_id: '953',
+      });
+    }
+    if (requestUrl.endsWith('/notes/add')) {
+      return Response.json({ success: true, message: 'Note added' });
+    }
+    return Response.json({ success: false, error: 'unexpected' }, { status: 500 });
+  };
+
+  const response = await postMeetingOutcomePOST(
+    new Request('https://example.test/api/post-meeting-outcome', {
+      method: 'POST',
+      body: JSON.stringify({
+        event_id: '628106',
+        event_date: '2026-05-16',
+        prefix: '(RSP)',
+        athlete_id: '149',
+        athlete_main_id: '953',
+        operator_note_description: 'Mom asked to reschedule after work.',
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.stage, 'Meeting Result - Res. Pending');
+  assert.deepEqual(
+    calls.map((call) => call.url.replace('https://tailnet.example/api/v1', '')),
+    [
+      '/calendar/booked-meeting/details?event_id=628106&event_date=2026-05-16',
+      '/calendar/booked-meeting/title',
+      '/sales/stage',
+      '/notes/add',
+      '/notes/add',
+    ],
+  );
+  assert.deepEqual(JSON.parse(String(calls[2].init?.body)), {
+    athlete_id: '149',
+    athlete_main_id: '953',
+    stage: 'Meeting Result - Res. Pending',
+  });
+  assert.deepEqual(JSON.parse(String(calls[3].init?.body)), {
+    athlete_id: '149',
+    athlete_main_id: '953',
+    title: 'RSP And Scout Notes',
+    description: 'Head Scout notes from booked meeting',
+  });
+  assert.deepEqual(JSON.parse(String(calls[4].init?.body)), {
+    athlete_id: '149',
+    athlete_main_id: '953',
+    title: 'Reschedule Pending Reason',
+    description: 'Mom asked to reschedule after work.',
+  });
+});
+
+test('/api/post-meeting-outcome rejects missing operator note', async () => {
+  const response = await postMeetingOutcomePOST(
+    new Request('https://example.test/api/post-meeting-outcome', {
+      method: 'POST',
+      body: JSON.stringify({
+        event_id: '628106',
+        event_date: '2026-05-16',
+        prefix: '(CAN)',
+        athlete_id: '149',
+        athlete_main_id: '953',
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error:
+      'event_id, event_date, prefix, athlete_id, athlete_main_id, and operator_note_description are required',
   });
 });
 
