@@ -606,6 +606,9 @@ test('Set Meetings reschedule actions pass the booked meeting into Scout Prep po
 
   assert.match(actionPanel, /initialStageLabel="Meeting Result - Res\. Pending"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
   assert.match(actionPanel, /initialStageLabel="Meeting Result - Rescheduled"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
+  assert.match(source, /prefix === '\(RSP\)'[\s\S]*'Meeting Result - Res\. Pending'/);
+  assert.match(source, /prefix === '\(CAN\)'[\s\S]*'Meeting Result - Canceled'/);
+  assert.match(source, /title: result\.updated_title \|\| meeting\.title/);
 });
 
 test('Set Meetings prefix actions use command Y U H J N shortcuts', () => {
@@ -626,10 +629,17 @@ test('Scout Prep Reschedule Pending requires notes and performs stage plus two N
   assert.match(commandSource, /id="reschedulePendingNoteDescription"/);
   assert.match(postCallFlow, /cacheMeetingDescriptionForReschedulePending\(\{/);
   assert.match(postCallFlow, /isReschedulePendingStage\(stageLabel\)/);
+  assert.match(postCallFlow, /isCanceledPostMeetingStage\(stageLabel\)/);
+  assert.match(postCallFlow, /requiresPostMeetingOperatorNote/);
   assert.match(postCallFlow, /const salesStageResult = await updateSalesStage\(\{/);
-  assert.match(postCallFlow, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: 'RSP And Scout Notes'/s);
+  assert.match(postCallFlow, /title: getPostMeetingScoutNotesTitle\(stageLabel\)/);
+  assert.match(commandSource, /CAN And Scout Notes/);
   assert.match(postCallFlow, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: reschedulePendingOperatorNoteTitle/s);
-  assert.ok(postCallFlow.indexOf('const salesStageResult = await updateSalesStage({') < postCallFlow.indexOf("title: 'RSP And Scout Notes'"));
+  assert.ok(
+    postCallFlow.indexOf('const salesStageResult = await updateSalesStage({') <
+      postCallFlow.indexOf('title: getPostMeetingScoutNotesTitle(stageLabel)'),
+  );
+  assert.match(commandSource, /Canceled writes the stage update, saves the meeting description to Notes, and saves your cancel reason/);
 });
 
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {

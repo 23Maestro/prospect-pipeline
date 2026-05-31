@@ -226,6 +226,14 @@ test('pending client action tags stay to four visible helper states', () => {
   );
   assert.equal(
     classifyPendingClientActionTag({
+      normalizedStage: 'canceled',
+      description: 'Client canceled and needs operator recovery.',
+      matchedSignals: [],
+    }),
+    'Operator Input',
+  );
+  assert.equal(
+    classifyPendingClientActionTag({
       normalizedStage: 'meeting_follow_up',
       description: 'Date\nCreated By\nTitle\nDescription',
       matchedSignals: [],
@@ -371,6 +379,14 @@ test('pending client lifecycle starts from CRM stage and uses event notes as rea
     classifyPendingClientLifecycle({
       crmStage: 'Meeting Result - Res. Pending',
       reviewEventTitle: 'Booked Meeting - Raul Agramonte Football 2027 FL',
+      reviewDescription: '',
+    }).eligible,
+    true,
+  );
+  assert.equal(
+    classifyPendingClientLifecycle({
+      crmStage: 'Meeting Result - Canceled',
+      reviewEventTitle: '(CAN) Raul Agramonte Football 2027 FL',
       reviewDescription: '',
     }).eligible,
     true,

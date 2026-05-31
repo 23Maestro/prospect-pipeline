@@ -214,7 +214,8 @@ export function classifyPendingClientLifecycle(args: {
   const lifecycle = resolveSalesLifecycle(args.crmStage);
   if (
     lifecycle.normalizedStage !== 'meeting_follow_up' &&
-    lifecycle.normalizedStage !== 'reschedule_pending'
+    lifecycle.normalizedStage !== 'reschedule_pending' &&
+    lifecycle.normalizedStage !== 'canceled'
   ) {
     return {
       eligible: false,
@@ -418,10 +419,14 @@ export function classifyPendingClientActionTag(args: {
 }): PendingClientActionTag {
   const hasEvidence = args.hasEvidence ?? hasPendingClientWatchNote(args.description);
   if (!hasEvidence) {
-    return args.normalizedStage === 'reschedule_pending' ? 'Operator Input' : 'Missing Notes';
+    return args.normalizedStage === 'reschedule_pending' || args.normalizedStage === 'canceled'
+      ? 'Operator Input'
+      : 'Missing Notes';
   }
   if ((args.matchedSignals || []).length > 0) return 'Payment Watch';
-  if (args.normalizedStage === 'reschedule_pending') return 'Operator Input';
+  if (args.normalizedStage === 'reschedule_pending' || args.normalizedStage === 'canceled') {
+    return 'Operator Input';
+  }
   return 'Scout Update';
 }
 

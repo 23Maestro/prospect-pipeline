@@ -6,6 +6,10 @@ const sql = readFileSync(
   new URL('../migrations/20260529090000_appointment_truth_contract.sql', import.meta.url),
   'utf8',
 );
+const postMeetingResultSql = readFileSync(
+  new URL('../migrations/20260530143000_appointments_post_meeting_result.sql', import.meta.url),
+  'utf8',
+);
 
 test('appointments gets durable timezone, owner, source, and reschedule-chain columns', () => {
   for (const column of [
@@ -24,6 +28,24 @@ test('appointments gets durable timezone, owner, source, and reschedule-chain co
     "source_payload jsonb not null default '{}'::jsonb",
   ]) {
     assert.match(sql, new RegExp(`add column if not exists ${column.replace(/[{}]/g, '\\$&')}`, 'i'));
+  }
+});
+
+test('appointments store durable post-meeting result marker for reconcile paths', () => {
+  assert.match(postMeetingResultSql, /add column if not exists post_meeting_result text/i);
+  assert.match(postMeetingResultSql, /appointments_post_meeting_result_check/i);
+  assert.match(postMeetingResultSql, /appointments_post_meeting_result_idx/i);
+  for (const result of [
+    'awaiting_post_meeting_update',
+    'closed_won',
+    'closed_lost',
+    'follow_up',
+    'reschedule_pending',
+    'rescheduled',
+    'no_show',
+    'canceled',
+  ]) {
+    assert.match(postMeetingResultSql, new RegExp(result, 'i'));
   }
 });
 

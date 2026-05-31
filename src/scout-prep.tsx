@@ -655,6 +655,10 @@ function isReschedulePendingStage(stageLabel?: string | null): boolean {
   );
 }
 
+function isCanceledPostMeetingStage(stageLabel?: string | null): boolean {
+  return classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome === 'canceled';
+}
+
 function needsMeetingSchedulingFields(stageLabel?: string | null): boolean {
   return needsPostCallMeetingSchedulingFields(String(stageLabel || ''));
 }
@@ -680,8 +684,14 @@ async function cacheMeetingDescriptionForReschedulePending(args: {
   return resolved.description;
 }
 
-function getReschedulePendingOperatorNoteTitle(value?: string | null): string {
-  return String(value || '').trim() || 'Reschedule Pending Reason';
+function getPostMeetingOperatorNoteTitle(stageLabel?: string | null, value?: string | null): string {
+  const provided = String(value || '').trim();
+  if (provided) return provided;
+  return isCanceledPostMeetingStage(stageLabel) ? 'Canceled Meeting Reason' : 'Reschedule Pending Reason';
+}
+
+function getPostMeetingScoutNotesTitle(stageLabel?: string | null): string {
+  return isCanceledPostMeetingStage(stageLabel) ? 'CAN And Scout Notes' : 'RSP And Scout Notes';
 }
 
 function getTaskDisplayTitle(
@@ -3601,17 +3611,23 @@ export function PostCallUpdateForm({
       const preUpdateContext = context || (await loadScoutPrepContext(task));
       let reschedulePendingMeetingDescription: string | null = null;
       const isReschedulePendingUpdate = isReschedulePendingStage(stageLabel);
-      const reschedulePendingOperatorNoteTitle = getReschedulePendingOperatorNoteTitle(
+      const isCanceledPostMeetingUpdate = isCanceledPostMeetingStage(stageLabel);
+      const requiresPostMeetingOperatorNote =
+        isReschedulePendingUpdate || isCanceledPostMeetingUpdate;
+      const reschedulePendingOperatorNoteTitle = getPostMeetingOperatorNoteTitle(
+        stageLabel,
         values.reschedulePendingNoteTitle,
       );
       const reschedulePendingOperatorNoteDescription = String(
         values.reschedulePendingNoteDescription || '',
       ).trim();
 
-      if (isReschedulePendingUpdate) {
+      if (requiresPostMeetingOperatorNote) {
         if (!reschedulePendingOperatorNoteDescription) {
-          throw new Error('Reschedule Pending requires a note description for why they rescheduled');
+          throw new Error(`${stageLabel} requires a note description for why it needs operator follow-up`);
         }
+      }
+      if (isReschedulePendingUpdate) {
         reschedulePendingMeetingDescription = await cacheMeetingDescriptionForReschedulePending({
           athleteId,
           athleteMainId,
@@ -3619,6 +3635,16 @@ export function PostCallUpdateForm({
         });
         if (!reschedulePendingMeetingDescription) {
           throw new Error('Missing saved meeting description for RSP And Scout Notes');
+        }
+      }
+      if (isCanceledPostMeetingUpdate) {
+        reschedulePendingMeetingDescription = await cacheMeetingDescriptionForReschedulePending({
+          athleteId,
+          athleteMainId,
+          initialBookedMeeting,
+        });
+        if (!reschedulePendingMeetingDescription) {
+          throw new Error('Missing saved meeting description for CAN And Scout Notes');
         }
       }
 
@@ -3729,9 +3755,19 @@ export function PostCallUpdateForm({
         await addAthleteNote({
           athleteId,
           athleteMainId,
-          title: 'RSP And Scout Notes',
+          title: getPostMeetingScoutNotesTitle(stageLabel),
           description: reschedulePendingMeetingDescription || '',
         });
+      }
+      if (isCanceledPostMeetingUpdate) {
+        await addAthleteNote({
+          athleteId,
+          athleteMainId,
+          title: getPostMeetingScoutNotesTitle(stageLabel),
+          description: reschedulePendingMeetingDescription || '',
+        });
+      }
+      if (requiresPostMeetingOperatorNote) {
         await addAthleteNote({
           athleteId,
           athleteMainId,
@@ -4035,18 +4071,24 @@ export function PostCallUpdateForm({
         </>
       ) : null}
 
-      {isReschedulePendingStage(selectedStageLabel) ? (
+      {isReschedulePendingStage(selectedStageLabel) || isCanceledPostMeetingStage(selectedStageLabel) ? (
         <>
           <Form.Separator />
-          <Form.Description text="Reschedule Pending writes the stage update, saves the meeting description to Notes, and saves your reschedule reason." />
+          <Form.Description
+            text={
+              isReschedulePendingStage(selectedStageLabel)
+                ? 'Reschedule Pending writes the stage update, saves the meeting description to Notes, and saves your reschedule reason.'
+                : 'Canceled writes the stage update, saves the meeting description to Notes, and saves your cancel reason.'
+            }
+          />
           <Form.TextField
             id="reschedulePendingNoteTitle"
             title="Note Title"
-            defaultValue="Reschedule Pending Reason"
+            defaultValue={getPostMeetingOperatorNoteTitle(selectedStageLabel)}
           />
           <Form.TextArea
             id="reschedulePendingNoteDescription"
-            title="Why They Rescheduled"
+            title={isCanceledPostMeetingStage(selectedStageLabel) ? 'Why It Was Canceled' : 'Why They Rescheduled'}
             placeholder="Add the title and description reason that should live in the athlete Notes tab."
           />
         </>

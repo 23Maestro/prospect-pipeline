@@ -63,6 +63,7 @@ export function parseAppointmentTitleOutcome(title?: string | null): ParsedAppoi
 
   const prefixRules: Array<{ pattern: RegExp; outcome: AppointmentTitleOutcome }> = [
     { pattern: /^\s*\(RSP\)(?:\*\d+)?\s*/i, outcome: 'reschedule_pending' },
+    { pattern: /^\s*\(PAR\s*-\s*DNQ\)(?:\*\d+)?\s*/i, outcome: 'terminal_close_lost' },
     { pattern: /^\s*\(CL\)(?:\*\d+)?\s*/i, outcome: 'terminal_close_lost' },
     { pattern: /^\s*\(FU\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_follow_up' },
     { pattern: /^\s*\(CAN\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_canceled' },

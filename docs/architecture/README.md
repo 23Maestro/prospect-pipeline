@@ -6,6 +6,7 @@ This folder contains **Mermaid diagrams** (`.mmd`) documenting the Prospect Pipe
 
 | File                       | Purpose                                                                                                                                                                            |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `scouting-coordinator-system-map.md` | **Scouting Coordinator source map** — bucket-first map for Scout Prep, Client Messages, Set Meetings, Scout Openings, Supabase truth, helpers, and Laravel/API calls |
 | `system-map.mmd`           | **Master system map** — all layers (UI → Shared Services → FastAPI → External NPID), data stores, and logging                                                                      |
 | `workflow-ingest.mmd`      | **Prospect ingest flow** — from AI tool input through search → resolve → materialize → cache → list view                                                                           |
 | `workflow-email.mmd`       | **Email automation flow** — template fetch → recipient resolution → recipient-policy enforcement → send + log                                                                      |

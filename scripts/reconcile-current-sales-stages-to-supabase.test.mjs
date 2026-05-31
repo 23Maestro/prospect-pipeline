@@ -26,10 +26,24 @@ test('current sales-stage reconciler stores post-meeting outcomes through meetin
   assert.match(source, /upsertPostMeetingOutcomeFacts/);
   assert.match(source, /rawEventType = 'post_meeting_outcome'/);
   assert.match(source, /postMeetingOutcomeFacts\.push\(buildMeetingOutcomeFact/);
+  assert.match(source, /uniqueRowsByField\(postMeetingOutcomeFacts, 'dedupe_key'\)/);
+  assert.match(source, /post_meeting_result/);
+  assert.match(source, /postMeetingResultForAppointmentStatus/);
   assert.doesNotMatch(source, /callEvents\.push\(\{\s*id:\s*randomUUID\(\)/s);
   assert.doesNotMatch(source, /upsertCallEvents/);
   assert.doesNotMatch(source, /await supabaseWrite\('call_events'/);
   assert.doesNotMatch(source, /await supabaseWrite\('meeting_events'/);
+});
+
+test('current sales-stage reconciler repairs past appointments from live lifecycle stage', () => {
+  assert.match(source, /pastAppointmentRows/);
+  assert.match(source, /past_appointment_live_stage_repair/);
+  assert.match(source, /past_appointment_event_title_repair/);
+  assert.match(source, /parsedTitle\.outcome === 'active'/);
+  assert.match(source, /live_event_title/);
+  assert.match(source, /appointmentRepairsApplied/);
+  assert.match(source, /queueAppointmentPatch\(appointment\.id/);
+  assert.match(source, /shouldQueuePendingClientForStage/);
 });
 
 test('current sales-stage reconciler does not turn ended active meetings into post-meeting outcomes', () => {

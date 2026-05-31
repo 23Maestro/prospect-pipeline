@@ -129,6 +129,17 @@ test('confirmation text actions auto-prefix booked meeting titles', () => {
   );
 });
 
+test('Pending Clients exposes an operator note action that writes to the Notes tab and refreshes', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  assert.match(headScoutSchedules, /PendingClientOperatorNoteForm/);
+  assert.match(headScoutSchedules, /import \{ addAthleteNote \} from '\.\/lib\/npid-mcp-adapter'/);
+  assert.match(headScoutSchedules, /title="Add Operator Note"/);
+  assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd'\], key: 'n' \}\}/);
+  assert.match(headScoutSchedules, /await addAthleteNote\(\{/);
+  assert.match(headScoutSchedules, /onSaved\(\);/);
+  assert.match(headScoutSchedules, /setRefreshTick\(\(current\) => current \+ 1\)/);
+});
+
 test('Set Meetings confirmation cache writes resolved appointment timezone', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');

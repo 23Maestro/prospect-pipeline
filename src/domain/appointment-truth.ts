@@ -18,6 +18,7 @@ export type AppointmentTruthRow = {
   head_scout_key?: string | null;
   appointment_role?: string | null;
   status_reason?: string | null;
+  post_meeting_result?: string | null;
   source_system?: string | null;
   source_payload?: Record<string, unknown> | null;
   updated_at?: string | null;

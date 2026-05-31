@@ -443,7 +443,97 @@ const failures = [];
 const updated = [];
 const unchanged = [];
 const cleaned = [];
+const appointmentRepairs = [];
 const now = new Date().toISOString();
+
+const pastAppointmentRows = await supabaseRequest(
+  [
+    'appointments?select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,post_meeting_result,status_reason,operator_owner,operator_owner_key,source_event_id',
+    `starts_at=lt.${encodeURIComponent(now)}`,
+    'status=in.(scheduled,awaiting_post_meeting_update,rescheduled,reschedule_pending)',
+    'order=starts_at.desc',
+    'limit=500',
+  ].join('&'),
+);
+const pastAppointments = Array.isArray(pastAppointmentRows) ? pastAppointmentRows : [];
+
+function queueAppointmentPatch(appointmentId, row) {
+  const id = String(appointmentId || '').trim();
+  if (!id) return;
+  const existingIndex = appointmentPatches.findIndex((patch) => patch.appointmentId === id);
+  if (existingIndex >= 0) {
+    appointmentPatches[existingIndex] = {
+      appointmentId: id,
+      row: {
+        ...appointmentPatches[existingIndex].row,
+        ...row,
+      },
+    };
+    return;
+  }
+  appointmentPatches.push({ appointmentId: id, row });
+}
+
+function uniqueRowsByField(rows, field) {
+  const byKey = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const key = String(row?.[field] || '').trim();
+    if (!key) continue;
+    byKey.set(key, row);
+  }
+  return Array.from(byKey.values());
+}
+
+function postMeetingResultForAppointmentStatus(status) {
+  switch (String(status || '').trim()) {
+    case 'closed_won':
+      return 'closed_won';
+    case 'closed_lost':
+      return 'closed_lost';
+    case 'follow_up':
+      return 'follow_up';
+    case 'reschedule_pending':
+      return 'reschedule_pending';
+    case 'rescheduled':
+      return 'rescheduled';
+    case 'no_show':
+      return 'no_show';
+    case 'canceled':
+      return 'canceled';
+    case 'awaiting_post_meeting_update':
+      return 'awaiting_post_meeting_update';
+    default:
+      return null;
+  }
+}
+
+function shouldQueuePendingClientForStage(stage) {
+  const normalized = normalizeCrmSalesStage(stage);
+  return (
+    normalized === 'meeting_follow_up' ||
+    normalized === 'reschedule_pending' ||
+    normalized === 'canceled'
+  );
+}
+
+function findAppointmentEvent(appointment, bookedMeetings) {
+  const appointmentId = String(appointment?.source_event_id || appointment?.id || '').trim();
+  return (
+    (Array.isArray(bookedMeetings) ? bookedMeetings : []).find(
+      (event) => String(event?.event_id || '').trim() === appointmentId,
+    ) || {
+      event_id: appointmentId,
+      title: String(appointment?.head_scout || '').trim()
+        ? `Post Meeting - ${appointment.head_scout}`
+        : 'Post Meeting',
+      assigned_owner: appointment?.head_scout || null,
+      start: appointment?.starts_at || null,
+      end: appointment?.starts_at || null,
+      date_time_label: appointment?.starts_at || null,
+      description: null,
+    }
+  );
+}
 
 function lifecycleCurrentRowToPipelineState(row) {
   const athleteKey = String(row?.athlete_key || '').trim();
@@ -664,13 +754,12 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
           },
         });
         if (liveEventId) {
-          appointmentPatches.push({
-            appointmentId: liveEventId,
-            row: {
-              status: 'awaiting_post_meeting_update',
-              starts_at: String(monitorEvent?.start || '').trim() || undefined,
-              updated_at: now,
-            },
+          queueAppointmentPatch(liveEventId, {
+            status: 'awaiting_post_meeting_update',
+            post_meeting_result: 'awaiting_post_meeting_update',
+            status_reason: 'awaiting_post_meeting_update',
+            starts_at: String(monitorEvent?.start || '').trim() || undefined,
+            updated_at: now,
           });
         }
         cleaned.push({
@@ -769,13 +858,12 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
     }
 
     if (row.current_appointment_id && appointmentStatus) {
-      appointmentPatches.push({
-        appointmentId: row.current_appointment_id,
-        row: {
-          status: appointmentStatus,
-          starts_at: String(bookedMeeting?.start || '').trim() || undefined,
-          updated_at: now,
-        },
+      queueAppointmentPatch(row.current_appointment_id, {
+        status: appointmentStatus,
+        post_meeting_result: postMeetingResultForAppointmentStatus(appointmentStatus),
+        status_reason: `live_sales_stage:${nextCrmStage}`,
+        starts_at: String(bookedMeeting?.start || '').trim() || undefined,
+        updated_at: now,
       });
     }
 
@@ -920,6 +1008,199 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
   }
 }
 
+for (const [index, appointment] of pastAppointments.entries()) {
+  const athleteKey = String(appointment.athlete_key || '').trim();
+  const athleteName = athleteNameByKey.get(athleteKey) || '';
+  console.error(`[appointment ${index + 1}/${pastAppointments.length}] ${athleteName || athleteKey}`);
+
+  try {
+    const row = {
+      athlete_key: athleteKey,
+      athlete_id: appointment.athlete_id,
+      athlete_main_id: appointment.athlete_main_id,
+      crm_stage: null,
+      task_status: null,
+      head_scout: appointment.head_scout || null,
+      current_task_id: null,
+      current_task_title: null,
+      current_appointment_id: appointment.id,
+      updated_at: appointment.starts_at || now,
+    };
+    if (!row.athlete_key || !row.athlete_id || !row.athlete_main_id || !row.current_appointment_id) continue;
+
+    const [stagePayload, bookedMeetings, tasks, notes, resolvedProfile] = await Promise.all([
+      apiFetch(`/sales/stages/${encodeURIComponent(row.athlete_id)}`),
+      fetchAthleteBookedMeetings(row),
+      fetchAthleteTasks(row),
+      fetchAthleteNotes(row),
+      fetchAthleteProfile(row),
+    ]);
+    const selectedStage = getSelectedSalesStage(stagePayload);
+    const selectedStageLabel = selectedStage.label;
+    const bookedMeeting = findAppointmentEvent(appointment, bookedMeetings);
+    const parsedTitle = parseAppointmentTitleOutcome(bookedMeeting?.title);
+    if (!isPostMeetingLifecycleStage(selectedStageLabel) && parsedTitle.outcome === 'active') continue;
+
+    const nextCrmStage = crmStageForOutcome(parsedTitle.outcome, selectedStageLabel);
+    const appointmentStatus = appointmentStatusForTitleOrStage(nextCrmStage, bookedMeeting?.title);
+    const postMeetingResult = postMeetingResultForAppointmentStatus(appointmentStatus);
+    if (!appointmentStatus || !postMeetingResult) continue;
+
+    const nextTaskStatus = taskStatusForTitleOrStage(bookedMeeting?.title, nextCrmStage, null);
+    const statusReason =
+      parsedTitle.outcome === 'active'
+        ? `live_sales_stage:${selectedStageLabel}`
+        : `live_event_title:${parsedTitle.prefix || parsedTitle.outcome}`;
+    const trackerOwnership = resolveCallTrackerOwnership({
+      trackedOwnerName: TRACKED_OWNER_NAME,
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName,
+      tasks,
+      currentTaskId: null,
+      bookedMeeting,
+      resolvedProfile,
+      pipelineState: row,
+      appointmentId: appointment.id,
+      liveEventId: bookedMeeting?.event_id || appointment.source_event_id || appointment.id,
+    });
+    const appointmentNeedsPatch =
+      String(appointment.status || '').trim() !== appointmentStatus ||
+      String(appointment.post_meeting_result || '').trim() !== postMeetingResult ||
+      String(appointment.status_reason || '').trim() !== statusReason;
+
+    if (!appointmentNeedsPatch) continue;
+
+    queueAppointmentPatch(appointment.id, {
+      status: appointmentStatus,
+      post_meeting_result: postMeetingResult,
+      status_reason: statusReason,
+      updated_at: now,
+    });
+    if (shouldArchiveReconciledState(parsedTitle.outcome)) {
+      queueStateDelete(row.athlete_key, `archived_${parsedTitle.outcome}`);
+    }
+
+    const rawEventType = 'post_meeting_outcome';
+    lifecycleEvents.push({
+      id: randomUUID(),
+      athlete_key: row.athlete_key,
+      athlete_id: row.athlete_id,
+      athlete_main_id: row.athlete_main_id,
+      event_type: rawEventType,
+      crm_stage: nextCrmStage,
+      task_status: nextTaskStatus,
+      payload_json: {
+        reconcile_run_id: RUN_ID,
+        source: parsedTitle.outcome === 'active' ? 'legacy_sales_stage_current' : 'calendar_event_title',
+        match_strategy:
+          parsedTitle.outcome === 'active'
+            ? 'past_appointment_live_stage_repair'
+            : 'past_appointment_event_title_repair',
+        selected_sales_stage: selectedStageLabel,
+        selected_sales_stage_value: selectedStage.value,
+        resolved_crm_stage: nextCrmStage,
+        title_outcome: parsedTitle.outcome,
+        title_prefix: parsedTitle.prefix,
+        stored_appointment_id: appointment.id,
+        live_event_id: bookedMeeting?.event_id || appointment.source_event_id || appointment.id,
+        booked_event_title: bookedMeeting?.title || null,
+        booked_event_start: bookedMeeting?.start || appointment.starts_at || null,
+        booked_event_end: bookedMeeting?.end || null,
+        booked_event_owner: bookedMeeting?.assigned_owner || appointment.head_scout || null,
+        tracker_owner: TRACKED_OWNER_NAME,
+        resolved_owner: trackerOwnership.context.resolvedOwnerName,
+        owner_source_field: trackerOwnership.context.resolvedFromField,
+        materialization_status: trackerOwnership.materializationStatus,
+        materialization_reason: trackerOwnership.materializationReason,
+        appointment_status: appointmentStatus,
+        post_meeting_result: postMeetingResult,
+      },
+      created_at: now,
+    });
+
+    postMeetingOutcomeFacts.push(buildMeetingOutcomeFact({
+      athleteId: row.athlete_id,
+      athleteMainId: row.athlete_main_id,
+      athleteName: athleteName || null,
+      source: parsedTitle.outcome === 'active' ? 'legacy_sales_stage_current' : 'calendar_event_title',
+      rawCrmStage: nextCrmStage,
+      rawTaskStatus: nextTaskStatus,
+      rawEventType,
+      dedupeOutcome: appointmentStatus,
+      appointmentId: appointment.id,
+      liveEventId: bookedMeeting?.event_id || appointment.source_event_id || appointment.id,
+      bookedEventTitle: bookedMeeting?.title || null,
+      revenueCents: null,
+      occurredAt: now,
+      ownerInput: {
+        purpose: 'meeting_outcome',
+        athleteId: row.athlete_id,
+        athleteMainId: row.athlete_main_id,
+        athleteName,
+        tasks,
+        currentTaskId: null,
+        bookedMeeting,
+        resolvedProfile,
+        pipelineState: row,
+        appointmentId: appointment.id,
+        liveEventId: bookedMeeting?.event_id || appointment.source_event_id || appointment.id,
+      },
+      ownerContext: trackerOwnership.context,
+      payload: {
+        reconcile_run_id: RUN_ID,
+        match_strategy:
+          parsedTitle.outcome === 'active'
+            ? 'past_appointment_live_stage_repair'
+            : 'past_appointment_event_title_repair',
+        selected_sales_stage: selectedStageLabel,
+        resolved_crm_stage: nextCrmStage,
+        title_outcome: parsedTitle.outcome,
+        title_prefix: parsedTitle.prefix,
+        stored_appointment_id: appointment.id,
+        live_event_id: bookedMeeting?.event_id || appointment.source_event_id || appointment.id,
+        appointment_status: appointmentStatus,
+        post_meeting_result: postMeetingResult,
+        tracker_owner: TRACKED_OWNER_NAME,
+      },
+    }));
+
+    if (trackerOwnership.isTrackedOwner && shouldQueuePendingClientForStage(nextCrmStage)) {
+      enqueuePendingClientWatchlistRow({
+        row,
+        athleteName,
+        crmStage: nextCrmStage,
+        selectedStageLabel,
+        bookedMeeting,
+        bookedMeetings,
+        appointmentId: appointment.id,
+        notes,
+      });
+    }
+
+    appointmentRepairs.push({
+      athlete_key: row.athlete_key,
+      athlete_name: athleteName,
+      appointment_id: appointment.id,
+      previous_status: appointment.status,
+      status: appointmentStatus,
+      post_meeting_result: postMeetingResult,
+      selected_sales_stage: selectedStageLabel,
+      resolved_crm_stage: nextCrmStage,
+      title_outcome: parsedTitle.outcome,
+      materialization_status: trackerOwnership.materializationStatus,
+    });
+  } catch (error) {
+    failures.push({
+      athlete_key: appointment.athlete_key,
+      athlete_name: athleteName,
+      appointment_id: appointment.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    console.error(`  failed: ${failures[failures.length - 1].error}`);
+  }
+}
+
 if (failures.length) {
   console.error(JSON.stringify({ runId: RUN_ID, failures }, null, 2));
   throw new Error(`Current sales-stage reconciliation failed before writes: ${failures.length} unresolved row(s)`);
@@ -934,7 +1215,8 @@ for (const patch of appointmentPatches) {
 }
 
 await supabaseWrite('lifecycle_events', lifecycleEvents);
-await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, postMeetingOutcomeFacts);
+const uniquePostMeetingOutcomeFacts = uniqueRowsByField(postMeetingOutcomeFacts, 'dedupe_key');
+await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, uniquePostMeetingOutcomeFacts);
 await upsertPendingClientWatchlistRows(SUPABASE_CONFIG, pendingClientWatchlistRows);
 
 for (const deletion of stateDeletes) {
@@ -955,12 +1237,15 @@ console.log(
       updatedCount: updated.length,
       unchangedCount: unchanged.length,
       lifecycleEventsInserted: lifecycleEvents.length,
-      postMeetingOutcomeFactsUpserted: postMeetingOutcomeFacts.length,
+      postMeetingOutcomeFactsUpserted: uniquePostMeetingOutcomeFacts.length,
+      postMeetingOutcomeFactsDeduped: postMeetingOutcomeFacts.length - uniquePostMeetingOutcomeFacts.length,
       pendingClientWatchlistUpserted: pendingClientWatchlistRows.length,
+      appointmentRepairsApplied: appointmentRepairs.length,
       activeStateDeleted: stateDeletes.length,
       failures,
       cleaned,
       updated,
+      appointmentRepairs,
     },
     null,
     2,

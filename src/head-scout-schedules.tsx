@@ -47,6 +47,7 @@ import {
   markPendingClientResolved,
   type PendingClientWatchlistLoadResult,
 } from './lib/pending-client-watchlist';
+import { addAthleteNote } from './lib/npid-mcp-adapter';
 import {
   APPOINTMENT_TITLE_PREFIXES,
   type AppointmentTitlePrefix,
@@ -563,6 +564,83 @@ function buildPendingClientDetailMarkdown(
   ].join('\n');
 }
 
+function PendingClientOperatorNoteForm({
+  row,
+  onSaved,
+}: {
+  row: PendingClientWatchlistLoadResult['rows'][number];
+  onSaved: () => void;
+}) {
+  const { pop } = useNavigation();
+  const athleteName = row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+
+  async function handleSubmit(values: { title: string; description: string }) {
+    const athleteId = String(row.athlete_id || '').trim();
+    const athleteMainId = String(row.athlete_main_id || '').trim();
+    const title = String(values.title || '').trim();
+    const description = String(values.description || '').trim();
+
+    if (!athleteId || !athleteMainId) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing athlete IDs',
+        message: 'Cannot add a Notes tab entry without athlete_id and athlete_main_id.',
+      });
+      return;
+    }
+    if (!title || !description) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Missing note',
+        message: 'Add both a title and description.',
+      });
+      return;
+    }
+
+    const toast = await showLoadingToast('Adding note', athleteName);
+    try {
+      await addAthleteNote({
+        athleteId,
+        athleteMainId,
+        title,
+        description,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Note added';
+      toast.message = 'Pending Clients refreshed';
+      onSaved();
+      pop();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Note failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  return (
+    <Form
+      navigationTitle={`Add Note - ${athleteName}`}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Add Note" icon={Icon.PlusCircle} onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField
+        id="title"
+        title="Title"
+        defaultValue={row.action_tag === 'Operator Input' ? 'Reschedule Pending Operator Note' : ''}
+        placeholder="Note title"
+      />
+      <Form.TextArea
+        id="description"
+        title="Description"
+        placeholder="What happened, why they need a reschedule, or what follow-up is needed."
+      />
+    </Form>
+  );
+}
+
 function PendingClientsWatchlist() {
   const [result, setResult] = useState<PendingClientWatchlistLoadResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -658,6 +736,17 @@ function PendingClientsWatchlist() {
                 detail={<List.Item.Detail markdown={buildPendingClientDetailMarkdown(row)} />}
                 actions={
                   <ActionPanel>
+                    <Action.Push
+                      title="Add Operator Note"
+                      icon={Icon.PlusCircle}
+                      shortcut={{ modifiers: ['cmd'], key: 'n' }}
+                      target={
+                        <PendingClientOperatorNoteForm
+                          row={row}
+                          onSaved={() => setRefreshTick((current) => current + 1)}
+                        />
+                      }
+                    />
                     <Action
                       title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove From Pending'}
                       icon={Icon.CheckCircle}
@@ -1068,6 +1157,25 @@ export function HeadScoutBookingsList({
       toast.title = 'Saved';
       toast.message = result.updated_title;
       setRefreshRequest((current) => ({ tick: current.tick + 1, forceLive: true }));
+      const followUpStage =
+        prefix === '(RSP)'
+          ? 'Meeting Result - Res. Pending'
+          : prefix === '(CAN)'
+            ? 'Meeting Result - Canceled'
+            : null;
+      if (followUpStage && candidate.athleteId) {
+        push(
+          <PostCallUpdateForm
+            task={buildCandidateTask(candidate)}
+            initialStageLabel={followUpStage}
+            initialBookedMeeting={{
+              ...meeting,
+              title: result.updated_title || meeting.title,
+            }}
+            onSaved={refreshLive}
+          />,
+        );
+      }
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Save failed';

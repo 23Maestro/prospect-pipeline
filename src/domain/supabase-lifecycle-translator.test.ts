@@ -38,4 +38,10 @@ test('known close and follow-up prefixes map to established stages and statuses'
   assert.equal(followUp.outcome, 'soft_archive_follow_up');
   assert.equal(crmStageForOutcome(followUp.outcome, null), 'Actual Meeting - Follow Up');
   assert.equal(taskStatusForTitleOrStage(followUp.originalTitle, null, null), 'meeting_follow_up');
+
+  const parentDidNotQualify = parseAppointmentTitleOutcome('(PAR - DNQ) Sample Athlete Football 2027 TX');
+  assert.equal(parentDidNotQualify.outcome, 'terminal_close_lost');
+  assert.equal(crmStageForOutcome(parentDidNotQualify.outcome, null), 'Actual Meeting - Close Lost');
+  assert.equal(taskStatusForTitleOrStage(parentDidNotQualify.originalTitle, null, null), 'closed_lost');
+  assert.equal(appointmentStatusForTitleOrStage(null, parentDidNotQualify.originalTitle), 'closed_lost');
 });
