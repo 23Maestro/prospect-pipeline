@@ -166,9 +166,9 @@ Before adding a script, check whether an existing domain writer or Supabase view
 
 The Codex skill should stay small. This document owns the map. Add to the skill only when an agent repeatedly fails a repo boundary. Add to this document when the business system becomes clearer.
 
-## Pre-Edit Guard, Retrieval, And Context
+## Codex Pre-Edit Hook, Retrieval, And Context
 
-This map is a pre-edit guard. It must be consulted before code edits in Scout Prep, Client Messages, Set Meetings, Scout Openings, lifecycle, contacts, reporting, Supabase, or adjacent scripts.
+This map is wired into a Codex pre-edit guard. It must be consulted before code edits in Scout Prep, Client Messages, Set Meetings, Scout Openings, lifecycle, contacts, reporting, Supabase, or adjacent scripts.
 
 Use this distinction:
 
@@ -177,11 +177,21 @@ Use this distinction:
 | Skill | A reusable agent operating contract | "How Codex should think and work in Prospect Pipeline" |
 | Architecture doc | Repo-owned source map | "Where does this work belong?" |
 | Retrieval/reference | Context loaded only when needed | Specific docs, schemas, maps, examples, prior decisions |
-| Pre-edit guard | Required check before editing | Classify the SC bucket and read this map before changing files |
+| Codex hook | Event-triggered guard | Inject this map requirement on relevant prompts and before relevant edit tools |
 | Script | Deterministic operation | Repair, audit, export, sync, or verification |
 | Test/eval | Repeatable proof | Prevent boundary regressions |
 
-In this Codex setup, the reliable before-edit mechanism is the repo contract plus skill instruction. Git hooks are after-edit/pre-commit tools, so they are not the right fit for this map.
+Installed hook files:
+
+- `.codex/hooks.json`
+- `.codex/hooks/scouting_coordinator_pre_edit.py`
+
+The hook runs on:
+
+- `UserPromptSubmit`: if the prompt mentions Scout Prep, Client Messages, Set Meetings, Scout Openings, lifecycle, Supabase, contacts, reporting, or adjacent workflow language.
+- `PreToolUse`: before `apply_patch`, `Edit`, `Write`, or simple `Bash` tool calls that touch SC-related files or keywords.
+
+The hook injects model-visible context. It does not duplicate this whole map into every turn, and it does not auto-run write repairs.
 
 Required pre-edit behavior:
 

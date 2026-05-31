@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/scouting_coordinator_pre_edit.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking Prospect Pipeline context"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "apply_patch|Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/scouting_coordinator_pre_edit.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking SC system map"
+          }
+        ]
+      }
+    ]
+  }
+}

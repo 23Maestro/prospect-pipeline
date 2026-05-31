@@ -282,30 +282,34 @@ end replaceText
 set contactsScanned to 0
 set outputRows to {}
 
-tell application "Contacts"
-  set targetGroup to missing value
-  repeat with candidateGroup in groups
-    if (name of candidateGroup as text) is ${appleScriptStringLiteral(GROUP_NAME)} then
-      set targetGroup to candidateGroup
-      exit repeat
-    end if
-  end repeat
-  if targetGroup is missing value then error "No matching Contacts group: " & ${appleScriptStringLiteral(GROUP_NAME)}
-
-  set contactsScanned to count of people of targetGroup
-  repeat with contactPerson in people of targetGroup
-    set contactName to name of contactPerson as text
-    set existingNote to note of contactPerson
-    if existingNote is missing value then set existingNote to ""
-    set escapedNote to my replaceText(existingNote, linefeed, "\\\\n")
-    set existingUrl to home page of contactPerson
-    if existingUrl is missing value then set existingUrl to ""
-    repeat with contactPhone in phones of contactPerson
-      set normalizedPhone to my digitsOnly(value of contactPhone as text)
-      if normalizedPhone is not "" then set end of outputRows to normalizedPhone & tab & contactName & tab & escapedNote & tab & existingUrl
+with timeout of 600 seconds
+  tell application "Contacts"
+    set targetGroup to missing value
+    repeat with candidateGroup in groups
+      if (name of candidateGroup as text) is ${appleScriptStringLiteral(GROUP_NAME)} then
+        set targetGroup to candidateGroup
+        exit repeat
+      end if
     end repeat
-  end repeat
-end tell
+    if targetGroup is missing value then error "No matching Contacts group: " & ${appleScriptStringLiteral(GROUP_NAME)}
+
+    set contactsScanned to count of people of targetGroup
+    repeat with contactPerson in people of targetGroup
+      set contactName to name of contactPerson as text
+      set existingNote to note of contactPerson
+      if existingNote is missing value then set existingNote to ""
+      set escapedNote to my replaceText(existingNote, linefeed, "\\\\n")
+      set existingUrl to ""
+      if (count of urls of contactPerson) > 0 then
+        set existingUrl to value of item 1 of urls of contactPerson as text
+      end if
+      repeat with contactPhone in phones of contactPerson
+        set normalizedPhone to my digitsOnly(value of contactPhone as text)
+        if normalizedPhone is not "" then set end of outputRows to normalizedPhone & tab & contactName & tab & escapedNote & tab & existingUrl
+      end repeat
+    end repeat
+  end tell
+end timeout
 
 set oldDelimiters to AppleScript's text item delimiters
 set AppleScript's text item delimiters to linefeed
@@ -353,6 +357,13 @@ return "contacts_scanned=" & contactsScanned & linefeed & outputText
 }
 
 function writeContactNotes(updates) {
+  const batchSize = 25;
+  for (let index = 0; index < updates.length; index += batchSize) {
+    writeContactNotesBatch(updates.slice(index, index + batchSize));
+  }
+}
+
+function writeContactNotesBatch(updates) {
   const phoneList = updates.map((item) => appleScriptStringLiteral(item.phone)).join(', ');
   const urlList = updates.map((item) => appleScriptStringLiteral(item.url)).join(', ');
   const noteList = updates.map((item) => appleScriptStringLiteral(item.note)).join(', ');
@@ -372,26 +383,41 @@ set targetPhones to {${phoneList}}
 set targetUrls to {${urlList}}
 set targetNotes to {${noteList}}
 
-tell application "Contacts"
-  set targetGroup to group ${appleScriptStringLiteral(GROUP_NAME)}
-  repeat with contactPerson in people of targetGroup
-    repeat with contactPhone in phones of contactPerson
-      set normalizedPhone to my digitsOnly(value of contactPhone as text)
-      repeat with targetIndex from 1 to count of targetPhones
-        if normalizedPhone is item targetIndex of targetPhones then
-          set targetUrl to item targetIndex of targetUrls
-          set targetNote to item targetIndex of targetNotes
-          set home page of contactPerson to targetUrl
-          set existingNote to note of contactPerson
-          if existingNote is missing value then set existingNote to ""
-          if existingNote contains targetUrl then set existingNote to ""
-          if existingNote does not contain targetNote then set note of contactPerson to targetNote
-        end if
+with timeout of 600 seconds
+  tell application "Contacts"
+    set targetGroup to group ${appleScriptStringLiteral(GROUP_NAME)}
+    repeat with contactPerson in people of targetGroup
+      repeat with contactPhone in phones of contactPerson
+        set normalizedPhone to my digitsOnly(value of contactPhone as text)
+        repeat with targetIndex from 1 to count of targetPhones
+          if normalizedPhone is item targetIndex of targetPhones then
+            set targetUrl to item targetIndex of targetUrls
+            set targetNote to item targetIndex of targetNotes
+            set home page of contactPerson to targetUrl
+            set visibleUrlUpdated to false
+            repeat with contactUrl in urls of contactPerson
+              if (label of contactUrl as text) is "home" then
+                set value of contactUrl to targetUrl
+                set visibleUrlUpdated to true
+                exit repeat
+              end if
+              if (value of contactUrl as text) is targetUrl then
+                set visibleUrlUpdated to true
+                exit repeat
+              end if
+            end repeat
+            if visibleUrlUpdated is false then make new url at end of urls of contactPerson with properties {label:"home", value:targetUrl}
+            set existingNote to note of contactPerson
+            if existingNote is missing value then set existingNote to ""
+            if existingNote contains targetUrl then set existingNote to ""
+            if existingNote does not contain targetNote then set note of contactPerson to targetNote
+          end if
+        end repeat
       end repeat
     end repeat
-  end repeat
-  save
-end tell
+    save
+  end tell
+end timeout
 `;
   const result = spawnSync('osascript', ['-'], { input: script, encoding: 'utf8' });
   if (result.status !== 0) throw new Error(result.stderr || result.stdout || 'osascript write failed');
