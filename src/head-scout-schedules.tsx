@@ -575,44 +575,101 @@ function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows']
     .join('\n');
 }
 
+function getPendingClientDisplayTag(row: PendingClientWatchlistLoadResult['rows'][number]): {
+  label: string;
+  color: Color;
+} {
+  switch (row.action_tag) {
+    case 'Payment Watch':
+      return { label: 'Payment', color: Color.Green };
+    case 'Operator Input':
+      return { label: 'Needs Op', color: Color.Red };
+    case 'Scout Update':
+      return { label: 'Follow Up', color: Color.Blue };
+    default:
+      return { label: 'No Note', color: Color.Orange };
+  }
+}
+
 function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
-  if (shouldShowPendingClientRescheduleAction(row)) {
-    return '🔁';
+  switch (row.action_tag) {
+    case 'Payment Watch':
+      return '💰';
+    case 'Operator Input':
+      return '🚩';
+    case 'Scout Update':
+      return '↪️';
+    default:
+      return '📝';
   }
-  if (row.action_tag === 'Operator Input') {
-    return '✍️';
+}
+
+function isPendingClientGeneratedHeading(value: string): boolean {
+  return (
+    /^Sales Stage:/i.test(value) ||
+    /^Lifecycle:/i.test(value) ||
+    /^Pending Tag:/i.test(value) ||
+    /^Notes Tab:\s*missing$/i.test(value) ||
+    /^Notes Tab:\s*\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(value) ||
+    /^Scout Note:/i.test(value)
+  );
+}
+
+function isPendingClientEventTitle(value: string): boolean {
+  return (
+    /^Event List:\s*(?:Follow Up\s+-|\(FU\)|\(RSP\)|\(CAN\)|Booked Meeting)/i.test(value) ||
+    /^Event List:\s*[^.?!]{1,90}\s+\d{4}\s+[A-Z]{2}$/i.test(value)
+  );
+}
+
+function cleanPendingClientNoteLine(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed || isPendingClientGeneratedHeading(trimmed) || isPendingClientEventTitle(trimmed)) {
+    return null;
   }
-  return '👁️';
+  return trimmed.replace(/^(Event List|Notes Tab):\s*/i, '').trim() || null;
+}
+
+function extractPendingClientSalesStage(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string | null {
+  const match = String(row.description || '').match(/^Sales Stage:\s*(.+)$/im);
+  return match?.[1]?.trim() || null;
+}
+
+function extractPendingClientNote(row: PendingClientWatchlistLoadResult['rows'][number]): string {
+  const lines = String(row.description || '')
+    .split(/\n{2,}/)
+    .map(cleanPendingClientNoteLine)
+    .filter(Boolean) as string[];
+  return lines.join('\n\n') || 'No note.';
 }
 
 function buildPendingClientDetailMarkdown(
   row: PendingClientWatchlistLoadResult['rows'][number],
 ): string {
-  return ['## Note', '', row.description?.trim() || '_No note._'].join('\n');
+  const salesStage = extractPendingClientSalesStage(row);
+  return [
+    '# Note',
+    '',
+    `### ${row.athlete_name || cleanPendingClientTitle(row.event_title)}`,
+    '',
+    salesStage ? `**Sales Stage:** ${salesStage}` : null,
+    '',
+    extractPendingClientNote(row),
+  ]
+    .filter((line) => line !== null)
+    .join('\n');
 }
 
 function buildPendingClientDetailMetadata(row: PendingClientWatchlistLoadResult['rows'][number]) {
   const scout = row.head_scout || 'Unresolved';
   const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown';
-  const signals = row.matched_signals || [];
 
   return (
     <List.Item.Detail.Metadata>
       <List.Item.Detail.Metadata.Label title="Scout" text={scout} />
       <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
-      <List.Item.Detail.Metadata.TagList title="Status">
-        <List.Item.Detail.Metadata.TagList.Item
-          text={row.action_tag || 'Missing Notes'}
-          color={shouldShowPendingClientRescheduleAction(row) ? Color.Red : Color.Yellow}
-        />
-      </List.Item.Detail.Metadata.TagList>
-      {signals.length ? (
-        <List.Item.Detail.Metadata.TagList title="Signals">
-          {signals.map((signal) => (
-            <List.Item.Detail.Metadata.TagList.Item key={signal} text={signal} color={Color.Blue} />
-          ))}
-        </List.Item.Detail.Metadata.TagList>
-      ) : null}
     </List.Item.Detail.Metadata>
   );
 }
@@ -834,11 +891,13 @@ function PendingClientsWatchlist() {
           {rows.map((row) => {
             const signals = row.matched_signals || [];
             const actionTag = row.action_tag || 'Missing Notes';
+            const displayTag = getPendingClientDisplayTag(row);
             return (
               <List.Item
                 key={row.source_event_id}
                 icon={getPendingClientIcon(row)}
                 title={row.athlete_name || cleanPendingClientTitle(row.event_title)}
+                accessories={[{ tag: { value: displayTag.label, color: displayTag.color } }]}
                 keywords={[
                   row.athlete_name || '',
                   row.head_scout || '',

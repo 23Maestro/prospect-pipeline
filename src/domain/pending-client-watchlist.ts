@@ -7,7 +7,7 @@ import {
 import { resolveSalesLifecycle } from '../lib/sales-lifecycle';
 
 export const PENDING_CLIENT_WATCH_WINDOW_DAYS = 14;
-export const PENDING_CLIENT_LIST_LIMIT = 5;
+export const PENDING_CLIENT_LIST_LIMIT = 20;
 
 export type PendingClientAIVerdict = 'pending_client';
 export type PendingClientWatchlistStatus = 'watching' | 'resolved' | 'expired';
@@ -149,7 +149,9 @@ function parseDateMs(value?: string | null): number {
 
 function getPayloadOperatorKey(row: SetMeetingConfirmationCacheRowInput): string {
   return normalizeText(
-    String(row.payload_json?.active_operator_key || row.payload_json?.detected_by_operator_key || ''),
+    String(
+      row.payload_json?.active_operator_key || row.payload_json?.detected_by_operator_key || '',
+    ),
   );
 }
 

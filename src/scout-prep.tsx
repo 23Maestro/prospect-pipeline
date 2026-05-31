@@ -2006,6 +2006,16 @@ function RescheduleSlotSelectionList({
     .join(' • ');
   const canGoBack = weekOffset > 0;
   const suggestedIds = new Set(suggestedSlots.map((slot) => slot.id));
+  const suggestedSlotNumberById = new Map(
+    suggestedSlots.slice(0, 2).map((slot, index) => [slot.id, index + 1]),
+  );
+
+  function getSlotIcon(slot: RescheduleVoicemailSlotOption): string {
+    const suggestedNumber = suggestedSlotNumberById.get(slot.id);
+    if (suggestedNumber === 1) return '1️⃣';
+    if (suggestedNumber === 2) return '2️⃣';
+    return slot.isPreviousScout ? '⭐' : '📅';
+  }
 
   function showPreviousWeek() {
     if (!canGoBack) return;
@@ -2062,12 +2072,11 @@ function RescheduleSlotSelectionList({
             icon={Icon.Star}
             title="Use Suggested Slots"
             subtitle={suggestedSlots.map((slot) => slot.messageLabel).join(' • ')}
-            accessories={suggestedSlots.map((slot) => ({
-              tag: {
-                value: slot.scoutName,
-                color: slot.isPreviousScout ? Color.Green : Color.SecondaryText,
-              },
-            }))}
+            accessories={
+              previousHeadScoutName
+                ? [{ tag: { value: previousHeadScoutName, color: Color.Green } }]
+                : []
+            }
             actions={
               <ActionPanel>
                 <Action
@@ -2092,7 +2101,7 @@ function RescheduleSlotSelectionList({
         {slotOptions.map((slot, index) => (
           <List.Item
             key={`${slot.id}:${index}`}
-            icon={suggestedIds.has(slot.id) ? Icon.Star : slot.isPreviousScout ? '⭐' : '📅'}
+            icon={getSlotIcon(slot)}
             title={`${index + 1}. ${slot.dateLabel}`}
             subtitle={slot.scoutName}
             keywords={[slot.scoutName, slot.messageLabel]}
