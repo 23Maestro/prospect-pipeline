@@ -133,7 +133,7 @@ test('Pending Clients exposes an operator note action that writes to the Notes t
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   assert.match(headScoutSchedules, /PendingClientOperatorNoteForm/);
   assert.match(headScoutSchedules, /import \{ addAthleteNote \} from '\.\/lib\/npid-mcp-adapter'/);
-  assert.match(headScoutSchedules, /title="Add Operator Note"/);
+  assert.match(headScoutSchedules, /title="Note"/);
   assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd'\], key: 'n' \}\}/);
   assert.match(headScoutSchedules, /await addAthleteNote\(\{/);
   assert.match(headScoutSchedules, /onSaved\(\);/);
@@ -155,7 +155,7 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
     headScoutSchedules,
     /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/,
   );
-  assert.match(headScoutSchedules, /title="Send Reschedule Follow-Up"/);
+  assert.match(headScoutSchedules, /title="Send"/);
   assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
 });
 
@@ -356,11 +356,17 @@ test('Client Messages launches Scout Prep against the all-task bucket', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
 
   assert.match(clientMessages, /LaunchProps<\{ launchContext\?: ClientMessageLaunchContext \}>/);
-  assert.match(clientMessages, /const initialSearchText = String\(launchContext\?\.searchText \|\| ''\)\.trim\(\)/);
+  assert.match(
+    clientMessages,
+    /const initialSearchText = String\(launchContext\?\.searchText \|\| ''\)\.trim\(\)/,
+  );
   assert.match(clientMessages, /name: 'scout-prep'/);
   assert.match(clientMessages, /initialFilter: 'all'/);
   assert.match(clientMessages, /searchText: athleteName/);
-  assert.match(clientMessages, /title="Open Scout Prep"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 's' \}\}/);
+  assert.match(
+    clientMessages,
+    /title="Open Scout Prep"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 's' \}\}/,
+  );
   assert.match(scoutPrep, /resolveInitialTaskListFilter\(launchContext\.initialFilter\)/);
   assert.match(scoutPrep, /const \[taskSearchText, setTaskSearchText\]/);
   assert.match(scoutPrep, /viewMode === 'prospect'\s*\?\s*prospectSearchText\s*:\s*taskSearchText/);
@@ -390,7 +396,10 @@ test('Scout Prep launches Client Messages against contact-cache matched threads'
   assert.match(scoutPrep, /name: 'client-message-inbox'/);
   assert.match(scoutPrep, /searchText: buildClientMessageSearchTextFromScoutPrepTask\(task\)/);
   assert.match(scoutPrep, /source: 'scout-prep'/);
-  assert.match(scoutPrep, /title="Open Client Messages"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'm' \}\}/);
+  assert.match(
+    scoutPrep,
+    /title="Open Client Messages"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'm' \}\}/,
+  );
 });
 
 test('Scout Prep home keeps the preferred due-today sorted view as the root state', () => {
@@ -417,33 +426,33 @@ test('Scout Prep mutations refresh the root list without resetting cancelled nav
   const voicemailStart = scoutPrep.indexOf('function VoicemailFollowUpRecipientForm');
   const prospectItemStart = scoutPrep.indexOf('function ProspectSearchListItem');
   const detail = scoutPrep.slice(detailStart, taskItemStart);
-  const taskItem = scoutPrep.slice(
-    taskItemStart,
-    prospectItemStart,
-  );
-  const voicemail = scoutPrep.slice(
-    voicemailStart,
-    scoutPrep.indexOf('type ViewMode ='),
-  );
+  const taskItem = scoutPrep.slice(taskItemStart, prospectItemStart);
+  const voicemail = scoutPrep.slice(voicemailStart, scoutPrep.indexOf('type ViewMode ='));
 
   assert.match(scoutPrep, /async function returnToRootTaskList\(\)/);
-  assert.match(detail, /async function returnToRootListAndCloseDetail\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\?\.\(\);/);
+  assert.match(
+    detail,
+    /async function returnToRootListAndCloseDetail\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\?\.\(\);/,
+  );
   assert.match(detail, /<PostCallUpdateForm[\s\S]*onSaved=\{onReturnToRootList\}/);
-  assert.match(taskItem, /async function returnToRootListAndCloseCurrentView\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\(\);/);
-  assert.match(taskItem, /<PostCallUpdateForm[\s\S]*onSaved=\{returnToRootListAndCloseCurrentView\}/);
+  assert.match(
+    taskItem,
+    /async function returnToRootListAndCloseCurrentView\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\(\);/,
+  );
+  assert.match(
+    taskItem,
+    /<PostCallUpdateForm[\s\S]*onSaved=\{returnToRootListAndCloseCurrentView\}/,
+  );
   assert.match(taskItem, /<VoicemailFollowUpRecipientForm[\s\S]*onComplete=\{onReturnToRootList\}/);
   assert.match(voicemail, /finishFollowUpFlow\([\s\S]*completeScoutPrepMutationSuccess/);
-  assert.match(voicemail, /finishFollowUpFlow\([\s\S]*popViews\(pop, closeAfterCompleteViews \+ extraChildViews\);[\s\S]*await onComplete\?\.\(\);/);
+  assert.match(
+    voicemail,
+    /finishFollowUpFlow\([\s\S]*popViews\(pop, closeAfterCompleteViews \+ extraChildViews\);[\s\S]*await onComplete\?\.\(\);/,
+  );
   assert.doesNotMatch(voicemail, /onReturnToRootList: onComplete/);
 
-  assert.match(
-    voicemail,
-    /push\([\s\S]*<RescheduleSlotSelectionList[\s\S]*\n\s*\);\n\s*return;/,
-  );
-  assert.match(
-    voicemail,
-    /push\([\s\S]*<SingleRecipientMessageForm[\s\S]*\n\s*\);\n\s*logInfo/,
-  );
+  assert.match(voicemail, /push\([\s\S]*<RescheduleSlotSelectionList[\s\S]*\n\s*\);\n\s*return;/);
+  assert.match(voicemail, /push\([\s\S]*<SingleRecipientMessageForm[\s\S]*\n\s*\);\n\s*logInfo/);
   assert.doesNotMatch(voicemail, /resetFollowUpFlowOnPop/);
   assert.match(
     taskItem,

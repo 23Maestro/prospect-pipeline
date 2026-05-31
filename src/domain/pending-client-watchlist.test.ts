@@ -85,10 +85,7 @@ test('pending client signal matcher is broad but excludes generic interest notes
     'elite',
     'legend',
   ]);
-  assert.deepEqual(findPendingClientSignals('Premium with a post date.'), [
-    'post date',
-    'premium',
-  ]);
+  assert.deepEqual(findPendingClientSignals('Premium with a post date.'), ['post date', 'premium']);
   assert.deepEqual(findPendingClientSignals('Icon subscription.'), ['icon']);
   assert.deepEqual(findPendingClientSignals('Come aboard with $179 12 month upgrade.'), [
     'upgrade',
@@ -339,14 +336,15 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
   );
 });
 
-test('pending client loader uses lifecycle current appointment pointers before pipeline fallback', () => {
+test('pending client Raycast loader reads the materialized watchlist only', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
-  assert.match(source, /athlete_lifecycle_current/);
-  assert.match(source, /current_resolved_appointment_id/);
-  assert.match(source, /mergeLifecycleAndPipelineRows/);
-  assert.match(source, /readCurrentPipelineRows/);
-  assert.match(source, /fetchAthleteNotes/);
-  assert.match(source, /buildPendingClientEvidenceDescription/);
+  assert.match(source, /pending_client_watchlist/);
+  assert.match(source, /status=eq\.watching/);
+  assert.match(source, /expires_at=gte/);
+  assert.doesNotMatch(source, /readCurrentPipelineRows/);
+  assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
+  assert.doesNotMatch(source, /fetchAthleteNotes/);
+  assert.doesNotMatch(source, /confirmPendingClientWithRayAI/);
   assert.doesNotMatch(source, /currentMeeting\\.description/);
 });
 
@@ -395,7 +393,10 @@ test('pending client lifecycle starts from CRM stage and uses event notes as rea
 
 test('no-show evidence accepts legacy title prefixes and CRM no-show stages', () => {
   assert.equal(hasStrictNoShowEvidence({ crmStage: 'Meeting Result - No Show' }), true);
-  assert.equal(hasStrictNoShowEvidence({ bookedEventTitle: '(NS)*2 Raul Agramonte Football 2027 FL' }), true);
+  assert.equal(
+    hasStrictNoShowEvidence({ bookedEventTitle: '(NS)*2 Raul Agramonte Football 2027 FL' }),
+    true,
+  );
   assert.equal(
     hasStrictNoShowEvidence({
       crmStage: 'Actual Meeting - Follow Up',
@@ -406,12 +407,13 @@ test('no-show evidence accepts legacy title prefixes and CRM no-show stages', ()
   assert.equal(hasStrictNoShowEvidence({ crmStage: 'Actual Meeting - Follow Up' }), false);
 });
 
-test('pending client loader does not read the confirmation cache table', () => {
+test('pending client loader reads the materialized watchlist instead of source adapters', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.match(source, /pending_client_watchlist/);
   assert.doesNotMatch(source, /set_meeting_confirmation_cache/);
   assert.doesNotMatch(source, /readSetMeetingConfirmationCacheRows/);
-  assert.match(source, /fetchAthleteBookedMeetings/);
-  assert.match(source, /athlete_pipeline_state/);
+  assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
+  assert.doesNotMatch(source, /athlete_pipeline_state/);
 });
 
 test('pending client AI verdict accepts exactly pending_client', () => {

@@ -3,6 +3,7 @@ import {
   ActionPanel,
   Clipboard,
   Color,
+  Detail,
   Form,
   Grid,
   Icon,
@@ -205,7 +206,8 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
 function buildPendingClientTask(row: PendingClientWatchlistRow): ScoutPortalTask {
   const athleteId = String(row.athlete_id || '').trim();
   const athleteMainId = String(row.athlete_main_id || '').trim();
-  const athleteName = row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+  const athleteName =
+    row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
 
   return {
     contact_id: athleteId,
@@ -573,24 +575,46 @@ function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows']
     .join('\n');
 }
 
+function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
+  if (shouldShowPendingClientRescheduleAction(row)) {
+    return '🔁';
+  }
+  if (row.action_tag === 'Operator Input') {
+    return '✍️';
+  }
+  return '👁️';
+}
+
 function buildPendingClientDetailMarkdown(
   row: PendingClientWatchlistLoadResult['rows'][number],
 ): string {
-  const scout = row.head_scout || 'Scout unresolved';
-  const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown date';
-  const signals = row.matched_signals?.length ? row.matched_signals.join(', ') : 'None';
-  return [
-    `# ${row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Unknown Athlete'}`,
-    '',
-    `**Scout:** ${scout}`,
-    `**Meeting:** ${eventDate}`,
-    `**Pending Tag:** ${row.action_tag || 'Missing Notes'}`,
-    `**Payment Signals:** ${signals}`,
-    '',
-    '## Event Note',
-    '',
-    row.description || '_No event description found._',
-  ].join('\n');
+  return ['## Note', '', row.description?.trim() || '_No note._'].join('\n');
+}
+
+function buildPendingClientDetailMetadata(row: PendingClientWatchlistLoadResult['rows'][number]) {
+  const scout = row.head_scout || 'Unresolved';
+  const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown';
+  const signals = row.matched_signals || [];
+
+  return (
+    <List.Item.Detail.Metadata>
+      <List.Item.Detail.Metadata.Label title="Scout" text={scout} />
+      <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
+      <List.Item.Detail.Metadata.TagList title="Status">
+        <List.Item.Detail.Metadata.TagList.Item
+          text={row.action_tag || 'Missing Notes'}
+          color={shouldShowPendingClientRescheduleAction(row) ? Color.Red : Color.Yellow}
+        />
+      </List.Item.Detail.Metadata.TagList>
+      {signals.length ? (
+        <List.Item.Detail.Metadata.TagList title="Signals">
+          {signals.map((signal) => (
+            <List.Item.Detail.Metadata.TagList.Item key={signal} text={signal} color={Color.Blue} />
+          ))}
+        </List.Item.Detail.Metadata.TagList>
+      ) : null}
+    </List.Item.Detail.Metadata>
+  );
 }
 
 function PendingClientOperatorNoteForm({
@@ -601,7 +625,8 @@ function PendingClientOperatorNoteForm({
   onSaved: () => void;
 }) {
   const { pop } = useNavigation();
-  const athleteName = row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+  const athleteName =
+    row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
 
   async function handleSubmit(values: { title: string; description: string }) {
     const athleteId = String(row.athlete_id || '').trim();
@@ -635,8 +660,7 @@ function PendingClientOperatorNoteForm({
         description,
       });
       toast.style = Toast.Style.Success;
-      toast.title = 'Note added';
-      toast.message = 'Pending Clients refreshed';
+      toast.title = 'Added';
       onSaved();
       pop();
     } catch (error) {
@@ -661,11 +685,7 @@ function PendingClientOperatorNoteForm({
         defaultValue={row.action_tag === 'Operator Input' ? 'Reschedule Pending Operator Note' : ''}
         placeholder="Note title"
       />
-      <Form.TextArea
-        id="description"
-        title="Description"
-        placeholder="What happened, why they need a reschedule, or what follow-up is needed."
-      />
+      <Form.TextArea id="description" title="Description" placeholder="What changed?" />
     </Form>
   );
 }
@@ -725,8 +745,8 @@ function PendingClientRescheduleFollowUp({
   return (
     <Detail
       isLoading={!errorMessage}
-      navigationTitle={`Reschedule Follow-Up - ${athleteName}`}
-      markdown={errorMessage ? `# Reschedule Follow-Up\n\n${errorMessage}` : '# Loading Scout Prep'}
+      navigationTitle={`Follow Up - ${athleteName}`}
+      markdown={errorMessage ? `# Follow Up\n\n${errorMessage}` : '# Loading'}
       actions={
         errorMessage ? (
           <ActionPanel>
@@ -787,7 +807,6 @@ function PendingClientsWatchlist() {
       await markPendingClientResolved(sourceEventId);
       toast.style = Toast.Style.Success;
       toast.title = 'Removed';
-      toast.message = 'Hidden from watchlist';
       setRefreshTick((current) => current + 1);
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -805,23 +824,21 @@ function PendingClientsWatchlist() {
       isLoading={isLoading || Boolean(resolvingId)}
       isShowingDetail
       navigationTitle="Pending Clients"
-      searchBarPlaceholder="Search athlete, scout, signal, or note"
+      searchBarPlaceholder="Search pending"
     >
       {rows.length ? (
         <List.Section
           title="Pending Clients"
-          subtitle={`${rows.length}${result ? ` • ${result.scannedCount} scanned` : ''}`}
+          subtitle={`${rows.length}${result ? `/${result.scannedCount}` : ''}`}
         >
           {rows.map((row) => {
-            const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : null;
             const signals = row.matched_signals || [];
             const actionTag = row.action_tag || 'Missing Notes';
             return (
               <List.Item
                 key={row.source_event_id}
-                icon={Icon.Eye}
+                icon={getPendingClientIcon(row)}
                 title={row.athlete_name || cleanPendingClientTitle(row.event_title)}
-                subtitle={row.head_scout || 'Scout unresolved'}
                 keywords={[
                   row.athlete_name || '',
                   row.head_scout || '',
@@ -830,55 +847,62 @@ function PendingClientsWatchlist() {
                   actionTag,
                   ...signals,
                 ]}
-                accessories={[
-                  { tag: actionTag },
-                  ...(eventDate ? [{ text: eventDate }] : []),
-                ]}
-                detail={<List.Item.Detail markdown={buildPendingClientDetailMarkdown(row)} />}
+                detail={
+                  <List.Item.Detail
+                    markdown={buildPendingClientDetailMarkdown(row)}
+                    metadata={buildPendingClientDetailMetadata(row)}
+                  />
+                }
                 actions={
                   <ActionPanel>
-                    {shouldShowPendingClientRescheduleAction(row) ? (
+                    <ActionPanel.Section title="Follow Up">
+                      {shouldShowPendingClientRescheduleAction(row) ? (
+                        <Action.Push
+                          title="Send"
+                          icon="💬"
+                          shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                          target={
+                            <PendingClientRescheduleFollowUp
+                              row={row}
+                              onComplete={() => setRefreshTick((current) => current + 1)}
+                            />
+                          }
+                        />
+                      ) : null}
                       <Action.Push
-                        title="Send Reschedule Follow-Up"
-                        icon={Icon.Message}
-                        shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                        title="Note"
+                        icon="✍️"
+                        shortcut={{ modifiers: ['cmd'], key: 'n' }}
                         target={
-                          <PendingClientRescheduleFollowUp
+                          <PendingClientOperatorNoteForm
                             row={row}
-                            onComplete={() => setRefreshTick((current) => current + 1)}
+                            onSaved={() => setRefreshTick((current) => current + 1)}
                           />
                         }
                       />
-                    ) : null}
-                    <Action.Push
-                      title="Add Operator Note"
-                      icon={Icon.PlusCircle}
-                      shortcut={{ modifiers: ['cmd'], key: 'n' }}
-                      target={
-                        <PendingClientOperatorNoteForm
-                          row={row}
-                          onSaved={() => setRefreshTick((current) => current + 1)}
-                        />
-                      }
-                    />
-                    <Action
-                      title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove From Pending'}
-                      icon={Icon.CheckCircle}
-                      onAction={() => void handleMarkResolved(row.source_event_id)}
-                    />
-                    <Action.CopyToClipboard
-                      title="Copy Watchlist Summary"
-                      icon={Icon.Clipboard}
-                      shortcut={{ modifiers: ['cmd'], key: 'c' }}
-                      content={buildPendingClientSummary(row)}
-                    />
-                    <Action.CopyToClipboard title="Copy Note" content={row.description} />
-                    <Action
-                      title="Refresh"
-                      icon={Icon.ArrowClockwise}
-                      shortcut={{ modifiers: ['cmd'], key: 'r' }}
-                      onAction={() => setRefreshTick((current) => current + 1)}
-                    />
+                      <Action
+                        title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
+                        icon="✅"
+                        onAction={() => void handleMarkResolved(row.source_event_id)}
+                      />
+                    </ActionPanel.Section>
+                    <ActionPanel.Section title="Copy">
+                      <Action.CopyToClipboard
+                        title="Summary"
+                        icon="📋"
+                        shortcut={{ modifiers: ['cmd'], key: 'c' }}
+                        content={buildPendingClientSummary(row)}
+                      />
+                      <Action.CopyToClipboard title="Note" icon="📝" content={row.description} />
+                    </ActionPanel.Section>
+                    <ActionPanel.Section>
+                      <Action
+                        title="Refresh"
+                        icon="🔄"
+                        shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                        onAction={() => setRefreshTick((current) => current + 1)}
+                      />
+                    </ActionPanel.Section>
                   </ActionPanel>
                 }
               />
@@ -887,12 +911,8 @@ function PendingClientsWatchlist() {
         </List.Section>
       ) : (
         <List.EmptyView
-          title="No Pending Clients"
-          description={
-            result?.aiUnavailableCount
-              ? 'Ray AI did not confirm any deterministic matches.'
-              : 'No active payment or enrollment watchlist rows found.'
-          }
+          title="Clear"
+          description={result?.aiUnavailableCount ? 'No confirmed matches.' : 'No pending clients.'}
           actions={
             <ActionPanel>
               <Action
