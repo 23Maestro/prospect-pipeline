@@ -1795,6 +1795,7 @@ type RescheduleVoicemailSlotOption = {
   timeLabel: string;
   zoneLabel: string;
   weekLabel: string;
+  start: string;
 };
 
 function normalizeNameKey(value?: string | null): string {
@@ -1823,45 +1824,6 @@ function rescheduleTimeTagColorFor(value?: string | null): Color {
   const timeKey = normalized.match(/\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b/)?.[0] || normalized;
   const total = timeKey.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return RESCHEDULE_TIME_TAG_COLORS[total % RESCHEDULE_TIME_TAG_COLORS.length];
-}
-
-function buildRescheduleVoicemailSlotOptions(args: {
-  slots: Array<HeadScoutSlot & { scout_name: string }>;
-  athleteTimezone?: string | null;
-  previousHeadScoutName?: string | null;
-  weekLabel: string;
-}): RescheduleVoicemailSlotOption[] {
-  const previousKey = normalizeNameKey(args.previousHeadScoutName);
-  const visibleSlots = filterVisibleHeadScoutSlots(args.slots);
-  return [...visibleSlots]
-    .sort((left, right) => {
-      const leftPrevious = Boolean(
-        previousKey && normalizeNameKey(left.scout_name) === previousKey,
-      );
-      const rightPrevious = Boolean(
-        previousKey && normalizeNameKey(right.scout_name) === previousKey,
-      );
-      if (leftPrevious !== rightPrevious) return leftPrevious ? -1 : 1;
-      return left.start.localeCompare(right.start);
-    })
-    .map((slot) => {
-      const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, args.athleteTimezone);
-      const isPreviousScout = Boolean(
-        previousKey && normalizeNameKey(slot.scout_name) === previousKey,
-      );
-      return {
-        id: `${slot.scout_name}:${slot.id}`,
-        title: display.messageLabel,
-        subtitle: slot.scout_name,
-        scoutName: slot.scout_name,
-        messageLabel: display.messageLabel,
-        isPreviousScout,
-        dateLabel: display.dateLabel,
-        timeLabel: display.timeLabel,
-        zoneLabel: display.zoneLabel,
-        weekLabel: args.weekLabel,
-      };
-    });
 }
 
 function buildPreviousMeetingTextForReschedule(
@@ -1977,6 +1939,7 @@ function RescheduleSlotSelectionList({
     String(context.resolved.head_scout || '').trim() || null,
   );
   const [slotOptions, setSlotOptions] = useState<RescheduleVoicemailSlotOption[]>([]);
+  const [suggestedSlots, setSuggestedSlots] = useState<RescheduleVoicemailSlotOption[]>([]);
   const [slot1, setSlot1] = useState<RescheduleVoicemailSlotOption | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [weekOffset, setWeekOffset] = useState(0);
@@ -1993,61 +1956,27 @@ function RescheduleSlotSelectionList({
       setIsLoading(true);
       setErrorMessage(null);
       try {
-        const [meetingResult, slotsResult] = await Promise.allSettled([
-          athleteId && athleteMainId
-            ? resolveRequiredAppointmentTruthMeeting(
-                { athleteId, athleteMainId },
-                { getCachedMeetingDescription: getCachedBookedMeetingDescription },
-              )
-            : Promise.resolve(null),
-          fetchHeadScoutSlots(weekOffset),
-        ]);
+        if (!athleteId || !athleteMainId) {
+          throw new Error('Missing appointment truth for Reschedule Pending');
+        }
+        const plan = await buildRankedRescheduleSlotPlan({
+          task,
+          context,
+          weekOffsets: weekOffset > 0 ? [weekOffset] : [0, 1],
+        });
         if (!isMounted) return;
 
-        const resolvedMeeting =
-          meetingResult.status === 'fulfilled' && meetingResult.value ? meetingResult.value : null;
-        if (!resolvedMeeting?.meetingTimezone) {
-          throw new Error('Missing appointment truth timezone for Reschedule Pending');
-        }
-        const nextHeadScoutName =
-          String(resolvedMeeting?.bookedMeeting?.assigned_owner || '').trim() ||
-          String(context.resolved.head_scout || '').trim() ||
-          null;
-        const slotPayload = slotsResult.status === 'fulfilled' ? slotsResult.value : null;
-        const schedules = slotPayload?.scouts || [];
-        const slots = schedules.flatMap((schedule) =>
-          (schedule.slots || []).map((slot) => ({
-            ...slot,
-            scout_name: slot.scout_name || schedule.scout_name,
-          })),
-        );
-        setPreviousHeadScoutName(nextHeadScoutName);
-        setPreviousMeetingText(buildPreviousMeetingTextForReschedule(resolvedMeeting, context));
-        setSlotOptions(
-          buildRescheduleVoicemailSlotOptions({
-            slots,
-            athleteTimezone: resolvedMeeting.meetingTimezone,
-            previousHeadScoutName: nextHeadScoutName,
-            weekLabel: weekOffset > 0 ? 'next week' : 'this week',
-          }),
-        );
-        setWeekLabel(
-          slotPayload
-            ? formatHeadScoutWeekLabel(slotPayload.week_start, slotPayload.week_end)
-            : null,
-        );
-        if (slotsResult.status === 'rejected') {
-          setErrorMessage(
-            slotsResult.reason instanceof Error
-              ? slotsResult.reason.message
-              : String(slotsResult.reason),
-          );
-        }
+        setPreviousHeadScoutName(plan.previousHeadScoutName);
+        setPreviousMeetingText(plan.previousMeetingText);
+        setSlotOptions(plan.slots);
+        setSuggestedSlots(plan.suggestedSlots);
+        setWeekLabel(plan.weekLabel);
       } catch (error) {
         if (!isMounted) return;
         setErrorMessage(error instanceof Error ? error.message : String(error));
         setPreviousMeetingText(null);
         setSlotOptions([]);
+        setSuggestedSlots([]);
       } finally {
         if (isMounted) {
           setIsLoading(false);
@@ -2076,6 +2005,7 @@ function RescheduleSlotSelectionList({
     .filter(Boolean)
     .join(' • ');
   const canGoBack = weekOffset > 0;
+  const suggestedIds = new Set(suggestedSlots.map((slot) => slot.id));
 
   function showPreviousWeek() {
     if (!canGoBack) return;
@@ -2086,6 +2016,16 @@ function RescheduleSlotSelectionList({
   function showNextWeek() {
     setSlot1(null);
     setWeekOffset((value) => value + 1);
+  }
+
+  function selectSuggestedSlots() {
+    if (suggestedSlots.length < 2) return;
+    void onSlotsSelected(suggestedSlots.slice(0, 2));
+  }
+
+  function selectSlotsManually() {
+    setSuggestedSlots([]);
+    setSlot1(null);
   }
 
   const weekActions = (
@@ -2113,19 +2053,64 @@ function RescheduleSlotSelectionList({
       isLoading={isLoading}
       searchBarPlaceholder="Filter openings"
     >
+      {!slot1 && suggestedSlots.length >= 2 ? (
+        <List.Section
+          title="Suggested Slots"
+          subtitle={previousHeadScoutName ? `${previousHeadScoutName} prioritized` : undefined}
+        >
+          <List.Item
+            icon={Icon.Star}
+            title="Use Suggested Slots"
+            subtitle={suggestedSlots.map((slot) => slot.messageLabel).join(' • ')}
+            accessories={suggestedSlots.map((slot) => ({
+              tag: {
+                value: slot.scoutName,
+                color: slot.isPreviousScout ? Color.Green : Color.SecondaryText,
+              },
+            }))}
+            actions={
+              <ActionPanel>
+                <Action
+                  title="Use Suggested Slots"
+                  icon={Icon.CheckCircle}
+                  onAction={selectSuggestedSlots}
+                />
+                <Action title="Select New Slots" icon={Icon.List} onAction={selectSlotsManually} />
+                <Action
+                  title="Refresh Openings"
+                  icon="🔄"
+                  shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                  onAction={() => setReloadKey((value) => value + 1)}
+                />
+                {weekActions}
+              </ActionPanel>
+            }
+          />
+        </List.Section>
+      ) : null}
       <List.Section title={sectionTitle} subtitle={sectionSubtitle || undefined}>
         {slotOptions.map((slot, index) => (
           <List.Item
             key={`${slot.id}:${index}`}
-            icon={slot.isPreviousScout ? '⭐' : '📅'}
+            icon={suggestedIds.has(slot.id) ? Icon.Star : slot.isPreviousScout ? '⭐' : '📅'}
             title={`${index + 1}. ${slot.dateLabel}`}
             subtitle={slot.scoutName}
             keywords={[slot.scoutName, slot.messageLabel]}
             accessories={[
+              ...(suggestedIds.has(slot.id)
+                ? [{ tag: { value: 'Suggested', color: Color.Green } }]
+                : []),
               { tag: { value: slot.timeLabel, color: rescheduleTimeTagColorFor(slot.timeLabel) } },
             ]}
             actions={
               <ActionPanel>
+                {!slot1 && suggestedSlots.length >= 2 ? (
+                  <Action
+                    title="Use Suggested Slots"
+                    icon={Icon.CheckCircle}
+                    onAction={selectSuggestedSlots}
+                  />
+                ) : null}
                 {!slot1 ? (
                   <Action title="Use as Slot 1" icon="1️⃣" onAction={() => setSlot1(slot)} />
                 ) : (
@@ -2170,7 +2155,7 @@ function RescheduleSlotSelectionList({
   );
 }
 
-function VoicemailFollowUpRecipientForm({
+export function VoicemailFollowUpRecipientForm({
   task,
   context,
   currentTask,
@@ -5875,11 +5860,20 @@ type RescheduleBatchPlan = {
   slots: RescheduleVoicemailSlotOption[];
 };
 
-const RESCHEDULE_BATCH_DIFFERENT_SCOUT_PENALTY = 2_500;
-const RESCHEDULE_BATCH_SHORT_NOTICE_HOURS = 24;
-const RESCHEDULE_BATCH_SHORT_NOTICE_PENALTY = 8_000;
-const RESCHEDULE_BATCH_SAME_WEEKEND_ON_LATE_WEEK_PENALTY = 1_500;
-const RESCHEDULE_BATCH_EARLIER_THAN_PREVIOUS_TIME_PENALTY = 45;
+type RankedRescheduleSlotPlan = {
+  previousMeeting: ResolvedBookedMeetingDetails;
+  previousMeetingText: string;
+  previousHeadScoutName: string | null;
+  slots: RescheduleVoicemailSlotOption[];
+  suggestedSlots: RescheduleVoicemailSlotOption[];
+  weekLabel: string | null;
+};
+
+const RESCHEDULE_SLOT_DIFFERENT_SCOUT_PENALTY = 2_500;
+const RESCHEDULE_SLOT_SHORT_NOTICE_HOURS = 24;
+const RESCHEDULE_SLOT_SHORT_NOTICE_PENALTY = 8_000;
+const RESCHEDULE_SLOT_SAME_WEEKEND_ON_LATE_WEEK_PENALTY = 1_500;
+const RESCHEDULE_SLOT_EARLIER_THAN_PREVIOUS_TIME_PENALTY = 45;
 
 function localMinutesForEasternStamp(start: string, timeZone?: string | null): number | null {
   const parsed = easternLocalIsoToDate(start);
@@ -5917,7 +5911,7 @@ function hoursUntilDate(date: Date, now = new Date()): number {
   return (date.getTime() - now.getTime()) / (60 * 60 * 1000);
 }
 
-function scoreRescheduleBatchSlot(args: {
+function scoreRescheduleSlot(args: {
   slot: HeadScoutSlot & { scout_name: string };
   previousHeadScoutName: string | null;
   targetMinutes: number | null;
@@ -5929,7 +5923,7 @@ function scoreRescheduleBatchSlot(args: {
     args.previousHeadScoutName &&
     normalizeNameKey(args.slot.scout_name) === normalizeNameKey(args.previousHeadScoutName)
       ? 0
-      : RESCHEDULE_BATCH_DIFFERENT_SCOUT_PENALTY;
+      : RESCHEDULE_SLOT_DIFFERENT_SCOUT_PENALTY;
   const slotMinutes = localMinutesForEasternStamp(args.slot.start, args.clientTimezone);
   const timeDistance =
     slotMinutes !== null && args.targetMinutes !== null
@@ -5937,13 +5931,13 @@ function scoreRescheduleBatchSlot(args: {
       : 1_000;
   const earlierThanPreviousTime =
     slotMinutes !== null && args.targetMinutes !== null && slotMinutes < args.targetMinutes
-      ? RESCHEDULE_BATCH_EARLIER_THAN_PREVIOUS_TIME_PENALTY
+      ? RESCHEDULE_SLOT_EARLIER_THAN_PREVIOUS_TIME_PENALTY
       : 0;
   const slotDate = easternLocalIsoToDate(args.slot.start);
   const noticeHours = slotDate ? hoursUntilDate(slotDate, args.now) : null;
   const shortNotice =
-    noticeHours !== null && noticeHours < RESCHEDULE_BATCH_SHORT_NOTICE_HOURS
-      ? RESCHEDULE_BATCH_SHORT_NOTICE_PENALTY
+    noticeHours !== null && noticeHours < RESCHEDULE_SLOT_SHORT_NOTICE_HOURS
+      ? RESCHEDULE_SLOT_SHORT_NOTICE_PENALTY
       : 0;
   const currentWeekday = localWeekdayForDate(args.now || new Date(), args.clientTimezone);
   const slotWeekday = slotDate ? localWeekdayForDate(slotDate, args.clientTimezone) : null;
@@ -5952,25 +5946,34 @@ function scoreRescheduleBatchSlot(args: {
     currentWeekday !== null &&
     currentWeekday >= 5 &&
     (slotWeekday === 0 || slotWeekday === 6)
-      ? RESCHEDULE_BATCH_SAME_WEEKEND_ON_LATE_WEEK_PENALTY
+      ? RESCHEDULE_SLOT_SAME_WEEKEND_ON_LATE_WEEK_PENALTY
       : 0;
-  return sameScout + args.weekOffset * 100 + timeDistance + earlierThanPreviousTime + shortNotice + rushedWeekend;
+  return (
+    sameScout +
+    args.weekOffset * 100 +
+    timeDistance +
+    earlierThanPreviousTime +
+    shortNotice +
+    rushedWeekend
+  );
 }
 
-async function buildRescheduleBatchPlan(args: {
+async function buildRankedRescheduleSlotPlan(args: {
   task: ScoutPortalTask;
   context: ScoutPrepContext;
-}): Promise<RescheduleBatchPlan> {
+  weekOffsets?: number[];
+}): Promise<RankedRescheduleSlotPlan> {
   const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
   const athleteMainId = String(
     args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
   ).trim();
-  const previousMeeting = athleteId && athleteMainId
-    ? await resolveRequiredAppointmentTruthMeeting(
-        { athleteId, athleteMainId },
-        { getCachedMeetingDescription: getCachedBookedMeetingDescription },
-      )
-    : null;
+  const previousMeeting =
+    athleteId && athleteMainId
+      ? await resolveRequiredAppointmentTruthMeeting(
+          { athleteId, athleteMainId },
+          { getCachedMeetingDescription: getCachedBookedMeetingDescription },
+        )
+      : null;
   if (!previousMeeting) {
     throw new Error('Missing appointment truth for Reschedule Pending');
   }
@@ -5988,9 +5991,16 @@ async function buildRescheduleBatchPlan(args: {
     buildPreviousMeetingTextForReschedule(previousMeeting, args.context) ||
     [previousHeadScoutName, previousMeeting.bookedMeeting.start].filter(Boolean).join(' • ');
   const now = new Date();
+  const weekOffsets = args.weekOffsets?.length ? args.weekOffsets : [0, 1];
 
-  const slotPayloads = await Promise.all([fetchHeadScoutSlots(0), fetchHeadScoutSlots(1)]);
-  const scoredSlots = slotPayloads.flatMap((payload, weekOffset) => {
+  const slotPayloads = await Promise.all(
+    weekOffsets.map((weekOffset) => fetchHeadScoutSlots(weekOffset)),
+  );
+  const payloadWeekLabels = slotPayloads
+    .map((payload) => formatHeadScoutWeekLabel(payload.week_start, payload.week_end))
+    .filter(Boolean);
+  const scoredSlots = slotPayloads.flatMap((payload, payloadIndex) => {
+    const weekOffset = weekOffsets[payloadIndex] ?? payloadIndex;
     const rawSlots = (payload.scouts || []).flatMap((schedule) =>
       (schedule.slots || []).map((slot) => ({
         ...slot,
@@ -6000,9 +6010,9 @@ async function buildRescheduleBatchPlan(args: {
     return filterVisibleHeadScoutSlots(rawSlots).map((slot) => ({ slot, weekOffset }));
   });
 
-  const selected = scoredSlots
+  const slots = scoredSlots
     .sort((left, right) => {
-      const leftScore = scoreRescheduleBatchSlot({
+      const leftScore = scoreRescheduleSlot({
         slot: left.slot,
         previousHeadScoutName,
         targetMinutes,
@@ -6010,7 +6020,7 @@ async function buildRescheduleBatchPlan(args: {
         weekOffset: left.weekOffset,
         now,
       });
-      const rightScore = scoreRescheduleBatchSlot({
+      const rightScore = scoreRescheduleSlot({
         slot: right.slot,
         previousHeadScoutName,
         targetMinutes,
@@ -6021,12 +6031,11 @@ async function buildRescheduleBatchPlan(args: {
       if (leftScore !== rightScore) return leftScore - rightScore;
       return left.slot.start.localeCompare(right.slot.start);
     })
-    .slice(0, 2)
-    .sort((left, right) => left.slot.start.localeCompare(right.slot.start))
     .map(({ slot, weekOffset }) => {
       const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, clientTimezone);
       const isPreviousScout = Boolean(
-        previousHeadScoutName && normalizeNameKey(slot.scout_name) === normalizeNameKey(previousHeadScoutName),
+        previousHeadScoutName &&
+        normalizeNameKey(slot.scout_name) === normalizeNameKey(previousHeadScoutName),
       );
       return {
         id: `${slot.scout_name}:${slot.id}`,
@@ -6039,17 +6048,45 @@ async function buildRescheduleBatchPlan(args: {
         timeLabel: display.timeLabel,
         zoneLabel: display.zoneLabel,
         weekLabel: weekOffset > 0 ? 'next week' : 'this week',
+        start: slot.start,
       };
     });
 
-  if (selected.length < 2) {
+  const suggestedSlots = slots
+    .slice(0, 2)
+    .sort((left, right) => left.start.localeCompare(right.start));
+
+  if (suggestedSlots.length < 2) {
     throw new Error('Missing two reschedule slot options');
   }
 
   return {
     previousMeeting,
     previousMeetingText,
-    slots: selected,
+    previousHeadScoutName,
+    slots,
+    suggestedSlots,
+    weekLabel:
+      payloadWeekLabels.length > 1
+        ? `${payloadWeekLabels[0]} / ${payloadWeekLabels[payloadWeekLabels.length - 1]}`
+        : payloadWeekLabels[0] || null,
+  };
+}
+
+async function buildRescheduleBatchPlan(args: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+}): Promise<RescheduleBatchPlan> {
+  const plan = await buildRankedRescheduleSlotPlan(args);
+
+  if (plan.suggestedSlots.length < 2) {
+    throw new Error('Missing two reschedule slot options');
+  }
+
+  return {
+    previousMeeting: plan.previousMeeting,
+    previousMeetingText: plan.previousMeetingText,
+    slots: plan.suggestedSlots,
   };
 }
 

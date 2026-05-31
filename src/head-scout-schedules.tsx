@@ -52,7 +52,7 @@ import {
   APPOINTMENT_TITLE_PREFIXES,
   type AppointmentTitlePrefix,
 } from './lib/head-scout-event-prefix';
-import { PostCallUpdateForm } from './scout-prep';
+import { PostCallUpdateForm, VoicemailFollowUpRecipientForm } from './scout-prep';
 import {
   buildMeetingDayLabel,
   buildSetMeetingCandidatesFromBookedMeetings,
@@ -109,6 +109,8 @@ type HeadScoutSchedulesRootProps = {
     markdown: string;
   };
 };
+
+type PendingClientWatchlistRow = PendingClientWatchlistLoadResult['rows'][number];
 
 type HeadScoutScheduleListProps = {
   scout: HeadScoutSchedule;
@@ -198,6 +200,33 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
     athlete_admin_url: candidate.adminUrl,
     athlete_task_url: candidate.taskUrl,
   };
+}
+
+function buildPendingClientTask(row: PendingClientWatchlistRow): ScoutPortalTask {
+  const athleteId = String(row.athlete_id || '').trim();
+  const athleteMainId = String(row.athlete_main_id || '').trim();
+  const athleteName = row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+
+  return {
+    contact_id: athleteId,
+    athlete_id: athleteId,
+    athlete_main_id: athleteMainId,
+    athlete_name: athleteName,
+    due_date: row.event_start || null,
+    task_id: row.source_event_id,
+    title: 'Reschedule Pending',
+    description: row.description || row.event_title,
+  };
+}
+
+function shouldShowPendingClientRescheduleAction(row: PendingClientWatchlistRow): boolean {
+  const haystack = `${row.action_tag || ''} ${row.event_title || ''} ${row.description || ''}`;
+  return (
+    row.action_tag === 'Operator Input' ||
+    /(?:\breschedule\b|\brsp\b|\bcancel\b|\bcanceled\b|\bcancelled\b|\(can\)|\(rsp\))/i.test(
+      haystack,
+    )
+  );
 }
 
 function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string {
@@ -641,6 +670,78 @@ function PendingClientOperatorNoteForm({
   );
 }
 
+function PendingClientRescheduleFollowUp({
+  row,
+  onComplete,
+}: {
+  row: PendingClientWatchlistRow;
+  onComplete: () => void;
+}) {
+  const [context, setContext] = useState<ScoutPrepContext | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const task = useMemo(() => buildPendingClientTask(row), [row]);
+  const athleteName = task.athlete_name || 'Pending Client';
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadContext() {
+      setErrorMessage(null);
+      setContext(null);
+      try {
+        if (!task.athlete_id || !task.athlete_main_id) {
+          throw new Error('Missing athlete IDs for Pending Client reschedule follow-up.');
+        }
+        const loaded = await loadScoutPrepContext(task);
+        if (active) {
+          setContext(loaded);
+        }
+      } catch (error) {
+        if (active) {
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
+      }
+    }
+
+    void loadContext();
+    return () => {
+      active = false;
+    };
+  }, [task, reloadKey]);
+
+  if (context) {
+    return (
+      <VoicemailFollowUpRecipientForm
+        task={task}
+        context={context}
+        currentTask="Reschedule Pending"
+        closeAfterCompleteViews={2}
+        onComplete={onComplete}
+      />
+    );
+  }
+
+  return (
+    <Detail
+      isLoading={!errorMessage}
+      navigationTitle={`Reschedule Follow-Up - ${athleteName}`}
+      markdown={errorMessage ? `# Reschedule Follow-Up\n\n${errorMessage}` : '# Loading Scout Prep'}
+      actions={
+        errorMessage ? (
+          <ActionPanel>
+            <Action
+              title="Retry"
+              icon={Icon.ArrowClockwise}
+              onAction={() => setReloadKey((current) => current + 1)}
+            />
+          </ActionPanel>
+        ) : undefined
+      }
+    />
+  );
+}
+
 function PendingClientsWatchlist() {
   const [result, setResult] = useState<PendingClientWatchlistLoadResult | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -736,6 +837,19 @@ function PendingClientsWatchlist() {
                 detail={<List.Item.Detail markdown={buildPendingClientDetailMarkdown(row)} />}
                 actions={
                   <ActionPanel>
+                    {shouldShowPendingClientRescheduleAction(row) ? (
+                      <Action.Push
+                        title="Send Reschedule Follow-Up"
+                        icon={Icon.Message}
+                        shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                        target={
+                          <PendingClientRescheduleFollowUp
+                            row={row}
+                            onComplete={() => setRefreshTick((current) => current + 1)}
+                          />
+                        }
+                      />
+                    ) : null}
                     <Action.Push
                       title="Add Operator Note"
                       icon={Icon.PlusCircle}

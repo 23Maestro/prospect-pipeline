@@ -140,6 +140,52 @@ test('Pending Clients exposes an operator note action that writes to the Notes t
   assert.match(headScoutSchedules, /setRefreshTick\(\(current\) => current \+ 1\)/);
 });
 
+test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a new message path', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+
+  assert.match(
+    headScoutSchedules,
+    /import \{ PostCallUpdateForm, VoicemailFollowUpRecipientForm \} from '\.\/scout-prep'/,
+  );
+  assert.match(headScoutSchedules, /function buildPendingClientTask/);
+  assert.match(headScoutSchedules, /title:\s*'Reschedule Pending'/);
+  assert.match(headScoutSchedules, /function PendingClientRescheduleFollowUp/);
+  assert.match(headScoutSchedules, /await loadScoutPrepContext\(task\)/);
+  assert.match(
+    headScoutSchedules,
+    /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/,
+  );
+  assert.match(headScoutSchedules, /title="Send Reschedule Follow-Up"/);
+  assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
+});
+
+test('one-off and batch reschedule voicemail share ranked slot suggestions', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const pickerStart = scoutPrep.indexOf('function RescheduleSlotSelectionList');
+  const formStart = scoutPrep.indexOf('export function VoicemailFollowUpRecipientForm');
+  const batchPlanStart = scoutPrep.indexOf('async function buildRescheduleBatchPlan');
+  const batchPlanEnd = scoutPrep.indexOf('async function runScoutPrepStageCompletionBatchRow');
+
+  assert.match(scoutPrep, /function scoreRescheduleSlot\(/);
+  assert.doesNotMatch(scoutPrep, /scoreRescheduleBatchSlot/);
+  assert.match(scoutPrep, /async function buildRankedRescheduleSlotPlan/);
+  assert.match(
+    scoutPrep,
+    /const weekOffsets = args\.weekOffsets\?\.length \? args\.weekOffsets : \[0, 1\]/,
+  );
+
+  const picker = scoutPrep.slice(pickerStart, formStart);
+  assert.match(picker, /buildRankedRescheduleSlotPlan\(\{/);
+  assert.match(picker, /weekOffsets: weekOffset > 0 \? \[weekOffset\] : \[0, 1\]/);
+  assert.match(picker, /title="Use Suggested Slots"/);
+  assert.match(picker, /title="Select New Slots"/);
+  assert.match(picker, /onSlotsSelected\(suggestedSlots\.slice\(0, 2\)\)/);
+
+  const batchPlan = scoutPrep.slice(batchPlanStart, batchPlanEnd);
+  assert.match(batchPlan, /const plan = await buildRankedRescheduleSlotPlan\(args\)/);
+  assert.match(batchPlan, /slots: plan\.suggestedSlots/);
+});
+
 test('Set Meetings confirmation cache writes resolved appointment timezone', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
