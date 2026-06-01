@@ -228,16 +228,18 @@ test('Scout Prep contact context resolves timezone from athlete city and state',
     scoutPrepContext.indexOf('return {', timezoneStart),
   );
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
-  const contactNoteStart = scoutPrep.indexOf('function buildProspectContactAdminNote');
-  const contactNoteFlow = scoutPrep.slice(
+  const contactDomain = readRepoFile('src/lib/scout-prep-contact.ts');
+  const contactNoteStart = contactDomain.indexOf('export function buildProspectContactAdminNote');
+  const contactNoteFlow = contactDomain.slice(
     contactNoteStart,
-    scoutPrep.indexOf('async function openMessagesDraftForRecipients', contactNoteStart),
+    contactDomain.indexOf('function setTemplateValue', contactNoteStart),
   );
 
   assert.match(timezoneFlow, /resolveTimezone\(resolvedCity, resolvedState\)/);
   assert.doesNotMatch(timezoneFlow, /resolveBookedMeetingDetailsForForm/);
   assert.match(contactNoteFlow, /resolveTimezone\(context\.resolved\.city, context\.resolved\.state\)/);
   assert.doesNotMatch(contactNoteFlow, /appointment truth timezone/);
+  assert.doesNotMatch(contactNoteFlow, /meetingTimezone|current_meeting_timezone|appointment/);
   assert.match(scoutPrep, /saveProspectContacts\([\s\S]*?uniqueCandidates\.map\(\(\) => adminUrl\),[\s\S]*?uniqueCandidates\.map\(\(\) => contactNote\),[\s\S]*?\)/);
   assert.doesNotMatch(scoutPrep, /appendProspectContactNotes|runAppleScript|osascript/);
   const contactsBridge = readRepoFile('swift/contacts/Sources/ContactsBridge.swift');

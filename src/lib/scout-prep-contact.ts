@@ -1,5 +1,5 @@
 import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types';
-import { formatCurrentLocalTime, resolveTimezone } from './scout-prep-ai';
+import { formatCurrentLocalTime, getNaturalZoneLabel, resolveTimezone } from './scout-prep-ai';
 import { cleanPositions } from './prospect-search';
 import {
   buildVoicemailFollowUpMessage,
@@ -335,6 +335,21 @@ export function mapTimezoneToLegacyRecruitZone(timezone?: string | null): string
     return null;
   }
   return LEGACY_RECRUIT_TIMEZONE_BY_IANA[timezone] || null;
+}
+
+export function buildProspectContactAdminNote(context: ScoutPrepContext): string {
+  const timezone =
+    String(context.resolved.timezone || '').trim() ||
+    resolveTimezone(context.resolved.city, context.resolved.state);
+  if (!timezone) {
+    throw new Error('Contact note requires athlete city/state timezone.');
+  }
+
+  const zoneLabel = getNaturalZoneLabel(timezone);
+  const athleteName =
+    context.contactInfo.studentAthlete.name || context.task.athlete_name || 'Student Athlete';
+
+  return [`Timezone: ${zoneLabel}`, '', athleteName].join('\n');
 }
 
 function setTemplateValue(template: string, label: string, value?: string | null): string {

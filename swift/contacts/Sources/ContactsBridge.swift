@@ -200,7 +200,7 @@ private func requestContactAccess() async throws {
     try store.execute(request)
   }
   if !noteUpdates.isEmpty {
-    try updateContactNotesWithContactsApp(noteUpdates, groupName: preferredGroup?.name ?? "ID Contacts")
+    try launchContactNotesUpdateWithContactsApp(noteUpdates, groupName: preferredGroup?.name ?? "ID Contacts")
   }
 
   return results
@@ -252,7 +252,7 @@ private func normalizePhone(_ phone: String) -> String {
   return phone.filter { $0.isNumber }
 }
 
-private func updateContactNotesWithContactsApp(_ updates: [ProspectContactNoteUpdate], groupName: String) throws {
+private func launchContactNotesUpdateWithContactsApp(_ updates: [ProspectContactNoteUpdate], groupName: String) throws {
   let rows = updates
     .map { update in
       ProspectContactNoteUpdate(
@@ -285,7 +285,7 @@ set targetPhones to {\(phoneList)}
 set targetUrls to {\(urlList)}
 set targetNotes to {\(noteList)}
 
-with timeout of 600 seconds
+with timeout of 20 seconds
   tell application "Contacts"
     set targetGroup to group \(appleScriptStringLiteral(groupName))
     repeat with contactPerson in people of targetGroup
@@ -326,15 +326,16 @@ with timeout of 600 seconds
 end timeout
 """
 
-  var error: NSDictionary?
-  guard let appleScript = NSAppleScript(source: script) else {
-    throw ContactsBridgeError.contactNoteUpdateFailed("Unable to build Contacts note update script")
-  }
-  appleScript.executeAndReturnError(&error)
-  if let error {
-    let message = (error[NSAppleScript.errorMessage] as? String)
-      ?? (error.description)
-    throw ContactsBridgeError.contactNoteUpdateFailed(message)
+  let process = Process()
+  process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+  process.arguments = ["-e", script]
+  process.standardOutput = FileHandle.nullDevice
+  process.standardError = FileHandle.nullDevice
+
+  do {
+    try process.run()
+  } catch {
+    throw ContactsBridgeError.contactNoteUpdateFailed(error.localizedDescription)
   }
 }
 

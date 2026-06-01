@@ -38,6 +38,7 @@ import type {
 import {
   buildMessagesComposeUrlForRecipients,
   buildMeetingSetCallNotesMarkdown,
+  buildProspectContactAdminNote,
   buildProspectContactShortcutPayloadFromName,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
@@ -123,7 +124,7 @@ import {
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
 import { searchLogger } from './lib/logger';
-import { getNaturalZoneLabel, resolveTimezone } from './lib/scout-prep-ai';
+import { resolveTimezone } from './lib/scout-prep-ai';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
@@ -1154,20 +1155,6 @@ async function createProspectContactsBatch(
     existingCount: results.filter((result) => result.status === 'exists').length,
     groupNames,
   };
-}
-
-function buildProspectContactAdminNote(context: ScoutPrepContext): string {
-  const timezone =
-    String(context.resolved.timezone || '').trim() ||
-    resolveTimezone(context.resolved.city, context.resolved.state);
-  if (!timezone) {
-    throw new Error('Contact note requires athlete city/state timezone.');
-  }
-  const zoneLabel = getNaturalZoneLabel(timezone);
-  const athleteName =
-    context.contactInfo.studentAthlete.name || context.task.athlete_name || 'Student Athlete';
-
-  return [`Timezone: ${zoneLabel}`, '', athleteName].join('\n');
 }
 
 async function openMessagesDraftForRecipients(phones: string[], body: string): Promise<'url'> {

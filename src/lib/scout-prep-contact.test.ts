@@ -7,6 +7,7 @@ import {
   buildMeetingTemplateDefaults,
   buildMeetingSetCallNotesMarkdown,
   buildMessagesComposeUrlForRecipients,
+  buildProspectContactAdminNote,
   buildProspectContactShortcutPayload,
   buildProspectContactShortcutPayloadFromName,
   buildScoutPrepLeavingVoicemailBody,
@@ -146,6 +147,37 @@ test('mapTimezoneToLegacyRecruitZone: maps common IANA zones', () => {
   assert.equal(mapTimezoneToLegacyRecruitZone('America/Chicago'), 'CST');
   assert.equal(mapTimezoneToLegacyRecruitZone('America/New_York'), 'EST');
   assert.equal(mapTimezoneToLegacyRecruitZone('America/Phoenix'), 'MST');
+});
+
+test('buildProspectContactAdminNote: resolves timezone from athlete city and state', () => {
+  const note = buildProspectContactAdminNote(
+    buildContext({
+      resolved: {
+        city: 'New York',
+        state: 'NY',
+        timezone: null,
+      },
+    }),
+  );
+
+  assert.equal(note, ['Timezone: Eastern', '', 'Bryson Smith'].join('\n'));
+});
+
+test('buildProspectContactAdminNote: ignores appointment-truth-shaped timezone fields', () => {
+  const context = buildContext({
+    resolved: {
+      city: 'New York',
+      state: 'NY',
+      timezone: null,
+      current_meeting_timezone: 'America/Los_Angeles',
+      meetingTimezone: 'America/Los_Angeles',
+    } as ScoutPrepContext['resolved'] & Record<string, string | null>,
+  });
+
+  assert.equal(
+    buildProspectContactAdminNote(context),
+    ['Timezone: Eastern', '', 'Bryson Smith'].join('\n'),
+  );
 });
 
 test('mergeMeetingDetailsTemplate: injects contact fields into labeled lines', () => {
