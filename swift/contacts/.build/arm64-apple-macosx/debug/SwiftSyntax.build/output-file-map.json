@@ -1,0 +1,355 @@
+{
+  "": {
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/primary.swiftdeps"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/AbsolutePosition.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/AbsolutePosition.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/AbsolutePosition.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/AbsolutePosition~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/AbsolutePosition.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/AbsolutePosition.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Assert.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Assert.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Assert.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Assert~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Assert.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Assert.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/BumpPtrAllocator.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/BumpPtrAllocator.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/BumpPtrAllocator.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/BumpPtrAllocator~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/BumpPtrAllocator.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/BumpPtrAllocator.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/CommonAncestor.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/CommonAncestor.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/CommonAncestor.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/CommonAncestor~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/CommonAncestor.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/CommonAncestor.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Convenience.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Convenience.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Convenience.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Convenience~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Convenience.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Convenience.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/MemoryLayout.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MemoryLayout.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MemoryLayout.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MemoryLayout~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MemoryLayout.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MemoryLayout.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/MissingNodeInitializers.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MissingNodeInitializers.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MissingNodeInitializers.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MissingNodeInitializers~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MissingNodeInitializers.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/MissingNodeInitializers.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Raw/RawSyntax.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntax.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntax.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntax~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntax.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntax.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Raw/RawSyntaxLayoutView.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxLayoutView.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxLayoutView.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxLayoutView~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxLayoutView.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxLayoutView.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Raw/RawSyntaxNodeProtocol.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodeProtocol.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodeProtocol.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodeProtocol~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodeProtocol.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodeProtocol.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Raw/RawSyntaxTokenView.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxTokenView.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxTokenView.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxTokenView~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxTokenView.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxTokenView.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SourceLength.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLength.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLength.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLength~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLength.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLength.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SourceLocation.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLocation.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLocation.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLocation~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLocation.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourceLocation.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SourcePresence.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourcePresence.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourcePresence.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourcePresence~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourcePresence.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SourcePresence.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SwiftSyntaxCompatibility.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SwiftSyntaxCompatibility.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SwiftSyntaxCompatibility.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SwiftSyntaxCompatibility~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SwiftSyntaxCompatibility.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SwiftSyntaxCompatibility.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Syntax.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Syntax.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Syntax.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Syntax~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Syntax.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Syntax.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SyntaxArena.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxArena.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxArena.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxArena~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxArena.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxArena.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SyntaxChildren.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxChildren.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxChildren.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxChildren~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxChildren.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxChildren.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SyntaxCollection.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollection.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollection.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollection~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollection.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollection.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SyntaxData.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxData.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxData.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxData~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxData.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxData.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SyntaxText.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxText.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxText.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxText~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxText.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxText.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/SyntaxTreeViewMode.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTreeViewMode.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTreeViewMode.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTreeViewMode~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTreeViewMode.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTreeViewMode.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/TokenDiagnostic.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenDiagnostic.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenDiagnostic.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenDiagnostic~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenDiagnostic.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenDiagnostic.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/TokenSyntax.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenSyntax.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenSyntax.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenSyntax~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenSyntax.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenSyntax.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Trivia.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Trivia.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Trivia.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Trivia~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Trivia.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Trivia.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/Utils.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Utils.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Utils.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Utils~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Utils.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Utils.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/ChildNameForKeyPath.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/ChildNameForKeyPath.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/ChildNameForKeyPath.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/ChildNameForKeyPath~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/ChildNameForKeyPath.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/ChildNameForKeyPath.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/Keyword.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Keyword.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Keyword.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Keyword~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Keyword.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Keyword.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/RenamedChildrenCompatibility.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedChildrenCompatibility.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedChildrenCompatibility.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedChildrenCompatibility~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedChildrenCompatibility.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedChildrenCompatibility.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/RenamedNodesCompatibility.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedNodesCompatibility.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedNodesCompatibility.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedNodesCompatibility~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedNodesCompatibility.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RenamedNodesCompatibility.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxAnyVisitor.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxAnyVisitor.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxAnyVisitor.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxAnyVisitor~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxAnyVisitor.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxAnyVisitor.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxBaseNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxBaseNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxBaseNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxBaseNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxBaseNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxBaseNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxCollections.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollections.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollections.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollections~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollections.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxCollections.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxEnum.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxEnum.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxEnum.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxEnum~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxEnum.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxEnum.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxKind.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxKind.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxKind.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxKind~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxKind.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxKind.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxRewriter.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxRewriter.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxRewriter.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxRewriter~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxRewriter.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxRewriter.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxTraits.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTraits.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTraits.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTraits~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTraits.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTraits.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxTransform.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTransform.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTransform.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTransform~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTransform.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTransform.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/SyntaxVisitor.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxVisitor.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxVisitor.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxVisitor~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxVisitor.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxVisitor.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/TokenKind.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenKind.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenKind.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenKind~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenKind.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TokenKind.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/Tokens.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Tokens.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Tokens.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Tokens~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Tokens.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/Tokens.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/TriviaPieces.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TriviaPieces.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TriviaPieces.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TriviaPieces~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TriviaPieces.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/TriviaPieces.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/raw/RawSyntaxNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/raw/RawSyntaxValidation.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxValidation.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxValidation.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxValidation~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxValidation.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/RawSyntaxValidation.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/syntaxNodes/SyntaxDeclNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxDeclNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxDeclNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxDeclNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxDeclNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxDeclNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/syntaxNodes/SyntaxExprNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxExprNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxExprNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxExprNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxExprNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxExprNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/syntaxNodes/SyntaxNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/syntaxNodes/SyntaxPatternNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxPatternNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxPatternNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxPatternNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxPatternNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxPatternNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/syntaxNodes/SyntaxStmtNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxStmtNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxStmtNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxStmtNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxStmtNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxStmtNodes.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftSyntax/generated/syntaxNodes/SyntaxTypeNodes.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTypeNodes.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTypeNodes.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTypeNodes~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTypeNodes.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftSyntax.build/SyntaxTypeNodes.dia"
+  }
+}

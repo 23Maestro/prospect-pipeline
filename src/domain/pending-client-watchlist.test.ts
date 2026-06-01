@@ -231,6 +231,22 @@ test('pending client action tags stay to four visible helper states', () => {
   );
   assert.equal(
     classifyPendingClientActionTag({
+      normalizedStage: 'canceled',
+      description: 'Client canceled after asking about enrollment and payment.',
+      matchedSignals: ['enroll', 'payment'],
+    }),
+    'Operator Input',
+  );
+  assert.equal(
+    classifyPendingClientActionTag({
+      normalizedStage: 'reschedule_pending',
+      description: 'Family needs a new time and asked about payment.',
+      matchedSignals: ['payment'],
+    }),
+    'Operator Input',
+  );
+  assert.equal(
+    classifyPendingClientActionTag({
       normalizedStage: 'meeting_follow_up',
       description: 'Date\nCreated By\nTitle\nDescription',
       matchedSignals: [],
@@ -363,6 +379,7 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
 test('pending client Raycast loader reads watchlist plus appointment truth for meeting display', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /pending_client_watchlist/);
+  assert.match(source, /active_athlete_meeting_truth/);
   assert.match(source, /appointments/);
   assert.match(source, /meeting_timezone/);
   assert.match(source, /status=eq\.watching/);
@@ -372,6 +389,13 @@ test('pending client Raycast loader reads watchlist plus appointment truth for m
   assert.doesNotMatch(source, /fetchAthleteNotes/);
   assert.doesNotMatch(source, /confirmPendingClientWithRayAI/);
   assert.doesNotMatch(source, /currentMeeting\\.description/);
+});
+
+test('pending client Raycast loader collapses duplicate active rows per athlete', () => {
+  const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.match(source, /function dedupePendingClientRows/);
+  assert.match(source, /athleteDedupeKey/);
+  assert.match(source, /dedupePendingClientRows\(/);
 });
 
 test('pending client review title accepts FU and follow-up event-list titles', () => {

@@ -633,17 +633,26 @@ function getPendingClientMeetingLabel(
 function formatPendingClientActionNote(
   row: PendingClientWatchlistLoadResult['rows'][number],
 ): string {
+  if (isPendingClientCanceled(row)) return 'Canceled meeting.';
   if (row.action_tag === 'Payment Watch') return 'Payment Watch';
   if (row.action_tag === 'Operator Input') return 'Operator note needed.';
   if (row.action_tag === 'Missing Notes') return 'Note needed.';
   return 'Scout update.';
 }
 
+function isPendingClientCanceled(row: PendingClientWatchlistLoadResult['rows'][number]): boolean {
+  const haystack = `${row.event_title || ''}\n${row.description || ''}`;
+  return /\bMeeting Result - Canceled\b|\bcancel(?:ed|led)?\b|\(CAN\)/i.test(haystack);
+}
+
 function buildPendingClientNextSteps(
   row: PendingClientWatchlistLoadResult['rows'][number],
+  hasNote: boolean,
 ): string {
   if (row.action_tag === 'Payment Watch') return '- [ ] Add payment update';
+  if (isPendingClientCanceled(row)) return '- [ ] Review canceled meeting';
   if (row.action_tag === 'Operator Input') {
+    if (hasNote) return '- [ ] Reach out to reschedule';
     return '- [ ] Add operator note\n- [ ] Reach out to reschedule';
   }
   if (row.action_tag === 'Missing Notes') {
@@ -713,12 +722,15 @@ function getPendingClientDisplayTag(
   if (replyState?.status === 'awaiting_reschedule') {
     return { label: 'Awaiting RSP', color: Color.Yellow };
   }
+  if (isPendingClientCanceled(row)) {
+    return { label: 'OP Input', color: Color.Red };
+  }
 
   switch (row.action_tag) {
     case 'Payment Watch':
       return { label: 'Payment', color: Color.Green };
     case 'Operator Input':
-      return { label: 'Needs Op', color: Color.Red };
+      return { label: 'OP Input', color: Color.Red };
     case 'Scout Update':
       return { label: 'Follow Up', color: Color.Blue };
     default:
@@ -727,6 +739,7 @@ function getPendingClientDisplayTag(
 }
 
 function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
+  if (isPendingClientCanceled(row)) return '🚩';
   switch (row.action_tag) {
     case 'Payment Watch':
       return '💰';
@@ -780,7 +793,7 @@ function extractPendingClientNote(row: PendingClientWatchlistLoadResult['rows'][
   return [
     lines.join('\n\n') || formatPendingClientActionNote(row),
     '',
-    buildPendingClientNextSteps(row),
+    buildPendingClientNextSteps(row, lines.length > 0),
   ].join('\n');
 }
 
@@ -807,9 +820,12 @@ function buildPendingClientDetailMarkdown(
 
 function buildPendingClientDetailMetadata(row: PendingClientWatchlistLoadResult['rows'][number]) {
   const eventDate = getPendingClientMeetingLabel(row);
+  const athleteName =
+    row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
 
   return (
     <List.Item.Detail.Metadata>
+      <List.Item.Detail.Metadata.Label title="Athlete" text={athleteName} />
       <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
     </List.Item.Detail.Metadata>
   );

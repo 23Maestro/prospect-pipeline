@@ -2,7 +2,7 @@ import { Color, Detail } from '@raycast/api';
 import { apiFetch, apiRootFetch } from './fastapi-client';
 import { fetchAthleteNotes, fetchContactInfo, type ContactInfo } from './npid-mcp-adapter';
 import { buildScoutPrepCard } from '../features/scout-prep/content';
-import { buildScoutPrepFallbackOutput } from './scout-prep-ai';
+import { buildScoutPrepFallbackOutput, resolveTimezone } from './scout-prep-ai';
 import type {
   ScoutPrepAIOutput,
   ScoutAthleteTask,
@@ -32,7 +32,6 @@ import {
   type ScoutPrepMeasurables,
 } from './scout-prep-cache';
 import { resolveLegacyTimezoneLabelFromIana } from '../domain/outreach-time-wording';
-import { resolveBookedMeetingDetailsForForm } from './booked-meeting-details-resolver';
 
 const FEATURE = 'scout-prep';
 export type ScoutTaskRange =
@@ -731,12 +730,7 @@ export async function loadScoutPrepContext(task: ScoutPortalTask): Promise<Scout
 
   const resolvedCity = task.city || athleteDetails?.city || null;
   const resolvedState = task.state || athleteDetails?.state || null;
-  const appointmentTruth = await resolveBookedMeetingDetailsForForm({
-    athleteId,
-    athleteMainId,
-    source: 'appointment_truth',
-  }).catch(() => null);
-  const resolvedTimezone = appointmentTruth?.meetingTimezone || null;
+  const resolvedTimezone = resolveTimezone(resolvedCity, resolvedState);
 
   return {
     task,

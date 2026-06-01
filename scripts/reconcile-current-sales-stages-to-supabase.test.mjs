@@ -76,6 +76,8 @@ test('current sales-stage reconciler keeps ended active meetings in soft archive
 test('current sales-stage reconciler prepares pending-client watchlist rows for post-meeting follow-up states', () => {
   assert.match(source, /upsertPendingClientWatchlistRows/);
   assert.match(source, /enqueuePendingClientWatchlistRow/);
+  assert.match(source, /`pending-client:\$\{row\.athlete_key\}`/);
+  assert.doesNotMatch(source, /pending-client:\$\{row\.athlete_key\}:\$\{appointmentId/);
   assert.match(source, /classifyPendingClientLifecycle/);
   assert.match(source, /selectLatestPendingClientNote/);
   assert.match(source, /selectLatestPendingClientReviewEvent/);

@@ -611,7 +611,6 @@ function enqueuePendingClientWatchlistRow(args) {
     selectedStageLabel,
     bookedMeeting,
     bookedMeetings,
-    appointmentId,
     notes,
   } = args;
   const notesTabEntry = selectLatestPendingClientNote(notes);
@@ -622,7 +621,7 @@ function enqueuePendingClientWatchlistRow(args) {
   });
   if (!pendingClientDecision.eligible) return;
 
-  const sourceEventId = `pending-client:${row.athlete_key}:${appointmentId || 'no-current-appointment'}`;
+  const sourceEventId = `pending-client:${row.athlete_key}`;
   if (pendingClientWatchlistSourceIds.has(sourceEventId)) return;
 
   const reviewEvent = selectLatestPendingClientReviewEvent(bookedMeeting, bookedMeetings);

@@ -220,6 +220,32 @@ test('Set Meetings confirmation cache writes resolved appointment timezone', () 
   assert.doesNotMatch(confirmationFlow, /meetingTimezone:\s*['"]America\/New_York['"]/);
 });
 
+test('Scout Prep contact context resolves timezone from athlete city and state', () => {
+  const scoutPrepContext = readRepoFile('src/lib/scout-prep.tsx');
+  const timezoneStart = scoutPrepContext.indexOf('const resolvedCity =');
+  const timezoneFlow = scoutPrepContext.slice(
+    timezoneStart,
+    scoutPrepContext.indexOf('return {', timezoneStart),
+  );
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const contactNoteStart = scoutPrep.indexOf('function buildProspectContactAdminNote');
+  const contactNoteFlow = scoutPrep.slice(
+    contactNoteStart,
+    scoutPrep.indexOf('async function openMessagesDraftForRecipients', contactNoteStart),
+  );
+
+  assert.match(timezoneFlow, /resolveTimezone\(resolvedCity, resolvedState\)/);
+  assert.doesNotMatch(timezoneFlow, /resolveBookedMeetingDetailsForForm/);
+  assert.match(contactNoteFlow, /resolveTimezone\(context\.resolved\.city, context\.resolved\.state\)/);
+  assert.doesNotMatch(contactNoteFlow, /appointment truth timezone/);
+  assert.match(scoutPrep, /saveProspectContacts\([\s\S]*?uniqueCandidates\.map\(\(\) => adminUrl\),[\s\S]*?uniqueCandidates\.map\(\(\) => contactNote\),[\s\S]*?\)/);
+  assert.doesNotMatch(scoutPrep, /appendProspectContactNotes|runAppleScript|osascript/);
+  const contactsBridge = readRepoFile('swift/contacts/Sources/ContactsBridge.swift');
+  assert.match(contactsBridge, /contact\.urlAddresses = \[CNLabeledValue\(label: CNLabelHome, value: url as NSString\)\]/);
+  assert.match(contactsBridge, /set note of contactPerson to targetNote/);
+  assert.doesNotMatch(contactsBridge, /appendTimezonePayload|queryItems|contact\.organizationName|CNContactNoteKey|contact\.note|kABNoteProperty/);
+});
+
 test('Scout Prep meeting-set confirmation cache writer replaces appointment rows', () => {
   const cacheSync = readRepoFile('src/lib/set-meeting-confirmation-cache-sync.ts');
   const syncFlow = cacheSync.slice(

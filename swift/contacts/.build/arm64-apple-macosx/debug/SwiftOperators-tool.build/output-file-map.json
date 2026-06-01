@@ -1,0 +1,75 @@
+{
+  "": {
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/primary.swiftdeps"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/Operator.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/Operator.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/Operator.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/Operator~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/Operator.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/Operator.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorError+Diagnostics.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError+Diagnostics.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError+Diagnostics.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError+Diagnostics~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError+Diagnostics.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError+Diagnostics.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorError.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorError.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable+Defaults.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Defaults.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Defaults.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Defaults~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Defaults.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Defaults.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable+Folding.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Folding.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Folding.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Folding~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Folding.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Folding.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable+Semantics.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Semantics.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Semantics.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Semantics~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Semantics.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable+Semantics.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/OperatorTable.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/OperatorTable.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/PrecedenceGraph.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGraph.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGraph.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGraph~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGraph.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGraph.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/PrecedenceGroup.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGroup.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGroup.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGroup~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGroup.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/PrecedenceGroup.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/swift-syntax/Sources/SwiftOperators/SyntaxSynthesis.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/SyntaxSynthesis.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/SyntaxSynthesis.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/SyntaxSynthesis~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/SyntaxSynthesis.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/SwiftOperators-tool.build/SyntaxSynthesis.dia"
+  }
+}

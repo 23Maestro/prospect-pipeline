@@ -23,6 +23,7 @@ struct SavedProspectContact: Codable {
 
 enum ContactsBridgeError: Error {
   case accessDenied
+  case contactNoteUpdateFailed(String)
 }
 
 private func requestContactAccess() async throws {
@@ -118,7 +119,7 @@ private func requestContactAccess() async throws {
   }
 }
 
-@raycast func saveProspectContacts(firstNames: [String], lastNames: [String], phones: [String]) async throws -> [SavedProspectContact] {
+@raycast func saveProspectContacts(firstNames: [String], lastNames: [String], phones: [String], urls: [String], notes: [String]) async throws -> [SavedProspectContact] {
   let store = CNContactStore()
   try await requestContactAccess()
 
@@ -127,6 +128,7 @@ private func requestContactAccess() async throws {
   let request = CNSaveRequest()
   var hasChanges = false
   var results: [SavedProspectContact] = []
+  var noteUpdates: [ProspectContactNoteUpdate] = []
 
   for index in firstNames.indices {
     guard index < lastNames.count, index < phones.count else {
@@ -136,33 +138,54 @@ private func requestContactAccess() async throws {
     let firstName = firstNames[index]
     let lastName = lastNames[index]
     let phone = phones[index]
+    let url = index < urls.count ? urls[index].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+    let note = index < notes.count ? notes[index].trimmingCharacters(in: .whitespacesAndNewlines) : ""
     let match = try findProspectContact(firstName: firstName, lastName: lastName, phone: phone, store: store)
     let contact: CNMutableContact
     let status: String
+    let isNewContact: Bool
+    var needsUpdate = false
 
     switch match {
     case .samePhone(let existingContact):
       contact = existingContact.mutableCopy() as! CNMutableContact
       status = "exists"
+      isNewContact = false
     case .sameName(let existingContact):
       contact = existingContact.mutableCopy() as! CNMutableContact
       contact.phoneNumbers.append(CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: phone)))
-      request.update(contact)
-      hasChanges = true
       status = "updated"
+      isNewContact = false
+      needsUpdate = true
     case .none:
       contact = CNMutableContact()
       contact.givenName = firstName
       contact.familyName = lastName
       contact.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: phone))]
+      status = "created"
+      isNewContact = true
+    }
+
+    if !url.isEmpty {
+      contact.urlAddresses = [CNLabeledValue(label: CNLabelHome, value: url as NSString)]
+      needsUpdate = true
+    }
+
+    if isNewContact {
       request.add(contact, toContainerWithIdentifier: nil)
       hasChanges = true
-      status = "created"
+    } else if needsUpdate {
+      request.update(contact)
+      hasChanges = true
     }
 
     if let preferredGroup, !groupMemberIds.contains(contact.identifier) {
       request.addMember(contact, to: preferredGroup)
       hasChanges = true
+    }
+
+    if !url.isEmpty || !note.isEmpty {
+      noteUpdates.append(ProspectContactNoteUpdate(phone: phone, url: url, note: note))
     }
 
     results.append(SavedProspectContact(
@@ -176,8 +199,17 @@ private func requestContactAccess() async throws {
   if hasChanges {
     try store.execute(request)
   }
+  if !noteUpdates.isEmpty {
+    try updateContactNotesWithContactsApp(noteUpdates, groupName: preferredGroup?.name ?? "ID Contacts")
+  }
 
   return results
+}
+
+private struct ProspectContactNoteUpdate {
+  let phone: String
+  let url: String
+  let note: String
 }
 
 private enum ProspectContactMatch {
@@ -192,16 +224,18 @@ private func findProspectContact(firstName: String, lastName: String, phone: Str
     CNContactGivenNameKey as CNKeyDescriptor,
     CNContactFamilyNameKey as CNKeyDescriptor,
     CNContactPhoneNumbersKey as CNKeyDescriptor,
+    CNContactUrlAddressesKey as CNKeyDescriptor,
   ]
   let predicate = CNContact.predicateForContacts(matchingName: "\(firstName) \(lastName)")
   let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keys)
   let nameMatches = contacts.filter { contact in
     contact.givenName == firstName && contact.familyName == lastName
   }
+  let normalizedPhone = normalizePhone(phone)
 
   if let phoneMatch = nameMatches.first(where: { contact in
     contact.phoneNumbers.contains(where: { labeledValue in
-      labeledValue.value.stringValue == phone
+      normalizePhone(labeledValue.value.stringValue) == normalizedPhone
     })
   }) {
     return .samePhone(phoneMatch)
@@ -212,6 +246,109 @@ private func findProspectContact(firstName: String, lastName: String, phone: Str
   }
 
   return .none
+}
+
+private func normalizePhone(_ phone: String) -> String {
+  return phone.filter { $0.isNumber }
+}
+
+private func updateContactNotesWithContactsApp(_ updates: [ProspectContactNoteUpdate], groupName: String) throws {
+  let rows = updates
+    .map { update in
+      ProspectContactNoteUpdate(
+        phone: normalizePhone(update.phone),
+        url: update.url.trimmingCharacters(in: .whitespacesAndNewlines),
+        note: update.note.trimmingCharacters(in: .whitespacesAndNewlines)
+      )
+    }
+    .filter { !$0.phone.isEmpty && (!$0.url.isEmpty || !$0.note.isEmpty) }
+  guard !rows.isEmpty else {
+    return
+  }
+
+  let phoneList = rows.map { appleScriptStringLiteral($0.phone) }.joined(separator: ", ")
+  let urlList = rows.map { appleScriptStringLiteral($0.url) }.joined(separator: ", ")
+  let noteList = rows.map { appleScriptStringLiteral($0.note) }.joined(separator: ", ")
+  let script = """
+on digitsOnly(rawValue)
+  set allowedCharacters to "0123456789"
+  set outputValue to ""
+  repeat with i from 1 to length of rawValue
+    set currentCharacter to character i of rawValue
+    if allowedCharacters contains currentCharacter then set outputValue to outputValue & currentCharacter
+  end repeat
+  if length of outputValue is 11 and outputValue starts with "1" then return text 2 thru -1 of outputValue
+  return outputValue
+end digitsOnly
+
+set targetPhones to {\(phoneList)}
+set targetUrls to {\(urlList)}
+set targetNotes to {\(noteList)}
+
+with timeout of 600 seconds
+  tell application "Contacts"
+    set targetGroup to group \(appleScriptStringLiteral(groupName))
+    repeat with contactPerson in people of targetGroup
+      repeat with contactPhone in phones of contactPerson
+        set normalizedPhone to my digitsOnly(value of contactPhone as text)
+        repeat with targetIndex from 1 to count of targetPhones
+          if normalizedPhone is item targetIndex of targetPhones then
+            set targetUrl to item targetIndex of targetUrls
+            set targetNote to item targetIndex of targetNotes
+            if targetUrl is not "" then
+              set home page of contactPerson to targetUrl
+              set visibleUrlUpdated to false
+              repeat with contactUrl in urls of contactPerson
+                if (label of contactUrl as text) is "home" then
+                  set value of contactUrl to targetUrl
+                  set visibleUrlUpdated to true
+                  exit repeat
+                end if
+                if (value of contactUrl as text) is targetUrl then
+                  set visibleUrlUpdated to true
+                  exit repeat
+                end if
+              end repeat
+              if visibleUrlUpdated is false then make new url at end of urls of contactPerson with properties {label:"home", value:targetUrl}
+            end if
+            if targetNote is not "" then
+              set existingNote to note of contactPerson
+              if existingNote is missing value then set existingNote to ""
+              if existingNote contains targetUrl then set existingNote to ""
+              if existingNote does not contain targetNote then set note of contactPerson to targetNote
+            end if
+          end if
+        end repeat
+      end repeat
+    end repeat
+    save
+  end tell
+end timeout
+"""
+
+  var error: NSDictionary?
+  guard let appleScript = NSAppleScript(source: script) else {
+    throw ContactsBridgeError.contactNoteUpdateFailed("Unable to build Contacts note update script")
+  }
+  appleScript.executeAndReturnError(&error)
+  if let error {
+    let message = (error[NSAppleScript.errorMessage] as? String)
+      ?? (error.description)
+    throw ContactsBridgeError.contactNoteUpdateFailed(message)
+  }
+}
+
+private func appleScriptStringLiteral(_ value: String) -> String {
+  return value
+    .components(separatedBy: .newlines)
+    .map { "\"\(escapeAppleScript($0))\"" }
+    .joined(separator: " & linefeed & ")
+}
+
+private func escapeAppleScript(_ value: String) -> String {
+  return value
+    .replacingOccurrences(of: "\\", with: "\\\\")
+    .replacingOccurrences(of: "\"", with: "\\\"")
 }
 
 private func findPreferredGroup(store: CNContactStore) throws -> CNGroup? {

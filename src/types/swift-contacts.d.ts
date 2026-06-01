@@ -23,6 +23,8 @@ declare module 'swift:../../swift/contacts' {
     firstNames: string[],
     lastNames: string[],
     phones: string[],
+    urls: string[],
+    notes: string[],
   ): Promise<SavedProspectContact[]>;
 }
 
@@ -47,5 +49,7 @@ declare module 'swift:../swift/contacts' {
     firstNames: string[],
     lastNames: string[],
     phones: string[],
+    urls: string[],
+    notes: string[],
   ): Promise<SavedProspectContact[]>;
 }

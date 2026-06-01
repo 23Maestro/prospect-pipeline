@@ -19,7 +19,6 @@ import {
 } from '@raycast/api';
 import { spawn } from 'node:child_process';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { runAppleScript } from '@raycast/utils';
 import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { exportDailyCallBlocks, type TaskCounts } from './daily-call-blocks';
@@ -1114,13 +1113,8 @@ async function createProspectContactsBatch(
     args.filter((_, index) => index % 3 === 0),
     args.filter((_, index) => index % 3 === 1),
     args.filter((_, index) => index % 3 === 2),
-  );
-  await appendProspectContactNotes(
-    uniqueCandidates.map((candidate) => ({
-      phone: candidate.phone,
-      url: adminUrl,
-      note: contactNote,
-    })),
+    uniqueCandidates.map(() => adminUrl),
+    uniqueCandidates.map(() => contactNote),
   );
 
   const candidateByKey = new Map(
@@ -1162,83 +1156,12 @@ async function createProspectContactsBatch(
   };
 }
 
-function escapeAppleScriptString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-async function appendProspectContactNotes(
-  items: Array<{ phone: string; url: string; note: string }>,
-) {
-  const rows = items
-    .map((item) => ({
-      phone: item.phone.replace(/\D/g, ''),
-      url: item.url.trim(),
-      note: item.note.trim(),
-    }))
-    .filter((item) => item.phone.length === 10 && item.url && item.note);
-  if (!rows.length) {
-    return;
-  }
-
-  const phoneList = rows.map((item) => `"${escapeAppleScriptString(item.phone)}"`).join(', ');
-  const urlList = rows.map((item) => `"${escapeAppleScriptString(item.url)}"`).join(', ');
-  const noteList = rows.map((item) => `"${escapeAppleScriptString(item.note)}"`).join(', ');
-  await runAppleScript(`
-on digitsOnly(rawValue)
-  set allowedCharacters to "0123456789"
-  set outputValue to ""
-  repeat with i from 1 to length of rawValue
-    set currentCharacter to character i of rawValue
-    if allowedCharacters contains currentCharacter then set outputValue to outputValue & currentCharacter
-  end repeat
-  if length of outputValue is 11 and outputValue starts with "1" then return text 2 thru -1 of outputValue
-  return outputValue
-end digitsOnly
-
-set targetPhones to {${phoneList}}
-set targetUrls to {${urlList}}
-set targetNotes to {${noteList}}
-
-tell application "Contacts"
-  set targetGroup to missing value
-  repeat with candidateGroup in groups
-    set groupName to name of candidateGroup
-    set normalizedName to groupName as text
-    if normalizedName is "ID Contacts" then
-      set targetGroup to candidateGroup
-      exit repeat
-    end if
-    if targetGroup is missing value and normalizedName contains "ID" then set targetGroup to candidateGroup
-  end repeat
-  if targetGroup is missing value then error "No ID Contacts group found"
-
-  repeat with targetIndex from 1 to count of targetPhones
-    set targetPhone to item targetIndex of targetPhones
-    set targetUrl to item targetIndex of targetUrls
-    set targetNote to item targetIndex of targetNotes
-    repeat with contactPerson in people of targetGroup
-      set matchedContact to false
-      repeat with contactPhone in phones of contactPerson
-        if my digitsOnly(value of contactPhone as text) is targetPhone then set matchedContact to true
-      end repeat
-      if matchedContact then
-        set home page of contactPerson to targetUrl
-        set existingNote to note of contactPerson
-        if existingNote is missing value then set existingNote to ""
-        if existingNote contains targetUrl then set existingNote to ""
-        if existingNote does not contain targetNote then set note of contactPerson to targetNote
-      end if
-    end repeat
-  end repeat
-  save
-end tell
-`);
-}
-
 function buildProspectContactAdminNote(context: ScoutPrepContext): string {
-  const timezone = String(context.resolved.timezone || '').trim();
+  const timezone =
+    String(context.resolved.timezone || '').trim() ||
+    resolveTimezone(context.resolved.city, context.resolved.state);
   if (!timezone) {
-    throw new Error('Contact note requires appointment truth timezone.');
+    throw new Error('Contact note requires athlete city/state timezone.');
   }
   const zoneLabel = getNaturalZoneLabel(timezone);
   const athleteName =

@@ -1,0 +1,40 @@
+{
+  "": {
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/primary.swiftdeps"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/extensions-swift-tools/TypeScriptPlugin/Implementation/Arguments.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/Arguments.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/Arguments.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/Arguments~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/Arguments.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/Arguments.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/extensions-swift-tools/TypeScriptPlugin/Implementation/ExportableFunction.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/ExportableFunction.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/ExportableFunction.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/ExportableFunction~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/ExportableFunction.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/ExportableFunction.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/extensions-swift-tools/TypeScriptPlugin/Implementation/SyntaxParser.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/SyntaxParser.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/SyntaxParser.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/SyntaxParser~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/SyntaxParser.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/SyntaxParser.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/extensions-swift-tools/TypeScriptPlugin/Implementation/TypeScriptCodeGenerator.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/TypeScriptCodeGenerator.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/TypeScriptCodeGenerator.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/TypeScriptCodeGenerator~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/TypeScriptCodeGenerator.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/TypeScriptCodeGenerator.dia"
+  },
+  "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/checkouts/extensions-swift-tools/TypeScriptPlugin/Implementation/URL+Additions.swift": {
+    "dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/URL+Additions.d",
+    "object": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/URL+Additions.swift.o",
+    "swiftmodule": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/URL+Additions~partial.swiftmodule",
+    "swift-dependencies": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/URL+Additions.swiftdeps",
+    "diagnostics": "/Users/singleton23/Raycast/prospect-pipeline/swift/contacts/.build/arm64-apple-macosx/debug/TypeScriptCodeGenerator.build/URL+Additions.dia"
+  }
+}

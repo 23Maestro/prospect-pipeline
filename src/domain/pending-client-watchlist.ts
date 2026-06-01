@@ -420,14 +420,15 @@ export function classifyPendingClientActionTag(args: {
   hasEvidence?: boolean;
 }): PendingClientActionTag {
   const hasEvidence = args.hasEvidence ?? hasPendingClientWatchNote(args.description);
-  if (!hasEvidence) {
-    return args.normalizedStage === 'reschedule_pending' || args.normalizedStage === 'canceled'
-      ? 'Operator Input'
-      : 'Missing Notes';
-  }
-  if ((args.matchedSignals || []).length > 0) return 'Payment Watch';
-  if (args.normalizedStage === 'reschedule_pending' || args.normalizedStage === 'canceled') {
+  const normalizedStage = normalizeText(args.normalizedStage);
+  if (normalizedStage === 'reschedule_pending' || normalizedStage === 'canceled') {
     return 'Operator Input';
+  }
+  if (!hasEvidence) {
+    return 'Missing Notes';
+  }
+  if (normalizedStage === 'meeting_follow_up' && (args.matchedSignals || []).length > 0) {
+    return 'Payment Watch';
   }
   return 'Scout Update';
 }
