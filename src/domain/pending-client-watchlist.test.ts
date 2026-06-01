@@ -95,8 +95,8 @@ test('pending client signal matcher is broad but excludes generic interest notes
   assert.deepEqual(findPendingClientSignals('Follow up with the dad.'), []);
 });
 
-test('pending client watch note keeps real follow-up descriptions without payment signals', () => {
-  const description = [
+test('pending client watch note rejects meeting descriptions and keeps real follow-up notes', () => {
+  const meetingDescription = [
     'Main Number: (862) 832-1192',
     'Spoke To: Wallache (Dad)',
     'About The Athlete:',
@@ -104,7 +104,8 @@ test('pending client watch note keeps real follow-up descriptions without paymen
     'Deficit: sq1, exposure',
   ].join('\n');
 
-  assert.equal(hasPendingClientWatchNote(description), true);
+  assert.equal(hasPendingClientWatchNote(meetingDescription), false);
+  assert.equal(hasPendingClientWatchNote('Follow up with the father on coming aboard.'), true);
   assert.equal(hasPendingClientWatchNote(''), false);
   assert.equal(hasPendingClientWatchNote('   \n  '), false);
   assert.equal(hasPendingClientWatchNote('Date\nCreated By\nTitle\nDescription'), false);
@@ -379,11 +380,12 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
 test('pending client Raycast loader reads watchlist plus appointment truth for meeting display', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /pending_client_watchlist/);
-  assert.match(source, /active_athlete_meeting_truth/);
-  assert.match(source, /appointments/);
+  assert.match(source, /resolveBookedMeetingDetailsForForm/);
   assert.match(source, /meeting_timezone/);
   assert.match(source, /status=eq\.watching/);
   assert.match(source, /expires_at=gte/);
+  assert.doesNotMatch(source, /active_athlete_meeting_truth/);
+  assert.doesNotMatch(source, /id=in\.\(/);
   assert.doesNotMatch(source, /readCurrentPipelineRows/);
   assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
   assert.doesNotMatch(source, /fetchAthleteNotes/);

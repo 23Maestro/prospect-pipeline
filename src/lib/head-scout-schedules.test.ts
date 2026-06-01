@@ -139,6 +139,18 @@ test('formatHeadScoutNaturalSlotLabel renders natural client-timezone labels', (
   );
 });
 
+test('formatHeadScoutNaturalSlotLabel resolves legacy EST with daylight saving time', () => {
+  assert.deepEqual(
+    formatHeadScoutNaturalSlotLabel('2026-05-27T17:00', '2026-05-27T18:00', 'EST'),
+    {
+      dateLabel: 'Wednesday, May 27',
+      timeLabel: '5PM ET',
+      messageLabel: 'Wednesday, May 27 at 5PM ET',
+      zoneLabel: 'ET',
+    },
+  );
+});
+
 test('formatHeadScoutSlotDate guards malformed slot values', () => {
   assert.equal(formatHeadScoutSlotDate('16:00'), 'Unknown Date');
 });

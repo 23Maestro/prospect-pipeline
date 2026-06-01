@@ -190,6 +190,7 @@ import {
   isCallAttempt1PortalTask,
   runDuplicateProfileResolutionForTask,
 } from './lib/scout-duplicate-profiles';
+import { resolveIanaTimeZoneFromLegacyLabel } from './domain/outreach-time-wording';
 
 const FEATURE = 'scout-prep';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
@@ -2130,6 +2131,7 @@ export function VoicemailFollowUpRecipientForm({
           {
             athleteId,
             athleteMainId,
+            source: 'appointment_truth',
           },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,
@@ -5811,8 +5813,9 @@ const RESCHEDULE_SLOT_EARLIER_THAN_PREVIOUS_TIME_PENALTY = 45;
 function localMinutesForEasternStamp(start: string, timeZone?: string | null): number | null {
   const parsed = easternLocalIsoToDate(start);
   if (!parsed) return null;
+  const renderTimeZone = resolveIanaTimeZoneFromLegacyLabel(timeZone || 'America/New_York');
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timeZone || 'America/New_York',
+    timeZone: renderTimeZone,
     hour: '2-digit',
     minute: '2-digit',
     hour12: false,
@@ -5905,8 +5908,10 @@ async function buildRankedRescheduleSlotPlan(args: {
   const previousMeeting =
     mustHavePreviousMeeting && athleteId && athleteMainId
       ? await resolveBookedMeetingDetailsForForm(
-          { athleteId, athleteMainId },
-          { getCachedMeetingDescription: getCachedBookedMeetingDescription },
+          { athleteId, athleteMainId, source: 'appointment_truth' },
+          {
+            getCachedMeetingDescription: getCachedBookedMeetingDescription,
+          },
         )
       : null;
   if (mustHavePreviousMeeting && !previousMeeting) {

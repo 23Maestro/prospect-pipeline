@@ -6,26 +6,18 @@ import {
   PENDING_CLIENT_LIST_LIMIT,
   type PendingClientWatchlistRow,
 } from '../domain/pending-client-watchlist';
-import type { AppointmentTruthRow } from '../domain/appointment-truth';
 import {
   patchPendingClientWatchlistRow,
   readRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
+import { resolveBookedMeetingDetailsForForm } from './booked-meeting-details-resolver';
 
 type Preferences = {
   supabaseUrl?: string;
   supabaseSecretKey?: string;
   supabaseServiceRoleKey?: string;
   supabaseSchema?: string;
-};
-
-type ActiveAthleteMeetingTruthDisplayRow = {
-  athlete_key?: string | null;
-  resolved_appointment_id?: string | null;
-  current_starts_at?: string | null;
-  current_meeting_timezone?: string | null;
-  current_meeting_timezone_label?: string | null;
 };
 
 export type PendingClientWatchlistDisplayRow = PendingClientWatchlistRow & {
@@ -119,18 +111,9 @@ function getSupabaseConfig(): SupabasePersistenceConfig | null {
   return url && key ? { url, key, schema } : null;
 }
 
-function quotePostgrestInValue(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-}
-
 function extractAppointmentId(row: PendingClientWatchlistRow): string | null {
-  return String(row.source_event_id || '').match(/:(\d+)$/)?.[1] || null;
-}
-
-function athleteKey(row: PendingClientWatchlistRow): string | null {
-  const athleteId = String(row.athlete_id || '').trim();
-  const athleteMainId = String(row.athlete_main_id || '').trim();
-  return athleteId && athleteMainId ? `${athleteId}:${athleteMainId}` : null;
+  const source = String(row.source_event_id || '').trim();
+  return source.startsWith('appointment:') ? source.slice('appointment:'.length).trim() : null;
 }
 
 function athleteDedupeKey(row: PendingClientWatchlistDisplayRow): string {
@@ -192,57 +175,30 @@ function dedupePendingClientRows(
 }
 
 async function enrichPendingClientRowsWithAppointmentTruth(
-  config: SupabasePersistenceConfig,
   rows: PendingClientWatchlistRow[],
 ): Promise<PendingClientWatchlistDisplayRow[]> {
-  const athleteKeys = Array.from(new Set(rows.map(athleteKey).filter(Boolean) as string[]));
-  const activeTruthRows = athleteKeys.length
-    ? await readRows<ActiveAthleteMeetingTruthDisplayRow>(
-        config,
-        'active_athlete_meeting_truth',
-        [
-          'select=athlete_key,resolved_appointment_id,current_starts_at,current_meeting_timezone,current_meeting_timezone_label',
-          `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
-        ].join('&'),
-      )
-    : [];
-  const activeTruthByAthleteKey = new Map(
-    activeTruthRows.map((truth) => [String(truth.athlete_key || '').trim(), truth]),
+  return Promise.all(
+    rows.map(async (row) => {
+      const resolved = await resolveBookedMeetingDetailsForForm({
+        athleteId: row.athlete_id,
+        athleteMainId: row.athlete_main_id,
+        appointmentId: extractAppointmentId(row),
+        source: 'appointment_truth',
+      }).catch(() => null);
+      if (!resolved) return row;
+      const meeting = resolved.bookedMeeting;
+      const startsAt = String(meeting.start || '').trim() || null;
+      const timezone = String(resolved.meetingTimezone || '').trim() || null;
+      const timezoneLabel =
+        String(resolved.formData?.meetingtimezonelabel || '').trim() || timezone;
+      return {
+        ...row,
+        appointment_starts_at: startsAt,
+        meeting_timezone: timezone,
+        meeting_timezone_label: timezoneLabel,
+      };
+    }),
   );
-  const appointmentIds = Array.from(
-    new Set(rows.map(extractAppointmentId).filter(Boolean) as string[]),
-  );
-  const appointments = appointmentIds.length
-    ? await readRows<
-        Pick<
-          AppointmentTruthRow,
-          'id' | 'starts_at' | 'meeting_timezone' | 'meeting_timezone_label'
-        >
-      >(
-        config,
-        'appointments',
-        [
-          'select=id,starts_at,meeting_timezone,meeting_timezone_label',
-          `id=in.(${appointmentIds.map(quotePostgrestInValue).join(',')})`,
-        ].join('&'),
-      )
-    : [];
-  const appointmentsById = new Map(
-    appointments.map((appointment) => [String(appointment.id || '').trim(), appointment]),
-  );
-
-  return rows.map((row) => {
-    const appointment = appointmentsById.get(extractAppointmentId(row) || '');
-    const truth = activeTruthByAthleteKey.get(athleteKey(row) || '');
-    if (!appointment && !truth) return row;
-    return {
-      ...row,
-      appointment_starts_at: truth?.current_starts_at || appointment?.starts_at || null,
-      meeting_timezone: truth?.current_meeting_timezone || appointment?.meeting_timezone || null,
-      meeting_timezone_label:
-        truth?.current_meeting_timezone_label || appointment?.meeting_timezone_label || null,
-    };
-  });
 }
 
 export async function loadPendingClientWatchlist(): Promise<PendingClientWatchlistLoadResult> {
@@ -264,7 +220,7 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     ].join('&'),
   );
   const rows = dedupePendingClientRows(
-    await enrichPendingClientRowsWithAppointmentTruth(config, activeRows),
+    await enrichPendingClientRowsWithAppointmentTruth(activeRows),
   );
 
   return {

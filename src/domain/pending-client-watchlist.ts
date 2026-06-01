@@ -332,9 +332,26 @@ export function findPendingClientSignals(description?: string | null): string[] 
   return SIGNALS.filter((signal) => signal.pattern.test(text)).map((signal) => signal.label);
 }
 
+function isPendingClientMeetingDescription(description?: string | null): boolean {
+  const text = normalizeComparableText(description);
+  return (
+    /https?:\/\/(?:www\.)?maxpreps\.com/i.test(text) ||
+    /\bMain Number:/i.test(text) ||
+    /\bBackup Number:/i.test(text) ||
+    /\bSpoke To:/i.test(text) ||
+    /\bAbout The Athlete:/i.test(text) ||
+    /\bOther Parent:/i.test(text)
+  );
+}
+
 export function hasPendingClientWatchNote(description?: string | null): boolean {
   const text = normalizeComparableText(description);
-  return Boolean(text) && text !== 'Date Created By Title Description';
+  return (
+    Boolean(text) &&
+    text !== 'Date Created By Title Description' &&
+    !isPendingClientMeetingDescription(text) &&
+    !/^Payment Watch:\s*pending payment evidence remains active/i.test(text)
+  );
 }
 
 function noteTimeValue(note: PendingClientNoteInput): number {

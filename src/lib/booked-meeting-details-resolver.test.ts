@@ -256,3 +256,36 @@ test('reschedule resolution reads appointment truth before Laravel booked meetin
   assert.equal(result?.openEventId, '613339');
   assert.equal(laravelBookedMeetingsCalled, false);
 });
+
+test('appointment id resolution reads the appointments domain row directly', async () => {
+  let activeTruthCalled = false;
+  const result = await resolveBookedMeetingDetailsForForm(
+    {
+      athleteId: '1497516',
+      athleteMainId: '953605',
+      appointmentId: '628999',
+    },
+    {
+      fetchAppointmentById: async (appointmentId) => ({
+        id: String(appointmentId),
+        source_event_id: '628999',
+        athlete_name: "R'mani Wright",
+        starts_at: '2026-05-27T01:00:00+00:00',
+        meeting_timezone: 'America/Chicago',
+        meeting_timezone_label: 'CST',
+        head_scout: 'James Holcomb',
+        status: 'reschedule_pending',
+      }),
+      fetchAppointmentTruth: async () => {
+        activeTruthCalled = true;
+        return null;
+      },
+    },
+  );
+
+  assert.equal(result?.bookedMeeting.event_id, '628999');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'James Holcomb');
+  assert.equal(result?.bookedMeeting.start, '2026-05-26T21:00');
+  assert.equal(result?.meetingTimezone, 'America/Chicago');
+  assert.equal(activeTruthCalled, false);
+});

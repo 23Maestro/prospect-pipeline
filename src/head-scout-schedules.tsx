@@ -82,6 +82,10 @@ import {
   loadScoutPrepContext,
 } from './lib/scout-prep';
 import {
+  resolveIanaTimeZoneFromLegacyLabel,
+  resolveLegacyTimezoneLabelFromIana,
+} from './domain/outreach-time-wording';
+import {
   deleteRows,
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
@@ -583,8 +587,13 @@ function formatPendingClientMeetingDate(
   if (!raw) return 'Unknown Date';
   const parsed = new Date(raw);
   if (Number.isNaN(parsed.getTime())) return 'Unknown Date';
-  const resolvedTimeZone = String(timeZone || '').trim() || 'America/New_York';
-  const resolvedLabel = String(timezoneLabel || '').trim();
+  const resolvedTimeZone = resolveIanaTimeZoneFromLegacyLabel(
+    String(timeZone || timezoneLabel || 'America/New_York').trim(),
+  );
+  const resolvedLabel =
+    resolveLegacyTimezoneLabelFromIana(timezoneLabel) ||
+    resolveLegacyTimezoneLabelFromIana(resolvedTimeZone) ||
+    String(timezoneLabel || '').trim();
   let formatted = '';
   try {
     formatted = new Intl.DateTimeFormat('en-US', {
@@ -634,7 +643,7 @@ function formatPendingClientActionNote(
   row: PendingClientWatchlistLoadResult['rows'][number],
 ): string {
   if (isPendingClientCanceled(row)) return 'Canceled meeting.';
-  if (row.action_tag === 'Payment Watch') return 'Payment Watch';
+  if (row.action_tag === 'Payment Watch') return 'Scout note needed.';
   if (row.action_tag === 'Operator Input') return 'Operator note needed.';
   if (row.action_tag === 'Missing Notes') return 'Note needed.';
   return 'Scout update.';
@@ -645,12 +654,28 @@ function isPendingClientCanceled(row: PendingClientWatchlistLoadResult['rows'][n
   return /\bMeeting Result - Canceled\b|\bcancel(?:ed|led)?\b|\(CAN\)/i.test(haystack);
 }
 
+function hasPendingClientCancelTitleEvidence(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): boolean {
+  return /\(CAN\)/i.test(`${row.event_title || ''}\n${row.description || ''}`);
+}
+
 function buildPendingClientNextSteps(
   row: PendingClientWatchlistLoadResult['rows'][number],
   hasNote: boolean,
 ): string {
-  if (row.action_tag === 'Payment Watch') return '- [ ] Add payment update';
-  if (isPendingClientCanceled(row)) return '- [ ] Review canceled meeting';
+  if (row.action_tag === 'Payment Watch') return '- [ ] Review payment/joining note';
+  if (isPendingClientCanceled(row)) {
+    const steps = [];
+    if (hasPendingClientCancelTitleEvidence(row) && !extractPendingClientSalesStage(row)) {
+      steps.push('- [ ] Update sales stage');
+    }
+    if (!hasNote) {
+      steps.push('- [ ] Add operator note');
+    }
+    steps.push('- [ ] Send follow-up');
+    return steps.join('\n');
+  }
   if (row.action_tag === 'Operator Input') {
     if (hasNote) return '- [ ] Reach out to reschedule';
     return '- [ ] Add operator note\n- [ ] Reach out to reschedule';
@@ -671,9 +696,9 @@ function normalizePendingClientNoteFallback(value: string): string | null {
   if (/^CRM lifecycle and post-meeting .* identify a pending client\./i.test(trimmed)) {
     return null;
   }
-  if (/^Title evidence:\s*\(CAN\)/i.test(trimmed)) return 'Marked canceled by event prefix.';
+  if (/^Title evidence:\s*\(CAN\)/i.test(trimmed)) return null;
   if (/^Title evidence:\s*\(RSP\)/i.test(trimmed))
-    return 'Marked reschedule pending by event prefix.';
+    return null;
   if (/^Title evidence:\s*\(FU\)/i.test(trimmed)) return 'Marked follow-up by event prefix.';
   return trimmed;
 }
@@ -770,12 +795,48 @@ function isPendingClientEventTitle(value: string): boolean {
   );
 }
 
-function cleanPendingClientNoteLine(value: string): string | null {
+function isPendingClientMeetingDescription(value: string): boolean {
+  return (
+    /https?:\/\/(?:www\.)?maxpreps\.com/i.test(value) ||
+    /\bMain Number:/i.test(value) ||
+    /\bBackup Number:/i.test(value) ||
+    /\bSpoke To:/i.test(value) ||
+    /\bAbout The Athlete:/i.test(value) ||
+    /\bOther Parent:/i.test(value)
+  );
+}
+
+function cleanPendingClientNoteBody(value: string): string | null {
   const trimmed = value.trim();
-  if (!trimmed || isPendingClientGeneratedHeading(trimmed) || isPendingClientEventTitle(trimmed)) {
+  if (
+    !trimmed ||
+    isPendingClientGeneratedHeading(trimmed) ||
+    isPendingClientMeetingDescription(trimmed) ||
+    /^Payment Watch:\s*pending payment evidence remains active/i.test(trimmed)
+  ) {
     return null;
   }
-  return normalizePendingClientNoteFallback(trimmed.replace(/^(Event List|Notes Tab):\s*/i, ''));
+  return normalizePendingClientNoteFallback(trimmed);
+}
+
+function extractPendingClientScoutNote(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string | null {
+  const lines = String(row.description || '')
+    .split(/\n{2,}/)
+    .map((block) => {
+      const trimmed = block.trim();
+      if (/^Notes Tab:/i.test(trimmed)) {
+        return cleanPendingClientNoteBody(trimmed.replace(/^Notes Tab:\s*/i, ''));
+      }
+      if (/^Event List:/i.test(trimmed)) {
+        if (isPendingClientEventTitle(trimmed)) return null;
+        return cleanPendingClientNoteBody(trimmed.replace(/^Event List:\s*/i, ''));
+      }
+      return null;
+    })
+    .filter(Boolean) as string[];
+  return lines.join('\n\n') || null;
 }
 
 function extractPendingClientSalesStage(
@@ -786,15 +847,9 @@ function extractPendingClientSalesStage(
 }
 
 function extractPendingClientNote(row: PendingClientWatchlistLoadResult['rows'][number]): string {
-  const lines = String(row.description || '')
-    .split(/\n{2,}/)
-    .map(cleanPendingClientNoteLine)
-    .filter(Boolean) as string[];
-  return [
-    lines.join('\n\n') || formatPendingClientActionNote(row),
-    '',
-    buildPendingClientNextSteps(row, lines.length > 0),
-  ].join('\n');
+  const scoutNote = extractPendingClientScoutNote(row);
+  const body = scoutNote || formatPendingClientActionNote(row);
+  return [body, '', buildPendingClientNextSteps(row, Boolean(scoutNote))].join('\n');
 }
 
 function buildPendingClientDetailMarkdown(
@@ -1060,14 +1115,16 @@ function PendingClientsWatchlist() {
             const athleteProfileUrl = buildPendingClientAthleteProfileUrl(row);
             const taskUrl = buildPendingClientTaskUrl(row);
             const adminUrl = buildPendingClientAdminUrl(row);
+            const athleteName =
+              row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
             return (
               <List.Item
                 key={row.source_event_id}
                 icon={getPendingClientIcon(row)}
-                title={row.athlete_name || cleanPendingClientTitle(row.event_title)}
+                title={athleteName}
                 accessories={[{ tag: { value: displayTag.label, color: displayTag.color } }]}
                 keywords={[
-                  row.athlete_name || '',
+                  athleteName,
                   row.head_scout || '',
                   row.event_title || '',
                   row.description || '',

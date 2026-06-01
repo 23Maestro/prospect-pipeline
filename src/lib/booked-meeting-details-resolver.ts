@@ -6,6 +6,7 @@ import {
   type BookedMeetingDetailsResponse,
   type BookedMeetingEvent,
 } from './head-scout-schedules';
+import type { AppointmentTruthRow } from '../domain/appointment-truth';
 import fs from 'fs';
 import path from 'path';
 
@@ -31,6 +32,7 @@ type ResolverDependencies = {
   fetchAthleteBookedMeetings?: typeof fetchAthleteBookedMeetings;
   fetchBookedMeetingDetails?: typeof fetchBookedMeetingDetails;
   fetchAppointmentTruth?: typeof fetchActiveAthleteMeetingTruth;
+  fetchAppointmentById?: typeof fetchAppointmentTruthById;
   getCachedMeetingDescription?: (args: {
     athleteId: string;
     athleteMainId: string;
@@ -153,6 +155,32 @@ export async function fetchActiveAthleteMeetingTruth(args: {
   return Array.isArray(rows) ? rows[0] || null : null;
 }
 
+export async function fetchAppointmentTruthById(
+  appointmentId?: string | null,
+): Promise<AppointmentTruthRow | null> {
+  const id = clean(appointmentId);
+  const config = getAppointmentTruthSupabaseConfig();
+  if (!id || !config) return null;
+
+  const query = [
+    'select=*',
+    `id=eq.${encodeURIComponent(id)}`,
+    'limit=1',
+  ].join('&');
+  const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      'Accept-Profile': config.schema,
+    },
+  });
+  if (!response.ok) {
+    throw new Error((await response.text()).slice(0, 300) || `Supabase HTTP ${response.status}`);
+  }
+  const rows = (await response.json()) as AppointmentTruthRow[];
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
 export function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string | null {
   return String(meeting?.start || '').split('T')[0] || null;
 }
@@ -240,22 +268,34 @@ function addMinutesToEasternLocalStamp(value: string, minutes: number): string {
 }
 
 function buildAppointmentTruthMeeting(
-  row: ActiveAthleteMeetingTruthRow,
+  row: ActiveAthleteMeetingTruthRow | AppointmentTruthRow,
 ): ResolvedBookedMeetingDetails | null {
-  const startsAt = toEasternLocalStamp(row.current_starts_at);
-  const meetingTimezone = clean(row.current_meeting_timezone);
+  const startsAtRaw =
+    'current_starts_at' in row ? row.current_starts_at : row.starts_at;
+  const meetingTimezoneRaw =
+    'current_meeting_timezone' in row ? row.current_meeting_timezone : row.meeting_timezone;
+  const meetingTimezoneLabelRaw =
+    'current_meeting_timezone_label' in row
+      ? row.current_meeting_timezone_label
+      : row.meeting_timezone_label;
+  const headScoutRaw = 'current_head_scout' in row ? row.current_head_scout : row.head_scout;
+  const statusRaw = 'current_appointment_status' in row ? row.current_appointment_status : row.status;
+  const startsAt = toEasternLocalStamp(startsAtRaw);
+  const meetingTimezone = clean(meetingTimezoneRaw);
   const appointmentId =
-    String(row.current_source_event_id || '').trim() ||
-    String(row.resolved_appointment_id || '').trim() ||
-    String(row.current_appointment_id || '').trim();
-  const headScout = String(row.current_head_scout || '').trim();
+    String(('current_source_event_id' in row ? row.current_source_event_id : row.source_event_id) || '').trim() ||
+    String(('resolved_appointment_id' in row ? row.resolved_appointment_id : null) || '').trim() ||
+    String(('current_appointment_id' in row ? row.current_appointment_id : row.id) || '').trim();
+  const headScout = String(headScoutRaw || '').trim();
 
   if (!startsAt || !meetingTimezone || !appointmentId || !headScout) {
     return null;
   }
 
   const end = addMinutesToEasternLocalStamp(startsAt, 60);
-  const title = [row.athlete_name, headScout].filter(Boolean).join(' • ') || 'Appointment Truth';
+  const title = [('athlete_name' in row ? row.athlete_name : null), headScout]
+    .filter(Boolean)
+    .join(' • ') || 'Appointment Truth';
   return buildResolvedMeetingDetails({
     bookedMeeting: {
       event_id: appointmentId,
@@ -271,8 +311,10 @@ function buildAppointmentTruthMeeting(
     eventDate: startsAt.split('T')[0] || null,
     formData: {
       meetingtimezone: meetingTimezone,
+      meetingtimezonelabel: clean(meetingTimezoneLabelRaw),
       openeventid: appointmentId,
       meetinglength: '01:00',
+      appointmentstatus: clean(statusRaw),
     },
   });
 }
@@ -310,6 +352,7 @@ export async function resolveBookedMeetingDetailsForForm(
     athleteMainId?: string | null;
     initialBookedMeeting?: BookedMeetingEvent | null;
     fallbackEvents?: BookedMeetingEvent[];
+    appointmentId?: string | null;
     source?: 'appointment_truth' | 'booked_meetings';
   },
   dependencies: ResolverDependencies = {},
@@ -318,8 +361,15 @@ export async function resolveBookedMeetingDetailsForForm(
   const athleteMainId = String(args.athleteMainId || '').trim();
   const fetchMeetings = dependencies.fetchAthleteBookedMeetings || fetchAthleteBookedMeetings;
   const fetchDetails = dependencies.fetchBookedMeetingDetails || fetchBookedMeetingDetails;
+  const appointmentId = clean(args.appointmentId);
 
-  if (args.source === 'appointment_truth') {
+  if (args.source === 'appointment_truth' || appointmentId) {
+    if (appointmentId) {
+      const fetchAppointment = dependencies.fetchAppointmentById || fetchAppointmentTruthById;
+      const appointment = await fetchAppointment(appointmentId).catch(() => null);
+      const resolvedAppointment = appointment ? buildAppointmentTruthMeeting(appointment) : null;
+      if (resolvedAppointment || args.source === 'appointment_truth') return resolvedAppointment;
+    }
     const fetchTruth = dependencies.fetchAppointmentTruth || fetchActiveAthleteMeetingTruth;
     const truth = await fetchTruth({ athleteId, athleteMainId }).catch(() => null);
     return truth ? buildAppointmentTruthMeeting(truth) : null;

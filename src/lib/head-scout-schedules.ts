@@ -1,6 +1,7 @@
 import { apiFetch } from './fastapi-client';
 import { searchLogger } from './logger';
 import { getNaturalZoneLabel, resolveTimezone } from './scout-prep-ai';
+import { resolveIanaTimeZoneFromLegacyLabel } from '../domain/outreach-time-wording';
 import type { AppointmentTitlePrefix } from './head-scout-event-prefix';
 import { HEAD_SCOUT_ORDER } from '../domain/owners';
 
@@ -305,7 +306,7 @@ export function formatHeadScoutNaturalSlotLabel(
   timeZone?: string | null,
 ): { dateLabel: string; timeLabel: string; messageLabel: string; zoneLabel: string } {
   const display = formatHeadScoutSlotForTimezone(start, end, timeZone);
-  const renderTimeZone = timeZone || 'America/New_York';
+  const renderTimeZone = resolveIanaTimeZoneFromLegacyLabel(timeZone || 'America/New_York');
   const parsedStart = easternLocalIsoToDate(start);
   if (!parsedStart) {
     const dateLabel =
@@ -695,15 +696,16 @@ export function formatHeadScoutSlotForTimezone(
     };
   }
 
-  const startParts = getPartsForZone(startDate, timeZone);
-  const endParts = getPartsForZone(endDate, timeZone);
+  const renderTimeZone = resolveIanaTimeZoneFromLegacyLabel(timeZone);
+  const startParts = getPartsForZone(startDate, renderTimeZone);
+  const endParts = getPartsForZone(endDate, renderTimeZone);
   const dateLabel = new Intl.DateTimeFormat('en-US', {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
-    timeZone,
+    timeZone: renderTimeZone,
   }).format(startDate);
-  const zoneLabel = getNaturalZoneLabel(timeZone);
+  const zoneLabel = getNaturalZoneLabel(renderTimeZone);
 
   return {
     dateLabel,
