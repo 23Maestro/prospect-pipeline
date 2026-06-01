@@ -86,6 +86,16 @@ test('current sales-stage reconciler prepares pending-client watchlist rows for 
   assert.doesNotMatch(source, /bookedMeeting\?\.description \|\| pendingClientDecision\.reason/);
 });
 
+test('current sales-stage reconciler queues pending clients even when appointment status is already correct', () => {
+  const enqueueIndex = source.indexOf(
+    'if (trackerOwnership.isTrackedOwner && shouldQueuePendingClientForStage(nextCrmStage))',
+    source.indexOf('for (const [index, appointment] of pastAppointments.entries())'),
+  );
+  const skipIndex = source.indexOf('if (!appointmentNeedsPatch) continue;', enqueueIndex);
+  assert.ok(enqueueIndex > -1, 'past-appointment pending-client enqueue block exists');
+  assert.ok(skipIndex > enqueueIndex, 'pending-client enqueue happens before already-correct appointment skip');
+});
+
 test('current sales-stage reconciler uses lifecycle current appointment pointers before pipeline fallback', () => {
   assert.match(source, /athlete_lifecycle_current/);
   assert.match(source, /current_resolved_appointment_id/);

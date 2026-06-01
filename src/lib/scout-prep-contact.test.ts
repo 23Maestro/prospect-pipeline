@@ -863,6 +863,57 @@ test('buildVoicemailFollowUpBody: reschedule includes previous head scout and se
   assert.match(body, /Which one works best\?/);
 });
 
+test('buildVoicemailFollowUpBody: proposed times uses slots without reschedule language', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Aiden Reed',
+        grad_year: '2027',
+      },
+      resolved: {
+        sport: 'Football',
+        head_scout: 'Ryan Lietz',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Aiden Reed',
+          email: null,
+          phone: '(310) 555-0000',
+        },
+        parent1: {
+          name: 'Jamie Reed',
+          relationship: 'Mother',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+    'parent1',
+    'propose_times',
+    null,
+    'Scheduled Follow-Up',
+    new Date('2026-04-24T13:00:00Z'),
+    null,
+    null,
+    {
+      previousHeadScoutName: 'Ryan Lietz',
+      slots: ['Thursday, May 28 at 3PM ET', 'Friday, May 29 at 4PM ET'],
+    },
+  );
+
+  assert.match(
+    body,
+    /^Hi Jamie, here are a couple slots we can hold for Aiden with Coach Ryan Lietz:/,
+  );
+  assert.match(body, /1 - Thursday, May 28 at 3PM ET/);
+  assert.match(body, /2 - Friday, May 29 at 4PM ET/);
+  assert.doesNotMatch(body, /reschedule/i);
+});
+
 test('buildMessagesComposeUrlForRecipients: supports group threads with deduped phone list', () => {
   const url = buildMessagesComposeUrlForRecipients(
     ['651-555-1212', '(651) 555-1212', '651-555-9898'],

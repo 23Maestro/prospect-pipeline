@@ -6,6 +6,7 @@ import {
   PENDING_CLIENT_LIST_LIMIT,
   type PendingClientWatchlistRow,
 } from '../domain/pending-client-watchlist';
+import type { AppointmentTruthRow } from '../domain/appointment-truth';
 import {
   patchPendingClientWatchlistRow,
   readRows,
@@ -19,8 +20,14 @@ type Preferences = {
   supabaseSchema?: string;
 };
 
+export type PendingClientWatchlistDisplayRow = PendingClientWatchlistRow & {
+  appointment_starts_at?: string | null;
+  meeting_timezone?: string | null;
+  meeting_timezone_label?: string | null;
+};
+
 export type PendingClientWatchlistLoadResult = {
-  rows: PendingClientWatchlistRow[];
+  rows: PendingClientWatchlistDisplayRow[];
   scannedCount: number;
   confirmedCount: number;
   aiUnavailableCount: number;
@@ -104,6 +111,49 @@ function getSupabaseConfig(): SupabasePersistenceConfig | null {
   return url && key ? { url, key, schema } : null;
 }
 
+function quotePostgrestInValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function extractAppointmentId(row: PendingClientWatchlistRow): string | null {
+  return String(row.source_event_id || '').match(/:(\d+)$/)?.[1] || null;
+}
+
+async function enrichPendingClientRowsWithAppointmentTruth(
+  config: SupabasePersistenceConfig,
+  rows: PendingClientWatchlistRow[],
+): Promise<PendingClientWatchlistDisplayRow[]> {
+  const appointmentIds = Array.from(
+    new Set(rows.map(extractAppointmentId).filter(Boolean) as string[]),
+  );
+  if (!appointmentIds.length) return rows;
+
+  const appointments = await readRows<
+    Pick<AppointmentTruthRow, 'id' | 'starts_at' | 'meeting_timezone' | 'meeting_timezone_label'>
+  >(
+    config,
+    'appointments',
+    [
+      'select=id,starts_at,meeting_timezone,meeting_timezone_label',
+      `id=in.(${appointmentIds.map(quotePostgrestInValue).join(',')})`,
+    ].join('&'),
+  );
+  const appointmentsById = new Map(
+    appointments.map((appointment) => [String(appointment.id || '').trim(), appointment]),
+  );
+
+  return rows.map((row) => {
+    const appointment = appointmentsById.get(extractAppointmentId(row) || '');
+    if (!appointment) return row;
+    return {
+      ...row,
+      appointment_starts_at: appointment.starts_at || null,
+      meeting_timezone: appointment.meeting_timezone || null,
+      meeting_timezone_label: appointment.meeting_timezone_label || null,
+    };
+  });
+}
+
 export async function loadPendingClientWatchlist(): Promise<PendingClientWatchlistLoadResult> {
   const config = getSupabaseConfig();
   if (!config) {
@@ -122,11 +172,12 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       `limit=${PENDING_CLIENT_LIST_LIMIT}`,
     ].join('&'),
   );
+  const rows = await enrichPendingClientRowsWithAppointmentTruth(config, activeRows);
 
   return {
-    rows: activeRows,
-    scannedCount: activeRows.length,
-    confirmedCount: activeRows.length,
+    rows,
+    scannedCount: rows.length,
+    confirmedCount: rows.length,
     aiUnavailableCount: 0,
   };
 }

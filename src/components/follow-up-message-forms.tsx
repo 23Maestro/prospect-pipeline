@@ -16,6 +16,8 @@ export type VoicemailFollowUpFormValues = {
   variant: VoicemailFollowUpVariant;
 };
 
+export type ClientOutreachFormValues = VoicemailFollowUpFormValues;
+
 type ConfirmationReminderFormValues = {
   variant: ConfirmationFollowUpVariant;
 };
@@ -40,6 +42,7 @@ export function VoicemailFollowUpMessageForm(props: {
   const isMountedRef = useRef(true);
   const isRescheduleVariant =
     selectedVariant === 'reschedule_1' || selectedVariant === 'reschedule_2';
+  const usesSlotPicker = isRescheduleVariant || selectedVariant === 'propose_times';
   const isParentContactIntro = selectedVariant === 'parent_contact_intro';
 
   useEffect(() => {
@@ -61,7 +64,7 @@ export function VoicemailFollowUpMessageForm(props: {
       return;
     }
 
-    if (!isRescheduleVariant) {
+    if (!usesSlotPicker) {
       setIsSubmitting(true);
     }
     try {
@@ -76,7 +79,7 @@ export function VoicemailFollowUpMessageForm(props: {
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {
-      if (!isRescheduleVariant && isMountedRef.current) {
+      if (!usesSlotPicker && isMountedRef.current) {
         setIsSubmitting(false);
       }
     }
@@ -90,7 +93,7 @@ export function VoicemailFollowUpMessageForm(props: {
         <ActionPanel>
           <Action.SubmitForm
             title={
-              isRescheduleVariant
+              usesSlotPicker
                 ? 'Choose Slots'
                 : isSubmitting
                   ? 'Sending...'
@@ -130,6 +133,7 @@ export function VoicemailFollowUpMessageForm(props: {
         <Form.Dropdown.Item value="call_attempt_1" title="Attempt 1" />
         <Form.Dropdown.Item value="call_attempt_2" title="Attempt 2" />
         <Form.Dropdown.Item value="call_attempt_3" title="Attempt 3" />
+        <Form.Dropdown.Item value="propose_times" title="Propose Times" />
         <Form.Dropdown.Item value="reschedule_1" title="Reschedule 1" />
         <Form.Dropdown.Item value="reschedule_2" title="Reschedule 2" />
         <Form.Dropdown.Item value="no_show" title="No Show" />
@@ -142,6 +146,8 @@ export function VoicemailFollowUpMessageForm(props: {
     </Form>
   );
 }
+
+export const ClientOutreachMessageForm = VoicemailFollowUpMessageForm;
 
 export function ConfirmationReminderMessageForm(props: {
   navigationTitle: string;

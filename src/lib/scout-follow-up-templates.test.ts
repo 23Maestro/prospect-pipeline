@@ -229,6 +229,27 @@ test('buildVoicemailFollowUpMessage renders next-week reschedule slot copy', () 
   assert.match(message, /Which one works best\?/);
 });
 
+test('buildVoicemailFollowUpMessage renders message-only proposed times copy', () => {
+  const message = buildVoicemailFollowUpMessage({
+    variant: 'propose_times',
+    greeting: 'Hi Jamie,',
+    athleteName: 'Aiden',
+    sport: 'Football',
+    previousHeadScoutName: 'Ryan Lietz',
+    rescheduleSlots: ['Thursday, May 28 at 3PM ET', 'Friday, May 29 at 4PM ET'],
+    now: new Date('2026-04-24T13:00:00Z'),
+  });
+
+  assert.match(
+    message,
+    /^Hi Jamie, here are a couple slots we can hold for Aiden with Coach Ryan Lietz:/,
+  );
+  assert.match(message, /1 - Thursday, May 28 at 3PM ET/);
+  assert.match(message, /2 - Friday, May 29 at 4PM ET/);
+  assert.match(message, /Which one works best\?/);
+  assert.doesNotMatch(message, /reschedule/i);
+});
+
 test('buildVoicemailFollowUpMessage renders second reschedule two-slot copy', () => {
   const message = buildVoicemailFollowUpMessage({
     variant: 'reschedule_2',

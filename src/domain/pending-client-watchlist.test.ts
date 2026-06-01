@@ -266,6 +266,30 @@ test('pending client watchlist row persists the helper action tag', () => {
   assert.equal(row.action_tag, 'Payment Watch');
 });
 
+test('pending client payment watch does not require appointment truth backing', () => {
+  const row = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'pending-client:arthur-payment-watch',
+      title: 'Follow Up - Arthur Uribe Football 2029 CA',
+      assigned_owner: 'Ryan Lietz',
+      start: '2026-07-06T08:30',
+      end: '2026-07-06T09:00',
+    },
+    description: 'Family discussed coming aboard, full payment, discount, and Icon.',
+    matchedSignals: ['coming aboard', 'full payment', 'discount', 'payment', 'icon'],
+    actionTag: 'Payment Watch',
+    aiVerdict: 'pending_client',
+    athleteId: '1489688',
+    athleteMainId: '951523',
+    athleteName: 'Arthur Uribe',
+  });
+
+  assert.equal(row.status, 'watching');
+  assert.equal(row.action_tag, 'Payment Watch');
+  assert.equal(row.athlete_name, 'Arthur Uribe');
+  assert.equal(row.event_start, '2026-07-06T08:30');
+});
+
 test('pending client source keeps only ready Jerami-owned set meeting cache groups', () => {
   const now = new Date('2026-05-15T21:05:00.000Z');
   const rows = [
@@ -336,9 +360,11 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
   );
 });
 
-test('pending client Raycast loader reads the materialized watchlist only', () => {
+test('pending client Raycast loader reads watchlist plus appointment truth for meeting display', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /pending_client_watchlist/);
+  assert.match(source, /appointments/);
+  assert.match(source, /meeting_timezone/);
   assert.match(source, /status=eq\.watching/);
   assert.match(source, /expires_at=gte/);
   assert.doesNotMatch(source, /readCurrentPipelineRows/);
@@ -407,7 +433,7 @@ test('no-show evidence accepts legacy title prefixes and CRM no-show stages', ()
   assert.equal(hasStrictNoShowEvidence({ crmStage: 'Actual Meeting - Follow Up' }), false);
 });
 
-test('pending client loader reads the materialized watchlist instead of source adapters', () => {
+test('pending client loader avoids source adapters for the review list', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /pending_client_watchlist/);
   assert.doesNotMatch(source, /set_meeting_confirmation_cache/);

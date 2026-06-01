@@ -574,17 +574,130 @@ async function hydrateWeeklyCandidatesFromAthleteMeetings(
   );
 }
 
-function buildPendingClientSummary(row: PendingClientWatchlistLoadResult['rows'][number]): string {
-  const scout = row.head_scout || 'Scout unresolved';
-  const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown date';
-  return [
-    `${row.athlete_name || 'Unknown Athlete'} • ${scout} • ${eventDate}`,
-    row.event_title,
-    `Tag: ${row.action_tag || 'Missing Notes'}`,
-    row.description,
-  ]
-    .filter(Boolean)
-    .join('\n');
+function formatPendingClientMeetingDate(
+  value?: string | null,
+  timeZone?: string | null,
+  timezoneLabel?: string | null,
+): string {
+  const raw = String(value || '').trim();
+  if (!raw) return 'Unknown Date';
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return 'Unknown Date';
+  const resolvedTimeZone = String(timeZone || '').trim() || 'America/New_York';
+  const resolvedLabel = String(timezoneLabel || '').trim();
+  let formatted = '';
+  try {
+    formatted = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: resolvedTimeZone,
+      timeZoneName: 'short',
+    }).format(parsed);
+  } catch {
+    formatted = new Intl.DateTimeFormat('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'America/New_York',
+      timeZoneName: 'short',
+    }).format(parsed);
+  }
+
+  return resolvedLabel
+    ? formatted.replace(/\b(?:EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b$/, resolvedLabel)
+    : formatted;
+}
+
+function getPendingClientMeetingStart(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string | null {
+  const appointmentStart = String(row.appointment_starts_at || '').trim();
+  if (appointmentStart) return appointmentStart;
+  if (row.action_tag === 'Payment Watch') return null;
+  return String(row.event_start || '').trim() || null;
+}
+
+function getPendingClientMeetingLabel(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string {
+  const start = getPendingClientMeetingStart(row);
+  if (!start) return row.action_tag === 'Payment Watch' ? 'No previous meeting' : 'Unknown Date';
+  return formatPendingClientMeetingDate(start, row.meeting_timezone, row.meeting_timezone_label);
+}
+
+function formatPendingClientActionNote(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string {
+  if (row.action_tag === 'Payment Watch') return 'Payment Watch';
+  if (row.action_tag === 'Operator Input') return 'Operator note needed.';
+  if (row.action_tag === 'Missing Notes') return 'Note needed.';
+  return 'Scout update.';
+}
+
+function buildPendingClientNextSteps(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string {
+  if (row.action_tag === 'Payment Watch') return '- [ ] Add payment update';
+  if (row.action_tag === 'Operator Input') {
+    return '- [ ] Add operator note\n- [ ] Reach out to reschedule';
+  }
+  if (row.action_tag === 'Missing Notes') {
+    return '- [ ] Add operator note\n- [ ] Reach out with next step';
+  }
+  return '- [ ] Reach out with next step';
+}
+
+function normalizePendingClientNoteFallback(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^No usable Notes tab or post-meeting event-list entry found/i.test(trimmed)) return null;
+  if (/^CRM lifecycle identifies .+ event-list note is not populated yet\./i.test(trimmed)) {
+    return null;
+  }
+  if (/^CRM lifecycle and post-meeting .* identify a pending client\./i.test(trimmed)) {
+    return null;
+  }
+  if (/^Title evidence:\s*\(CAN\)/i.test(trimmed)) return 'Marked canceled by event prefix.';
+  if (/^Title evidence:\s*\(RSP\)/i.test(trimmed))
+    return 'Marked reschedule pending by event prefix.';
+  if (/^Title evidence:\s*\(FU\)/i.test(trimmed)) return 'Marked follow-up by event prefix.';
+  return trimmed;
+}
+
+function buildPendingClientAdminUrl(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string | null {
+  const athleteId = String(row.athlete_id || '').trim();
+  const athleteMainId = String(row.athlete_main_id || '').trim();
+  if (!athleteId) return null;
+  const url = new URL('https://dashboard.nationalpid.com/admin/athletes');
+  url.searchParams.set('contactid', athleteId);
+  if (athleteMainId) url.searchParams.set('athlete_main_id', athleteMainId);
+  return url.toString();
+}
+
+function buildPendingClientTaskUrl(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string | null {
+  const adminUrl = buildPendingClientAdminUrl(row);
+  if (!adminUrl) return null;
+  const url = new URL(adminUrl);
+  url.searchParams.set('tasktab', '1');
+  return url.toString();
+}
+
+function buildPendingClientAthleteProfileUrl(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+): string | null {
+  const athleteId = String(row.athlete_id || '').trim();
+  return athleteId
+    ? `https://dashboard.nationalpid.com/athlete/profile/${encodeURIComponent(athleteId)}`
+    : null;
 }
 
 function getPendingClientDisplayTag(
@@ -649,7 +762,7 @@ function cleanPendingClientNoteLine(value: string): string | null {
   if (!trimmed || isPendingClientGeneratedHeading(trimmed) || isPendingClientEventTitle(trimmed)) {
     return null;
   }
-  return trimmed.replace(/^(Event List|Notes Tab):\s*/i, '').trim() || null;
+  return normalizePendingClientNoteFallback(trimmed.replace(/^(Event List|Notes Tab):\s*/i, ''));
 }
 
 function extractPendingClientSalesStage(
@@ -664,17 +777,25 @@ function extractPendingClientNote(row: PendingClientWatchlistLoadResult['rows'][
     .split(/\n{2,}/)
     .map(cleanPendingClientNoteLine)
     .filter(Boolean) as string[];
-  return lines.join('\n\n') || 'No note.';
+  return [
+    lines.join('\n\n') || formatPendingClientActionNote(row),
+    '',
+    buildPendingClientNextSteps(row),
+  ].join('\n');
 }
 
 function buildPendingClientDetailMarkdown(
   row: PendingClientWatchlistLoadResult['rows'][number],
 ): string {
   const salesStage = extractPendingClientSalesStage(row);
+  const scout = row.head_scout || 'Unresolved';
+  const meeting = getPendingClientMeetingLabel(row);
   return [
     '# Note',
     '',
-    `### ${row.athlete_name || cleanPendingClientTitle(row.event_title)}`,
+    `### ${scout}`,
+    '',
+    `**Meeting:** ${meeting}`,
     '',
     salesStage ? `**Sales Stage:** ${salesStage}` : null,
     '',
@@ -685,12 +806,10 @@ function buildPendingClientDetailMarkdown(
 }
 
 function buildPendingClientDetailMetadata(row: PendingClientWatchlistLoadResult['rows'][number]) {
-  const scout = row.head_scout || 'Unresolved';
-  const eventDate = row.event_start ? formatHeadScoutSlotDate(row.event_start) : 'Unknown';
+  const eventDate = getPendingClientMeetingLabel(row);
 
   return (
     <List.Item.Detail.Metadata>
-      <List.Item.Detail.Metadata.Label title="Scout" text={scout} />
       <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
     </List.Item.Detail.Metadata>
   );
@@ -922,6 +1041,9 @@ function PendingClientsWatchlist() {
             const actionTag = row.action_tag || 'Missing Notes';
             const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
             const displayTag = getPendingClientDisplayTag(row, replyState);
+            const athleteProfileUrl = buildPendingClientAthleteProfileUrl(row);
+            const taskUrl = buildPendingClientTaskUrl(row);
+            const adminUrl = buildPendingClientAdminUrl(row);
             return (
               <List.Item
                 key={row.source_event_id}
@@ -975,15 +1097,34 @@ function PendingClientsWatchlist() {
                         onAction={() => void handleMarkResolved(row.source_event_id)}
                       />
                     </ActionPanel.Section>
-                    <ActionPanel.Section title="Copy">
-                      <Action.CopyToClipboard
-                        title="Summary"
-                        icon="📋"
-                        shortcut={{ modifiers: ['cmd'], key: 'c' }}
-                        content={buildPendingClientSummary(row)}
-                      />
-                      <Action.CopyToClipboard title="Note" icon="📝" content={row.description} />
-                    </ActionPanel.Section>
+                    {athleteProfileUrl || taskUrl || adminUrl ? (
+                      <ActionPanel.Section title="Athlete">
+                        {athleteProfileUrl ? (
+                          <Action.OpenInBrowser
+                            title="Open Student-Athlete Page"
+                            icon={Icon.Person}
+                            shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                            url={athleteProfileUrl}
+                          />
+                        ) : null}
+                        {taskUrl ? (
+                          <Action.OpenInBrowser
+                            title="Open Task List"
+                            icon={Icon.List}
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
+                            url={taskUrl}
+                          />
+                        ) : null}
+                        {adminUrl ? (
+                          <Action.OpenInBrowser
+                            title="Open Event List"
+                            icon={Icon.Calendar}
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
+                            url={adminUrl}
+                          />
+                        ) : null}
+                      </ActionPanel.Section>
+                    ) : null}
                     <ActionPanel.Section>
                       <Action
                         title="Refresh"

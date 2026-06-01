@@ -1069,6 +1069,19 @@ for (const [index, appointment] of pastAppointments.entries()) {
       String(appointment.post_meeting_result || '').trim() !== postMeetingResult ||
       String(appointment.status_reason || '').trim() !== statusReason;
 
+    if (trackerOwnership.isTrackedOwner && shouldQueuePendingClientForStage(nextCrmStage)) {
+      enqueuePendingClientWatchlistRow({
+        row,
+        athleteName,
+        crmStage: nextCrmStage,
+        selectedStageLabel,
+        bookedMeeting,
+        bookedMeetings,
+        appointmentId: appointment.id,
+        notes,
+      });
+    }
+
     if (!appointmentNeedsPatch) continue;
 
     queueAppointmentPatch(appointment.id, {
@@ -1164,19 +1177,6 @@ for (const [index, appointment] of pastAppointments.entries()) {
         tracker_owner: TRACKED_OWNER_NAME,
       },
     }));
-
-    if (trackerOwnership.isTrackedOwner && shouldQueuePendingClientForStage(nextCrmStage)) {
-      enqueuePendingClientWatchlistRow({
-        row,
-        athleteName,
-        crmStage: nextCrmStage,
-        selectedStageLabel,
-        bookedMeeting,
-        bookedMeetings,
-        appointmentId: appointment.id,
-        notes,
-      });
-    }
 
     appointmentRepairs.push({
       athlete_key: row.athlete_key,

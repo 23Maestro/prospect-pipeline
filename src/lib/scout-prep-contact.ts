@@ -214,11 +214,13 @@ export function buildVoicemailFollowUpBody(
   const greeting =
     selectedVariant === 'parent_contact_intro'
       ? 'Hi [ParentFirst],'
-      : selectedVariant === 'no_show'
-        ? `Hi ${noShowFirstName},`
-        : recipient?.id === 'studentAthlete'
-          ? `${dayGreeting} ${athleteFirstName},`
-          : `${dayGreeting} ${greetingName},`;
+      : selectedVariant === 'propose_times'
+        ? `Hi ${firstName(recipient?.name) || greetingName},`
+        : selectedVariant === 'no_show'
+          ? `Hi ${noShowFirstName},`
+          : recipient?.id === 'studentAthlete'
+            ? `${dayGreeting} ${athleteFirstName},`
+            : `${dayGreeting} ${greetingName},`;
   const recipientType = recipient?.id === 'studentAthlete' ? 'student_athlete' : 'parent';
 
   return buildVoicemailFollowUpMessage({

@@ -186,6 +186,26 @@ test('one-off and batch reschedule voicemail share ranked slot suggestions', () 
   assert.match(batchPlan, /slots: plan\.suggestedSlots/);
 });
 
+test('Client Outreach proposed times uses slot picker without appointment truth', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const planStart = scoutPrep.indexOf('async function buildRankedRescheduleSlotPlan');
+  const planEnd = scoutPrep.indexOf('async function buildRescheduleBatchPlan');
+  const plan = scoutPrep.slice(planStart, planEnd);
+
+  assert.match(
+    scoutPrep,
+    /requirePreviousMeeting=\{isRescheduleVoicemailVariant\(selectedVariant\)\}/,
+  );
+  assert.match(plan, /const mustHavePreviousMeeting = args\.requirePreviousMeeting !== false/);
+  assert.match(plan, /mustHavePreviousMeeting && athleteId && athleteMainId/);
+  assert.match(plan, /resolveBookedMeetingDetailsForForm\(/);
+  assert.doesNotMatch(plan, /resolveRequiredAppointmentTruthMeeting\(/);
+  assert.match(
+    plan,
+    /resolveTimezone\(args\.context\.resolved\.city, args\.context\.resolved\.state\)/,
+  );
+});
+
 test('Set Meetings confirmation cache writes resolved appointment timezone', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
