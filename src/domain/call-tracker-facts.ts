@@ -139,6 +139,8 @@ export type MeetingOutcomeFactRow = {
   athlete_main_id: string;
   athlete_name: string | null;
   occurred_at: string;
+  event_at?: string | null;
+  reporting_at?: string | null;
   source: string;
   raw_crm_stage: string | null;
   raw_task_status: string | null;
@@ -476,6 +478,8 @@ export function buildMeetingOutcomeFact(args: {
   liveEventId?: string | null;
   bookedEventTitle?: string | null;
   revenueCents?: number | null;
+  eventAt?: string | null;
+  reportingAt?: string | null;
   ownerInput: OwnerResolutionInput;
   ownerContext?: OwnerResolutionResult;
   payload?: Record<string, unknown>;
@@ -510,6 +514,8 @@ export function buildMeetingOutcomeFact(args: {
     athlete_main_id: identity.athleteMainId,
     athlete_name: normalizeValue(args.athleteName),
     occurred_at: occurredAt,
+    event_at: normalizeIsoValue(args.eventAt),
+    reporting_at: normalizeIsoValue(args.reportingAt),
     source: envelope.source,
     raw_crm_stage: envelope.raw_crm_stage,
     raw_task_status: envelope.raw_task_status,
@@ -525,6 +531,8 @@ export function buildMeetingOutcomeFact(args: {
     payload_json: {
       ...(args.payload || {}),
       ...envelope,
+      event_at: normalizeIsoValue(args.eventAt),
+      reporting_at: normalizeIsoValue(args.reportingAt),
       call_tracker_event: envelope,
       active_operator_key: owner.activeOperator.operatorKey,
       active_operator_name: owner.activeOperator.personName,
@@ -788,8 +796,8 @@ export function buildCallLogFactFromMeetingOutcomeFact(row: MeetingOutcomeFactRo
     factType: isEnrollment && revenueCents ? 'enrollment_payment' : 'post_meeting_outcome',
     trackerOutcome: textPayload(payload, 'tracker_outcome') || row.raw_task_status || row.raw_crm_stage || 'needs_review',
     occurredAt: row.occurred_at,
-    eventAt: row.occurred_at,
-    reportingAt: row.occurred_at,
+    eventAt: row.event_at || textPayload(payload, 'event_at') || row.occurred_at,
+    reportingAt: row.reporting_at || textPayload(payload, 'reporting_at') || row.occurred_at,
     athleteKey: row.athlete_key,
     athleteId: row.athlete_id,
     athleteMainId: row.athlete_main_id,

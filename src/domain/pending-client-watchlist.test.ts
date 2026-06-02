@@ -304,7 +304,7 @@ test('pending client payment watch does not require appointment truth backing', 
   assert.equal(row.status, 'watching');
   assert.equal(row.action_tag, 'Payment Watch');
   assert.equal(row.athlete_name, 'Arthur Uribe');
-  assert.equal(row.event_start, '2026-07-06T08:30');
+  assert.equal(row.event_start, '2026-07-06T12:30:00.000Z');
 });
 
 test('pending client source keeps only ready Jerami-owned set meeting cache groups', () => {
@@ -524,7 +524,7 @@ test('pending client helpers derive clean athlete names and 14 day expiration', 
     'Arthur Uribe',
   );
   assert.equal(cleanPendingClientAthleteName('(FU) Deioan Means Football 2027 FL'), 'Deioan Means');
-  assert.equal(pendingClientExpiresAt('2026-05-02T08:30'), '2026-05-16T08:30:00.000Z');
+  assert.equal(pendingClientExpiresAt('2026-05-02T08:30'), '2026-05-16T12:30:00.000Z');
   assert.deepEqual(buildPendingClientScanWindow(new Date('2026-05-06T16:00:00-04:00')), {
     start: '2026-04-22',
     end: '2026-05-07',

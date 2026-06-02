@@ -1,7 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { buildCallActivityFact, buildMeetingOutcomeFact, buildMeetingSetFact } from './call-tracker-facts';
+import {
+  buildCallActivityFact,
+  buildCallLogFactFromMeetingOutcomeFact,
+  buildMeetingOutcomeFact,
+  buildMeetingSetFact,
+} from './call-tracker-facts';
 import { resolveOwnerContext } from './owner-resolution';
 
 test('call activity facts preserve compatibility fields and explicit operator context', () => {
@@ -288,6 +293,52 @@ test('meeting outcome facts are post-meeting outcomes, not call activity or meet
   assert.equal(row.payload_json.activity_kind, undefined);
   assert.equal(row.payload_json.activity_subtype, undefined);
   assert.notEqual(row.dedupe_key.includes('meeting_set'), true);
+});
+
+test('meeting outcome call_log rows keep meeting event time separate from detection time', () => {
+  const ownerContext = resolveOwnerContext({
+    purpose: 'meeting_outcome',
+    athleteId: '123',
+    athleteMainId: '456',
+    tasks: [
+      {
+        task_id: '902',
+        title: 'Confirmation Call',
+        assigned_owner: 'Jerami Singleton',
+      },
+    ],
+    currentTaskId: '902',
+    bookedMeeting: {
+      event_id: '778',
+      assigned_owner: 'Ryan Lietz',
+      athlete_id: '123',
+      athlete_main_id: '456',
+    },
+  });
+
+  const fact = buildMeetingOutcomeFact({
+    athleteId: '123',
+    athleteMainId: '456',
+    athleteName: 'Sample Athlete',
+    source: 'calendar_event_title',
+    rawCrmStage: 'Meeting Result - Res. Pending',
+    rawTaskStatus: 'reschedule_pending',
+    rawEventType: 'post_meeting_outcome',
+    dedupeOutcome: 'reschedule_pending',
+    appointmentId: '778',
+    liveEventId: '778',
+    bookedEventTitle: '(RSP) Sample Athlete Football 2026 PA',
+    occurredAt: '2026-06-02T17:07:05.469Z',
+    eventAt: '2026-05-31T20:00:00.000Z',
+    reportingAt: '2026-05-31T20:00:00.000Z',
+    ownerInput: { purpose: 'meeting_outcome', athleteId: '123', athleteMainId: '456' },
+    ownerContext,
+  });
+  const callLogRow = buildCallLogFactFromMeetingOutcomeFact(fact);
+
+  assert.equal(callLogRow.occurred_at, '2026-06-02T17:07:05.469Z');
+  assert.equal(callLogRow.event_at, '2026-05-31T20:00:00.000Z');
+  assert.equal(callLogRow.reporting_at, '2026-05-31T20:00:00.000Z');
 });
 
 test('post-meeting outcomes dedupe across stage title and commission evidence for the same appointment', () => {

@@ -167,10 +167,37 @@ function localStamp(date: Date): string {
 function utcFromLegacyLocal(value: string): string {
   const trimmed = normalizeText(value);
   if (!trimmed) return new Date().toISOString();
-  const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(trimmed)
-    ? `${trimmed}:00.000Z`
-    : trimmed;
-  const parsed = new Date(withSeconds);
+  const legacyLocalMatch = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?$/,
+  );
+  if (legacyLocalMatch) {
+    const [, yearText, monthText, dayText, hourText, minuteText, secondText = '0'] =
+      legacyLocalMatch;
+    const utcGuess = new Date(
+      Date.UTC(
+        Number.parseInt(yearText, 10),
+        Number.parseInt(monthText, 10) - 1,
+        Number.parseInt(dayText, 10),
+        Number.parseInt(hourText, 10),
+        Number.parseInt(minuteText, 10),
+        Number.parseInt(secondText, 10),
+      ),
+    );
+    const easternParts = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'shortOffset',
+    }).formatToParts(utcGuess);
+    const offsetPart = easternParts.find((part) => part.type === 'timeZoneName')?.value || '';
+    const offsetMatch = offsetPart.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/);
+    if (offsetMatch) {
+      const [, sign, hoursText, minutesText = '0'] = offsetMatch;
+      const offsetMinutes =
+        (sign === '-' ? -1 : 1) *
+        (Number.parseInt(hoursText, 10) * 60 + Number.parseInt(minutesText, 10));
+      return new Date(utcGuess.getTime() - offsetMinutes * 60_000).toISOString();
+    }
+  }
+  const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
@@ -521,7 +548,8 @@ export function buildPendingClientWatchlistRow(args: {
 }): PendingClientWatchlistRow {
   const eventId = normalizeText(args.event.event_id);
   const eventTitle = normalizeText(args.event.title);
-  const eventStart = normalizeText(args.event.start);
+  const eventStart = utcFromLegacyLocal(normalizeText(args.event.start));
+  const eventEndRaw = normalizeText(args.event.end);
   const nowIso = (args.now || new Date()).toISOString();
 
   return {
@@ -536,7 +564,7 @@ export function buildPendingClientWatchlistRow(args: {
     }),
     event_title: eventTitle,
     event_start: eventStart,
-    event_end: normalizeText(args.event.end) || null,
+    event_end: eventEndRaw ? utcFromLegacyLocal(eventEndRaw) : null,
     description: args.description,
     matched_signals: args.matchedSignals,
     action_tag: args.actionTag,

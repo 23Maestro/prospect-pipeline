@@ -29,6 +29,8 @@ Rules:
 - A reporting writer may copy already-confirmed meeting start/end into `call_log`; it may not invent or normalize appointment time truth.
 - `set_meeting_confirmation_cache` is not lifecycle truth, but for same-appointment-id repair it is valid evidence for the confirmed meeting start/end because Prospect Mobile confirmation prep uses it.
 - The hourly cron must not run broad booked-meeting backfills that overwrite appointment time from Laravel local calendar strings.
+- `pending_client_watchlist.event_start` and `event_end` are timestamp instants, not display strings. If a source adapter returns a legacy no-offset head-scout meeting stamp, normalize it as Eastern meeting-local time before writing Supabase.
+- `call_log.event_at` and `reporting_at` for post-meeting outcome facts are the meeting event instant. `occurred_at` may record when the cron or payment evidence observed the outcome, but UI/reporting must not use detection time as meeting time.
 
 ## Reconcile and audit path
 

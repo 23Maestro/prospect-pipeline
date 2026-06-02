@@ -93,6 +93,49 @@ function parseLooseDate(value) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function easternLocalToUtcIso(value) {
+  const trimmed = String(value || '').trim();
+  const match = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,3})?)?$/,
+  );
+  if (!match) return null;
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = '0'] = match;
+  const utcGuess = new Date(
+    Date.UTC(
+      Number.parseInt(yearText, 10),
+      Number.parseInt(monthText, 10) - 1,
+      Number.parseInt(dayText, 10),
+      Number.parseInt(hourText, 10),
+      Number.parseInt(minuteText, 10),
+      Number.parseInt(secondText, 10),
+    ),
+  );
+  const offsetPart =
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      timeZoneName: 'shortOffset',
+    })
+      .formatToParts(utcGuess)
+      .find((part) => part.type === 'timeZoneName')?.value || '';
+  const offsetMatch = offsetPart.match(/^GMT([+-])(\d{1,2})(?::(\d{2}))?$/);
+  if (!offsetMatch) return null;
+  const [, sign, hoursText, minutesText = '0'] = offsetMatch;
+  const offsetMinutes =
+    (sign === '-' ? -1 : 1) *
+    (Number.parseInt(hoursText, 10) * 60 + Number.parseInt(minutesText, 10));
+  return new Date(utcGuess.getTime() - offsetMinutes * 60_000).toISOString();
+}
+
+function meetingEventInstant(value) {
+  const trimmed = String(value || '').trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?$/.test(trimmed)) {
+    return easternLocalToUtcIso(trimmed);
+  }
+  const parsed = new Date(trimmed);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function daysOldFrom(value, nowMs = Date.now()) {
   const parsed = parseLooseDate(value);
   if (!parsed) return 0;
@@ -885,6 +928,7 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
     }
 
     const rawEventType = 'post_meeting_outcome';
+    const meetingEventAt = meetingEventInstant(bookedMeeting?.start);
 
     if (shouldArchiveActiveState || retentionDecision.shouldArchive) {
       queueStateDelete(
@@ -945,6 +989,8 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       bookedEventTitle: bookedTitle,
       revenueCents,
       occurredAt: now,
+      eventAt: meetingEventAt || now,
+      reportingAt: meetingEventAt || now,
       ownerInput: {
         purpose: 'meeting_outcome',
         athleteId: row.athlete_id,
@@ -1102,6 +1148,7 @@ for (const [index, appointment] of pastAppointments.entries()) {
     }
 
     const rawEventType = 'post_meeting_outcome';
+    const meetingEventAt = meetingEventInstant(appointment.starts_at || bookedMeeting?.start);
     lifecycleEvents.push({
       id: randomUUID(),
       athlete_key: row.athlete_key,
@@ -1153,6 +1200,8 @@ for (const [index, appointment] of pastAppointments.entries()) {
       bookedEventTitle: bookedMeeting?.title || null,
       revenueCents: null,
       occurredAt: now,
+      eventAt: meetingEventAt || now,
+      reportingAt: meetingEventAt || now,
       ownerInput: {
         purpose: 'meeting_outcome',
         athleteId: row.athlete_id,
