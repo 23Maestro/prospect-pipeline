@@ -436,6 +436,10 @@ test('Scout Prep all-task bucket is search-first and server filtered', () => {
   assert.match(scoutPrep, /if \(!allTaskSearchText\)/);
   assert.match(scoutPrep, /loadAllTaskSearch\(allTaskSearchText\)/);
   assert.match(scoutPrep, /searchText,\s*\n\s*\}\)/);
+  assert.match(
+    scoutPrep,
+    /async function returnToRootTaskList\(\)[\s\S]*allTaskSearchRequestIdRef\.current \+= 1;[\s\S]*setTaskSearchText\(''\);[\s\S]*all: \[\],[\s\S]*await clearSearchBar\(\{ forceScrollToTop: true \}\);[\s\S]*await loadTasks\(\{ force: true \}\);/,
+  );
 });
 
 test('Scout Prep launches Client Messages against contact-cache matched threads', () => {
@@ -478,14 +482,24 @@ test('Scout Prep mutations refresh the root list without resetting cancelled nav
   const voicemail = scoutPrep.slice(voicemailStart, scoutPrep.indexOf('type ViewMode ='));
 
   assert.match(scoutPrep, /async function returnToRootTaskList\(\)/);
+  assert.doesNotMatch(scoutPrep, /popToRoot\(/);
+  assert.doesNotMatch(scoutPrep, /name: 'scout-prep'[\s\S]*source: 'mutation-return'/);
+  assert.match(
+    scoutPrep,
+    /const loadTasksRequestIdRef = useRef\(0\);[\s\S]*const loadTasks = async \(options: \{ force\?: boolean \} = \{\}\) => \{[\s\S]*if \(loadTasksPromiseRef\.current && !options\.force\)[\s\S]*const requestId = \+\+loadTasksRequestIdRef\.current;[\s\S]*if \(requestId !== loadTasksRequestIdRef\.current\)/,
+  );
+  assert.match(
+    scoutPrep,
+    /async function popViews\(pop: \(\) => void, count: number\)[\s\S]*pop\(\);[\s\S]*setTimeout\(resolve, 0\)[\s\S]*async function popViewsThenRefreshRoot\([\s\S]*await popViews\(pop, count\);[\s\S]*await refreshRoot\?\.\(\);/,
+  );
   assert.match(
     detail,
-    /async function returnToRootListAndCloseDetail\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\?\.\(\);/,
+    /async function returnToRootListAndCloseDetail\(\)[\s\S]*await popViewsThenRefreshRoot\(pop, 1, onReturnToRootList\);/,
   );
   assert.match(detail, /<PostCallUpdateForm[\s\S]*onSaved=\{onReturnToRootList\}/);
   assert.match(
     taskItem,
-    /async function returnToRootListAndCloseCurrentView\(\)[\s\S]*popViews\(pop, 1\);[\s\S]*await onReturnToRootList\(\);/,
+    /async function returnToRootListAndCloseCurrentView\(\)[\s\S]*await popViewsThenRefreshRoot\(pop, 1, onReturnToRootList\);/,
   );
   assert.match(
     taskItem,
@@ -495,7 +509,11 @@ test('Scout Prep mutations refresh the root list without resetting cancelled nav
   assert.match(voicemail, /finishFollowUpFlow\([\s\S]*completeScoutPrepMutationSuccess/);
   assert.match(
     voicemail,
-    /finishFollowUpFlow\([\s\S]*popViews\(pop, closeAfterCompleteViews \+ extraChildViews\);[\s\S]*await onComplete\?\.\(\);/,
+    /finishFollowUpFlow\([\s\S]*await popViewsThenRefreshRoot\(pop, closeAfterCompleteViews \+ extraChildViews, onComplete\);/,
+  );
+  assert.match(
+    voicemail,
+    /selectedVariant === 'parent_contact_intro'[\s\S]*onMessageSentComplete=\{async \(\) => \{[\s\S]*finishFollowUpFlow\('Sent', 'No Laravel update', 1\)/,
   );
   assert.doesNotMatch(voicemail, /onReturnToRootList: onComplete/);
 

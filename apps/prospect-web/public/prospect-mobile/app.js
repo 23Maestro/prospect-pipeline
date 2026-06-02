@@ -40,6 +40,10 @@ const state = {
     results: [],
     selectedId: '',
   },
+  scheduleScoutSearch: {
+    active: false,
+    query: '',
+  },
 };
 
 const pageTitle = document.querySelector('#page-title');
@@ -48,8 +52,10 @@ const content = document.querySelector('#content');
 const statusLine = document.querySelector('#status-line');
 const weekToolbar = document.querySelector('#week-toolbar');
 const FADE_DURATION_MS = 150;
+const ROUTE_CACHE_TTL_MS = 5 * 60 * 1000;
 const initialContactQuery = applyStartupSearchParams();
 let initialContactSearchPending = Boolean(initialContactQuery);
+const routeResponseCache = new Map();
 
 window.addEventListener('popstate', () => {
   setCurrentRoute(routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings');
@@ -74,7 +80,7 @@ document.querySelectorAll('[data-week]').forEach((button) => {
   });
 });
 
-refreshButton.addEventListener('click', () => void loadRoute());
+refreshButton.addEventListener('click', () => void loadRoute({ forceRefresh: true }));
 window.addEventListener('pageshow', () => void loadRoute());
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible') {
@@ -82,7 +88,7 @@ document.addEventListener('visibilitychange', () => {
   }
 });
 
-async function loadRoute() {
+async function loadRoute(options = {}) {
   const routeKey = state.route;
   const requestId = ++state.routeRequestId;
   const renderContext = { routeKey, requestId };
@@ -113,6 +119,24 @@ async function loadRoute() {
     return;
   }
 
+  const cacheKey = buildRouteCacheKey(routeKey, state.week);
+  const cachedPayload = !options.forceRefresh ? getCachedRoutePayload(cacheKey) : null;
+  if (cachedPayload) {
+    try {
+      const renderedCount = await route.render(cachedPayload, renderContext);
+      if (!isActiveRoute(renderContext)) return;
+      const count = typeof renderedCount === 'number'
+        ? renderedCount
+        : cachedPayload.count ?? cachedPayload.scouts?.length ?? cachedPayload.events?.length ?? 0;
+      setStatus(`Cached ${formatCacheAge(cachedPayload.__cachedAt)} - ${count} found`);
+    } catch (error) {
+      if (!isActiveRoute(renderContext)) return;
+      content.innerHTML = `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`;
+      setStatus('Could not refresh');
+    }
+    return;
+  }
+
   await setLoading(true, 'Refreshing', renderContext);
   try {
     const response = await fetch(`${route.endpoint}?week=${encodeURIComponent(state.week)}`, {
@@ -123,6 +147,7 @@ async function loadRoute() {
       throw new Error(payload.detail || payload.error || `HTTP ${response.status}`);
     }
     if (!isActiveRoute(renderContext)) return;
+    setCachedRoutePayload(cacheKey, payload);
     const renderedCount = await route.render(payload, renderContext);
     if (!isActiveRoute(renderContext)) return;
     const count = typeof renderedCount === 'number' ? renderedCount : payload.count ?? payload.scouts?.length ?? payload.events?.length ?? 0;
@@ -134,6 +159,36 @@ async function loadRoute() {
   } finally {
     if (isActiveRoute(renderContext)) setLoading(false);
   }
+}
+
+function buildRouteCacheKey(routeKey, week) {
+  return `${routeKey}:${week || 'this'}`;
+}
+
+function getCachedRoutePayload(cacheKey) {
+  const cached = routeResponseCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() - cached.cachedAt > ROUTE_CACHE_TTL_MS) {
+    routeResponseCache.delete(cacheKey);
+    return null;
+  }
+  return {
+    ...cached.payload,
+    __cachedAt: cached.cachedAt,
+  };
+}
+
+function setCachedRoutePayload(cacheKey, payload) {
+  routeResponseCache.set(cacheKey, {
+    cachedAt: Date.now(),
+    payload,
+  });
+}
+
+function formatCacheAge(cachedAt) {
+  const ageSeconds = Math.max(0, Math.floor((Date.now() - Number(cachedAt || Date.now())) / 1000));
+  if (ageSeconds < 60) return 'just now';
+  return `${Math.floor(ageSeconds / 60)}m ago`;
 }
 
 async function renderSetMeetings(payload, renderContext) {
@@ -309,6 +364,7 @@ async function renderScoutSchedules(payload, renderContext) {
     return groups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
   }
 
+  const visibleGroups = filterScheduleGroupsByScout(groups, state.scheduleScoutSearch.query);
   if (!groups.length) {
     await setContentHtml(`${buildScheduleSearchBarHtml()}<div class="empty-state">No open scout slots found for this window.</div>`, renderContext);
     if (!isActiveRoute(renderContext)) return 0;
@@ -316,9 +372,11 @@ async function renderScoutSchedules(payload, renderContext) {
     return 0;
   }
 
-  const visibleCount = groups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
+  const visibleCount = visibleGroups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
   await setContentHtml(
-    `${buildScheduleSearchBarHtml()}<div class="schedule-list">${groups
+    `${buildScheduleSearchBarHtml()}${
+      visibleGroups.length
+        ? `<div class="schedule-list">${visibleGroups
     .map((scout) => {
       const rows = scout.visibleSlots
         .map((slot) => {
@@ -343,7 +401,9 @@ async function renderScoutSchedules(payload, renderContext) {
         .join('');
       return `<h2 class="group-title">${escapeHtml(scout.scout_name)} - ${scout.visibleSlots.length}</h2>${rows}`;
     })
-    .join('')}</div>`,
+    .join('')}</div>`
+        : '<div class="empty-state">No scouts match that search.</div>'
+    }`,
     renderContext,
   );
   if (!isActiveRoute(renderContext)) return 0;
@@ -384,11 +444,21 @@ function buildScheduleSearchHtml(groups) {
 }
 
 function buildScheduleSearchBarHtml() {
+  const scoutSearch = state.scheduleScoutSearch;
   return `
     <section class="search-entry">
-      <button class="search-entry-button" type="button" data-schedule-search-start>
-        <span>Search contacts</span>
-      </button>
+      <div class="schedule-search-actions">
+        <button class="schedule-action-button scout-search-button" type="button" data-scout-search-start>Search Scouts</button>
+        <button class="schedule-action-button contact-search-button" type="button" data-schedule-search-start>Search Contacts</button>
+      </div>
+      ${
+        scoutSearch.active
+          ? `<form class="scout-filter-form" data-scout-filter-form>
+              <input class="search-input" name="query" type="search" inputmode="search" autocomplete="off" placeholder="Scout name" value="${escapeAttribute(scoutSearch.query || '')}" />
+              <button class="link-button search-cancel" type="button" data-scout-search-cancel>Done</button>
+            </form>`
+          : ''
+      }
     </section>
   `;
 }
@@ -495,10 +565,58 @@ function buildScheduleGroupsHtml(groups, timezone, timezoneLabel) {
     .join('');
 }
 
+function filterScheduleGroupsByScout(groups, query) {
+  const normalizedQuery = normalizeScoutSearchText(query);
+  if (!normalizedQuery) return groups;
+  return groups.filter((scout) => scoutMatchesScheduleQuery(scout, normalizedQuery));
+}
+
+function scoutMatchesScheduleQuery(scout, normalizedQuery) {
+  const scoutName = String(scout?.scout_name || scout?.name || '');
+  const normalizedName = normalizeScoutSearchText(scoutName);
+  const initials = scoutName
+    .split(/\s+/)
+    .map((part) => part[0] || '')
+    .join('')
+    .toLowerCase();
+  return normalizedName.includes(normalizedQuery) || initials.includes(normalizedQuery);
+}
+
+function normalizeScoutSearchText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 function bindScheduleSearchEntry() {
+  document.querySelector('[data-scout-search-start]')?.addEventListener('click', async () => {
+    state.scheduleScoutSearch.active = true;
+    state.scheduleSearch.active = false;
+    state.scheduleSearch.selectedId = '';
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    document.querySelector('[data-scout-filter-form] .search-input')?.focus();
+  });
+
+  document.querySelector('[data-scout-search-cancel]')?.addEventListener('click', async () => {
+    state.scheduleScoutSearch.active = false;
+    state.scheduleScoutSearch.query = '';
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+  });
+
+  document.querySelector('[data-scout-filter-form]')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+  });
+
+  document.querySelector('[data-scout-filter-form] .search-input')?.addEventListener('input', async (event) => {
+    state.scheduleScoutSearch.query = event.currentTarget.value || '';
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    const input = document.querySelector('[data-scout-filter-form] .search-input');
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
+  });
+
   document.querySelector('[data-schedule-search-start]')?.addEventListener('click', async () => {
     state.scheduleSearch.active = true;
     state.scheduleSearch.selectedId = '';
+    state.scheduleScoutSearch.active = false;
     await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
     document.querySelector('.search-input')?.focus();
   });
@@ -1068,6 +1186,8 @@ function setCurrentRoute(nextRoute) {
   if (nextRoute !== '/scout-schedules') {
     state.scheduleSearch.active = false;
     state.scheduleSearch.selectedId = '';
+    state.scheduleScoutSearch.active = false;
+    state.scheduleScoutSearch.query = '';
   }
   if (nextRoute !== '/contact-search') {
     state.contactSearch.selectedId = '';

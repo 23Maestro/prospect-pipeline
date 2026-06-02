@@ -330,6 +330,27 @@ export function buildProspectContactShortcutPayloadFromName(args: {
   });
 }
 
+export function resolveProspectContactCreateFailureToast(error: unknown): {
+  title: string;
+  message: string;
+  duplicateLike: boolean;
+} {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/NSCocoaErrorDomain[\s\S]*Code=134092|Code=134092|Unhandled error occurred during faulting/i.test(message)) {
+    return {
+      title: 'Already exists',
+      message: '',
+      duplicateLike: true,
+    };
+  }
+
+  return {
+    title: 'Contact create failed',
+    message,
+    duplicateLike: false,
+  };
+}
+
 export function mapTimezoneToLegacyRecruitZone(timezone?: string | null): string | null {
   if (!timezone) {
     return null;

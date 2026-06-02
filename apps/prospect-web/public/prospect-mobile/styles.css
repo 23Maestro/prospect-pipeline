@@ -538,20 +538,43 @@ h1 {
 }
 
 .search-entry {
+  display: grid;
+  gap: 8px;
   margin-bottom: 2px;
 }
 
-.search-entry-button {
+.schedule-search-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.schedule-action-button {
   width: 100%;
   min-height: 46px;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: linear-gradient(180deg, var(--surface-2), var(--surface));
-  color: var(--text);
+  color: #fff;
   cursor: pointer;
   font-weight: 650;
-  text-align: left;
+  text-align: center;
   padding: 0 14px;
+}
+
+.scout-search-button {
+  border-color: rgba(0, 112, 243, 0.78);
+  background: #0070f3;
+}
+
+.contact-search-button {
+  border-color: rgba(180, 83, 9, 0.76);
+  background: #b45309;
+}
+
+.scout-filter-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
 }
 
 .search-panel {

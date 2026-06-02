@@ -18,6 +18,10 @@ let package = Package(
         .product(name: "RaycastSwiftPlugin", package: "extensions-swift-tools"),
         .product(name: "RaycastTypeScriptPlugin", package: "extensions-swift-tools"),
       ]
+    ),
+    .testTarget(
+      name: "ContactsBridgeTests",
+      dependencies: ["ContactsBridge"]
     )
   ]
 )

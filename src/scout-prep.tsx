@@ -45,6 +45,7 @@ import {
   getVoicemailFollowUpRecipients,
   getProspectContactShortcutCandidates,
   normalizePhoneForMessages,
+  resolveProspectContactCreateFailureToast,
   resolveParentHonorificFromRelationship,
   hydrateMeetingSetTemplateForForm,
   type ProspectContactShortcutCandidate,
@@ -308,10 +309,20 @@ async function completeScoutPrepMutationSuccess(args: {
   await args.onReturnToRootList?.();
 }
 
-function popViews(pop: () => void, count: number) {
+async function popViews(pop: () => void, count: number) {
   for (let index = 0; index < count; index += 1) {
     pop();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
   }
+}
+
+async function popViewsThenRefreshRoot(
+  pop: () => void,
+  count: number,
+  refreshRoot?: () => void | Promise<void>,
+) {
+  await popViews(pop, count);
+  await refreshRoot?.();
 }
 
 function formatTaskIdLabel(taskId?: string | number | null): string {
@@ -1252,9 +1263,10 @@ function ScoutPrepContactDetail({
 
       toast.message = detailParts.join(' • ');
     } catch (error) {
-      toast.style = Toast.Style.Failure;
-      toast.title = 'Contact create failed';
-      toast.message = error instanceof Error ? error.message : String(error);
+      const failureToast = resolveProspectContactCreateFailureToast(error);
+      toast.style = failureToast.duplicateLike ? Toast.Style.Success : Toast.Style.Failure;
+      toast.title = failureToast.title;
+      toast.message = failureToast.message;
     } finally {
       setIsCreatingContact(false);
     }
@@ -2179,8 +2191,7 @@ export function VoicemailFollowUpRecipientForm({
         title: toastTitle,
         message: toastMessage,
       });
-      popViews(pop, closeAfterCompleteViews + extraChildViews);
-      await onComplete?.();
+      await popViewsThenRefreshRoot(pop, closeAfterCompleteViews + extraChildViews, onComplete);
     }
 
     if (selectedVariant === 'parent_contact_intro') {
@@ -2201,7 +2212,7 @@ export function VoicemailFollowUpRecipientForm({
           initialMessage={body}
           searchAllContactsOnly
           onMessageSentComplete={async () => {
-            await finishFollowUpFlow('Sent', 'No Laravel update');
+            await finishFollowUpFlow('Sent', 'No Laravel update', 1);
           }}
         />,
       );
@@ -2394,8 +2405,7 @@ export function VoicemailFollowUpRecipientForm({
         title: 'Sent',
         message: 'Copied to clipboard.',
       });
-      popViews(pop, closeAfterCompleteViews);
-      await onComplete?.();
+      await popViewsThenRefreshRoot(pop, closeAfterCompleteViews, onComplete);
     }
   }
 
@@ -3032,8 +3042,11 @@ function UpdateAthleteTaskPicker({
         contactTask={contactTask}
         initialTaskTitle={options.initialTaskTitle}
         onUpdated={async () => {
-          popViews(pop, closeAfterMutationViews + 1);
-          await onTaskMutationComplete?.();
+          await popViewsThenRefreshRoot(
+            pop,
+            closeAfterMutationViews + 1,
+            onTaskMutationComplete,
+          );
         }}
       />,
     );
@@ -3084,8 +3097,7 @@ function UpdateAthleteTaskPicker({
         title: 'Completed',
         message: getTaskDisplayTitle(selectedTask),
         onReturnToRootList: async () => {
-          popViews(pop, closeAfterMutationViews);
-          await onTaskMutationComplete?.();
+          await popViewsThenRefreshRoot(pop, closeAfterMutationViews, onTaskMutationComplete);
         },
       });
     } catch (error) {
@@ -3874,8 +3886,7 @@ export function PostCallUpdateForm({
                 : 'Saved'
               : stageLabel),
       });
-      popViews(pop, closeAfterSaveViews);
-      await onSaved?.();
+      await popViewsThenRefreshRoot(pop, closeAfterSaveViews, onSaved);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.style = Toast.Style.Failure;
@@ -4046,8 +4057,7 @@ function ScoutPrepDetail({
   const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
 
   async function returnToRootListAndCloseDetail() {
-    popViews(pop, 1);
-    await onReturnToRootList?.();
+    await popViewsThenRefreshRoot(pop, 1, onReturnToRootList);
   }
 
   async function syncContactCacheBestEffort(
@@ -4805,8 +4815,7 @@ function ScoutPrepTaskItem({
   const [isCompletingTask, setIsCompletingTask] = useState(false);
 
   async function returnToRootListAndCloseCurrentView() {
-    popViews(pop, 1);
-    await onReturnToRootList();
+    await popViewsThenRefreshRoot(pop, 1, onReturnToRootList);
   }
 
   async function ensureTaskContext(
@@ -6708,6 +6717,7 @@ export default function ScoutPrepCommand(
   const [selectedTaskItemId, setSelectedTaskItemId] = useState<string | undefined>();
   const loadTasksPromiseRef = useRef<Promise<void> | null>(null);
   const initialLoadStartedRef = useRef(false);
+  const loadTasksRequestIdRef = useRef(0);
   const prospectSearchRequestIdRef = useRef(0);
   const allTaskSearchRequestIdRef = useRef(0);
 
@@ -6747,12 +6757,13 @@ export default function ScoutPrepCommand(
     return () => clearTimeout(timer);
   }, [selectedTaskItemId]);
 
-  const loadTasks = async () => {
-    if (loadTasksPromiseRef.current) {
+  const loadTasks = async (options: { force?: boolean } = {}) => {
+    if (loadTasksPromiseRef.current && !options.force) {
       logInfo('SCOUT_PREP_TASK_LIST', 'reuse-inflight-load', 'start');
       return loadTasksPromiseRef.current;
     }
 
+    const requestId = ++loadTasksRequestIdRef.current;
     const pendingLoad = (async () => {
       setIsLoading(true);
       try {
@@ -6767,6 +6778,9 @@ export default function ScoutPrepCommand(
           tomorrow: [...taskBuckets.tomorrow].reverse(),
           future: [...taskBuckets.future].reverse(),
         };
+        if (requestId !== loadTasksRequestIdRef.current) {
+          return;
+        }
         const dailyCallBlockTasks = nextTaskBuckets.todayPastDue;
         await setCachedDailyCallBlockTaskCounts(buildDailyCallBlockTaskCounts(dailyCallBlockTasks));
         setTaskBuckets((current) => ({
@@ -6795,6 +6809,9 @@ export default function ScoutPrepCommand(
                   ?.athlete_name || null,
         });
       } catch (error) {
+        if (requestId !== loadTasksRequestIdRef.current) {
+          return;
+        }
         const message = error instanceof Error ? error.message : String(error);
         logFailure('SCOUT_PREP_TASK_LIST', 'load-list', message);
         await showToast({
@@ -6803,10 +6820,14 @@ export default function ScoutPrepCommand(
           message,
         });
       } finally {
-        setIsLoading(false);
+        if (requestId === loadTasksRequestIdRef.current) {
+          setIsLoading(false);
+        }
       }
     })().finally(() => {
-      loadTasksPromiseRef.current = null;
+      if (requestId === loadTasksRequestIdRef.current) {
+        loadTasksPromiseRef.current = null;
+      }
     });
 
     loadTasksPromiseRef.current = pendingLoad;
@@ -7089,6 +7110,7 @@ export default function ScoutPrepCommand(
   }
 
   async function returnToRootTaskList() {
+    allTaskSearchRequestIdRef.current += 1;
     setViewMode('tasks');
     setTaskListFilter(DEFAULT_TASK_LIST_FILTER);
     setTaskSearchText('');
@@ -7102,7 +7124,7 @@ export default function ScoutPrepCommand(
       all: [],
     }));
     await clearSearchBar({ forceScrollToTop: true });
-    await loadTasks();
+    await loadTasks({ force: true });
   }
 
   return (

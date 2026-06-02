@@ -10,6 +10,7 @@ import {
   buildProspectContactAdminNote,
   buildProspectContactShortcutPayload,
   buildProspectContactShortcutPayloadFromName,
+  resolveProspectContactCreateFailureToast,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
   getVoicemailFollowUpRecipients,
@@ -983,6 +984,20 @@ test('buildProspectContactShortcutPayloadFromName: rejects missing required fiel
     () => buildProspectContactShortcutPayload({ firstName: 'Joe', lastName: 'Wright', phone: 'x' }),
     /required/i,
   );
+});
+
+test('resolveProspectContactCreateFailureToast: hides duplicate CoreData fault noise', () => {
+  const toast = resolveProspectContactCreateFailureToast(
+    new Error(
+      'CoreData: error: Unhandled error occurred during faulting: Error Domain=NSCocoaErrorDomain Code=134092 "(null)"',
+    ),
+  );
+
+  assert.deepEqual(toast, {
+    title: 'Already exists',
+    message: '',
+    duplicateLike: true,
+  });
 });
 
 test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and athlete first names', () => {

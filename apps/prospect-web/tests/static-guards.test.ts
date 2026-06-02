@@ -690,8 +690,25 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   assert.match(appText, /buildCurrentTimezoneTag/);
   assert.match(appText, /timezone-tag/);
   assert.match(appText, /state\.scheduleSearch/);
+  assert.match(appText, /Search Contacts/);
+  assert.match(appText, /data-schedule-search-start/);
   assert.doesNotMatch(appText, /\/api\/contact-search/);
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
+});
+
+test('prospect mobile scout schedules use short cache and local scout search', () => {
+  const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
+  const stylesText = readFileSync(join(appRoot, 'public/prospect-mobile/styles.css'), 'utf8');
+  assert.match(appText, /ROUTE_CACHE_TTL_MS = 5 \* 60 \* 1000/);
+  assert.match(appText, /routeResponseCache/);
+  assert.match(appText, /getCachedRoutePayload\(cacheKey\)/);
+  assert.match(appText, /loadRoute\(\{ forceRefresh: true \}\)/);
+  assert.match(appText, /Search Scouts/);
+  assert.match(appText, /state\.scheduleScoutSearch/);
+  assert.match(appText, /filterScheduleGroupsByScout/);
+  assert.match(appText, /normalizeScoutSearchText/);
+  assert.match(stylesText, /\.scout-search-button \{[\s\S]*background: #0070f3;/);
+  assert.match(stylesText, /\.contact-search-button \{[\s\S]*background: #b45309;/);
 });
 
 test('prospect mobile contact search supports shortcut query params', () => {
