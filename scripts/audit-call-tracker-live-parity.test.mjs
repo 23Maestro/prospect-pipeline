@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
+  buildCallLogBackfillSql,
   inferCallLogFactType,
   inferCallLogSourceFamily,
   projectEventRowToCallLog,
@@ -160,6 +161,7 @@ test('call_log projection summary reports parity and required-field gaps', () =>
   });
   assert.equal(summary.missingRequiredFields.reporting_at, 0);
   assert.equal(summary.missingRequiredFields.dedupe_key, 0);
+  assert.equal(summary.missingRequiredFields.invalid_source_family, 0);
   assert.deepEqual(summary.sourceFamilies, ['call_activity_events', 'lifecycle_events', 'meeting_events']);
 });
 
@@ -187,4 +189,67 @@ test('summary output keeps live audit results compact without losing call_log pa
   assert.equal(compact.lifecycleCandidateSummary.missingOutcomeCandidates, 1);
   assert.equal(compact.missingMeetingSetCandidates, undefined);
   assert.equal(compact.missingOutcomeCandidates, undefined);
+});
+
+test('backfill SQL preserves raw provenance while inserting canonical source families', () => {
+  const projectedRows = [
+    projectEventRowToCallLog({
+      id: 'outcome-row-1',
+      raw_event_type: 'post_meeting_outcome',
+      source: 'legacy_sales_stage_current',
+      tracker_outcome: 'closed_won',
+      raw_crm_stage: 'Actual Meeting - Close Won',
+      occurred_at: '2026-06-03T00:00:00Z',
+      reporting_at: '2026-06-03T00:00:00Z',
+      appointment_id: 'appt-1',
+      revenue_cents: 500000,
+      counts_as_post_meeting_outcome: true,
+      payload_json: { source: 'legacy_sales_stage_current' },
+    }),
+  ];
+
+  const sql = buildCallLogBackfillSql(projectedRows, { generatedAt: '2026-06-02T00:00:00.000Z' });
+
+  assert.match(sql, /insert into public\.call_log/i);
+  assert.match(sql, /on conflict \(dedupe_key\) do update set/i);
+  assert.match(sql, /'meeting_events'/);
+  assert.match(sql, /'legacy_sales_stage_current'/);
+  assert.match(sql, /-- insertable_rows: 1/);
+  assert.match(sql, /-- skipped_rows_not_insertable: 0/);
+});
+
+test('backfill SQL skips projected rows missing required call_log fields', () => {
+  const sql = buildCallLogBackfillSql([
+    {
+      fact_type: 'call_activity',
+      tracker_outcome: 'needs_review',
+      reporting_at: null,
+      source_family: 'call_activity_events',
+      dedupe_key: 'activity:missing-clock',
+      payload_json: {},
+    },
+  ], { generatedAt: '2026-06-02T00:00:00.000Z' });
+
+  assert.match(sql, /-- projected_rows: 1/);
+  assert.match(sql, /-- insertable_rows: 0/);
+  assert.match(sql, /-- skipped_rows_not_insertable: 1/);
+});
+
+test('backfill SQL skips projected rows with non-canonical source families', () => {
+  const sql = buildCallLogBackfillSql([
+    {
+      fact_type: 'post_meeting_outcome',
+      tracker_outcome: 'closed_won',
+      occurred_at: '2026-06-03T00:00:00Z',
+      reporting_at: '2026-06-03T00:00:00Z',
+      source_family: 'legacy_sales_stage_current',
+      dedupe_key: 'bad-family',
+      payload_json: {},
+    },
+  ], { generatedAt: '2026-06-02T00:00:00.000Z' });
+
+  assert.match(sql, /-- projected_rows: 1/);
+  assert.match(sql, /-- insertable_rows: 0/);
+  assert.match(sql, /-- skipped_rows_not_insertable: 1/);
+  assert.doesNotMatch(sql, /insert into public\.call_log/i);
 });
