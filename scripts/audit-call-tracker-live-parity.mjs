@@ -183,7 +183,7 @@ export function projectEventRowToCallLog(row) {
   };
 }
 
-export function summarizeCallLogProjection(projectedRows, summary = {}) {
+export function summarizeCallLogProjection(projectedRows, summary = {}, { projectionSource = 'call_tracker_events_owner_context' } = {}) {
   const projected = {
     dials: countWhere(projectedRows, (row) => row.counts_as_dial),
     contacts: countWhere(projectedRows, (row) => row.counts_as_contact),
@@ -208,7 +208,7 @@ export function summarizeCallLogProjection(projectedRows, summary = {}) {
   );
 
   return {
-    projectionSource: 'call_tracker_events_owner_context',
+    projectionSource,
     targetShape: 'call_log',
     rows: projectedRows.length,
     sourceFamilies: [...new Set(projectedRows.map((row) => row.source_family).filter(Boolean))].sort(),
@@ -407,16 +407,16 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
   }
 
   const [summaryRows, lifecycleRows, callActivityRows, meetingRows, trackerRows, ownerContextRows, callLogTarget] = await Promise.all([
-    get('call_tracker_summary?select=*'),
+    getOptionalPaged('call_tracker_summary', '*'),
     getPaged(
       'lifecycle_events',
       'id,athlete_key,athlete_id,athlete_main_id,event_type,dedupe_key,crm_stage,task_status,payload_json,created_at',
       'order=created_at.desc',
     ),
-    getPaged('call_activity_events', 'task_id,payload_json'),
-    getPaged('meeting_events', 'dedupe_key,payload_json'),
-    getPaged('call_tracker_events', 'id,dedupe_key,tracker_outcome,counts_as_dial,counts_as_contact,counts_as_meeting_set,counts_as_post_meeting_outcome'),
-    getPaged(
+    getOptionalPaged('call_activity_events', 'task_id,payload_json'),
+    getOptionalPaged('meeting_events', 'dedupe_key,payload_json'),
+    getOptionalPaged('call_tracker_events', 'id,dedupe_key,tracker_outcome,counts_as_dial,counts_as_contact,counts_as_meeting_set,counts_as_post_meeting_outcome'),
+    getOptionalPaged(
       'call_tracker_events_owner_context',
       [
         'id',
@@ -460,6 +460,7 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
       'call_log',
       [
         'dedupe_key',
+        'fact_type',
         'tracker_outcome',
         'source_family',
         'reporting_at',
@@ -472,17 +473,22 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     ),
   ]);
 
-  const callActivityTaskIds = new Set(callActivityRows.map((row) => row.task_id).filter(Boolean));
-  const trackerDedupeKeys = new Set(trackerRows.map((row) => row.dedupe_key).filter(Boolean));
-  const trackerIds = new Set(trackerRows.map((row) => row.id).filter(Boolean));
+  const callActivityTaskIds = new Set(callActivityRows.rows.map((row) => row.task_id).filter(Boolean));
+  const trackerDedupeKeys = new Set(trackerRows.rows.map((row) => row.dedupe_key).filter(Boolean));
+  const trackerIds = new Set(trackerRows.rows.map((row) => row.id).filter(Boolean));
   const missingMeetingSetCandidates = meetingSetMissingCandidates(lifecycleRows, trackerDedupeKeys);
   const missingOutcomeCandidates = outcomeMissingCandidates(lifecycleRows, trackerIds);
-  const summary = summaryRows[0] || {};
-  const projectedCallLogRows = ownerContextRows.map(projectEventRowToCallLog);
+  const projectionSource = ownerContextRows.available ? 'call_tracker_events_owner_context' : 'call_log';
+  const projectedCallLogRows = ownerContextRows.available
+    ? ownerContextRows.rows.map(projectEventRowToCallLog)
+    : callLogTarget.rows;
+  const summary = summaryRows.available && summaryRows.rows[0]
+    ? summaryRows.rows[0]
+    : summarizeCallLogProjection(projectedCallLogRows, {}, { projectionSource }).projected;
   const lifecycleSummary = summarizeLifecycleCandidates(lifecycleRows, {
     callActivityTaskIds,
     callTrackerDedupeKeys: trackerDedupeKeys,
-    alreadyInMeetingEvents: countWhere(meetingRows, (row) => row.dedupe_key),
+    alreadyInMeetingEvents: countWhere(meetingRows.rows, (row) => row.dedupe_key),
     missingMeetingSetCandidates,
     missingOutcomeCandidates,
   });
@@ -495,7 +501,7 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
       meeting_outcomes_total: Number(summary.meeting_outcomes_total || 0),
     },
     ...(includeProjectedRows ? { projectedCallLogRows } : {}),
-    callLogProjection: summarizeCallLogProjection(projectedCallLogRows, summary),
+    callLogProjection: summarizeCallLogProjection(projectedCallLogRows, summary, { projectionSource }),
     callLogTarget: summarizeCallLogTargetParity(projectedCallLogRows, callLogTarget.rows, callLogTarget),
     ...lifecycleSummary,
   };

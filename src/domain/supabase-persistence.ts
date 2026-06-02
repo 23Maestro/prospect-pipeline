@@ -3,6 +3,14 @@ import {
   asAppointmentTruthRow,
   mergeAppointmentTruthRow,
 } from './appointment-truth';
+import {
+  buildCallLogFactFromCallActivityFact,
+  buildCallLogFactFromMeetingOutcomeFact,
+  buildCallLogFactFromMeetingSetFact,
+  type CallActivityFactRow,
+  type MeetingOutcomeFactRow,
+  type MeetingSetFactRow,
+} from './call-tracker-facts';
 
 export type SupabasePersistenceConfig = {
   url: string;
@@ -189,16 +197,21 @@ export function insertLifecycleEvents(config: SupabasePersistenceConfig, rows: u
   return writeRows(config, 'lifecycle_events', rows);
 }
 
-export function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'lifecycle_events', rows, 'dedupe_key', 'ignore-duplicates');
+export async function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {
+  const lifecycleResult = await writeRows(config, 'lifecycle_events', rows, 'dedupe_key', 'ignore-duplicates');
+  const callLogRows = (rows as MeetingSetFactRow[]).map(buildCallLogFactFromMeetingSetFact);
+  await writeRows(config, 'call_log', callLogRows, 'dedupe_key');
+  return lifecycleResult;
 }
 
 export function upsertCallActivityEvents(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'call_activity_events', rows, 'task_id');
+  const callLogRows = (rows as CallActivityFactRow[]).map(buildCallLogFactFromCallActivityFact);
+  return writeRows(config, 'call_log', callLogRows, 'dedupe_key');
 }
 
 export function upsertPostMeetingOutcomeFacts(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'meeting_events', rows, 'dedupe_key');
+  const callLogRows = (rows as MeetingOutcomeFactRow[]).map(buildCallLogFactFromMeetingOutcomeFact);
+  return writeRows(config, 'call_log', callLogRows, 'dedupe_key');
 }
 
 export function upsertSetMeetingConfirmationCacheRows(

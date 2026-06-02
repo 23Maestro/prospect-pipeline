@@ -563,6 +563,7 @@ test('Prospect Web architecture docs keep hosting adapter scope separate from do
   assert.deepEqual(matches.sort(), [
     'docs/architecture/code-review-boundaries.md',
     'docs/architecture/prospect-web-hosting-adapter.md',
+    'docs/architecture/scout-prep-supabase-source-of-truth.md',
     'docs/architecture/supabase-clean-house-truth-map.md',
     'docs/architecture/vercel-live-verification.md',
   ]);

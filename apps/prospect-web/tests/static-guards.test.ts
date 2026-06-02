@@ -181,8 +181,10 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260519016000_call_tracker_reschedule_preserves_first_meeting_set.sql',
     'supabase/migrations/20260519017000_call_tracker_restore_reconcile_clock_and_first_reschedule_identity.sql',
     'supabase/migrations/20260529163000_athlete_lifecycle_timeline.sql',
+    'supabase/migrations/20260602113000_purge_call_tracker_compatibility_views.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
+    'supabase/tests/call-log-purge-compatibility-views.test.mjs',
     'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
     'supabase/tests/call-tracker-counting-contract.test.mjs',
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
@@ -192,6 +194,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/sync-commissions-to-supabase.test.mjs',
     'scripts/audit-supabase-truth-map.mjs',
     'scripts/audit-supabase-truth-map.test.mjs',
+    'scripts/audit-call-tracker-live-parity.mjs',
     'scripts/generate-code-index.test.mjs',
     'src/lib/sales-stage.ts',
     'src/lib/scout-prep.tsx',
@@ -270,15 +273,10 @@ test('call tracker public contract documents count flags as the reporting source
   assert.match(contract.purpose, /countsAsMeetingSet/i);
   assert.match(contract.purpose, /countsAsPostMeetingOutcome/i);
   assert.equal(contract.generatedFrom, 'src/domain/call-tracker-vercel-contract.ts');
-  assert.equal(
-    contract.browserContract.eventFeed.supabaseView,
-    'call_tracker_events_owner_context',
-  );
   assert.equal(contract.browserContract.eventFeed.canonicalEventTable, 'call_log');
-  assert.equal(contract.browserContract.eventFeed.compatibilityRead, true);
-  assert.equal(contract.browserContract.summaryHelper.supabaseView, 'call_tracker_summary');
+  assert.equal(contract.browserContract.eventFeed.compatibilityRead, false);
   assert.equal(contract.browserContract.summaryHelper.canonicalEventTable, 'call_log');
-  assert.equal(contract.browserContract.summaryHelper.compatibilityRead, true);
+  assert.equal(contract.browserContract.summaryHelper.compatibilityRead, false);
   assert.equal(
     contract.browserContract.summaryHelper.deprecatedAliases.total_events,
     'Do not display as Dials. Use dials.',
@@ -300,18 +298,8 @@ test('call tracker public contract documents count flags as the reporting source
   assert.equal(contract.liveSupabaseApi.browserUrl, '/api/call-tracker-data');
   assert.equal(contract.liveSupabaseApi.workflowCron, 'scripts/sync-supabase-pipeline.sh');
   assert.equal(contract.liveSupabaseApi.canonicalEventTable, 'call_log');
-  assert.deepEqual(contract.liveSupabaseApi.compatibilityViews, {
-    summaryView: 'call_tracker_summary',
-    eventView: 'call_tracker_events_owner_context',
-  });
   assert.ok(contract.data.generatedAt);
-  assert.equal(contract.data.supabaseReads.summaryView, 'call_tracker_summary');
-  assert.equal(contract.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
   assert.equal(contract.data.supabaseReads.canonicalEventTable, 'call_log');
-  assert.deepEqual(contract.data.supabaseReads.compatibilityViews, {
-    summaryView: 'call_tracker_summary',
-    eventView: 'call_tracker_events_owner_context',
-  });
   assert.equal(contract.data.supabaseReads.lifecycleSourceTable, 'lifecycle_events');
   assert.equal(typeof contract.data.summary.dials, 'number');
   assert.equal(typeof contract.data.summary.contacts, 'number');
@@ -355,7 +343,7 @@ test('call tracker public contract documents count flags as the reporting source
   const totalContacts = contract.cardBindings.find(
     (binding: { domId: string }) => binding.domId === 'spokeWith',
   );
-  assert.match(totalDials.countRule, /call_tracker_summary\.dials/);
+  assert.match(totalDials.countRule, /call_log counts_as_dial/);
   assert.match(totalContacts.countRule, /data\.ui\.summaryCards\.contacts/);
   assert.match(totalContacts.forbiddenRule, /post-meeting outcomes/i);
 

@@ -318,7 +318,7 @@ test('/api/post-meeting-outcome rejects missing operator note', async () => {
   });
 });
 
-test('/api/call-tracker-data reads live Supabase reporting views for the browser contract', async () => {
+test('/api/call-tracker-data reads live Supabase call_log for the browser contract', async () => {
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
   process.env.SUPABASE_SCHEMA = 'public';
@@ -329,7 +329,7 @@ test('/api/call-tracker-data reads live Supabase reporting views for the browser
     if (requestUrl.includes('/call_tracker_summary?')) {
       return Response.json([{ dials: 1, contacts: 1, meetings_set: 0, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 0 }]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       return Response.json([
         {
           athlete_name: 'Live Athlete',
@@ -372,14 +372,9 @@ test('/api/call-tracker-data reads live Supabase reporting views for the browser
   const payload = await response.json();
   assert.equal(payload.data.summary.dials, 1);
   assert.equal(payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Live Athlete'), true);
-  assert.equal(payload.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
   assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_log');
-  assert.deepEqual(payload.data.supabaseReads.compatibilityViews, {
-    summaryView: 'call_tracker_summary',
-    eventView: 'call_tracker_events_owner_context',
-  });
   assert.match(payload.data.ui.monthResultLabel, /^[A-Z][a-z]+ Results$/);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
 });
 
@@ -392,7 +387,7 @@ test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () 
     if (requestUrl.includes('/call_tracker_summary?')) {
       return Response.json([{ dials: 2, contacts: 2, meetings_set: 2, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 1 }]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       const base = {
         athlete_name: 'Carson visser',
         occurred_at: '2026-05-05T18:22:20+00:00',
@@ -463,7 +458,7 @@ test('/api/call-tracker-data does not count appointment changes as new meeting s
         { dials: 2, contacts: 2, meetings_set: 1, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 1 },
       ]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       const base = {
         athlete_key: '1491040:952861',
         athlete_id: '1491040',
@@ -543,7 +538,7 @@ test('/api/call-tracker-data keeps same-athlete meeting facts on separate report
         { dials: 2, contacts: 2, meetings_set: 2, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 2 },
       ]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       const base = {
         athlete_key: '1491165:952986',
         athlete_id: '1491165',
@@ -619,7 +614,7 @@ test('/api/call-tracker-data trusts Supabase reporting_at instead of rewriting m
         { dials: 1, contacts: 1, meetings_set: 1, meeting_outcomes_total: 0, closed_won: 0, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 1 },
       ]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       return Response.json([
         {
           athlete_key: '1490499:952328',
@@ -705,7 +700,7 @@ test('/api/call-tracker-data counts confirmed enrollments while paying commissio
         { dials: 0, contacts: 0, meetings_set: 0, meeting_outcomes_total: 2, closed_won: 2, money_earned_cents: 19900, voicemail_only: 0, appointments_tracked: 0 },
       ]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       return Response.json([
         {
           athlete_name: 'Failed Payment Athlete',
@@ -828,7 +823,7 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
     if (requestUrl.includes('/call_tracker_summary?')) {
       return Response.json([{ meetings_set: 4, closed_won: 1 }]);
     }
-    if (requestUrl.includes('/call_tracker_events_owner_context?')) {
+    if (requestUrl.includes('/call_log?')) {
       return Response.json([
         {
           athlete_name: 'Meeting Athlete',
@@ -1045,7 +1040,7 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
     false,
   );
   assert.equal(payload.data.generatedAt.endsWith('Z'), true);
-  assert.equal(calls.length, 4);
+  assert.equal(calls.length, 3);
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
   assert.equal(calls.every((call) => call.init?.cache === 'no-store'), true);
 });

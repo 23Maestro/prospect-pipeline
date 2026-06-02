@@ -52,7 +52,39 @@ async function supabaseGet(path) {
 }
 
 function eventSelect() {
-  return [...new Set(CALL_TRACKER_VERCEL_CONTRACT.browserContract.eventFeed.requiredFields)].join(',');
+  return [
+    'id',
+    'athlete_key',
+    'athlete_id',
+    'athlete_main_id',
+    'athlete_name',
+    'occurred_at',
+    'event_at',
+    'reporting_at',
+    'tracker_outcome',
+    'raw_crm_stage',
+    'raw_task_status',
+    'raw_event_type',
+    'source_system',
+    'appointment_id',
+    'live_event_id',
+    'booked_event_title',
+    'revenue_cents',
+    'dedupe_key',
+    'active_operator_name',
+    'task_assigned_owner',
+    'counts_as_dial',
+    'counts_as_contact',
+    'counts_as_meeting_set',
+    'counts_as_post_meeting_outcome',
+    'materialization_status',
+    'materialization_reason',
+    'resolved_owner_name',
+    'resolved_owner_source_field',
+    'can_materialize_for_active_operator',
+    'payload_json',
+    'created_at',
+  ].join(',');
 }
 
 function lifecycleSelect() {
@@ -407,15 +439,51 @@ function buildUiData(summary, events, generatedAt) {
   };
 }
 
+function callLogRowToEvent(row) {
+  const reportingAt = row.reporting_at || row.event_at || row.occurred_at;
+  return {
+    ...row,
+    source: row.source_system || row.source || 'call_log',
+    reporting_date_et: localDateKey(reportingAt),
+    materialization_reason: row.materialization_reason || row.payload_json?.materialization_reason || null,
+  };
+}
+
+function summaryFromRows(rows) {
+  return {
+    total_events: rows.length,
+    spoke_with: rows.filter((row) =>
+      [
+        'spoke_follow_up',
+        'meeting_set',
+        'reschedule_pending',
+        'rescheduled',
+        'canceled',
+        'closed_won',
+        'closed_lost',
+        'not_interested',
+      ].includes(row.tracker_outcome),
+    ).length,
+    voicemail_only: rows.filter((row) => row.tracker_outcome === 'voicemail').length,
+    meetings_set: rows.filter((row) => row.counts_as_meeting_set === true).length,
+    meeting_outcomes_total: rows.filter((row) => row.counts_as_post_meeting_outcome === true).length,
+    closed_won: rows.filter((row) => row.tracker_outcome === 'closed_won').length,
+    money_earned_cents: rows
+      .filter((row) => row.tracker_outcome === 'closed_won')
+      .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
+    dials: rows.filter((row) => row.counts_as_dial === true).length,
+    contacts: rows.filter((row) => row.counts_as_contact === true).length,
+    appointments_tracked: new Set(rows.map((row) => row.appointment_id).filter(Boolean)).size,
+  };
+}
+
 async function materialize() {
-  const summaryView = CALL_TRACKER_VERCEL_CONTRACT.browserContract.summaryHelper.supabaseView;
-  const eventView = CALL_TRACKER_VERCEL_CONTRACT.browserContract.eventFeed.supabaseView;
-  const [summaryRows, events, lifecycleRows] = await Promise.all([
-    supabaseGet(`${summaryView}?select=*`),
+  const canonicalEventTable = CALL_TRACKER_VERCEL_CONTRACT.liveSupabaseApi.canonicalEventTable;
+  const [events, lifecycleRows] = await Promise.all([
     supabaseGet(
       [
-        `${eventView}?select=${encodeURIComponent(eventSelect())}`,
-        'order=event_at.desc',
+        `${canonicalEventTable}?select=${encodeURIComponent(eventSelect())}`,
+        'order=reporting_at.desc',
         `limit=${eventLimit}`,
       ].join('&'),
     ),
@@ -429,27 +497,21 @@ async function materialize() {
   ]);
 
   const generatedAt = new Date().toISOString();
-  const viewEvents = Array.isArray(events) ? events : [];
+  const viewEvents = (Array.isArray(events) ? events : []).map(callLogRowToEvent);
   const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : [])
     .map(lifecycleActivityToEvent)
     .filter(Boolean);
   const viewDedupeKeys = new Set(viewEvents.map((row) => row.dedupe_key).filter(Boolean));
   const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
   const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
-  const summary = addLifecycleDeltasToSummary(summaryRows[0] || {}, lifecycleDeltaEvents);
+  const summary = addLifecycleDeltasToSummary(summaryFromRows(viewEvents), lifecycleDeltaEvents);
   return {
     ...CALL_TRACKER_VERCEL_CONTRACT,
     data: {
       generatedAt,
       eventLimit,
       supabaseReads: {
-        summaryView,
-        eventView,
-        canonicalEventTable: CALL_TRACKER_VERCEL_CONTRACT.liveSupabaseApi.canonicalEventTable,
-        compatibilityViews: {
-          summaryView,
-          eventView,
-        },
+        canonicalEventTable,
         lifecycleSourceTable: 'lifecycle_events',
       },
       summary,

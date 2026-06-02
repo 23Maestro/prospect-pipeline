@@ -21,8 +21,9 @@ test('meeting_events is documented as storage for post-meeting outcomes only', (
   assert.match(sql, /Deprecated compatibility view/i);
 });
 
-test('domain persistence writes post-meeting outcome facts to meeting_events', () => {
+test('domain persistence writes post-meeting outcome facts to call_log', () => {
   assert.match(persistence, /upsertPostMeetingOutcomeFacts/);
-  assert.match(persistence, /'meeting_events'/);
+  assert.match(persistence, /buildCallLogFactFromMeetingOutcomeFact/);
+  assert.match(persistence, /'call_log'/);
   assert.doesNotMatch(persistence, /function upsertCallEvents/);
 });

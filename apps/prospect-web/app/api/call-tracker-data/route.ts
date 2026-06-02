@@ -54,6 +54,39 @@ const eventFields = [
 
 const internalEventFields = ['athlete_key', 'athlete_id', 'athlete_main_id', ...eventFields];
 const internalIdentityFields = new Set(['athlete_key', 'athlete_id', 'athlete_main_id']);
+const callLogFields = [
+  'id',
+  'athlete_key',
+  'athlete_id',
+  'athlete_main_id',
+  'athlete_name',
+  'occurred_at',
+  'event_at',
+  'reporting_at',
+  'tracker_outcome',
+  'raw_crm_stage',
+  'raw_task_status',
+  'raw_event_type',
+  'source_system',
+  'appointment_id',
+  'live_event_id',
+  'booked_event_title',
+  'revenue_cents',
+  'dedupe_key',
+  'active_operator_name',
+  'task_assigned_owner',
+  'counts_as_dial',
+  'counts_as_contact',
+  'counts_as_meeting_set',
+  'counts_as_post_meeting_outcome',
+  'materialization_status',
+  MATERIALIZATION_REASON_FIELD,
+  'resolved_owner_name',
+  'resolved_owner_source_field',
+  'can_materialize_for_active_operator',
+  PAYLOAD_FIELD,
+  'created_at',
+];
 
 const lifecycleFields = [
   'id',
@@ -431,6 +464,60 @@ function mergeEventRows(viewRows: Array<Record<string, any>>, lifecycleRows: Arr
   return [...byKey.values()].sort((left, right) => new Date(right.event_at || right.occurred_at).getTime() - new Date(left.event_at || left.occurred_at).getTime());
 }
 
+function callLogRowToEvent(row: Record<string, any>) {
+  const reportingAt = row.reporting_at || row.event_at || row.occurred_at;
+  return {
+    ...row,
+    source: row.source_system || row.source || 'call_log',
+    reporting_date_et: localDateKey(reportingAt),
+    [PAYLOAD_FIELD]: row[PAYLOAD_FIELD] || {},
+    [MATERIALIZATION_REASON_FIELD]: row[MATERIALIZATION_REASON_FIELD] || row[PAYLOAD_FIELD]?.[MATERIALIZATION_REASON_FIELD] || null,
+  };
+}
+
+function summaryFromRows(rows: Array<Record<string, any>>) {
+  return {
+    total_events: rows.length,
+    spoke_with: rows.filter((row) =>
+      [
+        'spoke_follow_up',
+        'meeting_set',
+        'reschedule_pending',
+        'rescheduled',
+        'canceled',
+        'closed_won',
+        'closed_lost',
+        'not_interested',
+      ].includes(row.tracker_outcome),
+    ).length,
+    voicemail_only: rows.filter((row) => row.tracker_outcome === 'voicemail').length,
+    meetings_set: rows.filter((row) => row.counts_as_meeting_set === true).length,
+    reschedule_pending: rows.filter((row) => row.tracker_outcome === 'reschedule_pending').length,
+    closed_won: rows.filter((row) => row.tracker_outcome === 'closed_won').length,
+    money_earned_cents: rows
+      .filter((row) => row.tracker_outcome === 'closed_won')
+      .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
+    first_event_at: rows.reduce<string | null>((earliest, row) => {
+      const value = row.occurred_at || row.event_at || row.reporting_at;
+      if (!value) return earliest;
+      return !earliest || new Date(value).getTime() < new Date(earliest).getTime() ? value : earliest;
+    }, null),
+    last_event_at: rows.reduce<string | null>((latest, row) => {
+      const value = row.occurred_at || row.event_at || row.reporting_at;
+      if (!value) return latest;
+      return !latest || new Date(value).getTime() > new Date(latest).getTime() ? value : latest;
+    }, null),
+    appointments_tracked: new Set(rows.map((row) => row.appointment_id).filter(Boolean)).size,
+    meeting_outcomes_total: rows.filter((row) => row.counts_as_post_meeting_outcome === true).length,
+    rescheduled: rows.filter((row) => row.tracker_outcome === 'rescheduled').length,
+    canceled: rows.filter((row) => row.tracker_outcome === 'canceled').length,
+    no_show: rows.filter((row) => row.tracker_outcome === 'no_show').length,
+    needs_review: rows.filter((row) => row.tracker_outcome === 'needs_review').length,
+    dials: rows.filter((row) => row.counts_as_dial === true).length,
+    contacts: rows.filter((row) => row.counts_as_contact === true).length,
+  };
+}
+
 function addLifecycleDeltasToSummary(fallback: Record<string, any>, lifecycleRows: Array<Record<string, any>>) {
   return {
     ...fallback,
@@ -613,23 +700,20 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
 }
 
 async function buildLiveContract() {
-  const summaryView = 'call_tracker_summary';
-  const eventView = 'call_tracker_events_owner_context';
   const canonicalEventTable = 'call_log';
-  const [summaryRows, events, lifecycleRows] = await Promise.all([
-    supabaseGet(`${summaryView}?select=*`),
-    supabaseGet([`${eventView}?select=${encodeURIComponent(internalEventFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
+  const [callLogRows, lifecycleRows] = await Promise.all([
+    supabaseGet([`${canonicalEventTable}?select=${encodeURIComponent(callLogFields.join(','))}`, 'order=reporting_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
     supabaseGet([`lifecycle_events?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=created_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
   ]);
 
   const generatedAt = new Date().toISOString();
-  const viewEvents = Array.isArray(events) ? events : [];
+  const viewEvents = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
   const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : []).map(lifecycleActivityToEvent).filter(Boolean) as Array<Record<string, any>>;
   const viewDedupeKeys = new Set(viewEvents.map((row: Record<string, any>) => row.dedupe_key).filter(Boolean));
   const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
   const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
   const summary = resolveMeetingSetSummary(
-    addLifecycleDeltasToSummary((Array.isArray(summaryRows) ? summaryRows[0] : {}) || {}, lifecycleDeltaEvents),
+    addLifecycleDeltasToSummary(summaryFromRows(viewEvents), lifecycleDeltaEvents),
     [...viewEvents, ...lifecycleDeltaEvents],
     materializedEvents,
   );
@@ -646,13 +730,7 @@ async function buildLiveContract() {
       generatedAt,
       eventLimit: EVENT_LIMIT,
       supabaseReads: {
-        summaryView,
-        eventView,
         canonicalEventTable,
-        compatibilityViews: {
-          summaryView,
-          eventView,
-        },
         lifecycleSourceTable: 'lifecycle_events',
       },
       summary,

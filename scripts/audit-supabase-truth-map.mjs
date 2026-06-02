@@ -49,8 +49,8 @@ const surfaces = {
     bucket: 'Reporting / Pre-Meeting Tasks / Enrollments & Outcomes',
     role: 'canonical_target',
     migrationOwner: 'Lifecycle & Stage Truth / Reporting',
-    currentState: 'Schema, first backfill, and compatibility reader views are live. Parity is proven against insertable Call Tracker facts; source writers still need migration.',
-    replacement: 'Promote to the centralized event table only after dials, contacts, meeting sets, post-meeting outcomes, and enrollment evidence are represented by one canonical shape.',
+    currentState: 'Schema, first backfill, shared writers, and Prospect Web direct readers are live. Compatibility views are purge-ready; old source tables remain historical delete targets.',
+    replacement: 'Keep as the centralized event table for dials, contacts, meeting sets, post-meeting outcomes, and enrollment evidence.',
   },
   set_meeting_confirmation_cache: {
     bucket: 'Client Communication',

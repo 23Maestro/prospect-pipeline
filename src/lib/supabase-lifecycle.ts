@@ -13,7 +13,10 @@ import {
 import { taskStatusForStage } from '../domain/supabase-lifecycle-translator';
 import { resolveOwnerContext, type MaterializationStatus } from '../domain/owner-resolution';
 import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
-import { buildCallActivityFact } from '../domain/call-tracker-facts';
+import {
+  buildCallActivityFact,
+  buildCallLogFactFromCallActivityFact,
+} from '../domain/call-tracker-facts';
 import { resolveOwnerByName } from '../domain/owners';
 import {
   assertAppointmentTruthWrite,
@@ -1110,9 +1113,9 @@ export async function lifecycleSalesStage(
     },
   });
 
-  await request(config, 'call_activity_events', {
-    rows: [row],
-    onConflict: 'task_id',
+  await request(config, 'call_log', {
+    rows: [buildCallLogFactFromCallActivityFact(row)],
+    onConflict: 'dedupe_key',
   });
 
   return result;

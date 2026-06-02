@@ -174,6 +174,56 @@ export type MeetingSetFactInput = Omit<
   'eventType' | 'dedupeKey'
 >;
 
+export type CallLogFactRow = {
+  fact_type: 'call_activity' | 'meeting_set' | 'post_meeting_outcome' | 'enrollment_payment';
+  tracker_outcome: string;
+  occurred_at: string;
+  event_at: string | null;
+  reporting_at: string;
+  athlete_key: string | null;
+  athlete_id: string | null;
+  athlete_main_id: string | null;
+  athlete_name: string | null;
+  appointment_id: string | null;
+  live_event_id: string | null;
+  booked_event_title: string | null;
+  raw_crm_stage: string | null;
+  raw_task_status: string | null;
+  raw_event_type: string | null;
+  activity_kind: string | null;
+  activity_subtype: string | null;
+  source_family: 'call_activity_events' | 'lifecycle_events' | 'meeting_events';
+  source_table: string;
+  source_row_id: string | null;
+  source_system: string | null;
+  source_owner: string | null;
+  owner_proof: string | null;
+  active_operator_key: string | null;
+  active_operator_name: string | null;
+  task_assigned_owner: string | null;
+  resolved_owner_name: string | null;
+  resolved_owner_role: string | null;
+  resolved_owner_source_field: string | null;
+  resolved_owner_source_value: string | null;
+  materialization_status: string | null;
+  materialization_reason: string | null;
+  can_materialize_for_active_operator: boolean;
+  counts_as_dial: boolean;
+  counts_as_contact: boolean;
+  counts_as_meeting_set: boolean;
+  counts_as_post_meeting_outcome: boolean;
+  counts_as_enrollment: boolean;
+  revenue_cents: number | null;
+  commission_cents: number | null;
+  stripe_payment_intent_id: string | null;
+  stripe_charge_id: string | null;
+  stripe_checkout_session_id: string | null;
+  payment_confirmed_at: string | null;
+  dedupe_key: string;
+  payload_json: Record<string, unknown>;
+  updated_at: string;
+};
+
 export function buildAppointmentId(args: {
   athleteId: string | number;
   athleteMainId: string | number;
@@ -569,5 +619,236 @@ export function buildMeetingSetFact(args: MeetingSetFactInput): MeetingSetFactRo
     },
     eventType: 'meeting_set',
     dedupeKey: `meeting_set:${identity.athleteKey}:${appointmentId}`,
+  });
+}
+
+function boolPayload(payload: Record<string, unknown>, key: string): boolean {
+  return payload[key] === true || payload[key] === 'true' || payload[key] === 1 || payload[key] === '1';
+}
+
+function textPayload(payload: Record<string, unknown>, key: string): string | null {
+  return normalizeValue(payload[key] as string | number | null | undefined);
+}
+
+function numberPayload(payload: Record<string, unknown>, key: string): number | null {
+  const value = payload[key];
+  if (value === null || value === undefined || value === '') return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function callLogClocks(args: {
+  occurredAt?: string | null;
+  eventAt?: string | null;
+  reportingAt?: string | null;
+  factType: string;
+}): { occurredAt: string; eventAt: string | null; reportingAt: string } {
+  const reportingAt = normalizeIsoValue(args.reportingAt) || normalizeIsoValue(args.eventAt) || normalizeIsoValue(args.occurredAt);
+  if (!reportingAt) {
+    throw new Error(`${args.factType} call_log facts require a reporting clock.`);
+  }
+  return {
+    occurredAt: normalizeIsoValue(args.occurredAt) || reportingAt,
+    eventAt: normalizeIsoValue(args.eventAt) || normalizeIsoValue(args.occurredAt),
+    reportingAt,
+  };
+}
+
+function buildCallLogBase(args: {
+  factType: CallLogFactRow['fact_type'];
+  trackerOutcome?: string | null;
+  occurredAt?: string | null;
+  eventAt?: string | null;
+  reportingAt?: string | null;
+  athleteKey?: string | null;
+  athleteId?: string | null;
+  athleteMainId?: string | null;
+  athleteName?: string | null;
+  appointmentId?: string | null;
+  liveEventId?: string | null;
+  bookedEventTitle?: string | null;
+  rawCrmStage?: string | null;
+  rawTaskStatus?: string | null;
+  rawEventType?: string | null;
+  activityKind?: string | null;
+  activitySubtype?: string | null;
+  sourceFamily: CallLogFactRow['source_family'];
+  sourceTable: string;
+  sourceRowId?: string | null;
+  sourceSystem?: string | null;
+  sourceOwner?: string | null;
+  ownerProof?: string | null;
+  payload?: Record<string, unknown>;
+  countsAsDial?: boolean;
+  countsAsContact?: boolean;
+  countsAsMeetingSet?: boolean;
+  countsAsPostMeetingOutcome?: boolean;
+  countsAsEnrollment?: boolean;
+  revenueCents?: number | null;
+  commissionCents?: number | null;
+  dedupeKey: string;
+  updatedAt?: string;
+}): CallLogFactRow {
+  const payload = args.payload || {};
+  const clocks = callLogClocks({
+    occurredAt: args.occurredAt,
+    eventAt: args.eventAt,
+    reportingAt: args.reportingAt,
+    factType: args.factType,
+  });
+  const trackerOutcome = normalizeValue(args.trackerOutcome) || 'needs_review';
+  const dedupeKey = normalizeValue(args.dedupeKey);
+  if (!dedupeKey) throw new Error(`${args.factType} call_log facts require dedupeKey.`);
+
+  return {
+    fact_type: args.factType,
+    tracker_outcome: trackerOutcome,
+    occurred_at: clocks.occurredAt,
+    event_at: clocks.eventAt,
+    reporting_at: clocks.reportingAt,
+    athlete_key: normalizeValue(args.athleteKey),
+    athlete_id: normalizeValue(args.athleteId),
+    athlete_main_id: normalizeValue(args.athleteMainId),
+    athlete_name: normalizeValue(args.athleteName),
+    appointment_id: normalizeValue(args.appointmentId),
+    live_event_id: normalizeValue(args.liveEventId),
+    booked_event_title: normalizeValue(args.bookedEventTitle),
+    raw_crm_stage: normalizeValue(args.rawCrmStage),
+    raw_task_status: normalizeValue(args.rawTaskStatus),
+    raw_event_type: normalizeValue(args.rawEventType),
+    activity_kind: normalizeValue(args.activityKind),
+    activity_subtype: normalizeValue(args.activitySubtype),
+    source_family: args.sourceFamily,
+    source_table: args.sourceTable,
+    source_row_id: normalizeValue(args.sourceRowId),
+    source_system: normalizeValue(args.sourceSystem),
+    source_owner: normalizeValue(args.sourceOwner),
+    owner_proof: normalizeValue(args.ownerProof),
+    active_operator_key: textPayload(payload, 'active_operator_key'),
+    active_operator_name: textPayload(payload, 'active_operator_name'),
+    task_assigned_owner: textPayload(payload, 'task_assigned_owner'),
+    resolved_owner_name: textPayload(payload, 'resolved_owner_name'),
+    resolved_owner_role: textPayload(payload, 'resolved_owner_role'),
+    resolved_owner_source_field: textPayload(payload, 'resolved_from_field'),
+    resolved_owner_source_value: textPayload(payload, 'resolved_from_value'),
+    materialization_status: textPayload(payload, 'materialization_status'),
+    materialization_reason: textPayload(payload, 'materialization_reason'),
+    can_materialize_for_active_operator:
+      boolPayload(payload, 'is_tracked_owner') ||
+      boolPayload(payload, 'can_materialize_for_active_operator') ||
+      textPayload(payload, 'materialization_status') === 'materialized',
+    counts_as_dial: Boolean(args.countsAsDial),
+    counts_as_contact: Boolean(args.countsAsContact),
+    counts_as_meeting_set: Boolean(args.countsAsMeetingSet),
+    counts_as_post_meeting_outcome: Boolean(args.countsAsPostMeetingOutcome),
+    counts_as_enrollment: Boolean(args.countsAsEnrollment),
+    revenue_cents: args.revenueCents ?? null,
+    commission_cents: args.commissionCents ?? numberPayload(payload, 'commission_amount_cents'),
+    stripe_payment_intent_id: textPayload(payload, 'stripe_payment_intent_id'),
+    stripe_charge_id: textPayload(payload, 'stripe_charge_id'),
+    stripe_checkout_session_id: textPayload(payload, 'stripe_checkout_session_id'),
+    payment_confirmed_at: normalizeIsoValue(textPayload(payload, 'payment_confirmed_at') || textPayload(payload, 'commission_paid_at')),
+    dedupe_key: dedupeKey,
+    payload_json: payload,
+    updated_at: normalizeIsoValue(args.updatedAt) || new Date().toISOString(),
+  };
+}
+
+export function buildCallLogFactFromCallActivityFact(row: CallActivityFactRow): CallLogFactRow {
+  const payload = row.payload_json || {};
+  return buildCallLogBase({
+    factType: 'call_activity',
+    trackerOutcome: textPayload(payload, 'tracker_outcome') || row.activity_subtype,
+    occurredAt: row.occurred_at,
+    eventAt: row.occurred_at,
+    reportingAt: row.occurred_at,
+    athleteKey: row.athlete_key,
+    athleteId: row.athlete_id,
+    athleteMainId: row.athlete_main_id,
+    athleteName: row.athlete_name,
+    rawCrmStage: row.raw_crm_stage,
+    rawTaskStatus: row.raw_task_status,
+    rawEventType: 'call_activity',
+    activityKind: row.activity_kind,
+    activitySubtype: row.activity_subtype,
+    sourceFamily: 'call_activity_events',
+    sourceTable: 'call_activity_events',
+    sourceRowId: row.task_id,
+    sourceSystem: textPayload(payload, 'source') || 'call_activity',
+    sourceOwner: row.source_owner,
+    ownerProof: row.owner_proof,
+    payload,
+    countsAsDial: boolPayload(payload, 'counts_as_dial'),
+    countsAsContact: boolPayload(payload, 'counts_as_contact'),
+    dedupeKey: `call_activity:${row.task_id}`,
+    updatedAt: row.updated_at,
+  });
+}
+
+export function buildCallLogFactFromMeetingSetFact(row: MeetingSetFactRow): CallLogFactRow {
+  const payload = row.payload_json || {};
+  const appointmentId = textPayload(payload, 'appointment_id') || textPayload(payload, 'booked_event_id');
+  return buildCallLogBase({
+    factType: 'meeting_set',
+    trackerOutcome: textPayload(payload, 'tracker_outcome') || 'meeting_set',
+    occurredAt: row.created_at,
+    eventAt: row.created_at,
+    reportingAt: row.created_at,
+    athleteKey: row.athlete_key,
+    athleteId: row.athlete_id,
+    athleteMainId: row.athlete_main_id,
+    athleteName: textPayload(payload, 'athlete_name'),
+    appointmentId,
+    liveEventId: textPayload(payload, 'live_event_id') || textPayload(payload, 'booked_event_id'),
+    bookedEventTitle: textPayload(payload, 'booked_event_title') || textPayload(payload, 'meeting_name'),
+    rawCrmStage: row.crm_stage,
+    rawTaskStatus: row.task_status,
+    rawEventType: textPayload(payload, 'raw_event_type') || 'lifecycle_meeting_set',
+    sourceFamily: 'lifecycle_events',
+    sourceTable: 'lifecycle_events',
+    sourceRowId: row.dedupe_key || row.id,
+    sourceSystem: textPayload(payload, 'source') || 'lifecycle_meeting_set',
+    sourceOwner: textPayload(payload, 'tracker_source_owner') || textPayload(payload, 'resolved_owner_name'),
+    ownerProof: textPayload(payload, 'tracker_owner_proof') || textPayload(payload, 'resolved_from_field'),
+    payload,
+    countsAsDial: boolPayload(payload, 'counts_as_dial'),
+    countsAsContact: boolPayload(payload, 'counts_as_contact'),
+    countsAsMeetingSet: true,
+    dedupeKey: row.dedupe_key || `meeting_set:${row.athlete_key}:${appointmentId || row.id}`,
+    updatedAt: row.created_at,
+  });
+}
+
+export function buildCallLogFactFromMeetingOutcomeFact(row: MeetingOutcomeFactRow): CallLogFactRow {
+  const payload = row.payload_json || {};
+  const revenueCents = row.revenue_cents ?? numberPayload(payload, 'commission_amount_cents');
+  const isEnrollment = row.raw_event_type === 'post_meeting_outcome' && row.dedupe_key.includes(':closed_won');
+  return buildCallLogBase({
+    factType: isEnrollment && revenueCents ? 'enrollment_payment' : 'post_meeting_outcome',
+    trackerOutcome: textPayload(payload, 'tracker_outcome') || row.raw_task_status || row.raw_crm_stage || 'needs_review',
+    occurredAt: row.occurred_at,
+    eventAt: row.occurred_at,
+    reportingAt: row.occurred_at,
+    athleteKey: row.athlete_key,
+    athleteId: row.athlete_id,
+    athleteMainId: row.athlete_main_id,
+    athleteName: row.athlete_name,
+    appointmentId: row.appointment_id,
+    liveEventId: row.live_event_id,
+    bookedEventTitle: row.booked_event_title,
+    rawCrmStage: row.raw_crm_stage,
+    rawTaskStatus: row.raw_task_status,
+    rawEventType: row.raw_event_type,
+    sourceFamily: 'meeting_events',
+    sourceTable: 'meeting_events',
+    sourceRowId: row.dedupe_key || row.id,
+    sourceSystem: row.source,
+    sourceOwner: row.source_owner,
+    ownerProof: row.owner_proof,
+    payload,
+    countsAsPostMeetingOutcome: true,
+    countsAsEnrollment: Boolean(isEnrollment && revenueCents),
+    revenueCents,
+    dedupeKey: row.dedupe_key,
   });
 }

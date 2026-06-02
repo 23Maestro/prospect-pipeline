@@ -2,6 +2,8 @@
 
 This file pins which workflow owns each Supabase write so lifecycle logic does not drift back into script-local helpers.
 
+FastAPI remains a source-system adapter; Supabase remains durable reporting truth. Domain modules define lifecycle and sales-stage meaning. Prospect Web/Vercel may read Supabase reporting truth, but it must not own lifecycle or sales-stage meaning.
+
 ## Primary write path
 
 | Workflow | Source action | Laravel/FastAPI write | Supabase write | Notes |
@@ -41,7 +43,7 @@ See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned del
 - `lifecycleSalesStage` is the one lifecycle/sales-stage writer.
 - `lifecycle_events` is the only lifecycle/sales-stage history table.
 - `appointments` owns meeting timing/detail/reschedule chain.
-- `call_log` is the target centralized table for call, meeting-set, post-meeting, and enrollment payment reporting facts. Its schema is defined; writers/readers/backfill are not migrated yet.
+- `call_log` is the centralized table for call, meeting-set, post-meeting, and enrollment payment reporting facts. Its schema, backfill, shared writers, and Prospect Web readers are live.
 - `call_events` is a deprecated compatibility/history name. Current schema history still recreates it as a view over `meeting_events`; do not move readers there or reuse it as the canonical target.
 - `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `active_athlete_meeting_truth`, `athlete_pipeline_state`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, and `reminders` are migration/delete targets.
 

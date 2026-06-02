@@ -689,8 +689,9 @@ test('shared lifecycle mutation writer upserts call activity facts at action tim
   assert.match(source, /supabase-lifecycle-translator/);
   assert.match(source, /taskStatusForStage\(args\.crmStage, args\.taskStatus\)/);
   assert.match(source, /buildCallActivityFact/);
-  assert.match(source, /request\(config, 'call_activity_events'/);
-  assert.match(source, /onConflict: 'task_id'/);
+  assert.match(source, /buildCallLogFactFromCallActivityFact/);
+  assert.match(source, /request\(config, 'call_log'/);
+  assert.match(source, /onConflict: 'dedupe_key'/);
   assert.match(source, /rawCrmStage: event\.state\.crmStage/);
   assert.match(source, /rawTaskStatus: event\.state\.taskStatus/);
 });

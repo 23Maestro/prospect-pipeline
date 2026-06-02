@@ -16,7 +16,7 @@ FastAPI remains the source-system adapter for Prospect Pipeline data access. Sup
 | `athlete_contact_cache` | Admin Data & Contacts / Client Communication | Canonical support | How to contact the athlete/family and open admin/task links. |
 | `appointments` | Meetings | Canonical truth | Meeting timing, scout, timezone, event id, and reschedule chain. |
 | `lifecycle_events` | Lifecycle & Stage Truth | Canonical truth | Sales-stage history and normalized lifecycle state through `lifecycleSalesStage`. |
-| `call_log` | Reporting / Pre-Meeting Tasks / Enrollments & Outcomes | Canonical target | One event ledger for dials, contacts, meeting sets, post-meeting outcomes, and enrollment payment evidence. The schema, first Call Tracker backfill, and compatibility reader views are live; source writers still need migration. This intentionally avoids the old `call_events` compatibility-view history. |
+| `call_log` | Reporting / Pre-Meeting Tasks / Enrollments & Outcomes | Canonical target | One event ledger for dials, contacts, meeting sets, post-meeting outcomes, and enrollment payment evidence. The schema, first Call Tracker backfill, shared writers, and Prospect Web readers are live. This intentionally avoids the old `call_events` compatibility-view history. |
 | `set_meeting_confirmation_cache` | Client Communication | Temporary support | Confirmation-message prep only; not lifecycle or meeting truth. |
 | `pending_client_watchlist` | Enrollments & Outcomes | Temporary support | Review queue only; not final outcome truth. |
 
@@ -65,18 +65,22 @@ Before dropping a surface:
 
 ## Call Log Readiness
 
-`call_log` is the target name for the centralized event ledger. `20260602090000_call_log_canonical_ledger.sql` defines the schema, the first Call Tracker backfill has been applied from `call_tracker_events_owner_context`, and `20260602100000_call_tracker_views_from_call_log.sql` now points the compatibility views at `call_log`. The old `call_events` name is intentionally retired because the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renames the old table to `meeting_events` and recreates `call_events` as a deprecated compatibility view.
+`call_log` is the target name for the centralized event ledger. `20260602090000_call_log_canonical_ledger.sql` defines the schema, the first Call Tracker backfill has been applied, shared writers now route reporting facts to `call_log`, and Prospect Web reads `call_log` directly. `20260602113000_purge_call_tracker_compatibility_views.sql` drops the old Call Tracker compatibility views. The old `call_events` name is intentionally retired because the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renamed the old table to `meeting_events` and recreated `call_events` as a deprecated compatibility view.
 
-That means the next Call Tracker migration is not "read `call_events` directly." The next migration is:
+Completed in this Call Tracker slice:
 
-1. Run the read-only `scripts/audit-call-tracker-live-parity.mjs` projection from `call_tracker_events_owner_context` into `call_log` shape and review `callLogProjection`.
-2. Build the insert/backfill SQL only after the projection shows parity or names the exact gaps. The dry-run command is `node scripts/audit-call-tracker-live-parity.mjs --backfill-sql`; it prints SQL for review and does not execute Supabase writes.
-3. Backfill `call_log` from `call_activity_events`, `meeting_events`, and lifecycle meeting-set facts without deleting old rows. Keep `source_family` to the canonical drained fact families only: `call_activity_events`, `lifecycle_events`, or `meeting_events`; preserve raw upstream labels such as `legacy_sales_stage_current` or `stripe_commissions` in `source_system` or payload fields.
-4. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log` by rerunning `node scripts/audit-call-tracker-live-parity.mjs --summary` and checking `callLogTarget.parity`. Current live proof: parity true over 723 canonical rows, closed-won 6.
-5. Move `call_activity_events` writers into `call_log`.
-6. Move `meeting_events` post-meeting outcome writers into `call_log`.
-7. Move enrollment payment evidence into `call_log` from Stripe/commission evidence.
-8. Keep Prospect Web on compatibility names only while those views are backed by `call_log`; direct old-table compatibility reads are no longer acceptable.
+1. Backfilled `call_log` from `call_activity_events`, `meeting_events`, and lifecycle meeting-set facts without deleting old rows.
+2. Kept `source_family` to the canonical drained fact families only: `call_activity_events`, `lifecycle_events`, or `meeting_events`; raw upstream labels such as `legacy_sales_stage_current` or `stripe_commissions` stay in `source_system` or payload fields.
+3. Proved live target parity with `node scripts/audit-call-tracker-live-parity.mjs --summary`: parity true over 723 canonical rows, closed-won 6.
+4. Moved shared call activity, meeting-set reporting copy, post-meeting outcome, and Stripe/commission payment evidence writers into `call_log`.
+5. Moved Prospect Web Call Tracker and meeting readback readers to direct `call_log` reads.
+6. Added purge migrations for `weekly_operator_funnel_metrics`, `call_tracker_summary`, `call_tracker_events_owner_context`, `call_tracker_events_deduped`, `call_tracker_events`, `call_tracker_meeting_sets`, and `call_events`.
+
+Remaining broader cleanup:
+
+1. `call_activity_events` and `meeting_events` are still historical source tables and repair-script references. Drop them only after the next delete gate proves no repair/audit workflow needs them.
+2. `active_athlete_meeting_truth` and `athlete_lifecycle_timeline` are still used by meeting readback; move that page to `appointments` plus `lifecycle_events` before purging those views.
+3. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging views; it now falls back to `call_log` when compatibility views are gone.
 
 ## Repeatable Refactor Playbook
 

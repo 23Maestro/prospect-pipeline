@@ -45,6 +45,32 @@ const eventFields = [
   'created_at',
 ];
 
+const callLogFields = [
+  'athlete_name',
+  'occurred_at',
+  'event_at',
+  'reporting_at',
+  'tracker_outcome',
+  'raw_crm_stage',
+  'raw_task_status',
+  'raw_event_type',
+  'source_system',
+  'appointment_id',
+  'booked_event_title',
+  'revenue_cents',
+  'counts_as_meeting_set',
+  'counts_as_post_meeting_outcome',
+  'materialization_status',
+  MATERIALIZATION_REASON_FIELD,
+  'active_operator_name',
+  'task_assigned_owner',
+  'resolved_owner_name',
+  'resolved_owner_source_field',
+  'can_materialize_for_active_operator',
+  PAYLOAD_FIELD,
+  'created_at',
+];
+
 const lifecycleFields = [
   'lifecycle_event_id',
   'athlete_key',
@@ -266,6 +292,17 @@ function isLifecycleMeetingRow(row: Record<string, any>) {
   return Boolean(body.appointment_id || body.booked_event_id);
 }
 
+function callLogRowToEvent(row: Record<string, any>) {
+  const reportingAt = row.reporting_at || row.event_at || row.occurred_at;
+  return {
+    ...row,
+    source: row.source_system || 'call_log',
+    reporting_date_et: localDateKey(reportingAt),
+    [PAYLOAD_FIELD]: row[PAYLOAD_FIELD] || {},
+    [MATERIALIZATION_REASON_FIELD]: row[MATERIALIZATION_REASON_FIELD] || row[PAYLOAD_FIELD]?.[MATERIALIZATION_REASON_FIELD] || null,
+  };
+}
+
 function meetingRow(row: Record<string, any>) {
   const when = sourceTime(row);
   return {
@@ -276,7 +313,7 @@ function meetingRow(row: Record<string, any>) {
     meetingTitle: row.booked_event_title || row.raw_task_status || row.raw_crm_stage || '',
     appointmentId: row.appointment_id || '',
     proof: proofLabel(row),
-    source: sourceLabel(row.source || 'call_tracker_events_owner_context', row.raw_event_type || row.tracker_outcome),
+    source: sourceLabel(row.source || 'call_log', row.raw_event_type || row.tracker_outcome),
     rawSource: row.source || null,
     rawCrmStage: row.raw_crm_stage || null,
     rawTaskStatus: row.raw_task_status || null,
@@ -360,9 +397,12 @@ function summaryFor(
     return rowKey >= monthRange.start && rowKey <= monthRange.end;
   });
   const reportedMeetingsSet = Number(sourceSummary.meetings_set);
-  const trueMeetingsSet = Number.isFinite(reportedMeetingsSet)
-    ? reportedMeetingsSet
-    : meetings.filter((row) => row.countsAsMeetingSet === true).length;
+  const trueMeetingsSet = Math.max(
+    Number.isFinite(reportedMeetingsSet) ? reportedMeetingsSet : 0,
+    meetings.filter((row) => row.countsAsMeetingSet === true).length,
+    meetings.filter((row) => row.countsAsPostMeetingOutcome === true).length,
+    currentMeetings.length,
+  );
   const postMeetingRows = meetings.filter((row) => row.countsAsPostMeetingOutcome === true);
   const closedWon = postMeetingRows.filter((row) => statusText(row) === 'closed_won').length;
   const closedLost = postMeetingRows.filter((row) => statusText(row) === 'closed_lost').length;
@@ -387,21 +427,31 @@ function summaryFor(
   };
 }
 
+function sourceSummaryFromEvents(rows: Array<Record<string, any>>) {
+  return {
+    meetings_set: rows.filter((row) => row.counts_as_meeting_set === true).length,
+    meeting_outcomes_total: rows.filter((row) => row.counts_as_post_meeting_outcome === true).length,
+    closed_won: rows.filter((row) => row.tracker_outcome === 'closed_won').length,
+    money_earned_cents: rows
+      .filter((row) => row.tracker_outcome === 'closed_won')
+      .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
+  };
+}
+
 async function buildMeetingReadback() {
-  const summaryView = 'call_tracker_summary';
-  const eventView = 'call_tracker_events_owner_context';
+  const canonicalEventTable = 'call_log';
   const activeMeetingView = 'active_athlete_meeting_truth';
   const lifecycleView = 'athlete_lifecycle_timeline';
-  const [summaryRows, eventRows, activeMeetingRows, lifecycleRows] = await Promise.all([
-    supabaseGet(`${summaryView}?select=*`),
-    supabaseGet([`${eventView}?select=${encodeURIComponent(eventFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
+  const [callLogRows, activeMeetingRows, lifecycleRows] = await Promise.all([
+    supabaseGet([`${canonicalEventTable}?select=${encodeURIComponent(callLogFields.join(','))}`, 'order=reporting_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
     supabaseGet([`${activeMeetingView}?select=${encodeURIComponent(activeMeetingFields.join(','))}`, 'order=current_starts_at.asc', `limit=${EVENT_LIMIT}`].join('&')),
     supabaseGet([`${lifecycleView}?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
   ]);
   const currentMeetings = (Array.isArray(activeMeetingRows) ? activeMeetingRows : [])
     .map(currentMeetingRow)
     .sort((left, right) => new Date(left.when || 0).getTime() - new Date(right.when || 0).getTime());
-  const meetings = (Array.isArray(eventRows) ? eventRows : [])
+  const eventRows = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
+  const meetings = eventRows
     .filter(isMeetingEvent)
     .map(meetingRow)
     .sort((left, right) => new Date(right.when || 0).getTime() - new Date(left.when || 0).getTime());
@@ -415,7 +465,7 @@ async function buildMeetingReadback() {
     .map(lifecycleRow)
     .sort((left, right) => new Date(right.when || 0).getTime() - new Date(left.when || 0).getTime());
   const generatedAt = new Date().toISOString();
-  const sourceSummary = (Array.isArray(summaryRows) ? summaryRows[0] : {}) || {};
+  const sourceSummary = sourceSummaryFromEvents(eventRows);
   return {
     contract: 'prospect-meetings-readback',
     version: 1,
@@ -425,8 +475,7 @@ async function buildMeetingReadback() {
       generatedAtLabel: etLabel(generatedAt),
       eventLimit: EVENT_LIMIT,
       supabaseReads: {
-        summaryView,
-        eventView,
+        canonicalEventTable,
         activeMeetingView,
         lifecycleView,
       },

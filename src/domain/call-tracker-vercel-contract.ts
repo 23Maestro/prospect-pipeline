@@ -6,11 +6,10 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     'Call Tracker browser contract for live Vercel Supabase reads. Supabase owns the reporting views and count booleans; Vercel reads those low-maintenance API views at request time so call-tracker data can change without redeploying the static app. Reporting counts come from explicit countsAsDial, countsAsContact, countsAsMeetingSet, countsAsPostMeetingOutcome, and counts_as_* booleans, never from activity_kind alone.',
   browserContract: {
     eventFeed: {
-      supabaseView: 'call_tracker_events_owner_context',
       canonicalEventTable: 'call_log',
-      compatibilityRead: true,
+      compatibilityRead: false,
       plainEnglish:
-        'This is the current live compatibility event view the Vercel API reads while Call Tracker migrates to canonical call_log aggregation. It must carry proof fields plus count booleans so the browser never recomputes business meaning.',
+        'The Vercel API reads canonical call_log rows directly. Rows must carry proof fields plus count booleans so the browser never recomputes business meaning.',
       requiredFields: [
         'athlete_name',
         'occurred_at',
@@ -40,11 +39,10 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
       ],
     },
     summaryHelper: {
-      supabaseView: 'call_tracker_summary',
       canonicalEventTable: 'call_log',
-      compatibilityRead: true,
+      compatibilityRead: false,
       plainEnglish:
-        'This is the current live compatibility summary view the Vercel API reads while Call Tracker migrates to canonical call_log aggregation. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.',
+        'The Vercel API derives summary data from canonical call_log rows. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.',
       requiredFields: [
         'dials',
         'contacts',
@@ -153,15 +151,15 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
       card: 'Dials Total',
       domId: 'totalEvents',
       source: 'summaryHelper',
-      countRule: 'display call_tracker_summary.dials',
-      forbiddenRule: 'Do not display call_tracker_summary.total_events as Dials.',
+      countRule: 'display data.ui.summaryCards.dials derived from call_log counts_as_dial',
+      forbiddenRule: 'Do not display raw call_log row count as Dials.',
     },
     {
       card: 'Contacts Total',
       domId: 'spokeWith',
       source: 'summaryHelper',
       countRule: 'display data.ui.summaryCards.contacts, including any explicit historical all-time contacts adjustment',
-      forbiddenRule: 'Do not display call_tracker_summary.spoke_with as Contacts; it includes post-meeting outcomes.',
+      forbiddenRule: 'Do not count post-meeting outcomes as Contacts.',
     },
   ],
   domainOutcomeRules: [
@@ -194,11 +192,7 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     browserUrl: '/api/call-tracker-data',
     workflowCron: 'scripts/sync-supabase-pipeline.sh',
     canonicalEventTable: 'call_log',
-    compatibilityViews: {
-      summaryView: 'call_tracker_summary',
-      eventView: 'call_tracker_events_owner_context',
-    },
     plainEnglish:
-      'The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads Supabase live. Current Call Tracker reads still use compatibility views, but the canonical event target is call_log.',
+      'The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads canonical call_log live.',
   },
 } as const;
