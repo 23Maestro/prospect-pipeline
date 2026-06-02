@@ -92,7 +92,6 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     },
     {
       sourceTable: 'meeting_events',
-      deprecatedReadAlias: 'call_events',
       rawMeaning: 'Post-meeting outcomes such as closed won, closed lost, no show, canceled, and reschedule pending.',
       feedsEventFeedAs: 'post-meeting raw_event_type values',
       ownsCounts: ['countsAsPostMeetingOutcome'],

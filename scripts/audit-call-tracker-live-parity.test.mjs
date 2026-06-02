@@ -14,8 +14,10 @@ import {
 const source = readFileSync(new URL('./audit-call-tracker-live-parity.mjs', import.meta.url), 'utf8');
 
 test('call tracker live parity script stays read-only', () => {
-  assert.match(source, /call_tracker_events_owner_context/);
   assert.match(source, /targetShape: 'call_log'/);
+  assert.doesNotMatch(source, /call_tracker_events_owner_context/);
+  assert.doesNotMatch(source, /call_tracker_summary/);
+  assert.doesNotMatch(source, /call_tracker_events['"`]/);
   assert.doesNotMatch(source, /\bPOST\b/);
   assert.doesNotMatch(source, /\bPATCH\b/);
   assert.doesNotMatch(source, /\bDELETE\b/);

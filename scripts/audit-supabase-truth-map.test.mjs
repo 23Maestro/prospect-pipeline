@@ -93,12 +93,12 @@ test('Supabase truth-map audit default output names owner, active dependency, re
 test('Supabase truth-map audit can print one active-only surface plan', () => {
   const output = execFileSync(
     'node',
-    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_tracker_events', '--active-only'],
+    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'athlete_pipeline_state', '--active-only'],
     { encoding: 'utf8', maxBuffer: EXEC_BUFFER },
   );
 
-  assert.match(output, /call_tracker_events: delete_target/);
-  assert.match(output, /replacement: API\/query over canonical call_log/);
+  assert.match(output, /athlete_pipeline_state: delete_target/);
+  assert.match(output, /replacement: lifecycle_events latest state/);
   assert.match(output, /\[(implementation|script|schema_or_migration)\/(reference|read|write_or_mutation)\]/);
   assert.doesNotMatch(output, /\[doc\//);
   assert.doesNotMatch(output, /\[test\//);

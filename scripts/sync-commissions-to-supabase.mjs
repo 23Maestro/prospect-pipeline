@@ -170,11 +170,43 @@ const paidEntries = commissionEntries
     const status = String(entry?.status || '').trim().toLowerCase();
     return !status || status === 'paid';
   })
-  .filter((entry) => String(entry?.athlete_id || '').trim() && String(entry?.athlete_main_id || '').trim());
+  .filter((entry) => String(entry?.athlete_id || '').trim() && String(entry?.athlete_main_id || '').trim())
+  .sort((left, right) => {
+    const leftPaidAt = parseCommissionDate(left?.paid_at) || '';
+    const rightPaidAt = parseCommissionDate(right?.paid_at) || '';
+    return leftPaidAt.localeCompare(rightPaidAt);
+  });
+
+async function fetchExistingClosedWonRows(athleteId, athleteMainId) {
+  const params = new URLSearchParams({
+    select: 'dedupe_key,appointment_id,live_event_id,booked_event_title,reporting_at,source_system',
+    tracker_outcome: 'eq.closed_won',
+    athlete_id: `eq.${athleteId}`,
+    athlete_main_id: `eq.${athleteMainId}`,
+    order: 'reporting_at.asc',
+  });
+  const response = await fetch(`${SUPABASE_URL}/rest/v1/call_log?${params.toString()}`, {
+    headers: {
+      apikey: SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      'Accept-Profile': SUPABASE_SCHEMA,
+    },
+  });
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(`call_log closed-won lookup failed: HTTP ${response.status}: ${text.slice(0, 200)}`);
+  }
+  return response.json();
+}
+
+function athleteKey(athleteId, athleteMainId) {
+  return `${athleteId}:${athleteMainId}`;
+}
 
 const postMeetingOutcomeFacts = [];
 const skipped = [];
 const failures = [];
+const selectedClosedWonByAthlete = new Map();
 
 for (const entry of paidEntries) {
   const athleteId = String(entry.athlete_id || '').trim();
@@ -193,6 +225,24 @@ for (const entry of paidEntries) {
     const appointmentId = String(bookedMeeting?.event_id || '').trim() || String(entry.account_id || '').trim() || null;
     if (!appointmentId) {
       skipped.push({ athlete_id: athleteId, athlete_main_id: athleteMainId, reason: 'missing_commission_or_meeting_id' });
+      continue;
+    }
+    const existingClosedWonRows = await fetchExistingClosedWonRows(athleteId, athleteMainId);
+    const knownClosedWon = selectedClosedWonByAthlete.get(athleteKey(athleteId, athleteMainId)) || existingClosedWonRows[0] || null;
+    if (
+      knownClosedWon?.appointment_id &&
+      String(knownClosedWon.appointment_id) !== appointmentId
+    ) {
+      skipped.push({
+        athlete_id: athleteId,
+        athlete_main_id: athleteMainId,
+        athlete_name: entry.athlete_name,
+        reason: 'existing_closed_won_enrollment',
+        existing_appointment_id: String(knownClosedWon.appointment_id),
+        candidate_appointment_id: appointmentId,
+        commission_account_id: entry.account_id,
+        commission_paid_at: entry.paid_at,
+      });
       continue;
     }
     const trackerOwnership = resolveCallTrackerOwnership({
@@ -228,7 +278,7 @@ for (const entry of paidEntries) {
     const closeWonOutcome =
       appointmentStatusForTitleOrStage(closeWonCrmStage, '(ENR)') || closeWonTaskStatus;
 
-    postMeetingOutcomeFacts.push(buildMeetingOutcomeFact({
+    const postMeetingOutcomeFact = buildMeetingOutcomeFact({
       athleteId,
       athleteMainId,
       athleteName: entry.athlete_name,
@@ -275,7 +325,14 @@ for (const entry of paidEntries) {
         commission_duplicate_key: entry.duplicate_key,
         commission_possible_duplicate: entry.possible_duplicate,
       },
-    }));
+    });
+    postMeetingOutcomeFacts.push(postMeetingOutcomeFact);
+    selectedClosedWonByAthlete.set(athleteKey(athleteId, athleteMainId), {
+      appointment_id: appointmentId,
+      dedupe_key: postMeetingOutcomeFact.dedupe_key,
+      reporting_at: postMeetingOutcomeFact.occurred_at,
+      source_system: 'stripe_commissions',
+    });
   } catch (error) {
     failures.push({
       athlete_id: athleteId,

@@ -38,7 +38,7 @@ function sourceText(row) {
   const source = String(row.source || '').split('/')[0].trim();
   const labels = {
     appointments: 'Appointment Truth',
-    call_tracker_events_owner_context: 'Call Tracker Reporting',
+    call_log: 'Call Log',
     weekly_booked_meetings_with_operator_confirmation_task: 'Booked Meeting Confirmation',
     lifecycle_events: 'Lifecycle Events',
     meeting_events: 'Meeting Events',

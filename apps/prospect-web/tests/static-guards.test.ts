@@ -200,6 +200,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/audit-supabase-truth-map.mjs',
     'scripts/audit-supabase-truth-map.test.mjs',
     'scripts/audit-call-tracker-live-parity.mjs',
+    'scripts/audit-call-tracker-live-parity.test.mjs',
     'scripts/audit-meeting-readback-live-parity.mjs',
     'scripts/audit-meeting-readback-live-parity.test.mjs',
     'scripts/generate-code-index.test.mjs',

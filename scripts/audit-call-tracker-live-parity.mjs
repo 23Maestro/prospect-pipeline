@@ -183,7 +183,7 @@ export function projectEventRowToCallLog(row) {
   };
 }
 
-export function summarizeCallLogProjection(projectedRows, summary = {}, { projectionSource = 'call_tracker_events_owner_context' } = {}) {
+export function summarizeCallLogProjection(projectedRows, summary = {}, { projectionSource = 'call_log' } = {}) {
   const projected = {
     dials: countWhere(projectedRows, (row) => row.counts_as_dial),
     contacts: countWhere(projectedRows, (row) => row.counts_as_contact),
@@ -230,8 +230,9 @@ export function summarizeCallLogProjection(projectedRows, summary = {}, { projec
   };
 }
 
-export function summarizeCallLogTargetParity(projectedRows, targetRows, { available = true, error = null } = {}) {
+export function summarizeCallLogTargetParity(projectedRows, targetRows, { available = true, error = null, sourceIsTarget = false } = {}) {
   const insertableProjectedRows = projectedRows.filter(isInsertableCallLogRow);
+  const comparableProjectedRows = sourceIsTarget ? projectedRows : insertableProjectedRows;
   if (!available) {
     return {
       available: false,
@@ -243,17 +244,17 @@ export function summarizeCallLogTargetParity(projectedRows, targetRows, { availa
     };
   }
 
-  const projectedDedupeKeys = new Set(insertableProjectedRows.map((row) => row.dedupe_key).filter(Boolean));
+  const projectedDedupeKeys = new Set(comparableProjectedRows.map((row) => row.dedupe_key).filter(Boolean));
   const targetDedupeKeys = new Set(targetRows.map((row) => row.dedupe_key).filter(Boolean));
   const missingInTarget = [...projectedDedupeKeys].filter((dedupeKey) => !targetDedupeKeys.has(dedupeKey));
   const extraInTarget = [...targetDedupeKeys].filter((dedupeKey) => !projectedDedupeKeys.has(dedupeKey));
   const projected = {
-    dials: countWhere(insertableProjectedRows, (row) => row.counts_as_dial),
-    contacts: countWhere(insertableProjectedRows, (row) => row.counts_as_contact),
-    meetings_set: countWhere(insertableProjectedRows, (row) => row.counts_as_meeting_set),
-    meeting_outcomes_total: countWhere(insertableProjectedRows, (row) => row.counts_as_post_meeting_outcome),
-    closed_won: countWhere(insertableProjectedRows, (row) => row.tracker_outcome === 'closed_won'),
-    money_earned_cents: insertableProjectedRows
+    dials: countWhere(comparableProjectedRows, (row) => row.counts_as_dial),
+    contacts: countWhere(comparableProjectedRows, (row) => row.counts_as_contact),
+    meetings_set: countWhere(comparableProjectedRows, (row) => row.counts_as_meeting_set),
+    meeting_outcomes_total: countWhere(comparableProjectedRows, (row) => row.counts_as_post_meeting_outcome),
+    closed_won: countWhere(comparableProjectedRows, (row) => row.tracker_outcome === 'closed_won'),
+    money_earned_cents: comparableProjectedRows
       .filter((row) => row.tracker_outcome === 'closed_won')
       .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
   };
@@ -275,6 +276,7 @@ export function summarizeCallLogTargetParity(projectedRows, targetRows, { availa
     available: true,
     projectedRows: projectedRows.length,
     insertableProjectedRows: insertableProjectedRows.length,
+    comparableProjectedRows: comparableProjectedRows.length,
     targetRows: targetRows.length,
     missingInTarget: missingInTarget.length,
     extraInTarget: extraInTarget.length,
@@ -282,7 +284,7 @@ export function summarizeCallLogTargetParity(projectedRows, targetRows, { availa
     target,
     deltas,
     parity:
-      targetRows.length === insertableProjectedRows.length &&
+      targetRows.length === comparableProjectedRows.length &&
       missingInTarget.length === 0 &&
       extraInTarget.length === 0 &&
       Object.values(deltas).every((value) => value === 0),
@@ -406,8 +408,7 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     throw new Error('Missing Supabase credentials for call tracker live parity audit.');
   }
 
-  const [summaryRows, lifecycleRows, callActivityRows, meetingRows, trackerRows, ownerContextRows, callLogTarget] = await Promise.all([
-    getOptionalPaged('call_tracker_summary', '*'),
+  const [lifecycleRows, callActivityRows, meetingRows, callLogTarget] = await Promise.all([
     getPaged(
       'lifecycle_events',
       'id,athlete_key,athlete_id,athlete_main_id,event_type,dedupe_key,crm_stage,task_status,payload_json,created_at',
@@ -415,51 +416,11 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     ),
     getOptionalPaged('call_activity_events', 'task_id,payload_json'),
     getOptionalPaged('meeting_events', 'dedupe_key,payload_json'),
-    getOptionalPaged('call_tracker_events', 'id,dedupe_key,tracker_outcome,counts_as_dial,counts_as_contact,counts_as_meeting_set,counts_as_post_meeting_outcome'),
-    getOptionalPaged(
-      'call_tracker_events_owner_context',
-      [
-        'id',
-        'athlete_key',
-        'athlete_id',
-        'athlete_main_id',
-        'athlete_name',
-        'occurred_at',
-        'event_at',
-        'reporting_at',
-        'source',
-        'tracker_outcome',
-        'raw_crm_stage',
-        'raw_task_status',
-        'raw_event_type',
-        'appointment_id',
-        'live_event_id',
-        'booked_event_title',
-        'revenue_cents',
-        'dedupe_key',
-        'active_operator_key',
-        'active_operator_name',
-        'task_assigned_owner',
-        'resolved_owner_name',
-        'resolved_owner_role',
-        'resolved_owner_source_field',
-        'resolved_owner_source_value',
-        'materialization_status',
-        'materialization_reason',
-        'compatibility_source_owner',
-        'compatibility_owner_proof',
-        'can_materialize_for_active_operator',
-        'counts_as_dial',
-        'counts_as_contact',
-        'counts_as_meeting_set',
-        'counts_as_post_meeting_outcome',
-        'payload_json',
-      ].join(','),
-    ),
     getOptionalPaged(
       'call_log',
       [
         'dedupe_key',
+        'source_row_id',
         'fact_type',
         'tracker_outcome',
         'source_family',
@@ -474,17 +435,13 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
   ]);
 
   const callActivityTaskIds = new Set(callActivityRows.rows.map((row) => row.task_id).filter(Boolean));
-  const trackerDedupeKeys = new Set(trackerRows.rows.map((row) => row.dedupe_key).filter(Boolean));
-  const trackerIds = new Set(trackerRows.rows.map((row) => row.id).filter(Boolean));
+  const trackerDedupeKeys = new Set(callLogTarget.rows.map((row) => row.dedupe_key).filter(Boolean));
+  const trackerIds = new Set(callLogTarget.rows.map((row) => row.source_row_id).filter(Boolean));
   const missingMeetingSetCandidates = meetingSetMissingCandidates(lifecycleRows, trackerDedupeKeys);
   const missingOutcomeCandidates = outcomeMissingCandidates(lifecycleRows, trackerIds);
-  const projectionSource = ownerContextRows.available ? 'call_tracker_events_owner_context' : 'call_log';
-  const projectedCallLogRows = ownerContextRows.available
-    ? ownerContextRows.rows.map(projectEventRowToCallLog)
-    : callLogTarget.rows;
-  const summary = summaryRows.available && summaryRows.rows[0]
-    ? summaryRows.rows[0]
-    : summarizeCallLogProjection(projectedCallLogRows, {}, { projectionSource }).projected;
+  const projectionSource = 'call_log';
+  const projectedCallLogRows = callLogTarget.rows;
+  const summary = summarizeCallLogProjection(projectedCallLogRows, {}, { projectionSource }).projected;
   const lifecycleSummary = summarizeLifecycleCandidates(lifecycleRows, {
     callActivityTaskIds,
     callTrackerDedupeKeys: trackerDedupeKeys,
@@ -502,7 +459,10 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     },
     ...(includeProjectedRows ? { projectedCallLogRows } : {}),
     callLogProjection: summarizeCallLogProjection(projectedCallLogRows, summary, { projectionSource }),
-    callLogTarget: summarizeCallLogTargetParity(projectedCallLogRows, callLogTarget.rows, callLogTarget),
+    callLogTarget: summarizeCallLogTargetParity(projectedCallLogRows, callLogTarget.rows, {
+      ...callLogTarget,
+      sourceIsTarget: projectionSource === 'call_log',
+    }),
     ...lifecycleSummary,
   };
 }

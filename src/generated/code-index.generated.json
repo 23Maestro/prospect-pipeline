@@ -26065,6 +26065,23 @@
   {
     "exported": false,
     "tags": [
+      "fetch",
+      "script"
+    ],
+    "snippet": "const response = await fetch(`${SUPABASE_URL}/rest/v1/call_log?${params.toString()}`, {",
+    "signature": "const response = await fetch(`${SUPABASE_URL}/rest/v1/call_log?${params.toString()}`, {",
+    "kind": "api_call",
+    "name": "fetch ${SUPABASE_URL}/rest/v1/call_log?${params.toString()}",
+    "file": "scripts/sync-commissions-to-supabase.mjs",
+    "line": 188,
+    "system": "Scripts",
+    "bucket": "Supabase persistence",
+    "path": "${SUPABASE_URL}/rest/v1/call_log?${params.toString()}",
+    "id": "api_call:Scripts:scripts/sync-commissions-to-supabase.mjs:188::-SUPABASE_URL-/rest/v1/call_log-params.toString-:fetch-SUPABASE_URL-/rest/v1/call_log-params.toString-"
+  },
+  {
+    "exported": false,
+    "tags": [
       "apiFetch",
       "script"
     ],
@@ -26073,11 +26090,11 @@
     "kind": "api_call",
     "name": "apiFetch /calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}",
     "file": "scripts/sync-commissions-to-supabase.mjs",
-    "line": 185,
+    "line": 217,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}",
-    "id": "api_call:Scripts:scripts/sync-commissions-to-supabase.mjs:185::/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-athleteId-athlete_main_id-encodeURIComponent-athleteMainId-:apiFetch-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-athleteId-athlete_main_id-encodeURIComponent-athleteMainId-"
+    "id": "api_call:Scripts:scripts/sync-commissions-to-supabase.mjs:217::/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-athleteId-athlete_main_id-encodeURIComponent-athleteMainId-:apiFetch-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-athleteId-athlete_main_id-encodeURIComponent-athleteMainId-"
   },
   {
     "exported": false,
@@ -26090,11 +26107,11 @@
     "kind": "api_call",
     "name": "apiFetch /athlete/${encodeURIComponent(athleteId)}/resolve?force_refresh=true",
     "file": "scripts/sync-commissions-to-supabase.mjs",
-    "line": 186,
+    "line": 218,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/athlete/${encodeURIComponent(athleteId)}/resolve?force_refresh=true",
-    "id": "api_call:Scripts:scripts/sync-commissions-to-supabase.mjs:186::/athlete/-encodeURIComponent-athleteId-/resolve-force_refresh-true:apiFetch-/athlete/-encodeURIComponent-athleteId-/resolve-force_refresh-true"
+    "id": "api_call:Scripts:scripts/sync-commissions-to-supabase.mjs:218::/athlete/-encodeURIComponent-athleteId-/resolve-force_refresh-true:apiFetch-/athlete/-encodeURIComponent-athleteId-/resolve-force_refresh-true"
   },
   {
     "exported": false,
@@ -26487,10 +26504,10 @@
     "kind": "function",
     "name": "meetingSetMissingCandidates",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 378,
+    "line": 380,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:378:::meetingSetMissingCandidates"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:380:::meetingSetMissingCandidates"
   },
   {
     "exported": false,
@@ -26502,10 +26519,10 @@
     "kind": "function",
     "name": "outcomeMissingCandidates",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 390,
+    "line": 392,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:390:::outcomeMissingCandidates"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:392:::outcomeMissingCandidates"
   },
   {
     "exported": false,
@@ -30106,6 +30123,36 @@
     "system": "Scripts",
     "bucket": "Script/sync job",
     "id": "function:Scripts:scripts/sync-commissions-to-supabase.mjs:148:::pickCurrentTask"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "async function fetchExistingClosedWonRows(athleteId, athleteMainId) {",
+    "signature": "async function fetchExistingClosedWonRows(athleteId, athleteMainId) {",
+    "kind": "function",
+    "name": "fetchExistingClosedWonRows",
+    "file": "scripts/sync-commissions-to-supabase.mjs",
+    "line": 180,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/sync-commissions-to-supabase.mjs:180:::fetchExistingClosedWonRows"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function athleteKey(athleteId, athleteMainId) {",
+    "signature": "function athleteKey(athleteId, athleteMainId) {",
+    "kind": "function",
+    "name": "athleteKey",
+    "file": "scripts/sync-commissions-to-supabase.mjs",
+    "line": 202,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/sync-commissions-to-supabase.mjs:202:::athleteKey"
   },
   {
     "exported": false,

@@ -37,3 +37,10 @@ test('commission sync enriches the same close-won outcome fact instead of creati
   assert.doesNotMatch(source, /dedupeOutcome: `closed_won:\$\{entry\.account_id/);
   assert.match(source, /Stripe commission rows are paid close-won evidence, not call activity/);
 });
+
+test('commission sync skips repeat paid rows that resolve to a second appointment for an existing enrollment', () => {
+  assert.match(source, /fetchExistingClosedWonRows/);
+  assert.match(source, /selectedClosedWonByAthlete/);
+  assert.match(source, /existing_closed_won_enrollment/);
+  assert.match(source, /candidate_appointment_id/);
+});

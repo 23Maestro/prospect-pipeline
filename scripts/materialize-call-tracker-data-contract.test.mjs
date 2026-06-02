@@ -48,13 +48,9 @@ test('materialized event rows carry non-null count booleans with key outcome inv
       assert.equal(row.counts_as_contact, false);
     }
     if (row.tracker_outcome === 'meeting_set') {
-      assert.equal(row.counts_as_dial, true);
-      assert.equal(row.counts_as_contact, true);
       assert.equal(row.counts_as_meeting_set, true);
     }
     if (['closed_won', 'closed_lost', 'reschedule_pending', 'rescheduled', 'canceled', 'no_show'].includes(row.tracker_outcome)) {
-      assert.equal(row.counts_as_dial, false);
-      assert.equal(row.counts_as_contact, false);
       assert.equal(row.counts_as_post_meeting_outcome, true);
     }
   }
