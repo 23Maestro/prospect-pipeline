@@ -190,6 +190,17 @@ function lineNumberForIndex(text, index) {
   return text.slice(0, index).split('\n').length;
 }
 
+function isSurfaceReference(surface, line) {
+  if (surface !== 'reminders') return true;
+  return (
+    /\bpublic\.reminders\b/u.test(line) ||
+    /\/rest\/v1\/reminders\b/u.test(line) ||
+    /\b(?:from|join|on|alter\s+table(?:\s+if\s+exists)?|create\s+table(?:\s+if\s+not\s+exists)?|drop\s+table(?:\s+if\s+exists)?)\s+(?:public\.)?reminders\b/iu.test(line) ||
+    /writeRows\(\s*config\s*,\s*['"`]reminders['"`]/u.test(line) ||
+    /^['"`]reminders['"`],?$/u.test(line.trim())
+  );
+}
+
 function classifyAccess(line) {
   if (/\b(source_family|sourceFamily|sourceFamilies|sourceTable)\b/u.test(line)) {
     return 'provenance_reference';
@@ -251,6 +262,7 @@ for (const file of files) {
     for (const match of text.matchAll(pattern)) {
       const lineNo = lineNumberForIndex(text, match.index || 0);
       const line = text.split('\n')[lineNo - 1]?.trim() || '';
+      if (!isSurfaceReference(surface, line)) continue;
       results[surface].references.push({
         file: relative,
         line: lineNo,

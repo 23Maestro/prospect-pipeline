@@ -60,21 +60,6 @@ create index if not exists lifecycle_events_transition_stage_idx
   on lifecycle_events (previous_crm_stage, crm_stage, created_at desc)
   where previous_crm_stage is not null;
 
-create table if not exists reminders (
-  id text primary key,
-  appointment_id text not null references appointments (id) on delete cascade,
-  kind text not null,
-  send_at timestamptz,
-  sent_at timestamptz,
-  status text not null,
-  dedupe_key text not null unique,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists reminders_status_send_at_idx
-  on reminders (status, send_at);
-
 create table if not exists set_meeting_confirmation_cache (
   id text primary key,
   appointment_id text not null,

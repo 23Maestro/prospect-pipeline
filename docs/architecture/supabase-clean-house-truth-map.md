@@ -93,11 +93,18 @@ Completed in this lifecycle snapshot purge slice:
 4. Moved the current sales-stage reconciler off `athlete_pipeline_state`; it now derives candidates from lifecycle events and ended appointments, appends lifecycle events, patches appointments, writes Call Log outcome facts, and soft-inactivates contact cache when needed.
 5. Added `20260602140500_purge_athlete_pipeline_state.sql` to drop the deprecated mutable snapshot table after active dependency proof.
 
+Completed in this reminder table purge slice:
+
+1. Tightened the truth-map audit so local Apple Reminder helpers do not count as Supabase `reminders` table dependencies.
+2. Removed the deprecated `reminders` table and index from the base Supabase schema.
+3. Removed the empty Reminders section from the Supabase lifecycle status command.
+4. Added `20260602143000_purge_reminders_table.sql` to drop the deprecated table after active dependency proof.
+
 Remaining broader cleanup:
 
 1. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views and source tables; it reads canonical `call_log`.
 2. Use `scripts/audit-meeting-readback-live-parity.mjs` as a canonical coverage audit after projection views are purged; it intentionally no longer reads old projection views.
-3. Remaining large delete target is `reminders`.
+3. No large delete targets remain in this cleanup map.
 
 ## Repeatable Refactor Playbook
 

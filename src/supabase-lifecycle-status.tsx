@@ -69,17 +69,6 @@ function buildMarkdown(snapshot: LifecycleHealthSnapshot | null, error?: string 
     lines.push('');
   }
 
-  lines.push(`## Reminders (${snapshot.reminderRows.length})`, '');
-  if (!snapshot.reminderRows.length) {
-    lines.push('No `reminders` rows yet.');
-  } else {
-    for (const row of snapshot.reminderRows) {
-      lines.push(
-        `- ${row.kind} | ${row.status} | appointment: ${row.appointment_id} | send: ${formatTimestamp(row.send_at)} | sent: ${formatTimestamp(row.sent_at)} | updated: ${formatTimestamp(row.updated_at)}`,
-      );
-    }
-  }
-
   return lines.join('\n');
 }
 

@@ -155,7 +155,7 @@ Use these rules before adding or moving code:
 - `call_events` is a deprecated compatibility/history name and must not be reused as the canonical target.
 - `athlete_contact_cache` supports contact lookup and Client Messages admission; it does not own meeting truth.
 - `set_meeting_confirmation_cache` supports confirmation/message workflows; it does not own lifecycle truth.
-- `active_athlete_meeting_truth`, `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `athlete_pipeline_state`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, and `meeting_truth_anomalies` have been purged as live views/tables where they existed. Their names may remain only as `call_log.source_family` provenance labels, cleanup docs, tests, or migration history. `reminders` remains a migration/delete target; do not add new dependencies on it.
+- `active_athlete_meeting_truth`, `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `athlete_pipeline_state`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, and `reminders` have been purged as live views/tables where they existed. Their names may remain only as `call_log.source_family` provenance labels, cleanup docs, tests, local Apple Reminder helpers, or migration history. Do not add new dependencies on purged Supabase surfaces.
 - Laravel/FastAPI endpoints are source-system adapters. Do not encode business meaning in endpoint wrappers when a domain helper already owns it.
 
 ## Repair And Audit Scripts

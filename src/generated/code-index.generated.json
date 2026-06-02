@@ -6637,10 +6637,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 800,
+    "line": 799,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:800:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:799:::fetch"
   },
   {
     "exported": false,
@@ -6652,10 +6652,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 821,
+    "line": 820,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:821:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:820:::fetch"
   },
   {
     "exported": false,
@@ -6667,10 +6667,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 840,
+    "line": 839,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:840:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:839:::fetch"
   },
   {
     "exported": false,
@@ -6682,11 +6682,11 @@
     "kind": "api_call",
     "name": "fetch `${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 859,
+    "line": 858,
     "system": "Raycast",
     "bucket": "Supabase persistence",
     "path": "`${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:859::-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-:fetch-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:858::-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-:fetch-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-"
   },
   {
     "exported": false,
@@ -6698,11 +6698,11 @@
     "kind": "api_call",
     "name": "fetch `${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(\n      args.athleteId.trim(),\n    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 877,
+    "line": 876,
     "system": "Raycast",
     "bucket": "Supabase persistence",
     "path": "`${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(\n      args.athleteId.trim(),\n    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:877::-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-:fetch-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:876::-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-:fetch-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-"
   },
   {
     "exported": false,
@@ -19727,10 +19727,10 @@
     "kind": "function",
     "name": "lifecycleSalesStage",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1058,
+    "line": 1057,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1058:::lifecycleSalesStage"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1057:::lifecycleSalesStage"
   },
   {
     "exported": true,
@@ -19742,10 +19742,10 @@
     "kind": "function",
     "name": "recordMeetingSet",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1125,
+    "line": 1124,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1125:::recordMeetingSet"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1124:::recordMeetingSet"
   },
   {
     "exported": true,
@@ -19757,10 +19757,10 @@
     "kind": "function",
     "name": "recordConfirmationQueued",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1193,
+    "line": 1192,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1193:::recordConfirmationQueued"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1192:::recordConfirmationQueued"
   },
   {
     "exported": true,
@@ -19772,10 +19772,10 @@
     "kind": "function",
     "name": "recordConfirmationSent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1225,
+    "line": 1224,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1225:::recordConfirmationSent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1224:::recordConfirmationSent"
   },
   {
     "exported": true,
@@ -19787,10 +19787,10 @@
     "kind": "function",
     "name": "recordVoicemailFollowUpSent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1255,
+    "line": 1254,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1255:::recordVoicemailFollowUpSent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1254:::recordVoicemailFollowUpSent"
   },
   {
     "exported": true,
@@ -19802,10 +19802,10 @@
     "kind": "function",
     "name": "recordRescheduled",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1281,
+    "line": 1280,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1281:::recordRescheduled"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1280:::recordRescheduled"
   },
   {
     "exported": true,
@@ -19817,10 +19817,10 @@
     "kind": "function",
     "name": "getLifecycleHealthSnapshot",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1327,
+    "line": 1326,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1327:::getLifecycleHealthSnapshot"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1326:::getLifecycleHealthSnapshot"
   },
   {
     "exported": true,
@@ -19832,10 +19832,10 @@
     "kind": "function",
     "name": "getActiveMeetingFallbackRows",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1392,
+    "line": 1389,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1392:::getActiveMeetingFallbackRows"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1389:::getActiveMeetingFallbackRows"
   },
   {
     "exported": false,
@@ -19845,10 +19845,10 @@
     "kind": "function",
     "name": "isEndedAppointmentTimestamp",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 312,
+    "line": 311,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:312:::isEndedAppointmentTimestamp"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:311:::isEndedAppointmentTimestamp"
   },
   {
     "exported": false,
@@ -19858,10 +19858,10 @@
     "kind": "function",
     "name": "logInfo",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 317,
+    "line": 316,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:317:::logInfo"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:316:::logInfo"
   },
   {
     "exported": false,
@@ -19871,10 +19871,10 @@
     "kind": "function",
     "name": "logFailure",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 332,
+    "line": 331,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:332:::logFailure"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:331:::logFailure"
   },
   {
     "exported": false,
@@ -19884,10 +19884,10 @@
     "kind": "function",
     "name": "readEnvFile",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 343,
+    "line": 342,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:343:::readEnvFile"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:342:::readEnvFile"
   },
   {
     "exported": false,
@@ -19897,10 +19897,10 @@
     "kind": "function",
     "name": "findProjectRoot",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 363,
+    "line": 362,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:363:::findProjectRoot"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:362:::findProjectRoot"
   },
   {
     "exported": false,
@@ -19910,10 +19910,10 @@
     "kind": "function",
     "name": "readRepoEnv",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 388,
+    "line": 387,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:388:::readRepoEnv"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:387:::readRepoEnv"
   },
   {
     "exported": true,
@@ -19925,10 +19925,10 @@
     "kind": "function",
     "name": "getSupabasePersistenceConfig",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 403,
+    "line": 402,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:403:::getSupabasePersistenceConfig"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:402:::getSupabasePersistenceConfig"
   },
   {
     "exported": false,
@@ -19938,10 +19938,10 @@
     "kind": "function",
     "name": "normalizeValue",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 428,
+    "line": 427,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:428:::normalizeValue"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:427:::normalizeValue"
   },
   {
     "exported": false,
@@ -19951,10 +19951,10 @@
     "kind": "function",
     "name": "normalizeIsoValue",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 433,
+    "line": 432,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:433:::normalizeIsoValue"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:432:::normalizeIsoValue"
   },
   {
     "exported": false,
@@ -19964,10 +19964,10 @@
     "kind": "function",
     "name": "normalizeLegacyDateTime",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 440,
+    "line": 439,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:440:::normalizeLegacyDateTime"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:439:::normalizeLegacyDateTime"
   },
   {
     "exported": false,
@@ -19977,10 +19977,10 @@
     "kind": "function",
     "name": "payloadOwnerProof",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 458,
+    "line": 457,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:458:::payloadOwnerProof"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:457:::payloadOwnerProof"
   },
   {
     "exported": false,
@@ -19990,10 +19990,10 @@
     "kind": "function",
     "name": "payloadString",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 470,
+    "line": 469,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:470:::payloadString"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:469:::payloadString"
   },
   {
     "exported": false,
@@ -20003,10 +20003,10 @@
     "kind": "function",
     "name": "payloadNumber",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 474,
+    "line": 473,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:474:::payloadNumber"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:473:::payloadNumber"
   },
   {
     "exported": false,
@@ -20016,10 +20016,10 @@
     "kind": "function",
     "name": "lifecycleMutationEventType",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 479,
+    "line": 478,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:479:::lifecycleMutationEventType"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:478:::lifecycleMutationEventType"
   },
   {
     "exported": false,
@@ -20029,10 +20029,10 @@
     "kind": "function",
     "name": "resolveMutationActivitySubtype",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 489,
+    "line": 488,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:489:::resolveMutationActivitySubtype"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:488:::resolveMutationActivitySubtype"
   },
   {
     "exported": false,
@@ -20042,10 +20042,10 @@
     "kind": "function",
     "name": "resolveMutationOccurredAt",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 503,
+    "line": 502,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:503:::resolveMutationOccurredAt"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:502:::resolveMutationOccurredAt"
   },
   {
     "exported": true,
@@ -20057,10 +20057,10 @@
     "kind": "function",
     "name": "buildLifecycleMutationEvent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 528,
+    "line": 527,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:528:::buildLifecycleMutationEvent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:527:::buildLifecycleMutationEvent"
   },
   {
     "exported": true,
@@ -20072,10 +20072,10 @@
     "kind": "function",
     "name": "buildAthleteKey",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 628,
+    "line": 627,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:628:::buildAthleteKey"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:627:::buildAthleteKey"
   },
   {
     "exported": true,
@@ -20087,10 +20087,10 @@
     "kind": "function",
     "name": "buildAppointmentId",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 632,
+    "line": 631,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:632:::buildAppointmentId"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:631:::buildAppointmentId"
   },
   {
     "exported": true,
@@ -20102,10 +20102,10 @@
     "kind": "function",
     "name": "buildReminderDedupeKey",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 650,
+    "line": 649,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:650:::buildReminderDedupeKey"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:649:::buildReminderDedupeKey"
   },
   {
     "exported": false,
@@ -20115,10 +20115,10 @@
     "kind": "function",
     "name": "buildAthleteRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 664,
+    "line": 663,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:664:::buildAthleteRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:663:::buildAthleteRow"
   },
   {
     "exported": false,
@@ -20128,10 +20128,10 @@
     "kind": "function",
     "name": "buildCurrentLifecycleStateRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 674,
+    "line": 673,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:674:::buildCurrentLifecycleStateRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:673:::buildCurrentLifecycleStateRow"
   },
   {
     "exported": true,
@@ -20143,10 +20143,10 @@
     "kind": "function",
     "name": "buildAppointmentRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 704,
+    "line": 703,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:704:::buildAppointmentRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:703:::buildAppointmentRow"
   },
   {
     "exported": false,
@@ -20156,10 +20156,10 @@
     "kind": "function",
     "name": "buildLifecycleEventRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 744,
+    "line": 743,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:744:::buildLifecycleEventRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:743:::buildLifecycleEventRow"
   },
   {
     "exported": false,
@@ -20169,10 +20169,10 @@
     "kind": "function",
     "name": "request",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 778,
+    "line": 777,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:778:::request"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:777:::request"
   },
   {
     "exported": false,
@@ -20182,10 +20182,10 @@
     "kind": "function",
     "name": "deleteRows",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 819,
+    "line": 818,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:819:::deleteRows"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:818:::deleteRows"
   },
   {
     "exported": false,
@@ -20195,10 +20195,10 @@
     "kind": "function",
     "name": "queryTable",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 838,
+    "line": 837,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:838:::queryTable"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:837:::queryTable"
   },
   {
     "exported": false,
@@ -20208,10 +20208,10 @@
     "kind": "function",
     "name": "fetchLiveSelectedSalesStage",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 858,
+    "line": 857,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:858:::fetchLiveSelectedSalesStage"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:857:::fetchLiveSelectedSalesStage"
   },
   {
     "exported": false,
@@ -20221,10 +20221,10 @@
     "kind": "function",
     "name": "fetchLiveBookedEvent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 872,
+    "line": 871,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:872:::fetchLiveBookedEvent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:871:::fetchLiveBookedEvent"
   },
   {
     "exported": true,
@@ -20236,10 +20236,10 @@
     "kind": "function",
     "name": "resolveLifecycleRetentionDecision",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 895,
+    "line": 894,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:895:::resolveLifecycleRetentionDecision"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:894:::resolveLifecycleRetentionDecision"
   },
   {
     "exported": false,
@@ -20249,10 +20249,10 @@
     "kind": "function",
     "name": "softArchiveCurrentAppointment",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 954,
+    "line": 953,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:954:::softArchiveCurrentAppointment"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:953:::softArchiveCurrentAppointment"
   },
   {
     "exported": false,
@@ -20262,10 +20262,10 @@
     "kind": "function",
     "name": "purgeAthleteLifecycle",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 990,
+    "line": 989,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:990:::purgeAthleteLifecycle"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:989:::purgeAthleteLifecycle"
   },
   {
     "exported": false,
@@ -20275,10 +20275,10 @@
     "kind": "function",
     "name": "writeLifecycle",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 997,
+    "line": 996,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:997:::writeLifecycle"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:996:::writeLifecycle"
   },
   {
     "exported": true,
@@ -23716,10 +23716,10 @@
     "kind": "function",
     "name": "SupabaseLifecycleStatusCommand",
     "file": "src/supabase-lifecycle-status.tsx",
-    "line": 86,
+    "line": 75,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/supabase-lifecycle-status.tsx:86:::SupabaseLifecycleStatusCommand"
+    "id": "function:Raycast:src/supabase-lifecycle-status.tsx:75:::SupabaseLifecycleStatusCommand"
   },
   {
     "exported": false,
@@ -23729,10 +23729,10 @@
     "kind": "function",
     "name": "load",
     "file": "src/supabase-lifecycle-status.tsx",
-    "line": 91,
+    "line": 80,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/supabase-lifecycle-status.tsx:91:::load"
+    "id": "function:Raycast:src/supabase-lifecycle-status.tsx:80:::load"
   },
   {
     "exported": false,
@@ -26709,15 +26709,30 @@
     "tags": [
       "script"
     ],
+    "snippet": "function isSurfaceReference(surface, line) {",
+    "signature": "function isSurfaceReference(surface, line) {",
+    "kind": "function",
+    "name": "isSurfaceReference",
+    "file": "scripts/audit-supabase-truth-map.mjs",
+    "line": 193,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:193:::isSurfaceReference"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
     "snippet": "function classifyAccess(line) {",
     "signature": "function classifyAccess(line) {",
     "kind": "function",
     "name": "classifyAccess",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 193,
+    "line": 204,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:193:::classifyAccess"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:204:::classifyAccess"
   },
   {
     "exported": false,
@@ -26729,10 +26744,10 @@
     "kind": "function",
     "name": "classifyFileKind",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 219,
+    "line": 230,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:219:::classifyFileKind"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:230:::classifyFileKind"
   },
   {
     "exported": false,
@@ -26744,10 +26759,10 @@
     "kind": "function",
     "name": "isActiveDependency",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 234,
+    "line": 245,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:234:::isActiveDependency"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:245:::isActiveDependency"
   },
   {
     "exported": false,
@@ -26759,10 +26774,10 @@
     "kind": "function",
     "name": "sortReferences",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 295,
+    "line": 307,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:295:::sortReferences"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:307:::sortReferences"
   },
   {
     "exported": false,
@@ -26774,10 +26789,10 @@
     "kind": "function",
     "name": "filteredReferences",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 302,
+    "line": 314,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:302:::filteredReferences"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:314:::filteredReferences"
   },
   {
     "exported": false,

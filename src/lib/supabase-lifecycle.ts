@@ -290,7 +290,6 @@ export type LifecycleHealthSnapshot = {
     athlete_main_id: string;
     created_at: string;
   }>;
-  reminderRows: Array<Record<string, never>>;
 };
 
 export type ActiveMeetingFallbackRow = {
@@ -1331,7 +1330,6 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
       enabled: false,
       stateRows: [],
       eventRows: [],
-      reminderRows: [],
     };
   }
 
@@ -1385,7 +1383,6 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
       athlete_name: athleteNameByKey.get(row.athlete_key) || '',
     })),
     eventRows,
-    reminderRows: [],
   };
 }
 
