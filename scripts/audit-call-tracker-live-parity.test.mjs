@@ -18,6 +18,8 @@ test('call tracker live parity script stays read-only', () => {
   assert.doesNotMatch(source, /call_tracker_events_owner_context/);
   assert.doesNotMatch(source, /call_tracker_summary/);
   assert.doesNotMatch(source, /call_tracker_events['"`]/);
+  assert.doesNotMatch(source, /getOptionalPaged\('call_activity_events'/);
+  assert.doesNotMatch(source, /getOptionalPaged\('meeting_events'/);
   assert.doesNotMatch(source, /\bPOST\b/);
   assert.doesNotMatch(source, /\bPATCH\b/);
   assert.doesNotMatch(source, /\bDELETE\b/);

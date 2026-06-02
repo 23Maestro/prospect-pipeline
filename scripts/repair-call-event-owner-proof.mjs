@@ -100,7 +100,9 @@ function findBookedMeeting(row, meetings) {
 
 const rows = await supabaseRequest(
   [
-    'meeting_events?select=id,athlete_key,athlete_id,athlete_main_id,athlete_name,appointment_id,live_event_id,booked_event_title,source_owner,owner_proof,is_tracked_owner,payload_json',
+    'call_log?select=id,athlete_key,athlete_id,athlete_main_id,athlete_name,appointment_id,live_event_id,booked_event_title,source_owner,owner_proof,can_materialize_for_active_operator,payload_json',
+    'source_family=eq.meeting_events',
+    'fact_type=eq.post_meeting_outcome',
     'or=(source_owner.is.null,source_owner.eq.,owner_proof.is.null,owner_proof.eq.)',
     'order=occurred_at.desc',
     'limit=1000',
@@ -151,7 +153,7 @@ for (const row of Array.isArray(rows) ? rows : []) {
       athlete_name: row.athlete_name,
       source_owner: owner.sourceOwner,
       owner_proof: owner.ownerProof,
-      is_tracked_owner: owner.isTrackedOwner,
+      can_materialize_for_active_operator: owner.isTrackedOwner,
     });
   } catch (error) {
     failures.push({
@@ -174,7 +176,7 @@ if (failures.length) {
 
 if (!DRY_RUN) {
   for (const repair of repairs) {
-    await supabaseRequest(`meeting_events?id=eq.${encodeURIComponent(repair.id)}`, {
+    await supabaseRequest(`call_log?id=eq.${encodeURIComponent(repair.id)}`, {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
@@ -183,7 +185,7 @@ if (!DRY_RUN) {
       body: JSON.stringify({
         source_owner: repair.source_owner,
         owner_proof: repair.owner_proof,
-        is_tracked_owner: repair.is_tracked_owner,
+        can_materialize_for_active_operator: repair.can_materialize_for_active_operator,
       }),
     });
   }

@@ -65,7 +65,7 @@ Before dropping a surface:
 
 ## Call Log Readiness
 
-`call_log` is the target name for the centralized event ledger. `20260602090000_call_log_canonical_ledger.sql` defines the schema, the first Call Tracker backfill has been applied, shared writers now route reporting facts to `call_log`, and Prospect Web reads `call_log` directly. `20260602113000_purge_call_tracker_compatibility_views.sql` drops the old Call Tracker compatibility views. The old `call_events` name is intentionally retired because the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renamed the old table to `meeting_events` and recreated `call_events` as a deprecated compatibility view.
+`call_log` is the target name for the centralized event ledger. `20260602090000_call_log_canonical_ledger.sql` defines the schema, the first Call Tracker backfill has been applied, shared writers now route reporting facts to `call_log`, and Prospect Web reads `call_log` directly. `20260602113000_purge_call_tracker_compatibility_views.sql` drops the old Call Tracker compatibility views. `20260602133000_purge_call_log_source_tables.sql` drops the old `call_activity_events` and `meeting_events` source tables after zero active dependency proof. The old `call_events` name is intentionally retired because the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renamed the old table to `meeting_events` and recreated `call_events` as a deprecated compatibility view before the compatibility view purge.
 
 Completed in this Call Tracker slice:
 
@@ -75,6 +75,7 @@ Completed in this Call Tracker slice:
 4. Moved shared call activity, meeting-set reporting copy, post-meeting outcome, and Stripe/commission payment evidence writers into `call_log`.
 5. Moved Prospect Web Call Tracker and meeting readback readers to direct `call_log` reads.
 6. Added purge migrations for `weekly_operator_funnel_metrics`, `call_tracker_summary`, `call_tracker_events_owner_context`, `call_tracker_events_deduped`, `call_tracker_events`, `call_tracker_meeting_sets`, and `call_events`.
+7. Repointed legacy repair scripts to canonical `call_log`, refined the truth-map scanner so generated backfills and source-family provenance do not count as active dependencies, then dropped `call_activity_events` and `meeting_events` without dependent-object force drops.
 
 Completed in this meeting/lifecycle projection slice:
 
@@ -86,9 +87,9 @@ Completed in this meeting/lifecycle projection slice:
 
 Remaining broader cleanup:
 
-1. `call_activity_events` and `meeting_events` are still historical source tables and repair-script references. Drop them only after the next delete gate proves no repair/audit workflow needs them.
-2. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views; it now falls back to `call_log` when compatibility views are gone.
-3. Use `scripts/audit-meeting-readback-live-parity.mjs` as a canonical coverage audit after projection views are purged; it intentionally no longer reads old projection views.
+1. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views and source tables; it reads canonical `call_log`.
+2. Use `scripts/audit-meeting-readback-live-parity.mjs` as a canonical coverage audit after projection views are purged; it intentionally no longer reads old projection views.
+3. Remaining large delete targets are `athlete_pipeline_state` and `reminders`.
 
 ## Repeatable Refactor Playbook
 

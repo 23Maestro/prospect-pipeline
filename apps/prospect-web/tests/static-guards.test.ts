@@ -126,7 +126,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/lifecycle-call-tracker-backsync-core.test.mjs',
     'scripts/honest-test-report.mjs',
     'scripts/honest-test-report.test.mjs',
-    'scripts/repair-call-event-owner-proof.mjs',
+  'scripts/repair-call-event-owner-proof.mjs',
     'scripts/sync-supabase-pipeline.sh',
     'scripts/sync-supabase-pipeline.test.mjs',
     oldConfigWriterPath,
@@ -185,9 +185,11 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260529163000_athlete_lifecycle_timeline.sql',
     'supabase/migrations/20260602113000_purge_call_tracker_compatibility_views.sql',
     'supabase/migrations/20260602120000_purge_lifecycle_meeting_projection_views.sql',
+    'supabase/migrations/20260602133000_purge_call_log_source_tables.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
     'supabase/tests/call-log-purge-compatibility-views.test.mjs',
+    'supabase/tests/call-log-source-table-purge.test.mjs',
     'supabase/tests/lifecycle-meeting-projection-purge.test.mjs',
     'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
     'supabase/tests/call-tracker-counting-contract.test.mjs',
@@ -213,6 +215,19 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
       forbiddenPrefixes.some((prefix) => path.startsWith(prefix)) && !allowedSourceFiles.has(path),
   );
   assert.deepEqual(offenders, []);
+});
+
+test('legacy repair scripts target canonical call_log instead of deleted source tables', () => {
+  const backsync = readFileSync(join(repoRoot, 'scripts/backsync-lifecycle-call-activity-events.mjs'), 'utf8');
+  const ownerRepair = readFileSync(join(repoRoot, 'scripts/repair-call-event-owner-proof.mjs'), 'utf8');
+
+  assert.match(backsync, /getPaged\(\s*'call_log'/);
+  assert.match(backsync, /upsertCallActivityEvents/);
+  assert.doesNotMatch(backsync, /call_activity_events\?on_conflict=task_id/);
+  assert.match(ownerRepair, /call_log\?select=/);
+  assert.match(ownerRepair, /source_family=eq\.meeting_events/);
+  assert.doesNotMatch(ownerRepair, /meeting_events\?select=/);
+  assert.doesNotMatch(ownerRepair, /meeting_events\?id=eq/);
 });
 
 test('legacy hosting and FastAPI static web leftovers are purged', () => {

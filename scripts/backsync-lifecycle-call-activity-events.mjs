@@ -4,6 +4,7 @@
 // Action-time writers own new Scout Prep/Raycast call activity facts.
 
 import { resolve } from 'node:path';
+import { upsertCallActivityEvents } from '../src/domain/supabase-persistence.ts';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 import {
   buildCallActivityEventFromLifecycle,
@@ -56,13 +57,16 @@ async function getPaged(table, select, extra = '') {
   }
 }
 
-async function upsertCallActivityEvents(rows) {
+async function upsertCallLogActivityFacts(rows) {
   if (!rows.length || dryRun) return;
-  await request('call_activity_events?on_conflict=task_id', {
-    method: 'POST',
-    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
-    body: JSON.stringify(rows),
-  });
+  await upsertCallActivityEvents(
+    {
+      url: credentials.url,
+      key: credentials.serviceRoleKey,
+      schema: credentials.schema,
+    },
+    rows,
+  );
 }
 
 function isSuppressedOpenQueuePlaceholder(row) {
@@ -79,15 +83,19 @@ function increment(target, key) {
 }
 
 export async function runBacksync() {
-  const [lifecycleRows, callActivityRows] = await Promise.all([
+  const [lifecycleRows, callLogRows] = await Promise.all([
     getPaged(
       'lifecycle_events',
       'id,athlete_key,athlete_id,athlete_main_id,event_type,dedupe_key,crm_stage,task_status,payload_json,created_at',
       'order=created_at.asc',
     ),
-    getPaged('call_activity_events', 'task_id,payload_json'),
+    getPaged(
+      'call_log',
+      'source_row_id,payload_json',
+      'source_family=eq.call_activity_events&fact_type=eq.call_activity',
+    ),
   ]);
-  const existingByTaskId = new Map(callActivityRows.map((row) => [row.task_id, row]).filter(([taskId]) => taskId));
+  const existingByTaskId = new Map(callLogRows.map((row) => [row.source_row_id, row]).filter(([taskId]) => taskId));
   const existingTaskIds = new Set(existingByTaskId.keys());
   const excludedRowsByReason = {};
   const rowsToUpsert = [];
@@ -116,7 +124,7 @@ export async function runBacksync() {
     existingByTaskId.set(activityRow.task_id, activityRow);
   }
 
-  await upsertCallActivityEvents(rowsToUpsert);
+  await upsertCallLogActivityFacts(rowsToUpsert);
   return {
     dryRun,
     repairExisting,

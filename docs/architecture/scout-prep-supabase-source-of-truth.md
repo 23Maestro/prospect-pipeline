@@ -43,9 +43,9 @@ See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned del
 - `lifecycleSalesStage` is the one lifecycle/sales-stage writer.
 - `lifecycle_events` is the only lifecycle/sales-stage history table.
 - `appointments` owns meeting timing/detail/reschedule chain.
-- `call_log` is the centralized table for call, meeting-set, post-meeting, and enrollment payment reporting facts. Its schema, backfill, shared writers, and Prospect Web readers are live.
+- `call_log` is the centralized table for call, meeting-set, post-meeting, and enrollment payment reporting facts. Its schema, backfill, shared writers, Prospect Web readers, and old source-table purge are live.
 - `call_events` is a deprecated compatibility/history name. Current schema history still recreates it as a view over `meeting_events`; do not move readers there or reuse it as the canonical target.
-- `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `active_athlete_meeting_truth`, `athlete_pipeline_state`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, and `reminders` are migration/delete targets.
+- `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `active_athlete_meeting_truth`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, `meeting_events`, and `call_activity_events` have been purged as views/tables where they existed live. `athlete_pipeline_state` and `reminders` remain migration/delete targets.
 
 ## Rules
 

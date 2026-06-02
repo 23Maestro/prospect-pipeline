@@ -155,7 +155,7 @@ Use these rules before adding or moving code:
 - `call_events` is a deprecated compatibility/history name and must not be reused as the canonical target.
 - `athlete_contact_cache` supports contact lookup and Client Messages admission; it does not own meeting truth.
 - `set_meeting_confirmation_cache` supports confirmation/message workflows; it does not own lifecycle truth.
-- `active_athlete_meeting_truth`, `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, `reminders`, and `athlete_pipeline_state` are migration/delete targets; do not add new dependencies on them.
+- `active_athlete_meeting_truth`, `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, and `meeting_truth_anomalies` have been purged as live views/tables where they existed. Their names may remain only as `call_log.source_family` provenance labels or migration history. `reminders` and `athlete_pipeline_state` remain migration/delete targets; do not add new dependencies on them.
 - Laravel/FastAPI endpoints are source-system adapters. Do not encode business meaning in endpoint wrappers when a domain helper already owns it.
 
 ## Repair And Audit Scripts

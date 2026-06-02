@@ -408,14 +408,12 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     throw new Error('Missing Supabase credentials for call tracker live parity audit.');
   }
 
-  const [lifecycleRows, callActivityRows, meetingRows, callLogTarget] = await Promise.all([
+  const [lifecycleRows, callLogTarget] = await Promise.all([
     getPaged(
       'lifecycle_events',
       'id,athlete_key,athlete_id,athlete_main_id,event_type,dedupe_key,crm_stage,task_status,payload_json,created_at',
       'order=created_at.desc',
     ),
-    getOptionalPaged('call_activity_events', 'task_id,payload_json'),
-    getOptionalPaged('meeting_events', 'dedupe_key,payload_json'),
     getOptionalPaged(
       'call_log',
       [
@@ -434,7 +432,12 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     ),
   ]);
 
-  const callActivityTaskIds = new Set(callActivityRows.rows.map((row) => row.task_id).filter(Boolean));
+  const callActivityTaskIds = new Set(
+    callLogTarget.rows
+      .filter((row) => row.source_family === 'call_activity_events' && row.fact_type === 'call_activity')
+      .map((row) => row.source_row_id)
+      .filter(Boolean),
+  );
   const trackerDedupeKeys = new Set(callLogTarget.rows.map((row) => row.dedupe_key).filter(Boolean));
   const trackerIds = new Set(callLogTarget.rows.map((row) => row.source_row_id).filter(Boolean));
   const missingMeetingSetCandidates = meetingSetMissingCandidates(lifecycleRows, trackerDedupeKeys);
@@ -445,7 +448,10 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
   const lifecycleSummary = summarizeLifecycleCandidates(lifecycleRows, {
     callActivityTaskIds,
     callTrackerDedupeKeys: trackerDedupeKeys,
-    alreadyInMeetingEvents: countWhere(meetingRows.rows, (row) => row.dedupe_key),
+    alreadyInMeetingEvents: countWhere(
+      callLogTarget.rows,
+      (row) => row.source_family === 'meeting_events' && row.fact_type === 'post_meeting_outcome',
+    ),
     missingMeetingSetCandidates,
     missingOutcomeCandidates,
   });

@@ -191,6 +191,21 @@ function lineNumberForIndex(text, index) {
 }
 
 function classifyAccess(line) {
+  if (/\b(source_family|sourceFamily|sourceFamilies|sourceTable)\b/u.test(line)) {
+    return 'provenance_reference';
+  }
+  if (/^['"`][a-z][a-z0-9_]*['"`],?$/u.test(line.trim())) {
+    return 'provenance_reference';
+  }
+  if (/^return\s+['"`][a-z][a-z0-9_]*['"`];?$/u.test(line.trim())) {
+    return 'provenance_reference';
+  }
+  if (/\breturn\s+['"`][a-z][a-z0-9_]*['"`];?/u.test(line.trim())) {
+    return 'provenance_reference';
+  }
+  if (/^['"`]?[a-z][a-z0-9_]*['"`]?\s*:\s*(\[|['"`])/u.test(line.trim())) {
+    return 'provenance_reference';
+  }
   if (/\b(writeRows|supabaseWrite|supabasePatch|supabaseDelete|request\(|supabaseRequest\(|patchRow\()/u.test(line)) {
     if (/\b(method:\s*'GET'|method:\s*"GET"|select=)/u.test(line)) return 'read';
     return 'write_or_mutation';
@@ -204,6 +219,7 @@ function classifyAccess(line) {
 function classifyFileKind(relative) {
   if (relative === 'scripts/audit-supabase-truth-map.mjs') return 'audit_tool';
   if (relative === 'scripts/audit-supabase-truth-map.test.mjs') return 'test';
+  if (relative.startsWith('.tmp/')) return 'generated';
   if (relative.startsWith('docs/')) return 'doc';
   if (relative.endsWith('.md')) return 'doc';
   if (relative.endsWith('.test.ts') || relative.endsWith('.test.tsx') || relative.endsWith('.test.mjs')) return 'test';
@@ -215,8 +231,11 @@ function classifyFileKind(relative) {
   return 'implementation';
 }
 
-function isActiveDependency(fileKind) {
-  return ['implementation', 'script', 'schema_or_migration'].includes(fileKind);
+function isActiveDependency(ref) {
+  return (
+    ['implementation', 'script', 'schema_or_migration'].includes(ref.fileKind) &&
+    ref.access !== 'provenance_reference'
+  );
 }
 
 const files = walk(repoRoot);
@@ -258,7 +277,7 @@ const summary = Object.entries(results).map(([surface, value]) => {
     },
     {},
   );
-  const activeReferences = value.references.filter((ref) => isActiveDependency(ref.fileKind));
+  const activeReferences = value.references.filter((ref) => isActiveDependency(ref));
   return {
     surface,
     bucket: value.bucket,
@@ -283,7 +302,7 @@ function sortReferences(references) {
 function filteredReferences(surface) {
   const references = results[surface]?.references || [];
   if (!activeOnly) return sortReferences(references);
-  return sortReferences(references.filter((ref) => isActiveDependency(ref.fileKind)));
+  return sortReferences(references.filter((ref) => isActiveDependency(ref)));
 }
 
 if (requestedSurface && !results[requestedSurface]) {

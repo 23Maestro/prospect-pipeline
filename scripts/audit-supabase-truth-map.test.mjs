@@ -78,6 +78,20 @@ test('Supabase truth-map audit separates active dependencies from docs and tests
   assert.ok(row.activeDependencies <= row.references, 'active dependencies cannot exceed total references');
 });
 
+test('Supabase truth-map audit keeps generated temp backfills out of active dependencies', () => {
+  const output = execFileSync(
+    'node',
+    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_activity_events', '--active-only', '--json'],
+    { encoding: 'utf8', maxBuffer: EXEC_BUFFER },
+  );
+  const payload = JSON.parse(output);
+
+  assert.equal(payload.references.some((ref) => ref.file.startsWith('.tmp/')), false);
+  assert.equal(payload.references.some((ref) => ref.access === 'provenance_reference'), false);
+  assert.equal(payload.summary.fileKindCounts.generated > 0, true);
+  assert.ok(payload.summary.activeDependencies < payload.summary.references);
+});
+
 test('Supabase truth-map audit default output names owner, active dependency, read, and write counts', () => {
   const output = execFileSync('node', ['scripts/audit-supabase-truth-map.mjs'], {
     encoding: 'utf8',
@@ -115,6 +129,7 @@ test('Supabase truth-map audit can emit focused JSON for one surface', () => {
   assert.equal(payload.summary.surface, 'call_tracker_summary');
   assert.equal(Array.isArray(payload.references), true);
   assert.equal(payload.references.every((ref) => ['implementation', 'script', 'schema_or_migration'].includes(ref.fileKind)), true);
+  assert.equal(payload.references.every((ref) => ref.access !== 'provenance_reference'), true);
 });
 
 test('Supabase truth-map audit names call_log as the canonical target', () => {

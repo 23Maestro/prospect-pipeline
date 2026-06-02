@@ -25442,11 +25442,11 @@
     "kind": "api_call",
     "name": "fetch ${credentials.url.replace(/\\/+$/, ",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 35,
+    "line": 36,
     "system": "Scripts",
     "bucket": "API call",
     "path": "${credentials.url.replace(/\\/+$/, ",
-    "id": "api_call:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:35::-credentials.url.replace-/-/-/-:fetch-credentials.url.replace-/-/-/-"
+    "id": "api_call:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:36::-credentials.url.replace-/-/-/-:fetch-credentials.url.replace-/-/-/-"
   },
   {
     "exported": false,
@@ -26759,25 +26759,25 @@
     "kind": "function",
     "name": "classifyFileKind",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 204,
+    "line": 219,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:204:::classifyFileKind"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:219:::classifyFileKind"
   },
   {
     "exported": false,
     "tags": [
       "script"
     ],
-    "snippet": "function isActiveDependency(fileKind) {",
-    "signature": "function isActiveDependency(fileKind) {",
+    "snippet": "function isActiveDependency(ref) {",
+    "signature": "function isActiveDependency(ref) {",
     "kind": "function",
     "name": "isActiveDependency",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 218,
+    "line": 234,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:218:::isActiveDependency"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:234:::isActiveDependency"
   },
   {
     "exported": false,
@@ -26789,10 +26789,10 @@
     "kind": "function",
     "name": "sortReferences",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 276,
+    "line": 295,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:276:::sortReferences"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:295:::sortReferences"
   },
   {
     "exported": false,
@@ -26804,10 +26804,10 @@
     "kind": "function",
     "name": "filteredReferences",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 283,
+    "line": 302,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:283:::filteredReferences"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:302:::filteredReferences"
   },
   {
     "exported": false,
@@ -27434,10 +27434,10 @@
     "kind": "function",
     "name": "headers",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 23,
+    "line": 24,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:23:::headers"
+    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:24:::headers"
   },
   {
     "exported": false,
@@ -27449,10 +27449,10 @@
     "kind": "function",
     "name": "request",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 34,
+    "line": 35,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:34:::request"
+    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:35:::request"
   },
   {
     "exported": false,
@@ -27464,25 +27464,25 @@
     "kind": "function",
     "name": "getPaged",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 44,
+    "line": 45,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:44:::getPaged"
+    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:45:::getPaged"
   },
   {
     "exported": false,
     "tags": [
       "script"
     ],
-    "snippet": "async function upsertCallActivityEvents(rows) {",
-    "signature": "async function upsertCallActivityEvents(rows) {",
+    "snippet": "async function upsertCallLogActivityFacts(rows) {",
+    "signature": "async function upsertCallLogActivityFacts(rows) {",
     "kind": "function",
-    "name": "upsertCallActivityEvents",
+    "name": "upsertCallLogActivityFacts",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 59,
+    "line": 60,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:59:::upsertCallActivityEvents"
+    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:60:::upsertCallLogActivityFacts"
   },
   {
     "exported": false,
@@ -27494,10 +27494,10 @@
     "kind": "function",
     "name": "isSuppressedOpenQueuePlaceholder",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 68,
+    "line": 72,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:68:::isSuppressedOpenQueuePlaceholder"
+    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:72:::isSuppressedOpenQueuePlaceholder"
   },
   {
     "exported": false,
@@ -27509,10 +27509,10 @@
     "kind": "function",
     "name": "increment",
     "file": "scripts/backsync-lifecycle-call-activity-events.mjs",
-    "line": 77,
+    "line": 81,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:77:::increment"
+    "id": "function:Scripts:scripts/backsync-lifecycle-call-activity-events.mjs:81:::increment"
   },
   {
     "exported": false,

@@ -198,6 +198,9 @@ test('meeting_set lifecycle rows are not promoted into call activity', () => {
 test('backsync replaces suppressed open queue placeholders when completed lifecycle facts arrive', () => {
   const source = readFileSync(new URL('./backsync-lifecycle-call-activity-events.mjs', import.meta.url), 'utf8');
 
+  assert.match(source, /source_family=eq\.call_activity_events&fact_type=eq\.call_activity/);
+  assert.match(source, /upsertCallActivityEvents/);
+  assert.doesNotMatch(source, /call_activity_events\?on_conflict=task_id/);
   assert.match(source, /function isSuppressedOpenQueuePlaceholder/);
   assert.match(source, /suppressed_from_call_activity_reporting === true/);
   assert.match(source, /queue_item_status === 'open_queue_item'/);
