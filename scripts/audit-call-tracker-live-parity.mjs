@@ -7,12 +7,12 @@ import { summarizeLifecycleCandidates } from './lifecycle-call-tracker-backsync-
 const repoRoot = resolve(new URL('..', import.meta.url).pathname);
 const credentials = resolveSupabaseCredentials(repoRoot);
 const PAGE_SIZE = Number(process.env.CALL_TRACKER_AUDIT_PAGE_SIZE || 1000);
-
-if (!credentials.url || !credentials.serviceRoleKey) {
-  throw new Error('Missing Supabase credentials for call tracker live parity audit.');
-}
+const summaryOnly = process.argv.includes('--summary');
 
 function headers() {
+  if (!credentials.url || !credentials.serviceRoleKey) {
+    throw new Error('Missing Supabase credentials for call tracker live parity audit.');
+  }
   return {
     apikey: credentials.serviceRoleKey,
     Authorization: `Bearer ${credentials.serviceRoleKey}`,
@@ -47,6 +47,130 @@ function countWhere(rows, predicate) {
   return rows.filter(predicate).length;
 }
 
+function bool(value) {
+  return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+function firstText(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+export function inferCallLogFactType(row) {
+  if (bool(row.counts_as_meeting_set) || row.tracker_outcome === 'meeting_set') return 'meeting_set';
+  if (bool(row.counts_as_post_meeting_outcome)) return 'post_meeting_outcome';
+  return 'call_activity';
+}
+
+export function inferCallLogSourceFamily(row) {
+  const rawEventType = String(row.raw_event_type || '').trim();
+  const source = String(row.source || '').trim();
+  if (rawEventType === 'call_activity' || row.source === 'call_activity') return 'call_activity_events';
+  if (rawEventType === 'lifecycle_meeting_set' || rawEventType === 'meeting_set') return 'lifecycle_events';
+  if (source === 'legacy_sales_stage_current') return 'meeting_events';
+  if (rawEventType === 'post_meeting_outcome' || bool(row.counts_as_post_meeting_outcome)) return 'meeting_events';
+  return firstText(row.source, rawEventType, 'unknown');
+}
+
+export function projectEventRowToCallLog(row) {
+  const factType = inferCallLogFactType(row);
+  const reportingAt = firstText(row.reporting_at, row.event_at, row.occurred_at);
+  const dedupeKey = firstText(
+    row.dedupe_key,
+    row.live_event_id && `${factType}:event:${row.live_event_id}`,
+    row.appointment_id && `${factType}:appointment:${row.appointment_id}`,
+    row.id && `${factType}:row:${row.id}`,
+  );
+
+  return {
+    fact_type: factType,
+    tracker_outcome: firstText(row.tracker_outcome, 'needs_review'),
+    occurred_at: firstText(row.occurred_at, reportingAt),
+    event_at: firstText(row.event_at, row.occurred_at),
+    reporting_at: reportingAt,
+    athlete_key: firstText(row.athlete_key),
+    athlete_id: firstText(row.athlete_id),
+    athlete_main_id: firstText(row.athlete_main_id),
+    athlete_name: firstText(row.athlete_name),
+    appointment_id: firstText(row.appointment_id),
+    live_event_id: firstText(row.live_event_id),
+    booked_event_title: firstText(row.booked_event_title),
+    raw_crm_stage: firstText(row.raw_crm_stage),
+    raw_task_status: firstText(row.raw_task_status),
+    raw_event_type: firstText(row.raw_event_type),
+    source_family: inferCallLogSourceFamily(row),
+    source_table: inferCallLogSourceFamily(row),
+    source_row_id: firstText(row.id),
+    source_system: firstText(row.source),
+    source_owner: firstText(row.compatibility_source_owner, row.source_owner),
+    owner_proof: firstText(row.compatibility_owner_proof, row.owner_proof, row.resolved_owner_source_field),
+    active_operator_key: firstText(row.active_operator_key),
+    active_operator_name: firstText(row.active_operator_name),
+    task_assigned_owner: firstText(row.task_assigned_owner),
+    resolved_owner_name: firstText(row.resolved_owner_name),
+    resolved_owner_role: firstText(row.resolved_owner_role),
+    resolved_owner_source_field: firstText(row.resolved_owner_source_field),
+    resolved_owner_source_value: firstText(row.resolved_owner_source_value),
+    materialization_status: firstText(row.materialization_status),
+    materialization_reason: firstText(row.materialization_reason),
+    can_materialize_for_active_operator: bool(row.can_materialize_for_active_operator),
+    counts_as_dial: bool(row.counts_as_dial),
+    counts_as_contact: bool(row.counts_as_contact),
+    counts_as_meeting_set: bool(row.counts_as_meeting_set),
+    counts_as_post_meeting_outcome: bool(row.counts_as_post_meeting_outcome),
+    counts_as_enrollment: false,
+    revenue_cents: row.revenue_cents === null || row.revenue_cents === undefined ? null : Number(row.revenue_cents),
+    dedupe_key: dedupeKey,
+    payload_json: row.payload_json || {},
+  };
+}
+
+export function summarizeCallLogProjection(projectedRows, summary = {}) {
+  const projected = {
+    dials: countWhere(projectedRows, (row) => row.counts_as_dial),
+    contacts: countWhere(projectedRows, (row) => row.counts_as_contact),
+    meetings_set: countWhere(projectedRows, (row) => row.counts_as_meeting_set),
+    meeting_outcomes_total: countWhere(projectedRows, (row) => row.counts_as_post_meeting_outcome),
+    closed_won: countWhere(projectedRows, (row) => row.tracker_outcome === 'closed_won'),
+    money_earned_cents: projectedRows
+      .filter((row) => row.tracker_outcome === 'closed_won')
+      .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
+  };
+  const current = {
+    dials: Number(summary.dials || 0),
+    contacts: Number(summary.contacts || 0),
+    meetings_set: Number(summary.meetings_set || 0),
+    meeting_outcomes_total: Number(summary.meeting_outcomes_total || 0),
+    closed_won: Number(summary.closed_won || 0),
+    money_earned_cents: Number(summary.money_earned_cents || 0),
+  };
+
+  const deltas = Object.fromEntries(
+    Object.keys(projected).map((key) => [key, projected[key] - current[key]]),
+  );
+
+  return {
+    projectionSource: 'call_tracker_events_owner_context',
+    targetShape: 'call_log',
+    rows: projectedRows.length,
+    sourceFamilies: [...new Set(projectedRows.map((row) => row.source_family).filter(Boolean))].sort(),
+    projected,
+    current,
+    deltas,
+    parity: Object.values(deltas).every((value) => value === 0),
+    missingRequiredFields: {
+      dedupe_key: countWhere(projectedRows, (row) => !row.dedupe_key),
+      reporting_at: countWhere(projectedRows, (row) => !row.reporting_at),
+      tracker_outcome: countWhere(projectedRows, (row) => !row.tracker_outcome),
+      source_family: countWhere(projectedRows, (row) => !row.source_family),
+    },
+  };
+}
+
 function meetingSetMissingCandidates(lifecycleRows, trackerDedupeKeys) {
   return lifecycleRows
     .filter((row) => row.event_type === 'meeting_set')
@@ -74,7 +198,11 @@ function outcomeMissingCandidates(lifecycleRows, trackerIds) {
 }
 
 export async function runAudit() {
-  const [summaryRows, lifecycleRows, callActivityRows, meetingRows, trackerRows] = await Promise.all([
+  if (!credentials.url || !credentials.serviceRoleKey) {
+    throw new Error('Missing Supabase credentials for call tracker live parity audit.');
+  }
+
+  const [summaryRows, lifecycleRows, callActivityRows, meetingRows, trackerRows, ownerContextRows] = await Promise.all([
     get('call_tracker_summary?select=*'),
     getPaged(
       'lifecycle_events',
@@ -84,6 +212,46 @@ export async function runAudit() {
     getPaged('call_activity_events', 'task_id,payload_json'),
     getPaged('meeting_events', 'dedupe_key,payload_json'),
     getPaged('call_tracker_events', 'id,dedupe_key,tracker_outcome,counts_as_dial,counts_as_contact,counts_as_meeting_set,counts_as_post_meeting_outcome'),
+    getPaged(
+      'call_tracker_events_owner_context',
+      [
+        'id',
+        'athlete_key',
+        'athlete_id',
+        'athlete_main_id',
+        'athlete_name',
+        'occurred_at',
+        'event_at',
+        'reporting_at',
+        'source',
+        'tracker_outcome',
+        'raw_crm_stage',
+        'raw_task_status',
+        'raw_event_type',
+        'appointment_id',
+        'live_event_id',
+        'booked_event_title',
+        'revenue_cents',
+        'dedupe_key',
+        'active_operator_key',
+        'active_operator_name',
+        'task_assigned_owner',
+        'resolved_owner_name',
+        'resolved_owner_role',
+        'resolved_owner_source_field',
+        'resolved_owner_source_value',
+        'materialization_status',
+        'materialization_reason',
+        'compatibility_source_owner',
+        'compatibility_owner_proof',
+        'can_materialize_for_active_operator',
+        'counts_as_dial',
+        'counts_as_contact',
+        'counts_as_meeting_set',
+        'counts_as_post_meeting_outcome',
+        'payload_json',
+      ].join(','),
+    ),
   ]);
 
   const callActivityTaskIds = new Set(callActivityRows.map((row) => row.task_id).filter(Boolean));
@@ -92,6 +260,7 @@ export async function runAudit() {
   const missingMeetingSetCandidates = meetingSetMissingCandidates(lifecycleRows, trackerDedupeKeys);
   const missingOutcomeCandidates = outcomeMissingCandidates(lifecycleRows, trackerIds);
   const summary = summaryRows[0] || {};
+  const projectedCallLogRows = ownerContextRows.map(projectEventRowToCallLog);
   const lifecycleSummary = summarizeLifecycleCandidates(lifecycleRows, {
     callActivityTaskIds,
     callTrackerDedupeKeys: trackerDedupeKeys,
@@ -107,10 +276,34 @@ export async function runAudit() {
       meetings_set: Number(summary.meetings_set || 0),
       meeting_outcomes_total: Number(summary.meeting_outcomes_total || 0),
     },
+    callLogProjection: summarizeCallLogProjection(projectedCallLogRows, summary),
     ...lifecycleSummary,
   };
 }
 
+export function summarizeAuditResult(result) {
+  return {
+    allTimeSummary: result.allTimeSummary,
+    callLogProjection: result.callLogProjection,
+    lifecycleCandidateSummary: {
+      suspectedAllTimeContactGap: result.suspectedAllTimeContactGap,
+      suspectedAllTimeDialGap: result.suspectedAllTimeDialGap,
+      safeDialCandidates: result.safeDialCandidates,
+      safeContactCandidates: result.safeContactCandidates,
+      uniqueSafeActivityTaskCount: result.uniqueSafeActivityTaskCount,
+      uniqueSafeContactTaskCount: result.uniqueSafeContactTaskCount,
+      uniqueSafeDialTaskCount: result.uniqueSafeDialTaskCount,
+      uniqueMissingActivityTaskCount: result.uniqueMissingActivityTaskCount,
+      uniqueMissingContactTaskCount: result.uniqueMissingContactTaskCount,
+      uniqueMissingDialTaskCount: result.uniqueMissingDialTaskCount,
+      excludedRowsByReason: result.excludedRowsByReason,
+      missingMeetingSetCandidates: result.missingMeetingSetCandidates?.length || 0,
+      missingOutcomeCandidates: result.missingOutcomeCandidates?.length || 0,
+    },
+  };
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
-  console.log(JSON.stringify(await runAudit(), null, 2));
+  const result = await runAudit();
+  console.log(JSON.stringify(summaryOnly ? summarizeAuditResult(result) : result, null, 2));
 }

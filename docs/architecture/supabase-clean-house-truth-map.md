@@ -69,9 +69,11 @@ Before dropping a surface:
 
 That means the next Call Tracker migration is not "read `call_events` directly." The next migration is:
 
-1. Backfill `call_log` from `call_activity_events`, `meeting_events`, and lifecycle meeting-set facts without deleting old rows.
-2. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log`.
-3. Move `call_activity_events` writers into `call_log`.
-4. Move `meeting_events` post-meeting outcome writers into `call_log`.
-5. Move enrollment payment evidence into `call_log` from Stripe/commission evidence.
-6. Only then move Prospect Web readers off the compatibility views.
+1. Run the read-only `scripts/audit-call-tracker-live-parity.mjs` projection from `call_tracker_events_owner_context` into `call_log` shape and review `callLogProjection`.
+2. Build the insert/backfill SQL only after the projection shows parity or names the exact gaps.
+3. Backfill `call_log` from `call_activity_events`, `meeting_events`, and lifecycle meeting-set facts without deleting old rows.
+4. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log`.
+5. Move `call_activity_events` writers into `call_log`.
+6. Move `meeting_events` post-meeting outcome writers into `call_log`.
+7. Move enrollment payment evidence into `call_log` from Stripe/commission evidence.
+8. Only then move Prospect Web readers off the compatibility views.
