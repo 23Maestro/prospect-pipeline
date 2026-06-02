@@ -52,6 +52,28 @@ function commissionPeriodForDate(date = new Date()) {
   return `${start.toISOString().slice(0, 10)}~${end.toISOString().slice(0, 10)}`;
 }
 
+function previousCommissionPeriodForDate(date = new Date()) {
+  const year = date.getFullYear();
+  const month = date.getMonth();
+  const day = date.getDate();
+  if (day <= 15) {
+    const previousMonthEnd = new Date(year, month, 0);
+    const previousStart = new Date(previousMonthEnd.getFullYear(), previousMonthEnd.getMonth(), 16);
+    return `${previousStart.toISOString().slice(0, 10)}~${previousMonthEnd.toISOString().slice(0, 10)}`;
+  }
+  const start = new Date(year, month, 1);
+  const end = new Date(year, month, 15);
+  return `${start.toISOString().slice(0, 10)}~${end.toISOString().slice(0, 10)}`;
+}
+
+function commissionPeriodsToSync(date = new Date()) {
+  if (process.env.COMMISSION_PERIOD) return [process.env.COMMISSION_PERIOD];
+  return Array.from(new Set([
+    commissionPeriodForDate(date),
+    previousCommissionPeriodForDate(date),
+  ]));
+}
+
 function normalizeIsoValue(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) return null;
@@ -129,12 +151,21 @@ function pickCurrentTask(tasks) {
   ) || (Array.isArray(tasks) ? tasks[0] : null) || null;
 }
 
-const commperiod = process.env.COMMISSION_PERIOD || commissionPeriodForDate();
-const commissionPayload = await postJson('/commissions/stripe-payroll', { commperiod });
-// Payroll commission rows are paid close-won evidence, not call activity. They confirm or enrich
+const commissionPeriods = commissionPeriodsToSync();
+const commissionPayloads = await Promise.all(
+  commissionPeriods.map((commperiod) => postJson('/commissions/stripe', { commperiod })),
+);
+// Stripe commission rows are paid close-won evidence, not call activity. They confirm or enrich
 // the same post_meeting_outcome fact selected by sales stage/event title when the title
-// lacks an ENR dollar prefix.
-const paidEntries = (Array.isArray(commissionPayload.entries) ? commissionPayload.entries : [])
+// lacks an ENR dollar prefix. Default sync checks the current and previous half-month period so
+// a newly paid post-meeting result is not missed immediately after a period boundary.
+const commissionEntries = commissionPayloads.flatMap((payload) =>
+  (Array.isArray(payload.entries) ? payload.entries : []).map((entry) => ({
+    ...entry,
+    __commissionPayload: payload,
+  })),
+);
+const paidEntries = commissionEntries
   .filter((entry) => {
     const status = String(entry?.status || '').trim().toLowerCase();
     return !status || status === 'paid';
@@ -232,8 +263,8 @@ for (const entry of paidEntries) {
       ownerContext: trackerOwnership.context,
       payload: {
         source: 'stripe_commissions',
-        commission_source_view: commissionPayload.source,
-        commperiod,
+        commission_source_view: entry.__commissionPayload?.source,
+        commperiod: entry.__commissionPayload?.commperiod,
         commission_status: entry.status,
         commission_account_id: entry.account_id,
         commission_paid_at: entry.paid_at,
@@ -256,17 +287,17 @@ for (const entry of paidEntries) {
 }
 
 if (failures.length) {
-  console.error(JSON.stringify({ commperiod, failures }, null, 2));
+  console.error(JSON.stringify({ commissionPeriods, failures }, null, 2));
   throw new Error(`Commission sync failed before writes: ${failures.length} unresolved row(s)`);
 }
 
 await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, postMeetingOutcomeFacts);
 
 console.log(JSON.stringify({
-  commperiod,
-  sourceRows: Array.isArray(commissionPayload.entries) ? commissionPayload.entries.length : 0,
+  commissionPeriods,
+  sourceRows: commissionEntries.length,
   paidRows: paidEntries.length,
   postMeetingOutcomeFactsUpserted: postMeetingOutcomeFacts.length,
-  duplicateEvidenceRows: (commissionPayload.entries || []).filter((entry) => entry.possible_duplicate).length,
+  duplicateEvidenceRows: commissionEntries.filter((entry) => entry.possible_duplicate).length,
   skipped,
 }, null, 2));

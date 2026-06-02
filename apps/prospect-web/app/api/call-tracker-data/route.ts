@@ -257,7 +257,7 @@ function eventIdentityKey(row: Record<string, any>) {
 }
 
 function isDashboardVisibleEvent(row: Record<string, any>) {
-  if (row.tracker_outcome === 'closed_won') return isPaidClosedWon(row);
+  if (row.tracker_outcome === 'closed_won') return true;
   return row.tracker_outcome !== 'meeting_set' || row.counts_as_meeting_set === true;
 }
 
@@ -505,6 +505,39 @@ function commissionCentsForRows(rows: Array<Record<string, any>>) {
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
+function closedWonIdentity(row: Record<string, any>) {
+  return [
+    row.athlete_key,
+    row.athlete_main_id,
+    row.athlete_id,
+    normalizeKey(row.athlete_name),
+  ].find((value) => String(value || '').trim()) || normalizeKey(row.booked_event_title);
+}
+
+function closedWonQuality(row: Record<string, any>) {
+  return (
+    (isPaidClosedWon(row) ? 100 : 0) +
+    (Number(row.revenue_cents) > 0 ? 25 : 0) +
+    (row.source === 'stripe_commissions' ? 10 : 0) +
+    (row.appointment_id ? 2 : 0) +
+    Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
+  );
+}
+
+function definitiveClosedWonRows(rows: Array<Record<string, any>>) {
+  const byIdentity = new Map<string, Record<string, any>>();
+  rows
+    .filter((row) => row.tracker_outcome === 'closed_won')
+    .forEach((row) => {
+      const identity = closedWonIdentity(row);
+      const previous = byIdentity.get(identity);
+      if (!previous || closedWonQuality(row) > closedWonQuality(previous)) {
+        byIdentity.set(identity, row);
+      }
+    });
+  return Array.from(byIdentity.values());
+}
+
 function rowBelongsToPaycheck(row: Record<string, any>, previousPay: Date, payDate: Date) {
   const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
   if (Number.isNaN(sourceDate.getTime())) return false;
@@ -533,7 +566,6 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
   const rows = displayRows(events).filter(isDashboardVisibleEvent);
   const rawAllTimeContacts = Number(summary.contacts) || 0;
   const correctedAllTimeContacts = rawAllTimeContacts + HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT;
-  const paidClosedWonRows = rows.filter(isPaidClosedWon);
   const periods: Record<string, any> = {};
   for (const period of ['week-0', 'week-1', 'week-2', 'week-3', 'week-4', 'week-total']) {
     const scoped = rowsForPeriod(rows, now, period);
@@ -552,21 +584,21 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
     };
   }
   const meetingOutcomesTotal = Number(summary.meeting_outcomes_total) || 0;
-  const paidClosedWonCount = paidClosedWonRows.length;
+  const closedWonRows = definitiveClosedWonRows(rows);
   return {
     activePeriod: currentWeekPeriod(now),
     rangeLabel: currentWeekRangeLabel(now),
     monthResultLabel: currentMonthResultLabel(now),
     summaryCards: {
       moneyEarnedCents: commissionCentsForRows(rows),
-      closedWon: paidClosedWonCount,
+      closedWon: closedWonRows.length,
       contacts: correctedAllTimeContacts,
       rawContacts: rawAllTimeContacts,
       historicalContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
       dials: Number(summary.dials) || 0,
       voicemailOnly: Number(summary.voicemail_only) || 0,
       appointmentsTracked: Number(summary.appointments_tracked) || 0,
-      closeRate: meetingOutcomesTotal ? Math.round((paidClosedWonCount / meetingOutcomesTotal) * 100) : 0,
+      closeRate: meetingOutcomesTotal ? Math.round((closedWonRows.length / meetingOutcomesTotal) * 100) : 0,
     },
     manualCorrections: {
       allTimeContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
@@ -576,7 +608,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
     },
     paycheck: paycheck(rows, now),
     periods,
-    closedWonRows: paidClosedWonRows.sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0)),
+    closedWonRows: closedWonRows.sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0)),
   };
 }
 

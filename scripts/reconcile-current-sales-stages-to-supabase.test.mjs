@@ -37,6 +37,7 @@ test('current sales-stage reconciler stores post-meeting outcomes through meetin
 
 test('current sales-stage reconciler repairs past appointments from live lifecycle stage', () => {
   assert.match(source, /pastAppointmentRows/);
+  assert.match(source, /closed_won,closed_lost,follow_up,no_show,canceled/);
   assert.match(source, /past_appointment_live_stage_repair/);
   assert.match(source, /past_appointment_event_title_repair/);
   assert.match(source, /parsedTitle\.outcome === 'active'/);

@@ -450,7 +450,7 @@ const pastAppointmentRows = await supabaseRequest(
   [
     'appointments?select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,post_meeting_result,status_reason,operator_owner,operator_owner_key,source_event_id',
     `starts_at=lt.${encodeURIComponent(now)}`,
-    'status=in.(scheduled,awaiting_post_meeting_update,rescheduled,reschedule_pending)',
+    'status=in.(scheduled,awaiting_post_meeting_update,rescheduled,reschedule_pending,closed_won,closed_lost,follow_up,no_show,canceled)',
     'order=starts_at.desc',
     'limit=500',
   ].join('&'),

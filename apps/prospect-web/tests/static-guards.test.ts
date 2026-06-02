@@ -188,6 +188,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
     'supabase/tests/meeting-set-materialization-backsync.test.mjs',
     'supabase/tests/athlete-lifecycle-timeline-contract.test.mjs',
+    'scripts/sync-commissions-to-supabase.mjs',
+    'scripts/sync-commissions-to-supabase.test.mjs',
   ]);
   const forbiddenPrefixes = ['npid-api-layer/', 'scripts/', 'supabase/', 'src/'];
   const offenders = changedFiles.filter(
@@ -568,9 +570,12 @@ test('call tracker commission is a flat twenty percent of revenue', () => {
   assert.doesNotMatch(pageRouteText, /commissionCents[\s\S]*\/ 2/);
   assert.doesNotMatch(appText, /monthlySubscriptionCommissionCents/);
   assert.match(pageRouteText, /moneyEarnedCents: commissionCentsForRows\(rows\)/);
+  assert.match(pageRouteText, /if \(row\.tracker_outcome === 'closed_won'\) return true/);
+  assert.match(pageRouteText, /closedWon: closedWonRows\.length/);
   assert.match(pageRouteText, /function isPaidClosedWon/);
   assert.match(pageRouteText, /paidCommissionSources\.has\(row\.source\)/);
   assert.match(appText, /fallbackCommissionCents/);
+  assert.match(appText, /if \(row\.tracker_outcome === 'closed_won'\) return true/);
   assert.match(appText, /function isPaidClosedWon/);
   assert.match(appText, /PAID_COMMISSION_SOURCES\.has\(row\.source\)/);
 });

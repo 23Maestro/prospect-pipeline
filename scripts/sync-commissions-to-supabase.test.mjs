@@ -5,7 +5,7 @@ import test from 'node:test';
 const source = readFileSync(new URL('./sync-commissions-to-supabase.mjs', import.meta.url), 'utf8');
 
 test('commission sync uses FastAPI commission source and writes post-meeting outcomes', () => {
-  assert.match(source, /\/commissions\/stripe-payroll/);
+  assert.match(source, /\/commissions\/stripe/);
   assert.match(source, /buildMeetingOutcomeFact/);
   assert.match(source, /upsertPostMeetingOutcomeFacts/);
   assert.match(source, /supabase-lifecycle-translator/);
@@ -24,8 +24,16 @@ test('commission sync only materializes paid/payroll commission rows and carries
   assert.match(source, /COMMISSION_PERIOD/);
 });
 
+test('commission sync watches the current and previous commission periods by default', () => {
+  assert.match(source, /previousCommissionPeriodForDate/);
+  assert.match(source, /commissionPeriodsToSync/);
+  assert.match(source, /commissionPeriodForDate\(date\)/);
+  assert.match(source, /previousCommissionPeriodForDate\(date\)/);
+  assert.match(source, /process\.env\.COMMISSION_PERIOD/);
+});
+
 test('commission sync enriches the same close-won outcome fact instead of creating account-specific wins', () => {
   assert.match(source, /dedupeOutcome: closeWonOutcome/);
   assert.doesNotMatch(source, /dedupeOutcome: `closed_won:\$\{entry\.account_id/);
-  assert.match(source, /Payroll commission rows are paid close-won evidence, not call activity/);
+  assert.match(source, /Stripe commission rows are paid close-won evidence, not call activity/);
 });

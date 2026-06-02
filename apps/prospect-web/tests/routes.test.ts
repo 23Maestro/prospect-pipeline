@@ -688,7 +688,7 @@ test('/api/call-tracker-data trusts Supabase reporting_at instead of rewriting m
   assert.equal(row.reporting_date_et, '2026-05-10');
 });
 
-test('/api/call-tracker-data calculates paycheck commission as twenty percent of revenue', async () => {
+test('/api/call-tracker-data counts confirmed enrollments while paying commission from Stripe revenue', async () => {
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
   process.env.SUPABASE_SCHEMA = 'public';
@@ -756,6 +756,33 @@ test('/api/call-tracker-data calculates paycheck commission as twenty percent of
           can_materialize_for_active_operator: true,
           created_at: closedWonAt,
         },
+        {
+          athlete_name: 'Commission Athlete',
+          occurred_at: closedWonAt,
+          event_at: closedWonAt,
+          tracker_outcome: 'closed_won',
+          raw_crm_stage: 'Actual Meeting - Close Won',
+          raw_task_status: 'closed_won',
+          raw_event_type: 'post_meeting_outcome',
+          source: 'legacy_sales_stage_current',
+          appointment_id: 'paid-older',
+          live_event_id: 'paid-older',
+          booked_event_title: '(ENR) Commission Athlete',
+          revenue_cents: null,
+          dedupe_key: 'post_meeting_outcome:paid-older:closed_won',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_dial: false,
+          counts_as_contact: false,
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Jerami Singleton',
+          resolved_owner_source_field: 'bookedMeeting.assigned_owner',
+          can_materialize_for_active_operator: true,
+          created_at: closedWonAt,
+        },
       ]);
     }
     if (requestUrl.includes('/lifecycle_events?')) {
@@ -769,12 +796,19 @@ test('/api/call-tracker-data calculates paycheck commission as twenty percent of
   const payload = await response.json();
   assert.equal(payload.data.ui.paycheck.commissionCents, 2000);
   assert.equal(payload.data.ui.summaryCards.moneyEarnedCents, 2000);
-  assert.equal(payload.data.ui.summaryCards.closedWon, 1);
-  assert.equal(payload.data.ui.closedWonRows.length, 1);
-  assert.equal(payload.data.ui.closedWonRows[0].athlete_name, 'Commission Athlete');
+  assert.equal(payload.data.ui.summaryCards.closedWon, 2);
+  assert.equal(payload.data.ui.closedWonRows.length, 2);
+  assert.deepEqual(
+    payload.data.ui.closedWonRows.map((row: { athlete_name?: string }) => row.athlete_name).sort(),
+    ['Commission Athlete', 'Failed Payment Athlete'],
+  );
+  assert.equal(
+    payload.data.ui.closedWonRows.find((row: { athlete_name?: string }) => row.athlete_name === 'Commission Athlete')?.source,
+    'stripe_commissions',
+  );
   assert.equal(
     payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Failed Payment Athlete'),
-    false,
+    true,
   );
 });
 

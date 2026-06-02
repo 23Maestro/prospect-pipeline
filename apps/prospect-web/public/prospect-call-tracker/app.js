@@ -317,7 +317,7 @@ function isPaidClosedWon(row) {
 }
 
 function isDashboardVisibleEvent(row) {
-  if (row.tracker_outcome === 'closed_won') return isPaidClosedWon(row);
+  if (row.tracker_outcome === 'closed_won') return true;
   return row.tracker_outcome !== 'meeting_set' || countsAsMeetingSet(row);
 }
 
@@ -750,9 +750,7 @@ function renderBars() {
 }
 
 function renderClosedWon() {
-  const closed = state.ui?.closedWonRows || state.rows
-    .filter(isPaidClosedWon)
-    .sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0));
+  const closed = state.ui?.closedWonRows || definitiveClosedWonRows(state.rows);
 
   $('closedWonList').innerHTML = closed.length
     ? closed
@@ -770,6 +768,40 @@ function renderClosedWon() {
         })
         .join('')
     : '<p class="empty">No closes yet.</p>';
+}
+
+function closedWonIdentity(row) {
+  return [
+    row.athlete_key,
+    row.athlete_main_id,
+    row.athlete_id,
+    normalizeKey(row.athlete_name),
+  ].find((value) => String(value || '').trim()) || normalizeKey(row.booked_event_title);
+}
+
+function closedWonQuality(row) {
+  return (
+    (isPaidClosedWon(row) ? 100 : 0) +
+    (Number(row.revenue_cents) > 0 ? 25 : 0) +
+    (row.source === 'stripe_commissions' ? 10 : 0) +
+    (row.appointment_id ? 2 : 0) +
+    Math.floor(new Date(rowDisplayAt(row) || 0).getTime() / 100000000000)
+  );
+}
+
+function definitiveClosedWonRows(rows) {
+  const byIdentity = new Map();
+  (Array.isArray(rows) ? rows : [])
+    .filter((row) => row.tracker_outcome === 'closed_won')
+    .forEach((row) => {
+      const identity = closedWonIdentity(row);
+      const previous = byIdentity.get(identity);
+      if (!previous || closedWonQuality(row) > closedWonQuality(previous)) {
+        byIdentity.set(identity, row);
+      }
+    });
+  return Array.from(byIdentity.values())
+    .sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0));
 }
 
 function renderFilters() {
