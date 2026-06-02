@@ -6,28 +6,133 @@ import path from 'path';
 const repoRoot = process.cwd();
 
 const surfaces = {
-  athletes: { bucket: 'Admin Data & Contacts', role: 'canonical_truth' },
-  athlete_contact_cache: { bucket: 'Admin Data & Contacts / Client Communication', role: 'canonical_support' },
-  appointments: { bucket: 'Meetings', role: 'canonical_truth' },
-  lifecycle_events: { bucket: 'Lifecycle & Stage Truth', role: 'canonical_truth' },
-  call_events: { bucket: 'Reporting / Pre-Meeting Tasks / Enrollments & Outcomes', role: 'canonical_target' },
-  set_meeting_confirmation_cache: { bucket: 'Client Communication', role: 'temporary_support' },
-  pending_client_watchlist: { bucket: 'Enrollments & Outcomes', role: 'temporary_support' },
+  athletes: {
+    bucket: 'Admin Data & Contacts',
+    role: 'canonical_truth',
+    migrationOwner: 'Admin Data & Contacts',
+    replacement: 'Keep',
+  },
+  athlete_contact_cache: {
+    bucket: 'Admin Data & Contacts / Client Communication',
+    role: 'canonical_support',
+    migrationOwner: 'Admin Data & Contacts',
+    replacement: 'Keep as contact lookup support',
+  },
+  appointments: {
+    bucket: 'Meetings',
+    role: 'canonical_truth',
+    migrationOwner: 'Meetings',
+    replacement: 'Keep',
+  },
+  lifecycle_events: {
+    bucket: 'Lifecycle & Stage Truth',
+    role: 'canonical_truth',
+    migrationOwner: 'Lifecycle & Stage Truth',
+    replacement: 'Keep',
+  },
+  call_events: {
+    bucket: 'Reporting / Pre-Meeting Tasks / Enrollments & Outcomes',
+    role: 'canonical_target',
+    migrationOwner: 'Lifecycle & Stage Truth / Reporting',
+    replacement: 'Keep as centralized event table',
+  },
+  set_meeting_confirmation_cache: {
+    bucket: 'Client Communication',
+    role: 'temporary_support',
+    migrationOwner: 'Client Communication',
+    replacement: 'Keep temporarily as confirmation-message support',
+  },
+  pending_client_watchlist: {
+    bucket: 'Enrollments & Outcomes',
+    role: 'temporary_support',
+    migrationOwner: 'Enrollments & Outcomes',
+    replacement: 'Keep temporarily as review queue',
+  },
 
-  athlete_lifecycle_current: { bucket: 'Lifecycle & Stage Truth', role: 'delete_target' },
-  athlete_lifecycle_timeline: { bucket: 'Lifecycle & Stage Truth', role: 'delete_target' },
-  active_athlete_meeting_truth: { bucket: 'Meetings', role: 'delete_target' },
-  athlete_pipeline_state: { bucket: 'Lifecycle & Stage Truth', role: 'delete_target' },
-  meeting_events: { bucket: 'Enrollments & Outcomes', role: 'delete_target' },
-  call_activity_events: { bucket: 'Pre-Meeting Tasks', role: 'delete_target' },
-  call_tracker_events: { bucket: 'Reporting', role: 'delete_target' },
-  call_tracker_events_deduped: { bucket: 'Reporting', role: 'delete_target' },
-  call_tracker_events_owner_context: { bucket: 'Reporting', role: 'delete_target' },
-  call_tracker_meeting_sets: { bucket: 'Reporting', role: 'delete_target' },
-  call_tracker_summary: { bucket: 'Reporting', role: 'delete_target' },
-  weekly_operator_funnel_metrics: { bucket: 'Reporting', role: 'delete_target' },
-  meeting_truth_anomalies: { bucket: 'Meetings / Audit', role: 'delete_target' },
-  reminders: { bucket: 'Client Communication', role: 'delete_target' },
+  athlete_lifecycle_current: {
+    bucket: 'Lifecycle & Stage Truth',
+    role: 'delete_target',
+    migrationOwner: 'Lifecycle & Stage Truth',
+    replacement: 'Latest state derived from lifecycle_events',
+  },
+  athlete_lifecycle_timeline: {
+    bucket: 'Lifecycle & Stage Truth',
+    role: 'delete_target',
+    migrationOwner: 'Lifecycle & Stage Truth',
+    replacement: 'Timeline derived from lifecycle_events',
+  },
+  active_athlete_meeting_truth: {
+    bucket: 'Meetings',
+    role: 'delete_target',
+    migrationOwner: 'Meetings',
+    replacement: 'appointments plus latest lifecycle state',
+  },
+  athlete_pipeline_state: {
+    bucket: 'Lifecycle & Stage Truth',
+    role: 'delete_target',
+    migrationOwner: 'Lifecycle & Stage Truth',
+    replacement: 'lifecycle_events latest state',
+  },
+  meeting_events: {
+    bucket: 'Enrollments & Outcomes',
+    role: 'delete_target',
+    migrationOwner: 'Enrollments & Outcomes / Reporting',
+    replacement: 'call_events post-meeting outcome facts',
+  },
+  call_activity_events: {
+    bucket: 'Pre-Meeting Tasks',
+    role: 'delete_target',
+    migrationOwner: 'Pre-Meeting Tasks / Reporting',
+    replacement: 'call_events activity facts',
+  },
+  call_tracker_events: {
+    bucket: 'Reporting',
+    role: 'delete_target',
+    migrationOwner: 'Reporting',
+    replacement: 'API/query over canonical call_events',
+  },
+  call_tracker_events_deduped: {
+    bucket: 'Reporting',
+    role: 'delete_target',
+    migrationOwner: 'Reporting',
+    replacement: 'Canonical fact identity in call_events',
+  },
+  call_tracker_events_owner_context: {
+    bucket: 'Reporting',
+    role: 'delete_target',
+    migrationOwner: 'Reporting',
+    replacement: 'API/query over canonical call_events with owner context',
+  },
+  call_tracker_meeting_sets: {
+    bucket: 'Reporting',
+    role: 'delete_target',
+    migrationOwner: 'Reporting',
+    replacement: 'call_events meeting-set facts',
+  },
+  call_tracker_summary: {
+    bucket: 'Reporting',
+    role: 'delete_target',
+    migrationOwner: 'Reporting',
+    replacement: 'API aggregate over canonical call_events',
+  },
+  weekly_operator_funnel_metrics: {
+    bucket: 'Reporting',
+    role: 'delete_target',
+    migrationOwner: 'Reporting',
+    replacement: 'API aggregate over canonical call_events',
+  },
+  meeting_truth_anomalies: {
+    bucket: 'Meetings / Audit',
+    role: 'delete_target',
+    migrationOwner: 'Meetings',
+    replacement: 'Code-owned audit output, not Supabase fact source',
+  },
+  reminders: {
+    bucket: 'Client Communication',
+    role: 'delete_target',
+    migrationOwner: 'Client Communication',
+    replacement: 'set_meeting_confirmation_cache or future single message table',
+  },
 };
 
 const skipDirs = new Set([
@@ -71,6 +176,22 @@ function classifyAccess(line) {
   return 'reference';
 }
 
+function classifyFileKind(relative) {
+  if (relative === 'scripts/audit-supabase-truth-map.mjs') return 'audit_tool';
+  if (relative === 'scripts/audit-supabase-truth-map.test.mjs') return 'test';
+  if (relative.startsWith('docs/')) return 'doc';
+  if (relative.endsWith('.test.ts') || relative.endsWith('.test.tsx') || relative.endsWith('.test.mjs')) return 'test';
+  if (relative.includes('/tests/') || relative.startsWith('tests/')) return 'test';
+  if (relative.includes('/generated/') || relative.endsWith('.generated.json')) return 'generated';
+  if (relative.endsWith('.sql') || relative.startsWith('supabase/')) return 'schema_or_migration';
+  if (relative.startsWith('scripts/')) return 'script';
+  return 'implementation';
+}
+
+function isActiveDependency(fileKind) {
+  return ['implementation', 'script', 'schema_or_migration'].includes(fileKind);
+}
+
 const files = walk(repoRoot);
 const results = Object.fromEntries(
   Object.entries(surfaces).map(([surface, meta]) => [surface, { ...meta, references: [] }]),
@@ -88,6 +209,7 @@ for (const file of files) {
         file: relative,
         line: lineNo,
         access: classifyAccess(line),
+        fileKind: classifyFileKind(relative),
         text: line.slice(0, 220),
       });
     }
@@ -102,12 +224,24 @@ const summary = Object.entries(results).map(([surface, value]) => {
     },
     {},
   );
+  const fileKindCounts = value.references.reduce(
+    (acc, ref) => {
+      acc[ref.fileKind] = (acc[ref.fileKind] || 0) + 1;
+      return acc;
+    },
+    {},
+  );
+  const activeReferences = value.references.filter((ref) => isActiveDependency(ref.fileKind));
   return {
     surface,
     bucket: value.bucket,
     role: value.role,
+    migrationOwner: value.migrationOwner,
+    replacement: value.replacement,
     references: value.references.length,
+    activeDependencies: activeReferences.length,
     accessCounts: counts,
+    fileKindCounts,
   };
 });
 
@@ -117,8 +251,12 @@ if (process.argv.includes('--json')) {
   console.log('# Supabase Truth Map Audit');
   console.log('');
   for (const row of summary) {
-    console.log(`- ${row.surface}: ${row.role}, ${row.bucket}, refs=${row.references}`);
+    const reads = row.accessCounts.read || 0;
+    const writes = row.accessCounts.write_or_mutation || 0;
+    console.log(
+      `- ${row.surface}: ${row.role}, owner=${row.migrationOwner}, active=${row.activeDependencies}, refs=${row.references}, reads=${reads}, writes=${writes}`,
+    );
   }
   console.log('');
-  console.log('Run with `--json` for file/line references.');
+  console.log('Run with `--json` for file/line references, file kinds, and replacements.');
 }

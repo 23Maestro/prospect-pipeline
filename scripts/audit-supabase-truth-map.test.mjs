@@ -56,5 +56,31 @@ test('Supabase truth-map audit script tracks canonical and delete-target surface
     assert.equal(surfaces.has(target), true, `${target} missing from audit`);
     const row = payload.summary.find((entry) => entry.surface === target);
     assert.equal(row.role, 'delete_target', `${target} must be marked delete_target`);
+    assert.equal(typeof row.migrationOwner, 'string', `${target} must have a migration owner`);
+    assert.equal(typeof row.replacement, 'string', `${target} must have replacement guidance`);
+    assert.equal(typeof row.activeDependencies, 'number', `${target} must report active dependencies`);
   }
+});
+
+test('Supabase truth-map audit separates active dependencies from docs and tests', () => {
+  const output = execFileSync('node', ['scripts/audit-supabase-truth-map.mjs', '--json'], {
+    encoding: 'utf8',
+  });
+  const payload = JSON.parse(output);
+  const row = payload.summary.find((entry) => entry.surface === 'athlete_lifecycle_current');
+
+  assert.ok(row, 'athlete_lifecycle_current missing from audit');
+  assert.ok(row.fileKindCounts.doc >= 1, 'expected doc references to be counted separately');
+  assert.ok(row.activeDependencies <= row.references, 'active dependencies cannot exceed total references');
+});
+
+test('Supabase truth-map audit default output names owner, active dependency, read, and write counts', () => {
+  const output = execFileSync('node', ['scripts/audit-supabase-truth-map.mjs'], {
+    encoding: 'utf8',
+  });
+
+  assert.match(output, /owner=Lifecycle & Stage Truth/);
+  assert.match(output, /active=\d+/);
+  assert.match(output, /reads=\d+/);
+  assert.match(output, /writes=\d+/);
 });
