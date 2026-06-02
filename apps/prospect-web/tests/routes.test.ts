@@ -923,87 +923,71 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
         },
       ]);
     }
-    if (requestUrl.includes('/active_athlete_meeting_truth?')) {
+    if (requestUrl.includes('/appointments?')) {
       return Response.json([
         {
-          athlete_name: 'Current Athlete',
-          crm_stage: 'Meeting Set',
-          task_status: 'confirmation_call',
-          operator_owner: 'Jerami Singleton',
-          current_head_scout: 'Ryan Lietz',
-          current_appointment_id: 'current-appt-1',
-          resolved_appointment_id: 'current-appt-1',
-          current_source_event_id: 'event-current-1',
-          current_starts_at: '2026-05-30T15:00:00+00:00',
-          current_meeting_timezone: 'America/New_York',
-          current_meeting_timezone_label: 'EST',
-          current_appointment_status: 'scheduled',
-          current_appointment_role: 'initial_set',
-          resolution_source: 'current_appointment_pointer',
-          pipeline_updated_at: '2026-05-29T13:00:00+00:00',
-          appointment_updated_at: '2026-05-29T13:00:00+00:00',
+          id: 'current-appt-1',
+          athlete_key: 'athlete-current',
+          athlete_id: '1490010',
+          athlete_main_id: '953010',
+          head_scout: 'Ryan Lietz',
+          starts_at: '2026-05-30T15:00:00+00:00',
+          status: 'scheduled',
+          source_event_id: 'event-current-1',
+          meeting_timezone: 'America/New_York',
+          meeting_timezone_label: 'EST',
+          calendar_timezone: 'America/New_York',
+          appointment_role: 'initial_set',
+          updated_at: '2026-05-29T13:00:00+00:00',
+          created_at: '2026-05-29T13:00:00+00:00',
         },
       ]);
     }
-    if (requestUrl.includes('/athlete_lifecycle_timeline?')) {
+    if (requestUrl.includes('/athletes?')) {
       return Response.json([
         {
-          lifecycle_event_id: 'life-1',
+          athlete_key: 'athlete-current',
+          athlete_name: 'Current Athlete',
+        },
+        {
+          athlete_key: 'athlete-1',
+          athlete_name: 'Current Athlete',
+        },
+        {
+          athlete_key: 'athlete-2',
+          athlete_name: 'Lifecycle Call Athlete',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([
+        {
+          id: 'life-1',
           athlete_key: 'athlete-1',
           athlete_id: '1490001',
           athlete_main_id: '953001',
-          athlete_name: 'Lifecycle Athlete',
           event_type: 'meeting_set',
-          raw_crm_stage: 'Meeting Set',
-          raw_task_status: 'confirmation_call',
-          normalized_stage: 'meeting_set',
-          operator_status: 'active_meeting_queue',
-          meeting_lifecycle: 'scheduled',
-          pipeline_bucket: 'active_meeting',
-          next_action: 'await_meeting_result',
-          is_active_or_monitoring: true,
-          is_terminal: false,
-          indicates_showed: false,
-          counts_as_enrollment: false,
-          appointment_id: 'appt-life',
-          event_title: 'Lifecycle Athlete Soccer 2026 GA',
-          operator_owner: 'Jerami Singleton',
-          head_scout: 'Ryan Lietz',
-          event_source: 'lifecycle_meeting_set',
-          revenue_cents: null,
+          crm_stage: 'Meeting Set',
+          task_status: 'confirmation_call',
           payload_json: {
+            booked_event_id: 'appt-life',
+            booked_event_title: 'Lifecycle Athlete Soccer 2026 GA',
             materialization_status: 'operator_task',
             active_operator_name: 'Jerami Singleton',
             task_assigned_owner: 'Jerami Singleton',
           },
-          event_at: '2026-05-29T13:00:00+00:00',
+          created_at: '2026-05-29T13:00:00+00:00',
         },
         {
-          lifecycle_event_id: 'life-2',
+          id: 'life-2',
           athlete_key: 'athlete-2',
           athlete_id: '1490002',
           athlete_main_id: '953002',
-          athlete_name: 'Lifecycle Call Athlete',
           event_type: 'call_activity',
-          raw_crm_stage: 'Spoke to - Follow Up',
-          raw_task_status: 'Call Attempt 1',
-          normalized_stage: 'meeting_follow_up',
-          operator_status: 'awaiting_follow_up',
-          meeting_lifecycle: 'follow_up_due',
-          pipeline_bucket: 'awaiting_update',
-          next_action: 'follow_up_for_result',
-          is_active_or_monitoring: true,
-          is_terminal: false,
-          indicates_showed: true,
-          counts_as_enrollment: false,
-          appointment_id: null,
-          event_title: null,
-          operator_owner: 'Jerami Singleton',
-          head_scout: null,
-          event_source: 'lifecycle_events',
-          revenue_cents: null,
+          crm_stage: 'Spoke to - Follow Up',
+          task_status: 'Call Attempt 1',
           payload_json: {},
-          event_at: '2026-05-29T12:00:00+00:00',
+          created_at: '2026-05-29T12:00:00+00:00',
         },
       ]);
     }
@@ -1030,17 +1014,19 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
   assert.equal(payload.data.meetings[0].proof, 'Verified For Me');
   assert.equal(payload.data.lifecycle.length, 2);
   assert.equal(payload.data.lifecycle[0].lifecycleEvent, 'Meeting Set');
-  assert.equal(payload.data.lifecycle[0].athleteName, 'Lifecycle Athlete');
+  assert.equal(payload.data.lifecycle[0].athleteName, 'Current Athlete');
   assert.equal(payload.data.lifecycle[0].pipelineBucket, 'active_meeting');
-  assert.equal(payload.data.lifecycle[0].source, 'athlete_lifecycle_timeline');
-  assert.equal(payload.data.supabaseReads.activeMeetingView, 'active_athlete_meeting_truth');
-  assert.equal(payload.data.supabaseReads.lifecycleView, 'athlete_lifecycle_timeline');
+  assert.equal(payload.data.lifecycle[0].source, 'lifecycle_events');
+  assert.equal(payload.data.supabaseReads.activeMeetingTable, 'appointments');
+  assert.equal(payload.data.supabaseReads.lifecycleTable, 'lifecycle_events');
   assert.equal(
     payload.data.meetings.some((row: { athleteName?: string }) => row.athleteName === 'Call Only Athlete'),
     false,
   );
   assert.equal(payload.data.generatedAt.endsWith('Z'), true);
-  assert.equal(calls.length, 3);
+  assert.equal(calls.length, 4);
+  assert.equal(calls.some((call) => call.url.includes('/active_athlete_meeting_truth?')), false);
+  assert.equal(calls.some((call) => call.url.includes('/athlete_lifecycle_timeline?')), false);
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
   assert.equal(calls.every((call) => call.init?.cache === 'no-store'), true);
 });

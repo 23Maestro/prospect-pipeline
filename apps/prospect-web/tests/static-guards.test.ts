@@ -195,6 +195,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/audit-supabase-truth-map.mjs',
     'scripts/audit-supabase-truth-map.test.mjs',
     'scripts/audit-call-tracker-live-parity.mjs',
+    'scripts/audit-meeting-readback-live-parity.mjs',
+    'scripts/audit-meeting-readback-live-parity.test.mjs',
     'scripts/generate-code-index.test.mjs',
     'src/lib/sales-stage.ts',
     'src/lib/scout-prep.tsx',
@@ -536,9 +538,10 @@ test('meetings readback page is live, read-only, and server-backed', () => {
   assert.match(pageText, /id="lifecycleBody"/);
   assert.doesNotMatch(pageText, /<th>Proof<\/th>/);
   assert.doesNotMatch(pageText, /Read-only live Supabase check/);
-  assert.match(routeText, /active_athlete_meeting_truth/);
-  assert.match(routeText, /athlete_lifecycle_timeline/);
-  assert.doesNotMatch(routeText, /lifecycle_events\?select/);
+  assert.match(routeText, /activeMeetingTable = 'appointments'/);
+  assert.match(routeText, /lifecycleTable = 'lifecycle_events'/);
+  assert.doesNotMatch(routeText, /active_athlete_meeting_truth/);
+  assert.doesNotMatch(routeText, /athlete_lifecycle_timeline/);
   assert.match(routeText, /summaryFor\(sourceSummary, currentMeetings, meetings, generatedAt\)/);
   assert.match(routeText, /sourceSummary\.meetings_set/);
   assert.match(routeText, /countsAsPostMeetingOutcome/);

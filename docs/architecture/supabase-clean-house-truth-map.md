@@ -79,8 +79,8 @@ Completed in this Call Tracker slice:
 Remaining broader cleanup:
 
 1. `call_activity_events` and `meeting_events` are still historical source tables and repair-script references. Drop them only after the next delete gate proves no repair/audit workflow needs them.
-2. `active_athlete_meeting_truth` and `athlete_lifecycle_timeline` are still used by meeting readback; move that page to `appointments` plus `lifecycle_events` before purging those views.
-3. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging views; it now falls back to `call_log` when compatibility views are gone.
+2. Prospect Web meeting readback now reads `appointments` plus `lifecycle_events` directly. Do not purge `active_athlete_meeting_truth` or `athlete_lifecycle_timeline` yet: `scripts/audit-meeting-readback-live-parity.mjs` currently reports live old-vs-new parity false, so those gaps must be reviewed before deletion.
+3. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views; it now falls back to `call_log` when compatibility views are gone.
 
 ## Repeatable Refactor Playbook
 

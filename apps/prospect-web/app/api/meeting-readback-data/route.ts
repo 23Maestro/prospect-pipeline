@@ -19,32 +19,6 @@ const meetingOutcomes = new Set([
   'rescheduled',
 ]);
 
-const eventFields = [
-  'athlete_name',
-  'occurred_at',
-  'event_at',
-  'reporting_at',
-  'reporting_date_et',
-  'tracker_outcome',
-  'raw_crm_stage',
-  'raw_task_status',
-  'raw_event_type',
-  'source',
-  'appointment_id',
-  'booked_event_title',
-  'revenue_cents',
-  'counts_as_meeting_set',
-  'counts_as_post_meeting_outcome',
-  'materialization_status',
-  MATERIALIZATION_REASON_FIELD,
-  'active_operator_name',
-  'task_assigned_owner',
-  'resolved_owner_name',
-  'resolved_owner_source_field',
-  'can_materialize_for_active_operator',
-  'created_at',
-];
-
 const callLogFields = [
   'athlete_name',
   'occurred_at',
@@ -72,51 +46,56 @@ const callLogFields = [
 ];
 
 const lifecycleFields = [
-  'lifecycle_event_id',
+  'id',
   'athlete_key',
   'athlete_id',
   'athlete_main_id',
-  'athlete_name',
   'event_type',
-  'raw_crm_stage',
-  'raw_task_status',
-  'normalized_stage',
-  'operator_status',
-  'meeting_lifecycle',
-  'pipeline_bucket',
-  'next_action',
-  'is_active_or_monitoring',
-  'is_terminal',
-  'indicates_showed',
-  'counts_as_enrollment',
-  'appointment_id',
-  'event_title',
-  'operator_owner',
-  'head_scout',
-  'event_source',
-  'revenue_cents',
-  PAYLOAD_FIELD,
-  'event_at',
-];
-
-const activeMeetingFields = [
-  'athlete_name',
+  'previous_crm_stage',
+  'previous_task_status',
   'crm_stage',
   'task_status',
-  'operator_owner',
-  'current_head_scout',
-  'current_appointment_id',
-  'resolved_appointment_id',
-  'current_source_event_id',
-  'current_starts_at',
-  'current_meeting_timezone',
-  'current_meeting_timezone_label',
-  'current_appointment_status',
-  'current_appointment_role',
-  'resolution_source',
-  'pipeline_updated_at',
-  'appointment_updated_at',
+  PAYLOAD_FIELD,
+  'created_at',
 ];
+
+const appointmentFields = [
+  'id',
+  'athlete_key',
+  'athlete_id',
+  'athlete_main_id',
+  'head_scout',
+  'starts_at',
+  'status',
+  'source_event_id',
+  'meeting_timezone',
+  'meeting_timezone_label',
+  'calendar_timezone',
+  'previous_appointment_id',
+  'original_appointment_id',
+  'reschedule_sequence',
+  'operator_owner',
+  'operator_owner_key',
+  'head_scout_key',
+  'appointment_role',
+  'status_reason',
+  'source_system',
+  'created_at',
+  'updated_at',
+];
+
+const athleteFields = [
+  'athlete_key',
+  'athlete_name',
+];
+
+const activeAppointmentStatuses = new Set([
+  'scheduled',
+  'rescheduled',
+  'reschedule_pending',
+  'confirmation_queued',
+  'confirmation_sent',
+]);
 
 function noStoreJson(body: unknown, init?: ResponseInit) {
   const response = NextResponse.json(body, init);
@@ -192,6 +171,136 @@ function labelFor(value: unknown) {
   };
   if (labels[key]) return labels[key];
   return String(value || '').trim() || 'Needs Review';
+}
+
+function normalizeLifecycleText(value: unknown) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*[-–—]\s*/g, ' ')
+    .replace(/[.,:]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function classifyLifecycleStage(row: Record<string, any>) {
+  const body = payload(row);
+  const text = normalizeLifecycleText(row.crm_stage || row.task_status || row.event_type);
+  if (text === 'new opportunity') return 'new_opportunity';
+  if (
+    [
+      'left voice mail 1',
+      'left voicemail 1',
+      'left voice mail 2',
+      'left voicemail 2',
+      'never spoke to',
+      'called unable to leave vm',
+      'unable to leave vm',
+      'spoke to athlete not parent',
+      'athlete not parent',
+    ].includes(text)
+  ) {
+    return 'call_attempt';
+  }
+  if (text.includes('closed won') || text.includes('close won')) return 'closed_won';
+  if (text.includes('closed lost') || text.includes('close lost')) return 'closed_lost';
+  if (
+    text.includes('inactive') ||
+    text.includes('dead lead') ||
+    text.includes('archived') ||
+    text.includes('not interested') ||
+    text.includes('too young')
+  ) {
+    return 'inactive';
+  }
+  if (text.includes('no show') || text.includes('noshow')) return 'no_show';
+  if (
+    text.includes('reschedule pending') ||
+    text.includes('rescheduled pending') ||
+    text.includes('meeting result res pending') ||
+    text.includes('meeting result canceled') ||
+    text.includes('actual meeting canceled')
+  ) {
+    return 'reschedule_pending';
+  }
+  if (text.includes('meeting result rescheduled') || text.includes('actual meeting rescheduled') || text === 'rescheduled') {
+    return 'rescheduled';
+  }
+  if (text === 'meeting set') return 'meeting_set';
+  if (
+    text.includes('actual meeting follow up') ||
+    text.includes('spoke to i need to follow up') ||
+    text.includes('spoke to follow up') ||
+    text.includes('meeting follow up') ||
+    text.includes('follow up') ||
+    text.includes('follow-up') ||
+    text.includes('awaiting close') ||
+    text.includes('close pending')
+  ) {
+    return 'meeting_follow_up';
+  }
+  const payloadOutcome = normalizeLifecycleText(body.tracker_outcome);
+  if (payloadOutcome) return payloadOutcome.replace(/\s+/g, '_');
+  return 'unknown';
+}
+
+function operatorStatusFor(normalizedStage: string) {
+  if (['new_opportunity', 'call_attempt'].includes(normalizedStage)) return 'active_call_queue';
+  if (['meeting_set', 'rescheduled'].includes(normalizedStage)) return 'active_meeting_queue';
+  if (normalizedStage === 'reschedule_pending') return 'awaiting_reschedule';
+  if (normalizedStage === 'meeting_follow_up') return 'awaiting_follow_up';
+  if (normalizedStage === 'closed_won') return 'won';
+  if (normalizedStage === 'closed_lost') return 'lost';
+  if (normalizedStage === 'no_show') return 'no_show';
+  if (normalizedStage === 'inactive') return 'inactive';
+  return 'needs_manual_review';
+}
+
+function meetingLifecycleFor(normalizedStage: string) {
+  const labels: Record<string, string> = {
+    new_opportunity: 'not_set',
+    call_attempt: 'not_set',
+    meeting_set: 'scheduled',
+    reschedule_pending: 'reschedule_pending',
+    rescheduled: 'rescheduled',
+    no_show: 'no_show',
+    meeting_follow_up: 'follow_up_due',
+    closed_won: 'closed_won',
+    closed_lost: 'closed_lost',
+    inactive: 'inactive',
+  };
+  return labels[normalizedStage] || 'needs_manual_review';
+}
+
+function pipelineBucketFor(normalizedStage: string) {
+  const labels: Record<string, string> = {
+    closed_won: 'enrolled',
+    closed_lost: 'closed_lost',
+    inactive: 'inactive',
+    reschedule_pending: 'awaiting_reschedule',
+    meeting_follow_up: 'awaiting_update',
+    no_show: 'monitor_no_show',
+    meeting_set: 'active_meeting',
+    rescheduled: 'active_meeting',
+    new_opportunity: 'active_calling',
+    call_attempt: 'active_calling',
+  };
+  return labels[normalizedStage] || 'needs_manual_review';
+}
+
+function nextActionFor(normalizedStage: string) {
+  const labels: Record<string, string> = {
+    closed_won: 'tally_enrollment_revenue',
+    closed_lost: 'drop_from_pipeline',
+    inactive: 'archive_inactive',
+    reschedule_pending: 'reschedule_client',
+    meeting_follow_up: 'follow_up_for_result',
+    no_show: 'monitor_or_reschedule',
+    meeting_set: 'await_meeting_result',
+    rescheduled: 'await_meeting_result',
+    new_opportunity: 'continue_calling',
+    call_attempt: 'continue_calling',
+  };
+  return labels[normalizedStage] || 'manual_review';
 }
 
 function proofLabel(row: Record<string, any>) {
@@ -272,16 +381,21 @@ function isMeetingEvent(row: Record<string, any>) {
 
 function isLifecycleMeetingRow(row: Record<string, any>) {
   const body = payload(row);
+  const normalizedStage = classifyLifecycleStage(row);
   const values = [
     row.event_type,
-    row.raw_crm_stage,
-    row.raw_task_status,
-    row.normalized_stage,
-    row.meeting_lifecycle,
-    row.pipeline_bucket,
+    row.crm_stage,
+    row.task_status,
+    normalizedStage,
+    meetingLifecycleFor(normalizedStage),
+    pipelineBucketFor(normalizedStage),
     body.tracker_outcome,
-    row.appointment_id,
-    row.event_title,
+    body.appointment_id,
+    body.booked_event_id,
+    body.source_event_id,
+    body.booked_event_title,
+    body.meeting_name,
+    body.task_title,
   ]
     .map(normalizeKey)
     .join(' ');
@@ -290,6 +404,15 @@ function isLifecycleMeetingRow(row: Record<string, any>) {
   if (values.includes('no_show') || values.includes('canceled') || values.includes('cancelled')) return true;
   if (values.includes('reschedule')) return true;
   return Boolean(body.appointment_id || body.booked_event_id);
+}
+
+function isCurrentMeetingLifecycle(row: Record<string, any>) {
+  return ['meeting_set', 'rescheduled', 'reschedule_pending'].includes(classifyLifecycleStage(row));
+}
+
+function lifecycleAppointmentId(row: Record<string, any>) {
+  const body = payload(row);
+  return String(body.appointment_id || body.booked_event_id || '').trim();
 }
 
 function callLogRowToEvent(row: Record<string, any>) {
@@ -326,28 +449,30 @@ function meetingRow(row: Record<string, any>) {
   };
 }
 
-function currentMeetingRow(row: Record<string, any>) {
-  const when = row.current_starts_at || row.appointment_updated_at || row.pipeline_updated_at || null;
-  const proof = row.resolution_source === 'current_appointment_pointer' ? 'Verified For Me' : 'Needs Review';
+function currentMeetingRow(row: Record<string, any>, athleteByKey: Map<string, string>, lifecycle?: Record<string, any>) {
+  const lifecycleBody = lifecycle ? payload(lifecycle) : {};
+  const lifecycleStage = lifecycle ? classifyLifecycleStage(lifecycle) : '';
+  const when = row.starts_at || row.updated_at || lifecycle?.created_at || row.created_at || null;
   return {
     when,
     whenLabel: etLabel(when),
-    athleteName: row.athlete_name || 'Unknown Athlete',
-    meetingStatus: labelFor(row.current_appointment_status || row.crm_stage || row.task_status),
-    meetingTitle: row.current_head_scout ? `${row.current_head_scout} meeting` : row.current_appointment_role || '',
-    appointmentId: row.resolved_appointment_id || row.current_appointment_id || '',
-    proof,
-    source: sourceLabel('active_athlete_meeting_truth', row.resolution_source || 'current_meeting'),
-    createdAt: row.appointment_updated_at || row.pipeline_updated_at || null,
-    createdAtLabel: etLabel(row.appointment_updated_at || row.pipeline_updated_at || null),
-    rawOutcome: row.current_appointment_status || row.crm_stage || null,
-    meetingTimezone: row.current_meeting_timezone || null,
-    meetingTimezoneLabel: row.current_meeting_timezone_label || null,
+    athleteName: athleteByKey.get(row.athlete_key || lifecycle?.athlete_key) || 'Unknown Athlete',
+    meetingStatus: labelFor(lifecycleStage || row.status),
+    meetingTitle: row.head_scout ? `${row.head_scout} meeting` : row.appointment_role || lifecycleBody.booked_event_title || lifecycleBody.task_title || '',
+    appointmentId: row.id || lifecycleAppointmentId(lifecycle || {}) || '',
+    proof: row.id ? 'Verified For Me' : 'Needs Review',
+    source: sourceLabel('appointments', lifecycleStage || row.status || 'current_meeting'),
+    createdAt: row.updated_at || row.created_at || null,
+    createdAtLabel: etLabel(row.updated_at || row.created_at || null),
+    rawOutcome: row.status || null,
+    meetingTimezone: row.meeting_timezone || row.calendar_timezone || null,
+    meetingTimezoneLabel: row.meeting_timezone_label || null,
   };
 }
 
-function lifecycleRow(row: Record<string, any>) {
+function lifecycleRow(row: Record<string, any>, athleteByKey: Map<string, string>) {
   const body = payload(row);
+  const normalizedStage = classifyLifecycleStage(row);
   const when = firstValue(row, [
     ['occurred_at'],
     ['event_at'],
@@ -357,26 +482,26 @@ function lifecycleRow(row: Record<string, any>) {
   return {
     when,
     whenLabel: etLabel(when),
-    athleteName: firstValue(row, [['$row', 'athlete_name'], ['athlete_name'], ['name']]) || 'Unknown Athlete',
-    lifecycleEvent: labelFor(row.normalized_stage || row.event_type || body.tracker_outcome || row.raw_crm_stage || row.raw_task_status),
-    crmStage: labelFor(row.raw_crm_stage),
-    taskStatus: labelFor(row.raw_task_status),
+    athleteName: athleteByKey.get(row.athlete_key) || firstValue(row, [['athlete_name'], ['name']]) || 'Unknown Athlete',
+    lifecycleEvent: labelFor(normalizedStage || row.event_type || body.tracker_outcome || row.crm_stage || row.task_status),
+    crmStage: labelFor(row.crm_stage),
+    taskStatus: labelFor(row.task_status),
     proof: proofLabel(row),
-    source: 'athlete_lifecycle_timeline',
-    appointmentId: row.appointment_id || body.appointment_id || body.booked_event_id || '',
-    meetingTitle: row.event_title || body.booked_event_title || body.task_title || '',
-    createdAt: row.event_at || row.created_at || null,
-    createdAtLabel: etLabel(row.event_at || row.created_at || null),
+    source: 'lifecycle_events',
+    appointmentId: body.appointment_id || body.booked_event_id || body.source_event_id || '',
+    meetingTitle: body.booked_event_title || body.meeting_name || body.task_title || '',
+    createdAt: row.created_at || null,
+    createdAtLabel: etLabel(row.created_at || null),
     rawEventType: row.event_type || null,
-    normalizedStage: row.normalized_stage || null,
-    operatorStatus: row.operator_status || null,
-    meetingLifecycle: row.meeting_lifecycle || null,
-    pipelineBucket: row.pipeline_bucket || null,
-    nextAction: row.next_action || null,
-    isActiveOrMonitoring: row.is_active_or_monitoring === true,
-    isTerminal: row.is_terminal === true,
-    indicatesShowed: row.indicates_showed === true,
-    countsAsEnrollment: row.counts_as_enrollment === true,
+    normalizedStage,
+    operatorStatus: operatorStatusFor(normalizedStage),
+    meetingLifecycle: meetingLifecycleFor(normalizedStage),
+    pipelineBucket: pipelineBucketFor(normalizedStage),
+    nextAction: nextActionFor(normalizedStage),
+    isActiveOrMonitoring: ['meeting_set', 'rescheduled', 'reschedule_pending', 'meeting_follow_up', 'no_show', 'new_opportunity', 'call_attempt'].includes(normalizedStage),
+    isTerminal: ['closed_won', 'closed_lost', 'inactive'].includes(normalizedStage),
+    indicatesShowed: ['closed_won', 'closed_lost', 'reschedule_pending', 'meeting_follow_up'].includes(normalizedStage),
+    countsAsEnrollment: normalizedStage === 'closed_won',
   };
 }
 
@@ -440,15 +565,55 @@ function sourceSummaryFromEvents(rows: Array<Record<string, any>>) {
 
 async function buildMeetingReadback() {
   const canonicalEventTable = 'call_log';
-  const activeMeetingView = 'active_athlete_meeting_truth';
-  const lifecycleView = 'athlete_lifecycle_timeline';
-  const [callLogRows, activeMeetingRows, lifecycleRows] = await Promise.all([
+  const activeMeetingTable = 'appointments';
+  const lifecycleTable = 'lifecycle_events';
+  const athleteTable = 'athletes';
+  const [callLogRows, appointmentRows, lifecycleRows, athleteRows] = await Promise.all([
     supabaseGet([`${canonicalEventTable}?select=${encodeURIComponent(callLogFields.join(','))}`, 'order=reporting_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
-    supabaseGet([`${activeMeetingView}?select=${encodeURIComponent(activeMeetingFields.join(','))}`, 'order=current_starts_at.asc', `limit=${EVENT_LIMIT}`].join('&')),
-    supabaseGet([`${lifecycleView}?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
+    supabaseGet([
+      `${activeMeetingTable}?select=${encodeURIComponent(appointmentFields.join(','))}`,
+      `status=in.(${[...activeAppointmentStatuses].join(',')})`,
+      'order=updated_at.desc',
+      `limit=${EVENT_LIMIT}`,
+    ].join('&')),
+    supabaseGet([`${lifecycleTable}?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=created_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
+    supabaseGet([`${athleteTable}?select=${encodeURIComponent(athleteFields.join(','))}`, `limit=${EVENT_LIMIT}`].join('&')),
   ]);
-  const currentMeetings = (Array.isArray(activeMeetingRows) ? activeMeetingRows : [])
-    .map(currentMeetingRow)
+  const athleteByKey = new Map(
+    (Array.isArray(athleteRows) ? athleteRows : [])
+      .map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()])
+      .filter(([athleteKey, athleteName]) => athleteKey && athleteName) as Array<[string, string]>,
+  );
+  const appointmentById = new Map<string, Record<string, any>>();
+  const latestAppointmentByAthlete = new Map<string, Record<string, any>>();
+  for (const row of Array.isArray(appointmentRows) ? appointmentRows : []) {
+    const appointmentId = String(row.id || '').trim();
+    if (appointmentId) appointmentById.set(appointmentId, row);
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || latestAppointmentByAthlete.has(athleteKey)) continue;
+    latestAppointmentByAthlete.set(athleteKey, row);
+  }
+  const latestLifecycleByAthlete = new Map<string, Record<string, any>>();
+  for (const row of Array.isArray(lifecycleRows) ? lifecycleRows : []) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || latestLifecycleByAthlete.has(athleteKey)) continue;
+    latestLifecycleByAthlete.set(athleteKey, row);
+  }
+  const currentMeetings = [...latestLifecycleByAthlete.values()]
+    .filter(isCurrentMeetingLifecycle)
+    .map((row) => {
+      const appointmentId = lifecycleAppointmentId(row);
+      return currentMeetingRow(
+        appointmentById.get(appointmentId) || latestAppointmentByAthlete.get(String(row.athlete_key || '').trim()) || {
+          id: appointmentId,
+          athlete_key: row.athlete_key,
+          status: classifyLifecycleStage(row),
+          created_at: row.created_at,
+        },
+        athleteByKey,
+        row,
+      );
+    })
     .sort((left, right) => new Date(left.when || 0).getTime() - new Date(right.when || 0).getTime());
   const eventRows = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
   const meetings = eventRows
@@ -462,7 +627,7 @@ async function buildMeetingReadback() {
   ];
   const lifecycle = (Array.isArray(lifecycleRows) ? lifecycleRows : [])
     .filter(isLifecycleMeetingRow)
-    .map(lifecycleRow)
+    .map((row) => lifecycleRow(row, athleteByKey))
     .sort((left, right) => new Date(right.when || 0).getTime() - new Date(left.when || 0).getTime());
   const generatedAt = new Date().toISOString();
   const sourceSummary = sourceSummaryFromEvents(eventRows);
@@ -476,8 +641,9 @@ async function buildMeetingReadback() {
       eventLimit: EVENT_LIMIT,
       supabaseReads: {
         canonicalEventTable,
-        activeMeetingView,
-        lifecycleView,
+        activeMeetingTable,
+        lifecycleTable,
+        athleteTable,
       },
       summary: summaryFor(sourceSummary, currentMeetings, meetings, generatedAt),
       sourceSummary,
