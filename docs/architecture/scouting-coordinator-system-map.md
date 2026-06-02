@@ -51,7 +51,7 @@ flowchart TD
   M --> M_CMD["Commands: Scout Prep, Scout Openings, Set Meetings"]
   M_CMD --> M_ACTIONS["Actions: Head Scout Schedules, choose slot, Open Meeting, reschedule, confirmation timing"]
   M_ACTIONS --> M_DOMAIN["Domains: appointment truth, booked meeting details, head scout openings, reschedule slots"]
-  M_DOMAIN --> M_SUPA["Supabase: appointments, active_athlete_meeting_truth"]
+  M_DOMAIN --> M_SUPA["Supabase: appointments"]
   M_DOMAIN --> M_HELPERS["Helpers: booked-meeting-details-resolver, head-scout-schedules, appointment lifecycle"]
   M_HELPERS --> M_API["Laravel/API: calendar bookings, booked meeting details, admin athlete appointment tabs"]
   SP_INFO --> M_ACTIONS
@@ -83,7 +83,7 @@ flowchart TD
   L_CMD --> L_ACTIONS["Actions: Post-Call Update, Save, Sync Notion Call Prep, Refresh Scout Prep"]
   L_ACTIONS --> L_STAGE["Stage Form: Official Sales Stage"]
   L_ACTIONS --> L_DOMAIN["Domains: CRM sales stage, task status, lifecycle current/timeline, reporting facts"]
-  L_DOMAIN --> L_SUPA["Supabase: athlete_lifecycle_timeline, athlete_lifecycle_current, call tracker views"]
+  L_DOMAIN --> L_SUPA["Supabase: lifecycle_events via lifecycleSalesStage"]
   L_DOMAIN --> L_HELPERS["Helpers: sales-lifecycle, supabase-lifecycle, supabase-lifecycle-translator"]
   L_HELPERS --> L_API["Laravel/API: sales stage update, pipeline state, task source data"]
   SP_POST --> L_ACTIONS
@@ -92,7 +92,7 @@ flowchart TD
   E_CMD --> E_ACTIONS["Actions: Close Won, Close Lost, No Show, Follow Up, Reschedule Pending"]
   E_ACTIONS --> E_RSP["Reschedule Pending Fields: RSP And Scout Notes, Note Title, Why They Rescheduled"]
   E_ACTIONS --> E_DOMAIN["Domains: post-meeting outcomes, pending client, enrollment result, reschedule pending"]
-  E_DOMAIN --> E_SUPA["Supabase: meeting_events, pending_client_watchlist"]
+  E_DOMAIN --> E_SUPA["Supabase: call_events target, pending_client_watchlist"]
   E_DOMAIN --> E_HELPERS["Helpers: post-call-action, pending-client-watchlist, outcome translators"]
   E_HELPERS --> E_API["Laravel/API: sales stage, Notes tab, commission/outcome evidence"]
   SP_POST --> E_ACTIONS
@@ -149,11 +149,12 @@ Use these rules before adding or moving code:
 
 ## Source-Of-Truth Rules
 
-- `appointments` and `active_athlete_meeting_truth` own durable meeting truth when appointment fields are present.
-- `athlete_lifecycle_timeline` and `athlete_lifecycle_current` own lifecycle interpretation.
-- `meeting_events` owns post-meeting outcome facts.
+- `appointments` owns durable meeting truth when appointment fields are present.
+- `lifecycle_events` owns sales-stage lifecycle history through `lifecycleSalesStage`.
+- `call_events` is the target centralized table for call activity, meeting-set facts, and post-meeting outcome facts.
 - `athlete_contact_cache` supports contact lookup and Client Messages admission; it does not own meeting truth.
 - `set_meeting_confirmation_cache` supports confirmation/message workflows; it does not own lifecycle truth.
+- `active_athlete_meeting_truth`, `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, `reminders`, and `athlete_pipeline_state` are migration/delete targets; do not add new dependencies on them.
 - Laravel/FastAPI endpoints are source-system adapters. Do not encode business meaning in endpoint wrappers when a domain helper already owns it.
 
 ## Repair And Audit Scripts

@@ -1051,7 +1051,7 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
   return { enabled: true };
 }
 
-export async function recordLifecycleMutation(
+export async function lifecycleSalesStage(
   args: LifecycleMutationEventArgs,
 ): Promise<{ enabled: boolean }> {
   const event = buildLifecycleMutationEvent(args);

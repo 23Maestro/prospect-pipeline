@@ -16,7 +16,7 @@ import type { AthleteTaskSummary } from '../types/athlete-workflows';
 import { searchLogger } from './logger';
 import type { VoicemailFollowUpVariant } from './scout-follow-up-templates';
 import { getActiveOperator } from '../domain/owners';
-import { recordLifecycleMutation } from './supabase-lifecycle';
+import { lifecycleSalesStage } from './supabase-lifecycle';
 import {
   findNewestIncompleteConfirmationTask,
   findNewestIncompleteFollowUpTask,
@@ -334,7 +334,7 @@ export async function completeScoutPrepTaskAfterVoicemail(args: {
     taskId: result.task_id || null,
     message: result.message || null,
   });
-  await recordLifecycleMutation({
+  await lifecycleSalesStage({
     sourcePost: '/tasks/complete',
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
@@ -411,7 +411,7 @@ export async function updateScoutPrepTask(args: {
     task_id?: string | null;
     message?: string | null;
   };
-  await recordLifecycleMutation({
+  await lifecycleSalesStage({
     sourcePost: '/tasks/update',
     athleteId: args.contactTask,
     athleteMainId: args.athleteMainId,
@@ -465,7 +465,7 @@ export async function recordCallAttempt3MessageSent(args: {
     stage?: string | null;
     message?: string | null;
   };
-  await recordLifecycleMutation({
+  await lifecycleSalesStage({
     sourcePost: '/tasks/call-attempt-3-sent',
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,
@@ -568,7 +568,7 @@ export async function recordVoicemailFollowUpMessageSent(args: {
     stage?: string | null;
     message?: string | null;
   };
-  await recordLifecycleMutation({
+  await lifecycleSalesStage({
     sourcePost: '/tasks/follow-up-message-sent',
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,

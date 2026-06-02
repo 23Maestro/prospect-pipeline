@@ -325,7 +325,7 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
   const doc = readRepoFile('docs/architecture/scout-prep-supabase-source-of-truth.md');
 
   [
-    'recordLifecycleMutation',
+    'lifecycleSalesStage',
     'recordMeetingSet',
     'Confirmation cache is not lifecycle truth',
     'Pending Clients',

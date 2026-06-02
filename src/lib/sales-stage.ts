@@ -18,7 +18,7 @@ import {
   normalizeSalesStageLabelForLaravel,
 } from '../domain/sales-stage-contract';
 import { getActiveOperator } from '../domain/owners';
-import { recordLifecycleMutation } from './supabase-lifecycle';
+import { lifecycleSalesStage } from './supabase-lifecycle';
 
 const FEATURE = 'sales-stage';
 const DEFAULT_EXCLUDED_STAGE_LABELS = new Set<string>();
@@ -258,7 +258,7 @@ export async function updateSalesStage(args: {
   const resolvedStage = payload.stage || stage;
   if (!classifyMeetingSetStage(resolvedStage)) {
     try {
-      await recordLifecycleMutation({
+      await lifecycleSalesStage({
         sourcePost: '/sales/stage',
         athleteId,
         athleteMainId,

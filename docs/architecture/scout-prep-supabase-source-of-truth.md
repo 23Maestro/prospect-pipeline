@@ -6,7 +6,7 @@ This file pins which workflow owns each Supabase write so lifecycle logic does n
 
 | Workflow | Source action | Laravel/FastAPI write | Supabase write | Notes |
 | --- | --- | --- | --- | --- |
-| Scout Prep post-call action | Raycast Scout Prep | Task/stage update route succeeds first | `recordLifecycleMutation` | This is the primary call activity writer for Raycast-owned actions. |
+| Scout Prep post-call action | Raycast Scout Prep | Task/stage update route succeeds first | `lifecycleSalesStage` | This is the primary lifecycle/sales-stage writer for Raycast-owned actions. |
 | Scout Prep meeting set | Raycast Scout Prep | Meeting creation and sales stage save succeed first | `recordMeetingSet` / lifecycle mutation plus `set_meeting_confirmation_cache` | Confirmation cache is required for Prospect Mobile confirmation prep actions and must write both confirmation rows. |
 | Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update | Confirmation cache and event title state | Confirmation cache is not lifecycle truth. |
 | Pending Clients | Current pipeline state | Reads current sales stage and athlete event list | Reads Supabase pipeline/lifecycle state | It must not read confirmation cache. |
@@ -21,7 +21,7 @@ Reconcile scripts exist for state that did not originate from a Raycast action-t
 - commission updates
 - historical repair or backfill
 
-These scripts may write Supabase, but they are audit/reconcile/repair jobs, not the primary Scout Prep writer.
+These scripts may write Supabase only through canonical writer paths, but they are audit/reconcile/repair jobs, not the primary Scout Prep writer.
 
 ## Script roles
 
@@ -33,6 +33,16 @@ These scripts may write Supabase, but they are audit/reconcile/repair jobs, not 
 | `scripts/sync-commissions-to-supabase.mjs` | Audit/reconcile commission rows. |
 | `scripts/backsync-lifecycle-call-activity-events.mjs` | Legacy repair only. |
 | `scripts/materialize-call-tracker-data-contract.mjs` | Legacy/static browser contract materialization only. |
+
+## Clean-house target
+
+See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned delete and migration map.
+
+- `lifecycleSalesStage` is the one lifecycle/sales-stage writer.
+- `lifecycle_events` is the only lifecycle/sales-stage history table.
+- `appointments` owns meeting timing/detail/reschedule chain.
+- `call_events` is the target centralized table for call, meeting-set, and post-meeting reporting facts.
+- `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `active_athlete_meeting_truth`, `athlete_pipeline_state`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, and `reminders` are migration/delete targets.
 
 ## Rules
 

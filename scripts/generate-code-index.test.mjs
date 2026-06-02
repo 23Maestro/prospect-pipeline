@@ -26,7 +26,7 @@ test('scanner finds architecture anchors', () => {
   );
   assert.ok(
     records.some(
-      (record) => record.kind === 'function' && record.name === 'recordLifecycleMutation',
+      (record) => record.kind === 'function' && record.name === 'lifecycleSalesStage',
     ),
     'expected Supabase lifecycle function',
   );

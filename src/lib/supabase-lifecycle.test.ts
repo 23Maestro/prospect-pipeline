@@ -486,11 +486,11 @@ test('Laravel POST wrappers call the shared lifecycle mutation writer after succ
   const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
   const salesStageSource = fs.readFileSync('src/lib/sales-stage.ts', 'utf8');
 
-  assert.match(scoutPrepSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/tasks\/complete'/);
-  assert.match(scoutPrepSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/tasks\/update'/);
-  assert.match(scoutPrepSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/tasks\/call-attempt-3-sent'/);
-  assert.match(scoutPrepSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/tasks\/follow-up-message-sent'/);
-  assert.match(salesStageSource, /recordLifecycleMutation\(\{\s*sourcePost: '\/sales\/stage'/);
+  assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/complete'/);
+  assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/update'/);
+  assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/call-attempt-3-sent'/);
+  assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/follow-up-message-sent'/);
+  assert.match(salesStageSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/sales\/stage'/);
 });
 
 test('Scout Prep Supabase writes happen after the matching Laravel write succeeds', () => {
@@ -501,36 +501,36 @@ test('Scout Prep Supabase writes happen after the matching Laravel write succeed
     scoutPrepSource.indexOf('export async function completeScoutPrepTaskAfterVoicemail'),
     scoutPrepSource.indexOf('export async function fetchScoutTaskPopup'),
   );
-  assert.ok(taskCompletion.indexOf("apiFetch('/tasks/complete'") < taskCompletion.indexOf('recordLifecycleMutation({'));
-  assert.ok(taskCompletion.indexOf('if (!response.ok)') < taskCompletion.indexOf('recordLifecycleMutation({'));
+  assert.ok(taskCompletion.indexOf("apiFetch('/tasks/complete'") < taskCompletion.indexOf('lifecycleSalesStage({'));
+  assert.ok(taskCompletion.indexOf('if (!response.ok)') < taskCompletion.indexOf('lifecycleSalesStage({'));
 
   const taskUpdate = scoutPrepSource.slice(
     scoutPrepSource.indexOf('export async function updateScoutPrepTask'),
     scoutPrepSource.indexOf('export async function recordCallAttempt3MessageSent'),
   );
-  assert.ok(taskUpdate.indexOf("apiFetch('/tasks/update'") < taskUpdate.indexOf('recordLifecycleMutation({'));
-  assert.ok(taskUpdate.indexOf('if (!response.ok)') < taskUpdate.indexOf('recordLifecycleMutation({'));
+  assert.ok(taskUpdate.indexOf("apiFetch('/tasks/update'") < taskUpdate.indexOf('lifecycleSalesStage({'));
+  assert.ok(taskUpdate.indexOf('if (!response.ok)') < taskUpdate.indexOf('lifecycleSalesStage({'));
 
   const callAttempt3 = scoutPrepSource.slice(
     scoutPrepSource.indexOf('export async function recordCallAttempt3MessageSent'),
     scoutPrepSource.indexOf('const FOLLOW_UP_STAGE_BY_VARIANT'),
   );
-  assert.ok(callAttempt3.indexOf("apiFetch('/tasks/call-attempt-3-sent'") < callAttempt3.indexOf('recordLifecycleMutation({'));
-  assert.ok(callAttempt3.indexOf('if (!response.ok)') < callAttempt3.indexOf('recordLifecycleMutation({'));
+  assert.ok(callAttempt3.indexOf("apiFetch('/tasks/call-attempt-3-sent'") < callAttempt3.indexOf('lifecycleSalesStage({'));
+  assert.ok(callAttempt3.indexOf('if (!response.ok)') < callAttempt3.indexOf('lifecycleSalesStage({'));
 
   const followUp = scoutPrepSource.slice(
     scoutPrepSource.indexOf('export async function recordVoicemailFollowUpMessageSent'),
     scoutPrepSource.indexOf('export function resolveGradeLabel'),
   );
-  assert.ok(followUp.indexOf("apiFetch('/tasks/follow-up-message-sent'") < followUp.indexOf('recordLifecycleMutation({'));
-  assert.ok(followUp.indexOf('if (!response.ok)') < followUp.indexOf('recordLifecycleMutation({'));
+  assert.ok(followUp.indexOf("apiFetch('/tasks/follow-up-message-sent'") < followUp.indexOf('lifecycleSalesStage({'));
+  assert.ok(followUp.indexOf('if (!response.ok)') < followUp.indexOf('lifecycleSalesStage({'));
 
   const salesStage = salesStageSource.slice(
     salesStageSource.indexOf('export async function updateSalesStage'),
     salesStageSource.indexOf('export async function submitMeetingSet'),
   );
-  assert.ok(salesStage.indexOf("apiFetch('/sales/stage'") < salesStage.indexOf('recordLifecycleMutation({'));
-  assert.ok(salesStage.indexOf('if (!response.ok)') < salesStage.indexOf('recordLifecycleMutation({'));
+  assert.ok(salesStage.indexOf("apiFetch('/sales/stage'") < salesStage.indexOf('lifecycleSalesStage({'));
+  assert.ok(salesStage.indexOf('if (!response.ok)') < salesStage.indexOf('lifecycleSalesStage({'));
 });
 
 test('Scout Prep voicemail follow-up persistence is shared across recipient modes', () => {
@@ -578,7 +578,7 @@ test('Scout Prep post-call success closes pushed form before refreshing command 
   assert.doesNotMatch(helper, /popToRoot/);
   assert.match(postCallFlow, /completeScoutPrepMutationSuccess\(\{[\s\S]*title:/);
   assert.doesNotMatch(postCallFlow, /onReturnToRootList: onSaved/);
-  assert.match(postCallFlow, /popViews\(pop, closeAfterSaveViews\);[\s\S]*await onSaved\?\.\(\);/);
+  assert.match(postCallFlow, /await popViewsThenRefreshRoot\(pop, closeAfterSaveViews, onSaved\);/);
 });
 
 test('Scout Prep task rows expose MaxPreps actions from the action panel', () => {

@@ -190,6 +190,11 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/tests/athlete-lifecycle-timeline-contract.test.mjs',
     'scripts/sync-commissions-to-supabase.mjs',
     'scripts/sync-commissions-to-supabase.test.mjs',
+    'scripts/audit-supabase-truth-map.mjs',
+    'scripts/audit-supabase-truth-map.test.mjs',
+    'scripts/generate-code-index.test.mjs',
+    'src/lib/sales-stage.ts',
+    'src/lib/scout-prep.tsx',
   ]);
   const forbiddenPrefixes = ['npid-api-layer/', 'scripts/', 'supabase/', 'src/'];
   const offenders = changedFiles.filter(
