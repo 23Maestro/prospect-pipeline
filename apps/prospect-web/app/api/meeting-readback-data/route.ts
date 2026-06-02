@@ -599,21 +599,8 @@ async function buildMeetingReadback() {
     if (!athleteKey || latestLifecycleByAthlete.has(athleteKey)) continue;
     latestLifecycleByAthlete.set(athleteKey, row);
   }
-  const currentMeetings = [...latestLifecycleByAthlete.values()]
-    .filter(isCurrentMeetingLifecycle)
-    .map((row) => {
-      const appointmentId = lifecycleAppointmentId(row);
-      return currentMeetingRow(
-        appointmentById.get(appointmentId) || latestAppointmentByAthlete.get(String(row.athlete_key || '').trim()) || {
-          id: appointmentId,
-          athlete_key: row.athlete_key,
-          status: classifyLifecycleStage(row),
-          created_at: row.created_at,
-        },
-        athleteByKey,
-        row,
-      );
-    })
+  const currentMeetings = (Array.isArray(appointmentRows) ? appointmentRows : [])
+    .map((row) => currentMeetingRow(row, athleteByKey, latestLifecycleByAthlete.get(String(row.athlete_key || '').trim())))
     .sort((left, right) => new Date(left.when || 0).getTime() - new Date(right.when || 0).getTime());
   const eventRows = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
   const meetings = eventRows

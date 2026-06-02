@@ -37,10 +37,9 @@ function statusClass(value) {
 function sourceText(row) {
   const source = String(row.source || '').split('/')[0].trim();
   const labels = {
-    active_athlete_meeting_truth: 'Current Meeting Truth',
+    appointments: 'Appointment Truth',
     call_tracker_events_owner_context: 'Call Tracker Reporting',
     weekly_booked_meetings_with_operator_confirmation_task: 'Booked Meeting Confirmation',
-    athlete_lifecycle_timeline: 'Athlete Lifecycle Timeline',
     lifecycle_events: 'Lifecycle Events',
     meeting_events: 'Meeting Events',
     stripe_commissions: 'Paid Close',

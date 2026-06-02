@@ -6,7 +6,7 @@ import {
   type BookedMeetingDetailsResponse,
   type BookedMeetingEvent,
 } from './head-scout-schedules';
-import type { AppointmentTruthRow } from '../domain/appointment-truth';
+import { ACTIVE_APPOINTMENT_STATUSES, type AppointmentTruthRow } from '../domain/appointment-truth';
 import fs from 'fs';
 import path from 'path';
 
@@ -31,7 +31,7 @@ export type ResolvedAppointmentTruthMeetingDetails = ResolvedBookedMeetingDetail
 type ResolverDependencies = {
   fetchAthleteBookedMeetings?: typeof fetchAthleteBookedMeetings;
   fetchBookedMeetingDetails?: typeof fetchBookedMeetingDetails;
-  fetchAppointmentTruth?: typeof fetchActiveAthleteMeetingTruth;
+    fetchAppointmentTruth?: typeof fetchActiveAthleteAppointmentTruth;
   fetchAppointmentById?: typeof fetchAppointmentTruthById;
   getCachedMeetingDescription?: (args: {
     athleteId: string;
@@ -126,10 +126,10 @@ function buildAthleteKey(athleteId: string, athleteMainId: string): string {
   return `${athleteId.trim()}:${athleteMainId.trim()}`;
 }
 
-export async function fetchActiveAthleteMeetingTruth(args: {
+export async function fetchActiveAthleteAppointmentTruth(args: {
   athleteId?: string | null;
   athleteMainId?: string | null;
-}): Promise<ActiveAthleteMeetingTruthRow | null> {
+}): Promise<AppointmentTruthRow | null> {
   const athleteId = clean(args.athleteId);
   const athleteMainId = clean(args.athleteMainId);
   const config = getAppointmentTruthSupabaseConfig();
@@ -138,10 +138,11 @@ export async function fetchActiveAthleteMeetingTruth(args: {
   const query = [
     'select=*',
     `athlete_key=eq.${encodeURIComponent(buildAthleteKey(athleteId, athleteMainId))}`,
-    'order=pipeline_updated_at.desc',
+    `status=in.(${ACTIVE_APPOINTMENT_STATUSES.join(',')})`,
+    'order=updated_at.desc.nullslast,starts_at.desc.nullslast',
     'limit=1',
   ].join('&');
-  const response = await fetch(`${config.url}/rest/v1/active_athlete_meeting_truth?${query}`, {
+  const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {
     headers: {
       apikey: config.key,
       Authorization: `Bearer ${config.key}`,
@@ -151,7 +152,7 @@ export async function fetchActiveAthleteMeetingTruth(args: {
   if (!response.ok) {
     throw new Error((await response.text()).slice(0, 300) || `Supabase HTTP ${response.status}`);
   }
-  const rows = (await response.json()) as ActiveAthleteMeetingTruthRow[];
+  const rows = (await response.json()) as AppointmentTruthRow[];
   return Array.isArray(rows) ? rows[0] || null : null;
 }
 
@@ -370,7 +371,7 @@ export async function resolveBookedMeetingDetailsForForm(
       const resolvedAppointment = appointment ? buildAppointmentTruthMeeting(appointment) : null;
       if (resolvedAppointment || args.source === 'appointment_truth') return resolvedAppointment;
     }
-    const fetchTruth = dependencies.fetchAppointmentTruth || fetchActiveAthleteMeetingTruth;
+    const fetchTruth = dependencies.fetchAppointmentTruth || fetchActiveAthleteAppointmentTruth;
     const truth = await fetchTruth({ athleteId, athleteMainId }).catch(() => null);
     return truth ? buildAppointmentTruthMeeting(truth) : null;
   }

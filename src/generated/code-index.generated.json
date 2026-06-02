@@ -9,10 +9,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 130,
+    "line": 138,
     "system": "Domain",
     "bucket": "Supabase persistence",
-    "id": "api_call:Domain:src/domain/supabase-persistence.ts:130:::fetch"
+    "id": "api_call:Domain:src/domain/supabase-persistence.ts:138:::fetch"
   },
   {
     "exported": true,
@@ -466,51 +466,6 @@
     "id": "function:Domain:src/domain/call-tracker-facts.ts:16:::normalizeValue"
   },
   {
-    "exported": true,
-    "tags": [
-      "exported"
-    ],
-    "snippet": "export function buildAppointmentId(args: {",
-    "signature": "export function buildAppointmentId(args: {",
-    "kind": "function",
-    "name": "buildAppointmentId",
-    "file": "src/domain/call-tracker-facts.ts",
-    "line": 177,
-    "system": "Domain",
-    "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:177:::buildAppointmentId"
-  },
-  {
-    "exported": true,
-    "tags": [
-      "exported"
-    ],
-    "snippet": "export function buildReminderDedupeKey(args: {",
-    "signature": "export function buildReminderDedupeKey(args: {",
-    "kind": "function",
-    "name": "buildReminderDedupeKey",
-    "file": "src/domain/call-tracker-facts.ts",
-    "line": 191,
-    "system": "Domain",
-    "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:191:::buildReminderDedupeKey"
-  },
-  {
-    "exported": true,
-    "tags": [
-      "exported"
-    ],
-    "snippet": "export function buildAthleteSnapshot(args: {",
-    "signature": "export function buildAthleteSnapshot(args: {",
-    "kind": "function",
-    "name": "buildAthleteSnapshot",
-    "file": "src/domain/call-tracker-facts.ts",
-    "line": 205,
-    "system": "Domain",
-    "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:205:::buildAthleteSnapshot"
-  },
-  {
     "exported": false,
     "tags": [],
     "snippet": "function normalizeIsoValue(value?: string | null): string | null {",
@@ -528,15 +483,60 @@
     "tags": [
       "exported"
     ],
+    "snippet": "export function buildAppointmentId(args: {",
+    "signature": "export function buildAppointmentId(args: {",
+    "kind": "function",
+    "name": "buildAppointmentId",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 227,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:227:::buildAppointmentId"
+  },
+  {
+    "exported": true,
+    "tags": [
+      "exported"
+    ],
+    "snippet": "export function buildReminderDedupeKey(args: {",
+    "signature": "export function buildReminderDedupeKey(args: {",
+    "kind": "function",
+    "name": "buildReminderDedupeKey",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 241,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:241:::buildReminderDedupeKey"
+  },
+  {
+    "exported": true,
+    "tags": [
+      "exported"
+    ],
+    "snippet": "export function buildAthleteSnapshot(args: {",
+    "signature": "export function buildAthleteSnapshot(args: {",
+    "kind": "function",
+    "name": "buildAthleteSnapshot",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 255,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:255:::buildAthleteSnapshot"
+  },
+  {
+    "exported": true,
+    "tags": [
+      "exported"
+    ],
     "snippet": "export function buildAppointmentSnapshot(args: {",
     "signature": "export function buildAppointmentSnapshot(args: {",
     "kind": "function",
     "name": "buildAppointmentSnapshot",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 221,
+    "line": 271,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:221:::buildAppointmentSnapshot"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:271:::buildAppointmentSnapshot"
   },
   {
     "exported": true,
@@ -548,10 +548,10 @@
     "kind": "function",
     "name": "buildPipelineStateSnapshot",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 272,
+    "line": 322,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:272:::buildPipelineStateSnapshot"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:322:::buildPipelineStateSnapshot"
   },
   {
     "exported": true,
@@ -563,10 +563,10 @@
     "kind": "function",
     "name": "buildLifecycleAuditEvent",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 298,
+    "line": 348,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:298:::buildLifecycleAuditEvent"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:348:::buildLifecycleAuditEvent"
   },
   {
     "exported": false,
@@ -576,10 +576,10 @@
     "kind": "function",
     "name": "requireResolvedOwner",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 329,
+    "line": 379,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:329:::requireResolvedOwner"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:379:::requireResolvedOwner"
   },
   {
     "exported": false,
@@ -589,10 +589,10 @@
     "kind": "function",
     "name": "requireFactOccurredAt",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 333,
+    "line": 383,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:333:::requireFactOccurredAt"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:383:::requireFactOccurredAt"
   },
   {
     "exported": false,
@@ -602,10 +602,10 @@
     "kind": "function",
     "name": "requireFactAthleteName",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 341,
+    "line": 391,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:341:::requireFactAthleteName"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:391:::requireFactAthleteName"
   },
   {
     "exported": true,
@@ -617,10 +617,10 @@
     "kind": "function",
     "name": "buildCallActivityFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 349,
+    "line": 399,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:349:::buildCallActivityFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:399:::buildCallActivityFact"
   },
   {
     "exported": true,
@@ -647,10 +647,10 @@
     "kind": "function",
     "name": "buildMeetingOutcomeDedupeKey",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 426,
+    "line": 476,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:426:::buildMeetingOutcomeDedupeKey"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:476:::buildMeetingOutcomeDedupeKey"
   },
   {
     "exported": true,
@@ -662,10 +662,10 @@
     "kind": "function",
     "name": "buildMeetingOutcomeFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 454,
+    "line": 504,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:454:::buildMeetingOutcomeFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:504:::buildMeetingOutcomeFact"
   },
   {
     "exported": true,
@@ -677,10 +677,120 @@
     "kind": "function",
     "name": "buildMeetingSetFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 540,
+    "line": 590,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:540:::buildMeetingSetFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:590:::buildMeetingSetFact"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function boolPayload(payload: Record<string, unknown>, key: string): boolean {",
+    "signature": "function boolPayload(payload: Record<string, unknown>, key: string): boolean {",
+    "kind": "function",
+    "name": "boolPayload",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 625,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:625:::boolPayload"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function textPayload(payload: Record<string, unknown>, key: string): string | null {",
+    "signature": "function textPayload(payload: Record<string, unknown>, key: string): string | null {",
+    "kind": "function",
+    "name": "textPayload",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 629,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:629:::textPayload"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function numberPayload(payload: Record<string, unknown>, key: string): number | null {",
+    "signature": "function numberPayload(payload: Record<string, unknown>, key: string): number | null {",
+    "kind": "function",
+    "name": "numberPayload",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 633,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:633:::numberPayload"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function callLogClocks(args: {",
+    "signature": "function callLogClocks(args: {",
+    "kind": "function",
+    "name": "callLogClocks",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 640,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:640:::callLogClocks"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function buildCallLogBase(args: {",
+    "signature": "function buildCallLogBase(args: {",
+    "kind": "function",
+    "name": "buildCallLogBase",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 657,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:657:::buildCallLogBase"
+  },
+  {
+    "exported": true,
+    "tags": [
+      "exported"
+    ],
+    "snippet": "export function buildCallLogFactFromCallActivityFact(row: CallActivityFactRow): CallLogFactRow {",
+    "signature": "export function buildCallLogFactFromCallActivityFact(row: CallActivityFactRow): CallLogFactRow {",
+    "kind": "function",
+    "name": "buildCallLogFactFromCallActivityFact",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 757,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:757:::buildCallLogFactFromCallActivityFact"
+  },
+  {
+    "exported": true,
+    "tags": [
+      "exported"
+    ],
+    "snippet": "export function buildCallLogFactFromMeetingSetFact(row: MeetingSetFactRow): CallLogFactRow {",
+    "signature": "export function buildCallLogFactFromMeetingSetFact(row: MeetingSetFactRow): CallLogFactRow {",
+    "kind": "function",
+    "name": "buildCallLogFactFromMeetingSetFact",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 788,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:788:::buildCallLogFactFromMeetingSetFact"
+  },
+  {
+    "exported": true,
+    "tags": [
+      "exported"
+    ],
+    "snippet": "export function buildCallLogFactFromMeetingOutcomeFact(row: MeetingOutcomeFactRow): CallLogFactRow {",
+    "signature": "export function buildCallLogFactFromMeetingOutcomeFact(row: MeetingOutcomeFactRow): CallLogFactRow {",
+    "kind": "function",
+    "name": "buildCallLogFactFromMeetingOutcomeFact",
+    "file": "src/domain/call-tracker-facts.ts",
+    "line": 822,
+    "system": "Domain",
+    "bucket": "Domain logic",
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:822:::buildCallLogFactFromMeetingOutcomeFact"
   },
   {
     "exported": false,
@@ -3560,10 +3670,10 @@
     "kind": "function",
     "name": "supabaseRequest",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 117,
+    "line": 125,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:117:::supabaseRequest"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:125:::supabaseRequest"
   },
   {
     "exported": true,
@@ -3575,10 +3685,10 @@
     "kind": "function",
     "name": "readRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 154,
+    "line": 162,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:154:::readRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:162:::readRows"
   },
   {
     "exported": false,
@@ -3588,10 +3698,10 @@
     "kind": "function",
     "name": "writeRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 163,
+    "line": 171,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:163:::writeRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:171:::writeRows"
   },
   {
     "exported": true,
@@ -3603,10 +3713,10 @@
     "kind": "function",
     "name": "upsertAthletes",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 175,
+    "line": 183,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:175:::upsertAthletes"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:183:::upsertAthletes"
   },
   {
     "exported": true,
@@ -3618,10 +3728,10 @@
     "kind": "function",
     "name": "upsertAppointments",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 179,
+    "line": 187,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:179:::upsertAppointments"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:187:::upsertAppointments"
   },
   {
     "exported": true,
@@ -3633,10 +3743,10 @@
     "kind": "function",
     "name": "upsertAthletePipelineState",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 184,
+    "line": 192,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:184:::upsertAthletePipelineState"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:192:::upsertAthletePipelineState"
   },
   {
     "exported": true,
@@ -3648,25 +3758,25 @@
     "kind": "function",
     "name": "insertLifecycleEvents",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 188,
+    "line": 196,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:188:::insertLifecycleEvents"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:196:::insertLifecycleEvents"
   },
   {
     "exported": true,
     "tags": [
       "exported"
     ],
-    "snippet": "export function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {",
-    "signature": "export function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {",
+    "snippet": "export async function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {",
+    "signature": "export async function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {",
     "kind": "function",
     "name": "insertMeetingSetEventsOnce",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 192,
+    "line": 200,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:192:::insertMeetingSetEventsOnce"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:200:::insertMeetingSetEventsOnce"
   },
   {
     "exported": true,
@@ -3678,10 +3788,10 @@
     "kind": "function",
     "name": "upsertCallActivityEvents",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 196,
+    "line": 207,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:196:::upsertCallActivityEvents"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:207:::upsertCallActivityEvents"
   },
   {
     "exported": true,
@@ -3693,10 +3803,10 @@
     "kind": "function",
     "name": "upsertPostMeetingOutcomeFacts",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 200,
+    "line": 212,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:200:::upsertPostMeetingOutcomeFacts"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:212:::upsertPostMeetingOutcomeFacts"
   },
   {
     "exported": true,
@@ -3708,10 +3818,10 @@
     "kind": "function",
     "name": "upsertSetMeetingConfirmationCacheRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 204,
+    "line": 217,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:204:::upsertSetMeetingConfirmationCacheRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:217:::upsertSetMeetingConfirmationCacheRows"
   },
   {
     "exported": true,
@@ -3723,10 +3833,10 @@
     "kind": "function",
     "name": "upsertPendingClientWatchlistRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 211,
+    "line": 224,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:211:::upsertPendingClientWatchlistRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:224:::upsertPendingClientWatchlistRows"
   },
   {
     "exported": true,
@@ -3738,10 +3848,10 @@
     "kind": "function",
     "name": "upsertAthleteContactCacheRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 219,
+    "line": 232,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:219:::upsertAthleteContactCacheRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:232:::upsertAthleteContactCacheRows"
   },
   {
     "exported": true,
@@ -3753,10 +3863,10 @@
     "kind": "function",
     "name": "hasAthleteContactCacheRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 223,
+    "line": 236,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:223:::hasAthleteContactCacheRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:236:::hasAthleteContactCacheRows"
   },
   {
     "exported": true,
@@ -3768,10 +3878,10 @@
     "kind": "function",
     "name": "patchAthleteContactCacheRowsForAthlete",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 235,
+    "line": 248,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:235:::patchAthleteContactCacheRowsForAthlete"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:248:::patchAthleteContactCacheRowsForAthlete"
   },
   {
     "exported": true,
@@ -3783,10 +3893,10 @@
     "kind": "function",
     "name": "patchPendingClientWatchlistRow",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 243,
+    "line": 256,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:243:::patchPendingClientWatchlistRow"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:256:::patchPendingClientWatchlistRow"
   },
   {
     "exported": true,
@@ -3798,10 +3908,10 @@
     "kind": "function",
     "name": "patchRow",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 251,
+    "line": 264,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:251:::patchRow"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:264:::patchRow"
   },
   {
     "exported": true,
@@ -3813,10 +3923,10 @@
     "kind": "function",
     "name": "deleteRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 267,
+    "line": 280,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:267:::deleteRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:280:::deleteRows"
   },
   {
     "exported": false,
@@ -3826,10 +3936,10 @@
     "kind": "function",
     "name": "normalizeSchema",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 28,
+    "line": 36,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:28:::normalizeSchema"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:36:::normalizeSchema"
   },
   {
     "exported": false,
@@ -3839,10 +3949,10 @@
     "kind": "function",
     "name": "asRecord",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 32,
+    "line": 40,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:32:::asRecord"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:40:::asRecord"
   },
   {
     "exported": false,
@@ -3852,10 +3962,10 @@
     "kind": "function",
     "name": "quotePostgrestInValue",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 38,
+    "line": 46,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:38:::quotePostgrestInValue"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:46:::quotePostgrestInValue"
   },
   {
     "exported": false,
@@ -3865,10 +3975,10 @@
     "kind": "function",
     "name": "preserveAppointmentTruthBeforeUpsert",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 42,
+    "line": 50,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:42:::preserveAppointmentTruthBeforeUpsert"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:50:::preserveAppointmentTruthBeforeUpsert"
   },
   {
     "exported": false,
@@ -3878,10 +3988,10 @@
     "kind": "function",
     "name": "preservePendingClientWatchlistBeforeUpsert",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 76,
+    "line": 84,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:76:::preservePendingClientWatchlistBeforeUpsert"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:84:::preservePendingClientWatchlistBeforeUpsert"
   },
   {
     "exported": false,
@@ -5470,16 +5580,16 @@
     "tags": [
       "fetch"
     ],
-    "snippet": "const response = await fetch(`${config.url}/rest/v1/active_athlete_meeting_truth?${query}`, {",
-    "signature": "const response = await fetch(`${config.url}/rest/v1/active_athlete_meeting_truth?${query}`, {",
+    "snippet": "const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {",
+    "signature": "const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {",
     "kind": "api_call",
-    "name": "fetch `${config.url}/rest/v1/active_athlete_meeting_truth?${query}`",
+    "name": "fetch `${config.url}/rest/v1/appointments?${query}`",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 144,
+    "line": 145,
     "system": "Raycast",
     "bucket": "API call",
-    "path": "`${config.url}/rest/v1/active_athlete_meeting_truth?${query}`",
-    "id": "api_call:Raycast:src/lib/booked-meeting-details-resolver.ts:144::-config.url-/rest/v1/active_athlete_meeting_truth-query-:fetch-config.url-/rest/v1/active_athlete_meeting_truth-query-"
+    "path": "`${config.url}/rest/v1/appointments?${query}`",
+    "id": "api_call:Raycast:src/lib/booked-meeting-details-resolver.ts:145::-config.url-/rest/v1/appointments-query-:fetch-config.url-/rest/v1/appointments-query-"
   },
   {
     "exported": false,
@@ -5491,11 +5601,11 @@
     "kind": "api_call",
     "name": "fetch `${config.url}/rest/v1/appointments?${query}`",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 170,
+    "line": 171,
     "system": "Raycast",
     "bucket": "API call",
     "path": "`${config.url}/rest/v1/appointments?${query}`",
-    "id": "api_call:Raycast:src/lib/booked-meeting-details-resolver.ts:170::-config.url-/rest/v1/appointments-query-:fetch-config.url-/rest/v1/appointments-query-"
+    "id": "api_call:Raycast:src/lib/booked-meeting-details-resolver.ts:171::-config.url-/rest/v1/appointments-query-:fetch-config.url-/rest/v1/appointments-query-"
   },
   {
     "exported": false,
@@ -6557,10 +6667,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 780,
+    "line": 783,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:780:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:783:::fetch"
   },
   {
     "exported": false,
@@ -6572,10 +6682,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 801,
+    "line": 804,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:801:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:804:::fetch"
   },
   {
     "exported": false,
@@ -6587,10 +6697,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 820,
+    "line": 823,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:820:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:823:::fetch"
   },
   {
     "exported": false,
@@ -6602,11 +6712,11 @@
     "kind": "api_call",
     "name": "fetch `${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 839,
+    "line": 842,
     "system": "Raycast",
     "bucket": "Supabase persistence",
     "path": "`${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:839::-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-:fetch-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:842::-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-:fetch-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-"
   },
   {
     "exported": false,
@@ -6618,11 +6728,11 @@
     "kind": "api_call",
     "name": "fetch `${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(\n      args.athleteId.trim(),\n    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 857,
+    "line": 860,
     "system": "Raycast",
     "bucket": "Supabase persistence",
     "path": "`${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(\n      args.athleteId.trim(),\n    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:857::-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-:fetch-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:860::-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-:fetch-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-"
   },
   {
     "exported": false,
@@ -10485,15 +10595,28 @@
   {
     "exported": false,
     "tags": [],
+    "snippet": "function readRepoEnv(): Record<string, string> {",
+    "signature": "function readRepoEnv(): Record<string, string> {",
+    "kind": "function",
+    "name": "readRepoEnv",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 106,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:106:::readRepoEnv"
+  },
+  {
+    "exported": false,
+    "tags": [],
     "snippet": "function getSupabaseConfig(): SupabasePersistenceConfig | null {",
     "signature": "function getSupabaseConfig(): SupabasePersistenceConfig | null {",
     "kind": "function",
     "name": "getSupabaseConfig",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 112,
+    "line": 122,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:112:::getSupabaseConfig"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:122:::getSupabaseConfig"
   },
   {
     "exported": false,
@@ -10503,10 +10626,10 @@
     "kind": "function",
     "name": "logPlanSkipped",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 135,
+    "line": 145,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:135:::logPlanSkipped"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:145:::logPlanSkipped"
   },
   {
     "exported": false,
@@ -10516,10 +10639,10 @@
     "kind": "function",
     "name": "uniqueNormalizedPhones",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 143,
+    "line": 153,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:143:::uniqueNormalizedPhones"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:153:::uniqueNormalizedPhones"
   },
   {
     "exported": false,
@@ -10529,10 +10652,10 @@
     "kind": "function",
     "name": "postgrestInList",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 154,
+    "line": 164,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:154:::postgrestInList"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:164:::postgrestInList"
   },
   {
     "exported": false,
@@ -10542,36 +10665,49 @@
     "kind": "function",
     "name": "readActiveContactCacheRowsForPhones",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 158,
+    "line": 168,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:158:::readActiveContactCacheRowsForPhones"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:168:::readActiveContactCacheRowsForPhones"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "async function readLifecycleCurrentByAthleteKey(",
-    "signature": "async function readLifecycleCurrentByAthleteKey(",
+    "snippet": "function lifecycleStateFromEvent(row: AthleteLifecycleReadRow): AthleteLifecycleState {",
+    "signature": "function lifecycleStateFromEvent(row: AthleteLifecycleReadRow): AthleteLifecycleState {",
     "kind": "function",
-    "name": "readLifecycleCurrentByAthleteKey",
+    "name": "lifecycleStateFromEvent",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 191,
+    "line": 201,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:191:::readLifecycleCurrentByAthleteKey"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:201:::lifecycleStateFromEvent"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "function shouldAdmitContactCacheMatch(lifecycle?: AthletePipelineStateReadRow): boolean {",
-    "signature": "function shouldAdmitContactCacheMatch(lifecycle?: AthletePipelineStateReadRow): boolean {",
+    "snippet": "async function readLifecycleEventsByAthleteKey(",
+    "signature": "async function readLifecycleEventsByAthleteKey(",
+    "kind": "function",
+    "name": "readLifecycleEventsByAthleteKey",
+    "file": "src/lib/athlete-contact-cache.ts",
+    "line": 217,
+    "system": "Raycast",
+    "bucket": "Domain logic",
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:217:::readLifecycleEventsByAthleteKey"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function shouldAdmitContactCacheMatch(lifecycle?: AthleteLifecycleState): boolean {",
+    "signature": "function shouldAdmitContactCacheMatch(lifecycle?: AthleteLifecycleState): boolean {",
     "kind": "function",
     "name": "shouldAdmitContactCacheMatch",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 207,
+    "line": 240,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:207:::shouldAdmitContactCacheMatch"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:240:::shouldAdmitContactCacheMatch"
   },
   {
     "exported": true,
@@ -10583,10 +10719,10 @@
     "kind": "function",
     "name": "lookupActiveAthleteContactCacheForPhones",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 214,
+    "line": 247,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:214:::lookupActiveAthleteContactCacheForPhones"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:247:::lookupActiveAthleteContactCacheForPhones"
   },
   {
     "exported": true,
@@ -10598,10 +10734,10 @@
     "kind": "function",
     "name": "syncAthleteContactCacheFromScoutPrepContext",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 273,
+    "line": 306,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:273:::syncAthleteContactCacheFromScoutPrepContext"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:306:::syncAthleteContactCacheFromScoutPrepContext"
   },
   {
     "exported": true,
@@ -10613,10 +10749,10 @@
     "kind": "function",
     "name": "hasAthleteContactCacheForTask",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 313,
+    "line": 346,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:313:::hasAthleteContactCacheForTask"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:346:::hasAthleteContactCacheForTask"
   },
   {
     "exported": false,
@@ -10626,10 +10762,10 @@
     "kind": "function",
     "name": "readEnvFile",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 69,
+    "line": 79,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:69:::readEnvFile"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:79:::readEnvFile"
   },
   {
     "exported": false,
@@ -10639,23 +10775,10 @@
     "kind": "function",
     "name": "findProjectRoot",
     "file": "src/lib/athlete-contact-cache.ts",
-    "line": 83,
+    "line": 93,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:83:::findProjectRoot"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function readRepoEnv(): Record<string, string> {",
-    "signature": "function readRepoEnv(): Record<string, string> {",
-    "kind": "function",
-    "name": "readRepoEnv",
-    "file": "src/lib/athlete-contact-cache.ts",
-    "line": 96,
-    "system": "Raycast",
-    "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:96:::readRepoEnv"
+    "id": "function:Raycast:src/lib/athlete-contact-cache.ts:93:::findProjectRoot"
   },
   {
     "exported": true,
@@ -10796,10 +10919,10 @@
     "kind": "function",
     "name": "bookedMeeting",
     "file": "src/lib/booked-meeting-details-resolver.test.ts",
-    "line": 14,
+    "line": 17,
     "system": "Raycast",
     "bucket": "Test/helper",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.test.ts:14:::bookedMeeting"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.test.ts:17:::bookedMeeting"
   },
   {
     "exported": false,
@@ -10811,10 +10934,10 @@
     "kind": "function",
     "name": "details",
     "file": "src/lib/booked-meeting-details-resolver.test.ts",
-    "line": 27,
+    "line": 30,
     "system": "Raycast",
     "bucket": "Test/helper",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.test.ts:27:::details"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.test.ts:30:::details"
   },
   {
     "exported": false,
@@ -10826,10 +10949,10 @@
     "kind": "function",
     "name": "meetingsResponse",
     "file": "src/lib/booked-meeting-details-resolver.test.ts",
-    "line": 40,
+    "line": 43,
     "system": "Raycast",
     "bucket": "Test/helper",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.test.ts:40:::meetingsResponse"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.test.ts:43:::meetingsResponse"
   },
   {
     "exported": false,
@@ -10862,15 +10985,15 @@
     "tags": [
       "exported"
     ],
-    "snippet": "export async function fetchActiveAthleteMeetingTruth(args: {",
-    "signature": "export async function fetchActiveAthleteMeetingTruth(args: {",
+    "snippet": "export async function fetchActiveAthleteAppointmentTruth(args: {",
+    "signature": "export async function fetchActiveAthleteAppointmentTruth(args: {",
     "kind": "function",
-    "name": "fetchActiveAthleteMeetingTruth",
+    "name": "fetchActiveAthleteAppointmentTruth",
     "file": "src/lib/booked-meeting-details-resolver.ts",
     "line": 129,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:129:::fetchActiveAthleteMeetingTruth"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:129:::fetchActiveAthleteAppointmentTruth"
   },
   {
     "exported": true,
@@ -10882,10 +11005,10 @@
     "kind": "function",
     "name": "fetchAppointmentTruthById",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 158,
+    "line": 159,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:158:::fetchAppointmentTruthById"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:159:::fetchAppointmentTruthById"
   },
   {
     "exported": true,
@@ -10897,10 +11020,10 @@
     "kind": "function",
     "name": "getBookedMeetingEventDate",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 184,
+    "line": 185,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:184:::getBookedMeetingEventDate"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:185:::getBookedMeetingEventDate"
   },
   {
     "exported": true,
@@ -10912,10 +11035,10 @@
     "kind": "function",
     "name": "selectCurrentBookedMeeting",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 188,
+    "line": 189,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:188:::selectCurrentBookedMeeting"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:189:::selectCurrentBookedMeeting"
   },
   {
     "exported": false,
@@ -10925,10 +11048,10 @@
     "kind": "function",
     "name": "normalizeFormData",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 217,
+    "line": 218,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:217:::normalizeFormData"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:218:::normalizeFormData"
   },
   {
     "exported": false,
@@ -10938,10 +11061,10 @@
     "kind": "function",
     "name": "firstValue",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 227,
+    "line": 228,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:227:::firstValue"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:228:::firstValue"
   },
   {
     "exported": false,
@@ -10951,10 +11074,10 @@
     "kind": "function",
     "name": "resolveBookedMeetingStartTime",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 235,
+    "line": 236,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:235:::resolveBookedMeetingStartTime"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:236:::resolveBookedMeetingStartTime"
   },
   {
     "exported": false,
@@ -10964,10 +11087,10 @@
     "kind": "function",
     "name": "toEasternLocalStamp",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 246,
+    "line": 247,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:246:::toEasternLocalStamp"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:247:::toEasternLocalStamp"
   },
   {
     "exported": false,
@@ -10977,10 +11100,10 @@
     "kind": "function",
     "name": "part",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 258,
+    "line": 259,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:258:::part"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:259:::part"
   },
   {
     "exported": false,
@@ -10990,10 +11113,10 @@
     "kind": "function",
     "name": "addMinutesToEasternLocalStamp",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 264,
+    "line": 265,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:264:::addMinutesToEasternLocalStamp"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:265:::addMinutesToEasternLocalStamp"
   },
   {
     "exported": false,
@@ -11003,10 +11126,10 @@
     "kind": "function",
     "name": "buildAppointmentTruthMeeting",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 270,
+    "line": 271,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:270:::buildAppointmentTruthMeeting"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:271:::buildAppointmentTruthMeeting"
   },
   {
     "exported": false,
@@ -11016,10 +11139,10 @@
     "kind": "function",
     "name": "buildResolvedMeetingDetails",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 322,
+    "line": 323,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:322:::buildResolvedMeetingDetails"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:323:::buildResolvedMeetingDetails"
   },
   {
     "exported": true,
@@ -11031,10 +11154,10 @@
     "kind": "function",
     "name": "resolveBookedMeetingDetailsForForm",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 349,
+    "line": 350,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:349:::resolveBookedMeetingDetailsForForm"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:350:::resolveBookedMeetingDetailsForForm"
   },
   {
     "exported": false,
@@ -11044,10 +11167,10 @@
     "kind": "function",
     "name": "getCachedDescription",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 400,
+    "line": 401,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:400:::getCachedDescription"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:401:::getCachedDescription"
   },
   {
     "exported": true,
@@ -11059,10 +11182,10 @@
     "kind": "function",
     "name": "resolveRequiredAppointmentTruthMeeting",
     "file": "src/lib/booked-meeting-details-resolver.ts",
-    "line": 447,
+    "line": 448,
     "system": "Raycast",
     "bucket": "Domain logic",
-    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:447:::resolveRequiredAppointmentTruthMeeting"
+    "id": "function:Raycast:src/lib/booked-meeting-details-resolver.ts:448:::resolveRequiredAppointmentTruthMeeting"
   },
   {
     "exported": false,
@@ -19634,10 +19757,10 @@
     "kind": "function",
     "name": "lifecycleSalesStage",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1054,
+    "line": 1057,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1054:::lifecycleSalesStage"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1057:::lifecycleSalesStage"
   },
   {
     "exported": true,
@@ -19649,10 +19772,10 @@
     "kind": "function",
     "name": "recordMeetingSet",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1121,
+    "line": 1124,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1121:::recordMeetingSet"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1124:::recordMeetingSet"
   },
   {
     "exported": true,
@@ -19664,10 +19787,10 @@
     "kind": "function",
     "name": "recordConfirmationQueued",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1189,
+    "line": 1192,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1189:::recordConfirmationQueued"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1192:::recordConfirmationQueued"
   },
   {
     "exported": true,
@@ -19679,10 +19802,10 @@
     "kind": "function",
     "name": "recordConfirmationSent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1221,
+    "line": 1224,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1221:::recordConfirmationSent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1224:::recordConfirmationSent"
   },
   {
     "exported": true,
@@ -19694,10 +19817,10 @@
     "kind": "function",
     "name": "recordVoicemailFollowUpSent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1251,
+    "line": 1254,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1251:::recordVoicemailFollowUpSent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1254:::recordVoicemailFollowUpSent"
   },
   {
     "exported": true,
@@ -19709,10 +19832,10 @@
     "kind": "function",
     "name": "recordRescheduled",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1277,
+    "line": 1280,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1277:::recordRescheduled"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1280:::recordRescheduled"
   },
   {
     "exported": true,
@@ -19724,10 +19847,10 @@
     "kind": "function",
     "name": "getLifecycleHealthSnapshot",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1323,
+    "line": 1326,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1323:::getLifecycleHealthSnapshot"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1326:::getLifecycleHealthSnapshot"
   },
   {
     "exported": true,
@@ -19739,10 +19862,10 @@
     "kind": "function",
     "name": "getActiveMeetingFallbackRows",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1372,
+    "line": 1375,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1372:::getActiveMeetingFallbackRows"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1375:::getActiveMeetingFallbackRows"
   },
   {
     "exported": false,
@@ -19752,10 +19875,10 @@
     "kind": "function",
     "name": "isEndedAppointmentTimestamp",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 309,
+    "line": 312,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:309:::isEndedAppointmentTimestamp"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:312:::isEndedAppointmentTimestamp"
   },
   {
     "exported": false,
@@ -19765,10 +19888,10 @@
     "kind": "function",
     "name": "logInfo",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 314,
+    "line": 317,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:314:::logInfo"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:317:::logInfo"
   },
   {
     "exported": false,
@@ -19778,10 +19901,10 @@
     "kind": "function",
     "name": "logFailure",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 329,
+    "line": 332,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:329:::logFailure"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:332:::logFailure"
   },
   {
     "exported": false,
@@ -19791,10 +19914,10 @@
     "kind": "function",
     "name": "readEnvFile",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 340,
+    "line": 343,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:340:::readEnvFile"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:343:::readEnvFile"
   },
   {
     "exported": false,
@@ -19804,10 +19927,10 @@
     "kind": "function",
     "name": "findProjectRoot",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 360,
+    "line": 363,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:360:::findProjectRoot"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:363:::findProjectRoot"
   },
   {
     "exported": false,
@@ -19817,10 +19940,10 @@
     "kind": "function",
     "name": "readRepoEnv",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 385,
+    "line": 388,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:385:::readRepoEnv"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:388:::readRepoEnv"
   },
   {
     "exported": true,
@@ -19832,10 +19955,10 @@
     "kind": "function",
     "name": "getSupabasePersistenceConfig",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 400,
+    "line": 403,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:400:::getSupabasePersistenceConfig"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:403:::getSupabasePersistenceConfig"
   },
   {
     "exported": false,
@@ -19845,10 +19968,10 @@
     "kind": "function",
     "name": "normalizeValue",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 425,
+    "line": 428,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:425:::normalizeValue"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:428:::normalizeValue"
   },
   {
     "exported": false,
@@ -19858,10 +19981,10 @@
     "kind": "function",
     "name": "normalizeIsoValue",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 430,
+    "line": 433,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:430:::normalizeIsoValue"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:433:::normalizeIsoValue"
   },
   {
     "exported": false,
@@ -19871,10 +19994,10 @@
     "kind": "function",
     "name": "normalizeLegacyDateTime",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 437,
+    "line": 440,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:437:::normalizeLegacyDateTime"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:440:::normalizeLegacyDateTime"
   },
   {
     "exported": false,
@@ -19884,10 +20007,10 @@
     "kind": "function",
     "name": "payloadOwnerProof",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 455,
+    "line": 458,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:455:::payloadOwnerProof"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:458:::payloadOwnerProof"
   },
   {
     "exported": false,
@@ -19897,10 +20020,10 @@
     "kind": "function",
     "name": "payloadString",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 467,
+    "line": 470,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:467:::payloadString"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:470:::payloadString"
   },
   {
     "exported": false,
@@ -19910,10 +20033,10 @@
     "kind": "function",
     "name": "payloadNumber",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 471,
+    "line": 474,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:471:::payloadNumber"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:474:::payloadNumber"
   },
   {
     "exported": false,
@@ -19923,10 +20046,10 @@
     "kind": "function",
     "name": "lifecycleMutationEventType",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 476,
+    "line": 479,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:476:::lifecycleMutationEventType"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:479:::lifecycleMutationEventType"
   },
   {
     "exported": false,
@@ -19936,10 +20059,10 @@
     "kind": "function",
     "name": "resolveMutationActivitySubtype",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 486,
+    "line": 489,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:486:::resolveMutationActivitySubtype"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:489:::resolveMutationActivitySubtype"
   },
   {
     "exported": false,
@@ -19949,10 +20072,10 @@
     "kind": "function",
     "name": "resolveMutationOccurredAt",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 500,
+    "line": 503,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:500:::resolveMutationOccurredAt"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:503:::resolveMutationOccurredAt"
   },
   {
     "exported": true,
@@ -19964,10 +20087,10 @@
     "kind": "function",
     "name": "buildLifecycleMutationEvent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 525,
+    "line": 528,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:525:::buildLifecycleMutationEvent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:528:::buildLifecycleMutationEvent"
   },
   {
     "exported": true,
@@ -19979,10 +20102,10 @@
     "kind": "function",
     "name": "buildAthleteKey",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 625,
+    "line": 628,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:625:::buildAthleteKey"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:628:::buildAthleteKey"
   },
   {
     "exported": true,
@@ -19994,10 +20117,10 @@
     "kind": "function",
     "name": "buildAppointmentId",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 629,
+    "line": 632,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:629:::buildAppointmentId"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:632:::buildAppointmentId"
   },
   {
     "exported": true,
@@ -20009,10 +20132,10 @@
     "kind": "function",
     "name": "buildReminderDedupeKey",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 647,
+    "line": 650,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:647:::buildReminderDedupeKey"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:650:::buildReminderDedupeKey"
   },
   {
     "exported": false,
@@ -20022,10 +20145,10 @@
     "kind": "function",
     "name": "buildAthleteRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 661,
+    "line": 664,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:661:::buildAthleteRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:664:::buildAthleteRow"
   },
   {
     "exported": false,
@@ -20035,10 +20158,10 @@
     "kind": "function",
     "name": "buildPipelineStateRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 671,
+    "line": 674,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:671:::buildPipelineStateRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:674:::buildPipelineStateRow"
   },
   {
     "exported": true,
@@ -20050,10 +20173,10 @@
     "kind": "function",
     "name": "buildAppointmentRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 690,
+    "line": 693,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:690:::buildAppointmentRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:693:::buildAppointmentRow"
   },
   {
     "exported": false,
@@ -20063,10 +20186,10 @@
     "kind": "function",
     "name": "buildLifecycleEventRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 730,
+    "line": 733,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:730:::buildLifecycleEventRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:733:::buildLifecycleEventRow"
   },
   {
     "exported": false,
@@ -20076,10 +20199,10 @@
     "kind": "function",
     "name": "request",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 758,
+    "line": 761,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:758:::request"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:761:::request"
   },
   {
     "exported": false,
@@ -20089,10 +20212,10 @@
     "kind": "function",
     "name": "deleteRows",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 799,
+    "line": 802,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:799:::deleteRows"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:802:::deleteRows"
   },
   {
     "exported": false,
@@ -20102,10 +20225,10 @@
     "kind": "function",
     "name": "queryTable",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 818,
+    "line": 821,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:818:::queryTable"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:821:::queryTable"
   },
   {
     "exported": false,
@@ -20115,10 +20238,10 @@
     "kind": "function",
     "name": "fetchLiveSelectedSalesStage",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 838,
+    "line": 841,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:838:::fetchLiveSelectedSalesStage"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:841:::fetchLiveSelectedSalesStage"
   },
   {
     "exported": false,
@@ -20128,10 +20251,10 @@
     "kind": "function",
     "name": "fetchLiveBookedEvent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 852,
+    "line": 855,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:852:::fetchLiveBookedEvent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:855:::fetchLiveBookedEvent"
   },
   {
     "exported": true,
@@ -20143,10 +20266,10 @@
     "kind": "function",
     "name": "resolveLifecycleRetentionDecision",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 875,
+    "line": 878,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:875:::resolveLifecycleRetentionDecision"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:878:::resolveLifecycleRetentionDecision"
   },
   {
     "exported": false,
@@ -20156,10 +20279,10 @@
     "kind": "function",
     "name": "softArchiveCurrentAppointment",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 934,
+    "line": 937,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:934:::softArchiveCurrentAppointment"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:937:::softArchiveCurrentAppointment"
   },
   {
     "exported": false,
@@ -20169,10 +20292,10 @@
     "kind": "function",
     "name": "purgeAthleteLifecycle",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 981,
+    "line": 984,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:981:::purgeAthleteLifecycle"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:984:::purgeAthleteLifecycle"
   },
   {
     "exported": false,
@@ -20182,10 +20305,10 @@
     "kind": "function",
     "name": "writeLifecycle",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 988,
+    "line": 991,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:988:::writeLifecycle"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:991:::writeLifecycle"
   },
   {
     "exported": true,
@@ -25186,11 +25309,28 @@
     "kind": "api_call",
     "name": "fetch ${credentials.url.replace(/\\/+$/, ",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 24,
+    "line": 30,
     "system": "Scripts",
     "bucket": "API call",
     "path": "${credentials.url.replace(/\\/+$/, ",
-    "id": "api_call:Scripts:scripts/audit-call-tracker-live-parity.mjs:24::-credentials.url.replace-/-/-/-:fetch-credentials.url.replace-/-/-/-"
+    "id": "api_call:Scripts:scripts/audit-call-tracker-live-parity.mjs:30::-credentials.url.replace-/-/-/-:fetch-credentials.url.replace-/-/-/-"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "fetch",
+      "script"
+    ],
+    "snippet": "const response = await fetch(`${credentials.url}/rest/v1/${path}`, {",
+    "signature": "const response = await fetch(`${credentials.url}/rest/v1/${path}`, {",
+    "kind": "api_call",
+    "name": "fetch ${credentials.url}/rest/v1/${path}",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 114,
+    "system": "Scripts",
+    "bucket": "API call",
+    "path": "${credentials.url}/rest/v1/${path}",
+    "id": "api_call:Scripts:scripts/audit-meeting-readback-live-parity.mjs:114::-credentials.url-/rest/v1/-path-:fetch-credentials.url-/rest/v1/-path-"
   },
   {
     "exported": false,
@@ -25336,11 +25476,11 @@
     "kind": "api_call",
     "name": "apiFetch /sales/stages/${encodeURIComponent(row.athlete_id)}",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 1031,
+    "line": 1067,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/sales/stages/${encodeURIComponent(row.athlete_id)}",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:1031::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:1067::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
   },
   {
     "exported": false,
@@ -25470,11 +25610,11 @@
     "kind": "api_call",
     "name": "apiFetch /sales/stages/${encodeURIComponent(row.athlete_id)}",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 677,
+    "line": 713,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/sales/stages/${encodeURIComponent(row.athlete_id)}",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:677::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:713::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
   },
   {
     "exported": false,
@@ -26267,15 +26407,45 @@
     "tags": [
       "script"
     ],
+    "snippet": "function sqlString(value) {",
+    "signature": "function sqlString(value) {",
+    "kind": "function",
+    "name": "sqlString",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 104,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:104:::sqlString"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function sqlValue(value, type = 'text') {",
+    "signature": "function sqlValue(value, type = 'text') {",
+    "kind": "function",
+    "name": "sqlValue",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 108,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:108:::sqlValue"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
     "snippet": "function headers() {",
     "signature": "function headers() {",
     "kind": "function",
     "name": "headers",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 15,
+    "line": 18,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:15:::headers"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:18:::headers"
   },
   {
     "exported": false,
@@ -26287,10 +26457,10 @@
     "kind": "function",
     "name": "get",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 23,
+    "line": 29,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:23:::get"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:29:::get"
   },
   {
     "exported": false,
@@ -26302,25 +26472,10 @@
     "kind": "function",
     "name": "getPaged",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 31,
+    "line": 37,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:31:::getPaged"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function countWhere(rows, predicate) {",
-    "signature": "function countWhere(rows, predicate) {",
-    "kind": "function",
-    "name": "countWhere",
-    "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 46,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:46:::countWhere"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:37:::getPaged"
   },
   {
     "exported": false,
@@ -26332,10 +26487,10 @@
     "kind": "function",
     "name": "meetingSetMissingCandidates",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 50,
+    "line": 378,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:50:::meetingSetMissingCandidates"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:378:::meetingSetMissingCandidates"
   },
   {
     "exported": false,
@@ -26347,10 +26502,190 @@
     "kind": "function",
     "name": "outcomeMissingCandidates",
     "file": "scripts/audit-call-tracker-live-parity.mjs",
-    "line": 62,
+    "line": 390,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:62:::outcomeMissingCandidates"
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:390:::outcomeMissingCandidates"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "async function getOptionalPaged(table, select, extra = '') {",
+    "signature": "async function getOptionalPaged(table, select, extra = '') {",
+    "kind": "function",
+    "name": "getOptionalPaged",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 52,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:52:::getOptionalPaged"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function countWhere(rows, predicate) {",
+    "signature": "function countWhere(rows, predicate) {",
+    "kind": "function",
+    "name": "countWhere",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 68,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:68:::countWhere"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function bool(value) {",
+    "signature": "function bool(value) {",
+    "kind": "function",
+    "name": "bool",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 72,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:72:::bool"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function firstText(...values) {",
+    "signature": "function firstText(...values) {",
+    "kind": "function",
+    "name": "firstText",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 76,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:76:::firstText"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function hasCallLogCountShape(row) {",
+    "signature": "function hasCallLogCountShape(row) {",
+    "kind": "function",
+    "name": "hasCallLogCountShape",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 85,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:85:::hasCallLogCountShape"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function isInsertableCallLogRow(row) {",
+    "signature": "function isInsertableCallLogRow(row) {",
+    "kind": "function",
+    "name": "isInsertableCallLogRow",
+    "file": "scripts/audit-call-tracker-live-parity.mjs",
+    "line": 94,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-call-tracker-live-parity.mjs:94:::isInsertableCallLogRow"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "async function supabaseGet(path) {",
+    "signature": "async function supabaseGet(path) {",
+    "kind": "function",
+    "name": "supabaseGet",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 110,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-meeting-readback-live-parity.mjs:110:::supabaseGet"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function activeCanonicalAppointments(rows) {",
+    "signature": "function activeCanonicalAppointments(rows) {",
+    "kind": "function",
+    "name": "activeCanonicalAppointments",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 127,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-meeting-readback-live-parity.mjs:127:::activeCanonicalAppointments"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function keySet(rows, keyFn) {",
+    "signature": "function keySet(rows, keyFn) {",
+    "kind": "function",
+    "name": "keySet",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 131,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-meeting-readback-live-parity.mjs:131:::keySet"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function normalizeKey(value) {",
+    "signature": "function normalizeKey(value) {",
+    "kind": "function",
+    "name": "normalizeKey",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 15,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-meeting-readback-live-parity.mjs:15:::normalizeKey"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function normalizeLifecycleText(value) {",
+    "signature": "function normalizeLifecycleText(value) {",
+    "kind": "function",
+    "name": "normalizeLifecycleText",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 19,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-meeting-readback-live-parity.mjs:19:::normalizeLifecycleText"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function isLifecycleMeetingRow(row) {",
+    "signature": "function isLifecycleMeetingRow(row) {",
+    "kind": "function",
+    "name": "isLifecycleMeetingRow",
+    "file": "scripts/audit-meeting-readback-live-parity.mjs",
+    "line": 87,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/audit-meeting-readback-live-parity.mjs:87:::isLifecycleMeetingRow"
   },
   {
     "exported": false,
@@ -26942,6 +27277,21 @@
     "tags": [
       "script"
     ],
+    "snippet": "function runContactsPlan(items) {",
+    "signature": "function runContactsPlan(items) {",
+    "kind": "function",
+    "name": "runContactsPlan",
+    "file": "scripts/backfill-macos-contact-notes-from-cache.mjs",
+    "line": 229,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/backfill-macos-contact-notes-from-cache.mjs:229:::runContactsPlan"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
     "snippet": "function readRepoEnv() {",
     "signature": "function readRepoEnv() {",
     "kind": "function",
@@ -26957,15 +27307,15 @@
     "tags": [
       "script"
     ],
-    "snippet": "function runContactsPlan(items) {",
-    "signature": "function runContactsPlan(items) {",
+    "snippet": "function writeContactNotes(updates) {",
+    "signature": "function writeContactNotes(updates) {",
     "kind": "function",
-    "name": "runContactsPlan",
+    "name": "writeContactNotes",
     "file": "scripts/backfill-macos-contact-notes-from-cache.mjs",
-    "line": 259,
+    "line": 329,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backfill-macos-contact-notes-from-cache.mjs:259:::runContactsPlan"
+    "id": "function:Scripts:scripts/backfill-macos-contact-notes-from-cache.mjs:329:::writeContactNotes"
   },
   {
     "exported": false,
@@ -26987,30 +27337,15 @@
     "tags": [
       "script"
     ],
-    "snippet": "function writeContactNotes(updates) {",
-    "signature": "function writeContactNotes(updates) {",
-    "kind": "function",
-    "name": "writeContactNotes",
-    "file": "scripts/backfill-macos-contact-notes-from-cache.mjs",
-    "line": 359,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backfill-macos-contact-notes-from-cache.mjs:359:::writeContactNotes"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
     "snippet": "function writeContactNotesBatch(updates) {",
     "signature": "function writeContactNotesBatch(updates) {",
     "kind": "function",
     "name": "writeContactNotesBatch",
     "file": "scripts/backfill-macos-contact-notes-from-cache.mjs",
-    "line": 366,
+    "line": 336,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/backfill-macos-contact-notes-from-cache.mjs:366:::writeContactNotesBatch"
+    "id": "function:Scripts:scripts/backfill-macos-contact-notes-from-cache.mjs:336:::writeContactNotesBatch"
   },
   {
     "exported": false,
@@ -27827,15 +28162,75 @@
     "tags": [
       "script"
     ],
+    "snippet": "function localParts(value) {",
+    "signature": "function localParts(value) {",
+    "kind": "function",
+    "name": "localParts",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 105,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:105:::localParts"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function localDateKey(value) {",
+    "signature": "function localDateKey(value) {",
+    "kind": "function",
+    "name": "localDateKey",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 115,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:115:::localDateKey"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function localDateLabel(value) {",
+    "signature": "function localDateLabel(value) {",
+    "kind": "function",
+    "name": "localDateLabel",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 121,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:121:::localDateLabel"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function localDayDateLabel(value) {",
+    "signature": "function localDayDateLabel(value) {",
+    "kind": "function",
+    "name": "localDayDateLabel",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 129,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:129:::localDayDateLabel"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
     "snippet": "function ymdToLocalNoon(year, month, day) {",
     "signature": "function ymdToLocalNoon(year, month, day) {",
     "kind": "function",
     "name": "ymdToLocalNoon",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 107,
+    "line": 139,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:107:::ymdToLocalNoon"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:139:::ymdToLocalNoon"
   },
   {
     "exported": false,
@@ -27847,10 +28242,10 @@
     "kind": "function",
     "name": "offsetLocalDate",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 111,
+    "line": 143,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:111:::offsetLocalDate"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:143:::offsetLocalDate"
   },
   {
     "exported": false,
@@ -27862,10 +28257,10 @@
     "kind": "function",
     "name": "localWeekdayIndex",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 116,
+    "line": 148,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:116:::localWeekdayIndex"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:148:::localWeekdayIndex"
   },
   {
     "exported": false,
@@ -27877,10 +28272,10 @@
     "kind": "function",
     "name": "currentWeekdayDate",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 125,
+    "line": 157,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:125:::currentWeekdayDate"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:157:::currentWeekdayDate"
   },
   {
     "exported": false,
@@ -27892,10 +28287,10 @@
     "kind": "function",
     "name": "currentWeekPeriod",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 131,
+    "line": 163,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:131:::currentWeekPeriod"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:163:::currentWeekPeriod"
   },
   {
     "exported": false,
@@ -27907,10 +28302,10 @@
     "kind": "function",
     "name": "periodDate",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 137,
+    "line": 169,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:137:::periodDate"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:169:::periodDate"
   },
   {
     "exported": false,
@@ -27922,10 +28317,10 @@
     "kind": "function",
     "name": "currentWeekRangeLabel",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 142,
+    "line": 174,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:142:::currentWeekRangeLabel"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:174:::currentWeekRangeLabel"
   },
   {
     "exported": false,
@@ -27937,10 +28332,10 @@
     "kind": "function",
     "name": "eventDateKey",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 146,
+    "line": 178,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:146:::eventDateKey"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:178:::eventDateKey"
   },
   {
     "exported": false,
@@ -27952,10 +28347,10 @@
     "kind": "function",
     "name": "normalizeKey",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 154,
+    "line": 186,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:154:::normalizeKey"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:186:::normalizeKey"
   },
   {
     "exported": false,
@@ -27967,10 +28362,10 @@
     "kind": "function",
     "name": "rowQuality",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 158,
+    "line": 190,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:158:::rowQuality"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:190:::rowQuality"
   },
   {
     "exported": false,
@@ -27982,10 +28377,10 @@
     "kind": "function",
     "name": "displayRows",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 167,
+    "line": 199,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:167:::displayRows"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:199:::displayRows"
   },
   {
     "exported": false,
@@ -27997,10 +28392,10 @@
     "kind": "function",
     "name": "rowsForPeriod",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 196,
+    "line": 228,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:196:::rowsForPeriod"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:228:::rowsForPeriod"
   },
   {
     "exported": false,
@@ -28012,10 +28407,10 @@
     "kind": "function",
     "name": "periodLabel",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 209,
+    "line": 241,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:209:::periodLabel"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:241:::periodLabel"
   },
   {
     "exported": false,
@@ -28027,10 +28422,10 @@
     "kind": "function",
     "name": "outcomeCounts",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 213,
+    "line": 245,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:213:::outcomeCounts"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:245:::outcomeCounts"
   },
   {
     "exported": false,
@@ -28042,10 +28437,10 @@
     "kind": "function",
     "name": "filterCounts",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 220,
+    "line": 252,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:220:::filterCounts"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:252:::filterCounts"
   },
   {
     "exported": false,
@@ -28057,10 +28452,10 @@
     "kind": "function",
     "name": "lifecycleActivityToEvent",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 234,
+    "line": 266,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:234:::lifecycleActivityToEvent"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:266:::lifecycleActivityToEvent"
   },
   {
     "exported": false,
@@ -28072,10 +28467,10 @@
     "kind": "function",
     "name": "mergeEventRows",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 267,
+    "line": 299,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:267:::mergeEventRows"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:299:::mergeEventRows"
   },
   {
     "exported": false,
@@ -28087,10 +28482,10 @@
     "kind": "function",
     "name": "addLifecycleDeltasToSummary",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 281,
+    "line": 313,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:281:::addLifecycleDeltasToSummary"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:313:::addLifecycleDeltasToSummary"
   },
   {
     "exported": false,
@@ -28102,10 +28497,10 @@
     "kind": "function",
     "name": "addMonths",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 297,
+    "line": 329,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:297:::addMonths"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:329:::addMonths"
   },
   {
     "exported": false,
@@ -28117,10 +28512,10 @@
     "kind": "function",
     "name": "nextPayDate",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 302,
+    "line": 334,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:302:::nextPayDate"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:334:::nextPayDate"
   },
   {
     "exported": false,
@@ -28132,10 +28527,10 @@
     "kind": "function",
     "name": "previousPayDate",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 312,
+    "line": 344,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:312:::previousPayDate"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:344:::previousPayDate"
   },
   {
     "exported": false,
@@ -28147,70 +28542,10 @@
     "kind": "function",
     "name": "basePayForDate",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 322,
+    "line": 354,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:322:::basePayForDate"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function commissionCentsForRow(row) {",
-    "signature": "function commissionCentsForRow(row) {",
-    "kind": "function",
-    "name": "commissionCentsForRow",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 330,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:330:::commissionCentsForRow"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function rowBelongsToPaycheck(row, previousPay, payDate) {",
-    "signature": "function rowBelongsToPaycheck(row, previousPay, payDate) {",
-    "kind": "function",
-    "name": "rowBelongsToPaycheck",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 334,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:334:::rowBelongsToPaycheck"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function paycheck(rows, now) {",
-    "signature": "function paycheck(rows, now) {",
-    "kind": "function",
-    "name": "paycheck",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 340,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:340:::paycheck"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function buildUiData(summary, events, generatedAt) {",
-    "signature": "function buildUiData(summary, events, generatedAt) {",
-    "kind": "function",
-    "name": "buildUiData",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 357,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:357:::buildUiData"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:354:::basePayForDate"
   },
   {
     "exported": false,
@@ -28232,30 +28567,60 @@
     "tags": [
       "script"
     ],
-    "snippet": "async function materialize() {",
-    "signature": "async function materialize() {",
+    "snippet": "function commissionCentsForRow(row) {",
+    "signature": "function commissionCentsForRow(row) {",
     "kind": "function",
-    "name": "materialize",
+    "name": "commissionCentsForRow",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 410,
+    "line": 362,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:410:::materialize"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:362:::commissionCentsForRow"
   },
   {
     "exported": false,
     "tags": [
       "script"
     ],
-    "snippet": "const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : [])",
-    "signature": "const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : [])",
+    "snippet": "function rowBelongsToPaycheck(row, previousPay, payDate) {",
+    "signature": "function rowBelongsToPaycheck(row, previousPay, payDate) {",
     "kind": "function",
-    "name": "lifecycleEvents",
+    "name": "rowBelongsToPaycheck",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 433,
+    "line": 366,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:433:::lifecycleEvents"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:366:::rowBelongsToPaycheck"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function paycheck(rows, now) {",
+    "signature": "function paycheck(rows, now) {",
+    "kind": "function",
+    "name": "paycheck",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 372,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:372:::paycheck"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function buildUiData(summary, events, generatedAt) {",
+    "signature": "function buildUiData(summary, events, generatedAt) {",
+    "kind": "function",
+    "name": "buildUiData",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 389,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:389:::buildUiData"
   },
   {
     "exported": false,
@@ -28271,6 +28636,81 @@
     "system": "Scripts",
     "bucket": "Script/sync job",
     "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:44:::supabaseGet"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function callLogRowToEvent(row) {",
+    "signature": "function callLogRowToEvent(row) {",
+    "kind": "function",
+    "name": "callLogRowToEvent",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 442,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:442:::callLogRowToEvent"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function summaryFromRows(rows) {",
+    "signature": "function summaryFromRows(rows) {",
+    "kind": "function",
+    "name": "summaryFromRows",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 452,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:452:::summaryFromRows"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "async function materialize() {",
+    "signature": "async function materialize() {",
+    "kind": "function",
+    "name": "materialize",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 480,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:480:::materialize"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "const viewEvents = (Array.isArray(events) ? events : []).map(callLogRowToEvent);",
+    "signature": "const viewEvents = (Array.isArray(events) ? events : []).map(callLogRowToEvent);",
+    "kind": "function",
+    "name": "viewEvents",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 500,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:500:::viewEvents"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : [])",
+    "signature": "const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : [])",
+    "kind": "function",
+    "name": "lifecycleEvents",
+    "file": "scripts/materialize-call-tracker-data-contract.mjs",
+    "line": 501,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:501:::lifecycleEvents"
   },
   {
     "exported": false,
@@ -28297,70 +28737,10 @@
     "kind": "function",
     "name": "lifecycleSelect",
     "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 58,
+    "line": 90,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:58:::lifecycleSelect"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function localParts(value) {",
-    "signature": "function localParts(value) {",
-    "kind": "function",
-    "name": "localParts",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 73,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:73:::localParts"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function localDateKey(value) {",
-    "signature": "function localDateKey(value) {",
-    "kind": "function",
-    "name": "localDateKey",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 83,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:83:::localDateKey"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function localDateLabel(value) {",
-    "signature": "function localDateLabel(value) {",
-    "kind": "function",
-    "name": "localDateLabel",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 89,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:89:::localDateLabel"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
-    "snippet": "function localDayDateLabel(value) {",
-    "signature": "function localDayDateLabel(value) {",
-    "kind": "function",
-    "name": "localDayDateLabel",
-    "file": "scripts/materialize-call-tracker-data-contract.mjs",
-    "line": 97,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:97:::localDayDateLabel"
+    "id": "function:Scripts:scripts/materialize-call-tracker-data-contract.mjs:90:::lifecycleSelect"
   },
   {
     "exported": false,
@@ -28657,10 +29037,10 @@
     "kind": "function",
     "name": "queueAppointmentPatch",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 460,
+    "line": 458,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:460:::queueAppointmentPatch"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:458:::queueAppointmentPatch"
   },
   {
     "exported": false,
@@ -28672,10 +29052,10 @@
     "kind": "function",
     "name": "uniqueRowsByField",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 477,
+    "line": 475,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:477:::uniqueRowsByField"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:475:::uniqueRowsByField"
   },
   {
     "exported": false,
@@ -28687,10 +29067,10 @@
     "kind": "function",
     "name": "postMeetingResultForAppointmentStatus",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 487,
+    "line": 485,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:487:::postMeetingResultForAppointmentStatus"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:485:::postMeetingResultForAppointmentStatus"
   },
   {
     "exported": false,
@@ -28702,10 +29082,10 @@
     "kind": "function",
     "name": "shouldQueuePendingClientForStage",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 510,
+    "line": 508,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:510:::shouldQueuePendingClientForStage"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:508:::shouldQueuePendingClientForStage"
   },
   {
     "exported": false,
@@ -28717,40 +29097,70 @@
     "kind": "function",
     "name": "findAppointmentEvent",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 519,
+    "line": 517,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:519:::findAppointmentEvent"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:517:::findAppointmentEvent"
   },
   {
     "exported": false,
     "tags": [
       "script"
     ],
-    "snippet": "function lifecycleCurrentRowToPipelineState(row) {",
-    "signature": "function lifecycleCurrentRowToPipelineState(row) {",
+    "snippet": "function firstPayloadText(payload, fields) {",
+    "signature": "function firstPayloadText(payload, fields) {",
     "kind": "function",
-    "name": "lifecycleCurrentRowToPipelineState",
+    "name": "firstPayloadText",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 538,
+    "line": 536,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:538:::lifecycleCurrentRowToPipelineState"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:536:::firstPayloadText"
   },
   {
     "exported": false,
     "tags": [
       "script"
     ],
-    "snippet": "function mergeLifecycleAndPipelineRows(lifecycleRows, pipelineRows) {",
-    "signature": "function mergeLifecycleAndPipelineRows(lifecycleRows, pipelineRows) {",
+    "snippet": "function latestPostMeetingLifecycleRows(rows) {",
+    "signature": "function latestPostMeetingLifecycleRows(rows) {",
     "kind": "function",
-    "name": "mergeLifecycleAndPipelineRows",
+    "name": "latestPostMeetingLifecycleRows",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 559,
+    "line": 545,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:559:::mergeLifecycleAndPipelineRows"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:545:::latestPostMeetingLifecycleRows"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function lifecycleEventRowToPipelineState(row) {",
+    "signature": "function lifecycleEventRowToPipelineState(row) {",
+    "kind": "function",
+    "name": "lifecycleEventRowToPipelineState",
+    "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
+    "line": 560,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:560:::lifecycleEventRowToPipelineState"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function mergeLifecycleEventsAndPipelineRows(lifecycleRows, pipelineRows) {",
+    "signature": "function mergeLifecycleEventsAndPipelineRows(lifecycleRows, pipelineRows) {",
+    "kind": "function",
+    "name": "mergeLifecycleEventsAndPipelineRows",
+    "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
+    "line": 592,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:592:::mergeLifecycleEventsAndPipelineRows"
   },
   {
     "exported": false,
@@ -28762,10 +29172,10 @@
     "kind": "function",
     "name": "add",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 563,
+    "line": 596,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:563:::add"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:596:::add"
   },
   {
     "exported": false,
@@ -28777,10 +29187,10 @@
     "kind": "function",
     "name": "queueStateDelete",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 599,
+    "line": 635,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:599:::queueStateDelete"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:635:::queueStateDelete"
   },
   {
     "exported": false,
@@ -28792,10 +29202,10 @@
     "kind": "function",
     "name": "enqueuePendingClientWatchlistRow",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 606,
+    "line": 642,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:606:::enqueuePendingClientWatchlistRow"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:642:::enqueuePendingClientWatchlistRow"
   },
   {
     "exported": false,
@@ -30337,11 +30747,11 @@
     "kind": "api_call",
     "name": "fetch `${url}/rest/v1/${path}`",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 103,
+    "line": 136,
     "system": "Vercel",
     "bucket": "API call",
     "path": "`${url}/rest/v1/${path}`",
-    "id": "api_call:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:103::-url-/rest/v1/-path-:fetch-url-/rest/v1/-path-"
+    "id": "api_call:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:136::-url-/rest/v1/-path-:fetch-url-/rest/v1/-path-"
   },
   {
     "exported": false,
@@ -30400,11 +30810,11 @@
     "kind": "api_call",
     "name": "fetch `${url}/rest/v1/${path}`",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 113,
+    "line": 118,
     "system": "Vercel",
     "bucket": "API call",
     "path": "`${url}/rest/v1/${path}`",
-    "id": "api_call:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:113::-url-/rest/v1/-path-:fetch-url-/rest/v1/-path-"
+    "id": "api_call:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:118::-url-/rest/v1/-path-:fetch-url-/rest/v1/-path-"
   },
   {
     "exported": false,
@@ -30457,15 +30867,41 @@
   {
     "exported": false,
     "tags": [],
+    "snippet": "function noStoreJson(body: unknown, init?: ResponseInit) {",
+    "signature": "function noStoreJson(body: unknown, init?: ResponseInit) {",
+    "kind": "function",
+    "name": "noStoreJson",
+    "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
+    "line": 118,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:118:::noStoreJson"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function getSupabaseConfig() {",
+    "signature": "function getSupabaseConfig() {",
+    "kind": "function",
+    "name": "getSupabaseConfig",
+    "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
+    "line": 124,
+    "system": "Vercel",
+    "bucket": "Supabase persistence",
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:124:::getSupabaseConfig"
+  },
+  {
+    "exported": false,
+    "tags": [],
     "snippet": "async function supabaseGet(path: string) {",
     "signature": "async function supabaseGet(path: string) {",
     "kind": "function",
     "name": "supabaseGet",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 101,
+    "line": 134,
     "system": "Vercel",
     "bucket": "Supabase persistence",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:101:::supabaseGet"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:134:::supabaseGet"
   },
   {
     "exported": false,
@@ -30475,10 +30911,10 @@
     "kind": "function",
     "name": "localParts",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 117,
+    "line": 150,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:117:::localParts"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:150:::localParts"
   },
   {
     "exported": false,
@@ -30488,10 +30924,10 @@
     "kind": "function",
     "name": "localDateKey",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 127,
+    "line": 160,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:127:::localDateKey"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:160:::localDateKey"
   },
   {
     "exported": false,
@@ -30501,10 +30937,10 @@
     "kind": "function",
     "name": "localDateLabel",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 133,
+    "line": 166,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:133:::localDateLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:166:::localDateLabel"
   },
   {
     "exported": false,
@@ -30514,10 +30950,10 @@
     "kind": "function",
     "name": "localDayDateLabel",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 137,
+    "line": 170,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:137:::localDayDateLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:170:::localDayDateLabel"
   },
   {
     "exported": false,
@@ -30527,10 +30963,10 @@
     "kind": "function",
     "name": "ymdToLocalNoon",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 147,
+    "line": 180,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:147:::ymdToLocalNoon"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:180:::ymdToLocalNoon"
   },
   {
     "exported": false,
@@ -30540,10 +30976,10 @@
     "kind": "function",
     "name": "offsetLocalDate",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 151,
+    "line": 184,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:151:::offsetLocalDate"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:184:::offsetLocalDate"
   },
   {
     "exported": false,
@@ -30553,10 +30989,10 @@
     "kind": "function",
     "name": "localWeekdayIndex",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 156,
+    "line": 189,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:156:::localWeekdayIndex"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:189:::localWeekdayIndex"
   },
   {
     "exported": false,
@@ -30566,10 +31002,10 @@
     "kind": "function",
     "name": "currentWeekdayDate",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 164,
+    "line": 197,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:164:::currentWeekdayDate"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:197:::currentWeekdayDate"
   },
   {
     "exported": false,
@@ -30579,10 +31015,10 @@
     "kind": "function",
     "name": "currentWeekPeriod",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 170,
+    "line": 203,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:170:::currentWeekPeriod"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:203:::currentWeekPeriod"
   },
   {
     "exported": false,
@@ -30592,10 +31028,10 @@
     "kind": "function",
     "name": "periodDate",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 176,
+    "line": 209,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:176:::periodDate"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:209:::periodDate"
   },
   {
     "exported": false,
@@ -30605,10 +31041,10 @@
     "kind": "function",
     "name": "currentWeekRangeLabel",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 181,
+    "line": 214,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:181:::currentWeekRangeLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:214:::currentWeekRangeLabel"
   },
   {
     "exported": false,
@@ -30618,10 +31054,10 @@
     "kind": "function",
     "name": "currentMonthResultLabel",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 185,
+    "line": 218,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:185:::currentMonthResultLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:218:::currentMonthResultLabel"
   },
   {
     "exported": false,
@@ -30631,10 +31067,10 @@
     "kind": "function",
     "name": "eventDateKey",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 189,
+    "line": 222,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:189:::eventDateKey"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:222:::eventDateKey"
   },
   {
     "exported": false,
@@ -30644,10 +31080,10 @@
     "kind": "function",
     "name": "normalizeKey",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 193,
+    "line": 226,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:193:::normalizeKey"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:226:::normalizeKey"
   },
   {
     "exported": false,
@@ -30657,10 +31093,10 @@
     "kind": "function",
     "name": "rowQuality",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 197,
+    "line": 230,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:197:::rowQuality"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:230:::rowQuality"
   },
   {
     "exported": false,
@@ -30670,10 +31106,10 @@
     "kind": "function",
     "name": "displayRows",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 208,
+    "line": 241,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:208:::displayRows"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:241:::displayRows"
   },
   {
     "exported": false,
@@ -30683,10 +31119,10 @@
     "kind": "function",
     "name": "eventIdentityKey",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 237,
+    "line": 270,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:237:::eventIdentityKey"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:270:::eventIdentityKey"
   },
   {
     "exported": false,
@@ -30696,10 +31132,10 @@
     "kind": "function",
     "name": "isDashboardVisibleEvent",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 259,
+    "line": 292,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:259:::isDashboardVisibleEvent"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:292:::isDashboardVisibleEvent"
   },
   {
     "exported": false,
@@ -30709,10 +31145,10 @@
     "kind": "function",
     "name": "isPaidClosedWon",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 264,
+    "line": 297,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:264:::isPaidClosedWon"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:297:::isPaidClosedWon"
   },
   {
     "exported": false,
@@ -30722,10 +31158,10 @@
     "kind": "function",
     "name": "publicRow",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 268,
+    "line": 301,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:268:::publicRow"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:301:::publicRow"
   },
   {
     "exported": false,
@@ -30735,10 +31171,10 @@
     "kind": "function",
     "name": "rowsForPeriod",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 272,
+    "line": 305,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:272:::rowsForPeriod"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:305:::rowsForPeriod"
   },
   {
     "exported": false,
@@ -30748,10 +31184,10 @@
     "kind": "function",
     "name": "periodLabel",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 285,
+    "line": 318,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:285:::periodLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:318:::periodLabel"
   },
   {
     "exported": false,
@@ -30761,10 +31197,10 @@
     "kind": "function",
     "name": "outcomeCounts",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 289,
+    "line": 322,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:289:::outcomeCounts"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:322:::outcomeCounts"
   },
   {
     "exported": false,
@@ -30774,10 +31210,10 @@
     "kind": "function",
     "name": "filterCounts",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 296,
+    "line": 329,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:296:::filterCounts"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:329:::filterCounts"
   },
   {
     "exported": false,
@@ -30787,10 +31223,10 @@
     "kind": "function",
     "name": "payload",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 311,
+    "line": 344,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:311:::payload"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:344:::payload"
   },
   {
     "exported": false,
@@ -30800,10 +31236,10 @@
     "kind": "function",
     "name": "getPath",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 315,
+    "line": 348,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:315:::getPath"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:348:::getPath"
   },
   {
     "exported": false,
@@ -30813,10 +31249,10 @@
     "kind": "function",
     "name": "firstValue",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 319,
+    "line": 352,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:319:::firstValue"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:352:::firstValue"
   },
   {
     "exported": false,
@@ -30826,10 +31262,10 @@
     "kind": "function",
     "name": "classifyLifecycleActivity",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 329,
+    "line": 362,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:329:::classifyLifecycleActivity"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:362:::classifyLifecycleActivity"
   },
   {
     "exported": false,
@@ -30839,10 +31275,10 @@
     "kind": "function",
     "name": "lifecycleActivityToEvent",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 355,
+    "line": 388,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:355:::lifecycleActivityToEvent"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:388:::lifecycleActivityToEvent"
   },
   {
     "exported": false,
@@ -30852,10 +31288,36 @@
     "kind": "function",
     "name": "mergeEventRows",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 424,
+    "line": 457,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:424:::mergeEventRows"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:457:::mergeEventRows"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function callLogRowToEvent(row: Record<string, any>) {",
+    "signature": "function callLogRowToEvent(row: Record<string, any>) {",
+    "kind": "function",
+    "name": "callLogRowToEvent",
+    "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
+    "line": 467,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:467:::callLogRowToEvent"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function summaryFromRows(rows: Array<Record<string, any>>) {",
+    "signature": "function summaryFromRows(rows: Array<Record<string, any>>) {",
+    "kind": "function",
+    "name": "summaryFromRows",
+    "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
+    "line": 478,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:478:::summaryFromRows"
   },
   {
     "exported": false,
@@ -30865,10 +31327,10 @@
     "kind": "function",
     "name": "addLifecycleDeltasToSummary",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 434,
+    "line": 521,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:434:::addLifecycleDeltasToSummary"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:521:::addLifecycleDeltasToSummary"
   },
   {
     "exported": false,
@@ -30878,10 +31340,10 @@
     "kind": "function",
     "name": "resolveMeetingSetSummary",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 448,
+    "line": 535,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:448:::resolveMeetingSetSummary"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:535:::resolveMeetingSetSummary"
   },
   {
     "exported": false,
@@ -30891,10 +31353,10 @@
     "kind": "function",
     "name": "addMonths",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 465,
+    "line": 552,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:465:::addMonths"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:552:::addMonths"
   },
   {
     "exported": false,
@@ -30904,10 +31366,10 @@
     "kind": "function",
     "name": "nextPayDate",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 470,
+    "line": 557,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:470:::nextPayDate"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:557:::nextPayDate"
   },
   {
     "exported": false,
@@ -30917,10 +31379,10 @@
     "kind": "function",
     "name": "previousPayDate",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 480,
+    "line": 567,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:480:::previousPayDate"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:567:::previousPayDate"
   },
   {
     "exported": false,
@@ -30930,10 +31392,10 @@
     "kind": "function",
     "name": "basePayForDate",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 490,
+    "line": 577,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:490:::basePayForDate"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:577:::basePayForDate"
   },
   {
     "exported": false,
@@ -30943,10 +31405,10 @@
     "kind": "function",
     "name": "commissionCentsForRow",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 498,
+    "line": 585,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:498:::commissionCentsForRow"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:585:::commissionCentsForRow"
   },
   {
     "exported": false,
@@ -30956,10 +31418,10 @@
     "kind": "function",
     "name": "commissionCentsForRows",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 502,
+    "line": 589,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:502:::commissionCentsForRows"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:589:::commissionCentsForRows"
   },
   {
     "exported": false,
@@ -30969,10 +31431,10 @@
     "kind": "function",
     "name": "closedWonIdentity",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 508,
+    "line": 595,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:508:::closedWonIdentity"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:595:::closedWonIdentity"
   },
   {
     "exported": false,
@@ -30982,10 +31444,10 @@
     "kind": "function",
     "name": "closedWonQuality",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 517,
+    "line": 604,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:517:::closedWonQuality"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:604:::closedWonQuality"
   },
   {
     "exported": false,
@@ -30995,10 +31457,10 @@
     "kind": "function",
     "name": "definitiveClosedWonRows",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 527,
+    "line": 614,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:527:::definitiveClosedWonRows"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:614:::definitiveClosedWonRows"
   },
   {
     "exported": false,
@@ -31008,10 +31470,10 @@
     "kind": "function",
     "name": "rowBelongsToPaycheck",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 541,
+    "line": 628,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:541:::rowBelongsToPaycheck"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:628:::rowBelongsToPaycheck"
   },
   {
     "exported": false,
@@ -31021,10 +31483,10 @@
     "kind": "function",
     "name": "paycheck",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 547,
+    "line": 634,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:547:::paycheck"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:634:::paycheck"
   },
   {
     "exported": false,
@@ -31034,10 +31496,10 @@
     "kind": "function",
     "name": "buildUiData",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 564,
+    "line": 651,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:564:::buildUiData"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:651:::buildUiData"
   },
   {
     "exported": false,
@@ -31047,10 +31509,10 @@
     "kind": "function",
     "name": "buildLiveContract",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 615,
+    "line": 702,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:615:::buildLiveContract"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:702:::buildLiveContract"
   },
   {
     "exported": true,
@@ -31062,36 +31524,10 @@
     "kind": "function",
     "name": "GET",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 665,
+    "line": 743,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:665:::GET"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function noStoreJson(body: unknown, init?: ResponseInit) {",
-    "signature": "function noStoreJson(body: unknown, init?: ResponseInit) {",
-    "kind": "function",
-    "name": "noStoreJson",
-    "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 85,
-    "system": "Vercel",
-    "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:85:::noStoreJson"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function getSupabaseConfig() {",
-    "signature": "function getSupabaseConfig() {",
-    "kind": "function",
-    "name": "getSupabaseConfig",
-    "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 91,
-    "system": "Vercel",
-    "bucket": "Supabase persistence",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:91:::getSupabaseConfig"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:743:::GET"
   },
   {
     "exported": true,
@@ -31201,15 +31637,28 @@
   {
     "exported": false,
     "tags": [],
+    "snippet": "function noStoreJson(body: unknown, init?: ResponseInit) {",
+    "signature": "function noStoreJson(body: unknown, init?: ResponseInit) {",
+    "kind": "function",
+    "name": "noStoreJson",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 100,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:100:::noStoreJson"
+  },
+  {
+    "exported": false,
+    "tags": [],
     "snippet": "function getSupabaseConfig() {",
     "signature": "function getSupabaseConfig() {",
     "kind": "function",
     "name": "getSupabaseConfig",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 101,
+    "line": 106,
     "system": "Vercel",
     "bucket": "Supabase persistence",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:101:::getSupabaseConfig"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:106:::getSupabaseConfig"
   },
   {
     "exported": false,
@@ -31219,10 +31668,10 @@
     "kind": "function",
     "name": "supabaseGet",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 111,
+    "line": 116,
     "system": "Vercel",
     "bucket": "Supabase persistence",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:111:::supabaseGet"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:116:::supabaseGet"
   },
   {
     "exported": false,
@@ -31232,10 +31681,10 @@
     "kind": "function",
     "name": "payload",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 127,
+    "line": 132,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:127:::payload"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:132:::payload"
   },
   {
     "exported": false,
@@ -31245,10 +31694,10 @@
     "kind": "function",
     "name": "normalizeKey",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 131,
+    "line": 136,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:131:::normalizeKey"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:136:::normalizeKey"
   },
   {
     "exported": false,
@@ -31258,10 +31707,10 @@
     "kind": "function",
     "name": "getPath",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 135,
+    "line": 140,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:135:::getPath"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:140:::getPath"
   },
   {
     "exported": false,
@@ -31271,10 +31720,10 @@
     "kind": "function",
     "name": "firstValue",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 139,
+    "line": 144,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:139:::firstValue"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:144:::firstValue"
   },
   {
     "exported": false,
@@ -31284,10 +31733,88 @@
     "kind": "function",
     "name": "labelFor",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 149,
+    "line": 154,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:149:::labelFor"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:154:::labelFor"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function normalizeLifecycleText(value: unknown) {",
+    "signature": "function normalizeLifecycleText(value: unknown) {",
+    "kind": "function",
+    "name": "normalizeLifecycleText",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 176,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:176:::normalizeLifecycleText"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function classifyLifecycleStage(row: Record<string, any>) {",
+    "signature": "function classifyLifecycleStage(row: Record<string, any>) {",
+    "kind": "function",
+    "name": "classifyLifecycleStage",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 185,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:185:::classifyLifecycleStage"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function operatorStatusFor(normalizedStage: string) {",
+    "signature": "function operatorStatusFor(normalizedStage: string) {",
+    "kind": "function",
+    "name": "operatorStatusFor",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 246,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:246:::operatorStatusFor"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function meetingLifecycleFor(normalizedStage: string) {",
+    "signature": "function meetingLifecycleFor(normalizedStage: string) {",
+    "kind": "function",
+    "name": "meetingLifecycleFor",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 258,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:258:::meetingLifecycleFor"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function pipelineBucketFor(normalizedStage: string) {",
+    "signature": "function pipelineBucketFor(normalizedStage: string) {",
+    "kind": "function",
+    "name": "pipelineBucketFor",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 274,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:274:::pipelineBucketFor"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function nextActionFor(normalizedStage: string) {",
+    "signature": "function nextActionFor(normalizedStage: string) {",
+    "kind": "function",
+    "name": "nextActionFor",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 290,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:290:::nextActionFor"
   },
   {
     "exported": false,
@@ -31297,10 +31824,10 @@
     "kind": "function",
     "name": "proofLabel",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 171,
+    "line": 306,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:171:::proofLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:306:::proofLabel"
   },
   {
     "exported": false,
@@ -31310,10 +31837,10 @@
     "kind": "function",
     "name": "sourceLabel",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 194,
+    "line": 329,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:194:::sourceLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:329:::sourceLabel"
   },
   {
     "exported": false,
@@ -31323,10 +31850,10 @@
     "kind": "function",
     "name": "sourceTime",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 198,
+    "line": 333,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:198:::sourceTime"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:333:::sourceTime"
   },
   {
     "exported": false,
@@ -31336,10 +31863,10 @@
     "kind": "function",
     "name": "etLabel",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 202,
+    "line": 337,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:202:::etLabel"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:337:::etLabel"
   },
   {
     "exported": false,
@@ -31349,10 +31876,10 @@
     "kind": "function",
     "name": "localParts",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 217,
+    "line": 352,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:217:::localParts"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:352:::localParts"
   },
   {
     "exported": false,
@@ -31362,10 +31889,10 @@
     "kind": "function",
     "name": "localDateKey",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 227,
+    "line": 362,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:227:::localDateKey"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:362:::localDateKey"
   },
   {
     "exported": false,
@@ -31375,10 +31902,10 @@
     "kind": "function",
     "name": "currentMonthRange",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 233,
+    "line": 368,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:233:::currentMonthRange"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:368:::currentMonthRange"
   },
   {
     "exported": false,
@@ -31388,10 +31915,10 @@
     "kind": "function",
     "name": "isMeetingEvent",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 241,
+    "line": 376,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:241:::isMeetingEvent"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:376:::isMeetingEvent"
   },
   {
     "exported": false,
@@ -31401,10 +31928,49 @@
     "kind": "function",
     "name": "isLifecycleMeetingRow",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 247,
+    "line": 382,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:247:::isLifecycleMeetingRow"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:382:::isLifecycleMeetingRow"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function isCurrentMeetingLifecycle(row: Record<string, any>) {",
+    "signature": "function isCurrentMeetingLifecycle(row: Record<string, any>) {",
+    "kind": "function",
+    "name": "isCurrentMeetingLifecycle",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 409,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:409:::isCurrentMeetingLifecycle"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function lifecycleAppointmentId(row: Record<string, any>) {",
+    "signature": "function lifecycleAppointmentId(row: Record<string, any>) {",
+    "kind": "function",
+    "name": "lifecycleAppointmentId",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 413,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:413:::lifecycleAppointmentId"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function callLogRowToEvent(row: Record<string, any>) {",
+    "signature": "function callLogRowToEvent(row: Record<string, any>) {",
+    "kind": "function",
+    "name": "callLogRowToEvent",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 418,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:418:::callLogRowToEvent"
   },
   {
     "exported": false,
@@ -31414,36 +31980,36 @@
     "kind": "function",
     "name": "meetingRow",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 269,
+    "line": 429,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:269:::meetingRow"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:429:::meetingRow"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "function currentMeetingRow(row: Record<string, any>) {",
-    "signature": "function currentMeetingRow(row: Record<string, any>) {",
+    "snippet": "function currentMeetingRow(row: Record<string, any>, athleteByKey: Map<string, string>, lifecycle?: Record<string, any>) {",
+    "signature": "function currentMeetingRow(row: Record<string, any>, athleteByKey: Map<string, string>, lifecycle?: Record<string, any>) {",
     "kind": "function",
     "name": "currentMeetingRow",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 292,
+    "line": 452,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:292:::currentMeetingRow"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:452:::currentMeetingRow"
   },
   {
     "exported": false,
     "tags": [],
-    "snippet": "function lifecycleRow(row: Record<string, any>) {",
-    "signature": "function lifecycleRow(row: Record<string, any>) {",
+    "snippet": "function lifecycleRow(row: Record<string, any>, athleteByKey: Map<string, string>) {",
+    "signature": "function lifecycleRow(row: Record<string, any>, athleteByKey: Map<string, string>) {",
     "kind": "function",
     "name": "lifecycleRow",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 312,
+    "line": 473,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:312:::lifecycleRow"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:473:::lifecycleRow"
   },
   {
     "exported": false,
@@ -31453,10 +32019,10 @@
     "kind": "function",
     "name": "summaryFor",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 346,
+    "line": 508,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:346:::summaryFor"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:508:::summaryFor"
   },
   {
     "exported": false,
@@ -31466,10 +32032,10 @@
     "kind": "function",
     "name": "statusText",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 352,
+    "line": 514,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:352:::statusText"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:514:::statusText"
   },
   {
     "exported": false,
@@ -31479,10 +32045,23 @@
     "kind": "function",
     "name": "isActualMeetingFollowUp",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 353,
+    "line": 515,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:353:::isActualMeetingFollowUp"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:515:::isActualMeetingFollowUp"
+  },
+  {
+    "exported": false,
+    "tags": [],
+    "snippet": "function sourceSummaryFromEvents(rows: Array<Record<string, any>>) {",
+    "signature": "function sourceSummaryFromEvents(rows: Array<Record<string, any>>) {",
+    "kind": "function",
+    "name": "sourceSummaryFromEvents",
+    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
+    "line": 555,
+    "system": "Vercel",
+    "bucket": "Domain logic",
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:555:::sourceSummaryFromEvents"
   },
   {
     "exported": false,
@@ -31492,10 +32071,10 @@
     "kind": "function",
     "name": "buildMeetingReadback",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 390,
+    "line": 566,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:390:::buildMeetingReadback"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:566:::buildMeetingReadback"
   },
   {
     "exported": true,
@@ -31507,23 +32086,10 @@
     "kind": "function",
     "name": "GET",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 441,
+    "line": 643,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:441:::GET"
-  },
-  {
-    "exported": false,
-    "tags": [],
-    "snippet": "function noStoreJson(body: unknown, init?: ResponseInit) {",
-    "signature": "function noStoreJson(body: unknown, init?: ResponseInit) {",
-    "kind": "function",
-    "name": "noStoreJson",
-    "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 95,
-    "system": "Vercel",
-    "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:95:::noStoreJson"
+    "id": "function:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:643:::GET"
   },
   {
     "exported": true,
@@ -31956,12 +32522,12 @@
     "kind": "route",
     "name": "GET /api/call-tracker-data",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 665,
+    "line": 743,
     "system": "Vercel",
     "bucket": "Vercel API route",
     "method": "GET",
     "path": "/api/call-tracker-data",
-    "id": "route:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:665:GET:/api/call-tracker-data:GET-/api/call-tracker-data"
+    "id": "route:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:743:GET:/api/call-tracker-data:GET-/api/call-tracker-data"
   },
   {
     "exported": true,
@@ -32108,12 +32674,12 @@
     "kind": "route",
     "name": "GET /api/meeting-readback-data",
     "file": "apps/prospect-web/app/api/meeting-readback-data/route.ts",
-    "line": 441,
+    "line": 643,
     "system": "Vercel",
     "bucket": "Vercel API route",
     "method": "GET",
     "path": "/api/meeting-readback-data",
-    "id": "route:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:441:GET:/api/meeting-readback-data:GET-/api/meeting-readback-data"
+    "id": "route:Vercel:apps/prospect-web/app/api/meeting-readback-data/route.ts:643:GET:/api/meeting-readback-data:GET-/api/meeting-readback-data"
   },
   {
     "exported": true,

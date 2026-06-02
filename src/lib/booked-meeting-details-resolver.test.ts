@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   resolveBookedMeetingDetailsForForm,
@@ -10,6 +11,8 @@ import type {
   BookedMeetingDetailsResponse,
   BookedMeetingEvent,
 } from './head-scout-schedules';
+
+const source = readFileSync(new URL('./booked-meeting-details-resolver.ts', import.meta.url), 'utf8');
 
 function bookedMeeting(overrides: Partial<BookedMeetingEvent> = {}): BookedMeetingEvent {
   return {
@@ -288,4 +291,10 @@ test('appointment id resolution reads the appointments domain row directly', asy
   assert.equal(result?.bookedMeeting.start, '2026-05-26T21:00');
   assert.equal(result?.meetingTimezone, 'America/Chicago');
   assert.equal(activeTruthCalled, false);
+});
+
+test('appointment truth resolver reads canonical appointments instead of active meeting projection', () => {
+  assert.match(source, /rest\/v1\/appointments/);
+  assert.match(source, /ACTIVE_APPOINTMENT_STATUSES/);
+  assert.doesNotMatch(source, /rest\/v1\/active_athlete_meeting_truth/);
 });

@@ -154,6 +154,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'src/domain/athlete-contact-cache.ts',
     'src/domain/athlete-contact-cache.test.ts',
     'src/lib/athlete-contact-cache.ts',
+    'src/lib/booked-meeting-details-resolver.ts',
+    'src/lib/booked-meeting-details-resolver.test.ts',
     'src/lib/set-meeting-reminder-cache-sync.ts',
     'src/lib/set-meeting-reminder-cache-sync.test.ts',
     'src/lib/set-meeting-confirmation-cache-sync.ts',
@@ -182,9 +184,11 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260519017000_call_tracker_restore_reconcile_clock_and_first_reschedule_identity.sql',
     'supabase/migrations/20260529163000_athlete_lifecycle_timeline.sql',
     'supabase/migrations/20260602113000_purge_call_tracker_compatibility_views.sql',
+    'supabase/migrations/20260602120000_purge_lifecycle_meeting_projection_views.sql',
     'supabase/tests/call-activity-materialization-backsync.test.mjs',
     'supabase/tests/call-events-post-meeting-contract.test.mjs',
     'supabase/tests/call-log-purge-compatibility-views.test.mjs',
+    'supabase/tests/lifecycle-meeting-projection-purge.test.mjs',
     'supabase/tests/call-tracker-reporting-clock-source.test.mjs',
     'supabase/tests/call-tracker-counting-contract.test.mjs',
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
@@ -192,6 +196,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/tests/athlete-lifecycle-timeline-contract.test.mjs',
     'scripts/sync-commissions-to-supabase.mjs',
     'scripts/sync-commissions-to-supabase.test.mjs',
+    'scripts/backfill-macos-contact-notes-from-cache.mjs',
     'scripts/audit-supabase-truth-map.mjs',
     'scripts/audit-supabase-truth-map.test.mjs',
     'scripts/audit-call-tracker-live-parity.mjs',
@@ -549,8 +554,9 @@ test('meetings readback page is live, read-only, and server-backed', () => {
   assert.match(routeText, /showRate/);
   assert.match(routeText, /currentMonthRange\(generatedAt\)/);
   assert.match(appText, /function sourceText\(row\)/);
-  assert.match(appText, /Current Meeting Truth/);
-  assert.match(appText, /Athlete Lifecycle Timeline/);
+  assert.match(appText, /Appointment Truth/);
+  assert.doesNotMatch(appText, /Current Meeting Truth/);
+  assert.doesNotMatch(appText, /Athlete Lifecycle Timeline/);
   assert.doesNotMatch(appText, /Created \$\{row\.createdAtLabel\}/);
   assert.match(stylesText, /\.status-chip\.won/);
   assert.match(stylesText, /\.status-chip\.bad/);

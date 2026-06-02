@@ -14,6 +14,7 @@ import {
   upsertAthleteContactCacheRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
+import { normalizeCrmSalesStage } from '../domain/supabase-lifecycle-translator';
 import { searchLogger } from './logger';
 
 const DEFAULT_SCHEMA = 'public';
@@ -57,10 +58,19 @@ type AthleteContactCacheReadRow = {
   timezone_label?: string | null;
 };
 
-type AthletePipelineStateReadRow = {
+type AthleteLifecycleReadRow = {
   athlete_key?: string | null;
-  raw_crm_stage?: string | null;
-  raw_task_status?: string | null;
+  crm_stage?: string | null;
+  task_status?: string | null;
+  event_type?: string | null;
+  payload_json?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
+type AthleteLifecycleState = {
+  athlete_key?: string | null;
+  crm_stage?: string | null;
+  task_status?: string | null;
   next_action?: string | null;
   is_terminal?: boolean | null;
   normalized_stage?: string | null;
@@ -188,23 +198,46 @@ async function readActiveContactCacheRowsForPhones(
   );
 }
 
-async function readLifecycleCurrentByAthleteKey(
-  config: SupabasePersistenceConfig,
-  athleteKeys: string[],
-): Promise<Map<string, AthletePipelineStateReadRow>> {
-  if (!athleteKeys.length) return new Map();
-  const rows = await readRows<AthletePipelineStateReadRow>(
-    config,
-    'athlete_lifecycle_current',
-    [
-      'select=athlete_key,raw_crm_stage,raw_task_status,next_action,is_terminal,normalized_stage',
-      `athlete_key=in.${postgrestInList(athleteKeys)}`,
-    ].join('&'),
-  );
-  return new Map(rows.map((row) => [String(row.athlete_key || '').trim(), row]));
+function lifecycleStateFromEvent(row: AthleteLifecycleReadRow): AthleteLifecycleState {
+  const crmStage = String(row.crm_stage || '').trim();
+  const taskStatus = String(row.task_status || '').trim();
+  const eventType = String(row.event_type || '').trim();
+  const normalizedStage = normalizeCrmSalesStage(crmStage || taskStatus || eventType);
+  const isTerminal = ['closed_won', 'closed_lost', 'inactive'].includes(normalizedStage);
+  return {
+    athlete_key: row.athlete_key,
+    crm_stage: crmStage || null,
+    task_status: taskStatus || null,
+    next_action: taskStatus || crmStage || eventType || null,
+    is_terminal: isTerminal,
+    normalized_stage: normalizedStage,
+  };
 }
 
-function shouldAdmitContactCacheMatch(lifecycle?: AthletePipelineStateReadRow): boolean {
+async function readLifecycleEventsByAthleteKey(
+  config: SupabasePersistenceConfig,
+  athleteKeys: string[],
+): Promise<Map<string, AthleteLifecycleState>> {
+  if (!athleteKeys.length) return new Map();
+  const rows = await readRows<AthleteLifecycleReadRow>(
+    config,
+    'lifecycle_events',
+    [
+      'select=athlete_key,crm_stage,task_status,event_type,payload_json,created_at',
+      `athlete_key=in.${postgrestInList(athleteKeys)}`,
+      'order=created_at.desc',
+    ].join('&'),
+  );
+  const latestByAthleteKey = new Map<string, AthleteLifecycleState>();
+  for (const row of rows) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || latestByAthleteKey.has(athleteKey)) continue;
+    latestByAthleteKey.set(athleteKey, lifecycleStateFromEvent(row));
+  }
+  return latestByAthleteKey;
+}
+
+function shouldAdmitContactCacheMatch(lifecycle?: AthleteLifecycleState): boolean {
   if (!lifecycle) return true;
   if (lifecycle.is_terminal === true) return false;
   const normalizedStage = String(lifecycle.normalized_stage || '').trim();
@@ -224,7 +257,7 @@ export async function lookupActiveAthleteContactCacheForPhones(
   const athleteKeys = Array.from(
     new Set(cacheRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
   );
-  const lifecycleByKey = await readLifecycleCurrentByAthleteKey(config, athleteKeys);
+  const lifecycleByKey = await readLifecycleEventsByAthleteKey(config, athleteKeys);
 
   return cacheRows.flatMap((row) => {
     const athleteKey = String(row.athlete_key || '').trim();
@@ -260,8 +293,8 @@ export async function lookupActiveAthleteContactCacheForPhones(
         relationshipLabel: String(row.relationship_label || '').trim() || 'Contact',
         phone: String(row.phone || '').trim() || normalizedPhone,
         normalizedPhone,
-        crmStage: String(lifecycle?.raw_crm_stage || '').trim() || null,
-        taskStatus: String(lifecycle?.raw_task_status || '').trim() || null,
+        crmStage: String(lifecycle?.crm_stage || '').trim() || null,
+        taskStatus: String(lifecycle?.task_status || '').trim() || null,
         currentTaskTitle: String(lifecycle?.next_action || '').trim() || null,
         timezone: String(row.timezone || '').trim() || null,
         timezoneLabel: String(row.timezone_label || '').trim() || null,

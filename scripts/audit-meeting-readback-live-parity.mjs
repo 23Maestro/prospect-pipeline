@@ -107,15 +107,6 @@ function isLifecycleMeetingRow(row) {
   return Boolean(body.appointment_id || body.booked_event_id);
 }
 
-function isCurrentMeetingLifecycle(row) {
-  return ['meeting_set', 'rescheduled', 'reschedule_pending'].includes(classifyLifecycleStage(row));
-}
-
-function lifecycleAppointmentId(row) {
-  const body = row?.payload_json && typeof row.payload_json === 'object' && !Array.isArray(row.payload_json) ? row.payload_json : {};
-  return String(body.appointment_id || body.booked_event_id || '').trim();
-}
-
 async function supabaseGet(path) {
   if (!credentials.url || !credentials.serviceRoleKey) {
     throw new Error('Missing Supabase credentials for meeting readback parity audit.');
@@ -133,107 +124,45 @@ async function supabaseGet(path) {
   return response.json();
 }
 
-function latestActiveAppointments(rows) {
-  const latest = new Map();
-  for (const row of rows) {
-    if (!activeAppointmentStatuses.has(row.status)) continue;
-    const athleteKey = String(row.athlete_key || '').trim();
-    if (!athleteKey || latest.has(athleteKey)) continue;
-    latest.set(athleteKey, row);
-  }
-  return [...latest.values()];
-}
-
-function currentMeetingsFromLifecycle(appointmentRows, lifecycleRows) {
-  const appointmentById = new Map();
-  const latestByAthlete = new Map();
-  for (const row of appointmentRows) {
-    if (!activeAppointmentStatuses.has(row.status)) continue;
-    const appointmentId = String(row.id || '').trim();
-    if (appointmentId) appointmentById.set(appointmentId, row);
-    const athleteKey = String(row.athlete_key || '').trim();
-    if (!athleteKey || latestByAthlete.has(athleteKey)) continue;
-    latestByAthlete.set(athleteKey, row);
-  }
-
-  const latestLifecycleByAthlete = new Map();
-  for (const row of lifecycleRows) {
-    const athleteKey = String(row.athlete_key || '').trim();
-    if (!athleteKey || latestLifecycleByAthlete.has(athleteKey)) continue;
-    latestLifecycleByAthlete.set(athleteKey, row);
-  }
-
-  return [...latestLifecycleByAthlete.values()]
-    .filter(isCurrentMeetingLifecycle)
-    .map((row) => {
-      const appointmentId = lifecycleAppointmentId(row);
-      return appointmentById.get(appointmentId) || latestByAthlete.get(String(row.athlete_key || '').trim()) || {
-        id: appointmentId,
-        athlete_key: row.athlete_key,
-      };
-    });
+function activeCanonicalAppointments(rows) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => activeAppointmentStatuses.has(row.status));
 }
 
 function keySet(rows, keyFn) {
   return new Set(rows.map(keyFn).map((value) => String(value || '').trim()).filter(Boolean));
 }
 
-function diffSets(left, right) {
-  return [...left].filter((value) => !right.has(value)).sort();
-}
-
-export function summarizeParity({ oldActiveRows, newActiveRows, oldLifecycleRows, newLifecycleRows }) {
-  const oldActiveAppointmentIds = keySet(oldActiveRows, (row) => row.resolved_appointment_id || row.current_appointment_id);
-  const newActiveAppointmentIds = keySet(newActiveRows, (row) => row.id);
-  const oldLifecycleIds = keySet(oldLifecycleRows, (row) => row.lifecycle_event_id);
-  const newLifecycleIds = keySet(newLifecycleRows, (row) => row.id);
-  const activeMissingInNew = diffSets(oldActiveAppointmentIds, newActiveAppointmentIds);
-  const activeExtraInNew = diffSets(newActiveAppointmentIds, oldActiveAppointmentIds);
-  const lifecycleMissingInNew = diffSets(oldLifecycleIds, newLifecycleIds);
-  const lifecycleExtraInNew = diffSets(newLifecycleIds, oldLifecycleIds);
-
+export function summarizeCanonicalCoverage({ activeRows, lifecycleRows }) {
+  const activeAppointmentIds = keySet(activeRows, (row) => row.id);
+  const lifecycleIds = keySet(lifecycleRows, (row) => row.id);
   return {
     activeMeetings: {
-      oldSource: 'active_athlete_meeting_truth',
-      newSource: 'appointments',
-      oldRows: oldActiveRows.length,
-      newRows: newActiveRows.length,
-      missingInNew: activeMissingInNew.length,
-      extraInNew: activeExtraInNew.length,
-      sampleMissingInNew: activeMissingInNew.slice(0, 10),
-      sampleExtraInNew: activeExtraInNew.slice(0, 10),
-      parity: activeMissingInNew.length === 0 && activeExtraInNew.length === 0,
+      source: 'appointments',
+      rows: activeRows.length,
+      appointmentIds: activeAppointmentIds.size,
+      canonical: true,
     },
     lifecycle: {
-      oldSource: 'athlete_lifecycle_timeline',
-      newSource: 'lifecycle_events',
-      oldRows: oldLifecycleRows.length,
-      newRows: newLifecycleRows.length,
-      missingInNew: lifecycleMissingInNew.length,
-      extraInNew: lifecycleExtraInNew.length,
-      sampleMissingInNew: lifecycleMissingInNew.slice(0, 10),
-      sampleExtraInNew: lifecycleExtraInNew.slice(0, 10),
-      parity: lifecycleMissingInNew.length === 0 && lifecycleExtraInNew.length === 0,
+      source: 'lifecycle_events',
+      rows: lifecycleRows.length,
+      lifecycleEventIds: lifecycleIds.size,
+      canonical: true,
     },
   };
 }
 
 export async function runAudit() {
-  const [oldActiveRows, appointmentRows, oldLifecycleRows, lifecycleRows] = await Promise.all([
-    supabaseGet(`active_athlete_meeting_truth?select=athlete_key,current_appointment_id,resolved_appointment_id,current_starts_at&order=current_starts_at.asc&limit=${EVENT_LIMIT}`),
+  const [appointmentRows, lifecycleRows] = await Promise.all([
     supabaseGet(`appointments?select=id,athlete_key,status,starts_at,updated_at&status=in.(${[...activeAppointmentStatuses].join(',')})&order=updated_at.desc&limit=${EVENT_LIMIT}`),
-    supabaseGet(`athlete_lifecycle_timeline?select=lifecycle_event_id,athlete_key,event_type,event_at&order=event_at.desc&limit=${EVENT_LIMIT}`),
     supabaseGet('lifecycle_events?select=id,athlete_key,event_type,crm_stage,task_status,payload_json,created_at&order=created_at.desc&limit=1000'),
   ]);
   const safeAppointmentRows = Array.isArray(appointmentRows) ? appointmentRows : [];
   const safeLifecycleRows = Array.isArray(lifecycleRows) ? lifecycleRows : [];
-  const newActiveRows = currentMeetingsFromLifecycle(safeAppointmentRows, safeLifecycleRows);
+  const activeRows = activeCanonicalAppointments(safeAppointmentRows);
   const newLifecycleRows = safeLifecycleRows.filter(isLifecycleMeetingRow);
-  return summarizeParity({
-    oldActiveRows: Array.isArray(oldActiveRows) ? oldActiveRows : [],
-    newActiveRows,
-    oldLifecycleRows: Array.isArray(oldLifecycleRows) ? oldLifecycleRows : [],
-    newLifecycleRows,
+  return summarizeCanonicalCoverage({
+    activeRows,
+    lifecycleRows: newLifecycleRows,
   });
 }
 

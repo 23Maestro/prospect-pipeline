@@ -76,11 +76,19 @@ Completed in this Call Tracker slice:
 5. Moved Prospect Web Call Tracker and meeting readback readers to direct `call_log` reads.
 6. Added purge migrations for `weekly_operator_funnel_metrics`, `call_tracker_summary`, `call_tracker_events_owner_context`, `call_tracker_events_deduped`, `call_tracker_events`, `call_tracker_meeting_sets`, and `call_events`.
 
+Completed in this meeting/lifecycle projection slice:
+
+1. Moved Prospect Web meeting readback current-meeting rows to direct active `appointments` reads. Lifecycle rows attach context; they no longer decide which active appointments exist.
+2. Moved booked-meeting detail resolution from `active_athlete_meeting_truth` to canonical `appointments`.
+3. Moved contact-cache admission and the current sales-stage reconciler off `athlete_lifecycle_current` and onto `lifecycle_events` plus the shared lifecycle translator.
+4. Changed `scripts/audit-meeting-readback-live-parity.mjs` into a canonical coverage audit so it remains usable after old projection views are dropped.
+5. Added `20260602120000_purge_lifecycle_meeting_projection_views.sql` to drop `meeting_truth_anomalies`, `active_athlete_meeting_truth`, `athlete_lifecycle_timeline`, and `athlete_lifecycle_current` as views only.
+
 Remaining broader cleanup:
 
 1. `call_activity_events` and `meeting_events` are still historical source tables and repair-script references. Drop them only after the next delete gate proves no repair/audit workflow needs them.
-2. Prospect Web meeting readback now reads `appointments` plus `lifecycle_events` directly. Do not purge `active_athlete_meeting_truth` or `athlete_lifecycle_timeline` yet: `scripts/audit-meeting-readback-live-parity.mjs` currently reports live old-vs-new parity false, so those gaps must be reviewed before deletion.
-3. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views; it now falls back to `call_log` when compatibility views are gone.
+2. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views; it now falls back to `call_log` when compatibility views are gone.
+3. Use `scripts/audit-meeting-readback-live-parity.mjs` as a canonical coverage audit after projection views are purged; it intentionally no longer reads old projection views.
 
 ## Repeatable Refactor Playbook
 
@@ -93,7 +101,7 @@ Use this same loop for the remaining Linear cleanup tasks so each Supabase refac
 5. Mirror every database constraint in the dry-run insertability gate. Row-count parity is not enough; the first `call_log` backfill attempt proved a projection can match dashboard totals while still violating `call_log_count_shape_check`.
 6. Preserve raw provenance in `source_system` or payload fields. Keep canonical family/status fields constrained to the clean vocabulary.
 7. Apply schema migrations before data backfills, then immediately rerun the parity script against the live target table.
-8. Move compatibility readers only after target parity is true.
+8. Move compatibility readers only after target parity is true. For purge targets where canonical truth is broader than the old projection, require old-only rows to be zero before dropping.
 9. Move writers after readers have a stable canonical surface.
 10. Delete old surfaces only after active repo references are gone and the Linear issue has the proof run attached.
 

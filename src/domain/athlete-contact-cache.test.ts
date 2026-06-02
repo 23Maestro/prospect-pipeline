@@ -153,9 +153,11 @@ test('inactive lifecycle stages soft-inactivate cache rows', () => {
   assert.match(plan.inactiveReason, /inactive/i);
 });
 
-test('client-message contact cache admission reads lifecycle current instead of pipeline state labels', () => {
+test('client-message contact cache admission reads lifecycle events instead of projection labels', () => {
   const source = fs.readFileSync('src/lib/athlete-contact-cache.ts', 'utf8');
-  assert.match(source, /athlete_lifecycle_current/);
+  assert.match(source, /lifecycle_events/);
+  assert.match(source, /normalizeCrmSalesStage/);
   assert.match(source, /shouldAdmitContactCacheMatch/);
+  assert.doesNotMatch(source, /athlete_lifecycle_current/);
   assert.doesNotMatch(source, /'athlete_pipeline_state'/);
 });

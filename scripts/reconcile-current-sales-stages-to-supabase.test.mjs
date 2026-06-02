@@ -99,11 +99,14 @@ test('current sales-stage reconciler queues pending clients even when appointmen
   assert.ok(skipIndex > enqueueIndex, 'pending-client enqueue happens before already-correct appointment skip');
 });
 
-test('current sales-stage reconciler uses lifecycle current appointment pointers before pipeline fallback', () => {
-  assert.match(source, /athlete_lifecycle_current/);
-  assert.match(source, /current_resolved_appointment_id/);
-  assert.match(source, /mergeLifecycleAndPipelineRows/);
-  assert.match(source, /lifecycleCurrentRowToPipelineState/);
+test('current sales-stage reconciler uses lifecycle event appointment pointers before pipeline fallback', () => {
+  assert.match(source, /lifecycle_events/);
+  assert.match(source, /firstPayloadText/);
+  assert.match(source, /current_appointment_id/);
+  assert.match(source, /mergeLifecycleEventsAndPipelineRows/);
+  assert.match(source, /lifecycleEventRowToPipelineState/);
+  assert.doesNotMatch(source, /athlete_lifecycle_current/);
+  assert.doesNotMatch(source, /current_resolved_appointment_id/);
 });
 
 test('current sales-stage reconciler deletes canceled active state after twenty one days', () => {

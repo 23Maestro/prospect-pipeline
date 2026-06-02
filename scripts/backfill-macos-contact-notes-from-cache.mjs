@@ -170,15 +170,7 @@ async function hydrateResolvedTimezoneFallbacks(rows) {
     return { rows, sourceCounts: {} };
   }
 
-  const [truthRows, lifecycleRows, appointmentRows, confirmationRows] = await Promise.all([
-    fetchRowsByAthleteKeys(
-      'active_athlete_meeting_truth',
-      'athlete_key,current_meeting_timezone,current_meeting_timezone_label,current_calendar_timezone,previous_meeting_timezone,previous_meeting_timezone_label',
-      missingTimezoneKeys,
-    ).catch(() => []),
-    fetchRowsByAthleteKeys('athlete_lifecycle_current', 'athlete_key,current_meeting_timezone', missingTimezoneKeys).catch(
-      () => [],
-    ),
+  const [appointmentRows, confirmationRows] = await Promise.all([
     fetchRowsByAthleteKeys(
       'appointments',
       'athlete_key,meeting_timezone,meeting_timezone_label,calendar_timezone,updated_at',
@@ -189,8 +181,6 @@ async function hydrateResolvedTimezoneFallbacks(rows) {
     ),
   ]);
 
-  const truthByKey = new Map(truthRows.map((row) => [row.athlete_key, row]));
-  const lifecycleByKey = new Map(lifecycleRows.map((row) => [row.athlete_key, row]));
   const appointmentByKey = new Map();
   for (const row of appointmentRows) {
     if (row.meeting_timezone || row.meeting_timezone_label || row.calendar_timezone) {
@@ -212,26 +202,6 @@ async function hydrateResolvedTimezoneFallbacks(rows) {
     }
 
     const key = String(row.athlete_key || '').trim();
-    const truth = truthByKey.get(key);
-    if (truth) {
-      const timezone =
-        truth.current_meeting_timezone ||
-        truth.current_calendar_timezone ||
-        truth.previous_meeting_timezone ||
-        '';
-      const timezoneLabel = truth.current_meeting_timezone_label || truth.previous_meeting_timezone_label || '';
-      if (timezone || timezoneLabel) {
-        sourceCounts.active_athlete_meeting_truth = (sourceCounts.active_athlete_meeting_truth || 0) + 1;
-        return { ...row, timezone, timezone_label: timezoneLabel, timezone_source: 'active_athlete_meeting_truth' };
-      }
-    }
-
-    const lifecycle = lifecycleByKey.get(key);
-    if (lifecycle?.current_meeting_timezone) {
-      sourceCounts.athlete_lifecycle_current = (sourceCounts.athlete_lifecycle_current || 0) + 1;
-      return { ...row, timezone: lifecycle.current_meeting_timezone, timezone_source: 'athlete_lifecycle_current' };
-    }
-
     const appointment = appointmentByKey.get(key);
     if (appointment) {
       sourceCounts.appointments = (sourceCounts.appointments || 0) + 1;
