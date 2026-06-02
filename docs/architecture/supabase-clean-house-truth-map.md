@@ -72,7 +72,7 @@ That means the next Call Tracker migration is not "read `call_events` directly."
 1. Run the read-only `scripts/audit-call-tracker-live-parity.mjs` projection from `call_tracker_events_owner_context` into `call_log` shape and review `callLogProjection`.
 2. Build the insert/backfill SQL only after the projection shows parity or names the exact gaps. The dry-run command is `node scripts/audit-call-tracker-live-parity.mjs --backfill-sql`; it prints SQL for review and does not execute Supabase writes.
 3. Backfill `call_log` from `call_activity_events`, `meeting_events`, and lifecycle meeting-set facts without deleting old rows. Keep `source_family` to the canonical drained fact families only: `call_activity_events`, `lifecycle_events`, or `meeting_events`; preserve raw upstream labels such as `legacy_sales_stage_current` or `stripe_commissions` in `source_system` or payload fields.
-4. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log`.
+4. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log` by rerunning `node scripts/audit-call-tracker-live-parity.mjs --summary` and checking `callLogTarget.parity`.
 5. Move `call_activity_events` writers into `call_log`.
 6. Move `meeting_events` post-meeting outcome writers into `call_log`.
 7. Move enrollment payment evidence into `call_log` from Stripe/commission evidence.

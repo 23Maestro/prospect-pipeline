@@ -8,6 +8,7 @@ import {
   projectEventRowToCallLog,
   summarizeAuditResult,
   summarizeCallLogProjection,
+  summarizeCallLogTargetParity,
 } from './audit-call-tracker-live-parity.mjs';
 
 const source = readFileSync(new URL('./audit-call-tracker-live-parity.mjs', import.meta.url), 'utf8');
@@ -169,6 +170,7 @@ test('summary output keeps live audit results compact without losing call_log pa
   const compact = summarizeAuditResult({
     allTimeSummary: { dials: 2, contacts: 2, meetings_set: 1, meeting_outcomes_total: 1 },
     callLogProjection: { parity: true, deltas: { dials: 0 } },
+    callLogTarget: { available: true, parity: false },
     missingMeetingSetCandidates: [{ id: 'one' }, { id: 'two' }],
     missingOutcomeCandidates: [{ id: 'three' }],
     suspectedAllTimeContactGap: 0,
@@ -185,10 +187,77 @@ test('summary output keeps live audit results compact without losing call_log pa
   });
 
   assert.equal(compact.callLogProjection.parity, true);
+  assert.equal(compact.callLogTarget.parity, false);
   assert.equal(compact.lifecycleCandidateSummary.missingMeetingSetCandidates, 2);
   assert.equal(compact.lifecycleCandidateSummary.missingOutcomeCandidates, 1);
   assert.equal(compact.missingMeetingSetCandidates, undefined);
   assert.equal(compact.missingOutcomeCandidates, undefined);
+});
+
+test('call_log target parity reports unavailable live target without throwing', () => {
+  const target = summarizeCallLogTargetParity([], [], {
+    available: false,
+    error: 'call_log not found',
+  });
+
+  assert.equal(target.available, false);
+  assert.equal(target.projectedRows, 0);
+  assert.equal(target.targetRows, 0);
+  assert.equal(target.parity, false);
+  assert.match(target.error, /not found/);
+});
+
+test('call_log target parity detects missing and extra dedupe keys', () => {
+  const projectedRows = [
+    {
+      dedupe_key: 'activity:one',
+      tracker_outcome: 'left_voicemail_1',
+      counts_as_dial: true,
+      counts_as_contact: false,
+      counts_as_meeting_set: false,
+      counts_as_post_meeting_outcome: false,
+      revenue_cents: null,
+    },
+    {
+      dedupe_key: 'outcome:one',
+      tracker_outcome: 'closed_won',
+      counts_as_dial: false,
+      counts_as_contact: false,
+      counts_as_meeting_set: false,
+      counts_as_post_meeting_outcome: true,
+      revenue_cents: 9900,
+    },
+  ];
+  const targetRows = [
+    {
+      dedupe_key: 'activity:one',
+      tracker_outcome: 'left_voicemail_1',
+      counts_as_dial: true,
+      counts_as_contact: false,
+      counts_as_meeting_set: false,
+      counts_as_post_meeting_outcome: false,
+      revenue_cents: null,
+    },
+    {
+      dedupe_key: 'extra:one',
+      tracker_outcome: 'meeting_set',
+      counts_as_dial: true,
+      counts_as_contact: true,
+      counts_as_meeting_set: true,
+      counts_as_post_meeting_outcome: false,
+      revenue_cents: null,
+    },
+  ];
+
+  const target = summarizeCallLogTargetParity(projectedRows, targetRows);
+
+  assert.equal(target.available, true);
+  assert.equal(target.projectedRows, 2);
+  assert.equal(target.targetRows, 2);
+  assert.equal(target.missingInTarget, 1);
+  assert.equal(target.extraInTarget, 1);
+  assert.equal(target.deltas.closed_won, -1);
+  assert.equal(target.parity, false);
 });
 
 test('backfill SQL preserves raw provenance while inserting canonical source families', () => {

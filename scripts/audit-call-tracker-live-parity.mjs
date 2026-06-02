@@ -49,6 +49,22 @@ async function getPaged(table, select, extra = '') {
   }
 }
 
+async function getOptionalPaged(table, select, extra = '') {
+  try {
+    return {
+      available: true,
+      rows: await getPaged(table, select, extra),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      available: false,
+      rows: [],
+      error: error.message,
+    };
+  }
+}
+
 function countWhere(rows, predicate) {
   return rows.filter(predicate).length;
 }
@@ -194,6 +210,61 @@ export function summarizeCallLogProjection(projectedRows, summary = {}) {
   };
 }
 
+export function summarizeCallLogTargetParity(projectedRows, targetRows, { available = true, error = null } = {}) {
+  if (!available) {
+    return {
+      available: false,
+      error,
+      projectedRows: projectedRows.length,
+      targetRows: 0,
+      parity: false,
+    };
+  }
+
+  const projectedDedupeKeys = new Set(projectedRows.map((row) => row.dedupe_key).filter(Boolean));
+  const targetDedupeKeys = new Set(targetRows.map((row) => row.dedupe_key).filter(Boolean));
+  const missingInTarget = [...projectedDedupeKeys].filter((dedupeKey) => !targetDedupeKeys.has(dedupeKey));
+  const extraInTarget = [...targetDedupeKeys].filter((dedupeKey) => !projectedDedupeKeys.has(dedupeKey));
+  const projected = {
+    dials: countWhere(projectedRows, (row) => row.counts_as_dial),
+    contacts: countWhere(projectedRows, (row) => row.counts_as_contact),
+    meetings_set: countWhere(projectedRows, (row) => row.counts_as_meeting_set),
+    meeting_outcomes_total: countWhere(projectedRows, (row) => row.counts_as_post_meeting_outcome),
+    closed_won: countWhere(projectedRows, (row) => row.tracker_outcome === 'closed_won'),
+    money_earned_cents: projectedRows
+      .filter((row) => row.tracker_outcome === 'closed_won')
+      .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
+  };
+  const target = {
+    dials: countWhere(targetRows, (row) => row.counts_as_dial),
+    contacts: countWhere(targetRows, (row) => row.counts_as_contact),
+    meetings_set: countWhere(targetRows, (row) => row.counts_as_meeting_set),
+    meeting_outcomes_total: countWhere(targetRows, (row) => row.counts_as_post_meeting_outcome),
+    closed_won: countWhere(targetRows, (row) => row.tracker_outcome === 'closed_won'),
+    money_earned_cents: targetRows
+      .filter((row) => row.tracker_outcome === 'closed_won')
+      .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
+  };
+  const deltas = Object.fromEntries(
+    Object.keys(projected).map((key) => [key, target[key] - projected[key]]),
+  );
+
+  return {
+    available: true,
+    projectedRows: projectedRows.length,
+    targetRows: targetRows.length,
+    missingInTarget: missingInTarget.length,
+    extraInTarget: extraInTarget.length,
+    projected,
+    target,
+    deltas,
+    parity:
+      missingInTarget.length === 0 &&
+      extraInTarget.length === 0 &&
+      Object.values(deltas).every((value) => value === 0),
+  };
+}
+
 const CALL_LOG_BACKFILL_COLUMNS = [
   ['fact_type', 'text'],
   ['tracker_outcome', 'text'],
@@ -316,7 +387,7 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     throw new Error('Missing Supabase credentials for call tracker live parity audit.');
   }
 
-  const [summaryRows, lifecycleRows, callActivityRows, meetingRows, trackerRows, ownerContextRows] = await Promise.all([
+  const [summaryRows, lifecycleRows, callActivityRows, meetingRows, trackerRows, ownerContextRows, callLogTarget] = await Promise.all([
     get('call_tracker_summary?select=*'),
     getPaged(
       'lifecycle_events',
@@ -366,6 +437,20 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
         'payload_json',
       ].join(','),
     ),
+    getOptionalPaged(
+      'call_log',
+      [
+        'dedupe_key',
+        'tracker_outcome',
+        'source_family',
+        'reporting_at',
+        'counts_as_dial',
+        'counts_as_contact',
+        'counts_as_meeting_set',
+        'counts_as_post_meeting_outcome',
+        'revenue_cents',
+      ].join(','),
+    ),
   ]);
 
   const callActivityTaskIds = new Set(callActivityRows.map((row) => row.task_id).filter(Boolean));
@@ -392,6 +477,7 @@ export async function runAudit({ includeProjectedRows = false } = {}) {
     },
     ...(includeProjectedRows ? { projectedCallLogRows } : {}),
     callLogProjection: summarizeCallLogProjection(projectedCallLogRows, summary),
+    callLogTarget: summarizeCallLogTargetParity(projectedCallLogRows, callLogTarget.rows, callLogTarget),
     ...lifecycleSummary,
   };
 }
@@ -400,6 +486,7 @@ export function summarizeAuditResult(result) {
   return {
     allTimeSummary: result.allTimeSummary,
     callLogProjection: result.callLogProjection,
+    callLogTarget: result.callLogTarget,
     lifecycleCandidateSummary: {
       suspectedAllTimeContactGap: result.suspectedAllTimeContactGap,
       suspectedAllTimeDialGap: result.suspectedAllTimeDialGap,
