@@ -13,6 +13,23 @@ FastAPI remains a source-system adapter; Supabase remains durable reporting trut
 | Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update | Confirmation cache and event title state | Confirmation cache is not lifecycle truth. |
 | Pending Clients | Current pipeline state | Reads current sales stage and athlete event list | Reads Supabase pipeline/lifecycle state | It must not read confirmation cache. |
 
+## Meeting Time Mutation Rights
+
+Meeting time means one thing across the system: the appointment start/end instant for the client meeting. Supabase stores that instant as UTC ISO. UI surfaces render that instant in the client/resolved meeting timezone.
+
+| Field meaning | Canonical durable field | Support copies | Allowed writers | Not allowed |
+| --- | --- | --- | --- | --- |
+| Meeting start instant | `appointments.starts_at` | `set_meeting_confirmation_cache.meeting_starts_at`, `pending_client_watchlist.event_start`, `call_log.booked_event_starts_at` | Raycast action-time meeting set/reschedule writers and explicit human-approved repair | Sales-stage reconciler, post-meeting watcher, Call Tracker reporting repair |
+| Meeting end instant | derived one-hour end or stored support end | `set_meeting_confirmation_cache.meeting_ends_at`, `pending_client_watchlist.event_end`, `call_log.booked_event_ends_at` | Same writer that owns the corresponding start instant | Sales-stage reconciler, post-meeting watcher, Call Tracker reporting repair |
+| Meeting timezone | `appointments.meeting_timezone` / `meeting_timezone_label` | confirmation-message support rows and contact cache fallback evidence | Raycast meeting set/reschedule writer, explicit timezone repair from confirmed source evidence | Post-meeting outcome logic |
+
+Rules:
+
+- A post-meeting watcher may update appointment `status`, `post_meeting_result`, and `status_reason`; it may not update `starts_at`.
+- A reporting writer may copy already-confirmed meeting start/end into `call_log`; it may not invent or normalize appointment time truth.
+- `set_meeting_confirmation_cache` is not lifecycle truth, but for same-appointment-id repair it is valid evidence for the confirmed meeting start/end because Prospect Mobile confirmation prep uses it.
+- The hourly cron must not run broad booked-meeting backfills that overwrite appointment time from Laravel local calendar strings.
+
 ## Reconcile and audit path
 
 Reconcile scripts exist for state that did not originate from a Raycast action-time write:
@@ -31,7 +48,7 @@ These scripts may write Supabase only through canonical writer paths, but they a
 | --- | --- |
 | `scripts/reconcile-current-sales-stages-to-supabase.mjs` | Audit/reconcile current Laravel/calendar state into Supabase. |
 | `scripts/sync-current-pipeline-to-supabase.mjs` | Audit/reconcile current pipeline drift and external/manual state. |
-| `scripts/sync-booked-meetings-to-supabase.mjs` | Audit/reconcile booked meeting facts and external calendar state. |
+| `scripts/sync-booked-meetings-to-supabase.mjs` | Manual audit/repair for booked meeting facts and external calendar state. It is not part of the hourly cron because appointment time mutation needs confirmed evidence. |
 | `scripts/sync-commissions-to-supabase.mjs` | Audit/reconcile commission rows. |
 | `scripts/backsync-lifecycle-call-activity-events.mjs` | Legacy repair only. |
 | `scripts/materialize-call-tracker-data-contract.mjs` | Legacy/static browser contract materialization only. |

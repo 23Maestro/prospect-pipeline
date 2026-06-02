@@ -3316,11 +3316,15 @@ export function PostCallUpdateForm({
         const athleteMainId = String(
           task.athlete_main_id || context.resolved.athlete_main_id || '',
         ).trim();
+        const meetingDetailsSource = isConfirmedRescheduleMeetingStage(selectedStageLabel)
+          ? 'appointment_truth'
+          : 'booked_meetings';
         const resolvedBookedMeeting = await resolveBookedMeetingDetailsForForm(
           {
             athleteId,
             athleteMainId,
             initialBookedMeeting,
+            source: meetingDetailsSource,
           },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,

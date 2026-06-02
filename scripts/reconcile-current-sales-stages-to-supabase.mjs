@@ -777,7 +777,6 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
             status: 'awaiting_post_meeting_update',
             post_meeting_result: 'awaiting_post_meeting_update',
             status_reason: 'awaiting_post_meeting_update',
-            starts_at: String(monitorEvent?.start || '').trim() || undefined,
             updated_at: now,
           });
         }
@@ -881,7 +880,6 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         status: appointmentStatus,
         post_meeting_result: postMeetingResultForAppointmentStatus(appointmentStatus),
         status_reason: `live_sales_stage:${nextCrmStage}`,
-        starts_at: String(bookedMeeting?.start || '').trim() || undefined,
         updated_at: now,
       });
     }

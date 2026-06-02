@@ -38,7 +38,6 @@ if ! API_TIMEOUT_SECONDS=10 "${PROJECT_ROOT}/scripts/wait-for-api.sh"; then
 fi
 
 npm run sync:current-pipeline-supabase
-npm run sync:booked-meetings-supabase
 npm run reconcile:current-sales-stages-supabase
 npm run sync:commissions-supabase
 

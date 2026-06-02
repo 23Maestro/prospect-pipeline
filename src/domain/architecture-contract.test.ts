@@ -206,6 +206,20 @@ test('Client Outreach proposed times uses slot picker without appointment truth'
   );
 });
 
+test('Post-call reschedule template hydration reads appointment truth', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const loadTemplateStart = scoutPrep.indexOf('const loadTemplate = async () => {');
+  const loadTemplateEnd = scoutPrep.indexOf('const meetingTemplateKey =', loadTemplateStart);
+  const loadTemplate = scoutPrep.slice(loadTemplateStart, loadTemplateEnd);
+
+  assert.match(loadTemplate, /resolveBookedMeetingDetailsForForm\(/);
+  assert.match(
+    loadTemplate,
+    /isConfirmedRescheduleMeetingStage\(selectedStageLabel\)\s*\?\s*'appointment_truth'\s*:\s*'booked_meetings'/,
+  );
+  assert.match(loadTemplate, /source:\s*meetingDetailsSource/);
+});
+
 test('Set Meetings confirmation cache writes resolved appointment timezone', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
@@ -336,6 +350,14 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
     'Do not add new script-local lifecycle translation helpers',
     'src/domain/supabase-lifecycle-translator.ts',
     'src/lib/supabase-lifecycle.ts',
+    'Meeting Time Mutation Rights',
+    'Meeting time means one thing across the system',
+    'appointments.starts_at',
+    'set_meeting_confirmation_cache.meeting_starts_at',
+    'pending_client_watchlist.event_start',
+    'call_log.booked_event_starts_at',
+    'A post-meeting watcher may update appointment `status`, `post_meeting_result`, and `status_reason`; it may not update `starts_at`',
+    'The hourly cron must not run broad booked-meeting backfills',
   ].forEach((phrase) =>
     assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
   );

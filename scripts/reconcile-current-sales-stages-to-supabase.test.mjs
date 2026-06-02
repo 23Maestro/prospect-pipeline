@@ -47,6 +47,14 @@ test('current sales-stage reconciler repairs past appointments from live lifecyc
   assert.match(source, /shouldQueuePendingClientForStage/);
 });
 
+test('current sales-stage reconciler never overwrites appointment start times', () => {
+  const appointmentPatchBlocks = source.match(/queueAppointmentPatch\([\s\S]*?\n\s*\}\);/g) || [];
+  assert.ok(appointmentPatchBlocks.length > 0, 'appointment patch blocks exist');
+  for (const block of appointmentPatchBlocks) {
+    assert.doesNotMatch(block, /\bstarts_at\s*:/);
+  }
+});
+
 test('current sales-stage reconciler does not turn ended active meetings into post-meeting outcomes', () => {
   assert.match(source, /isPostMeetingLifecycleStage/);
   assert.match(source, /matchStrategy: 'selected_stage_post_meeting'/);
