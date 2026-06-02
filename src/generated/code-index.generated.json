@@ -26362,10 +26362,10 @@
     "kind": "function",
     "name": "walk",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 162,
+    "line": 169,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:162:::walk"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:169:::walk"
   },
   {
     "exported": false,
@@ -26377,10 +26377,10 @@
     "kind": "function",
     "name": "lineNumberForIndex",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 175,
+    "line": 182,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:175:::lineNumberForIndex"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:182:::lineNumberForIndex"
   },
   {
     "exported": false,
@@ -26392,10 +26392,10 @@
     "kind": "function",
     "name": "classifyAccess",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 179,
+    "line": 186,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:179:::classifyAccess"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:186:::classifyAccess"
   },
   {
     "exported": false,
@@ -26407,10 +26407,10 @@
     "kind": "function",
     "name": "classifyFileKind",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 190,
+    "line": 197,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:190:::classifyFileKind"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:197:::classifyFileKind"
   },
   {
     "exported": false,
@@ -26422,10 +26422,10 @@
     "kind": "function",
     "name": "isActiveDependency",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 204,
+    "line": 211,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:204:::isActiveDependency"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:211:::isActiveDependency"
   },
   {
     "exported": false,
@@ -26437,10 +26437,10 @@
     "kind": "function",
     "name": "sortReferences",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 261,
+    "line": 269,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:261:::sortReferences"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:269:::sortReferences"
   },
   {
     "exported": false,
@@ -26452,10 +26452,10 @@
     "kind": "function",
     "name": "filteredReferences",
     "file": "scripts/audit-supabase-truth-map.mjs",
-    "line": 268,
+    "line": 276,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:268:::filteredReferences"
+    "id": "function:Scripts:scripts/audit-supabase-truth-map.mjs:276:::filteredReferences"
   },
   {
     "exported": false,

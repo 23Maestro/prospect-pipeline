@@ -6,6 +6,8 @@ The operating rule:
 
 > Sales stage is truth. `lifecycleSalesStage` is the one repo-owned writer that turns sales stage into lifecycle state. Appointments attach meeting timing and detail. Call events attach reporting facts.
 
+FastAPI remains the source-system adapter for Prospect Pipeline data access. Supabase remains durable persistence. Domain modules define lifecycle, appointment, and reporting meaning; Prospect Web readers only display or aggregate those domain-owned facts.
+
 ## Canonical End State
 
 | Surface | Bucket | Role | Plain English |
@@ -14,7 +16,7 @@ The operating rule:
 | `athlete_contact_cache` | Admin Data & Contacts / Client Communication | Canonical support | How to contact the athlete/family and open admin/task links. |
 | `appointments` | Meetings | Canonical truth | Meeting timing, scout, timezone, event id, and reschedule chain. |
 | `lifecycle_events` | Lifecycle & Stage Truth | Canonical truth | Sales-stage history and normalized lifecycle state through `lifecycleSalesStage`. |
-| `call_events` | Reporting / Pre-Meeting Tasks / Enrollments & Outcomes | Canonical target | One event table for dials, contacts, meeting sets, and post-meeting outcomes. |
+| `call_events` | Reporting / Pre-Meeting Tasks / Enrollments & Outcomes | Canonical target | Future one event table for dials, contacts, meeting sets, and post-meeting outcomes. Current schema history still recreates `call_events` as a deprecated compatibility view over `meeting_events`, so do not switch readers to it until the canonical shape is migrated. |
 | `set_meeting_confirmation_cache` | Client Communication | Temporary support | Confirmation-message prep only; not lifecycle or meeting truth. |
 | `pending_client_watchlist` | Enrollments & Outcomes | Temporary support | Review queue only; not final outcome truth. |
 
@@ -59,3 +61,16 @@ Before dropping a surface:
 5. Run old-vs-new parity for counts and latest-state readback.
 6. Confirm the table/view has zero active repo references.
 7. Drop only after the above is true.
+
+## Call Events Readiness
+
+`call_events` is the target name for the future centralized event table, but the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renames the old table to `meeting_events` and recreates `call_events` as a deprecated compatibility view.
+
+That means the next Call Tracker migration is not "read `call_events` directly." The next migration is:
+
+1. Define the canonical `call_events` row shape for dials, contacts, meeting sets, and post-meeting outcomes.
+2. Move `call_activity_events` writers into that canonical shape.
+3. Move `meeting_events` post-meeting outcome writers into that canonical shape.
+4. Move meeting-set facts from lifecycle-derived reporting into that canonical shape.
+5. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against the canonical table.
+6. Only then move Prospect Web readers off the compatibility views.

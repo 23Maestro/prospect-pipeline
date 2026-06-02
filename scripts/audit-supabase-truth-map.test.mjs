@@ -111,3 +111,18 @@ test('Supabase truth-map audit can emit focused JSON for one surface', () => {
   assert.equal(Array.isArray(payload.references), true);
   assert.equal(payload.references.every((ref) => ['implementation', 'script', 'schema_or_migration'].includes(ref.fileKind)), true);
 });
+
+test('Supabase truth-map audit blocks direct call_events reader migration until canonical shape is ready', () => {
+  const output = execFileSync(
+    'node',
+    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_events', '--json'],
+    { encoding: 'utf8' },
+  );
+  const payload = JSON.parse(output);
+
+  assert.equal(payload.summary.surface, 'call_events');
+  assert.equal(payload.summary.role, 'canonical_target');
+  assert.match(payload.summary.currentState, /Target only/);
+  assert.match(payload.summary.currentState, /deprecated compatibility view/);
+  assert.match(payload.summary.replacement, /one canonical shape/);
+});

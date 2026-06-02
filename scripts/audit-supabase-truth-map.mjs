@@ -21,42 +21,49 @@ const surfaces = {
     bucket: 'Admin Data & Contacts',
     role: 'canonical_truth',
     migrationOwner: 'Admin Data & Contacts',
+    currentState: 'Ready',
     replacement: 'Keep',
   },
   athlete_contact_cache: {
     bucket: 'Admin Data & Contacts / Client Communication',
     role: 'canonical_support',
     migrationOwner: 'Admin Data & Contacts',
+    currentState: 'Ready',
     replacement: 'Keep as contact lookup support',
   },
   appointments: {
     bucket: 'Meetings',
     role: 'canonical_truth',
     migrationOwner: 'Meetings',
+    currentState: 'Ready',
     replacement: 'Keep',
   },
   lifecycle_events: {
     bucket: 'Lifecycle & Stage Truth',
     role: 'canonical_truth',
     migrationOwner: 'Lifecycle & Stage Truth',
+    currentState: 'Ready',
     replacement: 'Keep',
   },
   call_events: {
     bucket: 'Reporting / Pre-Meeting Tasks / Enrollments & Outcomes',
     role: 'canonical_target',
     migrationOwner: 'Lifecycle & Stage Truth / Reporting',
-    replacement: 'Keep as centralized event table',
+    currentState: 'Target only: current schema history recreates call_events as a deprecated compatibility view over meeting_events.',
+    replacement: 'Promote to the centralized event table only after dials, contacts, meeting sets, and post-meeting outcomes are represented by one canonical shape.',
   },
   set_meeting_confirmation_cache: {
     bucket: 'Client Communication',
     role: 'temporary_support',
     migrationOwner: 'Client Communication',
+    currentState: 'Temporary support',
     replacement: 'Keep temporarily as confirmation-message support',
   },
   pending_client_watchlist: {
     bucket: 'Enrollments & Outcomes',
     role: 'temporary_support',
     migrationOwner: 'Enrollments & Outcomes',
+    currentState: 'Temporary support',
     replacement: 'Keep temporarily as review queue',
   },
 
@@ -250,6 +257,7 @@ const summary = Object.entries(results).map(([surface, value]) => {
     bucket: value.bucket,
     role: value.role,
     migrationOwner: value.migrationOwner,
+    currentState: value.currentState || '',
     replacement: value.replacement,
     references: value.references.length,
     activeDependencies: activeReferences.length,
@@ -304,6 +312,7 @@ if (jsonMode) {
       `- ${row.surface}: ${row.role}, owner=${row.migrationOwner}, active=${row.activeDependencies}, refs=${row.references}, reads=${reads}, writes=${writes}`,
     );
     if (requestedSurface) {
+      if (row.currentState) console.log(`  current: ${row.currentState}`);
       console.log(`  replacement: ${row.replacement}`);
       for (const ref of filteredReferences(requestedSurface)) {
         console.log(`  - ${ref.file}:${ref.line} [${ref.fileKind}/${ref.access}] ${ref.text}`);
