@@ -6,7 +6,9 @@
   "browserContract": {
     "eventFeed": {
       "supabaseView": "call_tracker_events_owner_context",
-      "plainEnglish": "This is the live event view the Vercel API reads. It must carry proof fields plus count booleans so the browser never recomputes business meaning.",
+      "canonicalEventTable": "call_events",
+      "compatibilityRead": true,
+      "plainEnglish": "This is the current live compatibility event view the Vercel API reads while Call Tracker migrates to canonical call_events aggregation. It must carry proof fields plus count booleans so the browser never recomputes business meaning.",
       "requiredFields": [
         "athlete_name",
         "occurred_at",
@@ -37,7 +39,9 @@
     },
     "summaryHelper": {
       "supabaseView": "call_tracker_summary",
-      "plainEnglish": "This is the live summary view the Vercel API reads. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.",
+      "canonicalEventTable": "call_events",
+      "compatibilityRead": true,
+      "plainEnglish": "This is the current live compatibility summary view the Vercel API reads while Call Tracker migrates to canonical call_events aggregation. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.",
       "requiredFields": [
         "dials",
         "contacts",
@@ -324,7 +328,12 @@
     "route": "apps/prospect-web/app/api/call-tracker-data/route.ts",
     "browserUrl": "/api/call-tracker-data",
     "workflowCron": "scripts/sync-supabase-pipeline.sh",
-    "plainEnglish": "The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads Supabase live, so call-tracker reporting updates do not require redeploying data-contract.json."
+    "canonicalEventTable": "call_events",
+    "compatibilityViews": {
+      "summaryView": "call_tracker_summary",
+      "eventView": "call_tracker_events_owner_context"
+    },
+    "plainEnglish": "The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads Supabase live. Current Call Tracker reads still use compatibility views, but the canonical event target is call_events."
   },
   "data": {
     "generatedAt": "2026-05-11T21:09:37.451Z",
@@ -332,6 +341,11 @@
     "supabaseReads": {
       "summaryView": "call_tracker_summary",
       "eventView": "call_tracker_events_owner_context",
+      "canonicalEventTable": "call_events",
+      "compatibilityViews": {
+        "summaryView": "call_tracker_summary",
+        "eventView": "call_tracker_events_owner_context"
+      },
       "lifecycleSourceTable": "lifecycle_events"
     },
     "summary": {

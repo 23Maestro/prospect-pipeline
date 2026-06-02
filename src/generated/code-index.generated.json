@@ -31062,10 +31062,10 @@
     "kind": "function",
     "name": "GET",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 659,
+    "line": 665,
     "system": "Vercel",
     "bucket": "Domain logic",
-    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:659:::GET"
+    "id": "function:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:665:::GET"
   },
   {
     "exported": false,
@@ -31956,12 +31956,12 @@
     "kind": "route",
     "name": "GET /api/call-tracker-data",
     "file": "apps/prospect-web/app/api/call-tracker-data/route.ts",
-    "line": 659,
+    "line": 665,
     "system": "Vercel",
     "bucket": "Vercel API route",
     "method": "GET",
     "path": "/api/call-tracker-data",
-    "id": "route:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:659:GET:/api/call-tracker-data:GET-/api/call-tracker-data"
+    "id": "route:Vercel:apps/prospect-web/app/api/call-tracker-data/route.ts:665:GET:/api/call-tracker-data:GET-/api/call-tracker-data"
   },
   {
     "exported": true,

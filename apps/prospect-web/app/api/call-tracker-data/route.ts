@@ -615,6 +615,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
 async function buildLiveContract() {
   const summaryView = 'call_tracker_summary';
   const eventView = 'call_tracker_events_owner_context';
+  const canonicalEventTable = 'call_events';
   const [summaryRows, events, lifecycleRows] = await Promise.all([
     supabaseGet(`${summaryView}?select=*`),
     supabaseGet([`${eventView}?select=${encodeURIComponent(internalEventFields.join(','))}`, 'order=event_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
@@ -647,6 +648,11 @@ async function buildLiveContract() {
       supabaseReads: {
         summaryView,
         eventView,
+        canonicalEventTable,
+        compatibilityViews: {
+          summaryView,
+          eventView,
+        },
         lifecycleSourceTable: 'lifecycle_events',
       },
       summary,
