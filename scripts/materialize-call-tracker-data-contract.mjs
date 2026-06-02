@@ -445,6 +445,11 @@ async function materialize() {
       supabaseReads: {
         summaryView,
         eventView,
+        canonicalEventTable: CALL_TRACKER_VERCEL_CONTRACT.liveSupabaseApi.canonicalEventTable,
+        compatibilityViews: {
+          summaryView,
+          eventView,
+        },
         lifecycleSourceTable: 'lifecycle_events',
       },
       summary,

@@ -9,6 +9,7 @@ const deleteTargets = [
   'active_athlete_meeting_truth',
   'athlete_pipeline_state',
   'meeting_events',
+  'call_events',
   'call_activity_events',
   'call_tracker_events',
   'call_tracker_events_deduped',
@@ -49,7 +50,7 @@ test('Supabase truth-map audit script tracks canonical and delete-target surface
   const payload = JSON.parse(output);
   const surfaces = new Set(payload.summary.map((row) => row.surface));
 
-  for (const surface of ['athletes', 'athlete_contact_cache', 'appointments', 'lifecycle_events', 'call_events']) {
+  for (const surface of ['athletes', 'athlete_contact_cache', 'appointments', 'lifecycle_events', 'call_log']) {
     assert.equal(surfaces.has(surface), true, `${surface} missing from audit`);
   }
   for (const target of deleteTargets) {
@@ -93,7 +94,7 @@ test('Supabase truth-map audit can print one active-only surface plan', () => {
   );
 
   assert.match(output, /call_tracker_events: delete_target/);
-  assert.match(output, /replacement: API\/query over canonical call_events/);
+  assert.match(output, /replacement: API\/query over canonical call_log/);
   assert.match(output, /\[(implementation|script|schema_or_migration)\/(reference|read|write_or_mutation)\]/);
   assert.doesNotMatch(output, /\[doc\//);
   assert.doesNotMatch(output, /\[test\//);
@@ -112,7 +113,22 @@ test('Supabase truth-map audit can emit focused JSON for one surface', () => {
   assert.equal(payload.references.every((ref) => ['implementation', 'script', 'schema_or_migration'].includes(ref.fileKind)), true);
 });
 
-test('Supabase truth-map audit blocks direct call_events reader migration until canonical shape is ready', () => {
+test('Supabase truth-map audit names call_log as the canonical target', () => {
+  const output = execFileSync(
+    'node',
+    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_log', '--json'],
+    { encoding: 'utf8' },
+  );
+  const payload = JSON.parse(output);
+
+  assert.equal(payload.summary.surface, 'call_log');
+  assert.equal(payload.summary.role, 'canonical_target');
+  assert.match(payload.summary.currentState, /Target only/);
+  assert.match(payload.summary.currentState, /clean ledger name/);
+  assert.match(payload.summary.replacement, /one canonical shape/);
+});
+
+test('Supabase truth-map audit retires call_events as compatibility history', () => {
   const output = execFileSync(
     'node',
     ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_events', '--json'],
@@ -121,8 +137,8 @@ test('Supabase truth-map audit blocks direct call_events reader migration until 
   const payload = JSON.parse(output);
 
   assert.equal(payload.summary.surface, 'call_events');
-  assert.equal(payload.summary.role, 'canonical_target');
-  assert.match(payload.summary.currentState, /Target only/);
-  assert.match(payload.summary.currentState, /deprecated compatibility view/);
-  assert.match(payload.summary.replacement, /one canonical shape/);
+  assert.equal(payload.summary.role, 'delete_target');
+  assert.match(payload.summary.currentState, /Deprecated compatibility/);
+  assert.match(payload.summary.currentState, /view over meeting_events/);
+  assert.match(payload.summary.replacement, /call_log canonical ledger/);
 });

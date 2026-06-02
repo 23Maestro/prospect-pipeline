@@ -7,10 +7,10 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
   browserContract: {
     eventFeed: {
       supabaseView: 'call_tracker_events_owner_context',
-      canonicalEventTable: 'call_events',
+      canonicalEventTable: 'call_log',
       compatibilityRead: true,
       plainEnglish:
-        'This is the current live compatibility event view the Vercel API reads while Call Tracker migrates to canonical call_events aggregation. It must carry proof fields plus count booleans so the browser never recomputes business meaning.',
+        'This is the current live compatibility event view the Vercel API reads while Call Tracker migrates to canonical call_log aggregation. It must carry proof fields plus count booleans so the browser never recomputes business meaning.',
       requiredFields: [
         'athlete_name',
         'occurred_at',
@@ -41,10 +41,10 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     },
     summaryHelper: {
       supabaseView: 'call_tracker_summary',
-      canonicalEventTable: 'call_events',
+      canonicalEventTable: 'call_log',
       compatibilityRead: true,
       plainEnglish:
-        'This is the current live compatibility summary view the Vercel API reads while Call Tracker migrates to canonical call_events aggregation. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.',
+        'This is the current live compatibility summary view the Vercel API reads while Call Tracker migrates to canonical call_log aggregation. Dials mirror the event-feed booleans. All-time visible contacts may include an explicit historical UI adjustment while Supabase facts remain strict.',
       requiredFields: [
         'dials',
         'contacts',
@@ -193,12 +193,12 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     route: 'apps/prospect-web/app/api/call-tracker-data/route.ts',
     browserUrl: '/api/call-tracker-data',
     workflowCron: 'scripts/sync-supabase-pipeline.sh',
-    canonicalEventTable: 'call_events',
+    canonicalEventTable: 'call_log',
     compatibilityViews: {
       summaryView: 'call_tracker_summary',
       eventView: 'call_tracker_events_owner_context',
     },
     plainEnglish:
-      'The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads Supabase live. Current Call Tracker reads still use compatibility views, but the canonical event target is call_events.',
+      'The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads Supabase live. Current Call Tracker reads still use compatibility views, but the canonical event target is call_log.',
   },
 } as const;

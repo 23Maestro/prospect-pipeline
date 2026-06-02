@@ -92,7 +92,7 @@ flowchart TD
   E_CMD --> E_ACTIONS["Actions: Close Won, Close Lost, No Show, Follow Up, Reschedule Pending"]
   E_ACTIONS --> E_RSP["Reschedule Pending Fields: RSP And Scout Notes, Note Title, Why They Rescheduled"]
   E_ACTIONS --> E_DOMAIN["Domains: post-meeting outcomes, pending client, enrollment result, reschedule pending"]
-  E_DOMAIN --> E_SUPA["Supabase: call_events target, pending_client_watchlist"]
+  E_DOMAIN --> E_SUPA["Supabase: call_log target, pending_client_watchlist"]
   E_DOMAIN --> E_HELPERS["Helpers: post-call-action, pending-client-watchlist, outcome translators"]
   E_HELPERS --> E_API["Laravel/API: sales stage, Notes tab, commission/outcome evidence"]
   SP_POST --> E_ACTIONS
@@ -151,7 +151,8 @@ Use these rules before adding or moving code:
 
 - `appointments` owns durable meeting truth when appointment fields are present.
 - `lifecycle_events` owns sales-stage lifecycle history through `lifecycleSalesStage`.
-- `call_events` is the target centralized table for call activity, meeting-set facts, and post-meeting outcome facts.
+- `call_log` is the target centralized table for call activity, meeting-set facts, and post-meeting outcome facts.
+- `call_events` is a deprecated compatibility/history name and must not be reused as the canonical target.
 - `athlete_contact_cache` supports contact lookup and Client Messages admission; it does not own meeting truth.
 - `set_meeting_confirmation_cache` supports confirmation/message workflows; it does not own lifecycle truth.
 - `active_athlete_meeting_truth`, `athlete_lifecycle_current`, `athlete_lifecycle_timeline`, `meeting_events`, `call_activity_events`, `call_tracker_*`, `weekly_operator_funnel_metrics`, `meeting_truth_anomalies`, `reminders`, and `athlete_pipeline_state` are migration/delete targets; do not add new dependencies on them.

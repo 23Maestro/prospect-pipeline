@@ -274,10 +274,10 @@ test('call tracker public contract documents count flags as the reporting source
     contract.browserContract.eventFeed.supabaseView,
     'call_tracker_events_owner_context',
   );
-  assert.equal(contract.browserContract.eventFeed.canonicalEventTable, 'call_events');
+  assert.equal(contract.browserContract.eventFeed.canonicalEventTable, 'call_log');
   assert.equal(contract.browserContract.eventFeed.compatibilityRead, true);
   assert.equal(contract.browserContract.summaryHelper.supabaseView, 'call_tracker_summary');
-  assert.equal(contract.browserContract.summaryHelper.canonicalEventTable, 'call_events');
+  assert.equal(contract.browserContract.summaryHelper.canonicalEventTable, 'call_log');
   assert.equal(contract.browserContract.summaryHelper.compatibilityRead, true);
   assert.equal(
     contract.browserContract.summaryHelper.deprecatedAliases.total_events,
@@ -299,7 +299,7 @@ test('call tracker public contract documents count flags as the reporting source
   );
   assert.equal(contract.liveSupabaseApi.browserUrl, '/api/call-tracker-data');
   assert.equal(contract.liveSupabaseApi.workflowCron, 'scripts/sync-supabase-pipeline.sh');
-  assert.equal(contract.liveSupabaseApi.canonicalEventTable, 'call_events');
+  assert.equal(contract.liveSupabaseApi.canonicalEventTable, 'call_log');
   assert.deepEqual(contract.liveSupabaseApi.compatibilityViews, {
     summaryView: 'call_tracker_summary',
     eventView: 'call_tracker_events_owner_context',
@@ -307,7 +307,7 @@ test('call tracker public contract documents count flags as the reporting source
   assert.ok(contract.data.generatedAt);
   assert.equal(contract.data.supabaseReads.summaryView, 'call_tracker_summary');
   assert.equal(contract.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
-  assert.equal(contract.data.supabaseReads.canonicalEventTable, 'call_events');
+  assert.equal(contract.data.supabaseReads.canonicalEventTable, 'call_log');
   assert.deepEqual(contract.data.supabaseReads.compatibilityViews, {
     summaryView: 'call_tracker_summary',
     eventView: 'call_tracker_events_owner_context',

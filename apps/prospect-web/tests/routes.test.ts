@@ -373,7 +373,7 @@ test('/api/call-tracker-data reads live Supabase reporting views for the browser
   assert.equal(payload.data.summary.dials, 1);
   assert.equal(payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Live Athlete'), true);
   assert.equal(payload.data.supabaseReads.eventView, 'call_tracker_events_owner_context');
-  assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_events');
+  assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_log');
   assert.deepEqual(payload.data.supabaseReads.compatibilityViews, {
     summaryView: 'call_tracker_summary',
     eventView: 'call_tracker_events_owner_context',
