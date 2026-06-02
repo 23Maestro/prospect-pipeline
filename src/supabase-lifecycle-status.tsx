@@ -42,12 +42,12 @@ function buildMarkdown(snapshot: LifecycleHealthSnapshot | null, error?: string 
     `- URL: ${snapshot.config?.url || 'n/a'}`,
     `- Schema: ${snapshot.config?.schema || 'n/a'}`,
     '',
-    `## Pipeline State (${snapshot.stateRows.length})`,
+      `## Lifecycle Current Projection (${snapshot.stateRows.length})`,
     '',
   ];
 
   if (!snapshot.stateRows.length) {
-    lines.push('No `athlete_pipeline_state` rows yet.', '');
+    lines.push('No current lifecycle projection rows yet.', '');
   } else {
     for (const row of snapshot.stateRows) {
       lines.push(

@@ -113,7 +113,8 @@ test('Supabase truth-map audit can print one active-only surface plan', () => {
 
   assert.match(output, /athlete_pipeline_state: delete_target/);
   assert.match(output, /replacement: lifecycle_events latest state/);
-  assert.match(output, /\[(implementation|script|schema_or_migration)\/(reference|read|write_or_mutation)\]/);
+  assert.match(output, /active=0/);
+  assert.doesNotMatch(output, /\[(implementation|script|schema_or_migration)\/(reference|read|write_or_mutation)\]/);
   assert.doesNotMatch(output, /\[doc\//);
   assert.doesNotMatch(output, /\[test\//);
 });

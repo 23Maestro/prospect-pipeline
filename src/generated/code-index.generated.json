@@ -488,10 +488,10 @@
     "kind": "function",
     "name": "buildAppointmentId",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 227,
+    "line": 214,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:227:::buildAppointmentId"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:214:::buildAppointmentId"
   },
   {
     "exported": true,
@@ -503,10 +503,10 @@
     "kind": "function",
     "name": "buildReminderDedupeKey",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 241,
+    "line": 228,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:241:::buildReminderDedupeKey"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:228:::buildReminderDedupeKey"
   },
   {
     "exported": true,
@@ -518,10 +518,10 @@
     "kind": "function",
     "name": "buildAthleteSnapshot",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 255,
+    "line": 242,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:255:::buildAthleteSnapshot"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:242:::buildAthleteSnapshot"
   },
   {
     "exported": true,
@@ -533,25 +533,10 @@
     "kind": "function",
     "name": "buildAppointmentSnapshot",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 271,
+    "line": 258,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:271:::buildAppointmentSnapshot"
-  },
-  {
-    "exported": true,
-    "tags": [
-      "exported"
-    ],
-    "snippet": "export function buildPipelineStateSnapshot(args: {",
-    "signature": "export function buildPipelineStateSnapshot(args: {",
-    "kind": "function",
-    "name": "buildPipelineStateSnapshot",
-    "file": "src/domain/call-tracker-facts.ts",
-    "line": 322,
-    "system": "Domain",
-    "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:322:::buildPipelineStateSnapshot"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:258:::buildAppointmentSnapshot"
   },
   {
     "exported": true,
@@ -563,10 +548,10 @@
     "kind": "function",
     "name": "buildLifecycleAuditEvent",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 348,
+    "line": 309,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:348:::buildLifecycleAuditEvent"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:309:::buildLifecycleAuditEvent"
   },
   {
     "exported": false,
@@ -576,10 +561,10 @@
     "kind": "function",
     "name": "requireResolvedOwner",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 379,
+    "line": 340,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:379:::requireResolvedOwner"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:340:::requireResolvedOwner"
   },
   {
     "exported": false,
@@ -589,10 +574,10 @@
     "kind": "function",
     "name": "requireFactOccurredAt",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 383,
+    "line": 344,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:383:::requireFactOccurredAt"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:344:::requireFactOccurredAt"
   },
   {
     "exported": false,
@@ -602,10 +587,10 @@
     "kind": "function",
     "name": "requireFactAthleteName",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 391,
+    "line": 352,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:391:::requireFactAthleteName"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:352:::requireFactAthleteName"
   },
   {
     "exported": true,
@@ -617,10 +602,10 @@
     "kind": "function",
     "name": "buildCallActivityFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 399,
+    "line": 360,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:399:::buildCallActivityFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:360:::buildCallActivityFact"
   },
   {
     "exported": true,
@@ -647,10 +632,10 @@
     "kind": "function",
     "name": "buildMeetingOutcomeDedupeKey",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 476,
+    "line": 437,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:476:::buildMeetingOutcomeDedupeKey"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:437:::buildMeetingOutcomeDedupeKey"
   },
   {
     "exported": true,
@@ -662,10 +647,10 @@
     "kind": "function",
     "name": "buildMeetingOutcomeFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 504,
+    "line": 465,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:504:::buildMeetingOutcomeFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:465:::buildMeetingOutcomeFact"
   },
   {
     "exported": true,
@@ -677,10 +662,10 @@
     "kind": "function",
     "name": "buildMeetingSetFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 590,
+    "line": 551,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:590:::buildMeetingSetFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:551:::buildMeetingSetFact"
   },
   {
     "exported": false,
@@ -690,10 +675,10 @@
     "kind": "function",
     "name": "boolPayload",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 625,
+    "line": 586,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:625:::boolPayload"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:586:::boolPayload"
   },
   {
     "exported": false,
@@ -703,10 +688,10 @@
     "kind": "function",
     "name": "textPayload",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 629,
+    "line": 590,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:629:::textPayload"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:590:::textPayload"
   },
   {
     "exported": false,
@@ -716,10 +701,10 @@
     "kind": "function",
     "name": "numberPayload",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 633,
+    "line": 594,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:633:::numberPayload"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:594:::numberPayload"
   },
   {
     "exported": false,
@@ -729,10 +714,10 @@
     "kind": "function",
     "name": "callLogClocks",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 640,
+    "line": 601,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:640:::callLogClocks"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:601:::callLogClocks"
   },
   {
     "exported": false,
@@ -742,10 +727,10 @@
     "kind": "function",
     "name": "buildCallLogBase",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 657,
+    "line": 618,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:657:::buildCallLogBase"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:618:::buildCallLogBase"
   },
   {
     "exported": true,
@@ -757,10 +742,10 @@
     "kind": "function",
     "name": "buildCallLogFactFromCallActivityFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 757,
+    "line": 718,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:757:::buildCallLogFactFromCallActivityFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:718:::buildCallLogFactFromCallActivityFact"
   },
   {
     "exported": true,
@@ -772,10 +757,10 @@
     "kind": "function",
     "name": "buildCallLogFactFromMeetingSetFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 788,
+    "line": 749,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:788:::buildCallLogFactFromMeetingSetFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:749:::buildCallLogFactFromMeetingSetFact"
   },
   {
     "exported": true,
@@ -787,10 +772,10 @@
     "kind": "function",
     "name": "buildCallLogFactFromMeetingOutcomeFact",
     "file": "src/domain/call-tracker-facts.ts",
-    "line": 822,
+    "line": 783,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/call-tracker-facts.ts:822:::buildCallLogFactFromMeetingOutcomeFact"
+    "id": "function:Domain:src/domain/call-tracker-facts.ts:783:::buildCallLogFactFromMeetingOutcomeFact"
   },
   {
     "exported": false,
@@ -3738,30 +3723,15 @@
     "tags": [
       "exported"
     ],
-    "snippet": "export function upsertAthletePipelineState(config: SupabasePersistenceConfig, rows: unknown[]) {",
-    "signature": "export function upsertAthletePipelineState(config: SupabasePersistenceConfig, rows: unknown[]) {",
-    "kind": "function",
-    "name": "upsertAthletePipelineState",
-    "file": "src/domain/supabase-persistence.ts",
-    "line": 192,
-    "system": "Domain",
-    "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:192:::upsertAthletePipelineState"
-  },
-  {
-    "exported": true,
-    "tags": [
-      "exported"
-    ],
     "snippet": "export function insertLifecycleEvents(config: SupabasePersistenceConfig, rows: unknown[]) {",
     "signature": "export function insertLifecycleEvents(config: SupabasePersistenceConfig, rows: unknown[]) {",
     "kind": "function",
     "name": "insertLifecycleEvents",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 196,
+    "line": 192,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:196:::insertLifecycleEvents"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:192:::insertLifecycleEvents"
   },
   {
     "exported": true,
@@ -3773,10 +3743,10 @@
     "kind": "function",
     "name": "insertMeetingSetEventsOnce",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 200,
+    "line": 196,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:200:::insertMeetingSetEventsOnce"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:196:::insertMeetingSetEventsOnce"
   },
   {
     "exported": true,
@@ -3788,10 +3758,10 @@
     "kind": "function",
     "name": "upsertCallActivityEvents",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 207,
+    "line": 203,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:207:::upsertCallActivityEvents"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:203:::upsertCallActivityEvents"
   },
   {
     "exported": true,
@@ -3803,10 +3773,10 @@
     "kind": "function",
     "name": "upsertPostMeetingOutcomeFacts",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 212,
+    "line": 208,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:212:::upsertPostMeetingOutcomeFacts"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:208:::upsertPostMeetingOutcomeFacts"
   },
   {
     "exported": true,
@@ -3818,10 +3788,10 @@
     "kind": "function",
     "name": "upsertSetMeetingConfirmationCacheRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 217,
+    "line": 213,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:217:::upsertSetMeetingConfirmationCacheRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:213:::upsertSetMeetingConfirmationCacheRows"
   },
   {
     "exported": true,
@@ -3833,10 +3803,10 @@
     "kind": "function",
     "name": "upsertPendingClientWatchlistRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 224,
+    "line": 220,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:224:::upsertPendingClientWatchlistRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:220:::upsertPendingClientWatchlistRows"
   },
   {
     "exported": true,
@@ -3848,10 +3818,10 @@
     "kind": "function",
     "name": "upsertAthleteContactCacheRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 232,
+    "line": 228,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:232:::upsertAthleteContactCacheRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:228:::upsertAthleteContactCacheRows"
   },
   {
     "exported": true,
@@ -3863,10 +3833,10 @@
     "kind": "function",
     "name": "hasAthleteContactCacheRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 236,
+    "line": 232,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:236:::hasAthleteContactCacheRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:232:::hasAthleteContactCacheRows"
   },
   {
     "exported": true,
@@ -3878,10 +3848,10 @@
     "kind": "function",
     "name": "patchAthleteContactCacheRowsForAthlete",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 248,
+    "line": 244,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:248:::patchAthleteContactCacheRowsForAthlete"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:244:::patchAthleteContactCacheRowsForAthlete"
   },
   {
     "exported": true,
@@ -3893,10 +3863,10 @@
     "kind": "function",
     "name": "patchPendingClientWatchlistRow",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 256,
+    "line": 252,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:256:::patchPendingClientWatchlistRow"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:252:::patchPendingClientWatchlistRow"
   },
   {
     "exported": true,
@@ -3908,10 +3878,10 @@
     "kind": "function",
     "name": "patchRow",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 264,
+    "line": 260,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:264:::patchRow"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:260:::patchRow"
   },
   {
     "exported": true,
@@ -3923,10 +3893,10 @@
     "kind": "function",
     "name": "deleteRows",
     "file": "src/domain/supabase-persistence.ts",
-    "line": 280,
+    "line": 276,
     "system": "Domain",
     "bucket": "Domain logic",
-    "id": "function:Domain:src/domain/supabase-persistence.ts:280:::deleteRows"
+    "id": "function:Domain:src/domain/supabase-persistence.ts:276:::deleteRows"
   },
   {
     "exported": false,
@@ -6667,10 +6637,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 783,
+    "line": 800,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:783:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:800:::fetch"
   },
   {
     "exported": false,
@@ -6682,10 +6652,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 804,
+    "line": 821,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:804:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:821:::fetch"
   },
   {
     "exported": false,
@@ -6697,10 +6667,10 @@
     "kind": "api_call",
     "name": "fetch",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 823,
+    "line": 840,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:823:::fetch"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:840:::fetch"
   },
   {
     "exported": false,
@@ -6712,11 +6682,11 @@
     "kind": "api_call",
     "name": "fetch `${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 842,
+    "line": 859,
     "system": "Raycast",
     "bucket": "Supabase persistence",
     "path": "`${API_BASE}/sales/stages/${encodeURIComponent(athleteId.trim())}`",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:842::-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-:fetch-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:859::-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-:fetch-API_BASE-/sales/stages/-encodeURIComponent-athleteId.trim-"
   },
   {
     "exported": false,
@@ -6728,11 +6698,11 @@
     "kind": "api_call",
     "name": "fetch `${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(\n      args.athleteId.trim(),\n    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 860,
+    "line": 877,
     "system": "Raycast",
     "bucket": "Supabase persistence",
     "path": "`${API_BASE}/calendar/athlete-booked-meetings?athlete_id=${encodeURIComponent(\n      args.athleteId.trim(),\n    )}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`",
-    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:860::-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-:fetch-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-"
+    "id": "api_call:Raycast:src/lib/supabase-lifecycle.ts:877::-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-:fetch-API_BASE-/calendar/athlete-booked-meetings-athlete_id-encodeURIComponent-args.athleteId.trim-athlete_main_id-encodeURIComponent-args.athleteMainId.trim-"
   },
   {
     "exported": false,
@@ -19757,10 +19727,10 @@
     "kind": "function",
     "name": "lifecycleSalesStage",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1057,
+    "line": 1058,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1057:::lifecycleSalesStage"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1058:::lifecycleSalesStage"
   },
   {
     "exported": true,
@@ -19772,10 +19742,10 @@
     "kind": "function",
     "name": "recordMeetingSet",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1124,
+    "line": 1125,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1124:::recordMeetingSet"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1125:::recordMeetingSet"
   },
   {
     "exported": true,
@@ -19787,10 +19757,10 @@
     "kind": "function",
     "name": "recordConfirmationQueued",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1192,
+    "line": 1193,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1192:::recordConfirmationQueued"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1193:::recordConfirmationQueued"
   },
   {
     "exported": true,
@@ -19802,10 +19772,10 @@
     "kind": "function",
     "name": "recordConfirmationSent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1224,
+    "line": 1225,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1224:::recordConfirmationSent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1225:::recordConfirmationSent"
   },
   {
     "exported": true,
@@ -19817,10 +19787,10 @@
     "kind": "function",
     "name": "recordVoicemailFollowUpSent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1254,
+    "line": 1255,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1254:::recordVoicemailFollowUpSent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1255:::recordVoicemailFollowUpSent"
   },
   {
     "exported": true,
@@ -19832,10 +19802,10 @@
     "kind": "function",
     "name": "recordRescheduled",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1280,
+    "line": 1281,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1280:::recordRescheduled"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1281:::recordRescheduled"
   },
   {
     "exported": true,
@@ -19847,10 +19817,10 @@
     "kind": "function",
     "name": "getLifecycleHealthSnapshot",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1326,
+    "line": 1327,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1326:::getLifecycleHealthSnapshot"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1327:::getLifecycleHealthSnapshot"
   },
   {
     "exported": true,
@@ -19862,10 +19832,10 @@
     "kind": "function",
     "name": "getActiveMeetingFallbackRows",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 1375,
+    "line": 1392,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1375:::getActiveMeetingFallbackRows"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:1392:::getActiveMeetingFallbackRows"
   },
   {
     "exported": false,
@@ -20153,15 +20123,15 @@
   {
     "exported": false,
     "tags": [],
-    "snippet": "function buildPipelineStateRow(",
-    "signature": "function buildPipelineStateRow(",
+    "snippet": "function buildCurrentLifecycleStateRow(args: {",
+    "signature": "function buildCurrentLifecycleStateRow(args: {",
     "kind": "function",
-    "name": "buildPipelineStateRow",
+    "name": "buildCurrentLifecycleStateRow",
     "file": "src/lib/supabase-lifecycle.ts",
     "line": 674,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:674:::buildPipelineStateRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:674:::buildCurrentLifecycleStateRow"
   },
   {
     "exported": true,
@@ -20173,10 +20143,10 @@
     "kind": "function",
     "name": "buildAppointmentRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 693,
+    "line": 704,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:693:::buildAppointmentRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:704:::buildAppointmentRow"
   },
   {
     "exported": false,
@@ -20186,10 +20156,10 @@
     "kind": "function",
     "name": "buildLifecycleEventRow",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 733,
+    "line": 744,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:733:::buildLifecycleEventRow"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:744:::buildLifecycleEventRow"
   },
   {
     "exported": false,
@@ -20199,10 +20169,10 @@
     "kind": "function",
     "name": "request",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 761,
+    "line": 778,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:761:::request"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:778:::request"
   },
   {
     "exported": false,
@@ -20212,10 +20182,10 @@
     "kind": "function",
     "name": "deleteRows",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 802,
+    "line": 819,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:802:::deleteRows"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:819:::deleteRows"
   },
   {
     "exported": false,
@@ -20225,10 +20195,10 @@
     "kind": "function",
     "name": "queryTable",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 821,
+    "line": 838,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:821:::queryTable"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:838:::queryTable"
   },
   {
     "exported": false,
@@ -20238,10 +20208,10 @@
     "kind": "function",
     "name": "fetchLiveSelectedSalesStage",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 841,
+    "line": 858,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:841:::fetchLiveSelectedSalesStage"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:858:::fetchLiveSelectedSalesStage"
   },
   {
     "exported": false,
@@ -20251,10 +20221,10 @@
     "kind": "function",
     "name": "fetchLiveBookedEvent",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 855,
+    "line": 872,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:855:::fetchLiveBookedEvent"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:872:::fetchLiveBookedEvent"
   },
   {
     "exported": true,
@@ -20266,10 +20236,10 @@
     "kind": "function",
     "name": "resolveLifecycleRetentionDecision",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 878,
+    "line": 895,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:878:::resolveLifecycleRetentionDecision"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:895:::resolveLifecycleRetentionDecision"
   },
   {
     "exported": false,
@@ -20279,10 +20249,10 @@
     "kind": "function",
     "name": "softArchiveCurrentAppointment",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 937,
+    "line": 954,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:937:::softArchiveCurrentAppointment"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:954:::softArchiveCurrentAppointment"
   },
   {
     "exported": false,
@@ -20292,10 +20262,10 @@
     "kind": "function",
     "name": "purgeAthleteLifecycle",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 984,
+    "line": 990,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:984:::purgeAthleteLifecycle"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:990:::purgeAthleteLifecycle"
   },
   {
     "exported": false,
@@ -20305,10 +20275,10 @@
     "kind": "function",
     "name": "writeLifecycle",
     "file": "src/lib/supabase-lifecycle.ts",
-    "line": 991,
+    "line": 997,
     "system": "Raycast",
     "bucket": "Supabase persistence",
-    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:991:::writeLifecycle"
+    "id": "function:Raycast:src/lib/supabase-lifecycle.ts:997:::writeLifecycle"
   },
   {
     "exported": true,
@@ -25476,11 +25446,11 @@
     "kind": "api_call",
     "name": "apiFetch /sales/stages/${encodeURIComponent(row.athlete_id)}",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 1067,
+    "line": 1041,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/sales/stages/${encodeURIComponent(row.athlete_id)}",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:1067::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:1041::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
   },
   {
     "exported": false,
@@ -25543,10 +25513,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 375,
+    "line": 363,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:375:::apiFetch"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:363:::apiFetch"
   },
   {
     "exported": false,
@@ -25559,11 +25529,11 @@
     "kind": "api_call",
     "name": "apiFetch /tasks/list",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 382,
+    "line": 370,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/tasks/list",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:382::/tasks/list:apiFetch-/tasks/list"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:370::/tasks/list:apiFetch-/tasks/list"
   },
   {
     "exported": false,
@@ -25576,11 +25546,11 @@
     "kind": "api_call",
     "name": "apiFetch /notes/list",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 394,
+    "line": 382,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/notes/list",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:394::/notes/list:apiFetch-/notes/list"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:382::/notes/list:apiFetch-/notes/list"
   },
   {
     "exported": false,
@@ -25593,11 +25563,11 @@
     "kind": "api_call",
     "name": "apiFetch /athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 406,
+    "line": 394,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:406::/athlete/-encodeURIComponent-row.athlete_id-/resolve-force_refresh-true:apiFetch-/athlete/-encodeURIComponent-row.athlete_id-/resolve-force_refresh-true"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:394::/athlete/-encodeURIComponent-row.athlete_id-/resolve-force_refresh-true:apiFetch-/athlete/-encodeURIComponent-row.athlete_id-/resolve-force_refresh-true"
   },
   {
     "exported": false,
@@ -25610,11 +25580,11 @@
     "kind": "api_call",
     "name": "apiFetch /sales/stages/${encodeURIComponent(row.athlete_id)}",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 713,
+    "line": 698,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/sales/stages/${encodeURIComponent(row.athlete_id)}",
-    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:713::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
+    "id": "api_call:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:698::/sales/stages/-encodeURIComponent-row.athlete_id-:apiFetch-/sales/stages/-encodeURIComponent-row.athlete_id-"
   },
   {
     "exported": false,
@@ -25870,16 +25840,16 @@
       "fetch",
       "script"
     ],
-    "snippet": "const response = await fetch(`${url}/rest/v1/athlete_pipeline_state?select=athlete_id&limit=1`, {",
-    "signature": "const response = await fetch(`${url}/rest/v1/athlete_pipeline_state?select=athlete_id&limit=1`, {",
+    "snippet": "const response = await fetch(`${url}/rest/v1/lifecycle_events?select=athlete_id&limit=1`, {",
+    "signature": "const response = await fetch(`${url}/rest/v1/lifecycle_events?select=athlete_id&limit=1`, {",
     "kind": "api_call",
-    "name": "fetch ${url}/rest/v1/athlete_pipeline_state?select=athlete_id&limit=1",
+    "name": "fetch ${url}/rest/v1/lifecycle_events?select=athlete_id&limit=1",
     "file": "scripts/rotate-supabase-server-key.mjs",
     "line": 181,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "path": "${url}/rest/v1/athlete_pipeline_state?select=athlete_id&limit=1",
-    "id": "api_call:Scripts:scripts/rotate-supabase-server-key.mjs:181::-url-/rest/v1/athlete_pipeline_state-select-athlete_id-limit-1:fetch-url-/rest/v1/athlete_pipeline_state-select-athlete_id-limit-1"
+    "path": "${url}/rest/v1/lifecycle_events?select=athlete_id&limit=1",
+    "id": "api_call:Scripts:scripts/rotate-supabase-server-key.mjs:181::-url-/rest/v1/lifecycle_events-select-athlete_id-limit-1:fetch-url-/rest/v1/lifecycle_events-select-athlete_id-limit-1"
   },
   {
     "exported": false,
@@ -25892,10 +25862,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 153,
+    "line": 151,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:153:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:151:::apiFetch"
   },
   {
     "exported": false,
@@ -25908,11 +25878,11 @@
     "kind": "api_call",
     "name": "fetch ${API_BASE}${pathname}",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 157,
+    "line": 155,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "${API_BASE}${pathname}",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:157::-API_BASE-pathname-:fetch-API_BASE-pathname-"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:155::-API_BASE-pathname-:fetch-API_BASE-pathname-"
   },
   {
     "exported": false,
@@ -25925,10 +25895,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 177,
+    "line": 175,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:177:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:175:::apiFetch"
   },
   {
     "exported": false,
@@ -25941,11 +25911,11 @@
     "kind": "api_call",
     "name": "apiFetch /calendar/booked-meeting/details?${params.toString()}",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 201,
+    "line": 199,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/calendar/booked-meeting/details?${params.toString()}",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:201::/calendar/booked-meeting/details-params.toString-:apiFetch-/calendar/booked-meeting/details-params.toString-"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:199::/calendar/booked-meeting/details-params.toString-:apiFetch-/calendar/booked-meeting/details-params.toString-"
   },
   {
     "exported": false,
@@ -25958,11 +25928,11 @@
     "kind": "api_call",
     "name": "apiFetch /scout/tasks?range=thisWeek",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 208,
+    "line": 206,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/scout/tasks?range=thisWeek",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:208::/scout/tasks-range-thisWeek:apiFetch-/scout/tasks-range-thisWeek"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:206::/scout/tasks-range-thisWeek:apiFetch-/scout/tasks-range-thisWeek"
   },
   {
     "exported": false,
@@ -25975,10 +25945,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 209,
+    "line": 207,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:209:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:207:::apiFetch"
   },
   {
     "exported": false,
@@ -25991,11 +25961,11 @@
     "kind": "api_call",
     "name": "apiFetch /tasks/list",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 244,
+    "line": 242,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/tasks/list",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:244::/tasks/list:apiFetch-/tasks/list"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:242::/tasks/list:apiFetch-/tasks/list"
   },
   {
     "exported": false,
@@ -26008,10 +25978,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 260,
+    "line": 258,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:260:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:258:::apiFetch"
   },
   {
     "exported": false,
@@ -26124,10 +26094,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 138,
+    "line": 137,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:138:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:137:::apiFetch"
   },
   {
     "exported": false,
@@ -26140,11 +26110,11 @@
     "kind": "api_call",
     "name": "fetch ${API_BASE}${path}",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 142,
+    "line": 141,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "${API_BASE}${path}",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:142::-API_BASE-path-:fetch-API_BASE-path-"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:141::-API_BASE-path-:fetch-API_BASE-path-"
   },
   {
     "exported": false,
@@ -26157,11 +26127,11 @@
     "kind": "api_call",
     "name": "apiFetch /scout/tasks",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 210,
+    "line": 209,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/scout/tasks",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:210::/scout/tasks:apiFetch-/scout/tasks"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:209::/scout/tasks:apiFetch-/scout/tasks"
   },
   {
     "exported": false,
@@ -26174,11 +26144,11 @@
     "kind": "api_call",
     "name": "apiFetch /tasks/list",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 257,
+    "line": 256,
     "system": "Scripts",
     "bucket": "Supabase persistence",
     "path": "/tasks/list",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:257::/tasks/list:apiFetch-/tasks/list"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:256::/tasks/list:apiFetch-/tasks/list"
   },
   {
     "exported": false,
@@ -26191,10 +26161,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 271,
+    "line": 270,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:271:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:270:::apiFetch"
   },
   {
     "exported": false,
@@ -26207,10 +26177,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 274,
+    "line": 273,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:274:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:273:::apiFetch"
   },
   {
     "exported": false,
@@ -26223,10 +26193,10 @@
     "kind": "api_call",
     "name": "apiFetch",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 279,
+    "line": 278,
     "system": "Scripts",
     "bucket": "Supabase persistence",
-    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:279:::apiFetch"
+    "id": "api_call:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:278:::apiFetch"
   },
   {
     "exported": false,
@@ -28959,30 +28929,15 @@
     "tags": [
       "script"
     ],
-    "snippet": "async function supabaseDelete(table, matchColumn, matchValue) {",
-    "signature": "async function supabaseDelete(table, matchColumn, matchValue) {",
-    "kind": "function",
-    "name": "supabaseDelete",
-    "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 352,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:352:::supabaseDelete"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
     "snippet": "function getSelectedSalesStage(payload) {",
     "signature": "function getSelectedSalesStage(payload) {",
     "kind": "function",
     "name": "getSelectedSalesStage",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 364,
+    "line": 352,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:364:::getSelectedSalesStage"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:352:::getSelectedSalesStage"
   },
   {
     "exported": false,
@@ -28994,10 +28949,10 @@
     "kind": "function",
     "name": "fetchAthleteBookedMeetings",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 374,
+    "line": 362,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:374:::fetchAthleteBookedMeetings"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:362:::fetchAthleteBookedMeetings"
   },
   {
     "exported": false,
@@ -29009,10 +28964,10 @@
     "kind": "function",
     "name": "fetchAthleteTasks",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 381,
+    "line": 369,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:381:::fetchAthleteTasks"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:369:::fetchAthleteTasks"
   },
   {
     "exported": false,
@@ -29024,10 +28979,10 @@
     "kind": "function",
     "name": "fetchAthleteNotes",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 393,
+    "line": 381,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:393:::fetchAthleteNotes"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:381:::fetchAthleteNotes"
   },
   {
     "exported": false,
@@ -29039,10 +28994,10 @@
     "kind": "function",
     "name": "fetchAthleteProfile",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 405,
+    "line": 393,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:405:::fetchAthleteProfile"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:393:::fetchAthleteProfile"
   },
   {
     "exported": false,
@@ -29054,10 +29009,10 @@
     "kind": "function",
     "name": "queueAppointmentPatch",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 458,
+    "line": 437,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:458:::queueAppointmentPatch"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:437:::queueAppointmentPatch"
   },
   {
     "exported": false,
@@ -29069,10 +29024,10 @@
     "kind": "function",
     "name": "uniqueRowsByField",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 475,
+    "line": 454,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:475:::uniqueRowsByField"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:454:::uniqueRowsByField"
   },
   {
     "exported": false,
@@ -29084,10 +29039,10 @@
     "kind": "function",
     "name": "postMeetingResultForAppointmentStatus",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 485,
+    "line": 464,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:485:::postMeetingResultForAppointmentStatus"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:464:::postMeetingResultForAppointmentStatus"
   },
   {
     "exported": false,
@@ -29099,10 +29054,10 @@
     "kind": "function",
     "name": "shouldQueuePendingClientForStage",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 508,
+    "line": 487,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:508:::shouldQueuePendingClientForStage"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:487:::shouldQueuePendingClientForStage"
   },
   {
     "exported": false,
@@ -29114,10 +29069,10 @@
     "kind": "function",
     "name": "findAppointmentEvent",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 517,
+    "line": 496,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:517:::findAppointmentEvent"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:496:::findAppointmentEvent"
   },
   {
     "exported": false,
@@ -29129,10 +29084,10 @@
     "kind": "function",
     "name": "firstPayloadText",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 536,
+    "line": 515,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:536:::firstPayloadText"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:515:::firstPayloadText"
   },
   {
     "exported": false,
@@ -29144,10 +29099,10 @@
     "kind": "function",
     "name": "latestPostMeetingLifecycleRows",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 545,
+    "line": 524,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:545:::latestPostMeetingLifecycleRows"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:524:::latestPostMeetingLifecycleRows"
   },
   {
     "exported": false,
@@ -29159,25 +29114,25 @@
     "kind": "function",
     "name": "lifecycleEventRowToPipelineState",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 560,
+    "line": 539,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:560:::lifecycleEventRowToPipelineState"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:539:::lifecycleEventRowToPipelineState"
   },
   {
     "exported": false,
     "tags": [
       "script"
     ],
-    "snippet": "function mergeLifecycleEventsAndPipelineRows(lifecycleRows, pipelineRows) {",
-    "signature": "function mergeLifecycleEventsAndPipelineRows(lifecycleRows, pipelineRows) {",
+    "snippet": "function currentStateRowsFromLifecycleEvents(lifecycleRows) {",
+    "signature": "function currentStateRowsFromLifecycleEvents(lifecycleRows) {",
     "kind": "function",
-    "name": "mergeLifecycleEventsAndPipelineRows",
+    "name": "currentStateRowsFromLifecycleEvents",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 592,
+    "line": 571,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:592:::mergeLifecycleEventsAndPipelineRows"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:571:::currentStateRowsFromLifecycleEvents"
   },
   {
     "exported": false,
@@ -29189,10 +29144,10 @@
     "kind": "function",
     "name": "add",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 596,
+    "line": 574,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:596:::add"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:574:::add"
   },
   {
     "exported": false,
@@ -29204,10 +29159,25 @@
     "kind": "function",
     "name": "queueStateDelete",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 635,
+    "line": 596,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:635:::queueStateDelete"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:596:::queueStateDelete"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function queueLifecycleStateEvent(row, args) {",
+    "signature": "function queueLifecycleStateEvent(row, args) {",
+    "kind": "function",
+    "name": "queueLifecycleStateEvent",
+    "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
+    "line": 603,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:603:::queueLifecycleStateEvent"
   },
   {
     "exported": false,
@@ -29219,10 +29189,10 @@
     "kind": "function",
     "name": "enqueuePendingClientWatchlistRow",
     "file": "scripts/reconcile-current-sales-stages-to-supabase.mjs",
-    "line": 642,
+    "line": 627,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:642:::enqueuePendingClientWatchlistRow"
+    "id": "function:Scripts:scripts/reconcile-current-sales-stages-to-supabase.mjs:627:::enqueuePendingClientWatchlistRow"
   },
   {
     "exported": false,
@@ -29829,30 +29799,15 @@
     "tags": [
       "script"
     ],
-    "snippet": "function stripMoveThisTaskPrefix(taskTitle) {",
-    "signature": "function stripMoveThisTaskPrefix(taskTitle) {",
-    "kind": "function",
-    "name": "stripMoveThisTaskPrefix",
-    "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 101,
-    "system": "Scripts",
-    "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:101:::stripMoveThisTaskPrefix"
-  },
-  {
-    "exported": false,
-    "tags": [
-      "script"
-    ],
     "snippet": "function parseLegacyTaskDate(value) {",
     "signature": "function parseLegacyTaskDate(value) {",
     "kind": "function",
     "name": "parseLegacyTaskDate",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 107,
+    "line": 105,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:107:::parseLegacyTaskDate"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:105:::parseLegacyTaskDate"
   },
   {
     "exported": false,
@@ -29864,10 +29819,10 @@
     "kind": "function",
     "name": "pickNewestTask",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 117,
+    "line": 115,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:117:::pickNewestTask"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:115:::pickNewestTask"
   },
   {
     "exported": false,
@@ -29879,10 +29834,10 @@
     "kind": "function",
     "name": "matches",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 118,
+    "line": 116,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:118:::matches"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:116:::matches"
   },
   {
     "exported": false,
@@ -29894,10 +29849,10 @@
     "kind": "function",
     "name": "isConfirmationTask",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 133,
+    "line": 131,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:133:::isConfirmationTask"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:131:::isConfirmationTask"
   },
   {
     "exported": false,
@@ -29909,10 +29864,10 @@
     "kind": "function",
     "name": "getSelectedSalesStageLabel",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 139,
+    "line": 137,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:139:::getSelectedSalesStageLabel"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:137:::getSelectedSalesStageLabel"
   },
   {
     "exported": false,
@@ -29924,10 +29879,10 @@
     "kind": "function",
     "name": "buildCurrentTaskTitle",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 145,
+    "line": 143,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:145:::buildCurrentTaskTitle"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:143:::buildCurrentTaskTitle"
   },
   {
     "exported": false,
@@ -29939,10 +29894,10 @@
     "kind": "function",
     "name": "apiFetch",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 153,
+    "line": 151,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:153:::apiFetch"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:151:::apiFetch"
   },
   {
     "exported": false,
@@ -29954,10 +29909,10 @@
     "kind": "function",
     "name": "verifyCandidateBookedMeeting",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 176,
+    "line": 174,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:176:::verifyCandidateBookedMeeting"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:174:::verifyCandidateBookedMeeting"
   },
   {
     "exported": false,
@@ -29969,10 +29924,10 @@
     "kind": "function",
     "name": "getBookedMeetingEventDate",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 192,
+    "line": 190,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:192:::getBookedMeetingEventDate"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:190:::getBookedMeetingEventDate"
   },
   {
     "exported": false,
@@ -29984,10 +29939,10 @@
     "kind": "function",
     "name": "fetchBookedMeetingTimezone",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 196,
+    "line": 194,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:196:::fetchBookedMeetingTimezone"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:194:::fetchBookedMeetingTimezone"
   },
   {
     "exported": false,
@@ -29999,10 +29954,10 @@
     "kind": "function",
     "name": "normalizeIsoValue",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 63,
+    "line": 61,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:63:::normalizeIsoValue"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:61:::normalizeIsoValue"
   },
   {
     "exported": false,
@@ -30014,10 +29969,10 @@
     "kind": "function",
     "name": "normalizeMeetingTimezone",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 70,
+    "line": 68,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:70:::normalizeMeetingTimezone"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:68:::normalizeMeetingTimezone"
   },
   {
     "exported": false,
@@ -30029,10 +29984,10 @@
     "kind": "function",
     "name": "resolveTimezoneLabel",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 79,
+    "line": 77,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:79:::resolveTimezoneLabel"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:77:::resolveTimezoneLabel"
   },
   {
     "exported": false,
@@ -30044,10 +29999,25 @@
     "kind": "function",
     "name": "buildWeekWindow",
     "file": "scripts/sync-booked-meetings-to-supabase.mjs",
-    "line": 84,
+    "line": 82,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:84:::buildWeekWindow"
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:82:::buildWeekWindow"
+  },
+  {
+    "exported": false,
+    "tags": [
+      "script"
+    ],
+    "snippet": "function stripMoveThisTaskPrefix(taskTitle) {",
+    "signature": "function stripMoveThisTaskPrefix(taskTitle) {",
+    "kind": "function",
+    "name": "stripMoveThisTaskPrefix",
+    "file": "scripts/sync-booked-meetings-to-supabase.mjs",
+    "line": 99,
+    "system": "Scripts",
+    "bucket": "Script/sync job",
+    "id": "function:Scripts:scripts/sync-booked-meetings-to-supabase.mjs:99:::stripMoveThisTaskPrefix"
   },
   {
     "exported": false,
@@ -30239,10 +30209,10 @@
     "kind": "function",
     "name": "getSelectedSalesStage",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 124,
+    "line": 123,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:124:::getSelectedSalesStage"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:123:::getSelectedSalesStage"
   },
   {
     "exported": false,
@@ -30254,10 +30224,10 @@
     "kind": "function",
     "name": "isOpenNewOpportunityQueueItem",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 130,
+    "line": 129,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:130:::isOpenNewOpportunityQueueItem"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:129:::isOpenNewOpportunityQueueItem"
   },
   {
     "exported": false,
@@ -30269,10 +30239,10 @@
     "kind": "function",
     "name": "apiFetch",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 138,
+    "line": 137,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:138:::apiFetch"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:137:::apiFetch"
   },
   {
     "exported": false,
@@ -30284,10 +30254,10 @@
     "kind": "function",
     "name": "compareCurrentPipelineCandidates",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 161,
+    "line": 160,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:161:::compareCurrentPipelineCandidates"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:160:::compareCurrentPipelineCandidates"
   },
   {
     "exported": false,
@@ -30299,10 +30269,10 @@
     "kind": "function",
     "name": "normalizeMeetingTitleKey",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 173,
+    "line": 172,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:173:::normalizeMeetingTitleKey"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:172:::normalizeMeetingTitleKey"
   },
   {
     "exported": false,
@@ -30314,10 +30284,10 @@
     "kind": "function",
     "name": "hasMeetingEnded",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 183,
+    "line": 182,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:183:::hasMeetingEnded"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:182:::hasMeetingEnded"
   },
   {
     "exported": false,
@@ -30329,10 +30299,10 @@
     "kind": "function",
     "name": "shouldSkipStaleActiveCandidate",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 188,
+    "line": 187,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:188:::shouldSkipStaleActiveCandidate"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:187:::shouldSkipStaleActiveCandidate"
   },
   {
     "exported": false,
@@ -30344,10 +30314,10 @@
     "kind": "function",
     "name": "parseLegacyTaskDate",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 65,
+    "line": 64,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:65:::parseLegacyTaskDate"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:64:::parseLegacyTaskDate"
   },
   {
     "exported": false,
@@ -30359,10 +30329,10 @@
     "kind": "function",
     "name": "daysOld",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 92,
+    "line": 91,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:92:::daysOld"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:91:::daysOld"
   },
   {
     "exported": false,
@@ -30374,10 +30344,10 @@
     "kind": "function",
     "name": "selectCurrentAndPreviousMeetings",
     "file": "scripts/sync-current-pipeline-to-supabase.mjs",
-    "line": 98,
+    "line": 97,
     "system": "Scripts",
     "bucket": "Script/sync job",
-    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:98:::selectCurrentAndPreviousMeetings"
+    "id": "function:Scripts:scripts/sync-current-pipeline-to-supabase.mjs:97:::selectCurrentAndPreviousMeetings"
   },
   {
     "exported": false,

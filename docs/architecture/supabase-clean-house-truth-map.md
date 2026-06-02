@@ -85,11 +85,19 @@ Completed in this meeting/lifecycle projection slice:
 4. Changed `scripts/audit-meeting-readback-live-parity.mjs` into a canonical coverage audit so it remains usable after old projection views are dropped.
 5. Added `20260602120000_purge_lifecycle_meeting_projection_views.sql` to drop `meeting_truth_anomalies`, `active_athlete_meeting_truth`, `athlete_lifecycle_timeline`, and `athlete_lifecycle_current` as views only.
 
+Completed in this lifecycle snapshot purge slice:
+
+1. Removed `athlete_pipeline_state` action-time writes from `src/lib/supabase-lifecycle.ts`; `lifecycleSalesStage` now writes `athletes`, `appointments`, and `lifecycle_events`.
+2. Removed snapshot writes from current-pipeline and booked-meeting sync scripts while preserving canonical athletes, appointments, Call Log facts, and meeting-set facts.
+3. Moved lifecycle status and active-meeting fallback reads to latest `lifecycle_events` projection rows.
+4. Moved the current sales-stage reconciler off `athlete_pipeline_state`; it now derives candidates from lifecycle events and ended appointments, appends lifecycle events, patches appointments, writes Call Log outcome facts, and soft-inactivates contact cache when needed.
+5. Added `20260602140500_purge_athlete_pipeline_state.sql` to drop the deprecated mutable snapshot table after active dependency proof.
+
 Remaining broader cleanup:
 
 1. Keep using `scripts/audit-call-tracker-live-parity.mjs --summary` after purging Call Tracker views and source tables; it reads canonical `call_log`.
 2. Use `scripts/audit-meeting-readback-live-parity.mjs` as a canonical coverage audit after projection views are purged; it intentionally no longer reads old projection views.
-3. Remaining large delete targets are `athlete_pipeline_state` and `reminders`.
+3. Remaining large delete target is `reminders`.
 
 ## Repeatable Refactor Playbook
 

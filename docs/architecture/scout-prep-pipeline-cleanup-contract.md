@@ -58,13 +58,13 @@ In 7th grade language: after the meeting, do not let the person sit forever. If 
 
 ## What other tables should do
 
-`athlete_pipeline_state` is the active work row. This is the row that gets deleted when the client leaves the active pipeline.
+Latest `lifecycle_events` is the active lifecycle projection. This is how the system knows whether the client is still in active work.
 
 `athlete_contact_cache` is the lookup cache for message/contact routing. When the client is over, cache rows should be marked inactive instead of being used as active client-message matches.
 
 `set_meeting_confirmation_cache` is only for confirmation message prep. It must not decide whether the client is active.
 
-`lifecycle_events`, `meeting_events`, `call_activity_events`, and reporting rows are history. They stay because they explain what happened.
+`lifecycle_events` and `call_log` rows are history. They stay because they explain what happened.
 
 ## Current enforcement note
 
@@ -75,6 +75,6 @@ The post-meeting cleanup rule is enforced by `reconcile-current-sales-stages-to-
 Contact cache soft-inactivation is enforced in two places:
 
 - when Scout Prep syncs contact cache with a terminal CRM stage
-- when reconciliation deletes `athlete_pipeline_state`
+- when reconciliation determines the lifecycle has left active work
 
-That means the active pipeline row and active contact-cache rows end together.
+That means lifecycle truth and active contact-cache rows end together.

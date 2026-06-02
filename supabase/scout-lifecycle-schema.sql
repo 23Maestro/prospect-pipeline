@@ -12,19 +12,6 @@ create table if not exists athletes (
 create unique index if not exists athletes_athlete_identity_idx
   on athletes (athlete_id, athlete_main_id);
 
-create table if not exists athlete_pipeline_state (
-  athlete_key text primary key references athletes (athlete_key) on delete cascade,
-  athlete_id text not null,
-  athlete_main_id text not null,
-  crm_stage text,
-  task_status text,
-  head_scout text,
-  current_task_id text,
-  current_task_title text,
-  current_appointment_id text,
-  updated_at timestamptz not null default now()
-);
-
 create table if not exists appointments (
   id text primary key,
   athlete_key text not null references athletes (athlete_key) on delete cascade,

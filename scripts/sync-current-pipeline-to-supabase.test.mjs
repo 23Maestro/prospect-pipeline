@@ -7,14 +7,16 @@ const source = readFileSync(
   'utf8',
 );
 
-test('current pipeline sync writes canonical facts and snapshots through shared persistence', () => {
+test('current pipeline sync writes canonical facts and does not revive pipeline snapshots', () => {
   assert.match(source, /buildCallActivityFact/);
   assert.match(source, /buildMeetingSetFact/);
   assert.match(source, /supabase-lifecycle-translator/);
   assert.match(source, /taskStatusForStage/);
   assert.match(source, /appointmentStatusForTitleOrStage/);
   assert.match(source, /normalizeCrmSalesStage/);
-  assert.match(source, /upsertAthletePipelineState/);
+  assert.match(source, /currentLifecycleStateProjected/);
+  assert.doesNotMatch(source, /upsertAthletePipelineState/);
+  assert.doesNotMatch(source, /athlete_pipeline_state/);
   assert.match(source, /upsertCallActivityEvents/);
   assert.match(source, /insertMeetingSetEventsOnce/);
   assert.doesNotMatch(source, /function normalizeSalesStageKey/);

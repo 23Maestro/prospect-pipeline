@@ -199,7 +199,7 @@ type AthletesRow = {
   updated_at: string;
 };
 
-type PipelineStateRow = {
+type CurrentLifecycleStateRow = {
   athlete_key: string;
   athlete_id: string;
   athlete_main_id: string;
@@ -671,22 +671,33 @@ function buildAthleteRow(actor: PipelineActor, updatedAt: string): AthletesRow {
   };
 }
 
-function buildPipelineStateRow(
-  actor: PipelineActor,
-  state: PipelineStateSnapshot,
-  updatedAt: string,
-): PipelineStateRow {
+function buildCurrentLifecycleStateRow(args: {
+  athleteKey: string;
+  athleteId: string;
+  athleteMainId: string;
+  crmStage?: string | null;
+  taskStatus?: string | null;
+  payload?: Record<string, unknown> | null;
+  updatedAt?: string | null;
+}): CurrentLifecycleStateRow {
+  const payload = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
+    ? args.payload
+    : {};
   return {
-    athlete_key: buildAthleteKey(actor.athleteId, actor.athleteMainId),
-    athlete_id: actor.athleteId.trim(),
-    athlete_main_id: actor.athleteMainId.trim(),
-    crm_stage: normalizeValue(state.crmStage),
-    task_status: normalizeValue(state.taskStatus),
-    head_scout: normalizeValue(state.headScout),
-    current_task_id: normalizeValue(state.currentTaskId),
-    current_task_title: normalizeValue(state.currentTaskTitle),
-    current_appointment_id: normalizeValue(state.currentAppointmentId),
-    updated_at: updatedAt,
+    athlete_key: args.athleteKey,
+    athlete_id: args.athleteId,
+    athlete_main_id: args.athleteMainId,
+    crm_stage: normalizeValue(args.crmStage),
+    task_status: normalizeValue(args.taskStatus),
+    head_scout: normalizeValue(payload.head_scout as string | null),
+    current_task_id: normalizeValue(payload.current_task_id as string | null),
+    current_task_title: normalizeValue(payload.current_task_title as string | null),
+    current_appointment_id:
+      normalizeValue(payload.current_appointment_id as string | null) ||
+      normalizeValue(payload.appointment_id as string | null) ||
+      normalizeValue(payload.live_event_id as string | null) ||
+      normalizeValue(payload.source_event_id as string | null),
+    updated_at: normalizeIsoValue(args.updatedAt) || args.updatedAt || new Date().toISOString(),
   };
 }
 
@@ -743,7 +754,13 @@ function buildLifecycleEventRow(
     event_type: args.eventType.trim(),
     crm_stage: normalizeValue(args.state.crmStage),
     task_status: normalizeValue(args.state.taskStatus),
-    payload_json: args.payload || {},
+    payload_json: {
+      ...(args.payload || {}),
+      head_scout: normalizeValue(args.state.headScout),
+      current_task_id: normalizeValue(args.state.currentTaskId),
+      current_task_title: normalizeValue(args.state.currentTaskTitle),
+      current_appointment_id: normalizeValue(args.state.currentAppointmentId),
+    },
     created_at: createdAt,
   };
 
@@ -947,19 +964,6 @@ async function softArchiveCurrentAppointment(args: {
   reason: string;
 }): Promise<void> {
   const updatedAt = new Date().toISOString();
-  await request(args.config, 'athlete_pipeline_state', {
-    method: 'PATCH',
-    query: `athlete_key=eq.${encodeURIComponent(args.athleteKey)}`,
-    rows: {
-      crm_stage: normalizeValue(args.crmStage),
-      task_status: normalizeValue(args.taskStatus),
-      current_task_id: null,
-      current_task_title: null,
-      current_appointment_id: null,
-      updated_at: updatedAt,
-    },
-  });
-
   await request(args.config, 'lifecycle_events', {
     rows: [
       {
@@ -972,6 +976,8 @@ async function softArchiveCurrentAppointment(args: {
         task_status: normalizeValue(args.taskStatus),
         payload_json: {
           current_appointment_id: normalizeValue(args.currentAppointmentId),
+          current_task_id: null,
+          current_task_title: null,
           booked_event_title: normalizeValue(args.bookedEventTitle),
           reason: args.reason,
         },
@@ -1000,7 +1006,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
     ? buildAppointmentRow(args.athlete, args.appointment, updatedAt)
     : null;
   const eventRow = buildLifecycleEventRow(args.athlete, args, updatedAt);
-  const stateRow = buildPipelineStateRow(args.athlete, args.state, updatedAt);
 
   logInfo('SUPABASE_LIFECYCLE_WRITE', 'request', 'start', {
     eventType: args.eventType,
@@ -1032,10 +1037,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
       rows: [eventRow],
     });
 
-    await request(config, 'athlete_pipeline_state', {
-      rows: [stateRow],
-      onConflict: 'athlete_key',
-    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logFailure('SUPABASE_LIFECYCLE_WRITE', 'request', message, {
@@ -1334,11 +1335,11 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
     };
   }
 
-  const [stateRows, eventRows] = await Promise.all([
-    queryTable<LifecycleHealthSnapshot['stateRows'][number]>(
+  const [stateEventRows, eventRows] = await Promise.all([
+    queryTable<LifecycleEventRow>(
       config,
-      'athlete_pipeline_state',
-      'select=athlete_key,crm_stage,task_status,current_appointment_id,updated_at&order=updated_at.desc&limit=10',
+      'lifecycle_events',
+      'select=athlete_key,athlete_id,athlete_main_id,event_type,crm_stage,task_status,payload_json,created_at&order=created_at.desc&limit=100',
     ),
     queryTable<LifecycleHealthSnapshot['eventRows'][number]>(
       config,
@@ -1347,6 +1348,22 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
     )
   ]);
 
+  const latestStateRowsByAthlete = new Map<string, CurrentLifecycleStateRow>();
+  for (const row of stateEventRows) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || latestStateRowsByAthlete.has(athleteKey)) continue;
+    latestStateRowsByAthlete.set(athleteKey, buildCurrentLifecycleStateRow({
+      athleteKey,
+      athleteId: String(row.athlete_id || '').trim(),
+      athleteMainId: String(row.athlete_main_id || '').trim(),
+      crmStage: row.crm_stage,
+      taskStatus: row.task_status,
+      payload: row.payload_json,
+      updatedAt: row.created_at,
+    }));
+    if (latestStateRowsByAthlete.size >= 10) break;
+  }
+  const stateRows = Array.from(latestStateRowsByAthlete.values());
   const athleteKeys = Array.from(new Set(stateRows.map((row) => row.athlete_key).filter(Boolean)));
   const athleteRows = athleteKeys.length
     ? await queryTable<Pick<AthletesRow, 'athlete_key' | 'athlete_name'>>(
@@ -1378,26 +1395,14 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
     return [];
   }
 
-  const [stateRows, athleteRows, appointmentRows] = await Promise.all([
-    queryTable<{
-      athlete_key: string;
-      athlete_id: string;
-      athlete_main_id: string;
-      crm_stage: string | null;
-      task_status: string | null;
-      head_scout: string | null;
-      current_task_id: string | null;
-      current_task_title: string | null;
-      current_appointment_id: string | null;
-      updated_at: string;
-    }>(
+  const [stateEventRows, athleteRows, appointmentRows] = await Promise.all([
+    queryTable<LifecycleEventRow>(
       config,
-      'athlete_pipeline_state',
+      'lifecycle_events',
       [
-        'select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,head_scout,current_task_id,current_task_title,current_appointment_id,updated_at',
-        'not.current_appointment_id=is.null',
-        'order=updated_at.desc',
-        'limit=200',
+        'select=athlete_key,athlete_id,athlete_main_id,event_type,crm_stage,task_status,payload_json,created_at',
+        'order=created_at.desc',
+        'limit=500',
       ].join('&'),
     ),
     queryTable<{ athlete_key: string; athlete_name: string }>(
@@ -1424,8 +1429,26 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
 
   const now = Date.now();
   const results: ActiveMeetingFallbackRow[] = [];
+  const latestStateRowsByAthlete = new Map<string, CurrentLifecycleStateRow>();
 
-  for (const row of stateRows) {
+  for (const row of stateEventRows) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || latestStateRowsByAthlete.has(athleteKey)) continue;
+    const stateRow = buildCurrentLifecycleStateRow({
+      athleteKey,
+      athleteId: String(row.athlete_id || '').trim(),
+      athleteMainId: String(row.athlete_main_id || '').trim(),
+      crmStage: row.crm_stage,
+      taskStatus: row.task_status,
+      payload: row.payload_json,
+      updatedAt: row.created_at,
+    });
+    if (!normalizeValue(stateRow.current_appointment_id)) continue;
+    latestStateRowsByAthlete.set(athleteKey, stateRow);
+    if (latestStateRowsByAthlete.size >= 200) break;
+  }
+
+  for (const row of latestStateRowsByAthlete.values()) {
     const appointmentId = String(row.current_appointment_id || '').trim();
     const appointment = appointmentId ? appointmentsById.get(appointmentId) : null;
     const athleteKey = String(row.athlete_key || '').trim();

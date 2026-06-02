@@ -97,19 +97,6 @@ export type AppointmentSnapshotRow = {
   updated_at: string;
 };
 
-export type PipelineStateSnapshotRow = {
-  athlete_key: string;
-  athlete_id: string;
-  athlete_main_id: string;
-  crm_stage: string | null;
-  task_status: string | null;
-  head_scout: string | null;
-  current_task_id: string | null;
-  current_task_title: string | null;
-  current_appointment_id: string | null;
-  updated_at: string;
-};
-
 export type LifecycleAuditEventRow = {
   id: string;
   athlete_key: string;
@@ -315,32 +302,6 @@ export function buildAppointmentSnapshot(args: {
     status_reason: normalizeValue(args.statusReason),
     source_system: normalizeValue(args.sourceSystem),
     source_payload: args.sourcePayload || {},
-    updated_at: args.updatedAt || new Date().toISOString(),
-  };
-}
-
-export function buildPipelineStateSnapshot(args: {
-  athleteId: string | number;
-  athleteMainId: string | number;
-  crmStage?: string | null;
-  taskStatus?: string | null;
-  headScout?: string | null;
-  currentTaskId?: string | null;
-  currentTaskTitle?: string | null;
-  currentAppointmentId?: string | null;
-  updatedAt?: string;
-}): PipelineStateSnapshotRow {
-  const identity = validateAthleteIdentity(args);
-  return {
-    athlete_key: identity.athleteKey,
-    athlete_id: identity.athleteId,
-    athlete_main_id: identity.athleteMainId,
-    crm_stage: normalizeValue(args.crmStage),
-    task_status: normalizeValue(args.taskStatus),
-    head_scout: normalizeValue(args.headScout),
-    current_task_id: normalizeValue(args.currentTaskId),
-    current_task_title: normalizeValue(args.currentTaskTitle),
-    current_appointment_id: normalizeValue(args.currentAppointmentId),
     updated_at: args.updatedAt || new Date().toISOString(),
   };
 }

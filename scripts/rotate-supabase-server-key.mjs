@@ -178,7 +178,7 @@ async function setLegacyKeysEnabled({ accessToken, projectRef, enabled }) {
 }
 
 async function verifyRestAccess({ url, key, schema }) {
-  const response = await fetch(`${url}/rest/v1/athlete_pipeline_state?select=athlete_id&limit=1`, {
+  const response = await fetch(`${url}/rest/v1/lifecycle_events?select=athlete_id&limit=1`, {
     headers: {
       apikey: key,
       Authorization: `Bearer ${key}`,

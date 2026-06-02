@@ -33,7 +33,7 @@ flowchart TD
   B --> C["Normalize chat participant phones"]
   C --> D["Lookup active athlete_contact_cache rows"]
   D --> E["StudentAthleteMessageResolver"]
-  E --> F["Load current athlete_pipeline_state labels"]
+  E --> F["Load latest lifecycle_events projection labels"]
   F --> G["Merge macOS ID Clients / ID Contacts matches"]
   G --> H["Optional backend parent-name enrichment for contact-group rows"]
   H --> I["Render inbox rows"]
@@ -56,7 +56,7 @@ flowchart TD
   H["Scout Prep action"] --> I["Laravel/FastAPI write succeeds first"]
   I --> J["Supabase lifecycle write"]
   J --> K["athletes identity"]
-  J --> L["athlete_pipeline_state current snapshot"]
+  J --> L["lifecycle_events current projection"]
   J --> M["lifecycle_events audit history"]
   J --> N["appointments when meeting exists"]
 
@@ -68,12 +68,12 @@ flowchart TD
   S -- "Yes" --> T["Soft-inactivate athlete_contact_cache rows"]
   S -- "No" --> U["Keep rows active"]
 
-  V["Reconcile current sales stages"] --> W["Patch or delete athlete_pipeline_state"]
+  V["Reconcile current sales stages"] --> W["Append lifecycle projection event"]
   V --> X["Append lifecycle_events"]
   V --> Y["Upsert meeting outcome facts"]
 ```
 
-Current behavior: lifecycle truth and message lookup are related but not centralized. `athlete_pipeline_state` can be deleted when a row leaves the active working set. `athlete_contact_cache` is soft-inactivated by lifecycle stage. Confirmation cache remains a message-prep cache and should not decide whether someone is in the lifecycle.
+Current behavior: lifecycle truth and message lookup are related but not identical. Current lifecycle labels are projected from `lifecycle_events`; `athlete_contact_cache` is soft-inactivated by lifecycle stage. Confirmation cache remains a message-prep cache and should not decide whether someone is in the lifecycle.
 
 ## Target Resolver Shape
 

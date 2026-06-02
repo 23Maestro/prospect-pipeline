@@ -349,18 +349,6 @@ async function supabasePatch(table, matchColumn, matchValue, row) {
   );
 }
 
-async function supabaseDelete(table, matchColumn, matchValue) {
-  await supabaseRequest(
-    `${encodeURIComponent(table)}?${encodeURIComponent(matchColumn)}=eq.${encodeURIComponent(matchValue)}`,
-    {
-      method: 'DELETE',
-      headers: {
-        Prefer: 'return=minimal',
-      },
-    },
-  );
-}
-
 function getSelectedSalesStage(payload) {
   const options = Array.isArray(payload?.options) ? payload.options : [];
   const selected = options.find((option) => option?.selected);
@@ -406,14 +394,7 @@ async function fetchAthleteProfile(row) {
   return apiFetch(`/athlete/${encodeURIComponent(row.athlete_id)}/resolve?force_refresh=true`).catch(() => ({}));
 }
 
-const [pipelineStateRows, lifecycleEventRows, athleteRows] = await Promise.all([
-  supabaseRequest(
-    [
-      'athlete_pipeline_state?select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,head_scout,current_task_id,current_task_title,current_appointment_id,updated_at',
-      'order=updated_at.desc',
-      'limit=1000',
-    ].join('&'),
-  ),
+const [lifecycleEventRows, athleteRows] = await Promise.all([
   supabaseRequest(
     [
       'lifecycle_events?select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,event_type,payload_json,created_at',
@@ -427,14 +408,12 @@ const [pipelineStateRows, lifecycleEventRows, athleteRows] = await Promise.all([
 const athleteNameByKey = new Map(
   [
     ...(Array.isArray(athleteRows) ? athleteRows : []),
-    ...(Array.isArray(pipelineStateRows) ? pipelineStateRows : []),
   ].map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()]),
 );
 const lifecycleEvents = [];
 const postMeetingOutcomeFacts = [];
 const pendingClientWatchlistRows = [];
 const pendingClientWatchlistSourceIds = new Set();
-const statePatches = [];
 const stateDeletes = [];
 const appointmentPatches = [];
 const failures = [];
@@ -589,10 +568,9 @@ function lifecycleEventRowToPipelineState(row) {
   };
 }
 
-function mergeLifecycleEventsAndPipelineRows(lifecycleRows, pipelineRows) {
+function currentStateRowsFromLifecycleEvents(lifecycleRows) {
   const rows = [];
   const seen = new Set();
-  const rowIndexByAthleteKey = new Map();
   const add = (row) => {
     if (!row) return;
     const athleteKey = String(row.athlete_key || '').trim();
@@ -600,36 +578,19 @@ function mergeLifecycleEventsAndPipelineRows(lifecycleRows, pipelineRows) {
     const key = `${athleteKey}:${appointmentId || 'no-current-appointment'}`;
     if (!athleteKey || seen.has(key)) return;
     seen.add(key);
-    rowIndexByAthleteKey.set(athleteKey, rows.length);
     rows.push(row);
   };
 
-  (Array.isArray(pipelineRows) ? pipelineRows : []).forEach(add);
   (Array.isArray(lifecycleRows) ? lifecycleRows : []).forEach((row) => {
     const lifecycleRow = lifecycleEventRowToPipelineState(row);
     if (!lifecycleRow) return;
-    const athleteKey = String(lifecycleRow.athlete_key || '').trim();
-    const existingIndex = rowIndexByAthleteKey.get(athleteKey);
-    const existing = existingIndex === undefined ? null : rows[existingIndex];
-    if (existing && !String(existing.current_appointment_id || '').trim()) {
-      rows[existingIndex] = {
-        ...lifecycleRow,
-        ...existing,
-        crm_stage: existing.crm_stage || lifecycleRow.crm_stage,
-        task_status: existing.task_status || lifecycleRow.task_status,
-        head_scout: existing.head_scout || lifecycleRow.head_scout,
-        current_appointment_id: lifecycleRow.current_appointment_id,
-      };
-      return;
-    }
     add(lifecycleRow);
   });
   return rows;
 }
 
-const stateRows = mergeLifecycleEventsAndPipelineRows(
+const stateRows = currentStateRowsFromLifecycleEvents(
   latestPostMeetingLifecycleRows(lifecycleEventRows),
-  pipelineStateRows,
 );
 
 function queueStateDelete(athleteKey, reason) {
@@ -637,6 +598,30 @@ function queueStateDelete(athleteKey, reason) {
   if (!key) return;
   if (stateDeletes.some((entry) => entry.athleteKey === key)) return;
   stateDeletes.push({ athleteKey: key, reason });
+}
+
+function queueLifecycleStateEvent(row, args) {
+  lifecycleEvents.push({
+    id: randomUUID(),
+    athlete_key: row.athlete_key,
+    athlete_id: row.athlete_id,
+    athlete_main_id: row.athlete_main_id,
+    event_type: args.eventType || 'current_sales_stage_reconciled',
+    crm_stage: args.crmStage || null,
+    task_status: args.taskStatus || null,
+    payload_json: {
+      reconcile_run_id: RUN_ID,
+      source: 'legacy_sales_stage_current',
+      reason: args.reason || null,
+      previous_crm_stage: row.crm_stage || null,
+      previous_task_status: row.task_status || null,
+      current_appointment_id: args.appointmentId || row.current_appointment_id || null,
+      live_event_id: args.liveEventId || null,
+      current_task_id: row.current_task_id || null,
+      current_task_title: row.current_task_title || null,
+    },
+    created_at: now,
+  });
 }
 
 function enqueuePendingClientWatchlistRow(args) {
@@ -779,14 +764,13 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
       ) {
         const monitorEvent = endedMeetingForMonitoring.event;
         const liveEventId = String(monitorEvent?.event_id || row.current_appointment_id || '').trim() || null;
-        statePatches.push({
-          athleteKey: row.athlete_key,
-          row: {
-            crm_stage: 'Meeting Set - Awaiting Post Meeting Result',
-            task_status: 'post_meeting_update_pending',
-            current_appointment_id: liveEventId || row.current_appointment_id || null,
-            updated_at: now,
-          },
+        queueLifecycleStateEvent(row, {
+          eventType: 'post_meeting_update_pending',
+          crmStage: 'Meeting Set - Awaiting Post Meeting Result',
+          taskStatus: 'post_meeting_update_pending',
+          appointmentId: liveEventId || row.current_appointment_id || null,
+          liveEventId,
+          reason: 'awaiting_post_meeting_update',
         });
         if (liveEventId) {
           queueAppointmentPatch(liveEventId, {
@@ -909,16 +893,6 @@ for (const [index, row] of (Array.isArray(stateRows) ? stateRows : []).entries()
         row.athlete_key,
         shouldArchiveActiveState ? `archived_${parsedTitle.outcome}` : retentionDecision.reason,
       );
-    } else {
-      statePatches.push({
-        athleteKey: row.athlete_key,
-        row: {
-          crm_stage: nextCrmStage,
-          task_status: nextTaskStatus,
-          current_appointment_id: liveEventId || row.current_appointment_id || null,
-          updated_at: now,
-        },
-      });
     }
 
     lifecycleEvents.push({
@@ -1241,10 +1215,6 @@ if (failures.length) {
   throw new Error(`Current sales-stage reconciliation failed before writes: ${failures.length} unresolved row(s)`);
 }
 
-for (const patch of statePatches) {
-  await supabasePatch('athlete_pipeline_state', 'athlete_key', patch.athleteKey, patch.row);
-}
-
 for (const patch of appointmentPatches) {
   await supabasePatch('appointments', 'id', patch.appointmentId, patch.row);
 }
@@ -1255,7 +1225,6 @@ await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, uniquePostMeetingOutcomeFac
 await upsertPendingClientWatchlistRows(SUPABASE_CONFIG, pendingClientWatchlistRows);
 
 for (const deletion of stateDeletes) {
-  await supabaseDelete('athlete_pipeline_state', 'athlete_key', deletion.athleteKey);
   await supabasePatch('athlete_contact_cache', 'athlete_key', deletion.athleteKey, {
     cache_status: 'inactive',
     inactive_reason: deletion.reason,
@@ -1276,7 +1245,7 @@ console.log(
       postMeetingOutcomeFactsDeduped: postMeetingOutcomeFacts.length - uniquePostMeetingOutcomeFacts.length,
       pendingClientWatchlistUpserted: pendingClientWatchlistRows.length,
       appointmentRepairsApplied: appointmentRepairs.length,
-      activeStateDeleted: stateDeletes.length,
+      contactCacheInactivated: stateDeletes.length,
       failures,
       cleaned,
       updated,

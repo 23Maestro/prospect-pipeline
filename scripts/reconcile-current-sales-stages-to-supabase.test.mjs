@@ -21,7 +21,7 @@ test('current sales-stage reconciler delegates lifecycle translation to the doma
   assert.doesNotMatch(source, /function crmStageForOutcome/);
 });
 
-test('current sales-stage reconciler stores post-meeting outcomes through meeting-events domain writer', () => {
+test('current sales-stage reconciler stores post-meeting outcomes through call_log domain writer', () => {
   assert.match(source, /buildMeetingOutcomeFact/);
   assert.match(source, /upsertPostMeetingOutcomeFacts/);
   assert.match(source, /rawEventType = 'post_meeting_outcome'/);
@@ -99,12 +99,13 @@ test('current sales-stage reconciler queues pending clients even when appointmen
   assert.ok(skipIndex > enqueueIndex, 'pending-client enqueue happens before already-correct appointment skip');
 });
 
-test('current sales-stage reconciler uses lifecycle event appointment pointers before pipeline fallback', () => {
+test('current sales-stage reconciler derives current-state candidates from lifecycle events', () => {
   assert.match(source, /lifecycle_events/);
   assert.match(source, /firstPayloadText/);
   assert.match(source, /current_appointment_id/);
-  assert.match(source, /mergeLifecycleEventsAndPipelineRows/);
+  assert.match(source, /currentStateRowsFromLifecycleEvents/);
   assert.match(source, /lifecycleEventRowToPipelineState/);
+  assert.doesNotMatch(source, /athlete_pipeline_state/);
   assert.doesNotMatch(source, /athlete_lifecycle_current/);
   assert.doesNotMatch(source, /current_resolved_appointment_id/);
 });

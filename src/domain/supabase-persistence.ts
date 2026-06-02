@@ -189,10 +189,6 @@ export async function upsertAppointments(config: SupabasePersistenceConfig, rows
   return writeRows(config, 'appointments', mergedRows, 'id');
 }
 
-export function upsertAthletePipelineState(config: SupabasePersistenceConfig, rows: unknown[]) {
-  return writeRows(config, 'athlete_pipeline_state', rows, 'athlete_key');
-}
-
 export function insertLifecycleEvents(config: SupabasePersistenceConfig, rows: unknown[]) {
   return writeRows(config, 'lifecycle_events', rows);
 }

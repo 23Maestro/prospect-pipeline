@@ -7,14 +7,12 @@ import {
   buildAppointmentSnapshot,
   buildAthleteSnapshot,
   buildMeetingSetFact,
-  buildPipelineStateSnapshot,
 } from '../src/domain/call-tracker-facts.ts';
 import { buildOwnerProofPayload } from '../src/domain/owner-proof-payload.ts';
 import { resolveOwnerContext } from '../src/domain/owner-resolution.ts';
 import {
   insertMeetingSetEventsOnce,
   upsertAppointments,
-  upsertAthletePipelineState,
   upsertAthletes,
 } from '../src/domain/supabase-persistence.ts';
 import {
@@ -221,7 +219,7 @@ const meetingSetCandidates = buildWeeklyOperatorMeetingSetCandidates({
 const athletesByKey = new Map();
 const appointmentsById = new Map();
 const meetingSetEvents = [];
-const athletePipelineStateRows = [];
+const currentLifecycleStateRows = [];
 const failures = [];
 const nonMeetingSetSkipped = [];
 
@@ -393,17 +391,18 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       });
     }
 
-    athletePipelineStateRows.push(buildPipelineStateSnapshot({
-      athleteId: candidate.athleteId,
-      athleteMainId: candidate.athleteMainId,
-      crmStage,
-      taskStatus,
-      headScout: candidate.bookedMeeting.assignedOwner,
-      currentTaskId,
-      currentTaskTitle,
-      currentAppointmentId: appointmentId,
-      updatedAt,
-    }));
+    currentLifecycleStateRows.push({
+      athlete_key: candidate.athleteKey,
+      athlete_id: candidate.athleteId,
+      athlete_main_id: candidate.athleteMainId,
+      crm_stage: crmStage,
+      task_status: taskStatus,
+      head_scout: candidate.bookedMeeting.assignedOwner,
+      current_task_id: currentTaskId,
+      current_task_title: currentTaskTitle,
+      current_appointment_id: appointmentId,
+      updated_at: updatedAt,
+    });
   } catch (error) {
     failures.push({
       title: String(event?.title || '').trim(),
@@ -417,7 +416,6 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
 await upsertAthletes(SUPABASE_CONFIG, [...athletesByKey.values()]);
 await upsertAppointments(SUPABASE_CONFIG, [...appointmentsById.values()]);
 await insertMeetingSetEventsOnce(SUPABASE_CONFIG, meetingSetEvents);
-await upsertAthletePipelineState(SUPABASE_CONFIG, athletePipelineStateRows);
 
 console.log(
   JSON.stringify(
@@ -427,9 +425,9 @@ console.log(
       bookedMeetingCount: weeklyBookedMeetings.length,
       meetingSetCandidateCount: meetingSetCandidates.length,
       resolvedAthletes: athletesByKey.size,
+      currentLifecycleStateProjected: currentLifecycleStateRows.length,
       appointmentsUpserted: appointmentsById.size,
       meetingSetEventsInsertedOnce: meetingSetEvents.length,
-      athletePipelineStateUpserted: athletePipelineStateRows.length,
       nonMeetingSetSkipped,
       failures,
     },

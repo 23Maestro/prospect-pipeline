@@ -386,7 +386,7 @@ test('Scout Prep client message and lifecycle flowcharts pin the current resolve
     'ID Clients',
     'ID Contacts',
     'Current Lifecycle And Cache Truth',
-    'athlete_pipeline_state current snapshot',
+    'lifecycle_events current projection',
     'lifecycle_events audit history',
     'set_meeting_confirmation_cache',
     'not lifecycle truth',
@@ -548,8 +548,8 @@ test('Scout Prep pipeline cleanup contract defines when active clients end', () 
     'Canceled: keep it for up to 21 days',
     'Never Spoke To / Call Attempt 3: delete after 3 days',
     'is only for confirmation message prep',
-    'when reconciliation deletes `athlete_pipeline_state`',
-    'the active pipeline row and active contact-cache rows end together',
+    'when reconciliation determines the lifecycle has left active work',
+    'lifecycle truth and active contact-cache rows end together',
   ].forEach((phrase) =>
     assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
   );

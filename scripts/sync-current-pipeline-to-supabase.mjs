@@ -11,7 +11,6 @@ import { buildOwnerProofPayload } from '../src/domain/owner-proof-payload.ts';
 import {
   insertMeetingSetEventsOnce,
   readRows,
-  upsertAthletePipelineState,
   upsertAthletes,
   upsertCallActivityEvents,
 } from '../src/domain/supabase-persistence.ts';
@@ -542,7 +541,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
   }
 }
 
-const athletePipelineStateRows = Array.from(stateCandidatesByAthlete.entries()).map(
+const currentLifecycleStateRows = Array.from(stateCandidatesByAthlete.entries()).map(
   ([athleteKey, candidates]) => {
     const [winner] = [...candidates].sort(compareCurrentPipelineCandidates);
     return {
@@ -561,7 +560,6 @@ const athletePipelineStateRows = Array.from(stateCandidatesByAthlete.entries()).
 );
 
 await upsertAthletes(SUPABASE_CONFIG, [...athletesByKey.values()]);
-await upsertAthletePipelineState(SUPABASE_CONFIG, athletePipelineStateRows);
 await upsertCallActivityEvents(SUPABASE_CONFIG, callActivityRows);
 await insertMeetingSetEventsOnce(SUPABASE_CONFIG, meetingSetRows);
 
@@ -571,20 +569,20 @@ console.log(
       runId: RUN_ID,
       pipelineTaskCount: pipelineTasks.length,
       uniqueAthletes: athletesByKey.size,
+      currentLifecycleStateProjected: currentLifecycleStateRows.length,
       appointmentsUpserted: 0,
-          callActivityEventsUpserted: callActivityRows.length,
-          meetingSetEventsInsertedOnce: meetingSetRows.length,
-          athletePipelineStateUpserted: athletePipelineStateRows.length,
-          weakAppointmentSkipped,
-          staleSkipped,
-          ownerSkipped,
-          clockSkipped,
-          failures,
+      callActivityEventsUpserted: callActivityRows.length,
+      meetingSetEventsInsertedOnce: meetingSetRows.length,
+      weakAppointmentSkipped,
+      staleSkipped,
+      ownerSkipped,
+      clockSkipped,
+      failures,
       distinctCurrentStatuses: [
-        ...new Set(athletePipelineStateRows.map((row) => row.task_status).filter(Boolean)),
+        ...new Set(currentLifecycleStateRows.map((row) => row.task_status).filter(Boolean)),
       ].sort(),
       distinctCurrentStages: [
-        ...new Set(athletePipelineStateRows.map((row) => row.crm_stage).filter(Boolean)),
+        ...new Set(currentLifecycleStateRows.map((row) => row.crm_stage).filter(Boolean)),
       ].sort(),
     },
     null,
