@@ -49,8 +49,8 @@ const surfaces = {
     bucket: 'Reporting / Pre-Meeting Tasks / Enrollments & Outcomes',
     role: 'canonical_target',
     migrationOwner: 'Lifecycle & Stage Truth / Reporting',
-    currentState: 'Target only: future clean ledger name. No canonical table migration is complete yet.',
-    replacement: 'Promote to the centralized event table only after dials, contacts, meeting sets, and post-meeting outcomes are represented by one canonical shape.',
+    currentState: 'Schema defined: canonical ledger shape exists, but no writers, backfill, or readers are migrated yet.',
+    replacement: 'Promote to the centralized event table only after dials, contacts, meeting sets, post-meeting outcomes, and enrollment evidence are represented by one canonical shape.',
   },
   set_meeting_confirmation_cache: {
     bucket: 'Client Communication',

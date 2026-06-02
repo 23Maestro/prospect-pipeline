@@ -151,7 +151,7 @@ Use these rules before adding or moving code:
 
 - `appointments` owns durable meeting truth when appointment fields are present.
 - `lifecycle_events` owns sales-stage lifecycle history through `lifecycleSalesStage`.
-- `call_log` is the target centralized table for call activity, meeting-set facts, and post-meeting outcome facts.
+- `call_log` is the target centralized table for call activity, meeting-set facts, post-meeting outcome facts, and enrollment payment evidence.
 - `call_events` is a deprecated compatibility/history name and must not be reused as the canonical target.
 - `athlete_contact_cache` supports contact lookup and Client Messages admission; it does not own meeting truth.
 - `set_meeting_confirmation_cache` supports confirmation/message workflows; it does not own lifecycle truth.

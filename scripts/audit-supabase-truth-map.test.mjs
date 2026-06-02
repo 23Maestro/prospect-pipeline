@@ -123,8 +123,8 @@ test('Supabase truth-map audit names call_log as the canonical target', () => {
 
   assert.equal(payload.summary.surface, 'call_log');
   assert.equal(payload.summary.role, 'canonical_target');
-  assert.match(payload.summary.currentState, /Target only/);
-  assert.match(payload.summary.currentState, /clean ledger name/);
+  assert.match(payload.summary.currentState, /Schema defined/);
+  assert.match(payload.summary.currentState, /no writers, backfill, or readers are migrated/);
   assert.match(payload.summary.replacement, /one canonical shape/);
 });
 

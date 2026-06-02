@@ -16,7 +16,7 @@ FastAPI remains the source-system adapter for Prospect Pipeline data access. Sup
 | `athlete_contact_cache` | Admin Data & Contacts / Client Communication | Canonical support | How to contact the athlete/family and open admin/task links. |
 | `appointments` | Meetings | Canonical truth | Meeting timing, scout, timezone, event id, and reschedule chain. |
 | `lifecycle_events` | Lifecycle & Stage Truth | Canonical truth | Sales-stage history and normalized lifecycle state through `lifecycleSalesStage`. |
-| `call_log` | Reporting / Pre-Meeting Tasks / Enrollments & Outcomes | Canonical target | Future one event table for dials, contacts, meeting sets, and post-meeting outcomes. This intentionally avoids the old `call_events` compatibility-view history. |
+| `call_log` | Reporting / Pre-Meeting Tasks / Enrollments & Outcomes | Canonical target | One event ledger for dials, contacts, meeting sets, post-meeting outcomes, and enrollment payment evidence. The schema is defined, but writers/readers/backfill are not migrated yet. This intentionally avoids the old `call_events` compatibility-view history. |
 | `set_meeting_confirmation_cache` | Client Communication | Temporary support | Confirmation-message prep only; not lifecycle or meeting truth. |
 | `pending_client_watchlist` | Enrollments & Outcomes | Temporary support | Review queue only; not final outcome truth. |
 
@@ -65,13 +65,13 @@ Before dropping a surface:
 
 ## Call Log Readiness
 
-`call_log` is the target name for the future centralized event table. The old `call_events` name is intentionally retired because the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renames the old table to `meeting_events` and recreates `call_events` as a deprecated compatibility view.
+`call_log` is the target name for the centralized event ledger. `20260602090000_call_log_canonical_ledger.sql` defines the schema only. The old `call_events` name is intentionally retired because the current migration history includes `20260503044000_rename_call_events_to_meeting_events.sql`, which renames the old table to `meeting_events` and recreates `call_events` as a deprecated compatibility view.
 
 That means the next Call Tracker migration is not "read `call_events` directly." The next migration is:
 
-1. Define the canonical `call_log` row shape for dials, contacts, meeting sets, and post-meeting outcomes.
-2. Move `call_activity_events` writers into that canonical shape.
-3. Move `meeting_events` post-meeting outcome writers into that canonical shape.
-4. Move meeting-set facts from lifecycle-derived reporting into that canonical shape.
-5. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log`.
+1. Backfill `call_log` from `call_activity_events`, `meeting_events`, and lifecycle meeting-set facts without deleting old rows.
+2. Prove `call_tracker_summary` and `call_tracker_events_owner_context` parity against `call_log`.
+3. Move `call_activity_events` writers into `call_log`.
+4. Move `meeting_events` post-meeting outcome writers into `call_log`.
+5. Move enrollment payment evidence into `call_log` from Stripe/commission evidence.
 6. Only then move Prospect Web readers off the compatibility views.
