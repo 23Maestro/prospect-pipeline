@@ -84,3 +84,30 @@ test('Supabase truth-map audit default output names owner, active dependency, re
   assert.match(output, /reads=\d+/);
   assert.match(output, /writes=\d+/);
 });
+
+test('Supabase truth-map audit can print one active-only surface plan', () => {
+  const output = execFileSync(
+    'node',
+    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_tracker_events', '--active-only'],
+    { encoding: 'utf8' },
+  );
+
+  assert.match(output, /call_tracker_events: delete_target/);
+  assert.match(output, /replacement: API\/query over canonical call_events/);
+  assert.match(output, /\[(implementation|script|schema_or_migration)\/(reference|read|write_or_mutation)\]/);
+  assert.doesNotMatch(output, /\[doc\//);
+  assert.doesNotMatch(output, /\[test\//);
+});
+
+test('Supabase truth-map audit can emit focused JSON for one surface', () => {
+  const output = execFileSync(
+    'node',
+    ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_tracker_summary', '--active-only', '--json'],
+    { encoding: 'utf8' },
+  );
+  const payload = JSON.parse(output);
+
+  assert.equal(payload.summary.surface, 'call_tracker_summary');
+  assert.equal(Array.isArray(payload.references), true);
+  assert.equal(payload.references.every((ref) => ['implementation', 'script', 'schema_or_migration'].includes(ref.fileKind)), true);
+});

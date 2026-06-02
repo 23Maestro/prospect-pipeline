@@ -4,6 +4,17 @@ import fs from 'fs';
 import path from 'path';
 
 const repoRoot = process.cwd();
+const args = process.argv.slice(2);
+
+function readArgValue(name) {
+  const index = args.indexOf(name);
+  if (index === -1) return null;
+  return args[index + 1] || null;
+}
+
+const jsonMode = args.includes('--json');
+const activeOnly = args.includes('--active-only');
+const requestedSurface = readArgValue('--surface');
 
 const surfaces = {
   athletes: {
@@ -180,9 +191,11 @@ function classifyFileKind(relative) {
   if (relative === 'scripts/audit-supabase-truth-map.mjs') return 'audit_tool';
   if (relative === 'scripts/audit-supabase-truth-map.test.mjs') return 'test';
   if (relative.startsWith('docs/')) return 'doc';
+  if (relative.endsWith('.md')) return 'doc';
   if (relative.endsWith('.test.ts') || relative.endsWith('.test.tsx') || relative.endsWith('.test.mjs')) return 'test';
   if (relative.includes('/tests/') || relative.startsWith('tests/')) return 'test';
   if (relative.includes('/generated/') || relative.endsWith('.generated.json')) return 'generated';
+  if (relative.startsWith('supabase/migrations/')) return 'migration_history';
   if (relative.endsWith('.sql') || relative.startsWith('supabase/')) return 'schema_or_migration';
   if (relative.startsWith('scripts/')) return 'script';
   return 'implementation';
@@ -245,18 +258,59 @@ const summary = Object.entries(results).map(([surface, value]) => {
   };
 });
 
-if (process.argv.includes('--json')) {
-  console.log(JSON.stringify({ summary, surfaces: results }, null, 2));
+function sortReferences(references) {
+  return [...references].sort((a, b) => {
+    if (a.file !== b.file) return a.file.localeCompare(b.file);
+    return a.line - b.line;
+  });
+}
+
+function filteredReferences(surface) {
+  const references = results[surface]?.references || [];
+  if (!activeOnly) return sortReferences(references);
+  return sortReferences(references.filter((ref) => isActiveDependency(ref.fileKind)));
+}
+
+if (requestedSurface && !results[requestedSurface]) {
+  console.error(`Unknown surface: ${requestedSurface}`);
+  console.error(`Known surfaces: ${Object.keys(results).join(', ')}`);
+  process.exit(1);
+}
+
+if (jsonMode) {
+  if (requestedSurface) {
+    const row = summary.find((entry) => entry.surface === requestedSurface);
+    console.log(
+      JSON.stringify(
+        {
+          summary: row,
+          references: filteredReferences(requestedSurface),
+        },
+        null,
+        2,
+      ),
+    );
+  } else {
+    console.log(JSON.stringify({ summary, surfaces: results }, null, 2));
+  }
 } else {
   console.log('# Supabase Truth Map Audit');
   console.log('');
-  for (const row of summary) {
+  const rows = requestedSurface ? summary.filter((row) => row.surface === requestedSurface) : summary;
+  for (const row of rows) {
     const reads = row.accessCounts.read || 0;
     const writes = row.accessCounts.write_or_mutation || 0;
     console.log(
       `- ${row.surface}: ${row.role}, owner=${row.migrationOwner}, active=${row.activeDependencies}, refs=${row.references}, reads=${reads}, writes=${writes}`,
     );
+    if (requestedSurface) {
+      console.log(`  replacement: ${row.replacement}`);
+      for (const ref of filteredReferences(requestedSurface)) {
+        console.log(`  - ${ref.file}:${ref.line} [${ref.fileKind}/${ref.access}] ${ref.text}`);
+      }
+    }
   }
   console.log('');
-  console.log('Run with `--json` for file/line references, file kinds, and replacements.');
+  console.log('Run with `--json` for machine-readable output.');
+  console.log('Use `--surface <name>` and `--active-only` for targeted cleanup planning.');
 }
