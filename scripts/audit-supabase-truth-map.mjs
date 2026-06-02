@@ -49,7 +49,7 @@ const surfaces = {
     bucket: 'Reporting / Pre-Meeting Tasks / Enrollments & Outcomes',
     role: 'canonical_target',
     migrationOwner: 'Lifecycle & Stage Truth / Reporting',
-    currentState: 'Schema defined: canonical ledger shape exists, but no writers, backfill, or readers are migrated yet.',
+    currentState: 'Schema and first backfill are live. Parity is proven against insertable Call Tracker facts; compatibility readers and source writers still need migration.',
     replacement: 'Promote to the centralized event table only after dials, contacts, meeting sets, post-meeting outcomes, and enrollment evidence are represented by one canonical shape.',
   },
   set_meeting_confirmation_cache: {

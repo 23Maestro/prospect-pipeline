@@ -163,6 +163,7 @@ test('call_log projection summary reports parity and required-field gaps', () =>
   assert.equal(summary.missingRequiredFields.reporting_at, 0);
   assert.equal(summary.missingRequiredFields.dedupe_key, 0);
   assert.equal(summary.missingRequiredFields.invalid_source_family, 0);
+  assert.equal(summary.missingRequiredFields.invalid_count_shape, 0);
   assert.deepEqual(summary.sourceFamilies, ['call_activity_events', 'lifecycle_events', 'meeting_events']);
 });
 
@@ -210,8 +211,11 @@ test('call_log target parity reports unavailable live target without throwing', 
 test('call_log target parity detects missing and extra dedupe keys', () => {
   const projectedRows = [
     {
+      fact_type: 'call_activity',
       dedupe_key: 'activity:one',
       tracker_outcome: 'left_voicemail_1',
+      source_family: 'call_activity_events',
+      reporting_at: '2026-06-02T00:00:00Z',
       counts_as_dial: true,
       counts_as_contact: false,
       counts_as_meeting_set: false,
@@ -219,8 +223,11 @@ test('call_log target parity detects missing and extra dedupe keys', () => {
       revenue_cents: null,
     },
     {
+      fact_type: 'post_meeting_outcome',
       dedupe_key: 'outcome:one',
       tracker_outcome: 'closed_won',
+      source_family: 'meeting_events',
+      reporting_at: '2026-06-02T00:00:00Z',
       counts_as_dial: false,
       counts_as_contact: false,
       counts_as_meeting_set: false,
@@ -313,6 +320,30 @@ test('backfill SQL skips projected rows with non-canonical source families', () 
       reporting_at: '2026-06-03T00:00:00Z',
       source_family: 'legacy_sales_stage_current',
       dedupe_key: 'bad-family',
+      payload_json: {},
+    },
+  ], { generatedAt: '2026-06-02T00:00:00.000Z' });
+
+  assert.match(sql, /-- projected_rows: 1/);
+  assert.match(sql, /-- insertable_rows: 0/);
+  assert.match(sql, /-- skipped_rows_not_insertable: 1/);
+  assert.doesNotMatch(sql, /insert into public\.call_log/i);
+});
+
+test('backfill SQL skips projected rows that would violate count-shape constraints', () => {
+  const sql = buildCallLogBackfillSql([
+    {
+      fact_type: 'call_activity',
+      tracker_outcome: 'spoke_follow_up',
+      occurred_at: '2026-06-03T00:00:00Z',
+      reporting_at: '2026-06-03T00:00:00Z',
+      source_family: 'meeting_events',
+      dedupe_key: 'bad-count-shape',
+      counts_as_dial: false,
+      counts_as_contact: false,
+      counts_as_meeting_set: false,
+      counts_as_post_meeting_outcome: false,
+      counts_as_enrollment: false,
       payload_json: {},
     },
   ], { generatedAt: '2026-06-02T00:00:00.000Z' });

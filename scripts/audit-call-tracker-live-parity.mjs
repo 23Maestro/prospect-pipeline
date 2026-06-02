@@ -82,6 +82,25 @@ function firstText(...values) {
   return null;
 }
 
+function hasCallLogCountShape(row) {
+  return (
+    (row.fact_type === 'call_activity' && row.counts_as_dial) ||
+    (row.fact_type === 'meeting_set' && row.counts_as_meeting_set) ||
+    (row.fact_type === 'post_meeting_outcome' && row.counts_as_post_meeting_outcome) ||
+    (row.fact_type === 'enrollment_payment' && row.counts_as_enrollment)
+  );
+}
+
+function isInsertableCallLogRow(row) {
+  return Boolean(
+    row.dedupe_key &&
+    row.reporting_at &&
+    row.tracker_outcome &&
+    CANONICAL_CALL_LOG_SOURCE_FAMILIES.has(row.source_family) &&
+    hasCallLogCountShape(row)
+  );
+}
+
 function sqlString(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
@@ -206,32 +225,35 @@ export function summarizeCallLogProjection(projectedRows, summary = {}) {
         projectedRows,
         (row) => row.source_family && !CANONICAL_CALL_LOG_SOURCE_FAMILIES.has(row.source_family),
       ),
+      invalid_count_shape: countWhere(projectedRows, (row) => !hasCallLogCountShape(row)),
     },
   };
 }
 
 export function summarizeCallLogTargetParity(projectedRows, targetRows, { available = true, error = null } = {}) {
+  const insertableProjectedRows = projectedRows.filter(isInsertableCallLogRow);
   if (!available) {
     return {
       available: false,
       error,
       projectedRows: projectedRows.length,
+      insertableProjectedRows: insertableProjectedRows.length,
       targetRows: 0,
       parity: false,
     };
   }
 
-  const projectedDedupeKeys = new Set(projectedRows.map((row) => row.dedupe_key).filter(Boolean));
+  const projectedDedupeKeys = new Set(insertableProjectedRows.map((row) => row.dedupe_key).filter(Boolean));
   const targetDedupeKeys = new Set(targetRows.map((row) => row.dedupe_key).filter(Boolean));
   const missingInTarget = [...projectedDedupeKeys].filter((dedupeKey) => !targetDedupeKeys.has(dedupeKey));
   const extraInTarget = [...targetDedupeKeys].filter((dedupeKey) => !projectedDedupeKeys.has(dedupeKey));
   const projected = {
-    dials: countWhere(projectedRows, (row) => row.counts_as_dial),
-    contacts: countWhere(projectedRows, (row) => row.counts_as_contact),
-    meetings_set: countWhere(projectedRows, (row) => row.counts_as_meeting_set),
-    meeting_outcomes_total: countWhere(projectedRows, (row) => row.counts_as_post_meeting_outcome),
-    closed_won: countWhere(projectedRows, (row) => row.tracker_outcome === 'closed_won'),
-    money_earned_cents: projectedRows
+    dials: countWhere(insertableProjectedRows, (row) => row.counts_as_dial),
+    contacts: countWhere(insertableProjectedRows, (row) => row.counts_as_contact),
+    meetings_set: countWhere(insertableProjectedRows, (row) => row.counts_as_meeting_set),
+    meeting_outcomes_total: countWhere(insertableProjectedRows, (row) => row.counts_as_post_meeting_outcome),
+    closed_won: countWhere(insertableProjectedRows, (row) => row.tracker_outcome === 'closed_won'),
+    money_earned_cents: insertableProjectedRows
       .filter((row) => row.tracker_outcome === 'closed_won')
       .reduce((total, row) => total + (Number(row.revenue_cents) || 0), 0),
   };
@@ -252,6 +274,7 @@ export function summarizeCallLogTargetParity(projectedRows, targetRows, { availa
   return {
     available: true,
     projectedRows: projectedRows.length,
+    insertableProjectedRows: insertableProjectedRows.length,
     targetRows: targetRows.length,
     missingInTarget: missingInTarget.length,
     extraInTarget: extraInTarget.length,
@@ -259,6 +282,7 @@ export function summarizeCallLogTargetParity(projectedRows, targetRows, { availa
     target,
     deltas,
     parity:
+      targetRows.length === insertableProjectedRows.length &&
       missingInTarget.length === 0 &&
       extraInTarget.length === 0 &&
       Object.values(deltas).every((value) => value === 0),
@@ -309,12 +333,7 @@ const CALL_LOG_BACKFILL_COLUMNS = [
 
 export function buildCallLogBackfillSql(projectedRows, { generatedAt = new Date().toISOString() } = {}) {
   const columns = CALL_LOG_BACKFILL_COLUMNS.map(([column]) => column);
-  const rows = projectedRows.filter((row) =>
-    row.dedupe_key &&
-    row.reporting_at &&
-    row.tracker_outcome &&
-    CANONICAL_CALL_LOG_SOURCE_FAMILIES.has(row.source_family)
-  );
+  const rows = projectedRows.filter(isInsertableCallLogRow);
   const skippedRows = projectedRows.length - rows.length;
   const updateColumns = columns.filter((column) => !['dedupe_key'].includes(column));
 

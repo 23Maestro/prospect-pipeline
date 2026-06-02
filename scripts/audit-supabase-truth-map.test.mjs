@@ -20,6 +20,7 @@ const deleteTargets = [
   'meeting_truth_anomalies',
   'reminders',
 ];
+const EXEC_BUFFER = 1024 * 1024 * 20;
 
 test('clean-house truth map names every Supabase delete target', () => {
   const doc = fs.readFileSync('docs/architecture/supabase-clean-house-truth-map.md', 'utf8');
@@ -46,6 +47,7 @@ test('legacy lifecycle writer name is retired in implementation files', () => {
 test('Supabase truth-map audit script tracks canonical and delete-target surfaces', () => {
   const output = execFileSync('node', ['scripts/audit-supabase-truth-map.mjs', '--json'], {
     encoding: 'utf8',
+    maxBuffer: EXEC_BUFFER,
   });
   const payload = JSON.parse(output);
   const surfaces = new Set(payload.summary.map((row) => row.surface));
@@ -66,6 +68,7 @@ test('Supabase truth-map audit script tracks canonical and delete-target surface
 test('Supabase truth-map audit separates active dependencies from docs and tests', () => {
   const output = execFileSync('node', ['scripts/audit-supabase-truth-map.mjs', '--json'], {
     encoding: 'utf8',
+    maxBuffer: EXEC_BUFFER,
   });
   const payload = JSON.parse(output);
   const row = payload.summary.find((entry) => entry.surface === 'athlete_lifecycle_current');
@@ -78,6 +81,7 @@ test('Supabase truth-map audit separates active dependencies from docs and tests
 test('Supabase truth-map audit default output names owner, active dependency, read, and write counts', () => {
   const output = execFileSync('node', ['scripts/audit-supabase-truth-map.mjs'], {
     encoding: 'utf8',
+    maxBuffer: EXEC_BUFFER,
   });
 
   assert.match(output, /owner=Lifecycle & Stage Truth/);
@@ -90,7 +94,7 @@ test('Supabase truth-map audit can print one active-only surface plan', () => {
   const output = execFileSync(
     'node',
     ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_tracker_events', '--active-only'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', maxBuffer: EXEC_BUFFER },
   );
 
   assert.match(output, /call_tracker_events: delete_target/);
@@ -104,7 +108,7 @@ test('Supabase truth-map audit can emit focused JSON for one surface', () => {
   const output = execFileSync(
     'node',
     ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_tracker_summary', '--active-only', '--json'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', maxBuffer: EXEC_BUFFER },
   );
   const payload = JSON.parse(output);
 
@@ -117,14 +121,14 @@ test('Supabase truth-map audit names call_log as the canonical target', () => {
   const output = execFileSync(
     'node',
     ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_log', '--json'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', maxBuffer: EXEC_BUFFER },
   );
   const payload = JSON.parse(output);
 
   assert.equal(payload.summary.surface, 'call_log');
   assert.equal(payload.summary.role, 'canonical_target');
-  assert.match(payload.summary.currentState, /Schema defined/);
-  assert.match(payload.summary.currentState, /no writers, backfill, or readers are migrated/);
+  assert.match(payload.summary.currentState, /Schema and first backfill are live/);
+  assert.match(payload.summary.currentState, /compatibility readers and source writers still need migration/);
   assert.match(payload.summary.replacement, /one canonical shape/);
 });
 
@@ -132,7 +136,7 @@ test('Supabase truth-map audit retires call_events as compatibility history', ()
   const output = execFileSync(
     'node',
     ['scripts/audit-supabase-truth-map.mjs', '--surface', 'call_events', '--json'],
-    { encoding: 'utf8' },
+    { encoding: 'utf8', maxBuffer: EXEC_BUFFER },
   );
   const payload = JSON.parse(output);
 
