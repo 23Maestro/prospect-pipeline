@@ -106,11 +106,7 @@ begin
         source_family in (
           'call_activity_events',
           'lifecycle_events',
-          'meeting_events',
-          'appointments',
-          'stripe',
-          'commissions',
-          'manual_repair'
+          'meeting_events'
         )
       ) not valid;
   end if;
@@ -191,7 +187,10 @@ comment on column public.call_log.dedupe_key is
   'Canonical uniqueness key for one reporting fact. It prevents duplicate UI counts before reporting views aggregate.';
 
 comment on column public.call_log.source_family is
-  'Original source family drained into call_log, such as call_activity_events, lifecycle_events, meeting_events, stripe, or commissions.';
+  'Canonical drained fact family: call_activity_events, lifecycle_events, or meeting_events. Raw systems such as legacy_sales_stage_current, stripe, or commissions belong in source_system or payload_json.';
+
+comment on column public.call_log.source_system is
+  'Raw upstream/provenance label, such as legacy_sales_stage_current, scout_prep_action, stripe_commissions, or manual_repair. This is not the canonical source family.';
 
 alter table public.call_log enable row level security;
 

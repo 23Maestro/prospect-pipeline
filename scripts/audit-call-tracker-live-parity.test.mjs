@@ -84,6 +84,7 @@ test('post-meeting rows project as meeting_events call_log facts', () => {
   const row = projectEventRowToCallLog({
     id: 'outcome-row-1',
     raw_event_type: 'post_meeting_outcome',
+    source: 'legacy_sales_stage_current',
     tracker_outcome: 'closed_won',
     raw_crm_stage: 'Actual Meeting - Close Won',
     occurred_at: '2026-06-03T00:00:00Z',
@@ -99,6 +100,7 @@ test('post-meeting rows project as meeting_events call_log facts', () => {
 
   assert.equal(row.fact_type, 'post_meeting_outcome');
   assert.equal(row.source_family, 'meeting_events');
+  assert.equal(row.source_system, 'legacy_sales_stage_current');
   assert.equal(row.counts_as_post_meeting_outcome, true);
   assert.equal(row.revenue_cents, 500000);
   assert.equal(row.dedupe_key, 'post_meeting_outcome:appointment:appt-1');

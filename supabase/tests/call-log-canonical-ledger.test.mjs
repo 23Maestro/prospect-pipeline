@@ -10,6 +10,16 @@ const cleanHouse = readFileSync(
   new URL('../../docs/architecture/supabase-clean-house-truth-map.md', import.meta.url),
   'utf8',
 );
+const sourceFamilyTighteningSql = readFileSync(
+  new URL('../migrations/20260602093000_tighten_call_log_source_family.sql', import.meta.url),
+  'utf8',
+);
+
+function sourceFamilyConstraintBody(migrationSql) {
+  const match = migrationSql.match(/call_log_source_family_check[\s\S]*?check\s*\(([\s\S]*?)\)\s*not valid/i);
+  assert.ok(match, 'expected call_log_source_family_check constraint body');
+  return match[1];
+}
 
 test('call_log migration creates the canonical ledger without reusing call_events', () => {
   assert.match(sql, /create table if not exists public\.call_log/i);
@@ -72,6 +82,23 @@ test('call_log includes appointment, owner proof, and payment evidence fields', 
   assert.match(sql, /call_log_live_event_idx/i);
   assert.match(sql, /call_log_owner_reporting_idx/i);
   assert.match(sql, /call_log_source_row_idx/i);
+});
+
+test('call_log source_family is canonical and raw provenance stays in source_system', () => {
+  for (const migrationSql of [sql, sourceFamilyTighteningSql]) {
+    const constraintBody = sourceFamilyConstraintBody(migrationSql);
+    assert.match(constraintBody, /'call_activity_events'/i);
+    assert.match(constraintBody, /'lifecycle_events'/i);
+    assert.match(constraintBody, /'meeting_events'/i);
+    assert.doesNotMatch(constraintBody, /'legacy_sales_stage_current'/i);
+    assert.doesNotMatch(constraintBody, /'stripe'/i);
+    assert.doesNotMatch(constraintBody, /'commissions'/i);
+  }
+
+  assert.match(sql, /source_system text/i);
+  assert.match(sourceFamilyTighteningSql, /source_system preserves raw provenance/i);
+  assert.match(sourceFamilyTighteningSql, /legacy_sales_stage_current/i);
+  assert.match(sourceFamilyTighteningSql, /stripe_commissions/i);
 });
 
 test('call_log remains service-role only until compatibility readers migrate', () => {
