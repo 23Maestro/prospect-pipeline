@@ -51,7 +51,7 @@ export default function ProspectMeetingsPage() {
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <link rel="icon" href="/prospect-id-shield.svg" />
-      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260529-meetings-ui" />
+      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260603-enrollment-tracker" />
       <main className="shell">
         <header className="topbar">
           <div className="brand-row">
@@ -67,7 +67,7 @@ export default function ProspectMeetingsPage() {
 
         <section className="page-head">
           <div>
-            <h1>Meeting Readback</h1>
+            <h1 id="trackerTitle">Enrollment Tracker</h1>
             <span id="generatedAt">Loading</span>
           </div>
           <button id="refreshButton" type="button">
@@ -78,72 +78,41 @@ export default function ProspectMeetingsPage() {
 
         <section className="summary-grid" aria-label="Meeting summary">
           <article className="summary-card blue-card">
-            <div className="card-top"><span>True Meetings Set</span><Icon name="calendar" /></div>
-            <strong id="trueMeetingsSet">0</strong>
+            <div className="card-top"><span>Meetings Set</span><Icon name="calendar" /></div>
+            <strong id="meetingsSet">0</strong>
+          </article>
+          <article className="summary-card green-card">
+            <div className="card-top"><span>Enrollments</span><Icon name="check" /></div>
+            <strong id="enrollments">0</strong>
           </article>
           <article className="summary-card purple-card">
             <div className="card-top"><span>Show Rate</span><Icon name="list" /></div>
             <strong id="showRate">0%</strong>
           </article>
-          <article className="summary-card green-card">
-            <div className="card-top"><span>Closed Won</span><Icon name="check" /></div>
-            <strong id="closedWon">0</strong>
-          </article>
-          <article className="summary-card red-card">
-            <div className="card-top"><span>Closed Lost</span><Icon name="alert" /></div>
-            <strong id="closedLost">0</strong>
-          </article>
-          <article className="summary-card amber-card">
-            <div className="card-top"><span>Follow Up</span><Icon name="clock" /></div>
-            <strong id="followUp">0</strong>
-          </article>
-          <article className="summary-card red-card">
-            <div className="card-top"><span>No Show / Canceled</span><Icon name="alert" /></div>
-            <strong id="noShowCanceled">0</strong>
-          </article>
         </section>
 
         <section className="panel table-panel">
-          <div className="panel-head table-actions">
-            <h2>Meeting Data</h2>
-            <div className="mode-toggle" aria-label="Table mode">
-              <button type="button" data-mode="meetings" className="active">Meetings</button>
-              <button type="button" data-mode="lifecycle">Lifecycle</button>
-            </div>
+          <div className="panel-head">
+            <h2>Meetings</h2>
+            <span id="rowCount">0 rows</span>
           </div>
-          <div className="table-wrap mode-panel active" data-panel="meetings">
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
                   <th>When</th>
                   <th>Athlete</th>
-                  <th>Meeting Status</th>
-                  <th>Meeting Title</th>
-                  <th>Appointment ID</th>
-                  <th>Source</th>
+                  <th>Status</th>
+                  <th>Head Scout</th>
+                  <th className="money-cell">Money</th>
                 </tr>
               </thead>
               <tbody id="meetingsBody" />
             </table>
           </div>
-          <div className="table-wrap mode-panel" data-panel="lifecycle">
-            <table>
-              <thead>
-                <tr>
-                  <th>When</th>
-                  <th>Athlete</th>
-                  <th>Lifecycle Event</th>
-                  <th>CRM Stage</th>
-                  <th>Task Status</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
-              <tbody id="lifecycleBody" />
-            </table>
-          </div>
         </section>
       </main>
-      <Script src="/prospect-meetings/app.js?v=20260529-meetings-ui" strategy="afterInteractive" />
+      <Script src="/prospect-meetings/app.js?v=20260603-enrollment-tracker" strategy="afterInteractive" />
     </>
   );
 }

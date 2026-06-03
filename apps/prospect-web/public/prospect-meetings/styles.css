@@ -110,14 +110,33 @@ button {
 .topbar-link {
   position: absolute;
   right: 0;
-  color: var(--muted);
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(0, 112, 243, 0.34);
+  border-radius: 7px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01)),
+    rgba(0, 112, 243, 0.1);
+  color: #dcecff;
   font-size: 13px;
-  font-weight: 650;
+  font-weight: 720;
+  padding: 0 13px;
   text-decoration: none;
+  box-shadow: 0 0 22px rgba(0, 112, 243, 0.12);
+  transition:
+    border-color 220ms var(--ease-smooth),
+    background 220ms var(--ease-smooth),
+    color 220ms var(--ease-smooth),
+    transform 220ms var(--ease-smooth);
 }
 
 .topbar-link:hover {
-  color: var(--text);
+  border-color: rgba(0, 112, 243, 0.62);
+  background: rgba(0, 112, 243, 0.18);
+  color: #fff;
+  transform: translateY(-1px);
 }
 
 .page-head {
@@ -290,18 +309,10 @@ h2 {
   overflow: auto;
 }
 
-.mode-panel {
-  display: none;
-}
-
-.mode-panel.active {
-  display: block;
-}
-
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 860px;
+  min-width: 720px;
 }
 
 th,
@@ -341,6 +352,11 @@ code {
   padding: 3px 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+}
+
+.money-cell {
+  text-align: right;
+  white-space: nowrap;
 }
 
 .status-chip {
