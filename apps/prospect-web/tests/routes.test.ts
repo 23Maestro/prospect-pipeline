@@ -1022,3 +1022,176 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
   assert.equal(calls.every((call) => call.init?.cache === 'no-store'), true);
 });
+
+test('/api/meeting-readback-data removes canceled meetings and keeps follow-up results pending', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_log?')) {
+      return Response.json([
+        {
+          athlete_name: null,
+          athlete_key: '1499342:954074',
+          athlete_id: '1499342',
+          athlete_main_id: '954074',
+          appointment_id: 'appt-canceled',
+          live_event_id: 'appt-canceled',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          booked_event_title: '(ACF) Cale Kethman Football 2028 FL',
+          booked_event_starts_at: '2026-06-03T00:00:00+00:00',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          counts_as_enrollment: false,
+          reporting_at: '2026-06-01T22:27:57.049+00:00',
+          event_at: '2026-06-01T22:27:57.049+00:00',
+          occurred_at: '2026-06-01T22:27:57.049+00:00',
+          created_at: '2026-06-02T05:29:13.533+00:00',
+        },
+        {
+          athlete_name: 'Cale Kethman',
+          athlete_key: '1499342:954074',
+          athlete_id: '1499342',
+          athlete_main_id: '954074',
+          appointment_id: 'appt-canceled',
+          live_event_id: 'appt-canceled',
+          tracker_outcome: 'reschedule_pending',
+          raw_crm_stage: 'Meeting Result - Canceled',
+          raw_task_status: 'reschedule_pending',
+          raw_event_type: 'post_meeting_outcome',
+          booked_event_title: 'Post Meeting - Logan Lord',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          counts_as_enrollment: false,
+          reporting_at: '2026-06-03T00:00:00+00:00',
+          event_at: '2026-06-03T00:00:00+00:00',
+          occurred_at: '2026-06-03T00:04:15.908+00:00',
+          created_at: '2026-06-03T00:12:34.098+00:00',
+        },
+        {
+          athlete_name: null,
+          athlete_key: '1499346:954078',
+          athlete_id: '1499346',
+          athlete_main_id: '954078',
+          appointment_id: 'appt-follow-up',
+          live_event_id: 'appt-follow-up',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          booked_event_title: '(ACF) Alexander Williamson Football 2027 MN',
+          booked_event_starts_at: '2026-06-03T01:00:00+00:00',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          counts_as_enrollment: false,
+          reporting_at: '2026-06-01T20:25:38.199+00:00',
+          event_at: '2026-06-01T20:25:38.199+00:00',
+          occurred_at: '2026-06-01T20:25:38.199+00:00',
+          created_at: '2026-06-02T05:29:13.533+00:00',
+        },
+        {
+          athlete_name: 'Alexander Williamson',
+          athlete_key: '1499346:954078',
+          athlete_id: '1499346',
+          athlete_main_id: '954078',
+          appointment_id: 'appt-follow-up',
+          live_event_id: 'appt-follow-up',
+          tracker_outcome: 'follow_up',
+          raw_crm_stage: 'Actual Meeting - Follow Up',
+          raw_task_status: 'meeting_follow_up',
+          raw_event_type: 'post_meeting_outcome',
+          booked_event_title: 'Post Meeting - Luther Winfield',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          counts_as_enrollment: false,
+          reporting_at: '2026-06-03T01:00:00+00:00',
+          event_at: '2026-06-03T01:00:00+00:00',
+          occurred_at: '2026-06-03T02:04:12.316+00:00',
+          created_at: '2026-06-03T02:13:31.483+00:00',
+        },
+        {
+          athlete_name: 'Kelle Johnson',
+          athlete_key: '1499350:954080',
+          athlete_id: '1499350',
+          athlete_main_id: '954080',
+          appointment_id: 'appt-set',
+          live_event_id: 'appt-set',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          booked_event_title: 'Kelle Johnson Football 2027 TX',
+          booked_event_starts_at: '2026-06-03T02:00:00+00:00',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          counts_as_enrollment: false,
+          reporting_at: '2026-06-01T21:00:00+00:00',
+          event_at: '2026-06-01T21:00:00+00:00',
+          occurred_at: '2026-06-01T21:00:00+00:00',
+          created_at: '2026-06-02T05:29:13.533+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/appointments?')) {
+      return Response.json([
+        {
+          id: 'appt-canceled',
+          athlete_key: '1499342:954074',
+          athlete_id: '1499342',
+          athlete_main_id: '954074',
+          head_scout: 'Logan Lord',
+          starts_at: '2026-06-03T00:00:00+00:00',
+          status: 'reschedule_pending',
+          post_meeting_result: 'reschedule_pending',
+          status_reason: 'live_sales_stage:Meeting Result - Canceled',
+          updated_at: '2026-06-03T00:04:15.908+00:00',
+          created_at: '2026-06-01T22:27:57.559+00:00',
+        },
+        {
+          id: 'appt-follow-up',
+          athlete_key: '1499346:954078',
+          athlete_id: '1499346',
+          athlete_main_id: '954078',
+          head_scout: 'Luther Winfield',
+          starts_at: '2026-06-03T01:00:00+00:00',
+          status: 'scheduled',
+          post_meeting_result: null,
+          status_reason: 'live_sales_stage:Actual Meeting - Follow Up',
+          updated_at: '2026-06-03T02:04:12.316+00:00',
+          created_at: '2026-06-01T20:25:38.878+00:00',
+        },
+        {
+          id: 'appt-set',
+          athlete_key: '1499350:954080',
+          athlete_id: '1499350',
+          athlete_main_id: '954080',
+          head_scout: 'James Holden',
+          starts_at: '2026-06-03T02:00:00+00:00',
+          status: 'scheduled',
+          post_meeting_result: null,
+          updated_at: '2026-06-02T13:00:00+00:00',
+          created_at: '2026-06-02T13:00:00+00:00',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/athletes?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await meetingReadbackDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.data.summary.meetingsSet, 2);
+  assert.equal(payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Cale Kethman'), false);
+  assert.equal(
+    payload.data.rows.find((row: { athleteName?: string }) => row.athleteName === 'Alexander Williamson')?.status,
+    'Pending',
+  );
+  assert.equal(payload.data.rows.find((row: { athleteName?: string }) => row.athleteName === 'Kelle Johnson')?.status, 'Set');
+});

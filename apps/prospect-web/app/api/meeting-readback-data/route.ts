@@ -67,6 +67,17 @@ const appointmentFields = [
 
 const athleteFields = ['athlete_key', 'athlete_name'];
 
+// Keep these labels aligned with src/domain/sales-stage-contract; Prospect Web cannot bundle that package from the Next app root.
+const POST_MEETING_OUTCOME_BY_STAGE = new Map<string, string>([
+  ['Actual Meeting - Follow Up', 'follow_up'],
+  ['Actual Meeting - Close Lost', 'closed_lost'],
+  ['Actual Meeting - Close Won', 'closed_won'],
+  ['Meeting Result - Res. Pending', 'resolution_pending'],
+  ['Meeting Result - Rescheduled', 'rescheduled'],
+  ['Meeting Result - Canceled', 'canceled'],
+  ['Meeting Result - No Show', 'no_show'],
+]);
+
 type JsonRow = Record<string, any>;
 
 function noStoreJson(body: unknown, init?: ResponseInit) {
@@ -109,6 +120,10 @@ function payload(row: JsonRow) {
 
 function normalizeKey(value: unknown) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function statusKey(value: unknown) {
+  return normalizeKey(value).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 }
 
 function identityKey(row: JsonRow) {
@@ -221,16 +236,67 @@ function moneyCents(facts: JsonRow[]) {
   return facts.reduce((total, row) => Math.max(total, Number(row.revenue_cents) || 0), 0);
 }
 
+function postMeetingOutcomeFromKey(value: unknown) {
+  const key = statusKey(value);
+  if (key === 'closed_won' || key === 'close_won') return 'closed_won';
+  if (key === 'closed_lost' || key === 'close_lost') return 'closed_lost';
+  if (key === 'no_show' || key === 'noshow') return 'no_show';
+  if (key === 'canceled' || key === 'cancelled') return 'canceled';
+  if (key === 'reschedule_pending' || key === 'rescheduled_pending' || key === 'res_pending') {
+    return 'resolution_pending';
+  }
+  if (key === 'rescheduled') return 'rescheduled';
+  if (key === 'follow_up' || key === 'actual_meeting_follow_up' || key === 'meeting_follow_up') {
+    return 'follow_up';
+  }
+  return null;
+}
+
+function postMeetingOutcomeFromStage(value: unknown) {
+  const stage = String(value || '').trim();
+  return stage ? POST_MEETING_OUTCOME_BY_STAGE.get(stage) || null : null;
+}
+
+function salesStageFromStatusReason(value: unknown) {
+  const reason = String(value || '').trim();
+  const marker = 'live_sales_stage:';
+  const markerIndex = reason.toLowerCase().indexOf(marker);
+  return markerIndex >= 0 ? reason.slice(markerIndex + marker.length).trim() : '';
+}
+
+function postMeetingOutcomeForFact(row: JsonRow | null) {
+  if (!row) return null;
+  return postMeetingOutcomeFromStage(row.raw_crm_stage) || postMeetingOutcomeFromKey(row.tracker_outcome);
+}
+
+function postMeetingOutcomeForAppointment(row: JsonRow | null) {
+  if (!row) return null;
+  return (
+    postMeetingOutcomeFromStage(salesStageFromStatusReason(row.status_reason)) ||
+    postMeetingOutcomeFromKey(row.post_meeting_result || row.status)
+  );
+}
+
+function isCanceledMeeting(latestFact: JsonRow | null, latestAppointment: JsonRow | null) {
+  return postMeetingOutcomeForFact(latestFact) === 'canceled' || postMeetingOutcomeForAppointment(latestAppointment) === 'canceled';
+}
+
 function statusFor(latestFact: JsonRow | null, latestAppointment: JsonRow | null) {
-  const outcome = normalizeKey(latestFact?.tracker_outcome).replace(/\s+/g, '_');
+  const outcome = postMeetingOutcomeForFact(latestFact);
   if (outcome === 'closed_won' || latestFact?.counts_as_enrollment === true) return 'Close Won';
   if (outcome === 'closed_lost') return 'Close Lost';
   if (outcome === 'no_show') return 'No Show';
-  const appointmentStatus = normalizeKey(latestAppointment?.post_meeting_result || latestAppointment?.status).replace(/\s+/g, '_');
-  if (appointmentStatus === 'closed_won') return 'Close Won';
-  if (appointmentStatus === 'closed_lost') return 'Close Lost';
-  if (appointmentStatus === 'no_show') return 'No Show';
-  if (outcome === 'meeting_set' || appointmentStatus === 'scheduled' || appointmentStatus === 'confirmation_queued' || appointmentStatus === 'confirmation_sent') {
+  if (outcome === 'follow_up' || outcome === 'resolution_pending' || outcome === 'rescheduled') return 'Pending';
+  const appointmentOutcome = postMeetingOutcomeForAppointment(latestAppointment);
+  if (appointmentOutcome === 'closed_won') return 'Close Won';
+  if (appointmentOutcome === 'closed_lost') return 'Close Lost';
+  if (appointmentOutcome === 'no_show') return 'No Show';
+  if (appointmentOutcome === 'follow_up' || appointmentOutcome === 'resolution_pending' || appointmentOutcome === 'rescheduled') {
+    return 'Pending';
+  }
+  const trackerOutcome = statusKey(latestFact?.tracker_outcome);
+  const appointmentStatus = statusKey(latestAppointment?.post_meeting_result || latestAppointment?.status);
+  if (trackerOutcome === 'meeting_set' || appointmentStatus === 'scheduled' || appointmentStatus === 'confirmation_queued' || appointmentStatus === 'confirmation_sent') {
     return 'Set';
   }
   return 'Pending';
@@ -317,6 +383,7 @@ async function buildEnrollmentTracker() {
       const setFacts = facts.filter((row) => row.counts_as_meeting_set === true);
       const latestFact = outcomeWinner(facts);
       const latestAppointment = latestAppointmentForIdentity(identity, facts, appointmentById, appointmentsByAthlete);
+      if (isCanceledMeeting(latestFact, latestAppointment)) return null;
       const setFact = setFacts.sort((left, right) => eventTime(left) - eventTime(right))[0] || latestFact || {};
       const status = statusFor(latestFact, latestAppointment);
       const when = latestAppointment?.starts_at || latestFact?.booked_event_starts_at || latestFact?.event_at || setFact.event_at || setFact.reporting_at || null;
@@ -329,6 +396,7 @@ async function buildEnrollmentTracker() {
         moneyCents: moneyCents(facts),
       };
     })
+    .filter((row): row is NonNullable<typeof row> => Boolean(row))
     .sort((left, right) => new Date(left.when || 0).getTime() - new Date(right.when || 0).getTime());
 
   const enrollments = rows.filter((row) => row.status === 'Close Won').length;
