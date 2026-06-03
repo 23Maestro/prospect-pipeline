@@ -16,6 +16,8 @@ import {
   Toast,
   useNavigation,
 } from '@raycast/api';
+import fs from 'fs';
+import path from 'path';
 import { setTimeout } from 'timers/promises';
 import { useEffect, useMemo, useState } from 'react';
 import { ConfirmationReminderMessageForm } from './components/follow-up-message-forms';
@@ -57,26 +59,20 @@ import {
 import { PostCallUpdateForm, VoicemailFollowUpRecipientForm } from './scout-prep';
 import {
   buildMeetingDayLabel,
+  buildSetMeetingCandidatesFromAppointments,
   buildSetMeetingCandidatesFromBookedMeetings,
   filterWeeklySetMeetingCandidates,
 } from './domain/set-meetings-candidate';
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
-import { buildSetMeetingConfirmationCacheRows } from './domain/set-meeting-confirmation-cache';
 import { getActiveOperator } from './domain/owners';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
-import { prepareConfirmationFollowUp } from './lib/scout-follow-up-queue';
 import {
   resolveConfirmationFollowUpVariant,
   type ConfirmationFollowUpVariant,
 } from './lib/scout-follow-up-templates';
+import { buildMessagesComposeUrlForRecipients } from './lib/scout-prep-contact';
 import {
-  buildMessagesComposeUrlForRecipients,
-  buildTimeOfDayGreeting,
-  getMeetingReminderRecipient,
-} from './lib/scout-prep-contact';
-import {
-  completeScoutPrepTaskAfterVoicemail,
   fetchScoutPortalTasks,
   loadScoutPrepContext,
 } from './lib/scout-prep';
@@ -85,8 +81,7 @@ import {
   resolveLegacyTimezoneLabelFromIana,
 } from './domain/outreach-time-wording';
 import {
-  deleteRows,
-  upsertSetMeetingConfirmationCacheRows,
+  readRows,
   type SupabasePersistenceConfig,
 } from './domain/supabase-persistence';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
@@ -101,16 +96,136 @@ import {
   type ClientReplyThemeReviewSnapshot,
   type PendingClientReplyThemeState,
 } from './lib/client-message-reply-themes';
+import { getWeeklyScheduledAppointmentRows } from './lib/supabase-lifecycle';
+
+const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+
+function readEnvFile(filePath: string): Record<string, string> {
+  try {
+    const values: Record<string, string> = {};
+    for (const line of fs.readFileSync(filePath, 'utf8').split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const separator = trimmed.indexOf('=');
+      if (separator <= 0) continue;
+      const key = trimmed.slice(0, separator).trim();
+      const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, '');
+      if (key) values[key] = value;
+    }
+    return values;
+  } catch {
+    return {};
+  }
+}
+
+function findProjectRoot(): string {
+  const starts = [process.cwd(), path.resolve(__dirname, '..'), REPO_ROOT_FALLBACK];
+  const seen = new Set<string>();
+  for (const start of starts) {
+    let current = path.resolve(start);
+    while (!seen.has(current)) {
+      seen.add(current);
+      try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(current, 'package.json'), 'utf8')) as {
+          name?: string;
+        };
+        if (pkg.name === 'prospect-pipeline') return current;
+      } catch {
+        // keep walking
+      }
+      const parent = path.dirname(current);
+      if (parent === current) break;
+      current = parent;
+    }
+  }
+  return REPO_ROOT_FALLBACK;
+}
+
+function readRepoEnv(): Record<string, string> {
+  const roots = [findProjectRoot(), REPO_ROOT_FALLBACK]
+    .map((value) => path.resolve(value))
+    .filter((value, index, list) => Boolean(value) && list.indexOf(value) === index);
+
+  return roots.reduce<Record<string, string>>(
+    (acc, root) => ({
+      ...acc,
+      ...readEnvFile(path.join(root, 'npid-api-layer/.env')),
+      ...readEnvFile(path.join(root, '.env')),
+      ...readEnvFile(path.join(root, '.overmind.env')),
+    }),
+    {},
+  );
+}
 
 function getConfirmationCacheSupabaseConfig(): SupabasePersistenceConfig | null {
-  const url = String(process.env.SUPABASE_URL || process.env.SUPABASE_PROJECT_URL || '')
+  const repoEnv = readRepoEnv();
+  const url = String(
+    process.env.SUPABASE_URL ||
+      repoEnv.SUPABASE_URL ||
+      process.env.SUPABASE_PROJECT_URL ||
+      repoEnv.SUPABASE_PROJECT_URL ||
+      '',
+  )
     .trim()
     .replace(/\/+$/, '');
   const key = String(
-    process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    process.env.SUPABASE_SECRET_KEY ||
+      repoEnv.SUPABASE_SECRET_KEY ||
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      repoEnv.SUPABASE_SERVICE_ROLE_KEY ||
+      '',
   ).trim();
-  const schema = String(process.env.SUPABASE_SCHEMA || 'public').trim() || 'public';
+  const schema =
+    String(process.env.SUPABASE_SCHEMA || repoEnv.SUPABASE_SCHEMA || 'public').trim() || 'public';
   return url && key ? { url, key, schema } : null;
+}
+
+type CachedSetMeetingConfirmationRow = {
+  kind?: string | null;
+  message_body?: string | null;
+  recipient_name?: string | null;
+  recipient_phone?: string | null;
+  head_scout_name?: string | null;
+  meeting_starts_at?: string | null;
+  meeting_timezone?: string | null;
+};
+
+type CachedSetMeetingConfirmation = {
+  message: string;
+  recipientNames: string[];
+  phones: string[];
+  headScoutName: string;
+};
+
+async function readCachedSetMeetingConfirmation(args: {
+  appointmentId?: string | null;
+  variant: ConfirmationFollowUpVariant;
+}): Promise<CachedSetMeetingConfirmation | null> {
+  const appointmentId = String(args.appointmentId || '').trim();
+  const supabaseConfig = getConfirmationCacheSupabaseConfig();
+  if (!appointmentId || !supabaseConfig) return null;
+
+  const rows = await readRows<CachedSetMeetingConfirmationRow>(
+    supabaseConfig,
+    'set_meeting_confirmation_cache',
+    [
+      'select=kind,message_body,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone',
+      `appointment_id=eq.${encodeURIComponent(appointmentId)}`,
+      `kind=eq.${args.variant}`,
+      'limit=1',
+    ].join('&'),
+  ).catch(() => []);
+  const row = rows[0];
+  const message = String(row?.message_body || '').trim();
+  const phone = String(row?.recipient_phone || '').trim();
+  if (!message || !phone) return null;
+
+  return {
+    message,
+    recipientNames: [String(row?.recipient_name || '').trim()].filter(Boolean),
+    phones: [phone],
+    headScoutName: String(row?.head_scout_name || '').trim(),
+  };
 }
 type HeadScoutSchedulesRootProps = {
   initialWeekOffset?: number;
@@ -260,129 +375,6 @@ function getConfirmationAppointmentPrefix(
   return variant === 'confirmation_2' ? '(ACF*2)' : '(ACF)';
 }
 
-async function completeCandidateConfirmationTask(candidate: HeadScoutFollowUpCandidate) {
-  const taskId = String(candidate.taskId || '').trim();
-  if (!taskId) {
-    throw new Error('Missing confirmation task');
-  }
-
-  const taskTitle = String(
-    candidate.followUpTask?.title || candidate.currentTask || 'Confirmation Call',
-  ).trim();
-
-  await completeScoutPrepTaskAfterVoicemail({
-    athleteId: candidate.athleteId,
-    athleteMainId: candidate.athleteMainId,
-    athleteName: candidate.athleteName,
-    contactTask: candidate.athleteId,
-    taskId,
-    taskTitle,
-    assignedOwner: candidate.followUpTask?.assignedOwner || null,
-    description: candidate.followUpTask?.description || taskTitle,
-  });
-}
-
-function Confirmation2SendForm({
-  candidate,
-  recipientNames,
-  phones,
-  message,
-  onComplete,
-}: {
-  candidate: HeadScoutFollowUpCandidate;
-  recipientNames: string[];
-  phones: string[];
-  message: string;
-  onComplete: () => void | Promise<void>;
-}) {
-  const { pop } = useNavigation();
-  const contactOptions = phones.map((phone, index) => ({
-    id: `${index}:${phone}`,
-    name: recipientNames[index] || recipientNames[0] || candidate.athleteName,
-    phone,
-  }));
-  const [contactId, setContactId] = useState(contactOptions[0]?.id || '');
-  const [draftMessage, setDraftMessage] = useState(message);
-  const [isSending, setIsSending] = useState(false);
-
-  async function handleSend() {
-    if (isSending) return;
-
-    const selectedContact =
-      contactOptions.find((contact) => contact.id === contactId) || contactOptions[0];
-    if (!selectedContact?.phone) {
-      await showToast({ style: Toast.Style.Failure, title: 'No phone' });
-      return;
-    }
-
-    setIsSending(true);
-    try {
-      let composeMode: 'draft' | 'clipboard-fallback' = 'draft';
-      try {
-        await open(buildMessagesComposeUrlForRecipients([selectedContact.phone], draftMessage));
-      } catch {
-        await Clipboard.copy(draftMessage);
-        await open(`sms:${selectedContact.phone}`);
-        composeMode = 'clipboard-fallback';
-      }
-
-      const toast = await showLoadingToast('Completing', 'Confirmation Call');
-      try {
-        await completeCandidateConfirmationTask(candidate);
-        toast.hide();
-      } catch (error) {
-        toast.style = Toast.Style.Failure;
-        toast.title = 'Draft open, task not completed';
-        toast.message = error instanceof Error ? error.message : String(error);
-        return;
-      }
-
-      await showToast({
-        style: Toast.Style.Success,
-        title: composeMode === 'clipboard-fallback' ? 'Template copied' : 'Draft open',
-        message: 'Task completed',
-      });
-      await onComplete();
-      pop();
-      pop();
-    } catch (error) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Open failed',
-        message: error instanceof Error ? error.message : String(error),
-      });
-    } finally {
-      setIsSending(false);
-    }
-  }
-
-  return (
-    <Form
-      navigationTitle={`Confirmation 2 • ${candidate.athleteName}`}
-      isLoading={isSending}
-      actions={
-        <ActionPanel>
-          <Action
-            title={isSending ? 'Sending…' : 'Send Message'}
-            onAction={() => void handleSend()}
-          />
-        </ActionPanel>
-      }
-    >
-      <Form.Dropdown id="contactId" title="Client" value={contactId} onChange={setContactId}>
-        {contactOptions.map((contact) => (
-          <Form.Dropdown.Item
-            key={contact.id}
-            value={contact.id}
-            title={`${contact.name} • ${contact.phone}`}
-          />
-        ))}
-      </Form.Dropdown>
-      <Form.TextArea id="message" title="Message" value={draftMessage} onChange={setDraftMessage} />
-    </Form>
-  );
-}
-
 function MeetingDetailsForm({
   candidate,
   onSaved,
@@ -493,19 +485,32 @@ function MeetingDetailsForm({
 async function loadWeeklyOperatorMeetingCandidates(
   weekOffset: number,
 ): Promise<HeadScoutFollowUpCandidate[]> {
-  const [weekly, operatorTasks] = await Promise.all([
-    fetchHeadScoutBookedMeetings(weekOffset),
+  const weekWindow = buildHeadScoutWeekWindow(weekOffset);
+  const operatorName = getActiveOperator().taskAssignedOwnerName;
+  const [weeklyAppointments, weekly, operatorTasks] = await Promise.all([
+    getWeeklyScheduledAppointmentRows({
+      weekStart: weekWindow.start,
+      weekEnd: weekWindow.end,
+      operatorOwnerKey: getActiveOperator().operatorKey,
+    }).catch(() => []),
+    fetchHeadScoutBookedMeetings(weekOffset).catch(() => null),
     fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
-  const operatorName = getActiveOperator().taskAssignedOwnerName;
+  const baseCandidates = weeklyAppointments.length
+    ? buildSetMeetingCandidatesFromAppointments({
+        appointments: weeklyAppointments,
+        tasks: operatorTasks || [],
+        operatorName,
+      })
+    : buildSetMeetingCandidatesFromBookedMeetings({
+        bookedMeetings: weekly?.events || [],
+        tasks: operatorTasks || [],
+        operatorName,
+      });
   const weeklyCandidates = await hydrateWeeklyCandidatesFromAthleteMeetings(
-    buildSetMeetingCandidatesFromBookedMeetings({
-      bookedMeetings: weekly.events || [],
-      tasks: operatorTasks || [],
-      operatorName,
-    }),
-    weekly.week_start,
-    weekly.week_end,
+    baseCandidates,
+    weekly?.week_start || weekWindow.start,
+    weekly?.week_end || weekWindow.end,
   );
 
   return buildSetMeetingsCommandContext({
@@ -1357,6 +1362,19 @@ export function HeadScoutBookingsList({
     weeklyMeetingsOnly,
   ]);
 
+  async function markConfirmationAppointmentPrefix(
+    candidate: HeadScoutFollowUpCandidate,
+    variant: ConfirmationFollowUpVariant,
+  ) {
+    const eventDate = getBookedMeetingEventDate(candidate.bookedMeeting);
+    if (!candidate.bookedMeeting?.event_id || !eventDate) return;
+    await updateBookedMeetingTitlePrefix({
+      eventId: candidate.bookedMeeting.event_id,
+      eventDate,
+      prefix: getConfirmationAppointmentPrefix(variant),
+    });
+  }
+
   async function sendConfirmationText(
     candidate: HeadScoutFollowUpCandidate,
     variant: ConfirmationFollowUpVariant,
@@ -1371,141 +1389,36 @@ export function HeadScoutBookingsList({
       candidate.athleteName,
     );
     try {
-      const task = buildCandidateTask(candidate);
-      const context = await loadScoutPrepContext(task);
-      const reminderRecipient = getMeetingReminderRecipient(context);
-      if (!reminderRecipient) {
-        throw new Error('No reminder phone found');
-      }
-
-      const prepared = await prepareConfirmationFollowUp({
-        athleteId: candidate.athleteId,
-        athleteMainId: candidate.athleteMainId,
-        athleteName: candidate.athleteName,
-        dueDate: candidate.dueDate || null,
-        dueTime: null,
-        headScoutName: candidate.headScoutName || context.resolved.head_scout || null,
-        recipientNames: reminderRecipient.recipientNames,
-        greetingOverride: buildTimeOfDayGreeting(context),
-        sport: context.resolved.sport || null,
-        gradYear: task.grad_year || null,
-        state: context.resolved.state || null,
-        reminderVariant: variant,
+      const cached = await readCachedSetMeetingConfirmation({
+        appointmentId: candidate.bookedMeeting?.event_id,
+        variant,
       });
-      if (!prepared.canDraft) {
-        throw new Error(prepared.resolvedAppointment.reason);
+      if (!cached) {
+        throw new Error('Missing cached confirmation message. Run confirmation cache repair.');
       }
 
       if (options?.copyOnly) {
-        await Clipboard.copy(prepared.message);
+        await Clipboard.copy(cached.message);
         toast.style = Toast.Style.Success;
         toast.title = 'Copied';
         toast.message = variant === 'confirmation_2' ? 'Confirmation 2' : 'Confirmation 1';
         return;
       }
 
-      const confirmation1 =
-        variant === 'confirmation_1'
-          ? prepared.message
-          : (
-              await prepareConfirmationFollowUp({
-                athleteId: candidate.athleteId,
-                athleteMainId: candidate.athleteMainId,
-                athleteName: candidate.athleteName,
-                dueDate: candidate.dueDate || null,
-                dueTime: null,
-                headScoutName: candidate.headScoutName || context.resolved.head_scout || null,
-                recipientNames: reminderRecipient.recipientNames,
-                greetingOverride: buildTimeOfDayGreeting(context),
-                sport: context.resolved.sport || null,
-                gradYear: task.grad_year || null,
-                state: context.resolved.state || null,
-                reminderVariant: 'confirmation_1',
-              })
-            ).message;
-      const confirmation2 =
-        variant === 'confirmation_2'
-          ? prepared.message
-          : (
-              await prepareConfirmationFollowUp({
-                athleteId: candidate.athleteId,
-                athleteMainId: candidate.athleteMainId,
-                athleteName: candidate.athleteName,
-                dueDate: candidate.dueDate || null,
-                dueTime: null,
-                headScoutName: candidate.headScoutName || context.resolved.head_scout || null,
-                recipientNames: reminderRecipient.recipientNames,
-                greetingOverride: buildTimeOfDayGreeting(context),
-                sport: context.resolved.sport || null,
-                gradYear: task.grad_year || null,
-                state: context.resolved.state || null,
-                reminderVariant: 'confirmation_2',
-              })
-            ).message;
-      const supabaseConfig = getConfirmationCacheSupabaseConfig();
-      if (supabaseConfig && candidate.bookedMeeting?.event_id) {
-        const meetingTimezone =
-          prepared.resolvedAppointment.meetingTimezone || candidate.meetingTimezone || '';
-        if (!meetingTimezone) {
-          throw new Error('Missing resolved meeting timezone for confirmation cache');
-        }
-        const rows = buildSetMeetingConfirmationCacheRows({
-          appointmentId: candidate.bookedMeeting.event_id,
-          athleteId: candidate.athleteId,
-          athleteMainId: candidate.athleteMainId,
-          athleteName: candidate.athleteName,
-          recipientName: reminderRecipient.recipientNames[0] || '',
-          recipientPhone: reminderRecipient.phones[0] || '',
-          headScoutName: prepared.headScoutName || candidate.headScoutName || '',
-          meetingStartsAt: candidate.bookedMeeting.start || null,
-          meetingTimezone,
-          confirmation1Message: confirmation1,
-          confirmation2Message: confirmation2,
-          adminUrl: candidate.adminUrl || '',
-          taskUrl: candidate.taskUrl || '',
-          generatedAt: new Date().toISOString(),
-          source: 'set_meetings_confirmation',
+      void markConfirmationAppointmentPrefix(candidate, variant).catch((error) => {
+        void showToast({
+          style: Toast.Style.Failure,
+          title: 'Prefix update failed',
+          message: error instanceof Error ? error.message : String(error),
         });
-        await deleteRows(
-          supabaseConfig,
-          'set_meeting_confirmation_cache',
-          'appointment_id',
-          candidate.bookedMeeting.event_id,
-        );
-        await upsertSetMeetingConfirmationCacheRows(supabaseConfig, rows);
-      }
-
-      const eventDate = getBookedMeetingEventDate(candidate.bookedMeeting);
-      if (candidate.bookedMeeting?.event_id && eventDate) {
-        await updateBookedMeetingTitlePrefix({
-          eventId: candidate.bookedMeeting.event_id,
-          eventDate,
-          prefix: getConfirmationAppointmentPrefix(variant),
-        });
-      }
-
-      if (variant === 'confirmation_2') {
-        push(
-          <Confirmation2SendForm
-            candidate={candidate}
-            recipientNames={reminderRecipient.recipientNames}
-            phones={reminderRecipient.phones}
-            message={prepared.message}
-            onComplete={refreshLive}
-          />,
-        );
-        toast.hide();
-        return false;
-      }
+      });
 
       let composeMode: 'draft' | 'clipboard-fallback' = 'draft';
       try {
-        await open(
-          buildMessagesComposeUrlForRecipients(reminderRecipient.phones, prepared.message),
-        );
+        await open(buildMessagesComposeUrlForRecipients(cached.phones, cached.message));
       } catch {
-        await Clipboard.copy(prepared.message);
-        await open(`sms:${reminderRecipient.phones[0]}`);
+        await Clipboard.copy(cached.message);
+        await open(`sms:${cached.phones[0]}`);
         composeMode = 'clipboard-fallback';
       }
 
@@ -1513,7 +1426,7 @@ export function HeadScoutBookingsList({
       if (options?.openContactCard && composeMode === 'draft') {
         await setTimeout(1200);
         await copyHeadScoutContactCardToClipboard(
-          prepared.headScoutName || candidate.headScoutName || context.resolved.head_scout || null,
+          cached.headScoutName || candidate.headScoutName || null,
         );
         contactCardCopied = true;
         await showHUD('Contact card copied');

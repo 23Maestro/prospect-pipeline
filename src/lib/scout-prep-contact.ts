@@ -362,14 +362,14 @@ export function buildProspectContactAdminNote(context: ScoutPrepContext): string
   const timezone =
     String(context.resolved.timezone || '').trim() ||
     resolveTimezone(context.resolved.city, context.resolved.state);
-  if (!timezone) {
-    throw new Error('Contact note requires athlete city/state timezone.');
-  }
-
-  const zoneLabel = getNaturalZoneLabel(timezone);
   const athleteName =
     context.contactInfo.studentAthlete.name || context.task.athlete_name || 'Student Athlete';
 
+  if (!timezone) {
+    return athleteName;
+  }
+
+  const zoneLabel = getNaturalZoneLabel(timezone);
   return [`Timezone: ${zoneLabel}`, '', athleteName].join('\n');
 }
 

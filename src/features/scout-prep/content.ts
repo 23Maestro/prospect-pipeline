@@ -704,7 +704,7 @@ function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepConte
   if (values.gradYear === 'Sophomore') {
     return [
       contactDateLine,
-      `For ${sport}, this is the year ${athleteFirst} should move from profile to real coach conversations.`,
+      `For ${sport}, this is the year ${athleteFirst} should move from early interest to real coach conversations.`,
     ];
   }
 
@@ -780,12 +780,44 @@ function blockQuote(lines: string[]): string {
   return lines.map((line, index) => `> ${line}${index < lines.length - 1 ? '  ' : ''}`).join('\n');
 }
 
+function capitalizeSentenceStart(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function isScheduledScoutPrepCall(context?: ScoutPrepContext): boolean {
+  const source = [context?.task.title, context?.task.description]
+    .map((value) => String(value || '').toLowerCase())
+    .join(' ');
+  return /\bscheduled\b|\bappointment\b|\bbooked\b/.test(source);
+}
+
+function scoutingCoordinatorLabel(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
+  const sportFamily = getSportFamily(context?.resolved.sport || values.sport);
+  if (sportFamily === 'football') return 'head football scouting coordinator';
+  if (sportFamily === 'baseball') return 'head baseball scouting coordinator';
+  if (sportFamily === 'basketball') return 'head basketball scouting coordinator';
+  return `head ${sportLabel(values, context).toLowerCase()} scouting coordinator`;
+}
+
+function headScoutLabel(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
+  const sportFamily = getSportFamily(context?.resolved.sport || values.sport);
+  if (sportFamily === 'football') return 'head football scout';
+  if (sportFamily === 'baseball') return 'head baseball scout';
+  if (sportFamily === 'basketball') return 'head basketball scout';
+  return `head ${sportLabel(values, context).toLowerCase()} scout`;
+}
+
 function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const athleteFirst = athleteFirstName(values, context);
   const parent1First =
     firstName(context?.contactInfo.parent1?.name || values.parent1Name) || 'Parent';
   const position = cleanPositions(context?.resolved.positions);
   const collegeSport = collegeSportLabel(values, context);
+  const pronouns = resolveAthletePronouns(values, context);
+  const subjectStart = capitalizeSentenceStart(pronouns.subject);
+  const scheduledCall = isScheduledScoutPrepCall(context);
+  const coordinatorLabel = scoutingCoordinatorLabel(values, context);
+  const meetingScoutLabel = headScoutLabel(values, context);
   const positionPrompt =
     selectSinglePrompt(buildPositionSpecificPrompts(values, context)) ||
     (position
@@ -795,61 +827,140 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
     selectSinglePrompt(buildMeasurablePrompts(values, context)) ||
     'What do coaches usually react to first?';
   const maxPrepsLevelPrompt = buildMaxPrepsLevelPrompt(values, context);
+  const schoolPrompt = context?.resolved.high_school
+    ? `I see ${context.resolved.high_school}. What level did ${athleteFirst} play there: varsity, JV, or freshman ball?`
+    : `What school does ${pronouns.subject} go to?`;
+  const deficitLine =
+    selectStrongestDeficitLines(values, context)[0] ||
+    `The gap is making sure the right coaches know who ${pronouns.subject} is before the next film window.`;
+  const greetingSection = scheduledCall
+      ? [
+        '### Greeting / Reason',
+        '',
+        blockQuote([
+          `Hey ${parent1First}, this is Coach Singleton, the ${coordinatorLabel} at Prospect ID.`,
+          `I’m glad we got connected about ${athleteFirst}.`,
+          'Before I pull everything together, let me get a quick picture of where things stand.',
+        ]),
+      ].join('\n')
+    : [
+        '### Greeting / Reason',
+        '',
+        blockQuote([
+          `Hey, this is Coach Singleton. Is this ${parent1First}?`,
+          `Hey ${parent1First}. This is Coach Singleton, the ${coordinatorLabel} at Prospect ID.`,
+          `I was reaching out. ${athleteFirst} sent us a recruiting application. Were you aware of this?`,
+          'Let me give you a little bit of background.',
+          `${subjectStart} sent us a recruiting application with height, weight, grades.`,
+          `Really, the conversation was ${pronouns.subject} wants a little bit of help getting direct contact with college coaches.`,
+          `Are you okay with ${pronouns.object} taking steps to reach out to coaches and get ${pronouns.possessive} name out?`,
+          `Safe to say ${pronouns.subject}’s pretty serious about playing in college?`,
+        ]),
+      ].join('\n');
 
   return [
+    greetingSection,
     [
-      '### Greeting / Reason',
+      '### Prospect ID Frame',
       '',
       blockQuote([
-        `Hi ${parent1First}, I’m Jerami Singleton with Prospect ID. How are you today?`,
-        `I’m following up on ${athleteFirst}. ${athleteFirst} made a profile to connect with college coaches and is showing clear interest in playing ${collegeSport}. Did ${athleteFirst} mention this to you, or is this kind of a blindside?`,
-      ]),
-      '',
-      '**If Unaware, Say:**',
-      blockQuote([
-        'No problem, let me take a few steps back.',
-        'Prospect ID is a recruiting platform where student-athletes can create an online recruiting resume to help streamline getting connected with college coaches.',
-        `We ONLY work with what we call our Top 500: the athletes we choose to work with in each grad year and sport. Some athletes do not make the cut, whether it is grades, character, talent, or fit, so this call is really to see if ${athleteFirst} belongs in that group.`,
+        'What we do at Prospect ID is we introduce certain athletes directly to college coaches.',
+        'We send them recruits.',
+        'We only work with 500 students per grad year, so we’re strict about academics and what the talent level matches up with.',
+        'I’m not looking to blow smoke. If he’s good enough and has the grades, great, let’s get moving. If not, we’ve got to focus on the places we’ve got to improve.',
+        `Really, I’m reaching out to find out what ${pronouns.possessive} academics are like, what ${pronouns.subject}’s like on the field, and if this works for us and works for you guys.`,
       ]),
     ].join('\n'),
     [
-      '### Confirm Interest',
+      '### Academics / Major',
       '',
-      `- Are you comfortable with ${athleteFirst} taking steps to get in front of college coaches?`,
-    ].join('\n'),
-    [
-      '### Scout Notes',
+      blockQuote([
+        'Let\'s start with grades. What\'s his GPA?',
+        'How do you feel about that?',
+        `Is that kind of normal for ${pronouns.object}, or is ${pronouns.subject} trying to pull it up?`,
+        `Is ${pronouns.subject} doing ${pronouns.possessive} best and this is where ${pronouns.subject} is, or are there distractions we need to understand?`,
+        `You and I both know ${pronouns.subject} needs to bring those up. I won’t harp on the grades.`,
+        'We typically want to get to about that 3.0 just so certain coaches don’t write you off.',
+        `What about a major? Has ${pronouns.subject} talked about what ${pronouns.subject} wants to study in college?`,
+        `At ${pronouns.possessive} age, it’s perfectly normal not to know exactly what major ${pronouns.subject} wants. On average, majors change twice when you get to college.`,
+      ]),
       '',
       `- ${buildAcademicScoutNote(values, context)}`,
-      maxPrepsLevelPrompt ? `- ${maxPrepsLevelPrompt}` : null,
-      `- ${positionPrompt}`,
-      `- ${measurablePrompt}`,
-    ]
-      .filter((line) => line !== null)
-      .join('\n'),
+    ].join('\n'),
     [
-      '### Summary / Deficit',
+      '### Athletic Proof',
+      '',
+      blockQuote([
+        'Now, what about the fun stuff?',
+        schoolPrompt,
+        'Is he playing JV, varsity, freshman ball? What level is he at?',
+        maxPrepsLevelPrompt || '',
+        'Did he move up during the regular season or was it just for playoffs?',
+        'How many freshmen did they pull up? Did they pull up a lot of guys from JV or was it just a select few?',
+        'Him getting any sort of time on varsity when they only pulled up a select few, that’s a great sign.',
+        'Let’s go through some of his metrics.',
+        positionPrompt,
+        measurablePrompt,
+        'You said speed. What are we talking 40 time?',
+        'What does the weight room look like for him? What’s his max bench and max squat?',
+        'If it changes week to week, we’ll keep things updated as we go.',
+        `What about height and weight? Does ${pronouns.subject} prefer offense or defense?`,
+        'Did he get any sort of film from the spring game, special teams, JV, or varsity?',
+        'The reason I was asking about varsity film is college coaches want three things: transcripts, character references, and varsity film.',
+        'No stress if you don’t have it yet. We’ll readdress film and figure out what we need for Coach.',
+        'Does he do any other sports?',
+      ].filter(Boolean)),
+      '',
+      '- Praise only after the parent gives proof: varsity time, verified speed, size, strength, film, or coach plan.',
+    ].join('\n'),
+    [
+      '### Recruiting / Timeline',
+      '',
+      blockQuote([
+        `So, some varsity time, tracking toward varsity next year if not a varsity starter. What’s going on recruiting-wise for ${athleteFirst}?`,
+        'Do we have offers, phone calls, emails, questionnaires, or anything from coaches?',
+        'For the most part, we’re just getting started. This is the first step.',
+        'Have you been through recruiting before? Is this the first time for you guys as a family?',
+        'It can be overwhelming. It can feel like you don’t even know where to start.',
+        'Back in my day, this was junior year, maybe senior year.',
+        `Now, if ${pronouns.subject} has gotten varsity time already, this isn’t too early. We’re heading into probably the most important summer to get things set up.`,
+        `When varsity film comes in, instead of playing catch-up, coaches already know who ${pronouns.subject} is.`,
+      ]),
+    ].join('\n'),
+    [
+      '### Summary / Set Meeting',
       '',
       buildSummaryLine(values, context),
       '',
-      ...selectStrongestDeficitLines(values, context).map((line) => `- ${line}`),
-    ].join('\n'),
-    [
-      '### Set Meeting',
+      `- Deficit: ${deficitLine}`,
+      '- Recap only what they gave you: varsity time, 40, strength numbers, size, film, other sports, or staff plan.',
       '',
       blockQuote([
-        `So the next step is getting you, ${athleteFirst}, and mom on a Zoom with one of our scouts so they can evaluate where ${athleteFirst} is and what needs to happen next.`,
-        'They have [Day/Time Option 1] or [Day/Time Option 2]. Which works better?',
+        `What I’m going to do is look at my ${meetingScoutLabel}’s schedule.`,
+        'I’m going to find a time for us to do about 40 or 45 minutes over Zoom and screen share.',
+        'I’ll have my Head Scout walk you through some of our Top 500 athletes.',
+        'We’ll make sure when you leave that meeting, whether you end up working with us, we delay for a bit, or you don’t work with us at all, you guys have a game plan going forward.',
+        'For that meeting, I do want mom on that call as well. What’s her first name?',
+        `Does mom help pick a school, pay for school, or get ${pronouns.object} out to school?`,
+        'Coach has [Exact Slot 1] or [Exact Slot 2]. Which one works best?',
       ]),
+      '',
+      '- If they need to check: What is her schedule Friday? When is she usually up and moving on Saturday?',
+      '- Keep narrowing with exact times; do not give broad availability.',
     ].join('\n'),
     [
-      '### Meeting Requirements',
+      '### Meeting Prep',
       '',
-      `Real quick, ${parent1First}: Coach is holding that time specifically for your family, so I want to make sure everyone can be there and ready so it’s a productive meeting for everybody.`,
-      '',
-      '- Full family on the call: parent, athlete, and mom/dad.',
-      '- Be on a laptop/tablet or have Zoom ready.',
-      '- Scout will call your cell with the Zoom code.',
+      blockQuote([
+        `I’m going to have you meet with Coach [Name], my ${meetingScoutLabel}.`,
+        'I’m going to email you his bio, background on us as an organization, and my social media.',
+        'If you can, in the next couple of days, get me some film so I can pass that on to Coach.',
+        'If we don’t have it before the meeting, don’t stress. We’ll go over how to get film and what we want compiled.',
+        'I’ll give you his contact card. Save it. That way when he calls you at [time], answer his call.',
+        'He’ll give you his Zoom code.',
+        'You won’t have his Zoom code before the meeting, so don’t stress about that.',
+        'Read through what I send over, write down questions, and bring them with you to the meeting.',
+      ]),
     ].join('\n'),
   ];
 }

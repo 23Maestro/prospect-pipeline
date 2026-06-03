@@ -3,6 +3,9 @@ import { getActiveOperator } from './owners';
 
 export type BookedMeetingSourceEvent = {
   event_id?: string | number | null;
+  athlete_id?: string | number | null;
+  athlete_main_id?: string | number | null;
+  athlete_name?: string | null;
   title?: string | null;
   assigned_owner?: string | null;
   start?: string | null;
@@ -43,7 +46,9 @@ export type WeeklyOperatorMeetingSetCandidate = {
     dateTimeLabel: string | null;
   };
   evidence: {
-    source: 'weekly_booked_meetings_with_operator_confirmation_task';
+    source:
+      | 'weekly_booked_meetings_with_operator_confirmation_task'
+      | 'weekly_booked_meetings_without_confirmation_task';
     operatorName: string;
     matchedTaskAthleteName: string;
     cleanedMeetingTitle: string;
@@ -189,28 +194,31 @@ export function buildWeeklyOperatorMeetingSetCandidates(args: {
     const matchingTaskEntry = Array.from(tasksByAthlete.entries()).find(([athleteKey]) =>
       cleanedTitleKey.includes(athleteKey),
     );
-    if (!matchingTaskEntry) continue;
+    const task = matchingTaskEntry
+      ? pickOperatorConfirmationTask(matchingTaskEntry[1], operatorName)
+      : null;
 
-    const [athleteKey, matchingTasks] = matchingTaskEntry;
-    const task = pickOperatorConfirmationTask(matchingTasks, operatorName);
-    if (!task) continue;
-
-    const athleteId = normalizeText(task.athlete_id) || normalizeText(task.contact_id);
-    const athleteMainId = normalizeText(task.athlete_main_id);
-    const matchedTaskAthleteName = normalizeText(task.athlete_name);
-    if (!athleteId || !athleteMainId || !matchedTaskAthleteName) continue;
+    const athleteId =
+      normalizeText(task?.athlete_id) ||
+      normalizeText(task?.contact_id) ||
+      normalizeText(event.athlete_id);
+    const athleteMainId = normalizeText(task?.athlete_main_id) || normalizeText(event.athlete_main_id);
+    const matchedTaskAthleteName = normalizeText(task?.athlete_name) || normalizeText(event.athlete_name);
+    if (!athleteId || !athleteMainId) continue;
 
     candidates.push({
       athleteKey: buildAthleteKey(athleteId, athleteMainId),
       athleteId,
       athleteMainId,
-      athleteName: resolveAthleteDisplayName(matchedTaskAthleteName, title),
-      taskId: normalizeText(task.task_id),
-      taskTitle: normalizeText(task.title) || null,
-      taskDescription: normalizeText(task.description) || null,
-      taskDueDate: normalizeText(task.due_date) || null,
-      taskCompletionDate: normalizeText(task.completion_date) || null,
-      taskAssignedOwner: normalizeText(task.assigned_owner) || null,
+      athleteName: matchedTaskAthleteName
+        ? resolveAthleteDisplayName(matchedTaskAthleteName, title)
+        : cleanMeetingResolveTitle(title),
+      taskId: normalizeText(task?.task_id),
+      taskTitle: normalizeText(task?.title) || null,
+      taskDescription: normalizeText(task?.description) || null,
+      taskDueDate: normalizeText(task?.due_date) || null,
+      taskCompletionDate: normalizeText(task?.completion_date) || null,
+      taskAssignedOwner: normalizeText(task?.assigned_owner) || null,
       bookedMeeting: {
         eventId,
         title,
@@ -220,14 +228,18 @@ export function buildWeeklyOperatorMeetingSetCandidates(args: {
         dateTimeLabel: normalizeText(event.date_time_label) || null,
       },
       evidence: {
-        source: 'weekly_booked_meetings_with_operator_confirmation_task',
+        source: task
+          ? 'weekly_booked_meetings_with_operator_confirmation_task'
+          : 'weekly_booked_meetings_without_confirmation_task',
         operatorName,
         matchedTaskAthleteName,
         cleanedMeetingTitle: cleanedTitle,
       },
     });
 
-    tasksByAthlete.delete(athleteKey);
+    if (matchingTaskEntry) {
+      tasksByAthlete.delete(matchingTaskEntry[0]);
+    }
   }
 
   return candidates.sort((left, right) => {

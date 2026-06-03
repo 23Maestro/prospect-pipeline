@@ -27,6 +27,7 @@ test('prospect-call-tracker and prospect-mobile static assets are served from Ve
     'public/prospect-mobile/app.js',
     'public/prospect-mobile/styles.css',
     'public/prospect-mobile/set-meetings-utils.mjs',
+    'public/tim-mobile/app.js',
     'public/prospect-id-shield.svg',
     'public/prospect-mobile/assets/prospect-pipeline.png',
   ].forEach((path) => assert.equal(existsSync(join(appRoot, path)), true, path));
@@ -42,6 +43,7 @@ test('server-only env names do not appear in browser-facing files', () => {
     'PROSPECT_API_TOKEN',
     'INTERNAL_API_SECRET',
     'CALL_TRACKER_SYNC_SECRET',
+    'TIM_LITE_ACCESS_TOKEN',
   ];
   const clientFiles = walk(join(appRoot, 'app'))
     .filter((path) => path.endsWith('page.tsx'))
@@ -168,6 +170,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/migrations/20260515223000_set_meeting_confirmation_cache_table.sql',
     'supabase/migrations/20260515224500_public_set_meeting_confirmation_cache_read.sql',
     'supabase/tests/reminders-set-meeting-cache-columns.test.mjs',
+    'supabase/migrations/20260603100000_tim_lite_mobile_cache.sql',
+    'supabase/tests/tim-lite-mobile-cache-contract.test.mjs',
     'supabase/migrations/20260514090000_athlete_contact_cache.sql',
     'supabase/migrations/20260520090000_athlete_contact_cache_search_timezone.sql',
     'supabase/tests/athlete-contact-cache-contract.test.mjs',
@@ -664,6 +668,38 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.doesNotMatch(appText, /\/api\/set-meetings/);
   assert.equal(setMeetingsRouteExists, false);
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);
+});
+
+test('Tim Lite mobile is a stripped Set Meetings and Search surface over Tim cache tables', () => {
+  const appText = readFileSync(join(appRoot, 'public/tim-mobile/app.js'), 'utf8');
+  const pageText = readFileSync(join(appRoot, 'app/tim-mobile/page.tsx'), 'utf8');
+
+  assert.match(pageText, /Tim Lite/);
+  assert.match(pageText, /\/tim-mobile\/app\.js/);
+  assert.match(pageText, /data-route="\/set-meetings"/);
+  assert.match(pageText, /data-route="\/search"/);
+  assert.doesNotMatch(pageText, /Scout Schedules/);
+  assert.doesNotMatch(pageText, /Call Tracker/);
+  assert.doesNotMatch(pageText, /NEXT_PUBLIC_SUPABASE_URL/);
+  assert.doesNotMatch(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+  assert.match(appText, /\/api\/tim-lite\/meetings/);
+  assert.match(appText, /\/api\/tim-lite\/search/);
+  assert.match(appText, /x-tim-lite-token/);
+  assert.match(appText, /timLiteAccessToken/);
+  assert.match(appText, /Open Tim Lite from the private link again/);
+  assert.match(appText, /event\.confirmation_1_message/);
+  assert.match(appText, /event\.confirmation_2_message/);
+  assert.match(appText, /data-confirmation-modal/);
+  assert.match(appText, /sms:\$\{smsPhone\}\?body=/);
+  assert.doesNotMatch(appText, /window\.__TIM_LITE_SUPABASE__/);
+  assert.doesNotMatch(appText, /\/rest\/v1\/tim_lite_confirmation_cache/);
+  assert.doesNotMatch(appText, /\/rest\/v1\/rpc\/search_tim_lite_confirmation_cache/);
+  assert.doesNotMatch(appText, /operator_key=eq\.tim_risner/);
+  assert.doesNotMatch(appText, /\/api\/set-meeting-confirmation-prefix/);
+  assert.doesNotMatch(appText, /\/api\/post-meeting-outcome/);
+  assert.doesNotMatch(appText, /scriptable:\/\//);
+  assert.doesNotMatch(appText, /\/scout-schedules/);
+  assert.doesNotMatch(appText, /call-tracker/i);
 });
 
 test('prospect mobile exposes set meetings, scout schedules, and contact search tabs', () => {

@@ -9,7 +9,7 @@ import {
   resolveBookedMeetingTitleOutcome,
 } from './booked-meeting-source';
 
-test('weekly operator meeting-set candidates require booked meeting plus matching operator confirmation task', () => {
+test('weekly operator meeting-set candidates render booked meetings and enrich matching operator confirmation task', () => {
   const candidates = buildWeeklyOperatorMeetingSetCandidates({
     operatorName: 'Jerami Singleton',
     bookedMeetings: [
@@ -23,6 +23,9 @@ test('weekly operator meeting-set candidates require booked meeting plus matchin
       },
       {
         event_id: '614000',
+        athlete_id: '1491001',
+        athlete_main_id: '952901',
+        athlete_name: 'Other Athlete',
         title: 'Other Athlete Football 2026 PA',
         assigned_owner: 'Ryan Lietz',
         start: '2026-05-04T21:00:00-04:00',
@@ -52,13 +55,16 @@ test('weekly operator meeting-set candidates require booked meeting plus matchin
     ],
   });
 
-  assert.equal(candidates.length, 1);
+  assert.equal(candidates.length, 2);
   assert.equal(candidates[0].athleteKey, '1491000:952900');
   assert.equal(candidates[0].athleteName, 'Bryce Hill');
   assert.equal(candidates[0].taskAssignedOwner, 'Jerami Singleton');
   assert.equal(candidates[0].bookedMeeting.eventId, '613999');
   assert.equal(candidates[0].bookedMeeting.assignedOwner, 'Ryan Lietz');
   assert.equal(candidates[0].evidence.source, 'weekly_booked_meetings_with_operator_confirmation_task');
+  assert.equal(candidates[1].athleteName, 'Other Athlete');
+  assert.equal(candidates[1].taskId, '');
+  assert.equal(candidates[1].evidence.source, 'weekly_booked_meetings_without_confirmation_task');
 });
 
 test('booked meeting title helper keeps active confirmation prefixes countable', () => {

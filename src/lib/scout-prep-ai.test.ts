@@ -16,6 +16,12 @@ test('resolveTimezone: falls back to state timezone when city missing or unknown
   assert.equal(resolveTimezone(undefined, 'MN'), 'America/Chicago');
 });
 
+test('resolveTimezone: handles adjacent DC and Quebec locations', () => {
+  assert.equal(resolveTimezone('Washington', 'DC'), 'America/New_York');
+  assert.equal(resolveTimezone('Montreal', 'Quebec'), 'America/Toronto');
+  assert.equal(resolveTimezone('Quebec', 'Canada'), 'America/Toronto');
+});
+
 test('getNaturalZoneLabel: returns natural labels without DST abbreviations', () => {
   assert.equal(getNaturalZoneLabel('America/Chicago'), 'Central');
   assert.equal(getNaturalZoneLabel('America/Phoenix'), 'Mountain');

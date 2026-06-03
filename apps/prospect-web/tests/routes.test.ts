@@ -6,6 +6,8 @@ import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
 import { POST as postMeetingOutcomePOST } from '../app/api/post-meeting-outcome/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
+import { GET as timLiteMeetingsGET } from '../app/api/tim-lite/meetings/route';
+import { POST as timLiteSearchPOST } from '../app/api/tim-lite/search/route';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -24,6 +26,116 @@ test('/api/health returns expected adapter status', async () => {
     adapter: 'vercel-nextjs',
     surfaces: ['prospect-mobile', 'prospect-call-tracker'],
   });
+});
+
+test('/api/tim-lite/meetings rejects missing access token when configured', async () => {
+  process.env.TIM_LITE_ACCESS_TOKEN = 'private-link-token';
+
+  const response = await timLiteMeetingsGET(new Request('https://example.test/api/tim-lite/meetings'));
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'Tim Lite access is required',
+    code: 'tim_lite_access_required',
+  });
+});
+
+test('/api/tim-lite/meetings reads Tim cache through server Supabase', async () => {
+  process.env.TIM_LITE_ACCESS_TOKEN = 'private-link-token';
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json([
+      {
+        appointment_id: 'appt_1',
+        athlete_id: '149',
+        athlete_main_id: '953',
+        athlete_name: 'Jamiya Turner',
+        recipient_name: 'Parent One',
+        recipient_phone: '5551112222',
+        relationship_label: 'Parent 1',
+        head_scout_name: 'Scout Name',
+        meeting_starts_at: '2026-06-03T18:00:00Z',
+        meeting_ends_at: '2026-06-03T19:00:00Z',
+        meeting_timezone: 'America/New_York',
+        meeting_timezone_label: 'ET',
+        message_body: 'Confirmation one',
+        admin_url: 'https://admin.example/athletes/953',
+        task_url: 'https://admin.example/tasks/1',
+        kind: 'confirmation_1',
+        generated_at: '2026-06-03T12:00:00Z',
+      },
+      {
+        appointment_id: 'appt_1',
+        athlete_name: 'Jamiya Turner',
+        message_body: 'Confirmation two',
+        kind: 'confirmation_2',
+      },
+    ]);
+  };
+
+  const response = await timLiteMeetingsGET(
+    new Request('https://example.test/api/tim-lite/meetings?week=this', {
+      headers: { 'x-tim-lite-token': 'private-link-token' },
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.count, 1);
+  assert.equal(payload.events[0].appointment_id, 'appt_1');
+  assert.equal(payload.events[0].confirmation_1_message, 'Confirmation one');
+  assert.equal(payload.events[0].confirmation_2_message, 'Confirmation two');
+  assert.match(calls[0].url, /\/rest\/v1\/tim_lite_confirmation_cache\?/);
+  assert.match(calls[0].url, /operator_key=eq\.tim_risner/);
+  assert.match(calls[0].url, /kind=in\.\(confirmation_1,confirmation_2\)/);
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer service-role');
+});
+
+test('/api/tim-lite/search calls Tim cache RPC through server Supabase', async () => {
+  process.env.TIM_LITE_ACCESS_TOKEN = 'private-link-token';
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json([
+      {
+        appointment_id: 'appt_1',
+        athlete_name: 'Jamiya Turner',
+        recipient_name: 'Parent One',
+        recipient_phone: '5551112222',
+        match_kind: 'contact',
+      },
+    ]);
+  };
+
+  const response = await timLiteSearchPOST(
+    new Request('https://example.test/api/tim-lite/search', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-tim-lite-token': 'private-link-token',
+      },
+      body: JSON.stringify({ query: 'Turner' }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.count, 1);
+  assert.equal(payload.results[0].athlete_name, 'Jamiya Turner');
+  assert.equal(calls[0].url, 'https://supabase.example/rest/v1/rpc/search_tim_lite_confirmation_cache');
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { input_query: 'Turner' });
+  const headers = calls[0].init?.headers as Record<string, string>;
+  assert.equal(headers.authorization, 'Bearer service-role');
 });
 
 test('/api/call-tracker-sync GET passes through old FastAPI sync status shape', async () => {

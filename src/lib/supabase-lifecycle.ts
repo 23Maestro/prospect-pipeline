@@ -311,6 +311,21 @@ export type ActiveMeetingFallbackRow = {
   updatedAt: string;
 };
 
+export type WeeklyScheduledAppointmentRow = {
+  id: string;
+  athleteId: string;
+  athleteMainId: string;
+  athleteName: string | null;
+  headScout: string | null;
+  startsAt: string;
+  endsAt: string | null;
+  status: string | null;
+  sourceEventId: string | null;
+  meetingTitle: string | null;
+  meetingTimezone: string | null;
+  meetingTimezoneLabel: string | null;
+};
+
 function isEndedAppointmentTimestamp(value?: string | null, now = Date.now()): boolean {
   const timestamp = value ? Date.parse(value) : Number.NaN;
   return !Number.isNaN(timestamp) && timestamp <= now;
@@ -1550,4 +1565,82 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
   }
 
   return results;
+}
+
+export async function getWeeklyScheduledAppointmentRows(args: {
+  weekStart: string;
+  weekEnd: string;
+  operatorOwnerKey?: string | null;
+}): Promise<WeeklyScheduledAppointmentRow[]> {
+  const config = getSupabasePersistenceConfig();
+  if (!config) {
+    return [];
+  }
+
+  const operatorOwnerKey = normalizeValue(args.operatorOwnerKey);
+  const query = [
+    'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner_key,meeting_timezone,meeting_timezone_label,source_payload',
+    `starts_at=gte.${encodeURIComponent(args.weekStart)}`,
+    `starts_at=lt.${encodeURIComponent(args.weekEnd)}`,
+    'status=in.(scheduled,rescheduled)',
+    ...(operatorOwnerKey ? [`operator_owner_key=eq.${encodeURIComponent(operatorOwnerKey)}`] : []),
+    'order=starts_at.asc',
+    'limit=200',
+  ].join('&');
+
+  const appointmentRows = await queryTable<{
+    id: string;
+    athlete_key?: string | null;
+    athlete_id?: string | null;
+    athlete_main_id?: string | null;
+    head_scout?: string | null;
+    starts_at?: string | null;
+    status?: string | null;
+    source_event_id?: string | null;
+    meeting_timezone?: string | null;
+    meeting_timezone_label?: string | null;
+    source_payload?: { meeting_name?: string | null } | null;
+  }>(config, 'appointments', query);
+
+  const athleteKeys = Array.from(
+    new Set(appointmentRows.map((row) => normalizeValue(row.athlete_key)).filter(Boolean)),
+  );
+  const athleteRows = athleteKeys.length
+    ? await queryTable<{ athlete_key: string; athlete_name: string | null }>(
+        config,
+        'athletes',
+        [
+          'select=athlete_key,athlete_name',
+          `athlete_key=in.(${athleteKeys.map((key) => `"${key}"`).join(',')})`,
+          'limit=200',
+        ].join('&'),
+      ).catch(() => [])
+    : [];
+  const athleteNamesByKey = new Map(
+    athleteRows.map((row) => [String(row.athlete_key || '').trim(), normalizeValue(row.athlete_name)]),
+  );
+
+  return appointmentRows
+    .map((row) => {
+      const startsAt = normalizeIsoValue(row.starts_at);
+      if (!startsAt) return null;
+      const athleteKey = normalizeValue(row.athlete_key);
+      return {
+        id: String(row.id || '').trim(),
+        athleteId: String(row.athlete_id || '').trim(),
+        athleteMainId: String(row.athlete_main_id || '').trim(),
+        athleteName: athleteKey ? athleteNamesByKey.get(athleteKey) || null : null,
+        headScout: normalizeValue(row.head_scout),
+        startsAt,
+        endsAt: null,
+        status: normalizeValue(row.status),
+        sourceEventId: normalizeValue(row.source_event_id),
+        meetingTitle: normalizeValue(row.source_payload?.meeting_name),
+        meetingTimezone: normalizeValue(row.meeting_timezone),
+        meetingTimezoneLabel: normalizeValue(row.meeting_timezone_label),
+      } satisfies WeeklyScheduledAppointmentRow;
+    })
+    .filter((row): row is WeeklyScheduledAppointmentRow =>
+      Boolean(row?.id && row.athleteId && row.athleteMainId && row.startsAt),
+    );
 }

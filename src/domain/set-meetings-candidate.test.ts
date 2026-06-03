@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildMeetingDayLabel,
   buildSetMeetingCandidate,
+  buildSetMeetingCandidatesFromAppointments,
   buildSetMeetingCandidatesFromBookedMeetings,
   getMeetingSortValue,
   sortSetMeetingCandidates,
@@ -80,7 +81,7 @@ test('candidate sorting is stable by bucket, meeting start, and athlete name', (
   );
 });
 
-test('weekly booked meeting candidates only materialize active-operator matches', () => {
+test('weekly booked meeting candidates render meeting-set rows even while confirmation task is pending', () => {
   const candidates = buildSetMeetingCandidatesFromBookedMeetings({
     operatorName: 'Jerami Singleton',
     bookedMeetings: [
@@ -94,6 +95,9 @@ test('weekly booked meeting candidates only materialize active-operator matches'
       },
       {
         event_id: 'evt-tim',
+        athlete_id: '789',
+        athlete_main_id: '111',
+        athlete_name: 'Tim Prospect',
         title: 'Tim Prospect Football',
         assigned_owner: 'Ryan Lietz',
         start: '2026-05-02T23:00:00.000Z',
@@ -123,5 +127,36 @@ test('weekly booked meeting candidates only materialize active-operator matches'
     ],
   });
 
-  assert.deepEqual(candidates.map((candidate) => candidate.athleteName), ['Avery Jones']);
+  assert.deepEqual(candidates.map((candidate) => candidate.athleteName), [
+    'Avery Jones',
+    'Tim Prospect',
+  ]);
+  assert.equal(candidates[0].taskId, '9001');
+  assert.equal(candidates[1].taskId, '');
+  assert.equal(candidates[1].currentTask, 'Confirmation Call');
+});
+
+test('weekly appointments are Set Meetings render truth before confirmation task hydration', () => {
+  const candidates = buildSetMeetingCandidatesFromAppointments({
+    operatorName: 'Jerami Singleton',
+    appointments: [
+      {
+        id: '587281',
+        sourceEventId: '587281',
+        athleteId: '1499428',
+        athleteMainId: '954160',
+        athleteName: 'Dorian Bentley',
+        headScout: 'Ryan Lietz',
+        startsAt: '2026-06-04T23:00:00.000Z',
+        meetingTitle: 'Dorian Bentley Football 2028 FL',
+      },
+    ],
+    tasks: [],
+  });
+
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].athleteName, 'Dorian Bentley');
+  assert.equal(candidates[0].taskId, '');
+  assert.equal(candidates[0].bookedMeeting?.event_id, '587281');
+  assert.equal(candidates[0].headScoutName, 'Ryan Lietz');
 });

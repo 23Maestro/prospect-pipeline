@@ -10,6 +10,7 @@ const serverOnlyEnvNames = [
   'PROSPECT_API_TOKEN',
   'INTERNAL_API_SECRET',
   'CALL_TRACKER_SYNC_SECRET',
+  'TIM_LITE_ACCESS_TOKEN',
 ] as const;
 
 let loadedRootEnv = false;

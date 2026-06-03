@@ -10,6 +10,7 @@ import { searchLogger } from './logger';
 const FEATURE = 'scout-prep.ai';
 
 const CITY_STATE_TIMEZONE_OVERRIDES: Record<string, string> = {
+  'QUEBEC|CANADA': 'America/Toronto',
   'LONDON|OH': 'America/New_York',
   'LONDON|OHIO': 'America/New_York',
 };
@@ -31,6 +32,10 @@ const TIMEZONE_BY_STATE: Record<string, string> = {
   CONNECTICUT: 'America/New_York',
   DE: 'America/New_York',
   DELAWARE: 'America/New_York',
+  DC: 'America/New_York',
+  'DISTRICT OF COLUMBIA': 'America/New_York',
+  'WASHINGTON DC': 'America/New_York',
+  'WASHINGTON D C': 'America/New_York',
   FL: 'America/New_York',
   FLORIDA: 'America/New_York',
   GA: 'America/New_York',
@@ -91,6 +96,8 @@ const TIMEZONE_BY_STATE: Record<string, string> = {
   OREGON: 'America/Los_Angeles',
   PA: 'America/New_York',
   PENNSYLVANIA: 'America/New_York',
+  QC: 'America/Toronto',
+  QUEBEC: 'America/Toronto',
   RI: 'America/New_York',
   'RHODE ISLAND': 'America/New_York',
   SC: 'America/New_York',

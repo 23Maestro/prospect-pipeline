@@ -52,6 +52,9 @@ export type OpenMeetingsResponse = {
 
 export type BookedMeetingEvent = {
   event_id: string;
+  athlete_id?: string | number | null;
+  athlete_main_id?: string | number | null;
+  athlete_name?: string | null;
   title: string;
   assigned_owner: string;
   start: string;

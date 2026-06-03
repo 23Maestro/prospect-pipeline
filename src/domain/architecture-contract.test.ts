@@ -223,7 +223,7 @@ test('Post-call reschedule template hydration reads appointment truth', () => {
   assert.match(loadTemplate, /source:\s*meetingDetailsSource/);
 });
 
-test('Set Meetings confirmation cache writes resolved appointment timezone', () => {
+test('Set Meetings confirmation send path does not rebuild confirmation cache', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
   const confirmationFlow = headScoutSchedules.slice(
@@ -231,10 +231,33 @@ test('Set Meetings confirmation cache writes resolved appointment timezone', () 
     headScoutSchedules.indexOf('function buildConfirmationTextForm', sendConfirmationStart),
   );
 
-  assert.match(confirmationFlow, /prepared\.resolvedAppointment\.meetingTimezone/);
-  assert.match(confirmationFlow, /meetingTimezone,\s*confirmation1Message/s);
-  assert.match(confirmationFlow, /deleteRows\([\s\S]*?set_meeting_confirmation_cache/);
+  assert.match(confirmationFlow, /readCachedSetMeetingConfirmation/);
+  assert.doesNotMatch(confirmationFlow, /prepareConfirmationFollowUp/);
+  assert.doesNotMatch(confirmationFlow, /buildSetMeetingConfirmationCacheRows/);
+  assert.doesNotMatch(confirmationFlow, /deleteRows\([\s\S]*?set_meeting_confirmation_cache/);
   assert.doesNotMatch(confirmationFlow, /meetingTimezone:\s*['"]America\/New_York['"]/);
+});
+
+test('Set Meetings confirmation send path reads confirmation cache before rebuilding context', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  const cacheReaderStart = headScoutSchedules.indexOf(
+    'async function readCachedSetMeetingConfirmation',
+  );
+  const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
+  const confirmationFlow = headScoutSchedules.slice(
+    sendConfirmationStart,
+    headScoutSchedules.indexOf('function buildConfirmationTextForm', sendConfirmationStart),
+  );
+
+  assert.ok(cacheReaderStart >= 0);
+  assert.match(
+    headScoutSchedules.slice(cacheReaderStart, sendConfirmationStart),
+    /readRows<[\s\S]*set_meeting_confirmation_cache[\s\S]*message_body[\s\S]*recipient_phone/,
+  );
+  assert.match(confirmationFlow, /const cached = await readCachedSetMeetingConfirmation/);
+  assert.doesNotMatch(confirmationFlow, /loadScoutPrepContext\(task\)/);
+  assert.doesNotMatch(confirmationFlow, /Confirmation2SendForm/);
+  assert.match(confirmationFlow, /buildMessagesComposeUrlForRecipients\(cached\.phones, cached\.message\)/);
 });
 
 test('Scout Prep contact context resolves timezone from athlete city and state', () => {
@@ -505,9 +528,9 @@ test('Client message UI verifies direct sends while normal Scout Prep and Set Me
   assert.doesNotMatch(setMeetings, /sendVerifiedClientMessage/);
   assert.match(
     setMeetings,
-    /await open\(buildMessagesComposeUrlForRecipients\(\[selectedContact\.phone\], draftMessage\)\)/,
+    /await open\(buildMessagesComposeUrlForRecipients\(cached\.phones, cached\.message\)\)/,
   );
-  assert.match(setMeetings, /title: composeMode === 'clipboard-fallback' \? 'Template copied' : 'Draft open'/);
+  assert.match(setMeetings, /toast\.message =[\s\S]*'Template copied'[\s\S]*'Draft open'/);
 });
 
 test('Scout Prep home keeps the preferred due-today sorted view as the root state', () => {

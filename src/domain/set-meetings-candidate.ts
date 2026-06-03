@@ -14,6 +14,30 @@ function buildTaskUrl(athleteId: string, athleteMainId: string): string {
   return `${buildAdminUrl(athleteId, athleteMainId)}&tasktab=1`;
 }
 
+function formatAppointmentDateTimeLabel(start?: string | null, end?: string | null): string {
+  const startDate = new Date(String(start || '').trim());
+  if (Number.isNaN(startDate.getTime())) return '';
+  const endDate = new Date(
+    !Number.isNaN(Date.parse(String(end || '').trim()))
+      ? String(end || '').trim()
+      : startDate.getTime() + 60 * 60 * 1000,
+  );
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: '2-digit',
+    day: '2-digit',
+    year: '2-digit',
+    timeZone: 'America/New_York',
+  }).format(startDate);
+  const timeFormatter = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'America/New_York',
+  });
+  return `${dateLabel} ${timeFormatter.format(startDate)} - ${timeFormatter.format(endDate)}`;
+}
+
 export function buildMeetingDayLabel(candidate: Pick<HeadScoutFollowUpCandidate, 'bookedMeeting'>): string {
   const raw = candidate.bookedMeeting?.start || '';
   const parsed = raw ? new Date(raw) : null;
@@ -162,6 +186,43 @@ export function buildSetMeetingCandidatesFromBookedMeetings(args: {
 }): HeadScoutFollowUpCandidate[] {
   return buildWeeklyOperatorMeetingSetCandidates({
     bookedMeetings: args.bookedMeetings,
+    tasks: args.tasks,
+    operatorName: args.operatorName,
+  }).map((candidate) => buildSetMeetingCandidate(candidate));
+}
+
+export type WeeklyAppointmentSetMeetingRow = {
+  id: string;
+  athleteId: string;
+  athleteMainId: string;
+  athleteName?: string | null;
+  headScout?: string | null;
+  startsAt: string;
+  endsAt?: string | null;
+  sourceEventId?: string | null;
+  meetingTitle?: string | null;
+  dateTimeLabel?: string | null;
+};
+
+export function buildSetMeetingCandidatesFromAppointments(args: {
+  appointments: WeeklyAppointmentSetMeetingRow[];
+  tasks: ScoutPortalTask[];
+  operatorName: string;
+}): HeadScoutFollowUpCandidate[] {
+  return buildWeeklyOperatorMeetingSetCandidates({
+    bookedMeetings: args.appointments.map((appointment) => ({
+      event_id: appointment.sourceEventId || appointment.id,
+      athlete_id: appointment.athleteId,
+      athlete_main_id: appointment.athleteMainId,
+      athlete_name: appointment.athleteName || null,
+      title: appointment.meetingTitle || appointment.athleteName || 'Booked Meeting',
+      assigned_owner: appointment.headScout || null,
+      start: appointment.startsAt,
+      end: appointment.endsAt || null,
+      date_time_label:
+        appointment.dateTimeLabel ||
+        formatAppointmentDateTimeLabel(appointment.startsAt, appointment.endsAt),
+    })),
     tasks: args.tasks,
     operatorName: args.operatorName,
   }).map((candidate) => buildSetMeetingCandidate(candidate));
