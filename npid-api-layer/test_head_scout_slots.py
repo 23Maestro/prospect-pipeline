@@ -11,8 +11,10 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     payload = """
     [
       {"id": 1, "start": "2026-04-16T17:00", "end": "2026-04-16T18:00", "user": "Jeffrey Stein", "title": "OPEN", "openslot": "openslot"},
+      {"id": 13, "start": "2026-04-16T17:30", "end": "2026-04-16T18:00", "user": "David Foley", "title": "OPEN", "openslot": "openslot"},
       {"id": 2, "start": "2026-04-16T18:00", "end": "2026-04-16T19:00", "user": "Jeffrey Stein", "title": "(NS) Noise", "openslot": "meetingset"},
       {"id": 3, "start": "2026-04-16T17:30", "end": "2026-04-16T18:00", "user": "Luther Winfield", "title": "OPEN", "openslot": "openslot"},
+      {"id": 14, "start": "2026-04-16T18:30", "end": "2026-04-16T19:00", "user": "Nasir Adderley", "title": "OPEN", "openslot": "openslot"},
       {"id": 7, "start": "16:00", "end": "17:00", "user": "Luther Winfield", "title": "OPEN", "openslot": "openslot", "dow": "[1,3]"},
       {"id": 4, "start": "2026-04-16T16:30", "end": "2026-04-16T17:00", "user": "Luther Winfield", "title": "Follow Up", "openslot": ""},
       {"id": 5, "start": "2026-04-16T19:00", "end": "2026-04-16T20:00", "user": "Ryan Lietz", "title": "OPEN", "openslot": "openslot"},
@@ -34,19 +36,29 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert result["success"] is True
     assert result["timezone_label"] == "EST"
     assert [scout["scout_name"] for scout in result["scouts"]] == [
+        "David Foley",
         "Jeffrey Stein",
         "Luther Winfield",
+        "Nasir Adderley",
         "Ryan Lietz",
         "James Holcomb",
         "Logan Lord",
         "Kenton Manis",
     ]
 
-    jeffrey, luther, ryan, james, logan, kenton = result["scouts"]
+    david, jeffrey, luther, nasir, ryan, james, logan, kenton = result["scouts"]
+    assert david["calendar_owner_id"] == "GI4oO0m9knrHNq1"
+    assert david["meeting_for"] == "1418020"
+    assert david["city"] == "Winona"
+    assert david["state"] == "MN"
     assert jeffrey["calendar_owner_id"] == "OrJsV8nhBouEzKY"
     assert jeffrey["meeting_for"] == "1418529"
     assert luther["calendar_owner_id"] == "bMBrA26OElRUwPs"
     assert luther["meeting_for"] == "370959"
+    assert nasir["calendar_owner_id"] == "Ax8yvuUTdOzVHr7"
+    assert nasir["meeting_for"] == "1462295"
+    assert nasir["city"] == "Dallas"
+    assert nasir["state"] == "TX"
     assert ryan["calendar_owner_id"] == "nhVvYOz8bAaL57c"
     assert ryan["meeting_for"] == "1354049"
     assert james["calendar_owner_id"] == "oDCcn1r7MGERdsb"
@@ -61,16 +73,20 @@ def test_parse_head_scout_slots_response_filters_and_orders_slots():
     assert kenton["meeting_for"] == "1486538"
     assert kenton["city"] == "Prosper"
     assert kenton["state"] == "TX"
+    assert david["slot_count"] == 1
     assert jeffrey["slot_count"] == 1
     assert luther["slot_count"] == 1
+    assert nasir["slot_count"] == 1
     assert ryan["slot_count"] == 1
     assert james["slot_count"] == 0
     assert logan["slot_count"] == 1
     assert kenton["slot_count"] == 1
 
+    assert david["slots"][0]["id"] == "13"
     assert jeffrey["slots"][0]["id"] in {"1", "10", "11"}
     assert jeffrey["slots"][0]["start"] == "2026-04-16T17:00"
     assert luther["slots"][0]["id"] == "3"
+    assert nasir["slots"][0]["id"] == "14"
     assert ryan["slots"][0]["id"] == "5"
     assert logan["slots"][0]["id"] == "6"
     assert kenton["slots"][0]["id"] == "12"
@@ -86,8 +102,10 @@ def test_head_scout_slots_request_preserves_selected_owner_ids_and_fields():
     assert params == [
         ("loginuser", "avdhyXjQ8bFweEf"),
         ("load_from_tasks_backup", ""),
+        ("selectedowner[]", "GI4oO0m9knrHNq1"),
         ("selectedowner[]", "OrJsV8nhBouEzKY"),
         ("selectedowner[]", "bMBrA26OElRUwPs"),
+        ("selectedowner[]", "Ax8yvuUTdOzVHr7"),
         ("selectedowner[]", "nhVvYOz8bAaL57c"),
         ("selectedowner[]", "oDCcn1r7MGERdsb"),
         ("selectedowner[]", "d9UDl0bRSqQ1owt"),

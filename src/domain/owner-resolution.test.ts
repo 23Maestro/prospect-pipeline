@@ -34,13 +34,32 @@ test('Tim Risner is a known owner profile but not the active operator', () => {
 test('head scout order keeps the visible calendar owners available', () => {
   assert.deepEqual(
     HEAD_SCOUT_ORDER.map((scout) => scout.scout_name),
-    ['Jeffrey Stein', 'Luther Winfield', 'Ryan Lietz', 'James Holcomb', 'Logan Lord', 'Kenton Manis'],
+    [
+      'David Foley',
+      'Jeffrey Stein',
+      'Luther Winfield',
+      'Nasir Adderley',
+      'Ryan Lietz',
+      'James Holcomb',
+      'Logan Lord',
+      'Kenton Manis',
+    ],
   );
 });
 
 test('new Meeting Set owners resolve from live legacy ids', () => {
+  const david = resolveOwnerByName('David Foley');
   const logan = resolveOwnerByName('Logan Lord');
   const kenton = resolveOwnerByName('Kenton Manis');
+  const nasir = resolveOwnerByName('Nasir Adderly');
+
+  assert.equal(david?.ownerKey, 'david_foley');
+  assert.equal(david?.assignedToLegacyUserId, '1418020');
+  assert.equal(david?.meetingForLegacyUserId, '1418020');
+  assert.equal(david?.calendarOwnerId, 'GI4oO0m9knrHNq1');
+  assert.equal(david?.city, 'Winona');
+  assert.equal(david?.state, 'MN');
+  assert.equal(david?.roles.includes('head_scout'), true);
 
   assert.equal(logan?.ownerKey, 'logan_lord');
   assert.equal(logan?.assignedToLegacyUserId, '2254');
@@ -58,6 +77,15 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(kenton?.city, 'Prosper');
   assert.equal(kenton?.state, 'TX');
   assert.equal(kenton?.roles.includes('head_scout'), true);
+
+  assert.equal(nasir?.ownerKey, 'nasir_adderley');
+  assert.equal(nasir?.personName, 'Nasir Adderley');
+  assert.equal(nasir?.assignedToLegacyUserId, '1462295');
+  assert.equal(nasir?.meetingForLegacyUserId, '1462295');
+  assert.equal(nasir?.calendarOwnerId, 'Ax8yvuUTdOzVHr7');
+  assert.equal(nasir?.city, 'Dallas');
+  assert.equal(nasir?.state, 'TX');
+  assert.equal(nasir?.roles.includes('head_scout'), true);
 });
 
 test('Jerami task assignment allows active-operator materialization even when booked owner is Ryan', () => {

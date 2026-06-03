@@ -215,8 +215,16 @@ test('Meeting Set submit keeps Laravel payload clean while Supabase carries Rayc
   );
 });
 
-test('Meeting Set submit supports Logan and Kenton through the same head scout fields', () => {
+test('Meeting Set submit supports new head scouts through the same head scout fields', () => {
   const owners = [
+    {
+      name: 'David Foley',
+      id: '1418020',
+      calendarOwnerId: 'GI4oO0m9knrHNq1',
+      openEventId: '624181',
+      startTime: '16:30',
+      startsAt: '2026-05-11T16:30:00-04:00',
+    },
     {
       name: 'Logan Lord',
       id: '2254',
@@ -232,6 +240,14 @@ test('Meeting Set submit supports Logan and Kenton through the same head scout f
       openEventId: '624048',
       startTime: '14:30',
       startsAt: '2026-05-17T14:30:00-04:00',
+    },
+    {
+      name: 'Nasir Adderley',
+      id: '1462295',
+      calendarOwnerId: 'Ax8yvuUTdOzVHr7',
+      openEventId: '624049',
+      startTime: '18:00',
+      startsAt: '2026-05-17T18:00:00-04:00',
     },
   ];
 

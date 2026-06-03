@@ -28,6 +28,13 @@ def test_shared_owner_config_loads_active_operator_and_tim_profile():
 def test_head_scout_config_preserves_legacy_shape_and_order():
     assert get_head_scout_config_for_legacy() == [
         {
+            "scout_name": "David Foley",
+            "city": "Winona",
+            "state": "MN",
+            "calendar_owner_id": "GI4oO0m9knrHNq1",
+            "meeting_for": "1418020",
+        },
+        {
             "scout_name": "Jeffrey Stein",
             "city": "Wexford",
             "state": "PA",
@@ -40,6 +47,13 @@ def test_head_scout_config_preserves_legacy_shape_and_order():
             "state": "SC",
             "calendar_owner_id": "bMBrA26OElRUwPs",
             "meeting_for": "370959",
+        },
+        {
+            "scout_name": "Nasir Adderley",
+            "city": "Dallas",
+            "state": "TX",
+            "calendar_owner_id": "Ax8yvuUTdOzVHr7",
+            "meeting_for": "1462295",
         },
         {
             "scout_name": "Ryan Lietz",
@@ -74,8 +88,10 @@ def test_head_scout_config_preserves_legacy_shape_and_order():
 
 def test_head_scout_calendar_owner_ids_match_current_legacy_behavior():
     assert get_head_scout_calendar_owner_ids() == [
+        "GI4oO0m9knrHNq1",
         "OrJsV8nhBouEzKY",
         "bMBrA26OElRUwPs",
+        "Ax8yvuUTdOzVHr7",
         "nhVvYOz8bAaL57c",
         "oDCcn1r7MGERdsb",
         "d9UDl0bRSqQ1owt",

@@ -23,6 +23,18 @@
       "dashboardTrackingEligible": false
     },
     {
+      "ownerKey": "david_foley",
+      "personName": "David Foley",
+      "aliases": ["David Foley", "David"],
+      "assignedToLegacyUserId": "1418020",
+      "meetingForLegacyUserId": "1418020",
+      "calendarOwnerId": "GI4oO0m9knrHNq1",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Winona",
+      "state": "MN"
+    },
+    {
       "ownerKey": "jeffrey_stein",
       "personName": "Jeffrey Stein",
       "aliases": ["Jeffrey Stein", "Jeffrey"],
@@ -45,6 +57,18 @@
       "dashboardTrackingEligible": false,
       "city": "Columbia",
       "state": "SC"
+    },
+    {
+      "ownerKey": "nasir_adderley",
+      "personName": "Nasir Adderley",
+      "aliases": ["Nasir Adderley", "Nasir Adderly", "Nasir"],
+      "assignedToLegacyUserId": "1462295",
+      "meetingForLegacyUserId": "1462295",
+      "calendarOwnerId": "Ax8yvuUTdOzVHr7",
+      "roles": ["head_scout", "calendar_owner", "appointment_setter"],
+      "dashboardTrackingEligible": false,
+      "city": "Dallas",
+      "state": "TX"
     },
     {
       "ownerKey": "ryan_lietz",

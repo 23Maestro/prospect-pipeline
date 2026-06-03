@@ -6510,10 +6510,14 @@ function ScoutPrepBatchSetupForm({
       : tasks;
   const gradYearOptions = getScoutPrepBatchGradYearOptions(setupOptionTasks);
   const taskTitleOptions = getScoutPrepBatchTaskTitleOptions(setupOptionTasks);
+  const [selectedNoInterestFilter, setSelectedNoInterestFilter] = useState<'gradYear' | 'taskTitle'>(
+    gradYearOptions.length ? 'gradYear' : 'taskTitle',
+  );
   const [selectedGradYear, setSelectedGradYear] = useState(gradYearOptions[0] || '');
   const [selectedTaskTitle, setSelectedTaskTitle] = useState(taskTitleOptions[0] || '');
 
   useEffect(() => {
+    setSelectedNoInterestFilter(gradYearOptions.length ? 'gradYear' : 'taskTitle');
     setSelectedGradYear(gradYearOptions[0] || '');
     setSelectedTaskTitle(taskTitleOptions[0] || '');
   }, [operationId, gradYearOptions.join('|'), taskTitleOptions.join('|')]);
@@ -6530,9 +6534,15 @@ function ScoutPrepBatchSetupForm({
               onConfirm({
                 operationId,
                 gradYear:
-                  operation.kind === 'sales_stage_task_completion' ? selectedGradYear : null,
+                  operation.kind === 'sales_stage_task_completion' &&
+                  selectedNoInterestFilter === 'gradYear'
+                    ? selectedGradYear
+                    : null,
                 taskTitle:
-                  operation.kind === 'sales_stage_task_completion' ? selectedTaskTitle : null,
+                  operation.kind === 'sales_stage_task_completion' &&
+                  selectedNoInterestFilter === 'taskTitle'
+                    ? selectedTaskTitle
+                    : null,
               })
             }
           />
@@ -6550,6 +6560,22 @@ function ScoutPrepBatchSetupForm({
         ))}
       </Form.Dropdown>
       {operation.kind === 'sales_stage_task_completion' ? (
+        <Form.Dropdown
+          id="noInterestFilter"
+          title="Filter"
+          value={selectedNoInterestFilter}
+          onChange={(value) => setSelectedNoInterestFilter(value as 'gradYear' | 'taskTitle')}
+        >
+          {gradYearOptions.length ? (
+            <Form.Dropdown.Item title="Grad Year" value="gradYear" />
+          ) : null}
+          {taskTitleOptions.length ? (
+            <Form.Dropdown.Item title="Task" value="taskTitle" />
+          ) : null}
+        </Form.Dropdown>
+      ) : null}
+      {operation.kind === 'sales_stage_task_completion' &&
+      selectedNoInterestFilter === 'gradYear' ? (
         gradYearOptions.length ? (
           <Form.Dropdown
             id="gradYear"
@@ -6565,7 +6591,8 @@ function ScoutPrepBatchSetupForm({
           <Form.Description text="No grad years found in the current Scout Prep task list." />
         )
       ) : null}
-      {operation.kind === 'sales_stage_task_completion' ? (
+      {operation.kind === 'sales_stage_task_completion' &&
+      selectedNoInterestFilter === 'taskTitle' ? (
         taskTitleOptions.length ? (
           <Form.Dropdown
             id="taskTitle"

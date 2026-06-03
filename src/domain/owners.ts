@@ -11,8 +11,10 @@ export type OwnerRole =
 export type OwnerKey =
   | 'jerami_singleton'
   | 'tim_risner'
+  | 'david_foley'
   | 'jeffrey_stein'
   | 'luther_winfield'
+  | 'nasir_adderley'
   | 'ryan_lietz'
   | 'james_holcomb'
   | 'logan_lord'

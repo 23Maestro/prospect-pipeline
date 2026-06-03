@@ -54,11 +54,27 @@ test('booked meeting lookup window is wider than the due-date month', () => {
 test('head scout order includes canonical calendar owner and meeting-for ids', () => {
   const jeffrey = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Jeffrey Stein');
   const luther = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Luther Winfield');
+  const david = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'David Foley');
+  const nasir = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Nasir Adderley');
   const ryan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Ryan Lietz');
   const james = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'James Holcomb');
   const logan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Logan Lord');
   const kenton = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Kenton Manis');
 
+  assert.deepEqual(
+    {
+      city: david?.city,
+      state: david?.state,
+      calendar_owner_id: david?.calendar_owner_id,
+      meeting_for: david?.meeting_for,
+    },
+    {
+      city: 'Winona',
+      state: 'MN',
+      calendar_owner_id: 'GI4oO0m9knrHNq1',
+      meeting_for: '1418020',
+    },
+  );
   assert.deepEqual(
     {
       calendar_owner_id: jeffrey?.calendar_owner_id,
@@ -72,6 +88,20 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: luther?.meeting_for,
     },
     { calendar_owner_id: 'bMBrA26OElRUwPs', meeting_for: '370959' },
+  );
+  assert.deepEqual(
+    {
+      city: nasir?.city,
+      state: nasir?.state,
+      calendar_owner_id: nasir?.calendar_owner_id,
+      meeting_for: nasir?.meeting_for,
+    },
+    {
+      city: 'Dallas',
+      state: 'TX',
+      calendar_owner_id: 'Ax8yvuUTdOzVHr7',
+      meeting_for: '1462295',
+    },
   );
   assert.deepEqual(
     {

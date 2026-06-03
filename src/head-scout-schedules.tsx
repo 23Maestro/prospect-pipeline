@@ -169,6 +169,8 @@ async function showLoadingToast(title: string, message?: string) {
 
 function getHeadScoutCountColor(scoutName: string): string | Color {
   switch (scoutName) {
+    case 'David Foley':
+      return '#4B08A1';
     case 'Jeffrey Stein':
       return '#6E2242';
     case 'Luther Winfield':
@@ -181,6 +183,8 @@ function getHeadScoutCountColor(scoutName: string): string | Color {
       return '#600';
     case 'Kenton Manis':
       return '#05A915';
+    case 'Nasir Adderley':
+      return '#0080C6';
     default:
       return Color.SecondaryText;
   }
