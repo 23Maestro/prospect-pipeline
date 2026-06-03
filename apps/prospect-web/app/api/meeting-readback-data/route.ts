@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { classifyPostMeetingOutcomeStage } from '../../../../../src/domain/sales-stage-contract';
 import { getServerEnv } from '../../../lib/env';
 
 export const dynamic = 'force-dynamic';
@@ -67,6 +66,17 @@ const appointmentFields = [
 ];
 
 const athleteFields = ['athlete_key', 'athlete_name'];
+
+// Keep these labels aligned with src/domain/sales-stage-contract; Prospect Web cannot bundle that package from the Next app root.
+const POST_MEETING_OUTCOME_BY_STAGE = new Map<string, string>([
+  ['Actual Meeting - Follow Up', 'follow_up'],
+  ['Actual Meeting - Close Lost', 'closed_lost'],
+  ['Actual Meeting - Close Won', 'closed_won'],
+  ['Meeting Result - Res. Pending', 'resolution_pending'],
+  ['Meeting Result - Rescheduled', 'rescheduled'],
+  ['Meeting Result - Canceled', 'canceled'],
+  ['Meeting Result - No Show', 'no_show'],
+]);
 
 type JsonRow = Record<string, any>;
 
@@ -244,7 +254,7 @@ function postMeetingOutcomeFromKey(value: unknown) {
 
 function postMeetingOutcomeFromStage(value: unknown) {
   const stage = String(value || '').trim();
-  return stage ? classifyPostMeetingOutcomeStage(stage)?.outcome || null : null;
+  return stage ? POST_MEETING_OUTCOME_BY_STAGE.get(stage) || null : null;
 }
 
 function salesStageFromStatusReason(value: unknown) {
