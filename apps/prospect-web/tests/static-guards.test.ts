@@ -652,6 +652,11 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /data-confirmation-prefix="\(ACF\*2\)"/);
   assert.match(appText, /data-confirmation-modal/);
   assert.match(appText, /showConfirmationModal/);
+  assert.match(appText, /recipient_contacts/);
+  assert.match(appText, /data-contact-copy-modal/);
+  assert.match(appText, /showContactCopyModal/);
+  assert.match(appText, /copyContactPhoneFromModal/);
+  assert.match(appText, /formatPhoneLabel\(contact\.phone\)/);
   assert.match(appText, /ID Cards/);
   assert.match(appText, /class="link-button admin-button" type="button" data-admin-modal/);
   assert.match(appText, /clipboardIconSvg/);
@@ -668,6 +673,7 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.doesNotMatch(appText, /\/api\/set-meetings/);
   assert.equal(setMeetingsRouteExists, false);
   assert.doesNotMatch(appText, /function buildConfirmationText\(/);
+  assert.doesNotMatch(appText, /const copyText = `\$\{title\} - \$\{owner\} - \$\{time\}`/);
 });
 
 test('Tim Lite mobile is a stripped Set Meetings and Search surface over Tim cache tables', () => {
@@ -785,6 +791,10 @@ test('prospect mobile scout schedules use short cache and local scout search', (
   assert.match(appText, /state\.scheduleScoutSearch/);
   assert.match(appText, /filterScheduleGroupsByScout/);
   assert.match(appText, /normalizeScoutSearchText/);
+  assert.match(appText, /formatSlotCopyLabel\(slot\.start\)/);
+  assert.match(appText, /formatSlotCopyLabelForTimezone\(slot\.start, timezone, timezoneLabel\)/);
+  assert.match(appText, / at /);
+  assert.doesNotMatch(appText, /const copyText = `\$\{scout\.scout_name\}: \$\{dateLabel\}, \$\{range\}`/);
   assert.match(stylesText, /\.scout-search-button \{[\s\S]*background: #0070f3;/);
   assert.match(stylesText, /\.contact-search-button \{[\s\S]*background: #b45309;/);
 });

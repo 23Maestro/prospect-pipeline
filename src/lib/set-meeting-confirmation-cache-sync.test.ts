@@ -65,6 +65,18 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep caches both confirmation
   );
   assert.equal(rows[0].kind, 'confirmation_1');
   assert.equal(rows[1].kind, 'confirmation_2');
+  assert.deepEqual(rows[0].payload_json.recipient_contacts, [
+    {
+      label: 'Parent 1',
+      name: 'Tiffany Jones',
+      phone: '615-555-1212',
+    },
+    {
+      label: 'Student Athlete',
+      name: 'Avery Jones',
+      phone: '615-555-3000',
+    },
+  ]);
   assert.match(rows[0].message_body, /Prospect ID Zoom Meeting/);
   assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
 });

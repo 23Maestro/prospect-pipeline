@@ -210,7 +210,6 @@ async function renderSetMeetings(payload, renderContext) {
         formatCachedMeetingLabel(event.current_meeting_label || event.start, event.meeting_timezone) ||
         event.date_time_label ||
         formatMeetingTime(event.start, event.end);
-      const copyText = `${title} - ${owner} - ${time}`;
       const firstConfirmation = String(event.confirmation_1_message || '');
       const secondConfirmation = String(event.confirmation_2_message || '');
       const recipientPhone = event.confirmation_recipient?.phone || '';
@@ -240,7 +239,7 @@ async function renderSetMeetings(payload, renderContext) {
                 ? `<button class="link-button admin-button" type="button" data-admin-modal data-admin-url="${escapeAttribute(event.admin_url || '')}" data-event-id="${escapeAttribute(eventId)}" data-event-date="${escapeAttribute(eventDate)}" data-athlete-id="${escapeAttribute(event.athlete_id || '')}" data-athlete-main-id="${escapeAttribute(event.athlete_main_id || '')}" data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}">Admin</button>`
                 : ''
             }
-            <button class="copy-button" type="button" data-copy="${escapeAttribute(copyText)}">Copy</button>
+            <button class="copy-button" type="button" data-contact-copy-modal data-athlete-name="${escapeAttribute(title)}" data-head-scout="${escapeAttribute(owner)}" data-recipient-contacts="${escapeAttribute(JSON.stringify(event.recipient_contacts || []))}">Copy</button>
           </div>
         </article>
       `;
@@ -252,6 +251,7 @@ async function renderSetMeetings(payload, renderContext) {
   bindSmsButtons();
   bindConfirmationModalButtons();
   bindAdminModalButtons();
+  bindContactCopyModalButtons();
   return events.length;
 }
 
@@ -266,7 +266,7 @@ async function fetchSetMeetingsFromSupabase(week) {
 
   const weekWindow = buildMeetingWeekWindow(week);
   const query = [
-    'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone,message_body,admin_url,task_url,kind',
+    'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone,message_body,admin_url,task_url,kind,payload_json',
     'status=eq.cached',
     'source=eq.set_meetings_confirmation',
     'kind=in.(confirmation_1,confirmation_2)',
@@ -294,9 +294,17 @@ async function fetchSetMeetingsFromSupabase(week) {
   for (const row of Array.isArray(rows) ? rows : []) {
     const key = String(row.appointment_id || '').trim();
     if (!key) continue;
-    const existing = grouped.get(key) || { base: row };
+    const existing = grouped.get(key) || { base: row, recipient_contacts: [] };
     if (row.kind === 'confirmation_1') existing.c1 = row.message_body || '';
     if (row.kind === 'confirmation_2') existing.c2 = row.message_body || '';
+    for (const contact of buildConfirmationCacheContactOptions(row)) {
+      if (
+        contact.phone &&
+        !existing.recipient_contacts.some((candidate) => normalizePhoneForSms(candidate.phone) === normalizePhoneForSms(contact.phone))
+      ) {
+        existing.recipient_contacts.push(contact);
+      }
+    }
     grouped.set(key, existing);
   }
 
@@ -315,6 +323,7 @@ async function fetchSetMeetingsFromSupabase(week) {
         name: entry.base.recipient_name,
         phone: entry.base.recipient_phone,
       },
+      recipient_contacts: entry.recipient_contacts,
       confirmation_1_message: entry.c1 || '',
       confirmation_2_message: entry.c2 || '',
       admin_url: entry.base.admin_url,
@@ -332,6 +341,29 @@ async function fetchSetMeetingsFromSupabase(week) {
     count: events.length,
     events,
   };
+}
+
+function buildConfirmationCacheContactOptions(row) {
+  const payload = row?.payload_json && typeof row.payload_json === 'object' ? row.payload_json : {};
+  const payloadContacts = Array.isArray(payload.recipient_contacts)
+    ? payload.recipient_contacts
+        .map((contact) => ({
+          name: String(contact?.name || '').trim(),
+          relationship: String(contact?.label || contact?.relationship || '').trim(),
+          phone: String(contact?.phone || '').trim(),
+        }))
+        .filter((contact) => contact.phone)
+    : [];
+  if (payloadContacts.length) return payloadContacts;
+
+  const phone = String(row?.recipient_phone || payload.recipient_phone || '').trim();
+  const name = String(row?.recipient_name || payload.recipient_name || '').trim();
+  const relationship = String(payload.relationship_label || payload.relationship || '').trim();
+  return [{
+    name: name || relationship || 'Contact',
+    relationship,
+    phone,
+  }];
 }
 
 async function renderContactSearch(_payload, renderContext) {
@@ -382,7 +414,7 @@ async function renderScoutSchedules(payload, renderContext) {
         .map((slot) => {
           const dateLabel = formatSlotDate(slot.start);
           const range = formatSlotRange(slot.start, slot.end);
-          const copyText = `${scout.scout_name}: ${dateLabel}, ${range}`;
+          const copyText = formatSlotCopyLabel(slot.start);
           return `
             <article class="row">
               <div class="row-header">
@@ -543,7 +575,7 @@ function buildScheduleGroupsHtml(groups, timezone, timezoneLabel) {
         .map((slot) => {
           const dateLabel = formatSlotDateForTimezone(slot.start, timezone);
           const range = formatSlotRangeForTimezone(slot.start, slot.end, timezone, timezoneLabel);
-          const copyText = `${scout.scout_name}: ${dateLabel}, ${range}`;
+          const copyText = formatSlotCopyLabelForTimezone(slot.start, timezone, timezoneLabel);
           return `
             <article class="row">
               <div class="row-header">
@@ -955,6 +987,12 @@ function bindConfirmationModalButtons() {
   });
 }
 
+function bindContactCopyModalButtons() {
+  document.querySelectorAll('[data-contact-copy-modal]').forEach((button) => {
+    button.addEventListener('click', () => showContactCopyModal(button));
+  });
+}
+
 function bindAdminModalButtons() {
   document.querySelectorAll('[data-admin-modal]').forEach((button) => {
     button.addEventListener('click', () => showAdminModal(button));
@@ -1009,6 +1047,77 @@ function showConfirmationModal(button) {
   document.body.classList.add('modal-open');
   document.body.appendChild(modal);
   modal.querySelector('[data-sms-body]')?.focus();
+}
+
+function showContactCopyModal(button) {
+  closeContactCopyModal();
+
+  const athleteName = button.getAttribute('data-athlete-name') || 'Meeting';
+  const headScout = button.getAttribute('data-head-scout') || '';
+  const contacts = parseRecipientContacts(button.getAttribute('data-recipient-contacts') || '[]');
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-contact-copy-action-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-label="Contact number options">
+      <div class="modal-header">
+        <h2 class="modal-title">${escapeHtml(athleteName)}</h2>
+        <p class="modal-subtitle">${escapeHtml(headScout)}</p>
+      </div>
+      <div class="modal-actions">
+        ${
+          contacts.length
+            ? contacts.map((contact) => {
+                const label = contact.relationship || contact.name || 'Contact';
+                const formattedPhone = formatPhoneLabel(contact.phone);
+                const copyValue = formattedPhone || contact.phone;
+                return `<button class="modal-button" type="button" data-contact-phone-copy="${escapeAttribute(copyValue)}">${escapeHtml(label)} - ${escapeHtml(copyValue)}</button>`;
+              }).join('')
+            : '<button class="modal-button secondary" type="button" disabled>No cached contacts</button>'
+        }
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeContactCopyModal();
+  });
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeContactCopyModal);
+  modal.querySelectorAll('[data-contact-phone-copy]').forEach((copyButton) => {
+    copyButton.addEventListener('click', async () => {
+      await copyContactPhoneFromModal(copyButton);
+    });
+  });
+
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+  modal.querySelector('[data-contact-phone-copy]')?.focus();
+}
+
+function parseRecipientContacts(value) {
+  try {
+    const parsed = JSON.parse(value || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((contact) => ({
+        name: String(contact?.name || '').trim(),
+        relationship: String(contact?.relationship || '').trim(),
+        phone: String(contact?.phone || '').trim(),
+      }))
+      .filter((contact) => contact.phone);
+  } catch {
+    return [];
+  }
+}
+
+async function copyContactPhoneFromModal(button) {
+  const phone = button.getAttribute('data-contact-phone-copy') || '';
+  if (!phone) return;
+  await navigator.clipboard.writeText(phone);
+  closeContactCopyModal();
+  setStatus('Copied');
 }
 
 function showAdminModal(button) {
@@ -1102,10 +1211,16 @@ function closeConfirmationModal() {
   document.body.classList.remove('modal-open');
 }
 
+function closeContactCopyModal() {
+  document.querySelector('[data-contact-copy-action-modal]')?.remove();
+  document.body.classList.remove('modal-open');
+}
+
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeAdminModal();
     closeConfirmationModal();
+    closeContactCopyModal();
   }
 });
 
@@ -1323,6 +1438,21 @@ function formatSlotRange(start, end) {
   return `${formatter.format(startDate)} - ${formatter.format(endDate)} Eastern`;
 }
 
+function formatSlotCopyLabel(start) {
+  const date = parseEasternLocal(start);
+  if (!date) return 'Unknown time';
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+  return `${dateLabel} at ${timeLabel} ET`;
+}
+
 function formatSlotDateForTimezone(value, timezone) {
   const date = parseEasternSlotInstant(value);
   if (!date) return formatSlotDate(value);
@@ -1344,6 +1474,31 @@ function formatSlotRangeForTimezone(start, end, timezone, timezoneLabel) {
     minute: '2-digit',
   });
   return `${formatter.format(startDate)} - ${formatter.format(endDate)} ${timezoneLabel || 'Eastern'}`;
+}
+
+function formatSlotCopyLabelForTimezone(start, timezone, timezoneLabel) {
+  const date = parseEasternSlotInstant(start);
+  if (!date) return formatSlotCopyLabel(start);
+  const dateLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone || 'America/New_York',
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+  const timeLabel = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone || 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(date);
+  return `${dateLabel} at ${timeLabel} ${timezoneLabelForCopy(timezoneLabel)}`;
+}
+
+function timezoneLabelForCopy(value) {
+  const key = normalizeSearchText(value);
+  if (/\bcentral\b|\bct\b|\bcst\b/.test(key)) return 'CT';
+  if (/\bmountain\b|\bmt\b|\bmst\b/.test(key)) return 'MT';
+  if (/\bpacific\b|\bpt\b|\bpst\b/.test(key)) return 'PT';
+  return 'ET';
 }
 
 function formatMeetingTime(start, end) {

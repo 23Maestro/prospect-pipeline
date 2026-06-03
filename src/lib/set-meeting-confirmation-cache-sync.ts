@@ -3,7 +3,10 @@ import {
   buildConfirmationMessage,
   type ConfirmationFollowUpVariant,
 } from './scout-follow-up-templates';
-import { getMeetingReminderRecipient } from '../domain/scout-contact-selection';
+import {
+  getMeetingReminderRecipient,
+  getProspectContactShortcutCandidates,
+} from '../domain/scout-contact-selection';
 import { getGreetingForLocalTime } from '../domain/outreach-time-wording';
 import { buildSetMeetingConfirmationCacheRows } from '../domain/set-meeting-confirmation-cache';
 import {
@@ -229,6 +232,11 @@ export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
   const reminderRecipient = getMeetingReminderRecipient(args.context);
   const recipientPhone = reminderRecipient?.phones[0] || '';
   const recipientName = reminderRecipient?.recipientNames[0] || '';
+  const recipientContacts = getProspectContactShortcutCandidates(args.context).map((contact) => ({
+    label: contact.label,
+    name: contact.name,
+    phone: contact.phone,
+  }));
   const headScoutName =
     clean(args.meetingSet.headScout) ||
     clean(args.meetingSet.bookedMeetingAssignedOwner) ||
@@ -277,6 +285,7 @@ export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
     athleteName: args.athleteName,
     recipientName,
     recipientPhone,
+    recipientContacts,
     headScoutName,
     meetingStartsAt: meetingDate.toISOString(),
     meetingTimezone,

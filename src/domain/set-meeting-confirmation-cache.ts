@@ -5,6 +5,11 @@ export type BuildSetMeetingConfirmationCacheRowsInput = {
   athleteName: string;
   recipientName: string;
   recipientPhone: string;
+  recipientContacts?: Array<{
+    label: string;
+    name: string;
+    phone: string;
+  }>;
   headScoutName: string;
   meetingStartsAt: string | null;
   meetingTimezone: string;
@@ -77,6 +82,13 @@ function buildRow(
       athlete_name: input.athleteName,
       recipient_name: input.recipientName,
       recipient_phone: input.recipientPhone,
+      recipient_contacts: input.recipientContacts || [
+        {
+          label: 'Contact',
+          name: input.recipientName,
+          phone: input.recipientPhone,
+        },
+      ],
       head_scout_name: input.headScoutName,
       meeting_starts_at: input.meetingStartsAt || null,
       meeting_duration_minutes: meetingDurationMinutes,
