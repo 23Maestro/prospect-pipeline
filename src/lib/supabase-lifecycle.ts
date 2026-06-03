@@ -16,6 +16,8 @@ import { buildOwnerProofPayload } from '../domain/owner-proof-payload';
 import {
   buildCallActivityFact,
   buildCallLogFactFromCallActivityFact,
+  buildCallLogFactFromMeetingSetFact,
+  buildMeetingSetFact,
 } from '../domain/call-tracker-facts';
 import { resolveOwnerByName } from '../domain/owners';
 import {
@@ -79,6 +81,7 @@ type PipelineStateSnapshot = {
 type LifecycleWriteArgs = {
   athlete: PipelineActor;
   eventType: string;
+  dedupeKey?: string | null;
   payload?: Record<string, unknown>;
   appointment?: AppointmentSnapshot | null;
   previousState?: Pick<PipelineStateSnapshot, 'crmStage' | 'taskStatus'> | null;
@@ -751,6 +754,7 @@ function buildLifecycleEventRow(
     athlete_id: actor.athleteId.trim(),
     athlete_main_id: actor.athleteMainId.trim(),
     event_type: args.eventType.trim(),
+    dedupe_key: normalizeValue(args.dedupeKey),
     crm_stage: normalizeValue(args.state.crmStage),
     task_status: normalizeValue(args.state.taskStatus),
     payload_json: {
@@ -1123,6 +1127,8 @@ export async function lifecycleSalesStage(
 
 export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ enabled: boolean }> {
   const appointmentId = buildAppointmentId(args);
+  const recordedAt = new Date().toISOString();
+  const dedupeKey = `meeting_set:${buildAthleteKey(args.athleteId, args.athleteMainId)}:${appointmentId}`;
   const existingPayload = args.payload || {};
   const meetingSetTaskOwner =
     normalizeValue(existingPayload.task_assigned_owner as string | undefined) ||
@@ -1140,22 +1146,26 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
         taskTitle: args.currentTaskTitle,
         taskAssignedOwner: meetingSetTaskOwner,
         dueAt: args.taskDueDate,
-        occurredAt: args.startsAt || args.taskDueDate,
+        occurredAt: recordedAt,
         appointmentId,
         payload: existingPayload,
       }).payload
     : existingPayload;
-  return writeLifecycle({
+  const lifecyclePayload = {
+    meeting_timezone: normalizeValue(args.meetingTimezone),
+    legacy_assigned_to: normalizeValue(args.legacyAssignedTo),
+    meeting_name: normalizeValue(args.meetingName),
+    task_due_date: normalizeIsoValue(args.taskDueDate),
+    starts_at: normalizeIsoValue(args.startsAt),
+    ...mutationPayload,
+    occurred_at: recordedAt,
+    occurred_at_source: 'scout_prep_action.recordMeetingSet',
+  };
+  const result = await writeLifecycle({
     athlete: args,
     eventType: 'meeting_set',
-    payload: {
-      meeting_timezone: normalizeValue(args.meetingTimezone),
-      legacy_assigned_to: normalizeValue(args.legacyAssignedTo),
-      meeting_name: normalizeValue(args.meetingName),
-      task_due_date: normalizeIsoValue(args.taskDueDate),
-      starts_at: normalizeIsoValue(args.startsAt),
-      ...mutationPayload,
-    },
+    dedupeKey,
+    payload: lifecyclePayload,
     appointment: {
       appointmentId,
       sourceEventId: args.sourceEventId || args.appointmentId,
@@ -1187,6 +1197,25 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
       currentAppointmentId: appointmentId,
     },
   });
+  if (!result.enabled) return result;
+
+  const config = getSupabasePersistenceConfig();
+  if (!config) return result;
+
+  const factRow = buildMeetingSetFact({
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    crmStage: args.crmStage,
+    taskStatus: args.taskStatus,
+    payload: lifecyclePayload,
+    createdAt: recordedAt,
+  });
+  await request(config, 'call_log', {
+    rows: [buildCallLogFactFromMeetingSetFact(factRow)],
+    onConflict: 'dedupe_key',
+  });
+
+  return result;
 }
 
 export async function recordConfirmationQueued(

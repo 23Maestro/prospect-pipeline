@@ -891,3 +891,26 @@ export async function sendClientMessage(args: {
     }
   }
 }
+
+export async function sendVerifiedClientMessage(args: {
+  address: string;
+  text: string;
+  serviceName: 'iMessage' | 'SMS';
+}): Promise<ClientMessageSendVerification> {
+  const sentAfterMs = Date.now();
+  const result = await sendClientMessage(args);
+  if (result !== 'Success') {
+    throw new Error(result);
+  }
+
+  const verification = await verifyRecentClientMessageSend({
+    address: args.address,
+    text: args.text,
+    sentAfterMs,
+    serviceName: args.serviceName,
+  });
+  if (!verification.ok) {
+    throw new Error(verification.error || 'Messages send verification failed.');
+  }
+  return verification;
+}

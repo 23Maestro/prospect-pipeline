@@ -33,9 +33,10 @@ import {
   type ClientInboxChat,
   type ClientThreadMessage,
   getClientThreadMessages,
-  sendClientMessage,
+  sendVerifiedClientMessage,
   useClientInboxChats,
 } from './lib/client-message-sandbox';
+import { completeScoutPrepTaskAfterVoicemail } from './lib/scout-prep';
 import {
   buildClientReplyThemeReviewSnapshot,
   buildClientReplyThemeThreadMarkdown,
@@ -108,33 +109,133 @@ function getMessagesUrl(
   return `sms://open?addresses=${addresses}${encodedBody}`;
 }
 
-function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
+type ClientMessageContactOption = {
+  id: string;
+  name: string;
+  label: string;
+  phone: string;
+};
+
+function buildClientMessageContactOptions(chat: ClientInboxChat): ClientMessageContactOption[] {
+  const contacts: ClientMessageContactOption[] = [];
+  const seenPhones = new Set<string>();
+  const addContact = (contact: ClientMessageContactOption) => {
+    const phone = String(contact.phone || '').replace(/\D/g, '').trim();
+    if (!phone || seenPhones.has(phone)) return;
+    seenPhones.add(phone);
+    contacts.push({ ...contact, phone });
+  };
+
+  for (const contact of chat.clientMatch.associatedClients || []) {
+    addContact({
+      id: contact.id,
+      label: contact.label,
+      name: contact.name,
+      phone: contact.phone,
+    });
+  }
+
+  for (const [index, phone] of chat.matchedPhones.entries()) {
+    addContact({
+      id: `matched:${index}:${phone}`,
+      label: 'Matched client',
+      name: chat.displayName,
+      phone,
+    });
+  }
+
+  if (!chat.is_group) {
+    addContact({
+      id: `thread:${chat.chat_identifier}`,
+      label: 'Thread',
+      name: chat.displayName,
+      phone: chat.chat_identifier,
+    });
+  }
+
+  return contacts;
+}
+
+async function completeClientMessageTaskIfAvailable(chat: ClientInboxChat): Promise<string | null> {
+  const athleteId = String(chat.clientMatch.contactId || '').trim();
+  const athleteMainId = String(chat.clientMatch.athleteMainId || '').trim();
+  const taskTitle = String(
+    chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus || '',
+  ).trim();
+  if (!athleteId || !athleteMainId || !taskTitle) {
+    return null;
+  }
+
+  const result = await completeScoutPrepTaskAfterVoicemail({
+    athleteId,
+    athleteMainId,
+    athleteName: chat.clientMatch.athleteName || chat.displayName,
+    contactTask: athleteId,
+    crmStage: chat.clientMatch.crmStage || null,
+    taskTitle,
+    description: taskTitle,
+  });
+
+  return result.task_id ? `Task #${result.task_id}` : 'Task completed';
+}
+
+function ClientMessageSendForm({
+  chat,
+  initialMessage = '',
+  title = 'Send Follow-Up',
+  onSent,
+}: {
+  chat: ClientInboxChat;
+  initialMessage?: string;
+  title?: string;
+  onSent?: () => void;
+}) {
   const { pop } = useNavigation();
+  const contactOptions = buildClientMessageContactOptions(chat);
+  const [contactId, setContactId] = useState(contactOptions[0]?.id || '');
   const { itemProps, handleSubmit } = useForm<{ message: string }>({
     initialValues: {
-      message: '',
+      message: initialMessage,
     },
     async onSubmit(values) {
-      await openMessagesServiceClientInbox({
-        chatIdentifier: chat.chat_identifier,
-        draftMessage: values.message,
-        openThread: false,
+      const selectedContact =
+        contactOptions.find((contact) => contact.id === contactId) || contactOptions[0];
+      if (!selectedContact?.phone) {
+        throw new Error('No client phone selected.');
+      }
+
+      await sendVerifiedClientMessage({
+        address: selectedContact.phone,
+        text: values.message,
+        serviceName: chat.service_name,
       });
+
+      let completionMessage: string | null = null;
+      let completionError: string | null = null;
+      try {
+        completionMessage = await completeClientMessageTaskIfAvailable(chat);
+      } catch (error) {
+        completionError = error instanceof Error ? error.message : String(error);
+      }
+
       await showToast({
-        style: Toast.Style.Success,
-        title: 'Draft ready',
-        message: chat.displayName,
+        style: completionError ? Toast.Style.Failure : Toast.Style.Success,
+        title: 'Sent',
+        message: completionError
+          ? `Task not completed: ${completionError}`
+          : completionMessage || `${selectedContact.name} • No task completed`,
       });
+      onSent?.();
       pop();
     },
   });
 
   return (
     <Form
-      navigationTitle={`Send Follow-Up • ${chat.displayName}`}
+      navigationTitle={`${title} • ${chat.displayName}`}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Open in Messages Service" icon="💬" onSubmit={handleSubmit} />
+          <Action.SubmitForm title="Send Message" icon="💬" onSubmit={handleSubmit} />
         </ActionPanel>
       }
     >
@@ -142,10 +243,19 @@ function FollowUpDraftForm({ chat }: { chat: ClientInboxChat }) {
         title="Client"
         text={[chat.clientMatch.athleteName, chat.displayName].filter(Boolean).join(' • ')}
       />
+      <Form.Dropdown id="contactId" title="Recipient" value={contactId} onChange={setContactId}>
+        {contactOptions.map((contact) => (
+          <Form.Dropdown.Item
+            key={contact.id}
+            value={contact.id}
+            title={`${contact.label}: ${contact.name} • ${contact.phone}`}
+          />
+        ))}
+      </Form.Dropdown>
       <Form.TextArea
         {...itemProps.message}
-        title="Follow-Up"
-        placeholder="Write the follow-up, then continue in the Messages service UI."
+        title="Message"
+        placeholder="Write the follow-up."
       />
     </Form>
   );
@@ -231,14 +341,11 @@ function ReplyForm({ message, onSent }: { message: ClientThreadMessage; onSent: 
       reply: '',
     },
     async onSubmit(values) {
-      const result = await sendClientMessage({
+      await sendVerifiedClientMessage({
         address: message.sender,
         text: values.reply,
         serviceName: message.service,
       });
-      if (result !== 'Success') {
-        throw new Error(result);
-      }
       onSent();
       pop();
     },
@@ -469,6 +576,7 @@ function ClientReviewRescheduleSlotList({
   chat: ClientInboxChat;
   row: ClientReplyThemeReviewRow;
 }) {
+  const { push } = useNavigation();
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [previousHeadScoutName, setPreviousHeadScoutName] = useState<string | null>(null);
@@ -556,7 +664,7 @@ function ClientReviewRescheduleSlotList({
     };
   }, [chat, reloadKey, row, weekOffset]);
 
-  async function openRescheduleDraft(selectedSlots: ClientReviewRescheduleSlotOption[]) {
+  function openRescheduleMessage(selectedSlots: ClientReviewRescheduleSlotOption[]) {
     const contactName = clientReplyThemeReviewDisplayName(row);
     const body = buildVoicemailFollowUpMessage({
       variant: 'reschedule_1',
@@ -567,16 +675,13 @@ function ClientReviewRescheduleSlotList({
       rescheduleSlots: selectedSlots.map((slot) => slot.messageLabel),
       rescheduleWeekLabel: selectedSlots[0]?.weekLabel || null,
     });
-    await openMessagesServiceClientInbox({
-      chatIdentifier: chat.chat_identifier,
-      draftMessage: body,
-      openThread: false,
-    });
-    await showToast({
-      style: Toast.Style.Success,
-      title: 'Draft ready',
-      message: contactName,
-    });
+    push(
+      <ClientMessageSendForm
+        chat={chat}
+        initialMessage={body}
+        title={`Send Reschedule • ${contactName}`}
+      />,
+    );
   }
 
   const sectionTitle = slot1
@@ -650,7 +755,7 @@ function ClientReviewRescheduleSlotList({
                     <Action
                       title="Use as Slot 2"
                       icon="2️⃣"
-                      onAction={() => void openRescheduleDraft([slot1, slot])}
+                      onAction={() => openRescheduleMessage([slot1, slot])}
                     />
                   )}
                   {slot1 ? (
@@ -1160,7 +1265,7 @@ export default function ClientMessageInboxCommand(
                 <Action.Push
                   title="Send Follow-Up"
                   icon="✈️"
-                  target={<FollowUpDraftForm chat={chat} />}
+                  target={<ClientMessageSendForm chat={chat} onSent={revalidateDirectory} />}
                 />
                 <Action
                   title="Book Cal Follow-Up"

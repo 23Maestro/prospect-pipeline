@@ -195,7 +195,26 @@ export function insertLifecycleEvents(config: SupabasePersistenceConfig, rows: u
 
 export async function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {
   const lifecycleResult = await writeRows(config, 'lifecycle_events', rows, 'dedupe_key', 'ignore-duplicates');
-  const callLogRows = (rows as MeetingSetFactRow[]).map(buildCallLogFactFromMeetingSetFact);
+  const dedupeKeys = Array.from(
+    new Set(
+      (rows as MeetingSetFactRow[])
+        .map((row) => String(row.dedupe_key || '').trim())
+        .filter(Boolean),
+    ),
+  );
+  const existingCallLogRows = dedupeKeys.length
+    ? await readRows<{ dedupe_key: string }>(
+        config,
+        'call_log',
+        `select=dedupe_key&dedupe_key=in.(${dedupeKeys.map(quotePostgrestInValue).join(',')})`,
+      )
+    : [];
+  const existingCallLogDedupeKeys = new Set(
+    existingCallLogRows.map((row) => String(row.dedupe_key || '').trim()).filter(Boolean),
+  );
+  const callLogRows = (rows as MeetingSetFactRow[])
+    .filter((row) => !existingCallLogDedupeKeys.has(String(row.dedupe_key || '').trim()))
+    .map(buildCallLogFactFromMeetingSetFact);
   await writeRows(config, 'call_log', callLogRows, 'dedupe_key');
   return lifecycleResult;
 }

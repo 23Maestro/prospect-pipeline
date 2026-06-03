@@ -5,7 +5,10 @@ import type { ScoutPrepContext } from '../features/scout-prep/types';
 import {
   SCOUT_PREP_BATCH_OPERATIONS,
   buildScoutPrepBatchPreflightRows,
+  collectFailedScoutPrepBatchTaskIdsFromLogText,
   getScoutPrepBatchGradYearOptions,
+  getScoutPrepBatchTaskTitleOptions,
+  isScoutPrepConfirmationCleanupDue,
   resolveBatchVoicemailRecipient,
   runScoutPrepBatchRow,
   sortScoutPrepBatchTasks,
@@ -196,6 +199,69 @@ test('not interested batch uses grad year filter and keeps colder ordering', () 
   );
 });
 
+test('not interested batch can filter by Call Attempt 2 or 3 task title', () => {
+  const tasks = [
+    { task_id: '1', title: 'Call Attempt 2', athlete_name: 'Attempt 2', grad_year: '2031', completion_date: '' },
+    { task_id: '2', title: 'Call Attempt 3', athlete_name: 'Attempt 3', grad_year: '2030', completion_date: '' },
+    { task_id: '3', title: 'Call Attempt 1', athlete_name: 'Attempt 1', grad_year: '2031', completion_date: '' },
+  ];
+
+  assert.deepEqual(getScoutPrepBatchTaskTitleOptions(tasks), ['Call Attempt 3', 'Call Attempt 2']);
+
+  const rows = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.notInterestedStageCompletion,
+    tasks,
+    taskTitle: 'Call Attempt 3',
+    limit: 10,
+  });
+
+  assert.deepEqual(rows.map((row) => row.task.task_id), ['2']);
+});
+
+test('batch preflight filters prior failed attempts by canonical task id', () => {
+  const rows = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.callAttempt3Voicemail,
+    tasks: [
+      { task_id: '1', title: 'Call Attempt 3', athlete_name: 'Failed Before', completion_date: '' },
+      { task_id: '2', title: 'Call Attempt 3', athlete_name: 'Fresh Row', completion_date: '' },
+    ],
+    excludedTaskIds: ['1'],
+    limit: 10,
+  });
+
+  assert.deepEqual(rows.map((row) => row.task.task_id), ['2']);
+});
+
+test('batch log parser tracks latest failed row status by task id', () => {
+  const logText = [
+    '[2026-06-02T20:00:00.000Z] [ERROR] SCOUT_PREP_BATCH_ROW_RUN {',
+    '  "event": "SCOUT_PREP_BATCH_ROW_RUN",',
+    '  "step": "run-row",',
+    '  "status": "failure",',
+    '  "feature": "scout-prep",',
+    '  "error": "Messages send verification failed.",',
+    '  "context": { "taskId": "1", "resultStatus": "failed" }',
+    '}',
+    '[2026-06-02T20:01:00.000Z] [INFO] SCOUT_PREP_BATCH_ROW_RUN {',
+    '  "event": "SCOUT_PREP_BATCH_ROW_RUN",',
+    '  "step": "run-row",',
+    '  "status": "success",',
+    '  "feature": "scout-prep",',
+    '  "context": { "taskId": "1", "resultStatus": "sent" }',
+    '}',
+    '[2026-06-02T20:02:00.000Z] [ERROR] SCOUT_PREP_BATCH_ROW_RUN {',
+    '  "event": "SCOUT_PREP_BATCH_ROW_RUN",',
+    '  "step": "run-row",',
+    '  "status": "failure",',
+    '  "feature": "scout-prep",',
+    '  "error": "Messages send verification failed.",',
+    '  "context": { "taskId": "2", "resultStatus": "failed" }',
+    '}',
+  ].join('\n');
+
+  assert.deepEqual(Array.from(collectFailedScoutPrepBatchTaskIdsFromLogText(logText)), ['2']);
+});
+
 test('not interested batch excludes meeting-set task variants', () => {
   const rows = buildScoutPrepBatchPreflightRows({
     operation: SCOUT_PREP_BATCH_OPERATIONS.notInterestedStageCompletion,
@@ -258,6 +324,55 @@ test('reschedule pending batch targets only incomplete Reschedule Pending tasks'
 test('reschedule pending batch is available as a preset', () => {
   assert.equal(SCOUT_PREP_BATCH_OPERATIONS.reschedulePendingVoicemail.kind, 'reschedule_voicemail');
   assert.equal(SCOUT_PREP_BATCH_OPERATIONS.reschedulePendingVoicemail.variant, 'reschedule_1');
+});
+
+test('confirmation cleanup batch targets only incomplete confirmation call tasks', () => {
+  const rows = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.confirmationCleanup,
+    tasks: [
+      { task_id: '1', title: 'Confirmation Call', athlete_name: 'Eligible', completion_date: '' },
+      { task_id: '2', title: '(SC Move This Task) Confirmation Call', athlete_name: 'Move Task', completion_date: '' },
+      { task_id: '3', title: 'Confirmation Call', athlete_name: 'Completed', completion_date: '05/01/2026' },
+      { task_id: '4', title: 'Call Attempt 3', athlete_name: 'Wrong Task', completion_date: '' },
+    ],
+    limit: 10,
+  });
+
+  assert.deepEqual(
+    Object.fromEntries(rows.map((row) => [row.task.task_id, row.status])),
+    {
+      '1': 'pending',
+      '2': 'pending',
+      '3': 'skipped',
+      '4': 'skipped',
+    },
+  );
+});
+
+test('confirmation cleanup is due only when task due time is before run time', () => {
+  const now = new Date('2026-06-02T16:00:00.000Z');
+
+  assert.equal(
+    isScoutPrepConfirmationCleanupDue({
+      taskDueAt: new Date('2026-05-31T23:00:00.000Z'),
+      now,
+    }),
+    true,
+  );
+  assert.equal(
+    isScoutPrepConfirmationCleanupDue({
+      taskDueAt: new Date('2026-06-02T16:00:00.000Z'),
+      now,
+    }),
+    false,
+  );
+  assert.equal(
+    isScoutPrepConfirmationCleanupDue({
+      taskDueAt: new Date('2026-06-02T17:00:00.000Z'),
+      now,
+    }),
+    false,
+  );
 });
 
 test('batch grad year options sort youngest classes first', () => {

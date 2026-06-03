@@ -142,6 +142,7 @@ test('Pending Clients exposes an operator note action that writes to the Notes t
 
 test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a new message path', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
 
   assert.match(
     headScoutSchedules,
@@ -155,6 +156,8 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
     headScoutSchedules,
     /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/,
   );
+  assert.match(scoutPrep, /const mode = await openMessagesDraftForRecipients\(recipient\.phones, body\)/);
+  assert.doesNotMatch(scoutPrep, /mode: 'raycast-ui'/);
   assert.match(headScoutSchedules, /title="Send"/);
   assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
 });
@@ -476,6 +479,37 @@ test('Scout Prep launches Client Messages against contact-cache matched threads'
   );
 });
 
+test('Client message UI verifies direct sends while normal Scout Prep and Set Meetings use native draft handoff', () => {
+  const clientMessages = readRepoFile('src/client-message-inbox.tsx');
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const setMeetings = readRepoFile('src/head-scout-schedules.tsx');
+  const sandbox = readRepoFile('src/lib/client-message-sandbox.ts');
+
+  assert.match(sandbox, /export async function sendVerifiedClientMessage/);
+  assert.match(sandbox, /const result = await sendClientMessage\(args\)/);
+  assert.match(sandbox, /await verifyRecentClientMessageSend\(/);
+  assert.match(clientMessages, /sendVerifiedClientMessage\(/);
+  assert.match(clientMessages, /completeScoutPrepTaskAfterVoicemail/);
+  assert.match(clientMessages, /async function completeClientMessageTaskIfAvailable/);
+  assert.match(clientMessages, /completionMessage = await completeClientMessageTaskIfAvailable/);
+  assert.match(clientMessages, /No task completed/);
+  assert.match(clientMessages, /function ClientMessageSendForm/);
+  assert.match(clientMessages, /title="Send Message"/);
+  assert.match(clientMessages, /title="Send Follow-Up"[\s\S]*target=\{<ClientMessageSendForm/);
+  assert.match(clientMessages, /title=\{`Send Reschedule/);
+  assert.doesNotMatch(clientMessages, /FollowUpDraftForm/);
+  assert.doesNotMatch(clientMessages, /sendClientMessage\(/);
+  assert.doesNotMatch(setMeetings, /sendClientMessage\(/);
+  assert.match(scoutPrep, /const mode = await openMessagesDraftForRecipients\(recipient\.phones, body\)/);
+  assert.match(scoutPrep, /sendClientMessage\(/);
+  assert.doesNotMatch(setMeetings, /sendVerifiedClientMessage/);
+  assert.match(
+    setMeetings,
+    /await open\(buildMessagesComposeUrlForRecipients\(\[selectedContact\.phone\], draftMessage\)\)/,
+  );
+  assert.match(setMeetings, /title: composeMode === 'clipboard-fallback' \? 'Template copied' : 'Draft open'/);
+});
+
 test('Scout Prep home keeps the preferred due-today sorted view as the root state', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
   const commandStart = scoutPrep.indexOf('export default function ScoutPrepCommand');
@@ -540,7 +574,8 @@ test('Scout Prep mutations refresh the root list without resetting cancelled nav
   assert.doesNotMatch(voicemail, /onReturnToRootList: onComplete/);
 
   assert.match(voicemail, /push\([\s\S]*<RescheduleSlotSelectionList[\s\S]*\n\s*\);\n\s*return;/);
-  assert.match(voicemail, /push\([\s\S]*<SingleRecipientMessageForm[\s\S]*\n\s*\);\n\s*logInfo/);
+  assert.match(voicemail, /const mode = await openMessagesDraftForRecipients\(recipient\.phones, body\)/);
+  assert.doesNotMatch(voicemail, /mode: 'raycast-ui'/);
   assert.doesNotMatch(voicemail, /resetFollowUpFlowOnPop/);
   assert.match(
     taskItem,

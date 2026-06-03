@@ -98,8 +98,8 @@ async def get_scout_portal_tasks(
         endpoint, params = translator.portal_tasks_to_legacy(
             assigned_to=assignedto,
             range_value=range,
-            start=None if searchText else start,
-            length=None if searchText else length,
+            start=start,
+            length=length,
             search_text=searchText,
         )
         response = await session.get(endpoint, params=params)

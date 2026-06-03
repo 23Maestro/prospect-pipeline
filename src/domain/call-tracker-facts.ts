@@ -573,7 +573,15 @@ export function buildMeetingSetFact(args: MeetingSetFactInput): MeetingSetFactRo
     rawTaskStatus: args.taskStatus || null,
     rawEventType: 'lifecycle_meeting_set',
     trackerOutcome: 'meeting_set',
-    occurredAt: args.createdAt || null,
+    occurredAt:
+      normalizeValue(args.payload?.occurred_at as string | number | null | undefined) ||
+      normalizeValue(args.payload?.completed_at as string | number | null | undefined) ||
+      normalizeValue(args.payload?.latest_confirmation_task_due_at as string | number | null | undefined) ||
+      normalizeValue(args.payload?.matched_weekly_task_due_at as string | number | null | undefined) ||
+      normalizeValue(args.payload?.due_at as string | number | null | undefined) ||
+      normalizeValue(args.payload?.task_due_at as string | number | null | undefined) ||
+      args.createdAt ||
+      null,
     source: String(args.payload?.source || 'lifecycle_meeting_set'),
     appointmentId,
     bookedEventTitle: normalizeValue(args.payload?.meeting_name as string | number | null | undefined),
@@ -604,6 +612,14 @@ function numberPayload(payload: Record<string, unknown>, key: string): number | 
   if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function firstIsoPayload(payload: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    const value = normalizeIsoValue(textPayload(payload, key));
+    if (value) return value;
+  }
+  return null;
 }
 
 function callLogClocks(args: {
@@ -757,12 +773,22 @@ export function buildCallLogFactFromCallActivityFact(row: CallActivityFactRow): 
 export function buildCallLogFactFromMeetingSetFact(row: MeetingSetFactRow): CallLogFactRow {
   const payload = row.payload_json || {};
   const appointmentId = textPayload(payload, 'appointment_id') || textPayload(payload, 'booked_event_id');
+  const meetingSetOccurredAt =
+    firstIsoPayload(
+      payload,
+      'occurred_at',
+      'completed_at',
+      'latest_confirmation_task_due_at',
+      'matched_weekly_task_due_at',
+      'due_at',
+      'task_due_at',
+    ) || row.created_at;
   return buildCallLogBase({
     factType: 'meeting_set',
     trackerOutcome: textPayload(payload, 'tracker_outcome') || 'meeting_set',
-    occurredAt: row.created_at,
-    eventAt: row.created_at,
-    reportingAt: row.created_at,
+    occurredAt: meetingSetOccurredAt,
+    eventAt: meetingSetOccurredAt,
+    reportingAt: meetingSetOccurredAt,
     athleteKey: row.athlete_key,
     athleteId: row.athlete_id,
     athleteMainId: row.athlete_main_id,

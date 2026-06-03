@@ -75,7 +75,6 @@ import {
   buildTimeOfDayGreeting,
   getMeetingReminderRecipient,
 } from './lib/scout-prep-contact';
-import { sendClientMessage } from './lib/client-message-sandbox';
 import {
   completeScoutPrepTaskAfterVoicemail,
   fetchScoutPortalTasks,
@@ -314,13 +313,13 @@ function Confirmation2SendForm({
 
     setIsSending(true);
     try {
-      const result = await sendClientMessage({
-        address: selectedContact.phone,
-        text: draftMessage,
-        serviceName: 'iMessage',
-      });
-      if (result !== 'Success') {
-        throw new Error(result);
+      let composeMode: 'draft' | 'clipboard-fallback' = 'draft';
+      try {
+        await open(buildMessagesComposeUrlForRecipients([selectedContact.phone], draftMessage));
+      } catch {
+        await Clipboard.copy(draftMessage);
+        await open(`sms:${selectedContact.phone}`);
+        composeMode = 'clipboard-fallback';
       }
 
       const toast = await showLoadingToast('Completing', 'Confirmation Call');
@@ -329,14 +328,14 @@ function Confirmation2SendForm({
         toast.hide();
       } catch (error) {
         toast.style = Toast.Style.Failure;
-        toast.title = 'Sent, task not completed';
+        toast.title = 'Draft open, task not completed';
         toast.message = error instanceof Error ? error.message : String(error);
         return;
       }
 
       await showToast({
         style: Toast.Style.Success,
-        title: 'Sent',
+        title: composeMode === 'clipboard-fallback' ? 'Template copied' : 'Draft open',
         message: 'Task completed',
       });
       await onComplete();
@@ -345,7 +344,7 @@ function Confirmation2SendForm({
     } catch (error) {
       await showToast({
         style: Toast.Style.Failure,
-        title: 'Send failed',
+        title: 'Open failed',
         message: error instanceof Error ? error.message : String(error),
       });
     } finally {

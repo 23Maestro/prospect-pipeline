@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   buildCallActivityFact,
+  buildCallLogFactFromMeetingSetFact,
   buildCallLogFactFromMeetingOutcomeFact,
   buildMeetingOutcomeFact,
   buildMeetingSetFact,
@@ -420,6 +421,34 @@ test('meeting set facts are keyed by the canonical booked meeting event id', () 
   assert.equal(row.event_type, 'meeting_set');
   assert.equal(row.dedupe_key, 'meeting_set:1491000:952900:613999');
   assert.equal(row.payload_json.appointment_id, '613999');
+});
+
+test('meeting set call_log rows use source occurrence clock instead of lifecycle write time', () => {
+  const row = buildMeetingSetFact({
+    athleteId: '1491000',
+    athleteMainId: '952900',
+    crmStage: 'Meeting Set',
+    taskStatus: 'confirmation_call',
+    payload: {
+      source: 'weekly_booked_meetings_with_operator_confirmation_task',
+      athlete_name: 'Bryce Hill',
+      appointment_id: '613999',
+      meeting_name: 'Bryce Hill Football 2026 PA',
+      occurred_at: '2026-05-01T15:00:00-04:00',
+      starts_at: '2026-05-04T19:00:00-04:00',
+      task_assigned_owner: 'Jerami Singleton',
+      booked_meeting_assigned_owner: 'Ryan Lietz',
+    },
+    createdAt: '2026-06-02T12:07:00-04:00',
+  });
+
+  const callLogRow = buildCallLogFactFromMeetingSetFact(row);
+
+  assert.equal(callLogRow.athlete_name, 'Bryce Hill');
+  assert.equal(callLogRow.occurred_at, '2026-05-01T19:00:00.000Z');
+  assert.equal(callLogRow.event_at, '2026-05-01T19:00:00.000Z');
+  assert.equal(callLogRow.reporting_at, '2026-05-01T19:00:00.000Z');
+  assert.equal(callLogRow.updated_at, '2026-06-02T16:07:00.000Z');
 });
 
 test('meeting set facts reject rows that do not come from a booked calendar event', () => {

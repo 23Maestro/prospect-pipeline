@@ -50,7 +50,8 @@ test('booked meeting sync preserves lifecycle transition time across reruns', ()
 test('booked meeting sync writes materialized owner proof before inserting meeting-set rows', () => {
   assert.match(source, /legacy_compatibility_proof: 'weekly_operator_task_assigned_owner'/);
   assert.match(source, /ownerProof: 'payload\.matched_weekly_task_assigned_owner'/);
-  assert.match(source, /payload,\s*createdAt: updatedAt/s);
+  assert.match(source, /occurred_at: meetingSetOccurredAt/);
+  assert.match(source, /createdAt: meetingSetOccurredAt \|\| updatedAt/);
 });
 
 test('booked meeting sync only writes Meeting Set facts for true Meeting Set stage', () => {

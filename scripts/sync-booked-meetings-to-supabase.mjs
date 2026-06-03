@@ -275,6 +275,10 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
     const dueAt =
       parseLegacyTaskDate(latestIncompleteConfirmationTask?.due_date) ||
       parseLegacyTaskDate(latestConfirmationTask?.due_date);
+    const meetingSetOccurredAt =
+      dueAt ||
+      parseLegacyTaskDate(candidate.taskDueDate) ||
+      normalizeIsoValue(candidate.bookedMeeting.start);
     const updatedAt = new Date().toISOString();
 
     athletesByKey.set(candidate.athleteKey, buildAthleteSnapshot({
@@ -288,10 +292,17 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       sync_run_id: RUN_ID,
       source: candidate.evidence.source,
       operator_name: TRACKED_OPERATOR_NAME,
+      athlete_name: candidate.athleteName,
       booked_event_id: appointmentId,
       appointment_id: appointmentId,
       booked_title: event.title || null,
       meeting_name: event.title || null,
+      occurred_at: meetingSetOccurredAt,
+      occurred_at_source: dueAt
+        ? 'confirmation_task.due_date'
+        : parseLegacyTaskDate(candidate.taskDueDate)
+          ? 'weekly_task.due_date'
+          : 'booked_meeting.start',
       booked_start: startsAt,
       starts_at: startsAt,
       booked_end: normalizeIsoValue(event.end),
@@ -379,7 +390,7 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
         crmStage,
         taskStatus,
         payload,
-        createdAt: updatedAt,
+        createdAt: meetingSetOccurredAt || updatedAt,
       }));
     } else {
       nonMeetingSetSkipped.push({

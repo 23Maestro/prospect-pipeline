@@ -533,7 +533,7 @@ test('Scout Prep Supabase writes happen after the matching Laravel write succeed
   assert.ok(salesStage.indexOf('if (!response.ok)') < salesStage.indexOf('lifecycleSalesStage({'));
 });
 
-test('Scout Prep voicemail follow-up persistence is shared across recipient modes', () => {
+test('Scout Prep voicemail follow-up persistence is shared after Messages draft handoff', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
   const helperStart = commandSource.indexOf('async function persistVoicemailFollowUpMessageSent');
   const formStart = commandSource.indexOf('function VoicemailFollowUpRecipientForm');
@@ -548,16 +548,16 @@ test('Scout Prep voicemail follow-up persistence is shared across recipient mode
 
   const form = commandSource.slice(formStart, formEnd);
   const persistCallCount = (form.match(/persistVoicemailFollowUpMessageSent\(\{/g) || []).length;
-  assert.equal(persistCallCount, 2);
+  assert.equal(persistCallCount, 1);
 
-  const multiRecipientBranch = form.slice(
+  const draftHandoffBranch = form.slice(
     form.indexOf('const mode = await openMessagesDraftForRecipients'),
     form.indexOf('async function handleSubmit'),
   );
-  assert.match(multiRecipientBranch, /persistVoicemailFollowUpMessageSent\(\{/);
+  assert.match(draftHandoffBranch, /persistVoicemailFollowUpMessageSent\(\{/);
   assert.ok(
-    multiRecipientBranch.indexOf("selectedVariant === 'no_show'") <
-      multiRecipientBranch.indexOf('completeSentTextTask({'),
+    draftHandoffBranch.indexOf("selectedVariant === 'no_show'") <
+      draftHandoffBranch.indexOf('completeSentTextTask({'),
   );
 });
 
@@ -618,28 +618,38 @@ test('Set Meetings prefix actions use command Y U H J N shortcuts', () => {
   assert.doesNotMatch(source, /modifiers: \['opt'\], key: APPOINTMENT_SHORTCUT_KEYS\[index\]/);
 });
 
-test('Scout Prep Reschedule Pending requires notes and performs stage plus two Notes-tab writes', () => {
+test('Scout Prep Reschedule Pending fast path conditionally updates stage plus two Notes-tab writes', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
-  const postCallFlow = commandSource.slice(
+  const handleSubmit = commandSource.slice(
     commandSource.indexOf('async function handleSubmit'),
-    commandSource.indexOf('try {', commandSource.indexOf('await addAthleteNote')),
+    commandSource.indexOf('let taskCompletionMessage'),
+  );
+  const rescheduleFastPath = handleSubmit.slice(
+    handleSubmit.indexOf(
+      'if (isReschedulePendingUpdate) {',
+      handleSubmit.indexOf("throw new Error('Missing saved meeting description for CAN And Scout Notes');"),
+    ),
+    handleSubmit.indexOf('let meetingSetResult'),
   );
 
   assert.match(commandSource, /id="reschedulePendingNoteTitle"/);
   assert.match(commandSource, /id="reschedulePendingNoteDescription"/);
-  assert.match(postCallFlow, /cacheMeetingDescriptionForReschedulePending\(\{/);
-  assert.match(postCallFlow, /isReschedulePendingStage\(stageLabel\)/);
-  assert.match(postCallFlow, /isCanceledPostMeetingStage\(stageLabel\)/);
-  assert.match(postCallFlow, /requiresPostMeetingOperatorNote/);
-  assert.match(postCallFlow, /const salesStageResult = await updateSalesStage\(\{/);
-  assert.match(postCallFlow, /title: getPostMeetingScoutNotesTitle\(stageLabel\)/);
+  assert.doesNotMatch(commandSource, /Saves the official sales stage through the captured legacy endpoint/);
+  assert.doesNotMatch(commandSource, /Reschedule Pending writes the stage update/);
+  assert.doesNotMatch(commandSource, /Add the title and description reason/);
+  assert.match(handleSubmit, /cacheMeetingDescriptionForReschedulePending\(\{/);
+  assert.match(handleSubmit, /isReschedulePendingStage\(stageLabel\)/);
+  assert.match(handleSubmit, /requiresPostMeetingOperatorNote/);
+  assert.match(rescheduleFastPath, /if \(!isReschedulePendingStage\(selectedCurrentStageLabel\)\)/);
+  assert.match(rescheduleFastPath, /await updateSalesStage\(\{/);
+  assert.match(rescheduleFastPath, /title: getPostMeetingScoutNotesTitle\(stageLabel\)/);
   assert.match(commandSource, /CAN And Scout Notes/);
-  assert.match(postCallFlow, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: reschedulePendingOperatorNoteTitle/s);
+  assert.match(rescheduleFastPath, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: reschedulePendingOperatorNoteTitle/s);
   assert.ok(
-    postCallFlow.indexOf('const salesStageResult = await updateSalesStage({') <
-      postCallFlow.indexOf('title: getPostMeetingScoutNotesTitle(stageLabel)'),
+    rescheduleFastPath.indexOf('await updateSalesStage({') <
+      rescheduleFastPath.indexOf('title: getPostMeetingScoutNotesTitle(stageLabel)'),
   );
-  assert.match(commandSource, /Canceled writes the stage update, saves the meeting description to Notes, and saves your cancel reason/);
+  assert.match(rescheduleFastPath, /await popViewsThenRefreshRoot\(pop, closeAfterSaveViews, onSaved\);[\s\S]*return;/);
 });
 
 test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creation and stage save', () => {
@@ -694,6 +704,22 @@ test('shared lifecycle mutation writer upserts call activity facts at action tim
   assert.match(source, /onConflict: 'dedupe_key'/);
   assert.match(source, /rawCrmStage: event\.state\.crmStage/);
   assert.match(source, /rawTaskStatus: event\.state\.taskStatus/);
+});
+
+test('recordMeetingSet writes canonical call_log fact with action-time reporting clock', () => {
+  const source = fs.readFileSync('src/lib/supabase-lifecycle.ts', 'utf8');
+  const recordMeetingSetSource = source.slice(
+    source.indexOf('export async function recordMeetingSet'),
+    source.indexOf('export async function recordConfirmationQueued'),
+  );
+
+  assert.match(recordMeetingSetSource, /const recordedAt = new Date\(\)\.toISOString\(\)/);
+  assert.match(recordMeetingSetSource, /dedupeKey = `meeting_set:\$\{buildAthleteKey/);
+  assert.match(recordMeetingSetSource, /occurredAt: recordedAt/);
+  assert.match(recordMeetingSetSource, /occurred_at: recordedAt/);
+  assert.match(recordMeetingSetSource, /buildCallLogFactFromMeetingSetFact/);
+  assert.match(recordMeetingSetSource, /request\(config, 'call_log'/);
+  assert.doesNotMatch(recordMeetingSetSource, /occurredAt: args\.startsAt/);
 });
 
 test('sales stage wrapper does not let generic lifecycle sync block Meeting Set task completion', () => {

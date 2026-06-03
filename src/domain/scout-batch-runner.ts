@@ -9,13 +9,20 @@ import {
   isVoicemailLifecycleTaskMatch,
 } from './scout-task-selection';
 
+const BATCH_TASK_TITLE_ORDER = ['Call Attempt 3', 'Call Attempt 2'] as const;
+
 export type ScoutPrepBatchOperation = {
   id:
     | 'call_attempt_2_voicemail'
     | 'call_attempt_3_voicemail'
     | 'not_interested_stage_completion'
+    | 'confirmation_cleanup'
     | 'reschedule_pending_voicemail';
-  kind: 'voicemail' | 'sales_stage_task_completion' | 'reschedule_voicemail';
+  kind:
+    | 'voicemail'
+    | 'sales_stage_task_completion'
+    | 'confirmation_cleanup'
+    | 'reschedule_voicemail';
   label: string;
   taskTitle?: string;
   variant?: VoicemailFollowUpVariant;
@@ -43,6 +50,12 @@ export const SCOUT_PREP_BATCH_OPERATIONS = {
     label: 'No Interest + Complete',
     stageLabel: 'Spoke to - Not Interested',
   },
+  confirmationCleanup: {
+    id: 'confirmation_cleanup',
+    kind: 'confirmation_cleanup',
+    label: 'Confirmation Clean Up',
+    taskTitle: 'Confirmation Call',
+  },
   reschedulePendingVoicemail: {
     id: 'reschedule_pending_voicemail',
     kind: 'reschedule_voicemail',
@@ -64,8 +77,14 @@ export type ScoutPrepBatchRow = {
     previousMeetingLabel?: string | null;
     previousCoachName?: string | null;
     slotLabels?: string[];
+    cleanupAction?: 'complete' | 'move';
+    cleanupLabel?: string | null;
   } | null;
 };
+
+export function normalizeScoutPrepBatchTaskId(value?: string | number | null): string {
+  return String(value || '').trim();
+}
 
 export type BatchRecipientResolution =
   | {
@@ -116,7 +135,10 @@ export function isScoutPrepBatchTaskEligible(
     return false;
   }
   if (operation.kind === 'sales_stage_task_completion') {
-    return !isMeetingSetTaskVariant(task);
+    return isNoInterestCompletionTaskVariant(task);
+  }
+  if (operation.kind === 'confirmation_cleanup') {
+    return isConfirmationCleanupTaskVariant(task);
   }
   if (operation.kind === 'reschedule_voicemail') {
     return normalizeBatchTaskText(task).includes('reschedule pending');
@@ -149,6 +171,29 @@ function isMeetingSetTaskVariant(task: Pick<ScoutPortalTask, 'title' | 'descript
   );
 }
 
+function isConfirmationCleanupTaskVariant(
+  task: Pick<ScoutPortalTask, 'title' | 'description'>,
+): boolean {
+  const text = normalizeBatchTaskText(task);
+  return text.includes('confirmation call') || text.includes('confirm the meeting set');
+}
+
+function getNoInterestCompletionTaskTitle(
+  task: Pick<ScoutPortalTask, 'title' | 'description'>,
+): (typeof BATCH_TASK_TITLE_ORDER)[number] | null {
+  const text = normalizeBatchTaskText(task);
+  if (isMeetingSetTaskVariant(task)) return null;
+  if (text.includes('call attempt 3')) return 'Call Attempt 3';
+  if (text.includes('call attempt 2')) return 'Call Attempt 2';
+  return null;
+}
+
+function isNoInterestCompletionTaskVariant(
+  task: Pick<ScoutPortalTask, 'title' | 'description'>,
+): boolean {
+  return Boolean(getNoInterestCompletionTaskTitle(task));
+}
+
 function parseGradYear(task: Pick<ScoutPortalTask, 'grad_year'>): number | null {
   const parsed = Number.parseInt(String(task.grad_year || '').trim(), 10);
   return Number.isNaN(parsed) ? null : parsed;
@@ -177,17 +222,99 @@ export function getScoutPrepBatchGradYearOptions(tasks: ScoutPortalTask[]): stri
   ).sort((left, right) => Number.parseInt(right, 10) - Number.parseInt(left, 10));
 }
 
+export function getScoutPrepBatchTaskTitleOptions(tasks: ScoutPortalTask[]): string[] {
+  const available = new Set(
+    tasks
+      .filter((task) => isIncompleteTaskValue(task.completion_date))
+      .map((task) => getNoInterestCompletionTaskTitle(task))
+      .filter((title): title is (typeof BATCH_TASK_TITLE_ORDER)[number] => Boolean(title)),
+  );
+  return BATCH_TASK_TITLE_ORDER.filter((title) => available.has(title));
+}
+
+export function collectFailedScoutPrepBatchTaskIdsFromLogText(logText: string): Set<string> {
+  const failedTaskIds = new Set<string>();
+  const marker = 'SCOUT_PREP_BATCH_ROW_RUN {';
+  let index = 0;
+
+  while (index < logText.length) {
+    const markerIndex = logText.indexOf(marker, index);
+    if (markerIndex < 0) break;
+    const jsonStart = logText.indexOf('{', markerIndex);
+    if (jsonStart < 0) break;
+    const nextEntry = logText.indexOf('\n[', jsonStart);
+    const jsonText = logText.slice(jsonStart, nextEntry < 0 ? undefined : nextEntry).trim();
+    index = nextEntry < 0 ? logText.length : nextEntry + 1;
+
+    try {
+      const parsed = JSON.parse(jsonText) as {
+        event?: string;
+        status?: string;
+        context?: {
+          taskId?: string | number | null;
+          status?: string | null;
+          resultStatus?: string | null;
+        };
+      };
+      if (parsed.event !== 'SCOUT_PREP_BATCH_ROW_RUN') continue;
+      const topStatus = String(parsed.status || '').trim().toLowerCase();
+      const rowStatus = String(parsed.context?.resultStatus || parsed.context?.status || '')
+        .trim()
+        .toLowerCase();
+      const taskId = normalizeScoutPrepBatchTaskId(parsed.context?.taskId);
+      if (!taskId) continue;
+      if (topStatus === 'failure' || rowStatus === 'failed') {
+        failedTaskIds.add(taskId);
+      } else if (rowStatus === 'sent') {
+        failedTaskIds.delete(taskId);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return failedTaskIds;
+}
+
+export function isScoutPrepConfirmationCleanupDue(args: {
+  taskDueAt?: Date | string | null;
+  now?: Date;
+}): boolean {
+  const taskDueAt =
+    args.taskDueAt instanceof Date
+      ? args.taskDueAt
+      : args.taskDueAt
+        ? new Date(args.taskDueAt)
+        : null;
+  if (!taskDueAt || Number.isNaN(taskDueAt.getTime())) {
+    return false;
+  }
+  return taskDueAt.getTime() < (args.now || new Date()).getTime();
+}
+
 export function buildScoutPrepBatchPreflightRows(args: {
   operation: ScoutPrepBatchOperation;
   tasks: ScoutPortalTask[];
   limit: number;
   gradYear?: string | null;
+  taskTitle?: string | null;
+  excludedTaskIds?: Iterable<string | number | null | undefined>;
 }): ScoutPrepBatchRow[] {
   const limit = Math.max(1, args.limit);
   const gradYear = String(args.gradYear || '').trim();
-  const filteredTasks = gradYear
-    ? args.tasks.filter((task) => String(task.grad_year || '').trim() === gradYear)
-    : args.tasks;
+  const taskTitle = String(args.taskTitle || '').trim();
+  const excludedTaskIds = new Set(
+    Array.from(args.excludedTaskIds || [])
+      .map((taskId) => normalizeScoutPrepBatchTaskId(taskId))
+      .filter(Boolean),
+  );
+  const filteredTasks = args.tasks.filter((task) => {
+    const canonicalTaskId = normalizeScoutPrepBatchTaskId(task.task_id);
+    if (canonicalTaskId && excludedTaskIds.has(canonicalTaskId)) return false;
+    if (gradYear && String(task.grad_year || '').trim() !== gradYear) return false;
+    if (taskTitle && getNoInterestCompletionTaskTitle(task) !== taskTitle) return false;
+    return true;
+  });
   return sortScoutPrepBatchTasks(filteredTasks).slice(0, limit).map((task) => {
     const eligible = isScoutPrepBatchTaskEligible(task, args.operation);
     return {

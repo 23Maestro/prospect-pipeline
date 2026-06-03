@@ -1,10 +1,19 @@
 import unittest
+from pathlib import Path
 
 from app.translators.legacy import LegacyTranslator
 from app.routers.scout import filter_scout_tasks_by_search
 
 
 class TaskUpdateTranslatorTests(unittest.TestCase):
+    def test_scout_router_preserves_datatable_pagination_when_searching(self):
+        router_source = Path("app/routers/scout.py").read_text()
+
+        self.assertIn("start=start,", router_source)
+        self.assertIn("length=length,", router_source)
+        self.assertNotIn("start=None if searchText else start", router_source)
+        self.assertNotIn("length=None if searchText else length", router_source)
+
     def test_portal_tasks_search_forwards_laravel_datatable_search(self):
         endpoint, params = LegacyTranslator.portal_tasks_to_legacy(
             assigned_to="1408164",
