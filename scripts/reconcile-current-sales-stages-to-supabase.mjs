@@ -543,9 +543,7 @@ function findAppointmentEvent(appointment, bookedMeetings) {
       (event) => String(event?.event_id || '').trim() === appointmentId,
     ) || {
       event_id: appointmentId,
-      title: String(appointment?.head_scout || '').trim()
-        ? `Post Meeting - ${appointment.head_scout}`
-        : 'Post Meeting',
+      title: null,
       assigned_owner: appointment?.head_scout || null,
       start: appointment?.starts_at || null,
       end: appointment?.starts_at || null,

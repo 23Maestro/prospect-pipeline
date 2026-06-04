@@ -6,6 +6,8 @@ import {
   classifyDuplicateProfileEnvelope,
   getDuplicateIdentityEvidence,
   isCallAttempt1PortalTask,
+  normalizeDuplicateAthleteName,
+  normalizeDuplicateAthleteNameForLegacySearch,
   runDuplicateProfileResolutionForTask,
   selectDuplicateCallAttempt1Task,
   selectDuplicateCandidates,
@@ -16,6 +18,7 @@ import {
 function buildTask(overrides: Partial<ScoutPortalTask> = {}): ScoutPortalTask {
   return {
     contact_id: '1489567',
+    task_id: '2000',
     athlete_id: '1489567',
     athlete_main_id: '951406',
     athlete_name: 'Wylie Robinson',
@@ -78,6 +81,34 @@ test('splitAthleteName preserves first and last name segments', () => {
     firstName: 'Mary',
     lastName: 'Kate Smith',
   });
+});
+
+test('normalizeDuplicateAthleteName cleans apostrophe mojibake and variants', () => {
+  assert.equal(normalizeDuplicateAthleteName('Jay\u2019len Deshield'), "Jay'len Deshield");
+  assert.equal(normalizeDuplicateAthleteName('Jay\u201a\u00c4\u00f4len Deshield'), "Jay'len Deshield");
+  assert.equal(normalizeDuplicateAthleteName('Jay\u00e2\u20ac\u2122len Deshield'), "Jay'len Deshield");
+  assert.equal(normalizeDuplicateAthleteName('Jay`len Deshield'), "Jay'len Deshield");
+});
+
+test('normalizeDuplicateAthleteNameForLegacySearch keeps admin duplicate search compatible', () => {
+  assert.equal(normalizeDuplicateAthleteNameForLegacySearch('Jay\u2019len Deshield'), 'Jay\u2019len Deshield');
+  assert.equal(normalizeDuplicateAthleteNameForLegacySearch('Jay\u201a\u00c4\u00f4len Deshield'), 'Jay\u2019len Deshield');
+  assert.equal(normalizeDuplicateAthleteNameForLegacySearch('Jay\u00e2\u20ac\u2122len Deshield'), 'Jay\u2019len Deshield');
+  assert.equal(normalizeDuplicateAthleteNameForLegacySearch('Jay`len Deshield'), 'Jay\u2019len Deshield');
+});
+
+test('duplicate name matching treats clean and mojibake apostrophes as same name', () => {
+  const row = toDuplicateSearchRow({
+    athlete_id: '1490000',
+    name: 'Jay\u201a\u00c4\u00f4len Deshield',
+  });
+
+  assert.ok(row);
+  assert.equal(row.fullName, "Jay'len Deshield");
+  assert.equal(
+    row ? row.firstName : '',
+    "Jay'len",
+  );
 });
 
 test('toDuplicateSearchRow ignores rows without exact first and last name values', () => {
@@ -272,6 +303,55 @@ test('runDuplicateProfileResolutionForTask skips exact-name matches without seco
   assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'needs_secondary_identity_match' }]);
 });
 
+test('runDuplicateProfileResolutionForTask searches legacy apostrophe form before clean fallback', async () => {
+  const searched: string[] = [];
+
+  const result = await runDuplicateProfileResolutionForTask(
+    buildTask({
+      athlete_name: 'Jay\u201a\u00c4\u00f4len Deshield',
+    }),
+    {
+      searchRows: async ({ searchTerm }) => {
+        searched.push(searchTerm);
+        if (searchTerm !== 'Jay\u2019len Deshield') {
+          return [];
+        }
+        return [
+          {
+            athleteId: '1489567',
+            athleteMainId: '951406',
+            firstName: "Jay'len",
+            lastName: 'Deshield',
+            fullName: "Jay'len Deshield",
+          },
+        ];
+      },
+    },
+  );
+
+  assert.deepEqual(searched, ['Jay\u2019len Deshield']);
+  assert.equal(result.searchTerm, 'Jay\u2019len Deshield');
+});
+
+test('runDuplicateProfileResolutionForTask falls back to clean apostrophe search when legacy search misses', async () => {
+  const searched: string[] = [];
+
+  const result = await runDuplicateProfileResolutionForTask(
+    buildTask({
+      athlete_name: 'Jay\u201a\u00c4\u00f4len Deshield',
+    }),
+    {
+      searchRows: async ({ searchTerm }) => {
+        searched.push(searchTerm);
+        return [];
+      },
+    },
+  );
+
+  assert.deepEqual(searched, ['Jay\u2019len Deshield', "Jay'len Deshield"]);
+  assert.equal(result.searchTerm, "Jay'len Deshield");
+});
+
 test('selectDuplicateCallAttempt1Task chooses newest incomplete call attempt 1 task', () => {
   const task = selectDuplicateCallAttempt1Task([
     {
@@ -293,6 +373,19 @@ test('selectDuplicateCallAttempt1Task chooses newest incomplete call attempt 1 t
   ]);
 
   assert.equal(task?.task_id, '1003');
+});
+
+test('selectDuplicateCallAttempt1Task ignores call attempt rows without task ids', () => {
+  const task = selectDuplicateCallAttempt1Task([
+    {
+      task_id: '',
+      title: 'Call Attempt 1',
+      completion_date: null,
+      description: 'Call the family\nRepeat Profile',
+    },
+  ]);
+
+  assert.equal(task, null);
 });
 
 test('isCallAttempt1PortalTask only allows call attempt 1 rows', () => {
@@ -406,4 +499,149 @@ test('runDuplicateProfileResolutionForTask creates saved repeat task when duplic
   assert.equal(createdTasks[0]?.assignedTo, '1408164');
   assert.equal(result.completed[0]?.taskId, '2600');
   assert.equal(result.completed[0]?.taskTitle, 'REPEAT');
+});
+
+test('runDuplicateProfileResolutionForTask skips unaddressable duplicate call attempt rows without task ids', async () => {
+  const createdTasks: Array<Record<string, string | Date | null | undefined>> = [];
+  const result = await runDuplicateProfileResolutionForTask(buildTask(), {
+    searchRows: async () => [
+      {
+        athleteId: '1489567',
+        athleteMainId: '951406',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+      },
+      {
+        athleteId: '1490000',
+        athleteMainId: '951499',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+        gradYear: '2027',
+      },
+    ],
+    resolveAthleteMainId: async () => '951499',
+    loadContactInfo: async () => buildContactInfo() as any,
+    fetchAthleteDetails: async () => null,
+    fetchTasks: async () => [
+      {
+        task_id: '',
+        title: 'Call Attempt 1',
+        description: 'Call the family',
+        completion_date: null,
+      },
+    ],
+    createRepeatTask: async (payload) => {
+      createdTasks.push(payload);
+      return { success: true, task_id: '2600' };
+    },
+  });
+
+  assert.deepEqual(result.completed, []);
+  assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'duplicate_call_attempt_1_missing_task_id' }]);
+  assert.equal(createdTasks.length, 0);
+});
+
+test('runDuplicateProfileResolutionForTask completes current task when candidate is already marked repeat', async () => {
+  const completions: Array<Record<string, string | null | undefined>> = [];
+  const createdTasks: Array<Record<string, string | Date | null | undefined>> = [];
+
+  const result = await runDuplicateProfileResolutionForTask(buildTask({ task_id: '2000' }), {
+    searchRows: async () => [
+      {
+        athleteId: '1489567',
+        athleteMainId: '951406',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+      },
+      {
+        athleteId: '1490000',
+        athleteMainId: '951499',
+        firstName: 'Wylie',
+        lastName: 'Robinson',
+        fullName: 'Wylie Robinson',
+        gradYear: '2027',
+      },
+    ],
+    resolveAthleteMainId: async () => '951499',
+    loadContactInfo: async () => buildContactInfo() as any,
+    fetchAthleteDetails: async () => null,
+    fetchTasks: async () => [
+      {
+        task_id: '',
+        title: 'Call Attempt 1',
+        description: 'Call the family\nRepeat Profile',
+        completion_date: null,
+      },
+    ],
+    completeTask: async (payload) => {
+      completions.push(payload);
+      return { success: true, task_id: payload.taskId };
+    },
+    createRepeatTask: async (payload) => {
+      createdTasks.push(payload);
+      return { success: true, task_id: '2600' };
+    },
+  });
+
+  assert.equal(result.completed.length, 1);
+  assert.equal(result.completed[0]?.athleteId, '1489567');
+  assert.equal(result.completed[0]?.taskId, '2000');
+  assert.deepEqual(result.skipped, []);
+  assert.equal(completions[0]?.taskId, '2000');
+  assert.equal(createdTasks.length, 0);
+});
+
+test('runDuplicateProfileResolutionForTask does not mutate when candidate repeat marker exists and current task is complete', async () => {
+  const completions: Array<Record<string, string | null | undefined>> = [];
+  const createdTasks: Array<Record<string, string | Date | null | undefined>> = [];
+
+  const result = await runDuplicateProfileResolutionForTask(
+    buildTask({ task_id: '2000', completion_date: 'Thu 06/04/26 01:55 PM' }),
+    {
+      searchRows: async () => [
+        {
+          athleteId: '1489567',
+          athleteMainId: '951406',
+          firstName: 'Wylie',
+          lastName: 'Robinson',
+          fullName: 'Wylie Robinson',
+        },
+        {
+          athleteId: '1490000',
+          athleteMainId: '951499',
+          firstName: 'Wylie',
+          lastName: 'Robinson',
+          fullName: 'Wylie Robinson',
+          gradYear: '2027',
+        },
+      ],
+      resolveAthleteMainId: async () => '951499',
+      loadContactInfo: async () => buildContactInfo() as any,
+      fetchAthleteDetails: async () => null,
+      fetchTasks: async () => [
+        {
+          task_id: '',
+          title: 'Call Attempt 1',
+          description: 'Call the family\nRepeat Profile',
+          completion_date: null,
+        },
+      ],
+      completeTask: async (payload) => {
+        completions.push(payload);
+        return { success: true, task_id: payload.taskId };
+      },
+      createRepeatTask: async (payload) => {
+        createdTasks.push(payload);
+        return { success: true, task_id: '2600' };
+      },
+    },
+  );
+
+  assert.deepEqual(result.completed, []);
+  assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'repeat_profile_already_marked_current_complete' }]);
+  assert.equal(completions.length, 0);
+  assert.equal(createdTasks.length, 0);
 });

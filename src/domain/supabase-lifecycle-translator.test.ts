@@ -25,6 +25,8 @@ test('CRM stage translates without producing manual-review task status', () => {
   assert.equal(taskStatusForStage('Not A Laravel Stage', null), null);
   assert.equal(taskStatusForStage('Actual Meeting - Follow Up', null), 'meeting_follow_up');
   assert.equal(taskStatusForStage('Meeting Result - No Show', null), 'no_show');
+  assert.equal(taskStatusForStage('Meeting Result - Canceled', null), 'canceled');
+  assert.equal(appointmentStatusForTitleOrStage('Meeting Result - Canceled', null), 'canceled');
 });
 
 test('known close and follow-up prefixes map to established stages and statuses', () => {
@@ -38,6 +40,12 @@ test('known close and follow-up prefixes map to established stages and statuses'
   assert.equal(followUp.outcome, 'soft_archive_follow_up');
   assert.equal(crmStageForOutcome(followUp.outcome, null), 'Actual Meeting - Follow Up');
   assert.equal(taskStatusForTitleOrStage(followUp.originalTitle, null, null), 'meeting_follow_up');
+
+  const canceled = parseAppointmentTitleOutcome('(CAN) Sample Athlete Football 2027 TX');
+  assert.equal(canceled.outcome, 'soft_archive_canceled');
+  assert.equal(crmStageForOutcome(canceled.outcome, null), 'Meeting Result - Canceled');
+  assert.equal(taskStatusForTitleOrStage(canceled.originalTitle, null, null), 'canceled');
+  assert.equal(appointmentStatusForTitleOrStage(null, canceled.originalTitle), 'canceled');
 
   const parentDidNotQualify = parseAppointmentTitleOutcome('(PAR - DNQ) Sample Athlete Football 2027 TX');
   assert.equal(parentDidNotQualify.outcome, 'terminal_close_lost');

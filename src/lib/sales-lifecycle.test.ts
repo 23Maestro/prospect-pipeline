@@ -125,11 +125,11 @@ test('spoke to not interested drops from working queue as inactive, not close lo
   assert.equal(lifecycle.shouldArchiveFromWorkingViews, true);
 });
 
-test('meeting result canceled resolves to awaiting reschedule', () => {
+test('meeting result canceled remains canceled instead of becoming reschedule pending', () => {
   const lifecycle = resolveSalesLifecycle('Meeting Result - Canceled');
-  assert.equal(lifecycle.normalizedStage, 'reschedule_pending');
-  assert.equal(lifecycle.operatorStatus, 'awaiting_reschedule');
-  assert.equal(lifecycle.meetingLifecycle, 'reschedule_pending');
+  assert.equal(lifecycle.normalizedStage, 'canceled');
+  assert.equal(lifecycle.operatorStatus, 'needs_manual_review');
+  assert.equal(lifecycle.meetingLifecycle, 'canceled');
   assert.equal(lifecycle.isActiveQueueItem, true);
 });
 

@@ -37,8 +37,9 @@ if ! API_TIMEOUT_SECONDS=10 "${PROJECT_ROOT}/scripts/wait-for-api.sh"; then
   API_TIMEOUT_SECONDS=45 "${PROJECT_ROOT}/scripts/wait-for-api.sh"
 fi
 
+# Canonical scheduled Supabase sync lane.
+# Keep repair/reconcile jobs out of this cron path; those require explicit manual runs.
 npm run sync:current-pipeline-supabase
-npm run reconcile:current-sales-stages-supabase
 npm run sync:commissions-supabase
 
 echo "[$(timestamp)] sync complete"

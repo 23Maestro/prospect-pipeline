@@ -11,6 +11,8 @@ const REPEAT_PROFILE_MARKER = 'Repeat Profile';
 const REPEAT_TASK_TITLE = 'REPEAT';
 const REPEAT_TASK_DESCRIPTION = '';
 
+const APOSTROPHE_VARIANT_PATTERN = /(?:\u00e2\u20ac[\u2122\u02dc]|\u201a\u00c4[\u00f4\u00f2]|\u2019|\u2018|\u02bc|\u00b4|`)/g;
+
 type RawAthleteSearchResult = {
   athlete_id: string;
   athlete_main_id?: string | null;
@@ -166,10 +168,22 @@ function logFailure(event: string, step: string, error: string, context?: Record
 }
 
 export function normalizeDuplicateNamePart(value: string | null | undefined): string {
-  return String(value || '')
+  return normalizeDuplicateAthleteName(value)
     .trim()
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, ' ');
+}
+
+export function normalizeDuplicateAthleteName(value: string | null | undefined): string {
+  return String(value || '')
+    .replace(APOSTROPHE_VARIANT_PATTERN, "'")
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function normalizeDuplicateAthleteNameForLegacySearch(value: string | null | undefined): string {
+  return normalizeDuplicateAthleteName(value).replace(/'/g, '’');
 }
 
 function normalizeDuplicateEvidenceValue(value: string | null | undefined): string {
@@ -202,8 +216,7 @@ function emailsMatch(left: string | null | undefined, right: string | null | und
 }
 
 export function splitAthleteName(fullName: string): { firstName: string; lastName: string } {
-  const parts = String(fullName || '')
-    .trim()
+  const parts = normalizeDuplicateAthleteName(fullName)
     .split(/\s+/)
     .filter(Boolean);
   if (parts.length <= 1) {
@@ -221,7 +234,7 @@ export function splitAthleteName(fullName: string): { firstName: string; lastNam
 
 export function toDuplicateSearchRow(result: RawAthleteSearchResult): DuplicateProfileSearchRow | null {
   const athleteId = String(result.athlete_id || '').trim();
-  const { firstName, lastName } = splitAthleteName(String(result.name || '').trim());
+  const { firstName, lastName } = splitAthleteName(normalizeDuplicateAthleteName(result.name));
   if (!athleteId || !firstName || !lastName) {
     return null;
   }
@@ -231,7 +244,7 @@ export function toDuplicateSearchRow(result: RawAthleteSearchResult): DuplicateP
     athleteMainId: String(result.athlete_main_id || '').trim() || null,
     firstName,
     lastName,
-    fullName: `${firstName} ${lastName}`.trim(),
+    fullName: normalizeDuplicateAthleteName(`${firstName} ${lastName}`),
     gradYear: result.grad_year || null,
     sport: result.sport || null,
     state: result.state || null,
@@ -448,18 +461,32 @@ export function buildRepeatProfileDescription(description?: string | null): stri
   return `${existing}\n${REPEAT_PROFILE_MARKER}`;
 }
 
+function taskHasRepeatProfileMarker(task: Partial<ScoutAthleteTask> | Partial<AthleteTaskSummary>): boolean {
+  return `${task.title || ''}\n${task.description || ''}`
+    .toLowerCase()
+    .includes(REPEAT_PROFILE_MARKER.toLowerCase());
+}
+
+function isOpenCallAttempt1Task(task: Partial<ScoutAthleteTask> | Partial<AthleteTaskSummary>): boolean {
+  const completionDate = String(task.completion_date || '').trim();
+  if (completionDate) {
+    return false;
+  }
+  const title = String(stripMoveThisTaskPrefix(task.title) || '')
+    .trim()
+    .toLowerCase();
+  return title === 'call attempt 1';
+}
+
 export function selectDuplicateCallAttempt1Task(
   tasks: Array<Partial<ScoutAthleteTask> | Partial<AthleteTaskSummary>>,
 ): ScoutAthleteTask | null {
   const candidates = tasks.filter((task) => {
-    const completionDate = String(task.completion_date || '').trim();
-    if (completionDate) {
+    const taskId = String(task.task_id || '').trim();
+    if (!taskId) {
       return false;
     }
-    const title = String(stripMoveThisTaskPrefix(task.title) || '')
-      .trim()
-      .toLowerCase();
-    return title === 'call attempt 1';
+    return isOpenCallAttempt1Task(task);
   });
 
   if (!candidates.length) {
@@ -616,7 +643,9 @@ export async function runDuplicateProfileResolutionForTask(
     throw new Error('Duplicate profile check only runs for Call Attempt 1 tasks');
   }
 
-  const athleteName = String(task.athlete_name || '').trim();
+  const rawAthleteName = String(task.athlete_name || '').trim();
+  const athleteName = normalizeDuplicateAthleteName(rawAthleteName);
+  const legacySearchName = normalizeDuplicateAthleteNameForLegacySearch(rawAthleteName || athleteName);
   const targetName = splitAthleteName(athleteName);
   if (!targetName.firstName || !targetName.lastName) {
     throw new Error('Need first and last name for duplicate search');
@@ -635,11 +664,20 @@ export async function runDuplicateProfileResolutionForTask(
     emailIncluded: false,
   });
 
-  const rows = await activeDeps.searchRows({
-    searchTerm: athleteName,
-    contactId: currentAthleteId,
-    athleteMainId: currentAthleteMainId || null,
-  });
+  const searchTerms = [...new Set([legacySearchName, athleteName].filter(Boolean))];
+  let rows: DuplicateProfileSearchRow[] = [];
+  let usedSearchTerm = searchTerms[0] || athleteName;
+  for (const searchTerm of searchTerms) {
+    rows = await activeDeps.searchRows({
+      searchTerm,
+      contactId: currentAthleteId,
+      athleteMainId: currentAthleteMainId || null,
+    });
+    usedSearchTerm = searchTerm;
+    if (rows.some((row) => isExactDuplicateNameMatch(row, targetName))) {
+      break;
+    }
+  }
   const matchingRows = rows.filter((row) => isExactDuplicateNameMatch(row, targetName));
   const exactNameCandidates = selectDuplicateCandidates({
     rows,
@@ -648,7 +686,7 @@ export async function runDuplicateProfileResolutionForTask(
     targetName,
   });
   const result: DuplicateProfileResolutionResult = {
-    searchTerm: athleteName,
+    searchTerm: usedSearchTerm,
     matchCount: matchingRows.length,
     completed: [],
     skipped: [],
@@ -745,8 +783,64 @@ export async function runDuplicateProfileResolutionForTask(
 
     try {
       const duplicateTasks = await activeDeps.fetchTasks(candidate.athleteId, athleteMainId);
+      const candidateAlreadyMarkedRepeat = duplicateTasks.some(taskHasRepeatProfileMarker);
+      if (candidateAlreadyMarkedRepeat) {
+        const currentTaskId = String(task.task_id || '').trim();
+        const currentCompletionDate = String(task.completion_date || '').trim();
+        if (!currentTaskId) {
+          result.skipped.push({
+            athleteId: candidate.athleteId,
+            reason: 'repeat_profile_already_marked_missing_current_task_id',
+          });
+          continue;
+        }
+        if (currentCompletionDate) {
+          result.skipped.push({
+            athleteId: candidate.athleteId,
+            reason: 'repeat_profile_already_marked_current_complete',
+          });
+          continue;
+        }
+
+        logInfo('SCOUT_DUPLICATE_PROFILE', 'candidate-repeat-marker', {
+          athleteId: currentAthleteId,
+          candidateAthleteId: candidate.athleteId,
+          action: 'complete_current_call_attempt_1',
+        });
+
+        await activeDeps.completeTask({
+          athleteId: currentAthleteId,
+          athleteMainId: currentAthleteMainId,
+          contactTask: currentAthleteId,
+          taskId: currentTaskId,
+          taskTitle: task.title || 'Call Attempt 1',
+          assignedOwner: task.assigned_owner,
+          description: task.description || null,
+        });
+
+        result.completed.push({
+          athleteId: currentAthleteId,
+          athleteMainId: currentAthleteMainId,
+          athleteName,
+          taskId: currentTaskId,
+          taskTitle: task.title || 'Call Attempt 1',
+        });
+        continue;
+      }
+
       const duplicateTask = selectDuplicateCallAttempt1Task(duplicateTasks);
       if (!duplicateTask) {
+        const hasUnaddressableCallAttempt1 = duplicateTasks.some((duplicateTask) => {
+          return isOpenCallAttempt1Task(duplicateTask) && !String(duplicateTask.task_id || '').trim();
+        });
+        if (hasUnaddressableCallAttempt1) {
+          result.skipped.push({
+            athleteId: candidate.athleteId,
+            reason: 'duplicate_call_attempt_1_missing_task_id',
+          });
+          continue;
+        }
+
         const createdTask = await activeDeps.createRepeatTask({
           athleteId: candidate.athleteId,
           athleteMainId,

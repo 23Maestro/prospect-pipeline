@@ -27,6 +27,7 @@ type GpaBand = 'high' | 'medium' | 'low' | 'unknown';
 type SportFamily = 'football' | 'basketball' | 'baseball' | 'generic';
 type FootballPositionGroup = 'ol_dl' | 'skill' | 'qb' | 'lb_db' | 'generic';
 type ScriptLineRole = 'stable' | 'profile_contingent' | 'live_discovery';
+type ScriptFactAvailability = 'always_available' | 'could_be_available' | 'live_discovery_only';
 type AthletePronouns = {
   subject: 'he' | 'she';
   object: 'him' | 'her';
@@ -34,7 +35,13 @@ type AthletePronouns = {
 };
 type ScriptMapLine = {
   role: ScriptLineRole;
+  availability: ScriptFactAvailability;
   text: string;
+};
+type ScriptContingencyBlock = {
+  availability: ScriptFactAvailability;
+  heading: string;
+  lines: string[];
 };
 
 type RecruitingTimelineReference = {
@@ -486,12 +493,34 @@ function buildRapportQuestions(values: ScoutPrepFormValues, context?: ScoutPrepC
   ];
 }
 
-function scriptLine(role: ScriptLineRole, text: string): ScriptMapLine {
-  return { role, text };
+function availabilityForRole(role: ScriptLineRole): ScriptFactAvailability {
+  if (role === 'stable') return 'always_available';
+  if (role === 'profile_contingent') return 'could_be_available';
+  return 'live_discovery_only';
+}
+
+function scriptLine(
+  role: ScriptLineRole,
+  text: string,
+  availability: ScriptFactAvailability = availabilityForRole(role),
+): ScriptMapLine {
+  return { role, availability, text };
 }
 
 function renderScriptLines(lines: ScriptMapLine[]): string[] {
   return lines.map((line) => line.text);
+}
+
+function renderContingencyBlocks(blocks: ScriptContingencyBlock[]): string {
+  return blocks
+    .filter((block) => block.availability === 'live_discovery_only' && block.lines.length > 0)
+    .map((block) => [`#### ${block.heading}`, ...block.lines.slice(0, 2).map((line) => `- ${line}`)].join('\n'))
+    .join('\n\n');
+}
+
+function renderBranchBlock(heading: string, prompts: string[]): string | null {
+  if (prompts.length === 0) return null;
+  return ['---', '', `## ${heading}`, ...prompts.slice(0, 3).map((prompt) => `- ${prompt}`)].join('\n');
 }
 
 function buildPositionSpecificPrompts(
@@ -602,9 +631,9 @@ function buildAcademicScriptLines(
 
   if (band === 'unknown') {
     return [
-      scriptLine('live_discovery', `Let's start with grades. What's ${pronouns.possessive} GPA?`),
-      scriptLine('live_discovery', `How is ${pronouns.subject} doing in the classroom right now?`),
-      scriptLine('live_discovery', majorQuestion),
+      scriptLine('live_discovery', `Let’s start with grades. What’s ${pronouns.possessive} GPA right now?`, 'could_be_available'),
+      scriptLine('live_discovery', `How is ${pronouns.subject} doing in the classroom right now?`, 'could_be_available'),
+      scriptLine('live_discovery', majorQuestion, 'could_be_available'),
     ];
   }
 
@@ -627,7 +656,7 @@ function buildAcademicScriptLines(
         'profile_contingent',
         'We typically want to get to about that 3.0 just so certain coaches don’t write you off.',
       ),
-      scriptLine('live_discovery', majorQuestion),
+      scriptLine('live_discovery', majorQuestion, 'could_be_available'),
     ];
   }
 
@@ -640,8 +669,9 @@ function buildAcademicScriptLines(
       scriptLine(
         'live_discovery',
         `Is ${pronouns.subject} trying to push it higher, or is that about where ${pronouns.subject} usually sits?`,
+        'could_be_available',
       ),
-      scriptLine('live_discovery', majorQuestion),
+      scriptLine('live_discovery', majorQuestion, 'could_be_available'),
     ];
   }
 
@@ -650,7 +680,7 @@ function buildAcademicScriptLines(
       'profile_contingent',
       `With a ${gpa}, academics can be a real strength in the recruiting conversation.`,
     ),
-    scriptLine('live_discovery', majorQuestion),
+    scriptLine('live_discovery', majorQuestion, 'could_be_available'),
   ];
 }
 
@@ -732,10 +762,16 @@ function recruitingTimelineLine(values: ScoutPrepFormValues, context?: ScoutPrep
   const windowOpened = hasCoachContactWindowOpened(reference);
 
   if (values.gradYear === 'Freshman') {
-    return `For ${sport}, the coach-call window is ${date}, but the athletes who win that window are usually on the map before it opens.`;
+    return `For ${sport}, the coach-call window is ${date}, but this starts earlier now. We already see freshmen and sophomores with offers, and some have verbally committed.`;
   }
 
   if (values.gradYear === 'Sophomore') {
+    if (windowOpened) {
+      return `For ${sport}, coaches can start calling now, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
+    }
+    if (new Date().getMonth() + 1 === reference.contactMonth) {
+      return `For ${sport}, coaches can start calling this month on ${dateLabel}, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
+    }
     return `For ${sport}, ${date} is the date to be ready for; if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
   }
 
@@ -772,14 +808,14 @@ function buildDeficitLines(values: ScoutPrepFormValues, context?: ScoutPrepConte
   if (values.gradYear === 'Freshman') {
     return [
       contactDateLine,
-      `Early does not mean rushed; it means coaches know who ${pronouns.subject} is before everyone else catches up.`,
+      `Early does not mean rushed; it means questionnaires, introductions, and the right coach awareness start before everyone else catches up.`,
     ];
   }
 
   if (values.gradYear === 'Sophomore') {
     return [
       contactDateLine,
-      `For ${sport}, this is the year ${athleteFirst} should move from early interest to real coach conversations.`,
+      `For ${sport}, this is where questionnaires and outreach need to turn into real coach conversations.`,
     ];
   }
 
@@ -795,13 +831,14 @@ function buildRecruitingDiscoveryQuestion(
 ): string {
   const athleteFirst = athleteFirstName(values, context);
   const sport = getSportFamily(context?.resolved.sport || values.sport);
+  const pronouns = resolveAthletePronouns(values, context);
   if (values.gradYear === 'Freshman') {
     return sport === 'football'
-      ? 'Any camp invites, letters, questionnaires, or early coach interest yet?'
-      : 'Any camp invites, questionnaires, or early coach interest yet?';
+      ? `How many questionnaires has ${pronouns.subject} filled out, and has ${pronouns.subject} reached out to any coaches yet?`
+      : `How many questionnaires has ${pronouns.subject} filled out, and has ${pronouns.subject} reached out to any coaches yet?`;
   }
   if (values.gradYear === 'Sophomore') {
-    return 'Any letters, camp invites, questionnaires, calls, or direct coach communication yet?';
+    return 'Have we had questionnaires, camp invites, texts, direct messages, or anything from coaches yet?';
   }
   if (values.gradYear === 'Junior') {
     return sport === 'football'
@@ -809,6 +846,56 @@ function buildRecruitingDiscoveryQuestion(
       : `Since the ${sportLabel(values, context).toLowerCase()} contact window, have we had phone calls, direct messages, emails, or letters from coaches?`;
   }
   return `What is real right now for ${athleteFirst}: offers, calls, visits, signing options, or roster conversations?`;
+}
+
+function buildRecruitingDiscoveryBlocks(
+  values: ScoutPrepFormValues,
+  context?: ScoutPrepContext,
+): ScriptContingencyBlock[] {
+  const pronouns = resolveAthletePronouns(values, context);
+  const familyQuestion =
+    'Is this the first kid you guys have gone through the recruiting process with?';
+
+  return [
+    {
+      availability: 'live_discovery_only',
+      heading: 'If they have coach text / Twitter / direct messages',
+      lines: [
+        'Are those coming directly from the coaching staff, admissions office, or are they more camp invites?',
+      ],
+    },
+    {
+      availability: 'live_discovery_only',
+      heading: 'If they have emails or letters',
+      lines: [
+        'Have any coaches called you personally yet, or is it still mostly mail, emails, and camp information?',
+      ],
+    },
+    {
+      availability: 'live_discovery_only',
+      heading: 'If they are getting calls',
+      lines: [
+        'Have any of those calls turned into an official offer, a roster spot conversation, or a real visit?',
+      ],
+    },
+    {
+      availability: 'live_discovery_only',
+      heading: 'If they have offers',
+      lines: [
+        `Are those schools places ${pronouns.subject} would seriously consider, or are you still looking for the right-fit options?`,
+      ],
+    },
+    {
+      availability: 'live_discovery_only',
+      heading: 'If this is the first kid in recruiting',
+      lines: [
+        familyQuestion,
+        values.gradYear === 'Freshman' || values.gradYear === 'Sophomore'
+          ? 'I could not imagine trying to figure this out now without knowing how early everything starts.'
+          : 'I could not imagine trying to figure this out now without knowing what coaches are really looking for.',
+      ],
+    },
+  ];
 }
 
 function buildRecruitingTimelineScriptLines(
@@ -823,10 +910,25 @@ function buildRecruitingTimelineScriptLines(
     scriptLine('live_discovery', buildRecruitingDiscoveryQuestion(values, context)),
     scriptLine('profile_contingent', deficitLines[0]),
     scriptLine('profile_contingent', deficitLines[1]),
-    scriptLine('live_discovery', 'If it is mostly letters or emails, how many real phone calls do you have?'),
-    scriptLine('live_discovery', 'If coaches are calling, how many offers do you have?'),
-    scriptLine('live_discovery', 'If there are offers, are they schools you would actually accept?'),
-    scriptLine('live_discovery', 'Have you been through recruiting before? Is this the first time for you guys as a family?'),
+  ];
+}
+
+function buildAthleticDiscoveryBlocks(): ScriptContingencyBlock[] {
+  return [
+    {
+      availability: 'live_discovery_only',
+      heading: 'If varsity time is confirmed',
+      lines: [
+        'That is ahead of schedule, especially if they only pulled up a select few.',
+      ],
+    },
+    {
+      availability: 'live_discovery_only',
+      heading: 'If varsity film is not there yet',
+      lines: [
+        'No stress if you do not have it yet. We will readdress film and figure out what we need for Coach.',
+      ],
+    },
   ];
 }
 
@@ -857,29 +959,27 @@ function buildMeasurablePrompts(values: ScoutPrepFormValues, context?: ScoutPrep
   ];
 }
 
-function buildAcademicScoutNote(values: ScoutPrepFormValues, context?: ScoutPrepContext): string {
+function buildAcademicResponsePrompts(values: ScoutPrepFormValues, context?: ScoutPrepContext): string[] {
   const gpa = String(context?.resolved.gpa || '').trim();
   const band = getGpaBand(gpa);
   if (band === 'unknown') {
-    return 'GPA branch: get the GPA first, then ask what the classroom trend looks like.';
+    return [
+      'If GPA comes back low: “Okay, then this is something we need to stay ahead of, because coaches are going to care about the transcript.”',
+      'If GPA comes back solid: “Good. That gives us something workable academically.”',
+      'If GPA comes back strong: “Good. Academics can be a real strength in the recruiting conversation.”',
+    ];
   }
-  if (band === 'low') {
-    return 'GPA branch: eligibility can block options; get the grade story and 3.0 plan.';
-  }
-  if (band === 'medium') {
-    return 'GPA branch: solid enough to work with; confirm trend and major.';
-  }
-  return 'GPA branch: academics are a strength; connect grades to coach fit.';
+  return [];
 }
 
-function buildTimelineScoutNote(values: ScoutPrepFormValues): string {
+function buildTimelineScoutPrompt(values: ScoutPrepFormValues): string {
   if (values.gradYear === 'Freshman' || values.gradYear === 'Sophomore') {
-    return 'Deficit ladder: if nothing is real yet, this is about getting on the map before the contact window.';
+    return 'If nothing is real yet: this is about getting on the map before the contact window.';
   }
   if (values.gradYear === 'Junior') {
-    return 'Deficit ladder: letters or texts lead to calls; calls lead to offers; offers lead to right-fit decisions.';
+    return 'If it is mostly early contact: letters and texts need to turn into calls; calls need to turn into offers.';
   }
-  return 'Deficit ladder: signing windows are live; separate real offers from noise immediately.';
+  return 'If it is mostly interest: signing windows are live, so separate real offers from noise immediately.';
 }
 
 function buildMaxPrepsLevelPrompt(
@@ -965,6 +1065,13 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
   const deficitLine =
     selectStrongestDeficitLines(values, context)[0] ||
     `The gap is making sure the right coaches know who ${pronouns.subject} is before the next film window.`;
+  const academicResponsePrompts = buildAcademicResponsePrompts(values, context);
+  const academicBranchBlock = renderBranchBlock('GPA branch', academicResponsePrompts);
+  const athleticDiscoveryBlocks = renderContingencyBlocks(buildAthleticDiscoveryBlocks());
+  const deficitBranchBlock = renderBranchBlock('Deficit ladder', [buildTimelineScoutPrompt(values)]);
+  const recruitingDiscoveryBlocks = renderContingencyBlocks(
+    buildRecruitingDiscoveryBlocks(values, context),
+  );
   const greetingSection = scheduledCall
       ? [
         '### Greeting / Reason',
@@ -1003,8 +1110,8 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
       '### Academics / Major',
       '',
       blockQuote(renderScriptLines(buildAcademicScriptLines(values, context))),
-      '',
-      `- ${buildAcademicScoutNote(values, context)}`,
+      academicBranchBlock ? '' : null,
+      academicBranchBlock,
     ].join('\n'),
     [
       '### Athletic Proof',
@@ -1016,7 +1123,6 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
         maxPrepsLevelPrompt || '',
         `Did ${pronouns.subject} move up during the regular season or was it just for playoffs?`,
         'How many freshmen did they pull up? Did they pull up a lot of athletes from JV or was it just a select few?',
-        `If ${pronouns.subject} did get varsity time, especially as one of a select few, that is a strong sign.`,
         `Let’s go through some of ${pronouns.possessive} metrics.`,
         positionPrompt,
         measurablePrompt,
@@ -1030,14 +1136,16 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
         `Does ${pronouns.subject} do any other sports?`,
       ].filter(Boolean)),
       '',
-      '- Praise only after the parent gives proof: varsity time, verified speed, size, strength, film, or coach plan.',
+      athleticDiscoveryBlocks,
     ].join('\n'),
     [
       '### Recruiting / Timeline',
       '',
       blockQuote(renderScriptLines(buildRecruitingTimelineScriptLines(values, context))),
       '',
-      `- ${buildTimelineScoutNote(values)}`,
+      deficitBranchBlock,
+      recruitingDiscoveryBlocks ? '' : null,
+      recruitingDiscoveryBlocks || null,
     ].join('\n'),
     [
       '### Summary / Set Meeting',

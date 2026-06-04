@@ -47,6 +47,12 @@ test('current sales-stage reconciler repairs past appointments from live lifecyc
   assert.match(source, /shouldQueuePendingClientForStage/);
 });
 
+test('current sales-stage reconciler does not fabricate missing post-meeting titles', () => {
+  assert.match(source, /title: null/);
+  assert.doesNotMatch(source, /`Post Meeting - \$\{appointment\.head_scout\}`/);
+  assert.doesNotMatch(source, /title: 'Post Meeting'/);
+});
+
 test('current sales-stage reconciler never overwrites appointment start times', () => {
   const appointmentPatchBlocks = source.match(/queueAppointmentPatch\([\s\S]*?\n\s*\}\);/g) || [];
   assert.ok(appointmentPatchBlocks.length > 0, 'appointment patch blocks exist');

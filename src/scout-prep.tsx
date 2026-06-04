@@ -129,7 +129,7 @@ import {
   type ScoutPrepBatchRow,
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
-import { searchLogger } from './lib/logger';
+import { apiLogger, searchLogger } from './lib/logger';
 import { resolveTimezone } from './lib/scout-prep-ai';
 import {
   easternLocalIsoToDate,
@@ -198,6 +198,7 @@ import {
 } from './lib/scout-prep-cache';
 import {
   isCallAttempt1PortalTask,
+  normalizeDuplicateAthleteName,
   runDuplicateProfileResolutionForTask,
 } from './lib/scout-duplicate-profiles';
 import {
@@ -288,6 +289,63 @@ function logFailure(event: string, step: string, error: string, context?: Record
     error,
     context: context || {},
   });
+}
+
+function logTitleAudit(
+  event: string,
+  step: string,
+  status: 'start' | 'success' | 'failure',
+  context?: Record<string, unknown>,
+  error?: string,
+) {
+  const payload = {
+    event,
+    step,
+    status,
+    feature: 'scout-prep-reschedule-title',
+    ...(error ? { error } : {}),
+    context: context || {},
+  };
+  if (status === 'failure') {
+    apiLogger.error(event, payload);
+  } else {
+    apiLogger.info(event, payload);
+  }
+}
+
+function normalizeLogText(value?: string | null): string {
+  return String(value || '').trim().replace(/\s+/g, ' ');
+}
+
+function fingerprintLogText(value?: string | null): string | null {
+  const normalized = normalizeLogText(value).toLowerCase();
+  if (!normalized) return null;
+
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < normalized.length; index += 1) {
+    hash ^= normalized.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+}
+
+function summarizeMeetingTitleForLog(value?: string | null) {
+  const normalized = normalizeLogText(value);
+  return {
+    present: Boolean(normalized),
+    fingerprint: fingerprintLogText(normalized),
+    wordCount: normalized ? normalized.split(' ').length : 0,
+    charCount: normalized.length,
+  };
+}
+
+function findExactHeadScoutName(value?: string | null): string | null {
+  const normalized = normalizeLogText(value).toLowerCase();
+  if (!normalized) return null;
+  return (
+    HEAD_SCOUT_ORDER.find((scout) => normalizeLogText(scout.scout_name).toLowerCase() === normalized)
+      ?.scout_name || null
+  );
 }
 
 async function showLoadingToast(title: string, message?: string) {
@@ -895,7 +953,6 @@ function SupabaseLifecycleStatusAction() {
     <Action.Push
       title="Supabase Lifecycle Status"
       icon="💾"
-      shortcut={{ modifiers: ['cmd', 'opt'], key: 's' }}
       target={<SupabaseLifecycleStatusCommand />}
     />
   );
@@ -3508,6 +3565,7 @@ export function PostCallUpdateForm({
 
     setIsSaving(true);
     const toast = await showLoadingToast('Saving', 'Laravel + Supabase');
+    let rescheduleTitleAuditContext: Record<string, unknown> | null = null;
     try {
       const context = task.athlete_main_id ? null : await loadScoutPrepContext(task);
       const athleteMainId = String(
@@ -3675,6 +3733,39 @@ export function PostCallUpdateForm({
           }
           meetingSetResult = await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
         } else if (isConfirmedRescheduleMeetingStage(stageLabel)) {
+          const matchingHeadScoutTitle = findExactHeadScoutName(meetingName);
+          rescheduleTitleAuditContext = {
+            athleteId,
+            athleteMainId,
+            stageLabel,
+            previousAppointmentId: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || null,
+            targetOpenEventId: openEventId,
+            selectedMeetingFor: assignedTo,
+            selectedScoutName: selectedScout?.scout_name || null,
+            selectedOpenMeetingOwner: selectedOpenMeeting?.assigned_owner || null,
+            currentBookedMeetingOwner: currentBookedMeeting?.assigned_owner || null,
+            meetingName: summarizeMeetingTitleForLog(meetingName),
+            templateMeetingName: summarizeMeetingTitleForLog(meetingTemplate?.meeting_name),
+            currentBookedMeetingTitle: summarizeMeetingTitleForLog(currentBookedMeeting?.title),
+            initialBookedMeetingTitle: summarizeMeetingTitleForLog(initialBookedMeeting?.title),
+            meetingNameMatchesHeadScoutName: Boolean(matchingHeadScoutTitle),
+            matchingHeadScoutTitle,
+            meetingNameMatchesCurrentBookedMeetingTitle:
+              normalizeLogText(meetingName).toLowerCase() ===
+              normalizeLogText(currentBookedMeeting?.title).toLowerCase(),
+            meetingNameMatchesInitialBookedMeetingTitle:
+              normalizeLogText(meetingName).toLowerCase() ===
+              normalizeLogText(initialBookedMeeting?.title).toLowerCase(),
+            meetingNameMatchesTemplate:
+              normalizeLogText(meetingName).toLowerCase() ===
+              normalizeLogText(meetingTemplate?.meeting_name).toLowerCase(),
+          };
+          logTitleAudit(
+            'SCOUT_PREP_RESCHEDULE_TITLE_WRITE',
+            'prepare-submit',
+            'start',
+            rescheduleTitleAuditContext,
+          );
           rescheduleMeetingPayload = {
             athlete_id: athleteId,
             athlete_main_id: athleteMainId,
@@ -3690,6 +3781,14 @@ export function PostCallUpdateForm({
             keep_as_open_slot: 'yes',
           };
           rescheduleMeetingResult = await submitRescheduleMeeting(rescheduleMeetingPayload);
+          logTitleAudit('SCOUT_PREP_RESCHEDULE_TITLE_WRITE', 'submit', 'success', {
+            ...(rescheduleTitleAuditContext || {}),
+            createdTaskId: rescheduleMeetingResult.created_task?.task_id || null,
+            createdTaskTitle: summarizeMeetingTitleForLog(
+              rescheduleMeetingResult.created_task?.title || null,
+            ),
+            emailSent: Boolean(rescheduleMeetingResult.email_sent),
+          });
         }
       }
 
@@ -3911,6 +4010,15 @@ export function PostCallUpdateForm({
       await popViewsThenRefreshRoot(pop, closeAfterSaveViews, onSaved);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (rescheduleTitleAuditContext) {
+        logTitleAudit(
+          'SCOUT_PREP_RESCHEDULE_TITLE_WRITE',
+          'submit',
+          'failure',
+          rescheduleTitleAuditContext,
+          message,
+        );
+      }
       toast.style = Toast.Style.Failure;
       toast.title = 'Save failed';
       toast.message = message;
@@ -5183,7 +5291,9 @@ function ScoutPrepTaskItem({
               title="Copy Athlete Name"
               icon="🖇️"
               shortcut={{ modifiers: ['cmd'], key: 'c' }}
-              onAction={() => void copyToClipboardWithToast(task.athlete_name, 'Athlete')}
+              onAction={() =>
+                void copyToClipboardWithToast(normalizeDuplicateAthleteName(task.athlete_name), 'Athlete')
+              }
             />
             <Action.Push
               title="Contact Info"
@@ -5270,7 +5380,7 @@ function ScoutPrepTaskItem({
             />
             <Action
               title="Show All"
-              shortcut={{ modifiers: ['opt'], key: '4' }}
+              shortcut={{ modifiers: ['cmd', 'opt'], key: 's' }}
               onAction={() => onSelectTaskListFilter('all')}
             />
             <Action
@@ -7553,11 +7663,11 @@ export default function ScoutPrepCommand(
   }
 
   function selectTaskListFilter(filter: TaskListFilter) {
-    setTaskListFilter(filter);
     if (filter === 'all') {
-      setSelectedTaskItemId(undefined);
+      void selectAllTaskSearch();
       return;
     }
+    setTaskListFilter(filter);
     setTaskBuckets((current) => ({
       ...current,
       all: [],
@@ -7569,6 +7679,19 @@ export default function ScoutPrepCommand(
         sort: taskListSort,
       }),
     );
+  }
+
+  async function selectAllTaskSearch() {
+    setViewMode('tasks');
+    setTaskListFilter('all');
+    setTaskSearchText('');
+    setSelectedTaskItemId(undefined);
+    allTaskSearchRequestIdRef.current += 1;
+    setTaskBuckets((current) => ({
+      ...current,
+      all: [],
+    }));
+    await clearSearchBar({ forceScrollToTop: true });
   }
 
   function cycleSort(key: TaskListSortKey) {
@@ -7768,7 +7891,7 @@ export default function ScoutPrepCommand(
                 />
                 <Action
                   title="Show All"
-                  shortcut={{ modifiers: ['opt'], key: '4' }}
+                  shortcut={{ modifiers: ['cmd', 'opt'], key: 's' }}
                   onAction={() => selectTaskListFilter('all')}
                 />
                 <Action.Push

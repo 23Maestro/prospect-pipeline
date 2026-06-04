@@ -8,6 +8,7 @@ export type NormalizedSalesStage =
   | 'reschedule_pending'
   | 'rescheduled'
   | 'no_show'
+  | 'canceled'
   | 'closed_won'
   | 'closed_lost'
   | 'inactive'
@@ -31,6 +32,7 @@ export type MeetingLifecycleState =
   | 'reschedule_pending'
   | 'rescheduled'
   | 'no_show'
+  | 'canceled'
   | 'follow_up_due'
   | 'resolved'
   | 'closed_won'
@@ -123,11 +125,12 @@ export function normalizeCrmSalesStage(rawCrmStage?: string | null): NormalizedS
       'reschedule pending',
       'rescheduled pending',
       'meeting result res pending',
-      'meeting result canceled',
-      'actual meeting canceled',
     ])
   ) {
     return 'reschedule_pending';
+  }
+  if (includesAny(normalized, ['meeting result canceled', 'actual meeting canceled'])) {
+    return 'canceled';
   }
   if (includesAny(normalized, ['meeting result rescheduled', 'actual meeting rescheduled'])) {
     return 'rescheduled';
@@ -168,6 +171,7 @@ function resolveOperatorStatus(args: {
   }
   if (normalizedStage === 'reschedule_pending') return 'awaiting_reschedule';
   if (normalizedStage === 'no_show') return 'no_show';
+  if (normalizedStage === 'canceled') return 'needs_manual_review';
   if (normalizedStage === 'closed_won') return 'won';
   if (normalizedStage === 'closed_lost') return 'lost';
   if (normalizedStage === 'inactive') return 'inactive';
@@ -191,6 +195,7 @@ function resolveMeetingLifecycle(args: {
   if (normalizedStage === 'reschedule_pending') return 'reschedule_pending';
   if (normalizedStage === 'rescheduled') return 'rescheduled';
   if (normalizedStage === 'no_show') return 'no_show';
+  if (normalizedStage === 'canceled') return 'canceled';
   if (normalizedStage === 'closed_won') return 'closed_won';
   if (normalizedStage === 'closed_lost') return 'closed_lost';
   if (normalizedStage === 'inactive') return 'inactive';

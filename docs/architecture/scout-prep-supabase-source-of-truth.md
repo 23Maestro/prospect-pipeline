@@ -59,6 +59,7 @@ These scripts may write Supabase only through canonical writer paths, but they a
 
 See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned delete and migration map.
 
+- `src/domain/workflow-context.ts` is the shared workflow context resolver for cross-table identity, profile, meeting-title, sales-stage, task-status, appointment-status, and post-meeting-result values. UI paths, scripts, and reporting writers should use this resolver instead of rebuilding those decisions locally.
 - `lifecycleSalesStage` is the one lifecycle/sales-stage writer.
 - `lifecycle_events` is the only lifecycle/sales-stage history table.
 - `appointments` owns meeting timing/detail/reschedule chain.
@@ -69,6 +70,7 @@ See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned del
 ## Rules
 
 - Do not add new script-local lifecycle translation helpers.
+- Resolve shared workflow values through `src/domain/workflow-context.ts` before writing cross-table Scout Prep / Set Meetings facts.
 - Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, appointment status, and post-meeting outcome translation.
 - Use `src/lib/supabase-lifecycle.ts` for Raycast action-time Supabase writes.
 - Treat confirmation cache as confirmation-message support only.

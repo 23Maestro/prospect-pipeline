@@ -223,6 +223,23 @@ test('Post-call reschedule template hydration reads appointment truth', () => {
   assert.match(loadTemplate, /source:\s*meetingDetailsSource/);
 });
 
+test('Post-call reschedule full-title writes emit title audit logs', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const rescheduleSubmitStart = scoutPrep.indexOf(
+    '} else if (isConfirmedRescheduleMeetingStage(stageLabel))',
+  );
+  const rescheduleSubmitEnd = scoutPrep.indexOf(
+    'const basePlan = buildPostCallActionPlan',
+    rescheduleSubmitStart,
+  );
+  const rescheduleSubmit = scoutPrep.slice(rescheduleSubmitStart, rescheduleSubmitEnd);
+
+  assert.match(rescheduleSubmit, /SCOUT_PREP_RESCHEDULE_TITLE_WRITE/);
+  assert.match(rescheduleSubmit, /meetingNameMatchesHeadScoutName/);
+  assert.match(rescheduleSubmit, /meetingNameMatchesCurrentBookedMeetingTitle/);
+  assert.match(rescheduleSubmit, /submitRescheduleMeeting\(rescheduleMeetingPayload\)/);
+});
+
 test('Set Meetings confirmation send path does not rebuild confirmation cache', () => {
   const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
   const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
@@ -482,6 +499,15 @@ test('Scout Prep all-task bucket is search-first and server filtered', () => {
   assert.match(scoutPrep, /const isAllTaskSearchFirst = taskListFilter === 'all'/);
   assert.match(scoutPrep, /const allTaskSearchText = taskSearchText\.trim\(\)/);
   assert.match(scoutPrep, /if \(!allTaskSearchText\)/);
+  assert.match(scoutPrep, /async function selectAllTaskSearch\(\)/);
+  assert.match(
+    scoutPrep,
+    /title="Show All"[\s\S]*?shortcut=\{\{ modifiers: \['cmd', 'opt'\], key: 's' \}\}/,
+  );
+  assert.doesNotMatch(
+    scoutPrep,
+    /title="Supabase Lifecycle Status"[\s\S]{0,160}?shortcut=\{\{ modifiers: \['cmd', 'opt'\], key: 's' \}\}/,
+  );
   assert.match(scoutPrep, /loadAllTaskSearch\(allTaskSearchText\)/);
   assert.match(scoutPrep, /searchText,\s*\n\s*\}\)/);
   assert.match(

@@ -106,6 +106,7 @@ export function taskStatusForStage(
   if (normalizedStage === 'reschedule_pending') return 'reschedule_pending';
   if (normalizedStage === 'rescheduled') return 'confirmation_call';
   if (normalizedStage === 'no_show') return 'no_show';
+  if (normalizedStage === 'canceled') return 'canceled';
   if (normalizedStage === 'meeting_follow_up') return 'meeting_follow_up';
   if (normalizedStage === 'closed_won') return 'closed_won';
   if (normalizedStage === 'closed_lost') return 'closed_lost';
@@ -124,7 +125,7 @@ export function taskStatusForTitleOrStage(
   if (parsedTitle.outcome === 'terminal_enrollment') return 'closed_won';
   if (parsedTitle.outcome === 'terminal_close_lost') return 'closed_lost';
   if (parsedTitle.outcome === 'reschedule_pending') return 'reschedule_pending';
-  if (parsedTitle.outcome === 'soft_archive_canceled') return 'reschedule_pending';
+  if (parsedTitle.outcome === 'soft_archive_canceled') return 'canceled';
   if (parsedTitle.outcome === 'soft_archive_no_show') return 'no_show';
   if (parsedTitle.outcome === 'soft_archive_follow_up') return 'meeting_follow_up';
   return taskStatusForStage(rawCrmStage, existingTaskStatus);
@@ -148,6 +149,7 @@ export function appointmentStatusForTitleOrStage(
   if (normalizedStage === 'reschedule_pending') return 'reschedule_pending';
   if (normalizedStage === 'rescheduled') return 'rescheduled';
   if (normalizedStage === 'no_show') return 'no_show';
+  if (normalizedStage === 'canceled') return 'canceled';
   if (normalizedStage === 'meeting_follow_up') return 'follow_up';
   if (normalizedStage === 'meeting_set') return 'scheduled';
   return null;
@@ -183,6 +185,7 @@ export function isPostMeetingLifecycleStage(stage?: string | null): boolean {
     'reschedule_pending',
     'rescheduled',
     'no_show',
+    'canceled',
     'meeting_follow_up',
   ]);
   const direct = String(stage || '').trim() as NormalizedSalesStage;
