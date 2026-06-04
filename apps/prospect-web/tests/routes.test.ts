@@ -1122,6 +1122,62 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
           created_at: '2026-06-02T20:00:00+00:00',
         },
         {
+          athlete_name: 'Kelle Johnson',
+          occurred_at: '2026-06-03T21:00:00+00:00',
+          event_at: '2026-06-03T21:00:00+00:00',
+          reporting_at: '2026-06-03T21:00:00+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          appointment_id: 'appt-kelle',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          created_at: '2026-06-03T21:00:00+00:00',
+        },
+        {
+          athlete_name: 'Kelle Johnson',
+          occurred_at: '2026-06-03T22:00:00+00:00',
+          event_at: '2026-06-03T22:00:00+00:00',
+          reporting_at: '2026-06-03T22:00:00+00:00',
+          tracker_outcome: 'no_show',
+          raw_crm_stage: 'Meeting Result - No Show',
+          raw_task_status: 'No Show',
+          raw_event_type: 'meeting_result',
+          appointment_id: 'appt-kelle',
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: true,
+          created_at: '2026-06-03T22:00:00+00:00',
+        },
+        {
+          athlete_name: 'Cale Kethman',
+          occurred_at: '2026-06-02T20:00:00+00:00',
+          event_at: '2026-06-02T20:00:00+00:00',
+          reporting_at: '2026-06-02T20:00:00+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          appointment_id: 'appt-cale',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          created_at: '2026-06-02T20:00:00+00:00',
+        },
+        {
+          athlete_name: 'Alexander Williamson',
+          occurred_at: '2026-06-02T21:00:00+00:00',
+          event_at: '2026-06-02T21:00:00+00:00',
+          reporting_at: '2026-06-02T21:00:00+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          appointment_id: 'appt-alexander',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          created_at: '2026-06-02T21:00:00+00:00',
+        },
+        {
           athlete_name: 'Baker',
           occurred_at: '2026-06-02T21:00:00+00:00',
           event_at: '2026-06-02T21:00:00+00:00',
@@ -1140,8 +1196,8 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
     if (requestUrl.includes('/appointments?')) {
       return Response.json([
         {
-          id: 'current-appt-1',
-          athlete_key: 'athlete-current',
+          id: 'appt-1',
+          athlete_key: 'appt-1',
           athlete_id: '1490010',
           athlete_main_id: '953010',
           head_scout: 'Ryan Lietz',
@@ -1154,6 +1210,39 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
           appointment_role: 'initial_set',
           updated_at: '2026-06-02T13:00:00+00:00',
           created_at: '2026-06-02T13:00:00+00:00',
+        },
+        {
+          id: 'appt-cale',
+          athlete_key: 'cale',
+          athlete_id: '1490100',
+          athlete_main_id: '953100',
+          head_scout: 'Logan Lord',
+          starts_at: '2026-06-02T20:00:00+00:00',
+          status: 'pending',
+          updated_at: '2026-06-02T20:05:00+00:00',
+          created_at: '2026-06-02T20:00:00+00:00',
+        },
+        {
+          id: 'appt-alexander',
+          athlete_key: 'alexander',
+          athlete_id: '1490101',
+          athlete_main_id: '953101',
+          head_scout: 'Luther Winfield',
+          starts_at: '2026-06-02T21:00:00+00:00',
+          status: 'pending',
+          updated_at: '2026-06-02T21:05:00+00:00',
+          created_at: '2026-06-02T21:00:00+00:00',
+        },
+        {
+          id: 'appt-kelle',
+          athlete_key: 'kelle',
+          athlete_id: '1490102',
+          athlete_main_id: '953102',
+          head_scout: 'James Holcomb',
+          starts_at: '2026-06-03T21:00:00+00:00',
+          status: 'no_show',
+          updated_at: '2026-06-03T22:05:00+00:00',
+          created_at: '2026-06-03T21:00:00+00:00',
         },
         {
           id: 'appt-baker',
@@ -1231,9 +1320,21 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
   assert.equal(payload.data.rows.length, 1);
   assert.equal(payload.data.rows[0].athleteName, 'Meeting Athlete');
   assert.equal(payload.data.rows[0].status, 'Set');
-  assert.equal(payload.data.rows[0].headScout, 'Jerami Singleton');
+  assert.equal(payload.data.rows[0].headScout, 'Ryan Lietz');
   assert.equal(
     payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Baker'),
+    false,
+  );
+  assert.equal(
+    payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Cale Kethman'),
+    false,
+  );
+  assert.equal(
+    payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Alexander Williamson'),
+    false,
+  );
+  assert.equal(
+    payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Kelle Johnson'),
     false,
   );
   assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_log');

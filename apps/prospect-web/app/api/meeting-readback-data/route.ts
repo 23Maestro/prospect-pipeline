@@ -65,6 +65,13 @@ const appointmentFields = [
   'updated_at',
 ];
 
+const ACTIVE_MEETING_APPOINTMENT_STATUSES = new Set([
+  'scheduled',
+  'confirmation_queued',
+  'confirmation_sent',
+  'rescheduled',
+]);
+
 const athleteFields = ['athlete_key', 'athlete_name'];
 
 type JsonRow = Record<string, any>;
@@ -221,17 +228,14 @@ function moneyCents(facts: JsonRow[]) {
   return facts.reduce((total, row) => Math.max(total, Number(row.revenue_cents) || 0), 0);
 }
 
+function isActiveMeetingAppointmentStatus(status: unknown) {
+  return ACTIVE_MEETING_APPOINTMENT_STATUSES.has(normalizeKey(status).replace(/\s+/g, '_'));
+}
+
 function statusFor(latestFact: JsonRow | null, latestAppointment: JsonRow | null) {
   const outcome = normalizeKey(latestFact?.tracker_outcome).replace(/\s+/g, '_');
-  if (outcome === 'closed_won' || latestFact?.counts_as_enrollment === true) return 'Close Won';
-  if (outcome === 'closed_lost') return 'Close Lost';
-  if (outcome === 'no_show') return 'No Show';
   const appointmentStatus = normalizeKey(latestAppointment?.post_meeting_result || latestAppointment?.status).replace(/\s+/g, '_');
-  if (appointmentStatus === 'reschedule_pending' || outcome === 'reschedule_pending') return null;
-  if (appointmentStatus === 'closed_won') return 'Close Won';
-  if (appointmentStatus === 'closed_lost') return 'Close Lost';
-  if (appointmentStatus === 'no_show') return 'No Show';
-  if (outcome === 'meeting_set' || appointmentStatus === 'scheduled' || appointmentStatus === 'confirmation_queued' || appointmentStatus === 'confirmation_sent') {
+  if (outcome === 'meeting_set' && isActiveMeetingAppointmentStatus(appointmentStatus)) {
     return 'Set';
   }
   return null;
