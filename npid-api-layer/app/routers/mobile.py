@@ -8,22 +8,27 @@ bearer token. Existing Raycast-local routes remain unchanged.
 from datetime import datetime, timezone
 import hmac
 import os
+import pickle
 import re
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, HTTPException, Request, status
+import httpx
 from pydantic import BaseModel
+from requests.cookies import RequestsCookieJar
 
 from app.models.schemas import HeadScoutSlotsResponse
-from app.session import NPIDSession
+from app.session import NPIDSession, NPID_BASE_URL
 from app.translators.legacy import LegacyTranslator
 
 router = APIRouter(tags=["mobile"])
 HEAD_SCOUT_TIMEZONE = ZoneInfo("America/New_York")
 ACTIVE_OPERATOR_NAME = "Jerami Singleton"
 DASHBOARD_BASE_URL = "https://dashboard.nationalpid.com"
+COACH_RISNER_SESSION_FILE = Path.home() / ".npid_sessions" / "coach_risner.pkl"
 
 
 def require_mobile_token(authorization: Optional[str]) -> None:
@@ -54,6 +59,94 @@ class ContactReminderIntakeRequest(BaseModel):
     message: str
     received_at: Optional[str] = None
     source: Optional[str] = "ios_shortcut"
+
+
+class CoachRisnerLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/coach-risner/login")
+async def login_coach_risner(request: Request, payload: CoachRisnerLoginRequest):
+    require_mobile_token(request.headers.get("authorization"))
+
+    email = payload.email.strip()
+    password = payload.password
+    if not email or not password:
+      raise HTTPException(
+          status_code=status.HTTP_400_BAD_REQUEST,
+          detail="Prospect ID email and password are required",
+      )
+
+    async with httpx.AsyncClient(
+        base_url=NPID_BASE_URL,
+        timeout=30.0,
+        follow_redirects=False,
+        headers={
+            "User-Agent": "NPID-API-Layer/0.1",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        },
+    ) as client:
+        login_page = await client.get("/auth/login")
+        if login_page.status_code >= 400:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Prospect login page returned HTTP {login_page.status_code}",
+            )
+
+        token_match = re.search(r'name="_token"\s+value="([^"]+)"', login_page.text)
+        if not token_match:
+            token_match = re.search(r'value="([^"]+)"\s+name="_token"', login_page.text)
+        if not token_match:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Could not read Prospect login token",
+            )
+
+        login_response = await client.post(
+            "/auth/login",
+            data={
+                "email": email,
+                "password": password,
+                "_token": token_match.group(1),
+                "remember": "on",
+            },
+            headers={
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": f"{NPID_BASE_URL}/auth/login",
+            },
+        )
+
+        location = login_response.headers.get("location", "")
+        if login_response.status_code not in [301, 302] or "/auth/login" in location:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Prospect login failed",
+            )
+
+        cookie_jar = RequestsCookieJar()
+        for cookie in client.cookies.jar:
+            cookie_jar.set(
+                cookie.name,
+                cookie.value,
+                domain=cookie.domain,
+                path=cookie.path,
+            )
+
+        COACH_RISNER_SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(COACH_RISNER_SESSION_FILE, "wb") as session_file:
+            pickle.dump(cookie_jar, session_file)
+
+    return {
+        "success": True,
+        "operator": "coach_risner",
+        "session_file": {
+            "path": str(COACH_RISNER_SESSION_FILE),
+            "exists": COACH_RISNER_SESSION_FILE.exists(),
+            "size_bytes": COACH_RISNER_SESSION_FILE.stat().st_size,
+        },
+        "message": "Coach Risner Prospect session saved",
+    }
 
 
 @router.get("/calendar/head-scout-slots", response_model=HeadScoutSlotsResponse)

@@ -5,7 +5,10 @@ import { GET as meetingReadbackDataGET } from '../app/api/meeting-readback-data/
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
 import { POST as postMeetingOutcomePOST } from '../app/api/post-meeting-outcome/route';
+import { GET as prospectMobileSetMeetingsGET } from '../app/api/prospect-mobile/set-meetings/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
+import { createCoachRisnerSessionSetCookie } from '../app/api/tim-lite/access';
+import { POST as coachRisnerLoginPOST } from '../app/api/tim-lite/auth/login/route';
 import { GET as timLiteMeetingsGET } from '../app/api/tim-lite/meetings/route';
 import { POST as timLiteSearchPOST } from '../app/api/tim-lite/search/route';
 
@@ -28,19 +31,34 @@ test('/api/health returns expected adapter status', async () => {
   });
 });
 
-test('/api/tim-lite/meetings rejects missing access token when configured', async () => {
+test('/api/tim-lite/meetings rejects missing Coach Risner login', async () => {
   process.env.TIM_LITE_ACCESS_TOKEN = 'private-link-token';
 
   const response = await timLiteMeetingsGET(new Request('https://example.test/api/tim-lite/meetings'));
   assert.equal(response.status, 401);
   assert.deepEqual(await response.json(), {
     success: false,
-    error: 'Tim Lite access is required',
-    code: 'tim_lite_access_required',
+    error: 'Coach Risner login is required',
+    code: 'coach_risner_login_required',
   });
 });
 
-test('/api/tim-lite/meetings reads Tim cache through server Supabase', async () => {
+test('/api/tim-lite/auth/login requires Prospect credentials', async () => {
+  const response = await coachRisnerLoginPOST(
+    new Request('https://example.test/api/tim-lite/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: '', password: '' }),
+    }),
+  );
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'Prospect email and password are required',
+    code: 'coach_risner_credentials_required',
+  });
+});
+
+test('/api/tim-lite/meetings reads Tim cache through appointment truth', async () => {
   process.env.TIM_LITE_ACCESS_TOKEN = 'private-link-token';
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
@@ -48,6 +66,12 @@ test('/api/tim-lite/meetings reads Tim cache through server Supabase', async () 
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
+    if (String(url).includes('/appointments?')) {
+      return Response.json([
+        { id: 'appt_1', status: 'scheduled' },
+        { id: 'appt_rsp', status: 'reschedule_pending' },
+      ]);
+    }
     return Response.json([
       {
         appointment_id: 'appt_1',
@@ -74,12 +98,18 @@ test('/api/tim-lite/meetings reads Tim cache through server Supabase', async () 
         message_body: 'Confirmation two',
         kind: 'confirmation_2',
       },
+      {
+        appointment_id: 'appt_rsp',
+        athlete_name: 'Kale Pending',
+        message_body: 'Pending one',
+        kind: 'confirmation_1',
+      },
     ]);
   };
 
   const response = await timLiteMeetingsGET(
     new Request('https://example.test/api/tim-lite/meetings?week=this', {
-      headers: { 'x-tim-lite-token': 'private-link-token' },
+      headers: { cookie: createCoachRisnerSessionSetCookie() },
     }),
   );
 
@@ -93,8 +123,66 @@ test('/api/tim-lite/meetings reads Tim cache through server Supabase', async () 
   assert.match(calls[0].url, /\/rest\/v1\/tim_lite_confirmation_cache\?/);
   assert.match(calls[0].url, /operator_key=eq\.tim_risner/);
   assert.match(calls[0].url, /kind=in\.\(confirmation_1,confirmation_2\)/);
+  assert.match(calls[1].url, /\/rest\/v1\/appointments\?/);
   const headers = calls[0].init?.headers as Record<string, string>;
   assert.equal(headers.authorization, 'Bearer service-role');
+});
+
+test('/api/prospect-mobile/set-meetings filters confirmation cache through appointment truth', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes('/appointments?')) {
+      return Response.json([
+        { id: 'appt_active', status: 'scheduled' },
+        { id: 'appt_baker', status: 'reschedule_pending' },
+      ]);
+    }
+    return Response.json([
+      {
+        appointment_id: 'appt_active',
+        athlete_id: '149',
+        athlete_main_id: '953',
+        athlete_name: 'Active Meeting',
+        recipient_name: 'Parent One',
+        recipient_phone: '5551112222',
+        head_scout_name: 'Scout Name',
+        meeting_starts_at: '2026-06-03T18:00:00Z',
+        meeting_timezone: 'America/New_York',
+        message_body: 'Confirmation one',
+        kind: 'confirmation_1',
+      },
+      {
+        appointment_id: 'appt_baker',
+        athlete_id: '150',
+        athlete_main_id: '954',
+        athlete_name: 'Baker',
+        recipient_name: 'Parent Two',
+        recipient_phone: '5553334444',
+        head_scout_name: 'Scout Name',
+        meeting_starts_at: '2026-06-03T19:00:00Z',
+        meeting_timezone: 'America/New_York',
+        message_body: 'Pending one',
+        kind: 'confirmation_1',
+      },
+    ]);
+  };
+
+  const response = await prospectMobileSetMeetingsGET(
+    new Request('https://example.test/api/prospect-mobile/set-meetings?week=this'),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.count, 1);
+  assert.equal(payload.events[0].appointment_id, 'appt_active');
+  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Baker'), false);
+  assert.match(calls[0].url, /\/rest\/v1\/set_meeting_confirmation_cache\?/);
+  assert.match(calls[1].url, /\/rest\/v1\/appointments\?/);
 });
 
 test('/api/tim-lite/search calls Tim cache RPC through server Supabase', async () => {
@@ -121,7 +209,7 @@ test('/api/tim-lite/search calls Tim cache RPC through server Supabase', async (
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        'x-tim-lite-token': 'private-link-token',
+        cookie: createCoachRisnerSessionSetCookie(),
       },
       body: JSON.stringify({ query: 'Turner' }),
     }),
@@ -1033,6 +1121,20 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
           materialization_status: 'operator_task',
           created_at: '2026-06-02T20:00:00+00:00',
         },
+        {
+          athlete_name: 'Baker',
+          occurred_at: '2026-06-02T21:00:00+00:00',
+          event_at: '2026-06-02T21:00:00+00:00',
+          reporting_at: '2026-06-02T21:00:00+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          appointment_id: 'appt-baker',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          created_at: '2026-06-02T21:00:00+00:00',
+        },
       ]);
     }
     if (requestUrl.includes('/appointments?')) {
@@ -1052,6 +1154,17 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
           appointment_role: 'initial_set',
           updated_at: '2026-06-02T13:00:00+00:00',
           created_at: '2026-06-02T13:00:00+00:00',
+        },
+        {
+          id: 'appt-baker',
+          athlete_key: 'baker',
+          athlete_id: '1490099',
+          athlete_main_id: '953099',
+          head_scout: 'Ryan Lietz',
+          starts_at: '2026-06-03T19:00:00+00:00',
+          status: 'reschedule_pending',
+          updated_at: '2026-06-02T21:05:00+00:00',
+          created_at: '2026-06-02T21:00:00+00:00',
         },
       ]);
     }
@@ -1119,6 +1232,10 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
   assert.equal(payload.data.rows[0].athleteName, 'Meeting Athlete');
   assert.equal(payload.data.rows[0].status, 'Set');
   assert.equal(payload.data.rows[0].headScout, 'Jerami Singleton');
+  assert.equal(
+    payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Baker'),
+    false,
+  );
   assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_log');
   assert.equal(payload.data.supabaseReads.appointmentTable, 'appointments');
   assert.equal(payload.data.supabaseReads.athleteTable, 'athletes');

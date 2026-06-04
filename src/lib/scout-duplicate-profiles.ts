@@ -1,5 +1,5 @@
 import { apiFetch } from './fastapi-client';
-import { fetchContactInfo } from './npid-mcp-adapter';
+import { fetchContactInfo, type ContactInfo } from './npid-mcp-adapter';
 import { searchLogger } from './logger';
 import type { ScoutAthleteTask, ScoutPortalTask } from '../features/scout-prep/types';
 import { stripMoveThisTaskPrefix } from '../domain/scout-task-selection';
@@ -9,7 +9,7 @@ import { getActiveOperator } from '../domain/owners';
 const FEATURE = 'scout-duplicate-profiles';
 const REPEAT_PROFILE_MARKER = 'Repeat Profile';
 const REPEAT_TASK_TITLE = 'REPEAT';
-const REPEAT_TASK_DESCRIPTION = 'REPEAT';
+const REPEAT_TASK_DESCRIPTION = '';
 
 type RawAthleteSearchResult = {
   athlete_id: string;
@@ -66,6 +66,41 @@ export type DuplicateProfileResolutionResult = {
   skipped: Array<{ athleteId: string; reason: string }>;
 };
 
+type DuplicateProfileIdentityDetails = {
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  name?: string | null;
+  grad_year?: string | null;
+  sport?: string | null;
+  high_school?: string | null;
+  city?: string | null;
+  state?: string | null;
+};
+
+export type DuplicateProfileDecision = {
+  isDuplicate: boolean;
+  reason: string;
+  evidence: string[];
+};
+
+type DuplicateProfileEnvelope = {
+  athleteId: string;
+  athleteMainId: string | null;
+  name: { firstName: string; lastName: string; fullName: string };
+  profile: {
+    gradYear: string | null;
+    sport: string | null;
+    highSchool: string | null;
+    city: string | null;
+    state: string | null;
+  };
+  contacts: {
+    student: { name: string | null; phone: string | null; email: string | null };
+    parent1: { name: string | null; phone: string | null; email: string | null } | null;
+    parent2: { name: string | null; phone: string | null; email: string | null } | null;
+  };
+};
+
 type DuplicateProfileResolutionDeps = {
   searchRows: (args: {
     searchTerm: string;
@@ -73,7 +108,8 @@ type DuplicateProfileResolutionDeps = {
     athleteMainId: string | null;
   }) => Promise<DuplicateProfileSearchRow[]>;
   resolveAthleteMainId: (candidate: DuplicateProfileSearchRow) => Promise<string | null>;
-  loadSelectedProfile: (contactId: string, athleteMainId: string) => Promise<void>;
+  fetchAthleteDetails: (athleteId: string) => Promise<DuplicateProfileIdentityDetails | null>;
+  loadContactInfo: (contactId: string, athleteMainId: string) => Promise<ContactInfo>;
   fetchTasks: (athleteId: string, athleteMainId: string) => Promise<Array<Partial<ScoutAthleteTask>>>;
   updateTask: (args: {
     taskId: string;
@@ -97,7 +133,7 @@ type DuplicateProfileResolutionDeps = {
     assignedOwner?: string | null;
     description?: string | null;
   }) => Promise<{ success?: boolean; task_id?: string | null; message?: string | null }>;
-  createCompletedTask: (args: {
+  createRepeatTask: (args: {
     athleteId: string;
     athleteMainId: string;
     contactTask?: string | null;
@@ -112,7 +148,7 @@ function logInfo(event: string, step: string, context?: Record<string, unknown>)
   searchLogger.info(event, {
     event,
     step,
-    status: 'success',
+    status: step.endsWith('start') ? 'start' : 'success',
     feature: FEATURE,
     context: context || {},
   });
@@ -159,6 +195,10 @@ function phonesMatch(left: string | null | undefined, right: string | null | und
   const normalizedLeft = normalizeDuplicatePhone(left);
   const normalizedRight = normalizeDuplicatePhone(right);
   return Boolean(normalizedLeft && normalizedRight && normalizedLeft === normalizedRight);
+}
+
+function emailsMatch(left: string | null | undefined, right: string | null | undefined): boolean {
+  return valuesMatch(left, right);
 }
 
 export function splitAthleteName(fullName: string): { firstName: string; lastName: string } {
@@ -266,6 +306,137 @@ export function getDuplicateIdentityEvidence(row: DuplicateProfileSearchRow, tas
   return evidence;
 }
 
+function buildContactProfileEnvelope(args: {
+  athleteId: string;
+  athleteMainId: string | null;
+  fullName: string;
+  row?: DuplicateProfileSearchRow | null;
+  task?: ScoutPortalTask | null;
+  details?: DuplicateProfileIdentityDetails | null;
+  contactInfo: ContactInfo;
+}): DuplicateProfileEnvelope {
+  const splitName = splitAthleteName(
+    args.contactInfo.studentAthlete?.name || args.details?.name || args.fullName,
+  );
+  return {
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+    name: {
+      firstName: splitName.firstName,
+      lastName: splitName.lastName,
+      fullName: [splitName.firstName, splitName.lastName].filter(Boolean).join(' '),
+    },
+    profile: {
+      gradYear: args.task?.grad_year || args.details?.grad_year || args.row?.gradYear || null,
+      sport: args.task?.sport || args.details?.sport || args.row?.sport || null,
+      highSchool: args.task?.high_school || args.details?.high_school || args.row?.highSchool || null,
+      city: args.task?.city || args.details?.city || args.row?.city || null,
+      state: args.task?.state || args.details?.state || args.row?.state || null,
+    },
+    contacts: {
+      student: {
+        name: args.contactInfo.studentAthlete?.name || null,
+        phone: args.contactInfo.studentAthlete?.phone || null,
+        email: args.contactInfo.studentAthlete?.email || null,
+      },
+      parent1: args.contactInfo.parent1
+        ? {
+            name: args.contactInfo.parent1.name || null,
+            phone: args.contactInfo.parent1.phone || null,
+            email: args.contactInfo.parent1.email || null,
+          }
+        : null,
+      parent2: args.contactInfo.parent2
+        ? {
+            name: args.contactInfo.parent2.name || null,
+            phone: args.contactInfo.parent2.phone || null,
+            email: args.contactInfo.parent2.email || null,
+          }
+        : null,
+    },
+  };
+}
+
+function collectContactValues(envelope: DuplicateProfileEnvelope) {
+  const contacts = [envelope.contacts.student, envelope.contacts.parent1, envelope.contacts.parent2].filter(
+    Boolean,
+  ) as Array<{ name: string | null; phone: string | null; email: string | null }>;
+  return contacts;
+}
+
+export function classifyDuplicateProfileEnvelope(args: {
+  current: DuplicateProfileEnvelope;
+  candidate: DuplicateProfileEnvelope;
+}): DuplicateProfileDecision {
+  const evidence = new Set<string>();
+  const currentContacts = collectContactValues(args.current);
+  const candidateContacts = collectContactValues(args.candidate);
+
+  for (const currentContact of currentContacts) {
+    for (const candidateContact of candidateContacts) {
+      if (phonesMatch(currentContact.phone, candidateContact.phone)) evidence.add('contact_phone');
+      if (emailsMatch(currentContact.email, candidateContact.email)) evidence.add('contact_email');
+    }
+  }
+
+  if (valuesMatch(args.current.profile.gradYear, args.candidate.profile.gradYear)) evidence.add('grad_year');
+  if (valuesMatch(args.current.profile.sport, args.candidate.profile.sport)) evidence.add('sport');
+  if (valuesMatch(args.current.profile.state, args.candidate.profile.state)) evidence.add('state');
+  if (valuesMatch(args.current.profile.city, args.candidate.profile.city)) evidence.add('city');
+  if (valuesMatch(args.current.profile.highSchool, args.candidate.profile.highSchool)) evidence.add('high_school');
+
+  const evidenceList = [...evidence];
+  const hasContactMatch = evidence.has('contact_phone') || evidence.has('contact_email');
+  const sameGradYear = evidence.has('grad_year');
+  const sameSport = evidence.has('sport');
+  const sameState = evidence.has('state');
+  const differentGradYear = Boolean(
+    normalizeDuplicateEvidenceValue(args.current.profile.gradYear) &&
+      normalizeDuplicateEvidenceValue(args.candidate.profile.gradYear) &&
+      !sameGradYear,
+  );
+  const differentState = Boolean(
+    normalizeDuplicateEvidenceValue(args.current.profile.state) &&
+      normalizeDuplicateEvidenceValue(args.candidate.profile.state) &&
+      !sameState,
+  );
+  const differentSport = Boolean(
+    normalizeDuplicateEvidenceValue(args.current.profile.sport) &&
+      normalizeDuplicateEvidenceValue(args.candidate.profile.sport) &&
+      !sameSport,
+  );
+
+  if (hasContactMatch && sameGradYear && differentSport && sameState) {
+    return { isDuplicate: true, reason: 'likely_same_kid_multi_sport', evidence: evidenceList };
+  }
+
+  if (hasContactMatch && differentState) {
+    return { isDuplicate: true, reason: 'contact_match_different_state', evidence: evidenceList };
+  }
+
+  if (hasContactMatch && differentGradYear) {
+    return { isDuplicate: true, reason: 'contact_match_different_grad_year', evidence: evidenceList };
+  }
+
+  if (hasContactMatch) {
+    return { isDuplicate: true, reason: 'contact_match', evidence: evidenceList };
+  }
+
+  if (differentState) {
+    return { isDuplicate: false, reason: 'different_state_unresolved', evidence: evidenceList };
+  }
+
+  if (differentSport) {
+    return { isDuplicate: false, reason: 'different_sport_contact_mismatch', evidence: evidenceList };
+  }
+
+  if (evidenceList.length) {
+    return { isDuplicate: false, reason: 'needs_contact_match', evidence: evidenceList };
+  }
+
+  return { isDuplicate: false, reason: 'needs_secondary_identity_match', evidence: evidenceList };
+}
+
 export function buildRepeatProfileDescription(description?: string | null): string {
   const existing = String(description || '').trim();
   if (!existing) {
@@ -350,8 +521,8 @@ async function resolveDuplicateAthleteMainId(candidate: DuplicateProfileSearchRo
   return athleteMainId || null;
 }
 
-async function replaySelectedProfile(contactId: string, athleteMainId: string): Promise<void> {
-  await fetchContactInfo(contactId, athleteMainId);
+async function loadDuplicateContactInfo(contactId: string, athleteMainId: string): Promise<ContactInfo> {
+  return fetchContactInfo(contactId, athleteMainId);
 }
 
 function formatLegacyTaskDate(date: Date): string {
@@ -366,7 +537,7 @@ function formatLegacyTaskTime(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
-async function createCompletedDuplicateRepeatTask(args: {
+async function createDuplicateRepeatTask(args: {
   athleteId: string;
   athleteMainId: string;
   contactTask?: string | null;
@@ -376,9 +547,8 @@ async function createCompletedDuplicateRepeatTask(args: {
   completedAt: Date;
 }): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
   const completedDate = formatLegacyTaskDate(args.completedAt);
-  const completedTime = formatLegacyTaskTime(args.completedAt);
 
-  const response = await apiFetch('/tasks/create-completed', {
+  const response = await apiFetch('/tasks/create', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -389,8 +559,6 @@ async function createCompletedDuplicateRepeatTask(args: {
       description: args.description,
       due_date: completedDate,
       due_time: '00:00',
-      completed_date: completedDate,
-      completed_time: completedTime,
       assigned_to: args.assignedTo,
     }),
   });
@@ -411,7 +579,11 @@ function createDefaultDeps(): DuplicateProfileResolutionDeps {
   return {
     searchRows: searchDuplicateRows,
     resolveAthleteMainId: resolveDuplicateAthleteMainId,
-    loadSelectedProfile: replaySelectedProfile,
+    fetchAthleteDetails: async (athleteId) => {
+      const { fetchScoutPrepAthleteDetails } = await import('./scout-prep');
+      return fetchScoutPrepAthleteDetails(athleteId);
+    },
+    loadContactInfo: loadDuplicateContactInfo,
     fetchTasks: async (athleteId, athleteMainId) => {
       const { fetchAthleteTasks } = await import('./scout-prep');
       return fetchAthleteTasks(athleteId, athleteMainId);
@@ -424,7 +596,7 @@ function createDefaultDeps(): DuplicateProfileResolutionDeps {
       const { completeScoutPrepTaskAfterVoicemail } = await import('./scout-prep');
       return completeScoutPrepTaskAfterVoicemail(args);
     },
-    createCompletedTask: createCompletedDuplicateRepeatTask,
+    createRepeatTask: createDuplicateRepeatTask,
   };
 }
 
@@ -459,7 +631,7 @@ export async function runDuplicateProfileResolutionForTask(
   logInfo('SCOUT_DUPLICATE_PROFILE', 'search-start', {
     athleteId: currentAthleteId,
     athleteMainId: currentAthleteMainId || null,
-    athleteName,
+    hasAthleteName: Boolean(athleteName),
     emailIncluded: false,
   });
 
@@ -475,8 +647,6 @@ export async function runDuplicateProfileResolutionForTask(
     currentAthleteMainId,
     targetName,
   });
-  const candidates = exactNameCandidates.filter((row) => getDuplicateIdentityEvidence(row, task).length > 0);
-
   const result: DuplicateProfileResolutionResult = {
     searchTerm: athleteName,
     matchCount: matchingRows.length,
@@ -484,17 +654,7 @@ export async function runDuplicateProfileResolutionForTask(
     skipped: [],
   };
 
-  for (const candidate of exactNameCandidates) {
-    if (candidates.includes(candidate)) {
-      continue;
-    }
-    result.skipped.push({
-      athleteId: candidate.athleteId,
-      reason: 'Needs secondary identity match',
-    });
-  }
-
-  if (!candidates.length) {
+  if (!exactNameCandidates.length) {
     logInfo('SCOUT_DUPLICATE_PROFILE', 'search-complete', {
       athleteId: currentAthleteId,
       matchCount: matchingRows.length,
@@ -506,10 +666,32 @@ export async function runDuplicateProfileResolutionForTask(
   logInfo('SCOUT_DUPLICATE_PROFILE', 'duplicate-found', {
     athleteId: currentAthleteId,
     matchCount: matchingRows.length,
-    duplicateCount: candidates.length,
+    duplicateCount: exactNameCandidates.length,
   });
 
-  for (const candidate of candidates) {
+  let currentContactInfo: ContactInfo;
+  try {
+    currentContactInfo = await activeDeps.loadContactInfo(currentAthleteId, currentAthleteMainId);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    logFailure('SCOUT_DUPLICATE_PROFILE', 'current-envelope', message, {
+      athleteId: currentAthleteId,
+      athleteMainId: currentAthleteMainId,
+    });
+    throw error;
+  }
+
+  const currentDetails = await activeDeps.fetchAthleteDetails(currentAthleteId);
+  const currentEnvelope = buildContactProfileEnvelope({
+    athleteId: currentAthleteId,
+    athleteMainId: currentAthleteMainId || null,
+    fullName: athleteName,
+    task,
+    details: currentDetails,
+    contactInfo: currentContactInfo,
+  });
+
+  for (const candidate of exactNameCandidates) {
     const athleteMainId = await activeDeps.resolveAthleteMainId(candidate);
     if (!athleteMainId) {
       result.skipped.push({
@@ -519,8 +701,10 @@ export async function runDuplicateProfileResolutionForTask(
       continue;
     }
 
+    const candidateDetails = await activeDeps.fetchAthleteDetails(candidate.athleteId);
+    let candidateContactInfo: ContactInfo;
     try {
-      await activeDeps.loadSelectedProfile(candidate.athleteId, athleteMainId);
+      candidateContactInfo = await activeDeps.loadContactInfo(candidate.athleteId, athleteMainId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       result.skipped.push({
@@ -530,11 +714,40 @@ export async function runDuplicateProfileResolutionForTask(
       continue;
     }
 
+    const candidateEnvelope = buildContactProfileEnvelope({
+      athleteId: candidate.athleteId,
+      athleteMainId,
+      fullName: candidate.fullName,
+      row: candidate,
+      details: candidateDetails,
+      contactInfo: candidateContactInfo,
+    });
+    const decision = classifyDuplicateProfileEnvelope({
+      current: currentEnvelope,
+      candidate: candidateEnvelope,
+    });
+
+    logInfo('SCOUT_DUPLICATE_PROFILE', 'candidate-classified', {
+      athleteId: currentAthleteId,
+      candidateAthleteId: candidate.athleteId,
+      reason: decision.reason,
+      isDuplicate: decision.isDuplicate,
+      evidence: decision.evidence,
+    });
+
+    if (!decision.isDuplicate) {
+      result.skipped.push({
+        athleteId: candidate.athleteId,
+        reason: decision.reason,
+      });
+      continue;
+    }
+
     try {
       const duplicateTasks = await activeDeps.fetchTasks(candidate.athleteId, athleteMainId);
       const duplicateTask = selectDuplicateCallAttempt1Task(duplicateTasks);
       if (!duplicateTask) {
-        const createdTask = await activeDeps.createCompletedTask({
+        const createdTask = await activeDeps.createRepeatTask({
           athleteId: candidate.athleteId,
           athleteMainId,
           contactTask: candidate.athleteId,

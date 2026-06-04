@@ -676,11 +676,11 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.doesNotMatch(appText, /const copyText = `\$\{title\} - \$\{owner\} - \$\{time\}`/);
 });
 
-test('Tim Lite mobile is a stripped Set Meetings and Search surface over Tim cache tables', () => {
+test('Coach Risner mobile is a stripped Set Meetings and Search surface over Tim cache tables', () => {
   const appText = readFileSync(join(appRoot, 'public/tim-mobile/app.js'), 'utf8');
   const pageText = readFileSync(join(appRoot, 'app/tim-mobile/page.tsx'), 'utf8');
 
-  assert.match(pageText, /Tim Lite/);
+  assert.match(pageText, /Coach Risner/);
   assert.match(pageText, /\/tim-mobile\/app\.js/);
   assert.match(pageText, /data-route="\/set-meetings"/);
   assert.match(pageText, /data-route="\/search"/);
@@ -690,13 +690,19 @@ test('Tim Lite mobile is a stripped Set Meetings and Search surface over Tim cac
   assert.doesNotMatch(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
   assert.match(appText, /\/api\/tim-lite\/meetings/);
   assert.match(appText, /\/api\/tim-lite\/search/);
-  assert.match(appText, /x-tim-lite-token/);
-  assert.match(appText, /timLiteAccessToken/);
-  assert.match(appText, /Open Tim Lite from the private link again/);
+  assert.match(appText, /\/api\/tim-lite\/auth\/login/);
+  assert.match(appText, /Prospect ID email/);
+  assert.match(appText, /name="password"/);
+  assert.match(appText, /coachRisnerLoggedIn/);
+  assert.match(appText, /Sign in with Prospect ID again/);
   assert.match(appText, /event\.confirmation_1_message/);
   assert.match(appText, /event\.confirmation_2_message/);
   assert.match(appText, /data-confirmation-modal/);
   assert.match(appText, /sms:\$\{smsPhone\}\?body=/);
+  assert.doesNotMatch(appText, /x-tim-lite-token/);
+  assert.doesNotMatch(appText, /timLiteAccessToken/);
+  assert.doesNotMatch(appText, /Access code/);
+  assert.doesNotMatch(appText, /private access code/);
   assert.doesNotMatch(appText, /window\.__TIM_LITE_SUPABASE__/);
   assert.doesNotMatch(appText, /\/rest\/v1\/tim_lite_confirmation_cache/);
   assert.doesNotMatch(appText, /\/rest\/v1\/rpc\/search_tim_lite_confirmation_cache/);

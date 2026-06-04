@@ -260,6 +260,38 @@ test('reschedule resolution reads appointment truth before Laravel booked meetin
   assert.equal(laravelBookedMeetingsCalled, false);
 });
 
+test('latest appointment resolution returns terminal appointment context for outreach reschedules', async () => {
+  let activeTruthCalled = false;
+  const result = await resolveBookedMeetingDetailsForForm(
+    {
+      athleteId: '1498390',
+      athleteMainId: '953647',
+      source: 'latest_appointment_truth',
+    },
+    {
+      fetchAppointmentTruth: async () => {
+        activeTruthCalled = true;
+        return null;
+      },
+      fetchLatestAppointmentTruth: async () => ({
+        id: '588033',
+        source_event_id: '588033',
+        starts_at: '2026-05-31T16:00:00+00:00',
+        meeting_timezone: 'America/New_York',
+        meeting_timezone_label: 'EDT',
+        head_scout: 'Ryan Lietz',
+        status: 'no_show',
+      }),
+    },
+  );
+
+  assert.equal(result?.bookedMeeting.event_id, '588033');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Ryan Lietz');
+  assert.equal(result?.bookedMeeting.start, '2026-05-31T12:00');
+  assert.equal(result?.meetingTimezone, 'America/New_York');
+  assert.equal(activeTruthCalled, false);
+});
+
 test('appointment id resolution reads the appointments domain row directly', async () => {
   let activeTruthCalled = false;
   const result = await resolveBookedMeetingDetailsForForm(

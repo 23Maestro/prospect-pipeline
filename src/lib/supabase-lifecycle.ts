@@ -311,6 +311,12 @@ export type ActiveMeetingFallbackRow = {
   updatedAt: string;
 };
 
+export type AppointmentStatusProjection = {
+  appointmentId: string;
+  status: 'reschedule_pending';
+  statusReason: 'sales_stage_reschedule_pending';
+};
+
 export type WeeklyScheduledAppointmentRow = {
   id: string;
   athleteId: string;
@@ -969,6 +975,38 @@ export function resolveLifecycleRetentionDecision(args: {
   };
 }
 
+export function resolveAppointmentStatusProjectionForSalesStage(args: {
+  crmStage?: string | null;
+  appointmentId?: string | null;
+}): AppointmentStatusProjection | null {
+  const appointmentId = normalizeValue(args.appointmentId);
+  if (!appointmentId) return null;
+
+  const lifecycle = resolveSalesLifecycle(args.crmStage);
+  if (lifecycle.normalizedStage !== 'reschedule_pending') return null;
+
+  return {
+    appointmentId,
+    status: 'reschedule_pending',
+    statusReason: 'sales_stage_reschedule_pending',
+  };
+}
+
+async function patchAppointmentStatusProjection(args: {
+  config: SupabaseConfig;
+  projection: AppointmentStatusProjection;
+}): Promise<void> {
+  await request(args.config, 'appointments', {
+    method: 'PATCH',
+    query: `id=eq.${encodeURIComponent(args.projection.appointmentId)}`,
+    rows: {
+      status: args.projection.status,
+      status_reason: args.projection.statusReason,
+      updated_at: new Date().toISOString(),
+    },
+  });
+}
+
 async function softArchiveCurrentAppointment(args: {
   config: SupabaseConfig;
   athleteKey: string;
@@ -1085,6 +1123,18 @@ export async function lifecycleSalesStage(
   });
   if (!result.enabled) return result;
 
+  const config = getSupabasePersistenceConfig();
+  const appointmentProjection = resolveAppointmentStatusProjectionForSalesStage({
+    crmStage: event.state.crmStage,
+    appointmentId: event.state.currentAppointmentId,
+  });
+  if (config && appointmentProjection) {
+    await patchAppointmentStatusProjection({
+      config,
+      projection: appointmentProjection,
+    });
+  }
+
   const activitySubtype = normalizeValue(event.payload.activity_subtype as string | null);
   const taskId = normalizeValue(event.payload.task_id as string | null);
   const occurredAt = normalizeValue(event.payload.occurred_at as string | null);
@@ -1096,7 +1146,6 @@ export async function lifecycleSalesStage(
     return result;
   }
 
-  const config = getSupabasePersistenceConfig();
   if (!config) return result;
 
   const row = buildCallActivityFact({

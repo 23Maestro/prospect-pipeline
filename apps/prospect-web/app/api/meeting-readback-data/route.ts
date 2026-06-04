@@ -227,13 +227,14 @@ function statusFor(latestFact: JsonRow | null, latestAppointment: JsonRow | null
   if (outcome === 'closed_lost') return 'Close Lost';
   if (outcome === 'no_show') return 'No Show';
   const appointmentStatus = normalizeKey(latestAppointment?.post_meeting_result || latestAppointment?.status).replace(/\s+/g, '_');
+  if (appointmentStatus === 'reschedule_pending' || outcome === 'reschedule_pending') return null;
   if (appointmentStatus === 'closed_won') return 'Close Won';
   if (appointmentStatus === 'closed_lost') return 'Close Lost';
   if (appointmentStatus === 'no_show') return 'No Show';
   if (outcome === 'meeting_set' || appointmentStatus === 'scheduled' || appointmentStatus === 'confirmation_queued' || appointmentStatus === 'confirmation_sent') {
     return 'Set';
   }
-  return 'Pending';
+  return null;
 }
 
 function outcomeWinner(facts: JsonRow[]) {
@@ -329,6 +330,7 @@ async function buildEnrollmentTracker() {
         moneyCents: moneyCents(facts),
       };
     })
+    .filter((row) => row.status)
     .sort((left, right) => new Date(left.when || 0).getTime() - new Date(right.when || 0).getTime());
 
   const enrollments = rows.filter((row) => row.status === 'Close Won').length;

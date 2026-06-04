@@ -7,6 +7,7 @@ import {
 const routes = {
   '/set-meetings': {
     title: 'Set Meetings',
+    endpoint: '/api/prospect-mobile/set-meetings',
     render: renderSetMeetings,
     usesWeek: true,
   },
@@ -192,7 +193,7 @@ function formatCacheAge(cachedAt) {
 }
 
 async function renderSetMeetings(payload, renderContext) {
-  const data = payload || (await fetchSetMeetingsFromSupabase(state.week));
+  const data = payload || {};
   if (!isActiveRoute(renderContext)) return 0;
   const events = Array.isArray(data?.events) ? data.events : [];
   if (!events.length) {

@@ -2184,7 +2184,7 @@ export function VoicemailFollowUpRecipientForm({
           {
             athleteId,
             athleteMainId,
-            source: 'appointment_truth',
+            source: 'latest_appointment_truth',
           },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,
@@ -3580,6 +3580,7 @@ export function PostCallUpdateForm({
             athleteId,
             athleteName: stageContext.contactInfo.studentAthlete.name || task.athlete_name,
             stage: stageLabel,
+            appointmentId: initialBookedMeeting?.event_id || null,
           });
         }
         await addAthleteNote({
@@ -3707,6 +3708,7 @@ export function PostCallUpdateForm({
         athleteId,
         athleteName: preUpdateContextForStage.contactInfo.studentAthlete.name || task.athlete_name,
         stage: basePlan.laravelSalesStageUpdate?.stage || stageLabel,
+        appointmentId: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || null,
       });
       if (isReschedulePendingUpdate) {
         await addAthleteNote({
@@ -5054,26 +5056,26 @@ function ScoutPrepTaskItem({
       const result = await runDuplicateProfileResolutionForTask(task);
       if (!result.completed.length && !result.skipped.length) {
         toast.style = Toast.Style.Success;
-        toast.title = 'No duplicate found';
+        toast.title = 'No duplicate';
         toast.message = task.athlete_name;
         return;
       }
 
       if (!result.completed.length && result.skipped.length) {
         toast.style = Toast.Style.Failure;
-        toast.title = 'Duplicate unresolved';
+        toast.title = 'Review duplicate';
         toast.message = result.skipped[0]?.reason || 'No duplicate task updated';
         return;
       }
 
       toast.style = result.skipped.length ? Toast.Style.Failure : Toast.Style.Success;
-      toast.title = result.skipped.length ? 'Duplicate partial' : 'Duplicate resolved';
+      toast.title = result.skipped.length ? 'Partial repeat' : 'Repeat marked';
       toast.message = result.skipped.length
-        ? `${result.completed.length} closed, ${result.skipped.length} skipped`
-        : `${result.completed.length} duplicate closed`;
+        ? `${result.completed.length} marked, ${result.skipped.length} review`
+        : `${result.completed.length} marked`;
     } catch (error) {
       toast.style = Toast.Style.Failure;
-      toast.title = 'Duplicate check failed';
+      toast.title = 'Check failed';
       toast.message = error instanceof Error ? error.message : String(error);
     }
   }
@@ -5959,7 +5961,7 @@ async function buildRankedRescheduleSlotPlan(args: {
   const previousMeeting =
     mustHavePreviousMeeting && athleteId && athleteMainId
       ? await resolveBookedMeetingDetailsForForm(
-          { athleteId, athleteMainId, source: 'appointment_truth' },
+          { athleteId, athleteMainId, source: 'latest_appointment_truth' },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,
           },

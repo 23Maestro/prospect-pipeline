@@ -30,3 +30,25 @@ export function isCurrentCachedMeeting(value, week = 'this', now = new Date()) {
   if (!meetingDate) return false;
   return meetingDate.getTime() >= now.getTime();
 }
+
+const ACTIVE_SET_MEETING_APPOINTMENT_STATUSES = new Set([
+  'scheduled',
+  'confirmation_queued',
+  'confirmation_sent',
+  'rescheduled',
+]);
+
+export function isActiveSetMeetingAppointmentStatus(status) {
+  return ACTIVE_SET_MEETING_APPOINTMENT_STATUSES.has(String(status || '').trim().toLowerCase());
+}
+
+export function filterActiveSetMeetingEvents(events, appointmentsById = {}) {
+  return (Array.isArray(events) ? events : []).filter((event) => {
+    const appointmentId = String(event?.appointment_id || event?.key || '').trim();
+    if (!appointmentId) return false;
+    const appointment = appointmentsById instanceof Map
+      ? appointmentsById.get(appointmentId)
+      : appointmentsById[appointmentId];
+    return isActiveSetMeetingAppointmentStatus(appointment?.status);
+  });
+}

@@ -1,26 +1,69 @@
 import { getServerEnv } from '../../../lib/env';
 import { jsonResponse } from '../../../lib/response-shapes';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+const COACH_RISNER_SESSION_COOKIE = 'coach_risner_session';
+const COACH_RISNER_OPERATOR = 'coach_risner';
+const SESSION_TTL_SECONDS = 60 * 60 * 24 * 30;
 
 export function verifyTimLiteAccess(request: Request) {
   const configuredToken = getServerEnv('TIM_LITE_ACCESS_TOKEN');
-  if (!configuredToken) return null;
-
-  const url = new URL(request.url);
-  const suppliedToken =
-    request.headers.get('x-tim-lite-token') ||
-    url.searchParams.get('access') ||
-    '';
-
-  if (suppliedToken === configuredToken) return null;
+  if (hasValidCoachRisnerSession(request, configuredToken)) return null;
 
   return jsonResponse(
     {
       success: false,
-      error: 'Tim Lite access is required',
-      code: 'tim_lite_access_required',
+      error: 'Coach Risner login is required',
+      code: 'coach_risner_login_required',
     },
     { status: 401 },
   );
+}
+
+export function createCoachRisnerSessionSetCookie() {
+  const secret = getCoachRisnerSessionSecret();
+  if (!secret) {
+    throw new Error('A server session signing secret is required for Coach Risner sessions');
+  }
+
+  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS;
+  const payload = `${COACH_RISNER_OPERATOR}.${expiresAt}`;
+  const signature = signCoachRisnerSession(payload, secret);
+  const value = `${payload}.${signature}`;
+  return `${COACH_RISNER_SESSION_COOKIE}=${value}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; Secure; SameSite=Lax`;
+}
+
+function hasValidCoachRisnerSession(request: Request, configuredToken = getCoachRisnerSessionSecret()) {
+  if (!configuredToken) return false;
+  const rawCookie = request.headers.get('cookie') || '';
+  const value = rawCookie
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${COACH_RISNER_SESSION_COOKIE}=`))
+    ?.slice(COACH_RISNER_SESSION_COOKIE.length + 1);
+  if (!value) return false;
+
+  const parts = value.split('.');
+  if (parts.length !== 3) return false;
+  const [operator, expiresAt, signature] = parts;
+  if (operator !== COACH_RISNER_OPERATOR) return false;
+  if (!/^\d+$/.test(expiresAt) || Number(expiresAt) <= Math.floor(Date.now() / 1000)) return false;
+  const expected = signCoachRisnerSession(`${operator}.${expiresAt}`, configuredToken);
+  return safeEqual(signature, expected);
+}
+
+function getCoachRisnerSessionSecret() {
+  return getServerEnv('TIM_LITE_ACCESS_TOKEN') || getServerEnv('INTERNAL_API_SECRET') || getServerEnv('PROSPECT_API_TOKEN');
+}
+
+function signCoachRisnerSession(payload: string, secret: string) {
+  return createHmac('sha256', secret).update(payload).digest('base64url');
+}
+
+function safeEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
 export function getSupabaseRestConfig() {

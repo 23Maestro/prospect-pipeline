@@ -7,6 +7,7 @@ import {
   buildAppointmentId,
   buildAthleteKey,
   buildReminderDedupeKey,
+  resolveAppointmentStatusProjectionForSalesStage,
   resolveLifecycleRetentionDecision,
 } from './supabase-lifecycle';
 import { mergeAppointmentTruthRow } from '../domain/appointment-truth';
@@ -234,6 +235,37 @@ test('terminal crm stages purge lifecycle rows without title help', () => {
   });
 
   assert.equal(result.action, 'purge');
+});
+
+test('reschedule-pending sales stage projects onto the current appointment status', () => {
+  assert.deepEqual(
+    resolveAppointmentStatusProjectionForSalesStage({
+      crmStage: 'Meeting Result - Res. Pending',
+      appointmentId: '611014',
+    }),
+    {
+      appointmentId: '611014',
+      status: 'reschedule_pending',
+      statusReason: 'sales_stage_reschedule_pending',
+    },
+  );
+});
+
+test('sales stage appointment projection needs an appointment id', () => {
+  assert.equal(
+    resolveAppointmentStatusProjectionForSalesStage({
+      crmStage: 'Meeting Result - Res. Pending',
+      appointmentId: null,
+    }),
+    null,
+  );
+  assert.equal(
+    resolveAppointmentStatusProjectionForSalesStage({
+      crmStage: 'Meeting Set',
+      appointmentId: '611014',
+    }),
+    null,
+  );
 });
 
 test('lifecycle mutation event logs left voicemail as dial-only operator activity', () => {

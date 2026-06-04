@@ -19,7 +19,7 @@ export default function TimMobilePage() {
                 className="mobile-mark shrink-0"
               />
             </a>
-            <h1 id="page-title">Tim Lite</h1>
+            <h1 id="page-title">Coach Risner</h1>
           </div>
           <button className="icon-button" id="refresh-button" type="button" aria-label="Refresh">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -28,7 +28,7 @@ export default function TimMobilePage() {
           </button>
         </header>
 
-        <nav className="tabbar" aria-label="Tim Lite workflows">
+        <nav className="tabbar" aria-label="Coach Risner workflows">
           <a href="/tim-mobile/set-meetings" data-route="/set-meetings">
             <svg className="tab-icon calendar" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M7 3v3M17 3v3M4.5 9.25h15M6.75 5h10.5A2.75 2.75 0 0 1 20 7.75v9.5A2.75 2.75 0 0 1 17.25 20H6.75A2.75 2.75 0 0 1 4 17.25v-9.5A2.75 2.75 0 0 1 6.75 5Z" />

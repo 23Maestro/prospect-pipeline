@@ -11,6 +11,7 @@ Before editing files related to Scout Prep, Client Messages, Set Meetings, Scout
 5. Do not create one-off helpers or scripts unless the task is explicitly repair/audit work and the script is named that way.
 6. For source-of-truth disputes, read `docs/architecture/scout-prep-supabase-source-of-truth.md`.
 7. Prove shared workflow changes with focused tests; use `npm test` for broad Scout Prep business changes when feasible.
+8. For duplicate-profile / repeat-profile workflow changes, use the `auto-logger` skill and log the decision envelope, confidence outcome, external request boundaries, and mutation result without logging full PII.
 
 If the correct bucket or source of truth is unclear, stop and report the ambiguity instead of patching around it.
 

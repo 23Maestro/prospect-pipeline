@@ -31,7 +31,8 @@ export type ResolvedAppointmentTruthMeetingDetails = ResolvedBookedMeetingDetail
 type ResolverDependencies = {
   fetchAthleteBookedMeetings?: typeof fetchAthleteBookedMeetings;
   fetchBookedMeetingDetails?: typeof fetchBookedMeetingDetails;
-    fetchAppointmentTruth?: typeof fetchActiveAthleteAppointmentTruth;
+  fetchAppointmentTruth?: typeof fetchActiveAthleteAppointmentTruth;
+  fetchLatestAppointmentTruth?: typeof fetchLatestAthleteAppointmentTruth;
   fetchAppointmentById?: typeof fetchAppointmentTruthById;
   getCachedMeetingDescription?: (args: {
     athleteId: string;
@@ -140,6 +141,35 @@ export async function fetchActiveAthleteAppointmentTruth(args: {
     `athlete_key=eq.${encodeURIComponent(buildAthleteKey(athleteId, athleteMainId))}`,
     `status=in.(${ACTIVE_APPOINTMENT_STATUSES.join(',')})`,
     'order=updated_at.desc.nullslast,starts_at.desc.nullslast',
+    'limit=1',
+  ].join('&');
+  const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      'Accept-Profile': config.schema,
+    },
+  });
+  if (!response.ok) {
+    throw new Error((await response.text()).slice(0, 300) || `Supabase HTTP ${response.status}`);
+  }
+  const rows = (await response.json()) as AppointmentTruthRow[];
+  return Array.isArray(rows) ? rows[0] || null : null;
+}
+
+export async function fetchLatestAthleteAppointmentTruth(args: {
+  athleteId?: string | null;
+  athleteMainId?: string | null;
+}): Promise<AppointmentTruthRow | null> {
+  const athleteId = clean(args.athleteId);
+  const athleteMainId = clean(args.athleteMainId);
+  const config = getAppointmentTruthSupabaseConfig();
+  if (!athleteId || !athleteMainId || !config) return null;
+
+  const query = [
+    'select=*',
+    `athlete_key=eq.${encodeURIComponent(buildAthleteKey(athleteId, athleteMainId))}`,
+    'order=starts_at.desc.nullslast,updated_at.desc.nullslast',
     'limit=1',
   ].join('&');
   const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {
@@ -354,7 +384,7 @@ export async function resolveBookedMeetingDetailsForForm(
     initialBookedMeeting?: BookedMeetingEvent | null;
     fallbackEvents?: BookedMeetingEvent[];
     appointmentId?: string | null;
-    source?: 'appointment_truth' | 'booked_meetings';
+    source?: 'appointment_truth' | 'latest_appointment_truth' | 'booked_meetings';
   },
   dependencies: ResolverDependencies = {},
 ): Promise<ResolvedBookedMeetingDetails | null> {
@@ -364,12 +394,28 @@ export async function resolveBookedMeetingDetailsForForm(
   const fetchDetails = dependencies.fetchBookedMeetingDetails || fetchBookedMeetingDetails;
   const appointmentId = clean(args.appointmentId);
 
-  if (args.source === 'appointment_truth' || appointmentId) {
+  if (
+    args.source === 'appointment_truth' ||
+    args.source === 'latest_appointment_truth' ||
+    appointmentId
+  ) {
     if (appointmentId) {
       const fetchAppointment = dependencies.fetchAppointmentById || fetchAppointmentTruthById;
       const appointment = await fetchAppointment(appointmentId).catch(() => null);
       const resolvedAppointment = appointment ? buildAppointmentTruthMeeting(appointment) : null;
-      if (resolvedAppointment || args.source === 'appointment_truth') return resolvedAppointment;
+      if (
+        resolvedAppointment ||
+        args.source === 'appointment_truth' ||
+        args.source === 'latest_appointment_truth'
+      ) {
+        return resolvedAppointment;
+      }
+    }
+    if (args.source === 'latest_appointment_truth') {
+      const fetchLatestTruth =
+        dependencies.fetchLatestAppointmentTruth || fetchLatestAthleteAppointmentTruth;
+      const latestTruth = await fetchLatestTruth({ athleteId, athleteMainId }).catch(() => null);
+      return latestTruth ? buildAppointmentTruthMeeting(latestTruth) : null;
     }
     const fetchTruth = dependencies.fetchAppointmentTruth || fetchActiveAthleteAppointmentTruth;
     const truth = await fetchTruth({ athleteId, athleteMainId }).catch(() => null);

@@ -211,6 +211,7 @@ export async function updateSalesStage(args: {
   athleteId: string;
   athleteName?: string | null;
   stage: string;
+  appointmentId?: string | null;
 }): Promise<SalesStageUpdateResponse> {
   const athleteMainId = args.athleteMainId.trim();
   const athleteId = args.athleteId.trim();
@@ -271,6 +272,7 @@ export async function updateSalesStage(args: {
         taskAssignedOwner: createdTask?.assigned_owner || getActiveOperator().taskAssignedOwnerName,
         dueAt: createdTask?.due_date || null,
         occurredAt: new Date().toISOString(),
+        appointmentId: args.appointmentId,
       });
     } catch (error) {
       logFailure(

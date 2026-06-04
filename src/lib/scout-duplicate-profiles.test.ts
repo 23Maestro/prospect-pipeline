@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import type { ScoutPortalTask } from '../features/scout-prep/types.js';
 import {
   buildRepeatProfileDescription,
+  classifyDuplicateProfileEnvelope,
   getDuplicateIdentityEvidence,
   isCallAttempt1PortalTask,
   runDuplicateProfileResolutionForTask,
@@ -24,6 +25,46 @@ function buildTask(overrides: Partial<ScoutPortalTask> = {}): ScoutPortalTask {
     state: 'TX',
     title: 'Call Attempt 1',
     description: 'Call the family',
+    ...overrides,
+  };
+}
+
+function buildContactInfo(overrides: Record<string, unknown> = {}) {
+  return {
+    contactId: '1489567',
+    studentAthlete: {
+      name: 'Wylie Robinson',
+      email: 'wylie@example.com',
+      phone: '555-100-2000',
+    },
+    parent1: {
+      name: 'Pat Robinson',
+      relationship: 'Parent',
+      email: 'pat@example.com',
+      phone: '555-222-3333',
+    },
+    parent2: null,
+    ...overrides,
+  };
+}
+
+function buildEnvelope(overrides: any = {}) {
+  return {
+    athleteId: '1489567',
+    athleteMainId: '951406',
+    name: { firstName: 'Wylie', lastName: 'Robinson', fullName: 'Wylie Robinson' },
+    profile: {
+      gradYear: '2027',
+      sport: 'Football',
+      highSchool: 'North High School',
+      city: 'Dallas',
+      state: 'TX',
+    },
+    contacts: {
+      student: { name: 'Wylie Robinson', email: 'wylie@example.com', phone: '555-100-2000' },
+      parent1: { name: 'Pat Robinson', email: 'pat@example.com', phone: '555-222-3333' },
+      parent2: null,
+    },
     ...overrides,
   };
 }
@@ -126,6 +167,72 @@ test('getDuplicateIdentityEvidence requires proof beyond exact name', () => {
   );
 });
 
+test('classifyDuplicateProfileEnvelope allows same-family multi-sport matches', () => {
+  const decision = classifyDuplicateProfileEnvelope({
+    current: buildEnvelope(),
+    candidate: buildEnvelope({
+      athleteId: '1490000',
+      athleteMainId: '951499',
+      profile: {
+        gradYear: '2027',
+        sport: 'Baseball',
+        highSchool: 'North High School',
+        city: 'Dallas',
+        state: 'TX',
+      },
+    }),
+  });
+
+  assert.equal(decision.isDuplicate, true);
+  assert.equal(decision.reason, 'likely_same_kid_multi_sport');
+  assert.ok(decision.evidence.includes('contact_phone'));
+});
+
+test('classifyDuplicateProfileEnvelope leaves different sport unresolved without contact match', () => {
+  const decision = classifyDuplicateProfileEnvelope({
+    current: buildEnvelope(),
+    candidate: buildEnvelope({
+      athleteId: '1490000',
+      athleteMainId: '951499',
+      profile: {
+        gradYear: '2027',
+        sport: 'Baseball',
+        highSchool: 'North High School',
+        city: 'Dallas',
+        state: 'TX',
+      },
+      contacts: {
+        student: { name: 'Wylie Robinson', email: 'other@example.com', phone: '555-999-0000' },
+        parent1: { name: 'Other Parent', email: 'other-parent@example.com', phone: '555-888-0000' },
+        parent2: null,
+      },
+    }),
+  });
+
+  assert.equal(decision.isDuplicate, false);
+  assert.equal(decision.reason, 'different_sport_contact_mismatch');
+});
+
+test('classifyDuplicateProfileEnvelope allows different state only with contact match', () => {
+  const decision = classifyDuplicateProfileEnvelope({
+    current: buildEnvelope(),
+    candidate: buildEnvelope({
+      athleteId: '1490000',
+      athleteMainId: '951499',
+      profile: {
+        gradYear: '2027',
+        sport: 'Football',
+        highSchool: 'North High School',
+        city: 'Tulsa',
+        state: 'OK',
+      },
+    }),
+  });
+
+  assert.equal(decision.isDuplicate, true);
+  assert.equal(decision.reason, 'contact_match_different_state');
+});
+
 test('runDuplicateProfileResolutionForTask skips exact-name matches without secondary proof', async () => {
   const result = await runDuplicateProfileResolutionForTask(buildTask(), {
     searchRows: async () => [
@@ -144,11 +251,25 @@ test('runDuplicateProfileResolutionForTask skips exact-name matches without seco
         fullName: 'Wylie Robinson',
       },
     ],
+    loadContactInfo: async (contactId) =>
+      contactId === '1489567'
+        ? (buildContactInfo() as any)
+        : (buildContactInfo({
+            contactId: '1490000',
+            studentAthlete: { name: 'Wylie Robinson', email: 'other@example.com', phone: '555-999-0000' },
+            parent1: {
+              name: 'Other Parent',
+              relationship: 'Parent',
+              email: 'other-parent@example.com',
+              phone: '555-888-0000',
+            },
+          }) as any),
+    fetchAthleteDetails: async () => null,
   });
 
   assert.equal(result.matchCount, 2);
   assert.deepEqual(result.completed, []);
-  assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'Needs secondary identity match' }]);
+  assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'needs_secondary_identity_match' }]);
 });
 
 test('selectDuplicateCallAttempt1Task chooses newest incomplete call attempt 1 task', () => {
@@ -220,7 +341,8 @@ test('runDuplicateProfileResolutionForTask updates and completes duplicate-side 
       },
     ],
     resolveAthleteMainId: async () => '951499',
-    loadSelectedProfile: async () => undefined,
+    loadContactInfo: async () => buildContactInfo() as any,
+    fetchAthleteDetails: async () => null,
     fetchTasks: async () => [
       {
         task_id: '2500',
@@ -247,7 +369,7 @@ test('runDuplicateProfileResolutionForTask updates and completes duplicate-side 
   assert.equal(String(completions[0]?.taskId), '2500');
 });
 
-test('runDuplicateProfileResolutionForTask creates completed repeat task when duplicate profile has no call attempt task', async () => {
+test('runDuplicateProfileResolutionForTask creates saved repeat task when duplicate profile has no call attempt task', async () => {
   const createdTasks: Array<Record<string, string | Date | null | undefined>> = [];
   const result = await runDuplicateProfileResolutionForTask(buildTask(), {
     searchRows: async () => [
@@ -268,9 +390,10 @@ test('runDuplicateProfileResolutionForTask creates completed repeat task when du
       },
     ],
     resolveAthleteMainId: async () => '951499',
-    loadSelectedProfile: async () => undefined,
+    loadContactInfo: async () => buildContactInfo() as any,
+    fetchAthleteDetails: async () => null,
     fetchTasks: async () => [],
-    createCompletedTask: async (payload) => {
+    createRepeatTask: async (payload) => {
       createdTasks.push(payload);
       return { success: true, task_id: '2600' };
     },
@@ -279,7 +402,7 @@ test('runDuplicateProfileResolutionForTask creates completed repeat task when du
   assert.equal(result.completed.length, 1);
   assert.deepEqual(result.skipped, []);
   assert.equal(createdTasks[0]?.taskTitle, 'REPEAT');
-  assert.equal(createdTasks[0]?.description, 'REPEAT');
+  assert.equal(createdTasks[0]?.description, '');
   assert.equal(createdTasks[0]?.assignedTo, '1408164');
   assert.equal(result.completed[0]?.taskId, '2600');
   assert.equal(result.completed[0]?.taskTitle, 'REPEAT');
