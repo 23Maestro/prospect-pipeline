@@ -70,11 +70,8 @@ Latest `lifecycle_events` is the active lifecycle projection. This is how the sy
 
 The general stage rule is enforced by `resolveSalesLifecycle`.
 
-The post-meeting cleanup rule is enforced by `reconcile-current-sales-stages-to-supabase.mjs`.
+The post-meeting cleanup rule is enforced by action-time Scout Prep writes and the scheduled current-pipeline sync lane. There is no normal current-sales-stage reconciler writer.
 
-Contact cache soft-inactivation is enforced in two places:
+Contact cache soft-inactivation is enforced by Scout Prep contact-cache sync when a terminal CRM stage is known.
 
-- when Scout Prep syncs contact cache with a terminal CRM stage
-- when reconciliation determines the lifecycle has left active work
-
-That means lifecycle truth and active contact-cache rows end together.
+That keeps lifecycle truth and active contact-cache rows tied to source-owned stage evidence instead of a background reconciler guess.

@@ -48,8 +48,7 @@ These scripts may write Supabase only through canonical writer paths, but they a
 
 | Script | Role |
 | --- | --- |
-| `scripts/reconcile-current-sales-stages-to-supabase.mjs` | Audit/reconcile current Laravel/calendar state into Supabase. |
-| `scripts/sync-current-pipeline-to-supabase.mjs` | Audit/reconcile current pipeline drift and external/manual state. |
+| `scripts/sync-current-pipeline-to-supabase.mjs` | Scheduled current-pipeline sync lane for Laravel current task/stage facts. Uses `workflow-context` for shared identity/profile/title/stage/status values and must not invent missing title/profile facts. |
 | `scripts/sync-booked-meetings-to-supabase.mjs` | Manual audit/repair for booked meeting facts and external calendar state. It is not part of the hourly cron because appointment time mutation needs confirmed evidence. |
 | `scripts/sync-commissions-to-supabase.mjs` | Audit/reconcile commission rows. |
 | `scripts/backsync-lifecycle-call-activity-events.mjs` | Legacy repair only. |

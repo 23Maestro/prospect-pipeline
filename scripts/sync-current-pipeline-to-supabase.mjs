@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-// Audit/reconcile job only for external/manual current pipeline drift.
-// Scout Prep Raycast actions are primary action-time writers.
+// Scheduled current-pipeline sync lane for Laravel task/stage facts.
+// Scout Prep Raycast actions remain primary action-time writers.
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
@@ -24,6 +24,7 @@ import {
   normalizeCrmSalesStage,
   taskStatusForStage,
 } from '../src/domain/supabase-lifecycle-translator.ts';
+import { resolveWorkflowContext } from '../src/domain/workflow-context.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -313,9 +314,22 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       String(resolvePayload.athlete_name || '').trim() ||
       String(pipelineTask.athlete_name || '').trim() ||
       athleteId;
+    const workflowContext = resolveWorkflowContext({
+      athleteId,
+      athleteMainId,
+      athleteName,
+      sport: resolvePayload.sport,
+      gradYear: pipelineTask.grad_year,
+      state: resolvePayload.state,
+      salesStage: selectedSalesStage,
+      taskStatus: translatedTaskStatus,
+      appointmentId,
+      meetingTitle: appointmentMeeting?.title,
+    });
     const currentAppointmentStatus = shouldMonitorEndedMeetingSet
       ? 'awaiting_post_meeting_update'
-      : appointmentStatusForTitleOrStage(selectedSalesStage, appointmentMeeting?.title) ||
+      : workflowContext.appointment_status ||
+        appointmentStatusForTitleOrStage(selectedSalesStage, appointmentMeeting?.title) ||
         (translatedTaskStatus === 'no_show'
           ? 'no_show'
           : translatedTaskStatus === 'confirmation_call'
@@ -388,12 +402,14 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       assigned_owner:
         String(taskFromList?.assigned_owner || pipelineTask.assigned_owner || '').trim() || null,
       due_at: dueAt,
+      workflow_id: workflowContext.workflow_id,
+      workflow_context: workflowContext,
       task_admin_url: String(pipelineTask.athlete_task_url || '').trim() || null,
       athlete_admin_url: String(pipelineTask.athlete_admin_url || '').trim() || null,
       head_scout: headScout,
-      sport: String(resolvePayload.sport || '').trim() || null,
-      state: String(resolvePayload.state || '').trim() || null,
-      grad_year: String(pipelineTask.grad_year || '').trim() || null,
+      sport: workflowContext.sport,
+      state: workflowContext.state,
+      grad_year: workflowContext.grad_year,
       current_meeting: currentMeeting || null,
       previous_meeting: previousMeeting || null,
       current_appointment_id: appointmentId,

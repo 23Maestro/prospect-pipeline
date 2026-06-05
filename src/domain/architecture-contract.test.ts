@@ -405,20 +405,15 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
     assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
   );
 
-  const reconcileSalesStages = readRepoFile(
-    'scripts/reconcile-current-sales-stages-to-supabase.mjs',
-  );
-  assert.match(reconcileSalesStages, /Audit\/reconcile job only/);
-  assert.match(
-    reconcileSalesStages,
-    /Raycast Scout Prep actions write Laravel and Supabase at action time/,
-  );
-
   const syncCurrentPipeline = readRepoFile('scripts/sync-current-pipeline-to-supabase.mjs');
   assert.match(
     syncCurrentPipeline,
-    /Audit\/reconcile job only for external\/manual current pipeline drift/,
+    /Scheduled current-pipeline sync lane for Laravel task\/stage facts/,
   );
+  assert.match(syncCurrentPipeline, /resolveWorkflowContext/);
+
+  const packageJson = readRepoFile('package.json');
+  assert.doesNotMatch(packageJson, /reconcile:current-sales-stages-supabase/);
 
   const backsync = readRepoFile('scripts/backsync-lifecycle-call-activity-events.mjs');
   assert.match(backsync, /Legacy repair job only/);
@@ -654,8 +649,8 @@ test('Scout Prep pipeline cleanup contract defines when active clients end', () 
     'Canceled: keep it for up to 21 days',
     'Never Spoke To / Call Attempt 3: delete after 3 days',
     'is only for confirmation message prep',
-    'when reconciliation determines the lifecycle has left active work',
-    'lifecycle truth and active contact-cache rows end together',
+    'There is no normal current-sales-stage reconciler writer.',
+    'tied to source-owned stage evidence instead of a background reconciler guess',
   ].forEach((phrase) =>
     assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
   );

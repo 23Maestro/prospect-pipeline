@@ -14,6 +14,9 @@ test('current pipeline sync writes canonical facts and does not revive pipeline 
   assert.match(source, /taskStatusForStage/);
   assert.match(source, /appointmentStatusForTitleOrStage/);
   assert.match(source, /normalizeCrmSalesStage/);
+  assert.match(source, /resolveWorkflowContext/);
+  assert.match(source, /workflow_id: workflowContext\.workflow_id/);
+  assert.match(source, /workflow_context: workflowContext/);
   assert.match(source, /currentLifecycleStateProjected/);
   assert.doesNotMatch(source, /upsertAthletePipelineState/);
   assert.doesNotMatch(source, /athlete_pipeline_state/);

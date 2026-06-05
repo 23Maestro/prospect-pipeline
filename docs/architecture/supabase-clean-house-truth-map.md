@@ -81,7 +81,7 @@ Completed in this meeting/lifecycle projection slice:
 
 1. Moved Prospect Web meeting readback current-meeting rows to direct active `appointments` reads. Lifecycle rows attach context; they no longer decide which active appointments exist.
 2. Moved booked-meeting detail resolution from `active_athlete_meeting_truth` to canonical `appointments`.
-3. Moved contact-cache admission and the current sales-stage reconciler off `athlete_lifecycle_current` and onto `lifecycle_events` plus the shared lifecycle translator.
+3. Moved contact-cache admission off `athlete_lifecycle_current` and onto `lifecycle_events` plus shared domain translation.
 4. Changed `scripts/audit-meeting-readback-live-parity.mjs` into a canonical coverage audit so it remains usable after old projection views are dropped.
 5. Added `20260602120000_purge_lifecycle_meeting_projection_views.sql` to drop `meeting_truth_anomalies`, `active_athlete_meeting_truth`, `athlete_lifecycle_timeline`, and `athlete_lifecycle_current` as views only.
 
@@ -90,7 +90,7 @@ Completed in this lifecycle snapshot purge slice:
 1. Removed `athlete_pipeline_state` action-time writes from `src/lib/supabase-lifecycle.ts`; `lifecycleSalesStage` now writes `athletes`, `appointments`, and `lifecycle_events`.
 2. Removed snapshot writes from current-pipeline and booked-meeting sync scripts while preserving canonical athletes, appointments, Call Log facts, and meeting-set facts.
 3. Moved lifecycle status and active-meeting fallback reads to latest `lifecycle_events` projection rows.
-4. Moved the current sales-stage reconciler off `athlete_pipeline_state`; it now derives candidates from lifecycle events and ended appointments, appends lifecycle events, patches appointments, writes Call Log outcome facts, and soft-inactivates contact cache when needed.
+4. Removed the current-sales-stage reconciler as a normal writer. Current pipeline sync is the scheduled lane for Laravel current task/stage facts, and Scout Prep action-time writes own operator mutations.
 5. Added `20260602140500_purge_athlete_pipeline_state.sql` to drop the deprecated mutable snapshot table after active dependency proof.
 
 Completed in this reminder table purge slice:

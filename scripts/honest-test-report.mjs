@@ -23,7 +23,7 @@ export const TEST_SUITES = [
   {
     name: 'sync script unit contracts',
     command:
-      'npm run test:call-tracker-ownership && node --test scripts/sync-current-pipeline-to-supabase.test.mjs scripts/sync-booked-meetings-to-supabase.test.mjs scripts/reconcile-current-sales-stages-to-supabase.test.mjs scripts/sync-supabase-pipeline.test.mjs scripts/lifecycle-call-tracker-backsync-core.test.mjs',
+      'npm run test:call-tracker-ownership && node --test scripts/sync-current-pipeline-to-supabase.test.mjs scripts/sync-booked-meetings-to-supabase.test.mjs scripts/sync-supabase-pipeline.test.mjs scripts/lifecycle-call-tracker-backsync-core.test.mjs',
   },
 ];
 
