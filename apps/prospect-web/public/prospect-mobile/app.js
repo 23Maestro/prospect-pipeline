@@ -267,7 +267,7 @@ async function fetchSetMeetingsFromSupabase(week) {
 
   const weekWindow = buildMeetingWeekWindow(week);
   const query = [
-    'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone,message_body,admin_url,task_url,kind,payload_json',
+    'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_ends_at,meeting_timezone,message_body,admin_url,task_url,kind,payload_json',
     'status=eq.cached',
     'source=eq.set_meetings_confirmation',
     'kind=in.(confirmation_1,confirmation_2)',
@@ -319,6 +319,7 @@ async function fetchSetMeetingsFromSupabase(week) {
       head_scout_name: entry.base.head_scout_name,
       current_meeting_label: entry.base.meeting_starts_at,
       start: entry.base.meeting_starts_at,
+      end: entry.base.meeting_ends_at,
       meeting_timezone: entry.base.meeting_timezone,
       confirmation_recipient: {
         name: entry.base.recipient_name,
@@ -331,7 +332,7 @@ async function fetchSetMeetingsFromSupabase(week) {
       task_url: entry.base.task_url,
       source: 'supabase_confirmation_cache',
     }))
-    .filter((event) => isCurrentCachedMeeting(event.start, week));
+    .filter((event) => isCurrentCachedMeeting(event.start, week, new Date(), event.end));
 
   return {
     success: true,

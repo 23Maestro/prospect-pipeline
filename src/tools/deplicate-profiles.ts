@@ -89,6 +89,7 @@ export default async function tool(input: Input): Promise<string> {
         searchTerm: result.searchTerm,
         matchCount: result.matchCount,
         completed: result.completed,
+        cleared: result.cleared,
         skipped: result.skipped,
       },
       null,

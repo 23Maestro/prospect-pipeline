@@ -23,6 +23,7 @@ test('booked meeting sync uses the shared weekly source resolver and fact builde
   assert.match(source, /supabase-lifecycle-translator/);
   assert.match(source, /taskStatusForStage/);
   assert.match(source, /appointmentStatusForTitleOrStage/);
+  assert.match(source, /postMeetingResultForTitleOrStage/);
   assert.match(source, /insertMeetingSetEventsOnce/);
   assert.match(source, /\/scout\/tasks\?range=thisWeek/);
   assert.match(source, /\/calendar\/booked-meetings\?/);

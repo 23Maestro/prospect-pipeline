@@ -65,6 +65,7 @@ export type DuplicateProfileResolutionResult = {
   searchTerm: string;
   matchCount: number;
   completed: DuplicateProfileResolutionItem[];
+  cleared: Array<{ athleteId: string; reason: string }>;
   skipped: Array<{ athleteId: string; reason: string }>;
 };
 
@@ -319,6 +320,27 @@ export function getDuplicateIdentityEvidence(row: DuplicateProfileSearchRow, tas
   return evidence;
 }
 
+export function getDuplicateSearchRowClearReason(row: DuplicateProfileSearchRow, task: ScoutPortalTask): string | null {
+  const currentGradYear = normalizeDuplicateEvidenceValue(task.grad_year);
+  const candidateGradYear = normalizeDuplicateEvidenceValue(row.gradYear);
+  if (currentGradYear && candidateGradYear && currentGradYear !== candidateGradYear) {
+    return 'different_grad_year_table_clear';
+  }
+
+  const currentSport = normalizeDuplicateEvidenceValue(task.sport);
+  const candidateSport = normalizeDuplicateEvidenceValue(row.sport);
+  const currentState = normalizeDuplicateEvidenceValue(task.state);
+  const candidateState = normalizeDuplicateEvidenceValue(row.state);
+  const sameSport = Boolean(currentSport && candidateSport && currentSport === candidateSport);
+  const sameState = Boolean(currentState && candidateState && currentState === candidateState);
+
+  if (sameSport && currentState && candidateState && !sameState) {
+    return 'same_sport_different_state_table_clear';
+  }
+
+  return null;
+}
+
 function buildContactProfileEnvelope(args: {
   athleteId: string;
   athleteMainId: string | null;
@@ -433,6 +455,10 @@ export function classifyDuplicateProfileEnvelope(args: {
 
   if (hasContactMatch) {
     return { isDuplicate: true, reason: 'contact_match', evidence: evidenceList };
+  }
+
+  if (sameGradYear && sameSport && sameState) {
+    return { isDuplicate: true, reason: 'table_profile_match', evidence: evidenceList };
   }
 
   if (differentState) {
@@ -689,6 +715,7 @@ export async function runDuplicateProfileResolutionForTask(
     searchTerm: usedSearchTerm,
     matchCount: matchingRows.length,
     completed: [],
+    cleared: [],
     skipped: [],
   };
 
@@ -706,6 +733,34 @@ export async function runDuplicateProfileResolutionForTask(
     matchCount: matchingRows.length,
     duplicateCount: exactNameCandidates.length,
   });
+
+  const candidatesNeedingEnvelope: DuplicateProfileSearchRow[] = [];
+  for (const candidate of exactNameCandidates) {
+    const clearReason = getDuplicateSearchRowClearReason(candidate, task);
+    if (clearReason) {
+      result.cleared.push({
+        athleteId: candidate.athleteId,
+        reason: clearReason,
+      });
+      logInfo('SCOUT_DUPLICATE_PROFILE', 'candidate-cleared', {
+        athleteId: currentAthleteId,
+        candidateAthleteId: candidate.athleteId,
+        reason: clearReason,
+      });
+      continue;
+    }
+    candidatesNeedingEnvelope.push(candidate);
+  }
+
+  if (!candidatesNeedingEnvelope.length) {
+    logInfo('SCOUT_DUPLICATE_PROFILE', 'complete', {
+      athleteId: currentAthleteId,
+      completedCount: 0,
+      clearedCount: result.cleared.length,
+      skippedCount: 0,
+    });
+    return result;
+  }
 
   let currentContactInfo: ContactInfo;
   try {
@@ -729,7 +784,7 @@ export async function runDuplicateProfileResolutionForTask(
     contactInfo: currentContactInfo,
   });
 
-  for (const candidate of exactNameCandidates) {
+  for (const candidate of candidatesNeedingEnvelope) {
     const athleteMainId = await activeDeps.resolveAthleteMainId(candidate);
     if (!athleteMainId) {
       result.skipped.push({
@@ -901,12 +956,14 @@ export async function runDuplicateProfileResolutionForTask(
     logFailure('SCOUT_DUPLICATE_PROFILE', 'partial-complete', result.skipped[0].reason, {
       athleteId: currentAthleteId,
       completedCount: result.completed.length,
+      clearedCount: result.cleared.length,
       skippedCount: result.skipped.length,
     });
   } else {
     logInfo('SCOUT_DUPLICATE_PROFILE', 'complete', {
       athleteId: currentAthleteId,
       completedCount: result.completed.length,
+      clearedCount: result.cleared.length,
       skippedCount: 0,
     });
   }

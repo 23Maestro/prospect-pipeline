@@ -5,6 +5,7 @@ import {
   buildRepeatProfileDescription,
   classifyDuplicateProfileEnvelope,
   getDuplicateIdentityEvidence,
+  getDuplicateSearchRowClearReason,
   isCallAttempt1PortalTask,
   normalizeDuplicateAthleteName,
   normalizeDuplicateAthleteNameForLegacySearch,
@@ -198,6 +199,74 @@ test('getDuplicateIdentityEvidence requires proof beyond exact name', () => {
   );
 });
 
+test('getDuplicateSearchRowClearReason clears table-obvious non-duplicates', () => {
+  assert.equal(
+    getDuplicateSearchRowClearReason(
+      {
+        athleteId: '1490000',
+        athleteMainId: '951499',
+        firstName: 'Caleb',
+        lastName: 'Lewis',
+        fullName: 'Caleb Lewis',
+        sport: 'Football',
+        state: 'FL',
+        gradYear: '2027',
+      },
+      buildTask({
+        athlete_name: 'Caleb Lewis',
+        sport: 'Football',
+        state: 'LA',
+        grad_year: '2028',
+      }),
+    ),
+    'different_grad_year_table_clear',
+  );
+
+  assert.equal(
+    getDuplicateSearchRowClearReason(
+      {
+        athleteId: '1490001',
+        athleteMainId: '951500',
+        firstName: 'Caleb',
+        lastName: 'Lewis',
+        fullName: 'Caleb Lewis',
+        sport: 'Football',
+        state: 'OH',
+        gradYear: null,
+      },
+      buildTask({
+        athlete_name: 'Caleb Lewis',
+        sport: 'Football',
+        state: 'LA',
+        grad_year: '2028',
+      }),
+    ),
+    'same_sport_different_state_table_clear',
+  );
+
+  assert.equal(
+    getDuplicateSearchRowClearReason(
+      {
+        athleteId: '1490002',
+        athleteMainId: '951501',
+        firstName: 'Caleb',
+        lastName: 'Lewis',
+        fullName: 'Caleb Lewis',
+        sport: 'Soccer',
+        state: 'LA',
+        gradYear: '2028',
+      },
+      buildTask({
+        athlete_name: 'Caleb Lewis',
+        sport: 'Football',
+        state: 'LA',
+        grad_year: '2028',
+      }),
+    ),
+    null,
+  );
+});
+
 test('classifyDuplicateProfileEnvelope allows same-family multi-sport matches', () => {
   const decision = classifyDuplicateProfileEnvelope({
     current: buildEnvelope(),
@@ -242,6 +311,24 @@ test('classifyDuplicateProfileEnvelope leaves different sport unresolved without
 
   assert.equal(decision.isDuplicate, false);
   assert.equal(decision.reason, 'different_sport_contact_mismatch');
+});
+
+test('classifyDuplicateProfileEnvelope accepts exact table profile match without contact match', () => {
+  const decision = classifyDuplicateProfileEnvelope({
+    current: buildEnvelope(),
+    candidate: buildEnvelope({
+      athleteId: '1490000',
+      athleteMainId: '951499',
+      contacts: {
+        student: { name: 'Wylie Robinson', email: 'other@example.com', phone: '555-999-0000' },
+        parent1: { name: 'Other Parent', email: 'other-parent@example.com', phone: '555-888-0000' },
+        parent2: null,
+      },
+    }),
+  });
+
+  assert.equal(decision.isDuplicate, true);
+  assert.equal(decision.reason, 'table_profile_match');
 });
 
 test('classifyDuplicateProfileEnvelope allows different state only with contact match', () => {
@@ -300,6 +387,7 @@ test('runDuplicateProfileResolutionForTask skips exact-name matches without seco
 
   assert.equal(result.matchCount, 2);
   assert.deepEqual(result.completed, []);
+  assert.deepEqual(result.cleared, []);
   assert.deepEqual(result.skipped, [{ athleteId: '1490000', reason: 'needs_secondary_identity_match' }]);
 });
 
@@ -408,7 +496,102 @@ test('runDuplicateProfileResolutionForTask does nothing when no duplicate is fou
 
   assert.equal(result.matchCount, 1);
   assert.deepEqual(result.completed, []);
+  assert.deepEqual(result.cleared, []);
   assert.deepEqual(result.skipped, []);
+});
+
+test('runDuplicateProfileResolutionForTask returns green no-action for Caleb-style table-cleared candidates', async () => {
+  let contactLookups = 0;
+  let taskFetches = 0;
+
+  const result = await runDuplicateProfileResolutionForTask(
+    buildTask({
+      contact_id: '1489567',
+      athlete_id: '1489567',
+      athlete_main_id: '951406',
+      athlete_name: 'Caleb Lewis',
+      grad_year: '2028',
+      sport: 'Football',
+      high_school: '',
+      state: 'LA',
+    }),
+    {
+      searchRows: async () => [
+        {
+          athleteId: '1489567',
+          athleteMainId: '951406',
+          firstName: 'Caleb',
+          lastName: 'Lewis',
+          fullName: 'Caleb Lewis',
+          sport: 'Football',
+          state: 'LA',
+          gradYear: '2028',
+        },
+        {
+          athleteId: '1490000',
+          athleteMainId: '951499',
+          firstName: 'Caleb',
+          lastName: 'Lewis',
+          fullName: 'Caleb Lewis',
+          sport: 'Football',
+          highSchool: 'Escambia High School',
+          state: 'FL',
+          gradYear: '2027',
+        },
+        {
+          athleteId: '1490001',
+          athleteMainId: '951500',
+          firstName: 'Caleb',
+          lastName: 'Lewis',
+          fullName: 'Caleb Lewis',
+          sport: 'Football',
+          state: 'OH',
+          gradYear: '2026',
+        },
+        {
+          athleteId: '1490002',
+          athleteMainId: '951501',
+          firstName: 'Caleb',
+          lastName: 'Lewis',
+          fullName: 'Caleb Lewis',
+          sport: 'Soccer',
+          gradYear: '2025',
+        },
+        {
+          athleteId: '1490003',
+          athleteMainId: '951502',
+          firstName: 'Caleb',
+          lastName: 'Lewis',
+          fullName: 'Caleb Lewis',
+          sport: 'Football',
+          gradYear: '2024',
+        },
+      ],
+      loadContactInfo: async () => {
+        contactLookups += 1;
+        return buildContactInfo() as any;
+      },
+      fetchTasks: async () => {
+        taskFetches += 1;
+        return [];
+      },
+    },
+  );
+
+  assert.equal(result.matchCount, 5);
+  assert.deepEqual(result.completed, []);
+  assert.deepEqual(
+    result.cleared.map((row) => row.reason),
+    [
+      'different_grad_year_table_clear',
+      'different_grad_year_table_clear',
+      'different_grad_year_table_clear',
+      'different_grad_year_table_clear',
+    ],
+  );
+  assert.deepEqual(result.skipped, []);
+  assert.equal(contactLookups, 0);
+  assert.equal(taskFetches, 0);
 });
 
 test('runDuplicateProfileResolutionForTask updates and completes duplicate-side call attempt 1 task', async () => {
@@ -457,6 +640,7 @@ test('runDuplicateProfileResolutionForTask updates and completes duplicate-side 
 
   assert.equal(result.matchCount, 2);
   assert.equal(result.completed.length, 1);
+  assert.deepEqual(result.cleared, []);
   assert.deepEqual(result.skipped, []);
   assert.equal(updates[0]?.description, 'Call the family\nRepeat Profile');
   assert.equal(String(completions[0]?.taskId), '2500');
@@ -493,6 +677,7 @@ test('runDuplicateProfileResolutionForTask creates saved repeat task when duplic
   });
 
   assert.equal(result.completed.length, 1);
+  assert.deepEqual(result.cleared, []);
   assert.deepEqual(result.skipped, []);
   assert.equal(createdTasks[0]?.taskTitle, 'REPEAT');
   assert.equal(createdTasks[0]?.description, '');

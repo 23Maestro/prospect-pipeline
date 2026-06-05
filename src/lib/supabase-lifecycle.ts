@@ -21,6 +21,7 @@ import {
 } from '../domain/call-tracker-facts';
 import { resolveOwnerByName } from '../domain/owners';
 import {
+  ACTIVE_APPOINTMENT_STATUSES,
   assertAppointmentTruthWrite,
   mergeAppointmentTruthRow,
 } from '../domain/appointment-truth';
@@ -65,6 +66,7 @@ type AppointmentSnapshot = {
   operatorOwnerKey?: string | null;
   appointmentRole?: string | null;
   statusReason?: string | null;
+  postMeetingResult?: string | null;
   sourceSystem?: string | null;
   sourcePayload?: Record<string, unknown> | null;
 };
@@ -235,6 +237,7 @@ type AppointmentRow = {
   head_scout_key: string | null;
   appointment_role: string | null;
   status_reason: string | null;
+  post_meeting_result: string | null;
   source_system: string | null;
   source_payload: Record<string, unknown>;
   updated_at: string;
@@ -311,9 +314,9 @@ export type ActiveMeetingFallbackRow = {
   updatedAt: string;
 };
 
-export type AppointmentStatusProjection = {
+export type AppointmentPostMeetingResultProjection = {
   appointmentId: string;
-  status: 'reschedule_pending';
+  postMeetingResult: 'reschedule_pending';
   statusReason: 'sales_stage_reschedule_pending';
 };
 
@@ -330,6 +333,10 @@ export type WeeklyScheduledAppointmentRow = {
   meetingTitle: string | null;
   meetingTimezone: string | null;
   meetingTimezoneLabel: string | null;
+  postMeetingResult: string | null;
+  previousAppointmentId: string | null;
+  originalAppointmentId: string | null;
+  rescheduleSequence: number | null;
 };
 
 function isEndedAppointmentTimestamp(value?: string | null, now = Date.now()): boolean {
@@ -758,6 +765,7 @@ export function buildAppointmentRow(
     head_scout_key: resolvedHeadScout?.ownerKey || null,
     appointment_role: normalizeValue(appointment.appointmentRole),
     status_reason: normalizeValue(appointment.statusReason),
+    post_meeting_result: normalizeValue(appointment.postMeetingResult),
     source_system: normalizeValue(appointment.sourceSystem),
     source_payload: appointment.sourcePayload || {},
     updated_at: updatedAt,
@@ -975,10 +983,10 @@ export function resolveLifecycleRetentionDecision(args: {
   };
 }
 
-export function resolveAppointmentStatusProjectionForSalesStage(args: {
+export function resolveAppointmentPostMeetingResultProjectionForSalesStage(args: {
   crmStage?: string | null;
   appointmentId?: string | null;
-}): AppointmentStatusProjection | null {
+}): AppointmentPostMeetingResultProjection | null {
   const appointmentId = normalizeValue(args.appointmentId);
   if (!appointmentId) return null;
 
@@ -987,21 +995,36 @@ export function resolveAppointmentStatusProjectionForSalesStage(args: {
 
   return {
     appointmentId,
-    status: 'reschedule_pending',
+    postMeetingResult: 'reschedule_pending',
     statusReason: 'sales_stage_reschedule_pending',
   };
 }
 
-async function patchAppointmentStatusProjection(args: {
+async function patchAppointmentPostMeetingResultProjection(args: {
   config: SupabaseConfig;
-  projection: AppointmentStatusProjection;
+  projection: AppointmentPostMeetingResultProjection;
 }): Promise<void> {
   await request(args.config, 'appointments', {
     method: 'PATCH',
     query: `id=eq.${encodeURIComponent(args.projection.appointmentId)}`,
     rows: {
-      status: args.projection.status,
+      post_meeting_result: args.projection.postMeetingResult,
       status_reason: args.projection.statusReason,
+      updated_at: new Date().toISOString(),
+    },
+  });
+}
+
+async function patchPreviousAppointmentRescheduledResult(args: {
+  config: SupabaseConfig;
+  previousAppointmentId: string;
+}): Promise<void> {
+  await request(args.config, 'appointments', {
+    method: 'PATCH',
+    query: `id=eq.${encodeURIComponent(args.previousAppointmentId)}`,
+    rows: {
+      post_meeting_result: 'rescheduled',
+      status_reason: 'rescheduled_replaced_by_new_appointment',
       updated_at: new Date().toISOString(),
     },
   });
@@ -1124,12 +1147,12 @@ export async function lifecycleSalesStage(
   if (!result.enabled) return result;
 
   const config = getSupabasePersistenceConfig();
-  const appointmentProjection = resolveAppointmentStatusProjectionForSalesStage({
+  const appointmentProjection = resolveAppointmentPostMeetingResultProjectionForSalesStage({
     crmStage: event.state.crmStage,
     appointmentId: event.state.currentAppointmentId,
   });
   if (config && appointmentProjection) {
-    await patchAppointmentStatusProjection({
+    await patchAppointmentPostMeetingResultProjection({
       config,
       projection: appointmentProjection,
     });
@@ -1374,7 +1397,7 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
   const appointmentId = buildAppointmentId(args);
   const previousAppointmentId = normalizeValue(args.previousAppointmentId);
   const payload = args.payload || {};
-  return writeLifecycle({
+  const result = await writeLifecycle({
     athlete: args,
     eventType: 'rescheduled',
     payload: {
@@ -1386,7 +1409,7 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
       appointmentId,
       headScout: args.headScout,
       startsAt: args.startsAt,
-      status: 'rescheduled',
+      status: 'scheduled',
       sourceEventId: args.sourceEventId || args.appointmentId,
       meetingTimezone: payloadString(payload, 'meeting_timezone'),
       meetingTimezoneLabel: payloadString(payload, 'meeting_timezone_label'),
@@ -1398,7 +1421,7 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
       operatorOwner: payloadString(payload, 'operator_owner'),
       operatorOwnerKey: payloadString(payload, 'operator_owner_key'),
       appointmentRole: 'reschedule',
-      statusReason: 'rescheduled_written',
+      statusReason: 'rescheduled_new_appointment_written',
       sourceSystem: 'scout_prep_action',
       sourcePayload: {
         source_event_id: normalizeValue(args.sourceEventId || args.appointmentId),
@@ -1414,6 +1437,17 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
       currentAppointmentId: appointmentId,
     },
   });
+  if (!result.enabled || !previousAppointmentId) return result;
+
+  const config = getSupabasePersistenceConfig();
+  if (config) {
+    await patchPreviousAppointmentRescheduledResult({
+      config,
+      previousAppointmentId,
+    });
+  }
+
+  return result;
 }
 
 export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnapshot> {
@@ -1628,10 +1662,10 @@ export async function getWeeklyScheduledAppointmentRows(args: {
 
   const operatorOwnerKey = normalizeValue(args.operatorOwnerKey);
   const query = [
-    'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner_key,meeting_timezone,meeting_timezone_label,source_payload',
+    'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner_key,meeting_timezone,meeting_timezone_label,post_meeting_result,previous_appointment_id,original_appointment_id,reschedule_sequence,source_payload',
     `starts_at=gte.${encodeURIComponent(args.weekStart)}`,
     `starts_at=lt.${encodeURIComponent(args.weekEnd)}`,
-    'status=in.(scheduled,rescheduled)',
+    `status=in.(${ACTIVE_APPOINTMENT_STATUSES.join(',')})`,
     ...(operatorOwnerKey ? [`operator_owner_key=eq.${encodeURIComponent(operatorOwnerKey)}`] : []),
     'order=starts_at.asc',
     'limit=200',
@@ -1648,6 +1682,10 @@ export async function getWeeklyScheduledAppointmentRows(args: {
     source_event_id?: string | null;
     meeting_timezone?: string | null;
     meeting_timezone_label?: string | null;
+    post_meeting_result?: string | null;
+    previous_appointment_id?: string | null;
+    original_appointment_id?: string | null;
+    reschedule_sequence?: number | null;
     source_payload?: { meeting_name?: string | null } | null;
   }>(config, 'appointments', query);
 
@@ -1687,6 +1725,12 @@ export async function getWeeklyScheduledAppointmentRows(args: {
         meetingTitle: normalizeValue(row.source_payload?.meeting_name),
         meetingTimezone: normalizeValue(row.meeting_timezone),
         meetingTimezoneLabel: normalizeValue(row.meeting_timezone_label),
+        postMeetingResult: normalizeValue(row.post_meeting_result),
+        previousAppointmentId: normalizeValue(row.previous_appointment_id),
+        originalAppointmentId: normalizeValue(row.original_appointment_id),
+        rescheduleSequence: Number.isFinite(Number(row.reschedule_sequence))
+          ? Number(row.reschedule_sequence)
+          : null,
       } satisfies WeeklyScheduledAppointmentRow;
     })
     .filter((row): row is WeeklyScheduledAppointmentRow =>

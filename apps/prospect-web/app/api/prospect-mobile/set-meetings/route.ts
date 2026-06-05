@@ -12,6 +12,7 @@ type ConfirmationCacheRow = {
   recipient_phone?: string | null;
   head_scout_name?: string | null;
   meeting_starts_at?: string | null;
+  meeting_ends_at?: string | null;
   meeting_timezone?: string | null;
   message_body?: string | null;
   admin_url?: string | null;
@@ -26,6 +27,20 @@ const ACTIVE_SET_MEETING_STATUSES = new Set([
   'confirmation_sent',
   'rescheduled',
 ]);
+
+function parseTime(value?: string | null): number {
+  const parsed = Date.parse(String(value || '').trim());
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
+}
+
+function isCurrentMeetingWindow(row: ConfirmationCacheRow, week: string, now = new Date()): boolean {
+  if (week !== 'this') return true;
+  const startsAt = parseTime(row.meeting_starts_at);
+  if (!Number.isFinite(startsAt)) return false;
+  const explicitEnd = parseTime(row.meeting_ends_at);
+  const endsAt = Number.isFinite(explicitEnd) ? explicitEnd : startsAt + 60 * 60_000;
+  return endsAt > now.getTime();
+}
 
 function buildWeekWindow(week = 'this', now = new Date()) {
   const parts = new Intl.DateTimeFormat('en-US', {
@@ -84,11 +99,16 @@ function buildConfirmationCacheContactOptions(row: ConfirmationCacheRow) {
   }];
 }
 
-async function fetchAppointmentStatuses(appointmentIds: string[]): Promise<Map<string, string>> {
-  if (!appointmentIds.length) return new Map<string, string>();
+type AppointmentReadiness = {
+  status: string;
+  postMeetingResult: string;
+};
+
+async function fetchAppointmentReadiness(appointmentIds: string[]): Promise<Map<string, AppointmentReadiness>> {
+  if (!appointmentIds.length) return new Map<string, AppointmentReadiness>();
   const config = getSupabaseRestConfig();
   const query = [
-    'select=id,status',
+    'select=id,status,post_meeting_result',
     `id=in.(${appointmentIds.map((id) => `"${id.replace(/"/g, '')}"`).join(',')})`,
     `limit=${appointmentIds.length}`,
   ].join('&');
@@ -100,12 +120,17 @@ async function fetchAppointmentStatuses(appointmentIds: string[]): Promise<Map<s
   if (!response.ok) {
     throw new Error(rows.message || rows.error || `Supabase ${response.status}`);
   }
-  const statuses = new Map<string, string>();
-  for (const row of Array.isArray(rows) ? rows as Array<{ id?: string | null; status?: string | null }> : []) {
+  const readiness = new Map<string, AppointmentReadiness>();
+  for (const row of Array.isArray(rows) ? rows as Array<{ id?: string | null; status?: string | null; post_meeting_result?: string | null }> : []) {
     const id = String(row.id || '').trim();
-    if (id) statuses.set(id, String(row.status || '').trim().toLowerCase());
+    if (id) {
+      readiness.set(id, {
+        status: String(row.status || '').trim().toLowerCase(),
+        postMeetingResult: String(row.post_meeting_result || '').trim().toLowerCase(),
+      });
+    }
   }
-  return statuses;
+  return readiness;
 }
 
 export async function GET(request: Request) {
@@ -115,7 +140,7 @@ export async function GET(request: Request) {
   try {
     const config = getSupabaseRestConfig();
     const query = [
-      `select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_timezone,message_body,admin_url,task_url,kind,${PAYLOAD_FIELD}`,
+      `select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_ends_at,meeting_timezone,message_body,admin_url,task_url,kind,${PAYLOAD_FIELD}`,
       'status=eq.cached',
       'source=eq.set_meetings_confirmation',
       'kind=in.(confirmation_1,confirmation_2)',
@@ -150,9 +175,16 @@ export async function GET(request: Request) {
       grouped.set(key, existing);
     }
 
-    const appointmentStatuses = await fetchAppointmentStatuses(Array.from(grouped.keys()));
+    const appointmentReadiness = await fetchAppointmentReadiness(Array.from(grouped.keys()));
     const events = Array.from(grouped.values())
-      .filter((entry) => ACTIVE_SET_MEETING_STATUSES.has(appointmentStatuses.get(String(entry.base.appointment_id || '').trim()) || ''))
+      .filter((entry) => {
+        const appointment = appointmentReadiness.get(String(entry.base.appointment_id || '').trim());
+        return (
+          ACTIVE_SET_MEETING_STATUSES.has(appointment?.status || '') &&
+          !appointment?.postMeetingResult &&
+          isCurrentMeetingWindow(entry.base, weekWindow.week)
+        );
+      })
       .map((entry) => ({
         key: entry.base.appointment_id,
         appointment_id: entry.base.appointment_id,
@@ -162,6 +194,7 @@ export async function GET(request: Request) {
         head_scout_name: entry.base.head_scout_name,
         current_meeting_label: entry.base.meeting_starts_at,
         start: entry.base.meeting_starts_at,
+        end: entry.base.meeting_ends_at,
         meeting_timezone: entry.base.meeting_timezone,
         confirmation_recipient: {
           name: entry.base.recipient_name,

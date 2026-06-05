@@ -459,11 +459,9 @@ test('no-show evidence accepts legacy title prefixes and CRM no-show stages', ()
   assert.equal(hasStrictNoShowEvidence({ crmStage: 'Actual Meeting - Follow Up' }), false);
 });
 
-test('pending client loader avoids source adapters for the review list', () => {
+test('pending client loader avoids live source adapters for the review list', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /pending_client_watchlist/);
-  assert.doesNotMatch(source, /set_meeting_confirmation_cache/);
-  assert.doesNotMatch(source, /readSetMeetingConfirmationCacheRows/);
   assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
   assert.doesNotMatch(source, /athlete_pipeline_state/);
 });

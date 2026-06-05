@@ -2,6 +2,7 @@ import { normalizeCrmSalesStage } from '../lib/sales-lifecycle';
 import {
   appointmentStatusForTitleOrStage,
   parseAppointmentTitleOutcome,
+  postMeetingResultForTitleOrStage,
   taskStatusForTitleOrStage,
 } from './supabase-lifecycle-translator';
 
@@ -143,16 +144,12 @@ function extractMeetingTitlePrefix(title?: string | null): string | null {
   return match?.[1]?.trim() || null;
 }
 
-function postMeetingResultForAppointmentStatus(status?: string | null): string | null {
-  const normalized = clean(status);
+function cleanAppointmentStatus(value?: string | null): string | null {
+  const normalized = clean(value);
   if (
-    normalized === 'reschedule_pending' ||
-    normalized === 'rescheduled' ||
-    normalized === 'no_show' ||
-    normalized === 'canceled' ||
-    normalized === 'follow_up' ||
-    normalized === 'closed_won' ||
-    normalized === 'closed_lost'
+    normalized === 'scheduled' ||
+    normalized === 'confirmation_queued' ||
+    normalized === 'confirmation_sent'
   ) {
     return normalized;
   }
@@ -168,9 +165,10 @@ export function resolveWorkflowContext(input: WorkflowContextInput): WorkflowCon
   const parsedTitle = parseAppointmentTitleOutcome(currentTitle);
   const projectedTaskStatus = taskStatusForTitleOrStage(currentTitle, salesStage, input.taskStatus);
   const projectedAppointmentStatus =
-    appointmentStatusForTitleOrStage(salesStage, currentTitle) || clean(input.appointmentStatus);
+    cleanAppointmentStatus(input.appointmentStatus) ||
+    appointmentStatusForTitleOrStage(salesStage, currentTitle);
   const projectedPostMeetingResult =
-    postMeetingResultForAppointmentStatus(projectedAppointmentStatus) || clean(input.postMeetingResult);
+    postMeetingResultForTitleOrStage(salesStage, currentTitle) || clean(input.postMeetingResult);
 
   return {
     workflow_id: buildWorkflowId({ athleteId, athleteMainId, appointmentId }),

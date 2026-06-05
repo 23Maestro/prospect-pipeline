@@ -11,7 +11,7 @@ FastAPI remains a source-system adapter; Supabase remains durable reporting trut
 | Scout Prep post-call action | Raycast Scout Prep | Task/stage update route succeeds first | `lifecycleSalesStage` | This is the primary lifecycle/sales-stage writer for Raycast-owned actions. |
 | Scout Prep meeting set | Raycast Scout Prep | Meeting creation and sales stage save succeed first | `recordMeetingSet` / lifecycle mutation plus `set_meeting_confirmation_cache` | Confirmation cache is required for Prospect Mobile confirmation prep actions and must write both confirmation rows. |
 | Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update | Confirmation cache and event title state | Confirmation cache is not lifecycle truth. |
-| Pending Clients | Current pipeline state | Reads current sales stage and athlete event list | Reads Supabase pipeline/lifecycle state | It must not read confirmation cache. |
+| Pending Clients | Current pipeline state | Reads current sales stage, athlete event list, and aligned meeting-support evidence | `pending_client_watchlist` via Pending Clients domain | Confirmation cache may support meeting identity/timing context, but it is not lifecycle truth. Scheduled sync may add review rows for ended Meeting Set rows or real pending outcomes; it must not write appointment status or invent meeting outcomes. |
 
 ## Meeting Time Mutation Rights
 
@@ -25,9 +25,12 @@ Meeting time means one thing across the system: the appointment start/end instan
 
 Rules:
 
-- A post-meeting watcher may update appointment `status`, `post_meeting_result`, and `status_reason`; it may not update `starts_at`.
+- A post-meeting watcher may update appointment `post_meeting_result` and `status_reason`; it may not update `status` or `starts_at`.
+- `reschedule_pending` is a post-meeting outcome/Pending Clients state. It is not an active appointment `status` and must not cause Set Meetings or active appointment truth to show an old appointment row.
+- An ended appointment while Laravel still says Meeting Set is a computed polling condition, not a stored `post_meeting_result`. Store only real outcomes or explicit Pending Clients task states.
 - A reporting writer may copy already-confirmed meeting start/end into `call_log`; it may not invent or normalize appointment time truth.
 - `set_meeting_confirmation_cache` is not lifecycle truth, but for same-appointment-id repair it is valid evidence for the confirmed meeting start/end because Prospect Mobile confirmation prep uses it.
+- Pending Clients may read confirmation cache as aligned meeting-support evidence; it must not use confirmation cache to decide lifecycle stage, post-meeting outcome, or active appointment status.
 - The hourly cron must not run broad booked-meeting backfills that overwrite appointment time from Laravel local calendar strings.
 - `pending_client_watchlist.event_start` and `event_end` are timestamp instants, not display strings. If a source adapter returns a legacy no-offset head-scout meeting stamp, normalize it as Eastern meeting-local time before writing Supabase.
 - `call_log.event_at` and `reporting_at` for post-meeting outcome facts are the meeting event instant. `occurred_at` may record when the cron or payment evidence observed the outcome, but UI/reporting must not use detection time as meeting time.
@@ -70,7 +73,7 @@ See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned del
 
 - Do not add new script-local lifecycle translation helpers.
 - Resolve shared workflow values through `src/domain/workflow-context.ts` before writing cross-table Scout Prep / Set Meetings facts.
-- Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, appointment status, and post-meeting outcome translation.
+- Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, active appointment status, and post-meeting outcome translation.
 - Use `src/lib/supabase-lifecycle.ts` for Raycast action-time Supabase writes.
 - Treat confirmation cache as confirmation-message support only.
 - For successful Raycast Meeting Set submits, write exactly two confirmation cache rows (`confirmation_1` and `confirmation_2`) or fail loudly with the missing source field.

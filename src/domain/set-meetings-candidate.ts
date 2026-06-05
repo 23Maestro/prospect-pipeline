@@ -98,6 +98,18 @@ export function getMeetingSortBucket(candidate: HeadScoutFollowUpCandidate, now 
   return 4;
 }
 
+function getMeetingEndValue(candidate: HeadScoutFollowUpCandidate): number {
+  const startValue = Date.parse(String(candidate.bookedMeeting?.start || '').trim());
+  if (Number.isNaN(startValue)) return Number.NaN;
+  const endValue = Date.parse(String(candidate.bookedMeeting?.end || '').trim());
+  return Number.isNaN(endValue) ? startValue + 60 * 60 * 1000 : endValue;
+}
+
+function isCurrentMeetingWindow(candidate: HeadScoutFollowUpCandidate, now = new Date()): boolean {
+  const endValue = getMeetingEndValue(candidate);
+  return !Number.isNaN(endValue) && endValue > now.getTime();
+}
+
 export function sortSetMeetingCandidates(
   candidates: HeadScoutFollowUpCandidate[],
   now = new Date(),
@@ -113,6 +125,34 @@ export function sortSetMeetingCandidates(
     }
     return left.athleteName.localeCompare(right.athleteName);
   });
+}
+
+function cleanIdentityPart(value?: string | number | null): string {
+  return String(value || '').trim();
+}
+
+export function buildSetMeetingCandidateIdentityKey(candidate: HeadScoutFollowUpCandidate): string {
+  const athleteKey =
+    cleanIdentityPart(candidate.key) ||
+    [candidate.athleteId, candidate.athleteMainId].map(cleanIdentityPart).filter(Boolean).join(':') ||
+    cleanIdentityPart(candidate.athleteName) ||
+    'unknown-athlete';
+  const eventId = cleanIdentityPart(candidate.bookedMeeting?.event_id);
+  if (eventId) {
+    return `${athleteKey}:event:${eventId}`;
+  }
+
+  const start = cleanIdentityPart(candidate.bookedMeeting?.start);
+  if (start) {
+    return `${athleteKey}:start:${start}`;
+  }
+
+  const taskId = cleanIdentityPart(candidate.taskId);
+  if (taskId) {
+    return `${athleteKey}:task:${taskId}`;
+  }
+
+  return athleteKey;
 }
 
 export function buildSetMeetingCandidate(args: {
@@ -202,15 +242,99 @@ export type WeeklyAppointmentSetMeetingRow = {
   sourceEventId?: string | null;
   meetingTitle?: string | null;
   dateTimeLabel?: string | null;
+  status?: string | null;
+  postMeetingResult?: string | null;
+  previousAppointmentId?: string | null;
+  originalAppointmentId?: string | null;
+  rescheduleSequence?: number | null;
 };
+
+function normalizeSetMeetingText(value?: string | number | null): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function hasPostMeetingResult(row: WeeklyAppointmentSetMeetingRow): boolean {
+  return Boolean(normalizeSetMeetingText(row.postMeetingResult));
+}
+
+function getAppointmentRowAthleteKey(row: WeeklyAppointmentSetMeetingRow): string {
+  return [row.athleteId, row.athleteMainId].map(cleanIdentityPart).filter(Boolean).join(':');
+}
+
+function getAppointmentRowStartValue(row: WeeklyAppointmentSetMeetingRow): number {
+  const parsed = Date.parse(String(row.startsAt || '').trim());
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function isRescheduledSourceRow(row: WeeklyAppointmentSetMeetingRow): boolean {
+  return (
+    normalizeSetMeetingText(row.postMeetingResult) === 'rescheduled' ||
+    normalizeSetMeetingText(row.status) === 'rescheduled'
+  );
+}
+
+function hasRescheduleLinkTo(
+  source: WeeklyAppointmentSetMeetingRow,
+  candidate: WeeklyAppointmentSetMeetingRow,
+): boolean {
+  const sourceId = cleanIdentityPart(source.id);
+  const candidateId = cleanIdentityPart(candidate.id);
+  if (!sourceId || !candidateId || sourceId === candidateId) return false;
+
+  const candidatePrevious = cleanIdentityPart(candidate.previousAppointmentId);
+  if (candidatePrevious && candidatePrevious === sourceId) return true;
+
+  const sourceOriginal = cleanIdentityPart(source.originalAppointmentId);
+  const candidateOriginal = cleanIdentityPart(candidate.originalAppointmentId);
+  if (sourceOriginal && candidateOriginal && sourceOriginal === candidateOriginal) {
+    return true;
+  }
+
+  const sourceSequence = Number(source.rescheduleSequence || 0);
+  const candidateSequence = Number(candidate.rescheduleSequence || 0);
+  return candidateSequence > sourceSequence && getAppointmentRowStartValue(candidate) >= getAppointmentRowStartValue(source);
+}
+
+export function selectCurrentSetMeetingAppointmentRows(
+  appointments: WeeklyAppointmentSetMeetingRow[],
+): WeeklyAppointmentSetMeetingRow[] {
+  const activeRows = appointments.filter((row) => !hasPostMeetingResult(row));
+  const rowsByAthlete = new Map<string, WeeklyAppointmentSetMeetingRow[]>();
+  for (const row of activeRows) {
+    const athleteKey = getAppointmentRowAthleteKey(row);
+    if (!athleteKey) continue;
+    rowsByAthlete.set(athleteKey, [...(rowsByAthlete.get(athleteKey) || []), row]);
+  }
+
+  const suppressedIds = new Set<string>();
+  for (const rows of rowsByAthlete.values()) {
+    if (rows.length < 2) continue;
+    for (const row of rows) {
+      if (!isRescheduledSourceRow(row)) continue;
+      const replacement = rows.find((candidate) => {
+        if (candidate.id === row.id) return false;
+        return (
+          hasRescheduleLinkTo(row, candidate) ||
+          getAppointmentRowStartValue(candidate) > getAppointmentRowStartValue(row)
+        );
+      });
+      if (replacement) {
+        suppressedIds.add(row.id);
+      }
+    }
+  }
+
+  return activeRows.filter((row) => !suppressedIds.has(row.id));
+}
 
 export function buildSetMeetingCandidatesFromAppointments(args: {
   appointments: WeeklyAppointmentSetMeetingRow[];
   tasks: ScoutPortalTask[];
   operatorName: string;
 }): HeadScoutFollowUpCandidate[] {
+  const appointments = selectCurrentSetMeetingAppointmentRows(args.appointments);
   return buildWeeklyOperatorMeetingSetCandidates({
-    bookedMeetings: args.appointments.map((appointment) => ({
+    bookedMeetings: appointments.map((appointment) => ({
       event_id: appointment.sourceEventId || appointment.id,
       athlete_id: appointment.athleteId,
       athlete_main_id: appointment.athleteMainId,
@@ -244,7 +368,9 @@ export function filterWeeklySetMeetingCandidates(args: {
   weeklyMeetingsOnly?: boolean;
   weekStart: string;
   weekEnd: string;
+  now?: Date;
 }): HeadScoutFollowUpCandidate[] {
+  const now = args.now || new Date();
   return args.candidates.filter((candidate) => {
     if (
       args.scoutName &&
@@ -268,6 +394,6 @@ export function filterWeeklySetMeetingCandidates(args: {
     }
 
     const meetingDate = currentMeeting.toISOString().slice(0, 10);
-    return meetingDate >= args.weekStart && meetingDate < args.weekEnd;
+    return meetingDate >= args.weekStart && meetingDate < args.weekEnd && isCurrentMeetingWindow(candidate, now);
   });
 }

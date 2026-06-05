@@ -5,6 +5,7 @@ import {
   appointmentStatusForTitleOrStage,
   crmStageForOutcome,
   parseAppointmentTitleOutcome,
+  postMeetingResultForTitleOrStage,
   taskStatusForStage,
   taskStatusForTitleOrStage,
 } from './supabase-lifecycle-translator';
@@ -17,7 +18,8 @@ test('event prefixes translate directly for Supabase lifecycle state', () => {
     taskStatusForTitleOrStage(noShow.originalTitle, 'Actual Meeting - Follow Up', 'meeting_follow_up'),
     'no_show',
   );
-  assert.equal(appointmentStatusForTitleOrStage('Actual Meeting - Follow Up', noShow.originalTitle), 'no_show');
+  assert.equal(appointmentStatusForTitleOrStage('Actual Meeting - Follow Up', noShow.originalTitle), null);
+  assert.equal(postMeetingResultForTitleOrStage('Actual Meeting - Follow Up', noShow.originalTitle), 'no_show');
 });
 
 test('CRM stage translates without producing manual-review task status', () => {
@@ -26,7 +28,8 @@ test('CRM stage translates without producing manual-review task status', () => {
   assert.equal(taskStatusForStage('Actual Meeting - Follow Up', null), 'meeting_follow_up');
   assert.equal(taskStatusForStage('Meeting Result - No Show', null), 'no_show');
   assert.equal(taskStatusForStage('Meeting Result - Canceled', null), 'canceled');
-  assert.equal(appointmentStatusForTitleOrStage('Meeting Result - Canceled', null), 'canceled');
+  assert.equal(appointmentStatusForTitleOrStage('Meeting Result - Canceled', null), null);
+  assert.equal(postMeetingResultForTitleOrStage('Meeting Result - Canceled', null), 'canceled');
 });
 
 test('known close and follow-up prefixes map to established stages and statuses', () => {
@@ -45,11 +48,13 @@ test('known close and follow-up prefixes map to established stages and statuses'
   assert.equal(canceled.outcome, 'soft_archive_canceled');
   assert.equal(crmStageForOutcome(canceled.outcome, null), 'Meeting Result - Canceled');
   assert.equal(taskStatusForTitleOrStage(canceled.originalTitle, null, null), 'canceled');
-  assert.equal(appointmentStatusForTitleOrStage(null, canceled.originalTitle), 'canceled');
+  assert.equal(appointmentStatusForTitleOrStage(null, canceled.originalTitle), null);
+  assert.equal(postMeetingResultForTitleOrStage(null, canceled.originalTitle), 'canceled');
 
   const parentDidNotQualify = parseAppointmentTitleOutcome('(PAR - DNQ) Sample Athlete Football 2027 TX');
   assert.equal(parentDidNotQualify.outcome, 'terminal_close_lost');
   assert.equal(crmStageForOutcome(parentDidNotQualify.outcome, null), 'Actual Meeting - Close Lost');
   assert.equal(taskStatusForTitleOrStage(parentDidNotQualify.originalTitle, null, null), 'closed_lost');
-  assert.equal(appointmentStatusForTitleOrStage(null, parentDidNotQualify.originalTitle), 'closed_lost');
+  assert.equal(appointmentStatusForTitleOrStage(null, parentDidNotQualify.originalTitle), null);
+  assert.equal(postMeetingResultForTitleOrStage(null, parentDidNotQualify.originalTitle), 'closed_lost');
 });

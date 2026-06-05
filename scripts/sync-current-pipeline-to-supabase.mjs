@@ -5,14 +5,18 @@
 
 import fetch from 'node-fetch';
 import { randomUUID } from 'crypto';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
+import { join } from 'path';
 import { buildAthleteKey } from '../src/domain/athlete-identity.ts';
 import { buildCallActivityFact, buildMeetingSetFact } from '../src/domain/call-tracker-facts.ts';
 import { buildOwnerProofPayload } from '../src/domain/owner-proof-payload.ts';
+import { buildPendingClientWatchlistRow } from '../src/domain/pending-client-watchlist.ts';
 import {
   insertMeetingSetEventsOnce,
   readRows,
   upsertAthletes,
   upsertCallActivityEvents,
+  upsertPendingClientWatchlistRows,
 } from '../src/domain/supabase-persistence.ts';
 import {
   classifyScoutTask,
@@ -20,7 +24,6 @@ import {
   stripMoveThisTaskPrefix,
 } from '../src/domain/scout-task-classifier.ts';
 import {
-  appointmentStatusForTitleOrStage,
   normalizeCrmSalesStage,
   taskStatusForStage,
 } from '../src/domain/supabase-lifecycle-translator.ts';
@@ -30,6 +33,7 @@ import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
 const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const LOCK_DIR = process.env.CURRENT_PIPELINE_SYNC_LOCK_DIR || '/tmp/prospect-pipeline-current-pipeline-sync.lock';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const {
   projectRef,
@@ -61,6 +65,89 @@ if (projectRef && !SUPABASE_URL.includes(projectRef)) {
   );
   process.exit(1);
 }
+
+function readLockPid() {
+  try {
+    const pid = Number.parseInt(readFileSync(join(LOCK_DIR, 'pid'), 'utf8').trim(), 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireLock() {
+  for (;;) {
+    try {
+      mkdirSync(LOCK_DIR);
+      writeFileSync(
+        join(LOCK_DIR, 'pid'),
+        `${process.pid}\n`,
+        { flag: 'wx' },
+      );
+      writeFileSync(
+        join(LOCK_DIR, 'metadata.json'),
+        `${JSON.stringify({ runId: RUN_ID, pid: process.pid, startedAt: new Date().toISOString() }, null, 2)}\n`,
+        { flag: 'wx' },
+      );
+      return { acquired: true };
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      const lockPid = readLockPid();
+      if (lockPid && isProcessAlive(lockPid)) {
+        return { acquired: false, lockPid, reason: 'current_pipeline_sync_already_running' };
+      }
+      rmSync(LOCK_DIR, { recursive: true, force: true });
+    }
+  }
+}
+
+const lock = acquireLock();
+if (!lock.acquired) {
+  console.log(
+    JSON.stringify(
+      {
+        runId: RUN_ID,
+        skipped: true,
+        reason: lock.reason,
+        lockDir: LOCK_DIR,
+        lockPid: lock.lockPid,
+      },
+      null,
+      2,
+    ),
+  );
+  process.exit(0);
+}
+
+let lockReleased = false;
+function releaseLock() {
+  if (lockReleased) return;
+  lockReleased = true;
+  try {
+    rmSync(LOCK_DIR, { recursive: true, force: true });
+  } catch {
+    // best-effort cleanup; the next run should not hide real write failures.
+  }
+}
+
+process.once('exit', releaseLock);
+process.once('SIGINT', () => {
+  releaseLock();
+  process.exit(130);
+});
+process.once('SIGTERM', () => {
+  releaseLock();
+  process.exit(143);
+});
 
 function parseLegacyTaskDate(value) {
   const trimmed = String(value || '').trim();
@@ -232,6 +319,7 @@ for (const row of existingMeetingSetRows) {
 const athletesByKey = new Map();
 const callActivityRows = [];
 const meetingSetRows = [];
+const pendingClientRows = [];
 const stateCandidatesByAthlete = new Map();
 const failures = [];
 const staleSkipped = [];
@@ -326,17 +414,14 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       appointmentId,
       meetingTitle: appointmentMeeting?.title,
     });
-    const currentAppointmentStatus = shouldMonitorEndedMeetingSet
-      ? 'awaiting_post_meeting_update'
+    const currentAppointmentSyncState = shouldMonitorEndedMeetingSet
+      ? 'needs_post_meeting_review'
       : workflowContext.appointment_status ||
-        appointmentStatusForTitleOrStage(selectedSalesStage, appointmentMeeting?.title) ||
-        (translatedTaskStatus === 'no_show'
-          ? 'no_show'
-          : translatedTaskStatus === 'confirmation_call'
+        (translatedTaskStatus === 'confirmation_call'
+          ? 'scheduled'
+          : appointmentMeeting
             ? 'scheduled'
-            : appointmentMeeting
-              ? 'scheduled'
-              : null);
+            : null);
     const ownership = resolveCallTrackerOwnership({
       purpose: 'call_activity',
       trackedOwnerName: TRACKED_OWNER_NAME,
@@ -386,11 +471,10 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
         athlete_key: athleteKey,
         athlete_name: athleteName,
         appointment_id: appointmentId,
-        status: currentAppointmentStatus,
+        sync_state: currentAppointmentSyncState,
         reason: 'current_pipeline_sync_does_not_have_meeting_timezone',
       });
     }
-
     const sourcePayload = {
       sync_run_id: RUN_ID,
       source: 'scout_tasks_current_pipeline',
@@ -404,6 +488,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       due_at: dueAt,
       workflow_id: workflowContext.workflow_id,
       workflow_context: workflowContext,
+      post_meeting_result: workflowContext.post_meeting_result,
       task_admin_url: String(pipelineTask.athlete_task_url || '').trim() || null,
       athlete_admin_url: String(pipelineTask.athlete_admin_url || '').trim() || null,
       head_scout: headScout,
@@ -413,8 +498,41 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       current_meeting: currentMeeting || null,
       previous_meeting: previousMeeting || null,
       current_appointment_id: appointmentId,
-      awaiting_post_meeting_update: shouldMonitorEndedMeetingSet,
+      needs_post_meeting_review: shouldMonitorEndedMeetingSet,
     };
+
+    const pendingClientResult = workflowContext.post_meeting_result;
+    const shouldWritePendingClientReview =
+      shouldMonitorEndedMeetingSet ||
+      ['follow_up', 'reschedule_pending', 'no_show', 'canceled'].includes(pendingClientResult);
+    if (appointmentId && appointmentMeeting && shouldWritePendingClientReview) {
+      pendingClientRows.push(
+        buildPendingClientWatchlistRow({
+          event: {
+            event_id: `appointment:${appointmentId}`,
+            title:
+              workflowContext.meeting_title_current ||
+              workflowContext.meeting_title_base ||
+              athleteName,
+            assigned_owner: headScout,
+            start: appointmentMeeting.start,
+            end: appointmentMeeting.end,
+            date_time_label: appointmentMeeting.date_time_label,
+          },
+          description: shouldMonitorEndedMeetingSet
+            ? 'Needs post-meeting review: meeting ended while Laravel still reports Meeting Set.'
+            : `Pending client review from current pipeline outcome: ${pendingClientResult}.`,
+          matchedSignals: shouldMonitorEndedMeetingSet
+            ? ['needs_post_meeting_review']
+            : [pendingClientResult],
+          actionTag: 'Operator Input',
+          aiVerdict: 'pending_client',
+          athleteId,
+          athleteMainId,
+          athleteName,
+        }),
+      );
+    }
 
     if (
       appointmentId &&
@@ -516,7 +634,7 @@ for (const [index, pipelineTask] of pipelineTasks.entries()) {
       athleteId,
       athleteMainId,
       crmStage: shouldMonitorEndedMeetingSet
-        ? 'Meeting Set - Awaiting Post Meeting Result'
+        ? 'Meeting Set - Needs Post Meeting Review'
         : selectedSalesStage,
       taskStatus: shouldMonitorEndedMeetingSet
         ? 'post_meeting_update_pending'
@@ -578,6 +696,10 @@ const currentLifecycleStateRows = Array.from(stateCandidatesByAthlete.entries())
 await upsertAthletes(SUPABASE_CONFIG, [...athletesByKey.values()]);
 await upsertCallActivityEvents(SUPABASE_CONFIG, callActivityRows);
 await insertMeetingSetEventsOnce(SUPABASE_CONFIG, meetingSetRows);
+const pendingClientWatchlistResult = await upsertPendingClientWatchlistRows(
+  SUPABASE_CONFIG,
+  pendingClientRows,
+);
 
 console.log(
   JSON.stringify(
@@ -589,6 +711,8 @@ console.log(
       appointmentsUpserted: 0,
       callActivityEventsUpserted: callActivityRows.length,
       meetingSetEventsInsertedOnce: meetingSetRows.length,
+      pendingClientWatchlistCandidates: pendingClientRows.length,
+      pendingClientWatchlistUpserted: pendingClientWatchlistResult.count,
       weakAppointmentSkipped,
       staleSkipped,
       ownerSkipped,

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   assertAppointmentTruthWrite,
+  isActiveAppointmentStatus,
   mergeAppointmentTruthRow,
   validateAppointmentTruthWrite,
   type AppointmentTruthRow,
@@ -51,6 +52,17 @@ test('active appointment truth rejects missing required business fields', () => 
       head_scout: 'Ryan Lietz',
     }),
     ['starts_at', 'meeting_timezone', 'operator_owner', 'original_appointment_id'],
+  );
+});
+
+test('reschedule pending is a post-meeting result, not active appointment truth', () => {
+  assert.equal(isActiveAppointmentStatus('reschedule_pending'), false);
+  assert.deepEqual(
+    validateAppointmentTruthWrite({
+      id: '611014',
+      status: 'reschedule_pending',
+    }),
+    [],
   );
 });
 

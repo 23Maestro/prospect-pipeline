@@ -636,7 +636,7 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /event\.confirmation_2_message/);
   assert.match(appText, /cache: 'no-store'/);
   assert.match(appText, /'cache-control': 'no-cache'/);
-  assert.match(appText, /\.filter\(\(event\) => isCurrentCachedMeeting\(event\.start, week\)\)/);
+  assert.match(appText, /\.filter\(\(event\) => isCurrentCachedMeeting\(event\.start, week, new Date\(\), event\.end\)\)/);
   assert.match(appText, /isCurrentCachedMeeting/);
   assert.match(appText, /parseCachedMeetingInstant\(value\)/);
   assert.match(utilitiesText, /function isCurrentCachedMeeting/);

@@ -762,17 +762,20 @@ function recruitingTimelineLine(values: ScoutPrepFormValues, context?: ScoutPrep
   const windowOpened = hasCoachContactWindowOpened(reference);
 
   if (values.gradYear === 'Freshman') {
-    return `For ${sport}, the coach-call window is ${date}, but this starts earlier now. We already see freshmen and sophomores with offers, and some have verbally committed.`;
+    return `For ${sport}, this starts early. 85% of Division I prospects are identified by sophomore year, and we already see freshmen and sophomores with offers and verbal commitments.`;
   }
 
   if (values.gradYear === 'Sophomore') {
     if (windowOpened) {
-      return `For ${sport}, coaches can start calling now, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
+      if (sport === 'football') {
+        return `June 15 just passed, so Division II football coaches can officially call now. 85% of Division I prospects are identified by sophomore year, and we already see freshmen and sophomores with offers and verbal commitments.`;
+      }
+      return `For ${sport}, coaches can start calling now. 85% of Division I prospects are identified by sophomore year, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
     }
     if (new Date().getMonth() + 1 === reference.contactMonth) {
-      return `For ${sport}, coaches can start calling this month on ${dateLabel}, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
+      return `For ${sport}, coaches can start calling this month on ${dateLabel}. 85% of Division I prospects are identified by sophomore year, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
     }
-    return `For ${sport}, ${date} is the date to be ready for; if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
+    return `For ${sport}, ${date} is the date to be ready for. 85% of Division I prospects are identified by sophomore year, so if ${athleteFirst} is not already on lists, you end up playing catch-up.`;
   }
 
   if (values.gradYear === 'Junior') {

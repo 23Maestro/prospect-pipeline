@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import {
   buildAppointmentTruthPatches,
@@ -7,6 +8,8 @@ import {
   resolveOwnerByName,
   resolveTimezoneLabel,
 } from './backfill-appointment-truth.mjs';
+
+const source = readFileSync(new URL('./backfill-appointment-truth.mjs', import.meta.url), 'utf8');
 
 const owners = [
   {
@@ -117,6 +120,12 @@ test('appointment role uses lifecycle event before appointment status', () => {
   );
   assert.equal(inferAppointmentRole({ status: 'no_show' }, null), 'post_meeting_outcome');
   assert.equal(inferAppointmentRole({ status: 'scheduled' }, null), 'initial_set');
+});
+
+test('backfill active appointment helper does not treat reschedule pending as active', () => {
+  const helper = source.match(/function isActiveAppointmentStatus\(status\) \{[\s\S]*?\n\}/)?.[0] || '';
+  assert.match(helper, /scheduled/);
+  assert.doesNotMatch(helper, /reschedule_pending/);
 });
 
 test('backfill patches timezone, owner, head scout key, and initial chain defaults', () => {

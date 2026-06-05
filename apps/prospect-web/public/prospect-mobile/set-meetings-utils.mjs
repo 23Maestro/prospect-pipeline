@@ -24,11 +24,13 @@ export function getCurrentCachedMeetingClock(now = new Date()) {
   return new Date(Date.UTC(Number(values.year), Number(values.month) - 1, Number(values.day), Number(values.hour), Number(values.minute)));
 }
 
-export function isCurrentCachedMeeting(value, week = 'this', now = new Date()) {
+export function isCurrentCachedMeeting(value, week = 'this', now = new Date(), endValue = null) {
   if (week !== 'this') return true;
   const meetingDate = parseCachedMeetingInstant(value);
   if (!meetingDate) return false;
-  return meetingDate.getTime() >= now.getTime();
+  const meetingEnd = parseCachedMeetingInstant(endValue);
+  const endTime = meetingEnd?.getTime() || meetingDate.getTime() + 60 * 60_000;
+  return endTime > now.getTime();
 }
 
 const ACTIVE_SET_MEETING_APPOINTMENT_STATUSES = new Set([
@@ -49,6 +51,9 @@ export function filterActiveSetMeetingEvents(events, appointmentsById = {}) {
     const appointment = appointmentsById instanceof Map
       ? appointmentsById.get(appointmentId)
       : appointmentsById[appointmentId];
-    return isActiveSetMeetingAppointmentStatus(appointment?.status);
+    return (
+      isActiveSetMeetingAppointmentStatus(appointment?.status) &&
+      !String(appointment?.post_meeting_result || appointment?.postMeetingResult || '').trim()
+    );
   });
 }

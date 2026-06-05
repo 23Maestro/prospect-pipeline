@@ -1344,7 +1344,7 @@ test('buildScoutPrepCard: freshman football with unknown GPA uses ask-first go-t
   assert.doesNotMatch(card, /We typically want to get to about that 3\.0/);
   assert.match(card, /### Athletic Proof[\s\S]*Is Fred's separator speed, production, ball skills, or what he does after contact\?/);
   assert.match(card, /### Recruiting \/ Timeline[\s\S]*How many questionnaires has he filled out, and has he reached out to any coaches yet\?/);
-  assert.match(card, /### Recruiting \/ Timeline[\s\S]*We already see freshmen and sophomores with offers, and some have verbally committed\./);
+  assert.match(card, /### Recruiting \/ Timeline[\s\S]*85% of Division I prospects are identified by sophomore year, and we already see freshmen and sophomores with offers and verbal commitments\./);
   assert.match(card, /### Recruiting \/ Timeline[\s\S]*---\n\n## Deficit ladder[\s\S]*- If nothing is real yet: this is about getting on the map before the contact window\./);
 });
 
@@ -1677,7 +1677,7 @@ test('buildScoutPrepCard: grad year changes deficit and GPA changes tone only', 
     buildContext({ resolved: { gpa: '3.1' } }),
   ).markdown;
   assert.match(sophomore, /I saw the 3\.1\. That gives coaches something solid to work with academically\./);
-  assert.match(sophomore, /For football, coaches can start calling this month on June 15/);
+  assert.match(sophomore, /For football, coaches can start calling this month on June 15\. 85% of Division I prospects are identified by sophomore year/);
   assert.match(sophomore, /Have we had questionnaires, camp invites, texts, direct messages, or anything from coaches yet\?/);
 
   const senior = buildScoutPrepCard(

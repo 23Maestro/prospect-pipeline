@@ -4,8 +4,8 @@ import fetch from 'node-fetch';
 import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';
 import { upsertPostMeetingOutcomeFacts } from '../src/domain/supabase-persistence.ts';
 import {
-  appointmentStatusForTitleOrStage,
   crmStageForOutcome,
+  postMeetingResultForTitleOrStage,
   taskStatusForTitleOrStage,
 } from '../src/domain/supabase-lifecycle-translator.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
@@ -276,7 +276,7 @@ for (const entry of paidEntries) {
     const closeWonTaskStatus =
       taskStatusForTitleOrStage('(ENR)', closeWonCrmStage, 'closed_won') || 'closed_won';
     const closeWonOutcome =
-      appointmentStatusForTitleOrStage(closeWonCrmStage, '(ENR)') || closeWonTaskStatus;
+      postMeetingResultForTitleOrStage(closeWonCrmStage, '(ENR)') || closeWonTaskStatus;
 
     const postMeetingOutcomeFact = buildMeetingOutcomeFact({
       athleteId,

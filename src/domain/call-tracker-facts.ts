@@ -92,6 +92,7 @@ export type AppointmentSnapshotRow = {
   head_scout_key?: string | null;
   appointment_role?: string | null;
   status_reason?: string | null;
+  post_meeting_result?: string | null;
   source_system?: string | null;
   source_payload?: Record<string, unknown>;
   updated_at: string;
@@ -275,6 +276,7 @@ export function buildAppointmentSnapshot(args: {
   operatorOwnerKey?: string | null;
   appointmentRole?: string | null;
   statusReason?: string | null;
+  postMeetingResult?: string | null;
   sourceSystem?: string | null;
   sourcePayload?: Record<string, unknown> | null;
   updatedAt?: string;
@@ -302,6 +304,7 @@ export function buildAppointmentSnapshot(args: {
     head_scout_key: headScoutOwner?.ownerKey || null,
     appointment_role: normalizeValue(args.appointmentRole),
     status_reason: normalizeValue(args.statusReason),
+    post_meeting_result: normalizeValue(args.postMeetingResult),
     source_system: normalizeValue(args.sourceSystem),
     source_payload: args.sourcePayload || {},
     updated_at: args.updatedAt || new Date().toISOString(),

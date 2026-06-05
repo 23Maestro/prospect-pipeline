@@ -13,6 +13,13 @@ test('meeting readback parity audit stays read-only', () => {
   assert.doesNotMatch(source, /athlete_lifecycle_timeline/);
 });
 
+test('meeting readback parity does not treat reschedule pending as an active appointment status', () => {
+  const activeStatusBlock = source.match(/const activeAppointmentStatuses = new Set\(\[([\s\S]*?)\]\);/);
+
+  assert.ok(activeStatusBlock, 'active appointment status block should be explicit');
+  assert.doesNotMatch(activeStatusBlock[1], /reschedule_pending/);
+});
+
 test('meeting readback audit reports canonical appointment and lifecycle coverage', () => {
   const summary = summarizeCanonicalCoverage({
     activeRows: [{ id: 'appt-1' }, { id: 'appt-2' }],

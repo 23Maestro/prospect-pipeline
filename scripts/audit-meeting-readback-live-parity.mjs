@@ -7,7 +7,6 @@ const credentials = resolveSupabaseCredentials();
 const activeAppointmentStatuses = new Set([
   'scheduled',
   'rescheduled',
-  'reschedule_pending',
   'confirmation_queued',
   'confirmation_sent',
 ]);

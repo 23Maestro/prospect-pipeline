@@ -10,6 +10,14 @@ const postMeetingResultSql = readFileSync(
   new URL('../migrations/20260530143000_appointments_post_meeting_result.sql', import.meta.url),
   'utf8',
 );
+const compressedActiveStatusSql = readFileSync(
+  new URL('../migrations/20260605100000_compress_active_appointment_statuses.sql', import.meta.url),
+  'utf8',
+);
+const removeTransientPostMeetingResultSql = readFileSync(
+  new URL('../migrations/20260605101000_remove_transient_appointment_post_meeting_result.sql', import.meta.url),
+  'utf8',
+);
 
 test('appointments gets durable timezone, owner, source, and reschedule-chain columns', () => {
   for (const column of [
@@ -31,12 +39,11 @@ test('appointments gets durable timezone, owner, source, and reschedule-chain co
   }
 });
 
-test('appointments store durable post-meeting result marker for reconcile paths', () => {
+test('appointments store durable post-meeting result marker for real outcomes', () => {
   assert.match(postMeetingResultSql, /add column if not exists post_meeting_result text/i);
   assert.match(postMeetingResultSql, /appointments_post_meeting_result_check/i);
   assert.match(postMeetingResultSql, /appointments_post_meeting_result_idx/i);
   for (const result of [
-    'awaiting_post_meeting_update',
     'closed_won',
     'closed_lost',
     'follow_up',
@@ -47,6 +54,36 @@ test('appointments store durable post-meeting result marker for reconcile paths'
   ]) {
     assert.match(postMeetingResultSql, new RegExp(result, 'i'));
   }
+});
+
+test('transient post-meeting review state is not a stored appointment result', () => {
+  assert.match(removeTransientPostMeetingResultSql, /needs_post_meeting_review/i);
+  assert.match(
+    removeTransientPostMeetingResultSql,
+    /drop constraint if exists appointments_post_meeting_result_check/i,
+  );
+  assert.match(removeTransientPostMeetingResultSql, /add constraint appointments_post_meeting_result_check/i);
+  assert.match(
+    removeTransientPostMeetingResultSql,
+    /where post_meeting_result = 'awaiting_post_meeting_update'/i,
+  );
+
+  const recreatedConstraint =
+    removeTransientPostMeetingResultSql.match(/add constraint appointments_post_meeting_result_check[\s\S]*?not valid;/i)?.[0] || '';
+  assert.doesNotMatch(recreatedConstraint, /awaiting_post_meeting_update/i);
+});
+
+test('reschedule pending is removed from active appointment truth', () => {
+  assert.match(compressedActiveStatusSql, /Reschedule pending is a post-meeting outcome/i);
+  assert.match(compressedActiveStatusSql, /appointments_active_truth_idx/i);
+  assert.doesNotMatch(
+    compressedActiveStatusSql.match(/create index[\s\S]*?;/i)?.[0] || '',
+    /reschedule_pending/i,
+  );
+  assert.match(
+    compressedActiveStatusSql,
+    /Post-meeting outcomes such as reschedule_pending live in appointments\.post_meeting_result/i,
+  );
 });
 
 test('appointment truth constraints and indexes are added safely', () => {

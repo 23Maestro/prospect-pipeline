@@ -12,11 +12,20 @@ test('current pipeline sync writes canonical facts and does not revive pipeline 
   assert.match(source, /buildMeetingSetFact/);
   assert.match(source, /supabase-lifecycle-translator/);
   assert.match(source, /taskStatusForStage/);
-  assert.match(source, /appointmentStatusForTitleOrStage/);
+  assert.doesNotMatch(source, /appointmentStatusForTitleOrStage/);
   assert.match(source, /normalizeCrmSalesStage/);
   assert.match(source, /resolveWorkflowContext/);
+  assert.match(source, /CURRENT_PIPELINE_SYNC_LOCK_DIR/);
+  assert.match(source, /current_pipeline_sync_already_running/);
+  assert.match(source, /function acquireLock/);
+  assert.match(source, /metadata\.json/);
+  assert.match(source, /readLockPid/);
+  assert.match(source, /rmSync\(LOCK_DIR, \{ recursive: true, force: true \}\)/);
+  assert.doesNotMatch(source, /rmdirSync\(LOCK_DIR\)/);
+  assert.match(source, /process\.once\('SIGTERM'/);
   assert.match(source, /workflow_id: workflowContext\.workflow_id/);
   assert.match(source, /workflow_context: workflowContext/);
+  assert.match(source, /post_meeting_result: workflowContext\.post_meeting_result/);
   assert.match(source, /currentLifecycleStateProjected/);
   assert.doesNotMatch(source, /upsertAthletePipelineState/);
   assert.doesNotMatch(source, /athlete_pipeline_state/);
@@ -57,9 +66,30 @@ test('current pipeline meeting-set facts write materialization proof and reporti
 test('current pipeline keeps ended active meeting sets in post-meeting polling state', () => {
   assert.match(source, /shouldMonitorEndedMeetingSet/);
   assert.match(source, /hasMeetingEnded\(previousMeeting\)/);
-  assert.match(source, /Meeting Set - Awaiting Post Meeting Result/);
+  assert.match(source, /Meeting Set - Needs Post Meeting Review/);
   assert.match(source, /post_meeting_update_pending/);
-  assert.match(source, /awaiting_post_meeting_update/);
+  assert.match(source, /needs_post_meeting_review/);
+  assert.match(source, /buildPendingClientWatchlistRow/);
+  assert.match(source, /upsertPendingClientWatchlistRows/);
+  assert.match(source, /const pendingClientWatchlistResult = await upsertPendingClientWatchlistRows/);
+  assert.match(source, /pendingClientWatchlistCandidates: pendingClientRows\.length/);
+  assert.match(source, /pendingClientWatchlistUpserted: pendingClientWatchlistResult\.count/);
+  assert.match(source, /event_id: `appointment:\$\{appointmentId\}`/);
+  assert.doesNotMatch(source, /post_meeting_result:\s*'awaiting_post_meeting_update'/);
+  assert.doesNotMatch(source, /patchAppointmentPostMeetingResultIfMissing/);
+  assert.doesNotMatch(source, /current_pipeline_sync_ended_meeting_set/);
+  assert.doesNotMatch(source, /status:\s*'awaiting_post_meeting_update'/);
+  assert.doesNotMatch(source, /awaiting_post_meeting_update/);
+  assert.doesNotMatch(source, /patchAppointmentStatus/);
+});
+
+test('current pipeline routes only pending-client outcomes into pending client work', () => {
+  assert.match(
+    source,
+    /\['follow_up', 'reschedule_pending', 'no_show', 'canceled'\]\.includes\(pendingClientResult\)/,
+  );
+  assert.doesNotMatch(source, /'rescheduled'\]\.includes\(pendingClientResult\)/);
+  assert.doesNotMatch(source, /pendingClientResult === 'rescheduled'/);
 });
 
 test('current pipeline activity facts require task completion clocks instead of open-task due dates', () => {

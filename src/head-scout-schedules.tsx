@@ -58,6 +58,7 @@ import {
 } from './lib/head-scout-event-prefix';
 import { PostCallUpdateForm, VoicemailFollowUpRecipientForm } from './scout-prep';
 import {
+  buildSetMeetingCandidateIdentityKey,
   buildMeetingDayLabel,
   buildSetMeetingCandidatesFromAppointments,
   buildSetMeetingCandidatesFromBookedMeetings,
@@ -559,7 +560,6 @@ async function hydrateWeeklyCandidatesFromAthleteMeetings(
         athleteMainId: candidate.athleteMainId,
       }).catch(() => null);
       const athleteNameKey = normalizeMeetingMatchText(candidate.athleteName);
-      const currentTitleKey = normalizeMeetingMatchText(candidate.bookedMeeting?.title);
       const preferred = pickNewestMeetingEvent(
         (result?.events || []).filter((event) => {
           const meetingDay = String(event.start || '').slice(0, 10);
@@ -567,8 +567,7 @@ async function hydrateWeeklyCandidatesFromAthleteMeetings(
           return (
             meetingDay >= weekStart &&
             meetingDay < weekEnd &&
-            eventTitleKey.includes(athleteNameKey) &&
-            eventTitleKey === currentTitleKey
+            eventTitleKey.includes(athleteNameKey)
           );
         }),
       );
@@ -1278,7 +1277,7 @@ export function HeadScoutBookingsList({
                     weekEnd: weekWindow.end,
                   })),
                   ...(await loadHeadScoutFollowUpCandidates()),
-                ].map((candidate) => [candidate.key, candidate]),
+                ].map((candidate) => [buildSetMeetingCandidateIdentityKey(candidate), candidate]),
               ).values(),
             ).map((candidate) => enrichHeadScoutFollowUpCandidate(candidate)),
           );
@@ -1311,7 +1310,14 @@ export function HeadScoutBookingsList({
           });
           if (cancelled) return;
           if (shouldRenderCachedSetMeetingsSnapshot(cached)) {
-            setCandidates(cached.snapshot.candidates);
+            const cachedCandidates = filterWeeklySetMeetingCandidates({
+              candidates: cached.snapshot.candidates,
+              scoutName,
+              weeklyMeetingsOnly,
+              weekStart: weekWindow.start,
+              weekEnd: weekWindow.end,
+            });
+            setCandidates(cachedCandidates);
             renderedCachedCandidates = true;
             if (!cached.isDueForHourlyRefresh) {
               setIsLoading(false);
@@ -1383,7 +1389,8 @@ export function HeadScoutBookingsList({
       copyOnly?: boolean;
     },
   ) {
-    setSendingTextKey(candidate.key);
+    const candidateIdentityKey = buildSetMeetingCandidateIdentityKey(candidate);
+    setSendingTextKey(candidateIdentityKey);
     const toast = await showLoadingToast(
       options?.copyOnly ? 'Copying' : 'Opening',
       candidate.athleteName,
@@ -1444,7 +1451,7 @@ export function HeadScoutBookingsList({
       toast.title = options?.copyOnly ? 'Copy failed' : 'Open failed';
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
-      setSendingTextKey((current) => (current === candidate.key ? null : current));
+      setSendingTextKey((current) => (current === candidateIdentityKey ? null : current));
     }
   }
 
@@ -1498,7 +1505,8 @@ export function HeadScoutBookingsList({
       return;
     }
 
-    setUpdatingMeetingKey(candidate.key);
+    const candidateIdentityKey = buildSetMeetingCandidateIdentityKey(candidate);
+    setUpdatingMeetingKey(candidateIdentityKey);
     const toast = await showLoadingToast('Saving', prefix);
     try {
       const result = await updateBookedMeetingTitlePrefix({
@@ -1534,7 +1542,7 @@ export function HeadScoutBookingsList({
       toast.title = 'Save failed';
       toast.message = error instanceof Error ? error.message : String(error);
     } finally {
-      setUpdatingMeetingKey((current) => (current === candidate.key ? null : current));
+      setUpdatingMeetingKey((current) => (current === candidateIdentityKey ? null : current));
     }
   }
 
@@ -1561,12 +1569,13 @@ export function HeadScoutBookingsList({
         >
           {candidates.map((candidate) =>
             (() => {
+              const candidateIdentityKey = buildSetMeetingCandidateIdentityKey(candidate);
               const meetingLabel =
                 candidate.currentMeetingLabel?.replace(/^Current:\s*/, '') || null;
               const headScoutLabel = candidate.headScoutName || 'Scout not resolved';
               return (
                 <List.Item
-                  key={candidate.key}
+                  key={candidateIdentityKey}
                   icon={
                     candidate.needsManualReview
                       ? Icon.ExclamationMark
@@ -1609,7 +1618,9 @@ export function HeadScoutBookingsList({
                         {candidate.athleteId && candidate.athleteMainId ? (
                           <Action.Push
                             title={
-                              sendingTextKey === candidate.key ? 'Opening…' : 'Send Confirmation'
+                              sendingTextKey === candidateIdentityKey
+                                ? 'Opening…'
+                                : 'Send Confirmation'
                             }
                             icon={Icon.Message}
                             shortcut={{ modifiers: ['cmd'], key: 'm' }}
@@ -1623,7 +1634,9 @@ export function HeadScoutBookingsList({
                             <Action
                               key={prefix}
                               title={
-                                updatingMeetingKey === candidate.key ? 'Saving…' : `Mark ${prefix}`
+                                updatingMeetingKey === candidateIdentityKey
+                                  ? 'Saving…'
+                                  : `Mark ${prefix}`
                               }
                               icon={Icon.Pencil}
                               shortcut={

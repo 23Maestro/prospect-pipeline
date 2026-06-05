@@ -68,7 +68,7 @@ test('workflow context treats title prefix as signal without blocking stale sale
 
   assert.equal(context.sales_stage, 'meeting_set');
   assert.equal(context.task_status, 'reschedule_pending');
-  assert.equal(context.appointment_status, 'reschedule_pending');
+  assert.equal(context.appointment_status, null);
   assert.equal(context.post_meeting_result, 'reschedule_pending');
   assert.equal(context.meeting_title_prefix, '(RSP)');
 });
@@ -88,10 +88,11 @@ test('workflow context never turns scout names into meeting titles', () => {
   assert.equal(context.meeting_title_current, null);
   assert.equal(context.meeting_title_base, null);
   assert.equal(context.meeting_title_prefix, null);
-  assert.equal(context.appointment_status, 'rescheduled');
+  assert.equal(context.appointment_status, 'scheduled');
+  assert.equal(context.post_meeting_result, 'rescheduled');
 });
 
-test('canceled sales stage owns appointment status projection', () => {
+test('canceled sales stage owns post-meeting result projection', () => {
   const context = resolveWorkflowContext({
     athleteId: '1490563',
     athleteMainId: '952390',
@@ -108,7 +109,7 @@ test('canceled sales stage owns appointment status projection', () => {
 
   assert.equal(context.sales_stage, 'canceled');
   assert.equal(context.task_status, 'canceled');
-  assert.equal(context.appointment_status, 'canceled');
+  assert.equal(context.appointment_status, null);
   assert.equal(context.post_meeting_result, 'canceled');
   assert.equal(context.meeting_title_base, 'Josiah Meza Football 2028 FL');
   assert.equal(context.meeting_title_prefix, '(CAN)');

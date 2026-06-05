@@ -1,6 +1,6 @@
 import { LocalStorage } from '@raycast/api';
 
-const CACHE_VERSION = 4;
+const CACHE_VERSION = 5;
 
 type StorageLike = {
   getItem<T extends string = string>(key: string): Promise<T | undefined>;

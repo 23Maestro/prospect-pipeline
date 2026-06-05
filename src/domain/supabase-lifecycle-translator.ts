@@ -136,6 +136,19 @@ export function appointmentStatusForTitleOrStage(
   bookedEventTitle?: string | null,
 ): string | null {
   const parsedTitle = parseAppointmentTitleOutcome(bookedEventTitle);
+  if (parsedTitle.outcome !== 'active') return null;
+
+  const normalizedStage = normalizeCrmSalesStage(rawCrmStage);
+  if (normalizedStage === 'meeting_set') return 'scheduled';
+  if (normalizedStage === 'rescheduled') return 'scheduled';
+  return null;
+}
+
+export function postMeetingResultForTitleOrStage(
+  rawCrmStage?: string | null,
+  bookedEventTitle?: string | null,
+): string | null {
+  const parsedTitle = parseAppointmentTitleOutcome(bookedEventTitle);
   if (parsedTitle.outcome === 'terminal_enrollment') return 'closed_won';
   if (parsedTitle.outcome === 'terminal_close_lost') return 'closed_lost';
   if (parsedTitle.outcome === 'reschedule_pending') return 'reschedule_pending';
@@ -151,7 +164,6 @@ export function appointmentStatusForTitleOrStage(
   if (normalizedStage === 'no_show') return 'no_show';
   if (normalizedStage === 'canceled') return 'canceled';
   if (normalizedStage === 'meeting_follow_up') return 'follow_up';
-  if (normalizedStage === 'meeting_set') return 'scheduled';
   return null;
 }
 

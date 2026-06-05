@@ -70,6 +70,8 @@ test('/api/tim-lite/meetings reads Tim cache through appointment truth', async (
       return Response.json([
         { id: 'appt_1', status: 'scheduled' },
         { id: 'appt_rsp', status: 'reschedule_pending' },
+        { id: 'appt_no_show', status: 'scheduled', post_meeting_result: 'no_show' },
+        { id: 'appt_expired', status: 'scheduled' },
       ]);
     }
     return Response.json([
@@ -82,8 +84,8 @@ test('/api/tim-lite/meetings reads Tim cache through appointment truth', async (
         recipient_phone: '5551112222',
         relationship_label: 'Parent 1',
         head_scout_name: 'Scout Name',
-        meeting_starts_at: '2026-06-03T18:00:00Z',
-        meeting_ends_at: '2026-06-03T19:00:00Z',
+        meeting_starts_at: '2099-06-03T18:00:00Z',
+        meeting_ends_at: '2099-06-03T19:00:00Z',
         meeting_timezone: 'America/New_York',
         meeting_timezone_label: 'ET',
         message_body: 'Confirmation one',
@@ -104,6 +106,22 @@ test('/api/tim-lite/meetings reads Tim cache through appointment truth', async (
         message_body: 'Pending one',
         kind: 'confirmation_1',
       },
+      {
+        appointment_id: 'appt_no_show',
+        athlete_name: 'No Show Active Status',
+        meeting_starts_at: '2099-06-03T20:00:00Z',
+        meeting_ends_at: '2099-06-03T21:00:00Z',
+        message_body: 'No show one',
+        kind: 'confirmation_1',
+      },
+      {
+        appointment_id: 'appt_expired',
+        athlete_name: 'Expired Active',
+        meeting_starts_at: '2026-06-03T18:00:00Z',
+        meeting_ends_at: '2026-06-03T19:00:00Z',
+        message_body: 'Expired one',
+        kind: 'confirmation_1',
+      },
     ]);
   };
 
@@ -118,6 +136,8 @@ test('/api/tim-lite/meetings reads Tim cache through appointment truth', async (
   assert.equal(payload.success, true);
   assert.equal(payload.count, 1);
   assert.equal(payload.events[0].appointment_id, 'appt_1');
+  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'No Show Active Status'), false);
+  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Expired Active'), false);
   assert.equal(payload.events[0].confirmation_1_message, 'Confirmation one');
   assert.equal(payload.events[0].confirmation_2_message, 'Confirmation two');
   assert.match(calls[0].url, /\/rest\/v1\/tim_lite_confirmation_cache\?/);
@@ -139,6 +159,8 @@ test('/api/prospect-mobile/set-meetings filters confirmation cache through appoi
       return Response.json([
         { id: 'appt_active', status: 'scheduled' },
         { id: 'appt_baker', status: 'reschedule_pending' },
+        { id: 'appt_no_show', status: 'scheduled', post_meeting_result: 'no_show' },
+        { id: 'appt_expired', status: 'scheduled' },
       ]);
     }
     return Response.json([
@@ -150,7 +172,8 @@ test('/api/prospect-mobile/set-meetings filters confirmation cache through appoi
         recipient_name: 'Parent One',
         recipient_phone: '5551112222',
         head_scout_name: 'Scout Name',
-        meeting_starts_at: '2026-06-03T18:00:00Z',
+        meeting_starts_at: '2099-06-03T18:00:00Z',
+        meeting_ends_at: '2099-06-03T19:00:00Z',
         meeting_timezone: 'America/New_York',
         message_body: 'Confirmation one',
         kind: 'confirmation_1',
@@ -168,6 +191,34 @@ test('/api/prospect-mobile/set-meetings filters confirmation cache through appoi
         message_body: 'Pending one',
         kind: 'confirmation_1',
       },
+      {
+        appointment_id: 'appt_no_show',
+        athlete_id: '152',
+        athlete_main_id: '956',
+        athlete_name: 'No Show Active Status',
+        recipient_name: 'Parent Four',
+        recipient_phone: '5557778888',
+        head_scout_name: 'Scout Name',
+        meeting_starts_at: '2099-06-03T20:00:00Z',
+        meeting_ends_at: '2099-06-03T21:00:00Z',
+        meeting_timezone: 'America/New_York',
+        message_body: 'No show one',
+        kind: 'confirmation_1',
+      },
+      {
+        appointment_id: 'appt_expired',
+        athlete_id: '151',
+        athlete_main_id: '955',
+        athlete_name: 'Expired Active',
+        recipient_name: 'Parent Three',
+        recipient_phone: '5555556666',
+        head_scout_name: 'Scout Name',
+        meeting_starts_at: '2026-06-03T18:00:00Z',
+        meeting_ends_at: '2026-06-03T19:00:00Z',
+        meeting_timezone: 'America/New_York',
+        message_body: 'Expired one',
+        kind: 'confirmation_1',
+      },
     ]);
   };
 
@@ -181,6 +232,8 @@ test('/api/prospect-mobile/set-meetings filters confirmation cache through appoi
   assert.equal(payload.count, 1);
   assert.equal(payload.events[0].appointment_id, 'appt_active');
   assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Baker'), false);
+  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'No Show Active Status'), false);
+  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Expired Active'), false);
   assert.match(calls[0].url, /\/rest\/v1\/set_meeting_confirmation_cache\?/);
   assert.match(calls[1].url, /\/rest\/v1\/appointments\?/);
 });

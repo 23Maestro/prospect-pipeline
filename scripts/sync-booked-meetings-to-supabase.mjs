@@ -17,6 +17,7 @@ import {
 } from '../src/domain/supabase-persistence.ts';
 import {
   appointmentStatusForTitleOrStage,
+  postMeetingResultForTitleOrStage,
   taskStatusForStage,
 } from '../src/domain/supabase-lifecycle-translator.ts';
 import { classifyMeetingSetStage } from '../src/domain/sales-stage-contract.ts';
@@ -265,6 +266,7 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
     const appointmentId = String(event.event_id || '').trim();
     const startsAt = normalizeIsoValue(event.start);
     const appointmentStatus = appointmentStatusForTitleOrStage(crmStage, event.title) || 'scheduled';
+    const postMeetingResult = postMeetingResultForTitleOrStage(crmStage, event.title);
     const meetingTimezone = await fetchBookedMeetingTimezone(event);
     if (!meetingTimezone && ['scheduled', 'rescheduled'].includes(appointmentStatus)) {
       throw new Error('Booked meeting is missing required meeting timezone');
@@ -370,6 +372,7 @@ for (const [index, candidate] of meetingSetCandidates.entries()) {
       operatorOwnerKey: payload.operator_owner_key,
       appointmentRole: classifyMeetingSetStage(crmStage) ? 'initial_set' : 'unknown',
       statusReason: 'sync_booked_meetings',
+      postMeetingResult,
       sourceSystem: 'sync_booked_meetings',
       sourcePayload: {
         sync_run_id: RUN_ID,

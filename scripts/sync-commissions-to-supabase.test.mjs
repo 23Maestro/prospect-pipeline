@@ -11,7 +11,8 @@ test('commission sync uses FastAPI commission source and writes post-meeting out
   assert.match(source, /supabase-lifecycle-translator/);
   assert.match(source, /crmStageForOutcome/);
   assert.match(source, /taskStatusForTitleOrStage/);
-  assert.match(source, /appointmentStatusForTitleOrStage/);
+  assert.match(source, /postMeetingResultForTitleOrStage/);
+  assert.doesNotMatch(source, /appointmentStatusForTitleOrStage/);
   assert.match(source, /rawEventType: 'post_meeting_outcome'/);
   assert.match(source, /rawCrmStage: closeWonCrmStage/);
 });

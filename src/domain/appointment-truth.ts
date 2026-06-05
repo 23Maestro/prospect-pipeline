@@ -27,7 +27,6 @@ export type AppointmentTruthRow = {
 export const ACTIVE_APPOINTMENT_STATUSES = [
   'scheduled',
   'rescheduled',
-  'reschedule_pending',
   'confirmation_queued',
   'confirmation_sent',
 ] as const;

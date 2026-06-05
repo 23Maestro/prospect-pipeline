@@ -7,7 +7,7 @@ import {
   buildAppointmentId,
   buildAthleteKey,
   buildReminderDedupeKey,
-  resolveAppointmentStatusProjectionForSalesStage,
+  resolveAppointmentPostMeetingResultProjectionForSalesStage,
   resolveLifecycleRetentionDecision,
 } from './supabase-lifecycle';
 import { mergeAppointmentTruthRow } from '../domain/appointment-truth';
@@ -237,35 +237,42 @@ test('terminal crm stages purge lifecycle rows without title help', () => {
   assert.equal(result.action, 'purge');
 });
 
-test('reschedule-pending sales stage projects onto the current appointment status', () => {
+test('reschedule-pending sales stage projects onto the current appointment post-meeting result', () => {
   assert.deepEqual(
-    resolveAppointmentStatusProjectionForSalesStage({
+    resolveAppointmentPostMeetingResultProjectionForSalesStage({
       crmStage: 'Meeting Result - Res. Pending',
       appointmentId: '611014',
     }),
     {
       appointmentId: '611014',
-      status: 'reschedule_pending',
+      postMeetingResult: 'reschedule_pending',
       statusReason: 'sales_stage_reschedule_pending',
     },
   );
 });
 
-test('sales stage appointment projection needs an appointment id', () => {
+test('sales stage post-meeting result projection needs an appointment id', () => {
   assert.equal(
-    resolveAppointmentStatusProjectionForSalesStage({
+    resolveAppointmentPostMeetingResultProjectionForSalesStage({
       crmStage: 'Meeting Result - Res. Pending',
       appointmentId: null,
     }),
     null,
   );
   assert.equal(
-    resolveAppointmentStatusProjectionForSalesStage({
+    resolveAppointmentPostMeetingResultProjectionForSalesStage({
       crmStage: 'Meeting Set',
       appointmentId: '611014',
     }),
     null,
   );
+});
+
+test('weekly scheduled appointment read uses the shared active appointment status contract', () => {
+  const source = fs.readFileSync('src/lib/supabase-lifecycle.ts', 'utf8');
+
+  assert.match(source, /ACTIVE_APPOINTMENT_STATUSES/);
+  assert.doesNotMatch(source, /status=in\.\(scheduled,rescheduled\)/);
 });
 
 test('lifecycle mutation event logs left voicemail as dial-only operator activity', () => {

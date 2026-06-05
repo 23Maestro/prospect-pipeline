@@ -221,7 +221,6 @@ function isActiveAppointmentStatus(status) {
   return [
     'scheduled',
     'rescheduled',
-    'reschedule_pending',
     'confirmation_queued',
     'confirmation_sent',
   ].includes(String(status || '').trim().toLowerCase());
