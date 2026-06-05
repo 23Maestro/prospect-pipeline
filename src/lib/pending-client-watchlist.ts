@@ -3,7 +3,9 @@ import fs from 'fs';
 import path from 'path';
 import {
   buildPendingClientResolvedPatch,
+  isPendingClientResolvedByFutureConfirmation,
   PENDING_CLIENT_LIST_LIMIT,
+  type SetMeetingConfirmationCacheRowInput,
   type PendingClientWatchlistRow,
 } from '../domain/pending-client-watchlist';
 import {
@@ -219,8 +221,23 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       `limit=${PENDING_CLIENT_LIST_LIMIT}`,
     ].join('&'),
   );
+  const confirmationRows = await readRows<SetMeetingConfirmationCacheRowInput>(
+    config,
+    'set_meeting_confirmation_cache',
+    [
+      'select=appointment_id,athlete_id,athlete_main_id,athlete_name,meeting_starts_at,meeting_ends_at,source,kind,status',
+      'status=eq.cached',
+      'source=eq.set_meetings_confirmation',
+      `meeting_ends_at=gt.${encodeURIComponent(now.toISOString())}`,
+      'order=meeting_starts_at.asc',
+      `limit=${PENDING_CLIENT_LIST_LIMIT * 10}`,
+    ].join('&'),
+  ).catch(() => []);
+  const unresolvedRows = activeRows.filter(
+    (row) => !isPendingClientResolvedByFutureConfirmation(row, confirmationRows, now),
+  );
   const rows = dedupePendingClientRows(
-    await enrichPendingClientRowsWithAppointmentTruth(activeRows),
+    await enrichPendingClientRowsWithAppointmentTruth(unresolvedRows),
   );
 
   return {

@@ -61,13 +61,15 @@ test('booked meeting sync only writes Meeting Set facts for true Meeting Set sta
   assert.match(source, /booked_meeting_updates_state_only_not_meeting_set_fact/);
 });
 
-test('one-time confirmation cache resolver can write the full confirmed window and only confirmation cache rows', () => {
+test('one-time confirmation cache resolver writes cache plus verified appointment truth only', () => {
   assert.match(confirmationCacheResolverSource, /process\.env\.LIMIT \|\| '11'/);
   assert.match(confirmationCacheResolverSource, /buildTodayThroughNextSundayWindow/);
   assert.match(confirmationCacheResolverSource, /START_DATE/);
   assert.match(confirmationCacheResolverSource, /END_DATE/);
   assert.match(confirmationCacheResolverSource, /buildWeeklyOperatorMeetingSetCandidates/);
   assert.match(confirmationCacheResolverSource, /buildSetMeetingConfirmationCacheRows/);
+  assert.match(confirmationCacheResolverSource, /buildAppointmentSnapshot/);
+  assert.match(confirmationCacheResolverSource, /upsertAppointments/);
   assert.match(confirmationCacheResolverSource, /upsertSetMeetingConfirmationCacheRows/);
   assert.doesNotMatch(confirmationCacheResolverSource, /insertMeetingSetEventsOnce/);
   assert.doesNotMatch(confirmationCacheResolverSource, /upsertAthletePipelineState/);

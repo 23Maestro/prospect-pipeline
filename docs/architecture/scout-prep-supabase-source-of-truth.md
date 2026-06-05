@@ -10,7 +10,7 @@ FastAPI remains a source-system adapter; Supabase remains durable reporting trut
 | --- | --- | --- | --- | --- |
 | Scout Prep post-call action | Raycast Scout Prep | Task/stage update route succeeds first | `lifecycleSalesStage` | This is the primary lifecycle/sales-stage writer for Raycast-owned actions. |
 | Scout Prep meeting set | Raycast Scout Prep | Meeting creation and sales stage save succeed first | `recordMeetingSet` / lifecycle mutation plus `set_meeting_confirmation_cache` | Confirmation cache is required for Prospect Mobile confirmation prep actions and must write both confirmation rows. |
-| Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update | Confirmation cache and event title state | Confirmation cache is not lifecycle truth. |
+| Confirmation texts | Raycast View Set Meetings / Head Scout Schedules | Calendar title prefix update or verified live booked meeting read | Confirmation cache, event title state, and verified active `appointments` row | Confirmation cache is not lifecycle truth. A confirmation-prep resolver may upsert appointment truth only when it has the live booked meeting id/start/timezone evidence; it must not write lifecycle or post-meeting outcome truth. |
 | Pending Clients | Current pipeline state | Reads current sales stage, athlete event list, and aligned meeting-support evidence | `pending_client_watchlist` via Pending Clients domain | Confirmation cache may support meeting identity/timing context, but it is not lifecycle truth. Scheduled sync may add review rows for ended Meeting Set rows or real pending outcomes; it must not write appointment status or invent meeting outcomes. |
 
 ## Meeting Time Mutation Rights
@@ -31,6 +31,7 @@ Rules:
 - A reporting writer may copy already-confirmed meeting start/end into `call_log`; it may not invent or normalize appointment time truth.
 - `set_meeting_confirmation_cache` is not lifecycle truth, but for same-appointment-id repair it is valid evidence for the confirmed meeting start/end because Prospect Mobile confirmation prep uses it.
 - Pending Clients may read confirmation cache as aligned meeting-support evidence; it must not use confirmation cache to decide lifecycle stage, post-meeting outcome, or active appointment status.
+- A confirmation-prep writer that verifies a live booked meeting may upsert the matching active `appointments` row through the canonical appointment writer. It must leave `post_meeting_result` null for the new active appointment and must not infer lifecycle from the cache.
 - The hourly cron must not run broad booked-meeting backfills that overwrite appointment time from Laravel local calendar strings.
 - `pending_client_watchlist.event_start` and `event_end` are timestamp instants, not display strings. If a source adapter returns a legacy no-offset head-scout meeting stamp, normalize it as Eastern meeting-local time before writing Supabase.
 - `call_log.event_at` and `reporting_at` for post-meeting outcome facts are the meeting event instant. `occurred_at` may record when the cron or payment evidence observed the outcome, but UI/reporting must not use detection time as meeting time.

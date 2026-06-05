@@ -16,6 +16,7 @@ import {
   findPendingClientSignals,
   hasStrictNoShowEvidence,
   hasPendingClientWatchNote,
+  isPendingClientResolvedByFutureConfirmation,
   isPendingClientReviewEventTitle,
   normalizePendingClientAIVerdict,
   pendingClientExpiresAt,
@@ -440,6 +441,114 @@ test('pending client lifecycle starts from CRM stage and uses event notes as rea
       reviewDescription: '',
     }).eligible,
     true,
+  );
+});
+
+test('pending client recovery row is suppressed by a newer confirmed meeting cache group', () => {
+  const pendingRow = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'pending-client:1498941:953710:628043',
+      title: '(RSP) Diego Crespo Franco Baseball 2026 GA',
+      assigned_owner: 'James Holcomb',
+      start: '2026-05-31T20:00:00.000Z',
+      end: '2026-05-31T21:00:00.000Z',
+    },
+    athleteId: '1498941',
+    athleteMainId: '953710',
+    athleteName: 'Diego Crespo Franco',
+    description: [
+      'Sales Stage: Meeting Result - Res. Pending',
+      '',
+      'Lifecycle: reschedule_pending',
+    ].join('\n'),
+    actionTag: 'Operator Input',
+    matchedSignals: [],
+    aiVerdict: 'pending_client',
+    now: new Date('2026-06-05T18:30:00.000Z'),
+  });
+
+  assert.equal(
+    isPendingClientResolvedByFutureConfirmation(
+      pendingRow,
+      [
+        {
+          appointment_id: '628045',
+          athlete_id: '1498941',
+          athlete_main_id: '953710',
+          athlete_name: 'Diego Crespo Franco',
+          source: 'set_meetings_confirmation',
+          kind: 'confirmation_1',
+          status: 'cached',
+          meeting_starts_at: '2026-06-07T20:00:00.000Z',
+          meeting_ends_at: '2026-06-07T21:00:00.000Z',
+        },
+        {
+          appointment_id: '628045',
+          athlete_id: '1498941',
+          athlete_main_id: '953710',
+          athlete_name: 'Diego Crespo Franco',
+          source: 'set_meetings_confirmation',
+          kind: 'confirmation_2',
+          status: 'cached',
+          meeting_starts_at: '2026-06-07T20:00:00.000Z',
+          meeting_ends_at: '2026-06-07T21:00:00.000Z',
+        },
+      ],
+      new Date('2026-06-05T18:30:00.000Z'),
+    ),
+    true,
+  );
+});
+
+test('pending client confirmation suppression does not hide payment follow-up rows', () => {
+  const pendingRow = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'pending-client:payment-watch',
+      title: '(FU) Diego Crespo Franco Baseball 2026 GA',
+      assigned_owner: 'James Holcomb',
+      start: '2026-05-31T20:00:00.000Z',
+      end: '2026-05-31T21:00:00.000Z',
+    },
+    athleteId: '1498941',
+    athleteMainId: '953710',
+    athleteName: 'Diego Crespo Franco',
+    description: 'Lifecycle: meeting_follow_up\n\nNotes Tab: Family asked about payment.',
+    actionTag: 'Payment Watch',
+    matchedSignals: ['payment'],
+    aiVerdict: 'pending_client',
+    now: new Date('2026-06-05T18:30:00.000Z'),
+  });
+
+  assert.equal(
+    isPendingClientResolvedByFutureConfirmation(
+      pendingRow,
+      [
+        {
+          appointment_id: '628045',
+          athlete_id: '1498941',
+          athlete_main_id: '953710',
+          athlete_name: 'Diego Crespo Franco',
+          source: 'set_meetings_confirmation',
+          kind: 'confirmation_1',
+          status: 'cached',
+          meeting_starts_at: '2026-06-07T20:00:00.000Z',
+          meeting_ends_at: '2026-06-07T21:00:00.000Z',
+        },
+        {
+          appointment_id: '628045',
+          athlete_id: '1498941',
+          athlete_main_id: '953710',
+          athlete_name: 'Diego Crespo Franco',
+          source: 'set_meetings_confirmation',
+          kind: 'confirmation_2',
+          status: 'cached',
+          meeting_starts_at: '2026-06-07T20:00:00.000Z',
+          meeting_ends_at: '2026-06-07T21:00:00.000Z',
+        },
+      ],
+      new Date('2026-06-05T18:30:00.000Z'),
+    ),
+    false,
   );
 });
 

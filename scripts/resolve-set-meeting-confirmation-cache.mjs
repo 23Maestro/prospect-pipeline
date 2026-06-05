@@ -2,10 +2,13 @@
 
 import fetch from 'node-fetch';
 import { buildWeeklyOperatorMeetingSetCandidates } from '../src/domain/booked-meeting-source.ts';
+import { buildAppointmentSnapshot } from '../src/domain/call-tracker-facts.ts';
+import { resolveOwnerByName } from '../src/domain/owners.ts';
 import { buildSetMeetingConfirmationCacheRows } from '../src/domain/set-meeting-confirmation-cache.ts';
 import {
   deleteRows,
   readRows,
+  upsertAppointments,
   upsertSetMeetingConfirmationCacheRows,
 } from '../src/domain/supabase-persistence.ts';
 import { getGreetingForLocalTime } from '../src/domain/outreach-time-wording.ts';
@@ -308,9 +311,11 @@ const candidates = buildWeeklyOperatorMeetingSetCandidates({
 }).slice(0, LIMIT);
 
 const rows = [];
+const appointmentRows = [];
 const resolved = [];
 const failures = [];
 const generatedAt = new Date().toISOString();
+const trackedOperator = resolveOwnerByName(TRACKED_OPERATOR_NAME);
 
 for (const [index, candidate] of candidates.entries()) {
   try {
@@ -382,6 +387,34 @@ for (const [index, candidate] of candidates.entries()) {
         source: 'set_meetings_confirmation',
       }),
     );
+    appointmentRows.push(
+      buildAppointmentSnapshot({
+        athleteId: candidate.athleteId,
+        athleteMainId: candidate.athleteMainId,
+        appointmentId: candidate.bookedMeeting.eventId,
+        sourceEventId: candidate.bookedMeeting.eventId,
+        headScout: headScoutName,
+        startsAt,
+        status: 'scheduled',
+        meetingTimezone,
+        meetingTimezoneLabel: meetingTimezone,
+        originalAppointmentId: candidate.bookedMeeting.eventId,
+        rescheduleSequence: 0,
+        operatorOwner: TRACKED_OPERATOR_NAME,
+        operatorOwnerKey: trackedOperator?.ownerKey || null,
+        appointmentRole: 'unknown',
+        statusReason: 'set_meeting_confirmation_cache_verified_live_booking',
+        sourceSystem: 'set_meeting_confirmation_cache',
+        sourcePayload: {
+          generated_at: generatedAt,
+          booked_event_id: candidate.bookedMeeting.eventId,
+          booked_event_title: candidate.bookedMeeting.title,
+          meeting_timezone_source: 'athlete_contact_cache',
+          writer: 'resolve_set_meeting_confirmation_cache',
+        },
+        updatedAt: generatedAt,
+      }),
+    );
     resolved.push({
       appointmentId: candidate.bookedMeeting.eventId,
       athleteName: candidate.athleteName,
@@ -404,6 +437,7 @@ if (!DRY_RUN && rows.length) {
   for (const appointmentId of appointmentIds) {
     await deleteRows(SUPABASE_CONFIG, 'set_meeting_confirmation_cache', 'appointment_id', appointmentId);
   }
+  await upsertAppointments(SUPABASE_CONFIG, appointmentRows);
   await upsertSetMeetingConfirmationCacheRows(SUPABASE_CONFIG, rows);
 }
 
@@ -419,7 +453,7 @@ console.log(
       candidateCount: candidates.length,
       cacheRowsPrepared: rows.length,
       appointmentsResolved: resolved.length,
-      appointmentsWritten: DRY_RUN ? 0 : resolved.length,
+      appointmentsWritten: DRY_RUN ? 0 : appointmentRows.length,
       resolved,
       failures,
     },

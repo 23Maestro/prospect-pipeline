@@ -113,6 +113,14 @@ export type PendingClientWatchlistRow = PendingClientOwnerSnapshot & {
   resolved_at?: string | null;
 };
 
+function sourceEventAppointmentId(value?: string | null): string | null {
+  const source = normalizeText(value);
+  if (!source) return null;
+  if (source.startsWith('appointment:')) return normalizeText(source.slice('appointment:'.length)) || null;
+  const tail = source.split(':').pop() || '';
+  return /^\d+$/.test(tail) ? tail : null;
+}
+
 const SIGNALS: readonly { label: string; pattern: RegExp }[] = [
   { label: 'coming aboard', pattern: /\bcoming\s+aboard\b/i },
   { label: 'full payment', pattern: /\bfull\s+payment\b/i },
@@ -153,6 +161,76 @@ function getPayloadOperatorKey(row: SetMeetingConfirmationCacheRowInput): string
       row.payload_json?.active_operator_key || row.payload_json?.detected_by_operator_key || '',
     ),
   );
+}
+
+function samePendingClientAthlete(
+  row: PendingClientWatchlistRow,
+  confirmation: SetMeetingConfirmationCacheRowInput,
+): boolean {
+  const athleteId = normalizeText(row.athlete_id);
+  const confirmationAthleteId = normalizeText(confirmation.athlete_id);
+  const athleteMainId = normalizeText(row.athlete_main_id);
+  const confirmationAthleteMainId = normalizeText(confirmation.athlete_main_id);
+  if (athleteId && confirmationAthleteId && athleteId !== confirmationAthleteId) return false;
+  if (athleteMainId && confirmationAthleteMainId && athleteMainId !== confirmationAthleteMainId) {
+    return false;
+  }
+  if ((athleteId && confirmationAthleteId) || (athleteMainId && confirmationAthleteMainId)) {
+    return true;
+  }
+  return (
+    normalizeComparableText(row.athlete_name).toLowerCase() ===
+    normalizeComparableText(confirmation.athlete_name).toLowerCase()
+  );
+}
+
+function isMeetingRecoveryWatchRow(row: PendingClientWatchlistRow): boolean {
+  const title = normalizeText(row.event_title);
+  const description = normalizeText(row.description);
+  return (
+    /^\((?:RSP|CAN|NS)\)(?:\*\d+)?\s+/i.test(title) ||
+    /\bLifecycle:\s*(?:reschedule_pending|canceled|no_show)\b/i.test(description) ||
+    /\b(?:reschedule pending|rescheduled pending|canceled|no show)\b/i.test(title)
+  );
+}
+
+export function isPendingClientResolvedByFutureConfirmation(
+  row: PendingClientWatchlistRow,
+  confirmationRows: SetMeetingConfirmationCacheRowInput[],
+  now = new Date(),
+): boolean {
+  if (!isMeetingRecoveryWatchRow(row)) return false;
+
+  const pendingAppointmentId = sourceEventAppointmentId(row.source_event_id);
+  const pendingEventEndMs = parseDateMs(row.event_end) || parseDateMs(row.event_start);
+  const nowMs = now.getTime();
+  const groups = new Map<string, SetMeetingConfirmationCacheRowInput[]>();
+
+  for (const confirmation of Array.isArray(confirmationRows) ? confirmationRows : []) {
+    if (normalizeText(confirmation.source) !== 'set_meetings_confirmation') continue;
+    if (normalizeText(confirmation.status) !== 'cached') continue;
+    const appointmentId = normalizeText(confirmation.appointment_id);
+    if (!appointmentId || appointmentId === pendingAppointmentId) continue;
+    if (!samePendingClientAthlete(row, confirmation)) continue;
+    groups.set(appointmentId, [...(groups.get(appointmentId) || []), confirmation]);
+  }
+
+  for (const group of groups.values()) {
+    const kinds = new Set(group.map((confirmation) => normalizeText(confirmation.kind)));
+    if (!kinds.has('confirmation_1') || !kinds.has('confirmation_2')) continue;
+    const startsAtMs = Math.min(
+      ...group.map((confirmation) => parseDateMs(confirmation.meeting_starts_at)).filter(Number.isFinite),
+    );
+    const endsAtMs = Math.max(
+      ...group.map((confirmation) => parseDateMs(confirmation.meeting_ends_at)).filter(Number.isFinite),
+    );
+    if (!Number.isFinite(startsAtMs) || !Number.isFinite(endsAtMs)) continue;
+    if (Number.isFinite(pendingEventEndMs) && startsAtMs <= pendingEventEndMs) continue;
+    if (endsAtMs <= nowMs) continue;
+    return true;
+  }
+
+  return false;
 }
 
 function localStamp(date: Date): string {
