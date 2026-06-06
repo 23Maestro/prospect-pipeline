@@ -370,6 +370,62 @@ function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string 
   return String(meeting?.start || '').split('T')[0] || '';
 }
 
+const SET_MEETING_TIME_TAG_COLORS = [
+  Color.Yellow,
+  Color.Purple,
+  Color.Blue,
+  Color.Green,
+  Color.Orange,
+  Color.Magenta,
+  Color.Red,
+];
+
+function setMeetingTimeTagColorFor(value?: string | null): Color {
+  const normalized = String(value || '').trim().toUpperCase();
+  const hourMatch = normalized.match(/\b(\d{1,2})(?::\d{2})?\s*(AM|PM)\b/);
+  if (!hourMatch) return Color.SecondaryText;
+  const hour = Number.parseInt(hourMatch[1], 10);
+  const period = hourMatch[2];
+  const hour24 = period === 'PM' && hour < 12 ? hour + 12 : period === 'AM' && hour === 12 ? 0 : hour;
+  return SET_MEETING_TIME_TAG_COLORS[hour24 % SET_MEETING_TIME_TAG_COLORS.length];
+}
+
+function formatSetMeetingAccessoryParts(candidate: HeadScoutFollowUpCandidate): {
+  dateLabel: string;
+  timeLabel: string;
+} | null {
+  const rawStart = String(candidate.bookedMeeting?.start || '').trim();
+  const parsedStart = rawStart ? new Date(rawStart) : null;
+  if (parsedStart && !Number.isNaN(parsedStart.getTime())) {
+    return {
+      dateLabel: new Intl.DateTimeFormat('en-US', {
+        weekday: 'short',
+        month: '2-digit',
+        day: '2-digit',
+        year: '2-digit',
+        timeZone: 'America/New_York',
+      }).format(parsedStart),
+      timeLabel: new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'America/New_York',
+      }).format(parsedStart),
+    };
+  }
+
+  const label = String(candidate.currentMeetingLabel || candidate.bookedMeeting?.date_time_label || '')
+    .replace(/^Current:\s*/, '')
+    .trim();
+  const match = label.match(/^([A-Za-z]{3},?\s+\d{1,2}\/\d{1,2}\/\d{2})\s+(.+?)(?:\s+-\s+.+)?$/);
+  if (!match) return null;
+
+  return {
+    dateLabel: match[1].replace(/^([A-Za-z]{3})(?!,)/, '$1,'),
+    timeLabel: match[2].trim(),
+  };
+}
+
 function getConfirmationAppointmentPrefix(
   variant: ConfirmationFollowUpVariant,
 ): AppointmentTitlePrefix {
@@ -1572,6 +1628,7 @@ export function HeadScoutBookingsList({
               const candidateIdentityKey = buildSetMeetingCandidateIdentityKey(candidate);
               const meetingLabel =
                 candidate.currentMeetingLabel?.replace(/^Current:\s*/, '') || null;
+              const meetingAccessory = formatSetMeetingAccessoryParts(candidate);
               const headScoutLabel = candidate.headScoutName || 'Scout not resolved';
               return (
                 <List.Item
@@ -1600,8 +1657,16 @@ export function HeadScoutBookingsList({
                   ]}
                   accessories={[
                     ...(weeklyMeetingsOnly
-                      ? meetingLabel
-                        ? [{ text: meetingLabel }]
+                      ? meetingAccessory
+                        ? [
+                            { text: meetingAccessory.dateLabel },
+                            {
+                              tag: {
+                                value: meetingAccessory.timeLabel,
+                                color: setMeetingTimeTagColorFor(meetingAccessory.timeLabel),
+                              },
+                            },
+                          ]
                         : []
                       : scoutName
                         ? []

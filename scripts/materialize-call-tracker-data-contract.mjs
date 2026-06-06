@@ -16,6 +16,7 @@ const eventLimit = Number(process.env.CALL_TRACKER_CONTRACT_EVENT_LIMIT || 1000)
 const TIME_ZONE = 'America/New_York';
 const COMMISSION_RATE = 0.2;
 const HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT = 13;
+const paidCommissionSources = new Set(['stripe_commissions', 'stripe_commission_payroll']);
 const hiddenDefaultOutcomes = new Set(['voicemail', 'spoke_follow_up', 'unable_to_leave_vm']);
 const meetingOutcomes = new Set([
   'meeting_set',
@@ -341,14 +342,22 @@ function nextPayDate(now) {
   return ymdToLocalNoon(payYear, payMonth, day <= 14 ? 14 : day <= 28 ? 28 : 14);
 }
 
-function previousPayDate(payDate) {
+function commissionPeriodForPayDate(payDate) {
   const parts = localParts(payDate);
   const year = Number(parts.year);
   const month = Number(parts.month);
   const day = Number(parts.day);
-  if (day === 28) return ymdToLocalNoon(year, month, 14);
+  if (day === 28) {
+    return {
+      start: ymdToLocalNoon(year, month, 1),
+      end: ymdToLocalNoon(year, month, 15),
+    };
+  }
   const previousMonth = addMonths(year, month, -1);
-  return ymdToLocalNoon(previousMonth.year, previousMonth.month, 28);
+  return {
+    start: ymdToLocalNoon(previousMonth.year, previousMonth.month, 16),
+    end: ymdToLocalNoon(previousMonth.year, previousMonth.month + 1, 0),
+  };
 }
 
 function basePayForDate(payDate) {
@@ -363,23 +372,41 @@ function commissionCentsForRow(row) {
   return Math.round((Number(row.revenue_cents) || 0) * COMMISSION_RATE);
 }
 
-function rowBelongsToPaycheck(row, previousPay, payDate) {
+function isPaidClosedWon(row) {
+  return row.tracker_outcome === 'closed_won' && paidCommissionSources.has(row.source) && Number(row.revenue_cents) > 0;
+}
+
+function commissionPeriodLabel(start, end) {
+  const startParts = localParts(start);
+  const endParts = localParts(end);
+  const startMonth = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, month: 'short' }).format(start);
+  const endMonth = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, month: 'short' }).format(end);
+  const startDay = Number(startParts.day);
+  const endDay = Number(endParts.day);
+  return startMonth === endMonth ? `${startMonth} ${startDay}-${endDay}` : `${startMonth} ${startDay}-${endMonth} ${endDay}`;
+}
+
+function rowBelongsToCommissionPeriod(row, start, end) {
   const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
   if (Number.isNaN(sourceDate.getTime())) return false;
-  return sourceDate.getTime() > previousPay.getTime() && sourceDate.getTime() <= payDate.getTime();
+  const sourceKey = localDateKey(sourceDate);
+  return sourceKey >= localDateKey(start) && sourceKey <= localDateKey(end);
 }
 
 function paycheck(rows, now) {
   const payDate = nextPayDate(now);
-  const previousPay = previousPayDate(payDate);
+  const commissionPeriod = commissionPeriodForPayDate(payDate);
   const baseCents = basePayForDate(payDate);
   const commissionCents = rows
-    .filter((row) => row.tracker_outcome === 'closed_won' && rowBelongsToPaycheck(row, previousPay, payDate))
+    .filter((row) => isPaidClosedWon(row) && rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
   return {
     payDate: payDate.toISOString(),
     payDateLabel: `Next check ${localDateLabel(payDate)}`,
-    previousPayDate: previousPay.toISOString(),
+    previousPayDate: commissionPeriod.start.toISOString(),
+    commissionPeriodStart: commissionPeriod.start.toISOString(),
+    commissionPeriodEnd: commissionPeriod.end.toISOString(),
+    commissionPeriodLabel: commissionPeriodLabel(commissionPeriod.start, commissionPeriod.end),
     baseCents,
     commissionCents,
     totalCents: baseCents + commissionCents,

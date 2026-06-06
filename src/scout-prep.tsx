@@ -2523,6 +2523,13 @@ function buildClientMessageSearchTextFromScoutPrepTask(task: ScoutPortalTask): s
   return String(task.athlete_name || task.title || '').trim();
 }
 
+function formatScoutPrepDisplayName(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\b([a-z])/g, (match) => match.toUpperCase());
+}
+
 async function openClientMessagesFromScoutPrepTask(task: ScoutPortalTask) {
   await launchCommand({
     name: 'client-message-inbox',
@@ -5193,7 +5200,7 @@ function ScoutPrepTaskItem({
       id={buildScoutPrepTaskItemId(task)}
       key={buildScoutPrepTaskItemId(task)}
       icon="⭐"
-      title={task.athlete_name}
+      title={formatScoutPrepDisplayName(task.athlete_name)}
       keywords={buildTaskSearchKeywords(task)}
       accessories={[
         ...(shortDate ? [{ text: shortDate }] : []),

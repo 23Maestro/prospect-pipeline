@@ -564,14 +564,22 @@ function nextPayDate(now: Date) {
   return ymdToLocalNoon(payYear, payMonth, day <= 14 ? 14 : day <= 28 ? 28 : 14);
 }
 
-function previousPayDate(payDate: Date) {
+function commissionPeriodForPayDate(payDate: Date) {
   const parts = localParts(payDate);
   const year = Number(parts.year);
   const month = Number(parts.month);
   const day = Number(parts.day);
-  if (day === 28) return ymdToLocalNoon(year, month, 14);
+  if (day === 28) {
+    return {
+      start: ymdToLocalNoon(year, month, 1),
+      end: ymdToLocalNoon(year, month, 15),
+    };
+  }
   const previousMonth = addMonths(year, month, -1);
-  return ymdToLocalNoon(previousMonth.year, previousMonth.month, 28);
+  return {
+    start: ymdToLocalNoon(previousMonth.year, previousMonth.month, 16),
+    end: ymdToLocalNoon(previousMonth.year, previousMonth.month + 1, 0),
+  };
 }
 
 function basePayForDate(payDate: Date) {
@@ -625,23 +633,37 @@ function definitiveClosedWonRows(rows: Array<Record<string, any>>) {
   return Array.from(byIdentity.values());
 }
 
-function rowBelongsToPaycheck(row: Record<string, any>, previousPay: Date, payDate: Date) {
+function commissionPeriodLabel(start: Date, end: Date) {
+  const startParts = localParts(start);
+  const endParts = localParts(end);
+  const startMonth = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, month: 'short' }).format(start);
+  const endMonth = new Intl.DateTimeFormat('en-US', { timeZone: TIME_ZONE, month: 'short' }).format(end);
+  const startDay = Number(startParts.day);
+  const endDay = Number(endParts.day);
+  return startMonth === endMonth ? `${startMonth} ${startDay}-${endDay}` : `${startMonth} ${startDay}-${endMonth} ${endDay}`;
+}
+
+function rowBelongsToCommissionPeriod(row: Record<string, any>, start: Date, end: Date) {
   const sourceDate = new Date(row.event_at || row.occurred_at || row.created_at);
   if (Number.isNaN(sourceDate.getTime())) return false;
-  return sourceDate.getTime() > previousPay.getTime() && sourceDate.getTime() <= payDate.getTime();
+  const sourceKey = localDateKey(sourceDate);
+  return sourceKey >= localDateKey(start) && sourceKey <= localDateKey(end);
 }
 
 function paycheck(rows: Array<Record<string, any>>, now: Date) {
   const payDate = nextPayDate(now);
-  const previousPay = previousPayDate(payDate);
+  const commissionPeriod = commissionPeriodForPayDate(payDate);
   const baseCents = basePayForDate(payDate);
   const commissionCents = rows
-    .filter((row) => isPaidClosedWon(row) && rowBelongsToPaycheck(row, previousPay, payDate))
+    .filter((row) => isPaidClosedWon(row) && rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
   return {
     payDate: payDate.toISOString(),
     payDateLabel: `Next check ${localDateLabel(payDate)}`,
-    previousPayDate: previousPay.toISOString(),
+    previousPayDate: commissionPeriod.start.toISOString(),
+    commissionPeriodStart: commissionPeriod.start.toISOString(),
+    commissionPeriodEnd: commissionPeriod.end.toISOString(),
+    commissionPeriodLabel: commissionPeriodLabel(commissionPeriod.start, commissionPeriod.end),
     baseCents,
     commissionCents,
     totalCents: baseCents + commissionCents,

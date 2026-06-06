@@ -941,11 +941,12 @@ test('/api/call-tracker-data trusts Supabase reporting_at instead of rewriting m
   assert.equal(row.reporting_date_et, '2026-05-10');
 });
 
-test('/api/call-tracker-data counts confirmed enrollments while paying commission from Stripe revenue', async () => {
+test('/api/call-tracker-data counts confirmed enrollments while paying commission from Stripe revenue', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-06-06T16:00:00.000Z') });
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
   process.env.SUPABASE_SCHEMA = 'public';
-  const closedWonAt = new Date().toISOString();
+  const closedWonAt = '2026-05-20T16:00:00.000Z';
   globalThis.fetch = async (url) => {
     const requestUrl = String(url);
     if (requestUrl.includes('/call_tracker_summary?')) {
@@ -1063,6 +1064,68 @@ test('/api/call-tracker-data counts confirmed enrollments while paying commissio
     payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Failed Payment Athlete'),
     true,
   );
+});
+
+test('/api/call-tracker-data pays June 14 commission from the May 16-31 earning period', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-06-06T16:00:00.000Z') });
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_tracker_summary?')) {
+      return Response.json([
+        { dials: 0, contacts: 0, meetings_set: 0, meeting_outcomes_total: 3, closed_won: 3, money_earned_cents: 0, voicemail_only: 0, appointments_tracked: 0 },
+      ]);
+    }
+    if (requestUrl.includes('/call_log?')) {
+      const row = (name: string, occurredAt: string, revenueCents: number) => ({
+        athlete_name: name,
+        occurred_at: occurredAt,
+        event_at: occurredAt,
+        tracker_outcome: 'closed_won',
+        raw_crm_stage: 'Actual Meeting - Close Won',
+        raw_task_status: 'closed_won',
+        raw_event_type: 'post_meeting_outcome',
+        source_system: 'stripe_commissions',
+        appointment_id: name,
+        live_event_id: name,
+        booked_event_title: `(ENR) ${name}`,
+        revenue_cents: revenueCents,
+        dedupe_key: `post_meeting_outcome:${name}:closed_won`,
+        active_operator_name: 'Jerami Singleton',
+        task_assigned_owner: 'Jerami Singleton',
+        counts_as_dial: false,
+        counts_as_contact: false,
+        counts_as_meeting_set: false,
+        counts_as_post_meeting_outcome: true,
+        materialization_status: 'operator_task',
+        materialization_reason: 'task_assigned_owner_matches_active_operator',
+        resolved_owner_name: 'Jerami Singleton',
+        resolved_owner_source_field: 'bookedMeeting.assigned_owner',
+        can_materialize_for_active_operator: true,
+        created_at: occurredAt,
+      });
+      return Response.json([
+        row('before-period', '2026-05-15T16:00:00.000Z', 10000),
+        row('in-period-one', '2026-05-16T16:00:00.000Z', 10000),
+        row('in-period-two', '2026-05-31T16:00:00.000Z', 9000),
+        row('after-period', '2026-06-01T16:00:00.000Z', 10000),
+      ]);
+    }
+    if (requestUrl.includes('/lifecycle_events?')) {
+      return Response.json([]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.data.ui.paycheck.payDateLabel, 'Next check Jun 14');
+  assert.equal(payload.data.ui.paycheck.commissionPeriodLabel, 'May 16-31');
+  assert.equal(payload.data.ui.paycheck.commissionCents, 3800);
+  assert.equal(payload.data.ui.paycheck.totalCents, 103800);
 });
 
 test('/api/meeting-readback-data returns meeting-only live readback rows', async () => {
