@@ -1,4 +1,3 @@
-import { getPreferenceValues } from '@raycast/api';
 import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
@@ -43,6 +42,20 @@ type SupabaseConfig = {
   key: string;
   schema: string;
 };
+
+function readRaycastPreferenceValues(): Preferences {
+  try {
+    if (typeof require !== 'function') {
+      return {};
+    }
+    const api = require('@raycast/api') as {
+      getPreferenceValues?: <T extends Record<string, unknown>>() => T;
+    };
+    return api.getPreferenceValues?.<Preferences>() || {};
+  } catch {
+    return {};
+  }
+}
 
 type PipelineActor = {
   athleteId: string;
@@ -431,7 +444,7 @@ function readRepoEnv(): Record<string, string> {
 }
 
 export function getSupabasePersistenceConfig(): SupabaseConfig | null {
-  const prefs = getPreferenceValues<Preferences>();
+  const prefs = readRaycastPreferenceValues();
   const repoEnv = readRepoEnv();
   const url = String(process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '')
     .trim()

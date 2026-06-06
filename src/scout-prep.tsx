@@ -5151,14 +5151,6 @@ function ScoutPrepTaskItem({
   }
 
   async function handleDuplicateProfileCheck() {
-    if (!isCallAttempt1PortalTask(task)) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: 'Call Attempt 1 only',
-      });
-      return;
-    }
-
     const toast = await showLoadingToast('Dup Check', task.athlete_name);
     try {
       const result = await runDuplicateProfileResolutionForTask(task);

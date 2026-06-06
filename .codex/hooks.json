@@ -8,6 +8,12 @@
             "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/scouting_coordinator_pre_edit.py\"",
             "timeout": 10,
             "statusMessage": "Checking Prospect Pipeline context"
+          },
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/scouting_command_surface_guard.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking Scouting Command surface guard"
           }
         ]
       }
@@ -21,6 +27,12 @@
             "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/scouting_coordinator_pre_edit.py\"",
             "timeout": 10,
             "statusMessage": "Checking SC system map"
+          },
+          {
+            "type": "command",
+            "command": "/usr/bin/python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/scouting_command_surface_guard.py\"",
+            "timeout": 10,
+            "statusMessage": "Checking Scouting Command surface guard"
           }
         ]
       }

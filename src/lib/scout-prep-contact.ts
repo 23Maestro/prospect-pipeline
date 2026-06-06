@@ -1,6 +1,6 @@
 import type { MeetingSetTemplateResponse, ScoutPrepContext } from '../features/scout-prep/types';
+import { cleanPositions } from '../domain/position-text';
 import { formatCurrentLocalTime, getNaturalZoneLabel, resolveTimezone } from './scout-prep-ai';
-import { cleanPositions } from './prospect-search';
 import {
   buildVoicemailFollowUpMessage,
   resolveAthleteGenderFromSport,

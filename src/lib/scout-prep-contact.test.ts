@@ -1212,21 +1212,20 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   );
   assert.match(
     card,
-    /> I’ll have my Head Scout walk you through some of our Top 500 athletes\./,
-  );
-  assert.match(
-    card,
     /> Coach has \[Exact Slot 1\] or \[Exact Slot 2\]\. Which one works best\?/,
   );
-  assert.match(
-    card,
-    /### Summary \/ Set Meeting[\s\S]*What is her schedule Friday\? When is she usually up and moving on Saturday\?/,
-  );
-  assert.match(card, /### Meeting Prep[\s\S]*I’m going to email you Coach \[Name\]’s bio, background on us as an organization, and my social media\./);
-  assert.match(card, /### Meeting Prep[\s\S]*Save it\. That way when Coach calls you at \[time\], answer the call\./);
-  assert.match(card, /### Meeting Prep[\s\S]*You won’t have Coach \[Name\]’s Zoom code before the meeting, so don’t stress about that\./);
+  assert.doesNotMatch(card, /Top 500 athletes/);
+  assert.doesNotMatch(card, /whether you end up working with us/);
+  assert.doesNotMatch(card, /Does mom help pick a school, pay for school, or get him out to school\?/);
+  assert.doesNotMatch(card, /What is her schedule Friday\? When is she usually up and moving on Saturday\?/);
+  assert.doesNotMatch(card, /Keep narrowing with exact times/);
+  assert.match(card, /### Meeting Prep[\s\S]*I’ll email you Coach \[Name\]’s bio, background on us, and my social media\./);
+  assert.match(card, /### Meeting Prep[\s\S]*Save Coach \[Name\]’s contact card and answer when Coach calls at \[time\]\./);
   assert.match(card, /### Meeting Prep[\s\S]*Coach \[Name\] will give you the Zoom code\./);
-  assert.match(card, /### Meeting Prep[\s\S]*Read through what I send over, write down questions, and bring them with you to the meeting\./);
+  assert.doesNotMatch(card, /If you can, in the next couple of days, get me some film/);
+  assert.doesNotMatch(card, /If we don’t have it before the meeting, don’t stress/);
+  assert.doesNotMatch(card, /You won’t have Coach \[Name\]’s Zoom code before the meeting/);
+  assert.doesNotMatch(card, /Read through what I send over, write down questions/);
   for (const forbidden of [
     /blindside/i,
     /free recruiting evaluation/i,

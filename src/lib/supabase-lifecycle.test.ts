@@ -523,10 +523,12 @@ test('lifecycle mutation event keeps Tim-owned call activity non-materialized an
 
 test('Laravel POST wrappers call the shared lifecycle mutation writer after success', () => {
   const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
+  const taskCompletionSource = fs.readFileSync('src/lib/scout-prep-task-completion.ts', 'utf8');
+  const taskUpdateSource = fs.readFileSync('src/lib/scout-prep-task-update.ts', 'utf8');
   const salesStageSource = fs.readFileSync('src/lib/sales-stage.ts', 'utf8');
 
-  assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/complete'/);
-  assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/update'/);
+  assert.match(taskCompletionSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/complete'/);
+  assert.match(taskUpdateSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/update'/);
   assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/call-attempt-3-sent'/);
   assert.match(scoutPrepSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/follow-up-message-sent'/);
   assert.match(salesStageSource, /lifecycleSalesStage\(\{\s*sourcePost: '\/sales\/stage'/);
@@ -534,19 +536,13 @@ test('Laravel POST wrappers call the shared lifecycle mutation writer after succ
 
 test('Scout Prep Supabase writes happen after the matching Laravel write succeeds', () => {
   const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
+  const taskCompletion = fs.readFileSync('src/lib/scout-prep-task-completion.ts', 'utf8');
+  const taskUpdate = fs.readFileSync('src/lib/scout-prep-task-update.ts', 'utf8');
   const salesStageSource = fs.readFileSync('src/lib/sales-stage.ts', 'utf8');
 
-  const taskCompletion = scoutPrepSource.slice(
-    scoutPrepSource.indexOf('export async function completeScoutPrepTaskAfterVoicemail'),
-    scoutPrepSource.indexOf('export async function fetchScoutTaskPopup'),
-  );
   assert.ok(taskCompletion.indexOf("apiFetch('/tasks/complete'") < taskCompletion.indexOf('lifecycleSalesStage({'));
   assert.ok(taskCompletion.indexOf('if (!response.ok)') < taskCompletion.indexOf('lifecycleSalesStage({'));
 
-  const taskUpdate = scoutPrepSource.slice(
-    scoutPrepSource.indexOf('export async function updateScoutPrepTask'),
-    scoutPrepSource.indexOf('export async function recordCallAttempt3MessageSent'),
-  );
   assert.ok(taskUpdate.indexOf("apiFetch('/tasks/update'") < taskUpdate.indexOf('lifecycleSalesStage({'));
   assert.ok(taskUpdate.indexOf('if (!response.ok)') < taskUpdate.indexOf('lifecycleSalesStage({'));
 
@@ -722,7 +718,7 @@ test('Scout Prep meeting-set Supabase writes happen after Laravel meeting creati
 });
 
 test('task completion wrapper never promotes a task title into raw CRM stage', () => {
-  const scoutPrepSource = fs.readFileSync('src/lib/scout-prep.tsx', 'utf8');
+  const scoutPrepSource = fs.readFileSync('src/lib/scout-prep-task-completion.ts', 'utf8');
 
   assert.doesNotMatch(scoutPrepSource, /crmStage:\s*args\.crmStage\s*\|\|\s*args\.taskTitle/);
   assert.match(scoutPrepSource, /crmStage:\s*args\.crmStage\s*\|\|\s*null/);

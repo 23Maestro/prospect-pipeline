@@ -62,10 +62,16 @@ export function buildTaskBucketRows(args: {
   sort?: TaskListSort;
 }): TaskBucketRow[] {
   const range = mapTaskListFilterToRange(args.filter);
+  const sourceTasks = filterVisibleTaskBucketTasks(args.taskBuckets[range] || [], range);
   const tasks = hasTaskListSort(args.sort)
-    ? sortScoutPrepTasks(args.taskBuckets[range] || [], args.sort)
-    : args.taskBuckets[range] || [];
+    ? sortScoutPrepTasks(sourceTasks, args.sort)
+    : sourceTasks;
   return tasks.map((task) => ({ kind: 'task', task }) satisfies TaskBucketRow);
+}
+
+function filterVisibleTaskBucketTasks(tasks: ScoutPortalTask[], range: ScoutTaskRange): ScoutPortalTask[] {
+  if (range !== 'todayPastDue') return tasks;
+  return tasks.filter((task) => String(task.title || '').trim().toLowerCase() !== 'repeat');
 }
 
 function normalizeTaskListSort(sort?: TaskListSort): TaskListSortRule[] {

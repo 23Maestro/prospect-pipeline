@@ -17,6 +17,8 @@ import { searchLogger } from './logger';
 import type { VoicemailFollowUpVariant } from './scout-follow-up-templates';
 import { getActiveOperator } from '../domain/owners';
 import { lifecycleSalesStage } from './supabase-lifecycle';
+export { completeScoutPrepTaskAfterVoicemail } from './scout-prep-task-completion';
+export { updateScoutPrepTask } from './scout-prep-task-update';
 import {
   findNewestIncompleteConfirmationTask,
   findNewestIncompleteFollowUpTask,
@@ -259,98 +261,6 @@ function formatLegacyTaskTime(date: Date): string {
   return `${hours}:${minutes}`;
 }
 
-export async function completeScoutPrepTaskAfterVoicemail(args: {
-  athleteId: string;
-  athleteMainId: string;
-  athleteName?: string | null;
-  contactTask?: string | null;
-  taskId?: string | null;
-  crmStage?: string | null;
-  taskTitle?: string | null;
-  assignedOwner?: string | null;
-  description?: string | null;
-}): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
-  const now = new Date();
-  const completedDate = formatLegacyTaskDate(now);
-  const completedTime = formatLegacyTaskTime(now);
-
-  logInfo('SCOUT_PREP_TASK_COMPLETE', 'request', 'start', {
-    athleteId: args.athleteId,
-    athleteMainId: args.athleteMainId,
-    contactTask: args.contactTask || null,
-    taskId: args.taskId || null,
-    taskTitle: args.taskTitle || 'Call Attempt 1',
-    assignedOwner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
-    completedDate,
-    completedTime,
-  });
-
-  const response = await apiFetch('/tasks/complete', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      athlete_id: args.athleteId,
-      athlete_main_id: args.athleteMainId,
-      contact_task: args.contactTask || args.athleteId,
-      task_id: args.taskId || null,
-      task_title: args.taskTitle || 'Call Attempt 1',
-      assigned_owner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
-      description: args.description || args.taskTitle || 'Call Attempt 1',
-      completed_date: completedDate,
-      completed_time: completedTime,
-      is_completed: true,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    let detail = '';
-    try {
-      const parsed = JSON.parse(errorText) as { detail?: string };
-      detail = parsed.detail || '';
-    } catch {
-      detail = '';
-    }
-    const message = detail || errorText.slice(0, 200) || `HTTP ${response.status}`;
-    logFailure('SCOUT_PREP_TASK_COMPLETE', 'request', message, {
-      athleteId: args.athleteId,
-      athleteMainId: args.athleteMainId,
-      contactTask: args.contactTask || null,
-      taskId: args.taskId || null,
-      statusCode: response.status,
-    });
-    throw new Error(message);
-  }
-
-  const result = (await response.json().catch(() => ({}))) as {
-    success?: boolean;
-    task_id?: string | null;
-    message?: string | null;
-  };
-  logInfo('SCOUT_PREP_TASK_COMPLETE', 'request', 'success', {
-    athleteId: args.athleteId,
-    athleteMainId: args.athleteMainId,
-    contactTask: args.contactTask || null,
-    taskId: result.task_id || null,
-    message: result.message || null,
-  });
-  await lifecycleSalesStage({
-    sourcePost: '/tasks/complete',
-    athleteId: args.athleteId,
-    athleteMainId: args.athleteMainId,
-    athleteName: args.athleteName || '',
-    crmStage: args.crmStage || null,
-    taskId: result.task_id || args.taskId || null,
-    taskTitle: args.taskTitle || 'Call Attempt 1',
-    taskDescription: args.description || args.taskTitle || 'Call Attempt 1',
-    taskAssignedOwner: args.assignedOwner || getActiveOperator().taskAssignedOwnerName,
-    completedDate,
-    completedTime,
-    activitySubtype: args.crmStage ? undefined : 'needs_manual_review',
-  });
-  return result;
-}
-
 export async function fetchScoutTaskPopup(taskId: string): Promise<{
   success: boolean;
   form_data: Record<string, string>;
@@ -374,57 +284,6 @@ export async function fetchScoutTaskPopup(taskId: string): Promise<{
     form_data: Record<string, string>;
     checkbox_fields: string[];
   };
-}
-
-export async function updateScoutPrepTask(args: {
-  taskId: string;
-  contactTask: string;
-  athleteMainId: string;
-  athleteName?: string | null;
-  taskTitle?: string | null;
-  description?: string | null;
-  dueDate?: string | null;
-  dueTime?: string | null;
-  assignedOwner?: string | null;
-}): Promise<{ success?: boolean; task_id?: string | null; message?: string | null }> {
-  const response = await apiFetch('/tasks/update', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      task_id: args.taskId,
-      contact_task: args.contactTask,
-      athlete_main_id: args.athleteMainId,
-      task_title: args.taskTitle ?? null,
-      description: args.description ?? null,
-      due_date: args.dueDate ?? null,
-      due_time: args.dueTime ?? null,
-    }),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => '');
-    throw new Error(errorText.slice(0, 200) || `Task update HTTP ${response.status}`);
-  }
-
-  const result = (await response.json()) as {
-    success?: boolean;
-    task_id?: string | null;
-    message?: string | null;
-  };
-  await lifecycleSalesStage({
-    sourcePost: '/tasks/update',
-    athleteId: args.contactTask,
-    athleteMainId: args.athleteMainId,
-    athleteName: args.athleteName || '',
-    taskId: result.task_id || args.taskId,
-    taskTitle: args.taskTitle || null,
-    taskDescription: args.description || null,
-    taskAssignedOwner: args.assignedOwner || null,
-    dueDate: args.dueDate,
-    dueTime: args.dueTime,
-    activitySubtype: 'needs_manual_review',
-  });
-  return result;
 }
 
 export async function recordCallAttempt3MessageSent(args: {

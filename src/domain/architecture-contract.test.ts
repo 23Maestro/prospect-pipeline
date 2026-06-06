@@ -162,6 +162,30 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
   assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
 });
 
+test('Scouting Command post-call helper wraps Raycast post-call writer paths', () => {
+  const source = readRepoFile('src/lib/scout-prep-post-call-update.ts');
+  const contract = readRepoFile('docs/architecture/scouting-command-raycast-mutation-contract.md');
+
+  assert.match(source, /buildPostCallActionPlan/);
+  assert.match(source, /fetchScoutPrepPostCallUpdateStageOptions/);
+  assert.match(source, /fetchCuratedSalesStageOptions/);
+  assert.match(source, /POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS/);
+  assert.match(source, /classifyPostCallActivityStage\(label\)/);
+  assert.match(source, /updateSalesStage\(\{/);
+  assert.match(source, /completeScoutPrepTaskAfterVoicemail\(\{/);
+  assert.match(source, /needsPostCallMeetingSchedulingFields\(stageLabel\)/);
+  assert.match(source, /classifyPostMeetingOutcomeStage\(stageLabel\)/);
+  assert.match(source, /fetchScoutPrepPostCallMeetingSetFormModel/);
+  assert.match(source, /submitMeetingSet\(initialPlan\.laravelMeetingSetSubmit\)/);
+  assert.match(source, /recordMeetingSet\(actionPlan\.supabaseLifecycleWrite\.args\)/);
+  assert.match(source, /syncMeetingSetConfirmationCacheFromScoutPrep\(\{/);
+  assert.doesNotMatch(source, /crmStage:\s*null/);
+
+  assert.match(contract, /src\/lib\/scout-prep-post-call-update\.ts/);
+  assert.match(contract, /`submitMeetingSet` -> `updateSalesStage` -> `recordMeetingSet` -> `syncMeetingSetConfirmationCacheFromScoutPrep`/);
+  assert.match(contract, /Confirmed reschedule scheduling and post-meeting outcome stages must remain blocked/);
+});
+
 test('one-off and batch reschedule voicemail share ranked slot suggestions', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
   const pickerStart = scoutPrep.indexOf('function RescheduleSlotSelectionList');
@@ -347,10 +371,20 @@ test('outreach time wording is resolved through the domain module', () => {
 
 test('post-call task completion carries selected stage into lifecycle tracking', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const scoutPrepLib = readRepoFile('src/lib/scout-prep.tsx');
+  const taskCompletion = readRepoFile('src/lib/scout-prep-task-completion.ts');
+  const taskUpdate = readRepoFile('src/lib/scout-prep-task-update.ts');
+
+  assert.match(scoutPrepLib, /export \{ completeScoutPrepTaskAfterVoicemail \} from '\.\/scout-prep-task-completion'/);
+  assert.match(scoutPrepLib, /export \{ updateScoutPrepTask \} from '\.\/scout-prep-task-update'/);
   assert.match(
     scoutPrep,
     /completeScoutPrepTaskAfterVoicemail\(\{\s*athleteId:\s*taskCompletion\.athleteId,[\s\S]*?crmStage:\s*taskCompletion\.crmStage,[\s\S]*?taskTitle:\s*taskCompletion\.taskTitle,/,
   );
+  assert.match(taskCompletion, /apiFetch\('\/tasks\/complete'/);
+  assert.match(taskCompletion, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/complete'/);
+  assert.match(taskUpdate, /apiFetch\('\/tasks\/update'/);
+  assert.match(taskUpdate, /lifecycleSalesStage\(\{\s*sourcePost: '\/tasks\/update'/);
 });
 
 test('Supabase reporting views materialize only domain facts or explicit compatibility proof', () => {

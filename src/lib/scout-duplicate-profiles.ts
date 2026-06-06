@@ -488,6 +488,10 @@ export function buildRepeatProfileDescription(description?: string | null): stri
 }
 
 function taskHasRepeatProfileMarker(task: Partial<ScoutAthleteTask> | Partial<AthleteTaskSummary>): boolean {
+  const title = String(task.title || '').trim().toLowerCase();
+  if (title === REPEAT_TASK_TITLE.toLowerCase()) {
+    return true;
+  }
   return `${task.title || ''}\n${task.description || ''}`
     .toLowerCase()
     .includes(REPEAT_PROFILE_MARKER.toLowerCase());
@@ -502,6 +506,12 @@ function isOpenCallAttempt1Task(task: Partial<ScoutAthleteTask> | Partial<Athlet
     .trim()
     .toLowerCase();
   return title === 'call attempt 1';
+}
+
+function isTaskAssignedToActiveOperator(task: Partial<ScoutAthleteTask> | Partial<AthleteTaskSummary>): boolean {
+  const assignedOwner = String(task.assigned_owner || '').trim().toLowerCase();
+  const activeOwner = getActiveOperator().taskAssignedOwnerName.trim().toLowerCase();
+  return Boolean(assignedOwner && activeOwner && assignedOwner === activeOwner);
 }
 
 export function selectDuplicateCallAttempt1Task(
@@ -665,9 +675,6 @@ export async function runDuplicateProfileResolutionForTask(
   deps: Partial<DuplicateProfileResolutionDeps> = {},
 ): Promise<DuplicateProfileResolutionResult> {
   const activeDeps = { ...createDefaultDeps(), ...deps };
-  if (!isCallAttempt1PortalTask(task)) {
-    throw new Error('Duplicate profile check only runs for Call Attempt 1 tasks');
-  }
 
   const rawAthleteName = String(task.athlete_name || '').trim();
   const athleteName = normalizeDuplicateAthleteName(rawAthleteName);
@@ -687,6 +694,8 @@ export async function runDuplicateProfileResolutionForTask(
     athleteId: currentAthleteId,
     athleteMainId: currentAthleteMainId || null,
     hasAthleteName: Boolean(athleteName),
+    sourceTaskTitle: String(task.title || '').trim() || null,
+    sourceIsCallAttempt1: isCallAttempt1PortalTask(task),
     emailIncluded: false,
   });
 
@@ -842,10 +851,18 @@ export async function runDuplicateProfileResolutionForTask(
       if (candidateAlreadyMarkedRepeat) {
         const currentTaskId = String(task.task_id || '').trim();
         const currentCompletionDate = String(task.completion_date || '').trim();
+        const currentIsCallAttempt1 = isCallAttempt1PortalTask(task);
         if (!currentTaskId) {
           result.skipped.push({
             athleteId: candidate.athleteId,
             reason: 'repeat_profile_already_marked_missing_current_task_id',
+          });
+          continue;
+        }
+        if (!currentIsCallAttempt1) {
+          result.skipped.push({
+            athleteId: candidate.athleteId,
+            reason: 'repeat_profile_already_marked_current_not_call_attempt_1',
           });
           continue;
         }
@@ -895,6 +912,34 @@ export async function runDuplicateProfileResolutionForTask(
           });
           continue;
         }
+
+        const createdTask = await activeDeps.createRepeatTask({
+          athleteId: candidate.athleteId,
+          athleteMainId,
+          contactTask: candidate.athleteId,
+          taskTitle: REPEAT_TASK_TITLE,
+          description: REPEAT_TASK_DESCRIPTION,
+          assignedTo: getActiveOperator().legacyUserId,
+          completedAt: new Date(),
+        });
+        result.completed.push({
+          athleteId: candidate.athleteId,
+          athleteMainId,
+          athleteName: candidate.fullName,
+          taskId: createdTask.task_id || '',
+          taskTitle: REPEAT_TASK_TITLE,
+        });
+        continue;
+      }
+
+      if (!isTaskAssignedToActiveOperator(duplicateTask)) {
+        logInfo('SCOUT_DUPLICATE_PROFILE', 'candidate-other-owner-call-attempt', {
+          athleteId: currentAthleteId,
+          candidateAthleteId: candidate.athleteId,
+          duplicateTaskId: duplicateTask.task_id,
+          assignedOwner: duplicateTask.assigned_owner || null,
+          action: 'create_repeat_task',
+        });
 
         const createdTask = await activeDeps.createRepeatTask({
           athleteId: candidate.athleteId,

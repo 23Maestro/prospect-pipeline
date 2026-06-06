@@ -99,8 +99,8 @@
     },
     {
       "name": "deplicate-profiles",
-      "title": "Deplicate Profiles",
-      "description": "Find duplicate SA Profiles",
+      "title": "Deduplicate Profiles",
+      "description": "Find and resolve duplicate SA profiles through the Scout Prep duplicate-profile domain",
       "mode": "no-view"
     },
     {

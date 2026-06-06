@@ -39,6 +39,10 @@ type NotionChildrenResponse = {
   next_cursor: string | null;
 };
 
+type NotionAppendChildrenResponse = {
+  results?: NotionBlock[];
+};
+
 type SyncTarget = 'script' | 'voicemail';
 
 export type NotionCallScriptConfig = {
@@ -255,14 +259,85 @@ export async function archiveBlock(token: string, blockId: string): Promise<void
   });
 }
 
-export async function appendChildren(token: string, blockId: string, blocks: NotionBlock[]) {
+export async function appendChildren(
+  token: string,
+  blockId: string,
+  blocks: NotionBlock[],
+): Promise<NotionBlock[]> {
+  const appended: NotionBlock[] = [];
+
   for (let index = 0; index < blocks.length; index += MAX_APPEND_BLOCKS) {
     const chunk = blocks.slice(index, index + MAX_APPEND_BLOCKS);
-    await notionRequest(token, `/blocks/${blockId}/children`, {
-      method: 'PATCH',
-      body: JSON.stringify({ children: chunk }),
-    });
+    const payload = await notionRequest<NotionAppendChildrenResponse>(
+      token,
+      `/blocks/${blockId}/children`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ children: chunk }),
+      },
+    );
+    appended.push(...(payload.results || []));
   }
+
+  return appended;
+}
+
+async function appendToggleContainer(
+  token: string,
+  blockId: string,
+  block: NotionBlock,
+): Promise<void> {
+  const value = block[block.type] as { children?: NotionBlock[] } | undefined;
+  const children = value?.children || [];
+  const initialChildren = children.slice(0, MAX_APPEND_BLOCKS);
+  const remainingChildren = children.slice(MAX_APPEND_BLOCKS);
+  const blockWithoutOverflow = {
+    ...block,
+    [block.type]: {
+      ...(value || {}),
+      children: initialChildren,
+    },
+  };
+
+  const appended = await appendChildren(token, blockId, [blockWithoutOverflow]);
+  if (!remainingChildren.length) {
+    return;
+  }
+
+  const containerId = appended[0]?.id;
+  if (!containerId) {
+    throw new Error('Notion did not return the created toggle block ID.');
+  }
+
+  await appendChildren(token, containerId, remainingChildren);
+}
+
+async function appendCallScriptToggle(
+  token: string,
+  blockId: string,
+  title: string,
+  children: NotionBlock[],
+): Promise<void> {
+  if (children.length <= MAX_APPEND_BLOCKS) {
+    await appendChildren(token, blockId, [toggleBlock(title, children)]);
+    return;
+  }
+
+  await appendToggleContainer(token, blockId, toggleBlock(title, children));
+}
+
+async function appendCallNotesToggleHeading(
+  token: string,
+  blockId: string,
+  title: string,
+  children: NotionBlock[],
+): Promise<void> {
+  if (children.length <= MAX_APPEND_BLOCKS) {
+    await appendChildren(token, blockId, [toggleHeadingBlock(title, children)]);
+    return;
+  }
+
+  await appendToggleContainer(token, blockId, toggleHeadingBlock(title, children));
 }
 
 function richText(content: string, bold = false): RichText[] {
@@ -429,7 +504,7 @@ export async function syncCallScriptToggleToNotionWithConfig(
       await archiveBlock(token, toggleBlockId);
     }
 
-    await appendChildren(token, pageId, [toggleBlock(toggleTitle, blocks)]);
+    await appendCallScriptToggle(token, pageId, toggleTitle, blocks);
 
     logInfo('NOTION_CALL_SCRIPT_SYNC', 'replace-toggle', 'success', {
       target: args.target,
@@ -482,7 +557,7 @@ export async function syncCallNotesPageToNotionWithConfig(
       await archiveBlock(token, toggleBlockId);
     }
 
-    await appendChildren(token, pageId, [toggleHeadingBlock(toggleTitle, blocks)]);
+    await appendCallNotesToggleHeading(token, pageId, toggleTitle, blocks);
 
     logInfo('NOTION_CALL_NOTES_SYNC', 'replace-toggle', 'success', {
       pageId,

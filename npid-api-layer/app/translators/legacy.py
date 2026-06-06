@@ -4726,6 +4726,12 @@ class LegacyTranslator:
                     if value:
                         return value
 
+            row_classes = row.get("class") or []
+            class_text = " ".join(row_classes) if isinstance(row_classes, list) else str(row_classes or "")
+            class_match = re.search(r"\btask(\d+)\b", class_text, re.IGNORECASE)
+            if class_match:
+                return class_match.group(1)
+
             patterns = [
                 r"edittaskid=(\d+)",
                 r"edittaskid['\"=:,\s]+(\d+)",

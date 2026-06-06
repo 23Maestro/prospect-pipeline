@@ -1,6 +1,7 @@
 import { apiFetch } from './fastapi-client';
 import { resolveAndCacheAthleteMainId } from './athlete-id-service';
 import { logger, searchLogger } from './logger';
+import { cleanPositions } from '../domain/position-text';
 import { normalizeProspectSearchTerm } from './prospect-search-term';
 
 export interface ProspectResult {
@@ -31,22 +32,9 @@ interface ProspectSearchResponse {
 }
 
 export { normalizeProspectSearchTerm } from './prospect-search-term';
+export { cleanPositions } from '../domain/position-text';
 
 const MIN_GRAD_YEAR = 2026;
-
-export function cleanPositions(positions?: string): string | null {
-  if (!positions) return null;
-  const withoutPrefix = positions
-    .replace(/^Positions?/i, '')
-    .replace(/^[:\-\s]+/, '')
-    .trim();
-  const tokens = withoutPrefix
-    .split(/\||,|\/|•/)
-    .map((token) => token.replace(/^Positions?/i, '').trim())
-    .filter(Boolean);
-  const cleaned = tokens.length ? tokens.join(' | ') : withoutPrefix;
-  return cleaned || null;
-}
 
 export function normalizePositionsWithLogging(
   rawPositions?: string,

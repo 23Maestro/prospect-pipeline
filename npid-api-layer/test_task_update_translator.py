@@ -187,6 +187,27 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
             },
         )
 
+    def test_tasks_list_parser_extracts_task_id_from_row_class_when_title_is_not_edit_link(self):
+        html = """
+        <table id="Tasks_list">
+          <tbody>
+            <tr class="task697913">
+              <td>Wed 06/03/26 10:06 AM</td>
+              <td></td>
+              <td>Tim Risner</td>
+              <td style="text-transform:capitalize;">Call Attempt 1</td>
+              <td class="description_space">Call the family first time.</td>
+            </tr>
+          </tbody>
+        </table>
+        """
+
+        result = LegacyTranslator.parse_tasks_list_response(html)
+
+        self.assertEqual(result["tasks"][0]["task_id"], "697913")
+        self.assertEqual(result["tasks"][0]["title"], "Call Attempt 1")
+        self.assertEqual(result["tasks"][0]["assigned_owner"], "Tim Risner")
+
 
 if __name__ == "__main__":
     unittest.main()

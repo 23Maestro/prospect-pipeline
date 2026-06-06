@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   callNotesMarkdownToNotionBlocks,
+  syncCallScriptToggleToNotionWithConfig,
   syncCallNotesPageToNotionWithConfig,
 } from './notion-call-scripts.js';
 
@@ -79,6 +80,58 @@ test('syncCallNotesPageToNotionWithConfig: replaces existing toggle heading with
     assert.equal(appended.children[0].type, 'heading_1');
     assert.equal(appended.children[0].heading_1.is_toggleable, true);
     assert.equal(appended.children[0].heading_1.rich_text[0].text.content, 'Myles OConnor');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('syncCallScriptToggleToNotionWithConfig: appends overflow toggle children after creating the toggle', async () => {
+  const requests: { url: string; init?: RequestInit }[] = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+    requests.push({ url: String(url), init });
+
+    if (String(url).includes('/blocks/page-id/children?')) {
+      return new Response(JSON.stringify({ results: [], has_more: false, next_cursor: null }), {
+        status: 200,
+      });
+    }
+
+    if (String(url).endsWith('/blocks/page-id/children')) {
+      return new Response(
+        JSON.stringify({
+          results: [{ object: 'block', id: 'created-toggle', type: 'toggle' }],
+        }),
+        { status: 200 },
+      );
+    }
+
+    return new Response(JSON.stringify({ results: [{ object: 'block', id: 'overflow-child' }] }), {
+      status: 200,
+    });
+  }) as typeof fetch;
+
+  try {
+    const markdown = Array.from({ length: 101 }, (_, index) => `Line ${index + 1}`).join('\n');
+    const result = await syncCallScriptToggleToNotionWithConfig(
+      { target: 'script', markdown },
+      { token: 'token', pageId: 'page-id', toggleTitle: 'Script' },
+    );
+
+    assert.equal(result.appendedCount, 101);
+    assert.equal(requests[1]?.url, 'https://api.notion.com/v1/blocks/page-id/children');
+
+    const createdToggle = JSON.parse(String(requests[1]?.init?.body));
+    assert.equal(createdToggle.children[0].toggle.children.length, 100);
+    assert.equal(
+      createdToggle.children[0].toggle.children[99].paragraph.rich_text[0].text.content,
+      'Line 100',
+    );
+
+    assert.equal(requests[2]?.url, 'https://api.notion.com/v1/blocks/created-toggle/children');
+    const overflowAppend = JSON.parse(String(requests[2]?.init?.body));
+    assert.equal(overflowAppend.children.length, 1);
+    assert.equal(overflowAppend.children[0].paragraph.rich_text[0].text.content, 'Line 101');
   } finally {
     globalThis.fetch = originalFetch;
   }

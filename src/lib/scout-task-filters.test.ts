@@ -63,6 +63,24 @@ test('todayPastDue returns only todayPastDue website rows', () => {
   );
 });
 
+test('todayPastDue hides marked repeat tasks from the home task list', () => {
+  const rows = buildTaskBucketRows({
+    filter: 'todayPastDue',
+    taskBuckets: {
+      ...buildBuckets(),
+      todayPastDue: [
+        buildTask('Active Athlete', '04/22/2026 09:00 AM'),
+        buildTask('Marked Repeat Athlete', '04/22/2026 10:00 AM', '2028', 'REPEAT'),
+      ],
+    },
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Active Athlete'],
+  );
+});
+
 test('all returns only legacy all rows', () => {
   const rows = buildTaskBucketRows({
     filter: 'all',
@@ -72,6 +90,21 @@ test('all returns only legacy all rows', () => {
   assert.deepEqual(
     rows.map((row) => row.task.athlete_name),
     ['All Athlete'],
+  );
+});
+
+test('all keeps marked repeat tasks searchable outside the home task list', () => {
+  const rows = buildTaskBucketRows({
+    filter: 'all',
+    taskBuckets: {
+      ...buildBuckets(),
+      all: [buildTask('Marked Repeat Athlete', '04/22/2026 10:00 AM', '2028', 'REPEAT')],
+    },
+  });
+
+  assert.deepEqual(
+    rows.map((row) => row.task.athlete_name),
+    ['Marked Repeat Athlete'],
   );
 });
 
