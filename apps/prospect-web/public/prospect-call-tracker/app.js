@@ -316,6 +316,30 @@ function isPaidClosedWon(row) {
   return row.tracker_outcome === 'closed_won' && PAID_COMMISSION_SOURCES.has(row.source) && Number(row.revenue_cents) > 0;
 }
 
+function paidCommissionIdentity(row) {
+  return String(row.payload_json?.commission_duplicate_key || row.dedupe_key || '').trim();
+}
+
+function paidCommissionQuality(row) {
+  return (
+    (String(row.dedupe_key || '').startsWith('enrollment_payment:') ? 100 : 0) +
+    (row.fact_type === 'enrollment_payment' ? 25 : 0) +
+    Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
+  );
+}
+
+function paidCommissionRows(rows) {
+  const byIdentity = new Map();
+  rows.filter(isPaidClosedWon).forEach((row) => {
+    const identity = paidCommissionIdentity(row);
+    const previous = byIdentity.get(identity);
+    if (!previous || paidCommissionQuality(row) > paidCommissionQuality(previous)) {
+      byIdentity.set(identity, row);
+    }
+  });
+  return Array.from(byIdentity.values());
+}
+
 function isDashboardVisibleEvent(row) {
   if (row.tracker_outcome === 'closed_won') return true;
   return row.tracker_outcome !== 'meeting_set' || countsAsMeetingSet(row);
@@ -621,9 +645,7 @@ function commissionCentsForRow(row) {
 }
 
 function allTimeCommissionCents() {
-  return state.rows
-    .filter(isPaidClosedWon)
-    .reduce((total, row) => total + commissionCentsForRow(row), 0);
+  return paidCommissionRows(state.rows).reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
 function commissionPeriodLabel(start, end) {
@@ -645,8 +667,8 @@ function rowBelongsToCommissionPeriod(row, start, end) {
 
 function paycheckCommissionCents(payDate) {
   const commissionPeriod = commissionPeriodForPayDate(payDate);
-  return state.rows
-    .filter((row) => isPaidClosedWon(row) && rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
+  return paidCommissionRows(state.rows)
+    .filter((row) => rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 

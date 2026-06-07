@@ -5,9 +5,11 @@ import {
 } from './appointment-truth';
 import {
   buildCallLogFactFromCallActivityFact,
+  buildEnrollmentPaymentFact,
   buildCallLogFactFromMeetingOutcomeFact,
   buildCallLogFactFromMeetingSetFact,
   type CallActivityFactRow,
+  type EnrollmentPaymentFactInput,
   type MeetingOutcomeFactRow,
   type MeetingSetFactRow,
 } from './call-tracker-facts';
@@ -226,6 +228,11 @@ export function upsertCallActivityEvents(config: SupabasePersistenceConfig, rows
 
 export function upsertPostMeetingOutcomeFacts(config: SupabasePersistenceConfig, rows: unknown[]) {
   const callLogRows = (rows as MeetingOutcomeFactRow[]).map(buildCallLogFactFromMeetingOutcomeFact);
+  return writeRows(config, 'call_log', callLogRows, 'dedupe_key');
+}
+
+export function upsertEnrollmentPaymentFacts(config: SupabasePersistenceConfig, rows: unknown[]) {
+  const callLogRows = (rows as EnrollmentPaymentFactInput[]).map(buildEnrollmentPaymentFact);
   return writeRows(config, 'call_log', callLogRows, 'dedupe_key');
 }
 

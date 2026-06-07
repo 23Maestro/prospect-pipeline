@@ -6,15 +6,12 @@ const source = readFileSync(new URL('./sync-commissions-to-supabase.mjs', import
 
 test('commission sync uses FastAPI commission source and writes post-meeting outcomes', () => {
   assert.match(source, /\/commissions\/stripe/);
-  assert.match(source, /buildMeetingOutcomeFact/);
-  assert.match(source, /upsertPostMeetingOutcomeFacts/);
-  assert.match(source, /supabase-lifecycle-translator/);
-  assert.match(source, /crmStageForOutcome/);
-  assert.match(source, /taskStatusForTitleOrStage/);
-  assert.match(source, /postMeetingResultForTitleOrStage/);
+  assert.match(source, /upsertEnrollmentPaymentFacts/);
+  assert.doesNotMatch(source, /buildMeetingOutcomeFact/);
+  assert.doesNotMatch(source, /upsertPostMeetingOutcomeFacts/);
+  assert.doesNotMatch(source, /supabase-lifecycle-translator/);
   assert.doesNotMatch(source, /appointmentStatusForTitleOrStage/);
-  assert.match(source, /rawEventType: 'post_meeting_outcome'/);
-  assert.match(source, /rawCrmStage: closeWonCrmStage/);
+  assert.match(source, /paymentDedupeKey/);
 });
 
 test('commission sync only materializes paid/payroll commission rows and carries duplicate evidence', () => {
@@ -33,9 +30,10 @@ test('commission sync watches the current and previous commission periods by def
   assert.match(source, /process\.env\.COMMISSION_PERIOD/);
 });
 
-test('commission sync enriches the same close-won outcome fact instead of creating account-specific wins', () => {
-  assert.match(source, /dedupeOutcome: closeWonOutcome/);
-  assert.doesNotMatch(source, /dedupeOutcome: `closed_won:\$\{entry\.account_id/);
+test('commission sync writes payment-level facts instead of collapsing recurring payments into one outcome', () => {
+  assert.match(source, /paymentDedupeKey = String\(entry\.duplicate_key \|\| entry\.row_key \|\| entry\.account_id/);
+  assert.match(source, /enrollmentPaymentFacts/);
+  assert.doesNotMatch(source, /dedupeOutcome: closeWonOutcome/);
   assert.match(source, /Stripe commission rows are paid close-won evidence, not call activity/);
 });
 

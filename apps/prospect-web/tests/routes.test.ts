@@ -1079,7 +1079,8 @@ test('/api/call-tracker-data pays June 14 commission from the May 16-31 earning 
       ]);
     }
     if (requestUrl.includes('/call_log?')) {
-      const row = (name: string, occurredAt: string, revenueCents: number) => ({
+      const row = (name: string, occurredAt: string, revenueCents: number, dedupeKey?: string, factType = 'enrollment_payment') => ({
+        fact_type: factType,
         athlete_name: name,
         occurred_at: occurredAt,
         event_at: occurredAt,
@@ -1092,7 +1093,10 @@ test('/api/call-tracker-data pays June 14 commission from the May 16-31 earning 
         live_event_id: name,
         booked_event_title: `(ENR) ${name}`,
         revenue_cents: revenueCents,
-        dedupe_key: `post_meeting_outcome:${name}:closed_won`,
+        dedupe_key: dedupeKey || `enrollment_payment:${name}`,
+        payload_json: {
+          commission_duplicate_key: name,
+        },
         active_operator_name: 'Jerami Singleton',
         task_assigned_owner: 'Jerami Singleton',
         counts_as_dial: false,
@@ -1109,6 +1113,7 @@ test('/api/call-tracker-data pays June 14 commission from the May 16-31 earning 
       return Response.json([
         row('before-period', '2026-05-15T16:00:00.000Z', 10000),
         row('in-period-one', '2026-05-16T16:00:00.000Z', 10000),
+        row('in-period-one', '2026-05-16T16:00:00.000Z', 10000, 'post_meeting_outcome:in-period-one:closed_won', 'enrollment_payment'),
         row('in-period-two', '2026-05-31T16:00:00.000Z', 9000),
         row('after-period', '2026-06-01T16:00:00.000Z', 10000),
       ]);

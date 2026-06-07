@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   buildCallActivityFact,
   buildCallLogFactFromMeetingSetFact,
+  buildEnrollmentPaymentFact,
   buildCallLogFactFromMeetingOutcomeFact,
   buildMeetingOutcomeFact,
   buildMeetingSetFact,
@@ -399,6 +400,59 @@ test('post-meeting outcomes dedupe across stage title and commission evidence fo
 
   assert.equal(stageFact.dedupe_key, commissionFact.dedupe_key);
   assert.equal(stageFact.dedupe_key, 'post_meeting_outcome:1489625:951462:613323:closed_won');
+});
+
+test('enrollment payment facts use payment-level dedupe without counting as another meeting outcome', () => {
+  const ownerContext = resolveOwnerContext({
+    purpose: 'meeting_outcome',
+    athleteId: '1490299',
+    athleteMainId: '952128',
+    tasks: [
+      {
+        task_id: '626669',
+        title: 'Confirmation Call',
+        assigned_owner: 'Jerami Singleton',
+      },
+    ],
+    currentTaskId: '626669',
+    bookedMeeting: {
+      event_id: '587226',
+      assigned_owner: 'Ryan Lietz',
+      athlete_id: '1490299',
+      athlete_main_id: '952128',
+    },
+  });
+
+  const row = buildEnrollmentPaymentFact({
+    athleteId: '1490299',
+    athleteMainId: '952128',
+    athleteName: 'Dre’kel Clayton',
+    occurredAt: '2026-06-06T12:27:00.000Z',
+    appointmentId: '587226',
+    liveEventId: '587226',
+    bookedEventTitle: "(ENR $99) Dre’kel Clayton Men's Basketball 2027 ON",
+    revenueCents: 9900,
+    paymentDedupeKey: '1490299|legend id|12 payments|9900|06 06 2026',
+    ownerInput: { purpose: 'meeting_outcome', athleteId: '1490299', athleteMainId: '952128' },
+    ownerContext,
+    payload: {
+      commission_account_id: '42036',
+      commission_paid_at: '06/06/2026 08:27 AM',
+      commission_amount_cents: 9900,
+    },
+  });
+
+  assert.equal(row.fact_type, 'enrollment_payment');
+  assert.equal(row.tracker_outcome, 'closed_won');
+  assert.equal(row.raw_event_type, 'enrollment_payment');
+  assert.equal(row.counts_as_enrollment, true);
+  assert.equal(row.counts_as_post_meeting_outcome, false);
+  assert.equal(row.revenue_cents, 9900);
+  assert.equal(row.payment_confirmed_at, '2026-06-06T12:27:00.000Z');
+  assert.equal(
+    row.dedupe_key,
+    'enrollment_payment:1490299:952128:1490299|legend id|12 payments|9900|06 06 2026',
+  );
 });
 
 test('meeting set facts are keyed by the canonical booked meeting event id', () => {

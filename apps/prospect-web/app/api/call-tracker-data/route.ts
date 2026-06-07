@@ -23,6 +23,7 @@ const meetingOutcomes = new Set([
 ]);
 
 const eventFields = [
+  'fact_type',
   'athlete_name',
   'occurred_at',
   'event_at',
@@ -56,6 +57,7 @@ const internalEventFields = ['athlete_key', 'athlete_id', 'athlete_main_id', ...
 const internalIdentityFields = new Set(['athlete_key', 'athlete_id', 'athlete_main_id']);
 const callLogFields = [
   'id',
+  'fact_type',
   'athlete_key',
   'athlete_id',
   'athlete_main_id',
@@ -296,6 +298,31 @@ function isDashboardVisibleEvent(row: Record<string, any>) {
 
 function isPaidClosedWon(row: Record<string, any>) {
   return row.tracker_outcome === 'closed_won' && paidCommissionSources.has(row.source) && Number(row.revenue_cents) > 0;
+}
+
+function paidCommissionIdentity(row: Record<string, any>) {
+  const body = payload(row);
+  return String(body.commission_duplicate_key || row.dedupe_key || '').trim();
+}
+
+function paidCommissionQuality(row: Record<string, any>) {
+  return (
+    (String(row.dedupe_key || '').startsWith('enrollment_payment:') ? 100 : 0) +
+    (row.fact_type === 'enrollment_payment' ? 25 : 0) +
+    Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
+  );
+}
+
+function paidCommissionRows(rows: Array<Record<string, any>>) {
+  const byIdentity = new Map<string, Record<string, any>>();
+  rows.filter(isPaidClosedWon).forEach((row) => {
+    const identity = paidCommissionIdentity(row);
+    const previous = byIdentity.get(identity);
+    if (!previous || paidCommissionQuality(row) > paidCommissionQuality(previous)) {
+      byIdentity.set(identity, row);
+    }
+  });
+  return Array.from(byIdentity.values());
 }
 
 function publicRow(row: Record<string, any>) {
@@ -595,9 +622,7 @@ function commissionCentsForRow(row: Record<string, any>) {
 }
 
 function commissionCentsForRows(rows: Array<Record<string, any>>) {
-  return rows
-    .filter(isPaidClosedWon)
-    .reduce((total, row) => total + commissionCentsForRow(row), 0);
+  return paidCommissionRows(rows).reduce((total, row) => total + commissionCentsForRow(row), 0);
 }
 
 function closedWonIdentity(row: Record<string, any>) {
@@ -654,8 +679,8 @@ function paycheck(rows: Array<Record<string, any>>, now: Date) {
   const payDate = nextPayDate(now);
   const commissionPeriod = commissionPeriodForPayDate(payDate);
   const baseCents = basePayForDate(payDate);
-  const commissionCents = rows
-    .filter((row) => isPaidClosedWon(row) && rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
+  const commissionCents = paidCommissionRows(rows)
+    .filter((row) => rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
   return {
     payDate: payDate.toISOString(),

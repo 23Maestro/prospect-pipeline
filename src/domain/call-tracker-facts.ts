@@ -214,6 +214,23 @@ export type CallLogFactRow = {
   updated_at: string;
 };
 
+export type EnrollmentPaymentFactInput = {
+  athleteId: string | number;
+  athleteMainId: string | number;
+  athleteName?: string | null;
+  occurredAt: string;
+  appointmentId?: string | null;
+  liveEventId?: string | null;
+  bookedEventTitle?: string | null;
+  revenueCents: number | null;
+  source?: string | null;
+  sourceRowId?: string | null;
+  paymentDedupeKey: string;
+  ownerInput: OwnerResolutionInput;
+  ownerContext?: OwnerResolutionResult;
+  payload?: Record<string, unknown>;
+};
+
 export function buildAppointmentId(args: {
   athleteId: string | number;
   athleteMainId: string | number;
@@ -848,5 +865,70 @@ export function buildCallLogFactFromMeetingOutcomeFact(row: MeetingOutcomeFactRo
     countsAsEnrollment: Boolean(isEnrollment && revenueCents),
     revenueCents,
     dedupeKey: row.dedupe_key,
+  });
+}
+
+export function buildEnrollmentPaymentFact(args: EnrollmentPaymentFactInput): CallLogFactRow {
+  const identity = validateAthleteIdentity(args);
+  const owner = requireResolvedOwner(args.ownerInput, args.ownerContext);
+  const occurredAt = requireFactOccurredAt('enrollment_payment', args.occurredAt);
+  const paymentDedupeKey = normalizeValue(args.paymentDedupeKey);
+  if (!paymentDedupeKey) throw new Error('Enrollment payment facts require a paymentDedupeKey.');
+  const payload = {
+    ...(args.payload || {}),
+    source: normalizeValue(args.source) || 'stripe_commissions',
+    raw_event_type: 'enrollment_payment',
+    tracker_outcome: 'closed_won',
+    occurred_at: occurredAt,
+    appointment_id: normalizeValue(args.appointmentId),
+    live_event_id: normalizeValue(args.liveEventId),
+    booked_event_title: normalizeValue(args.bookedEventTitle),
+    revenue_cents: args.revenueCents ?? null,
+    active_operator_key: owner.activeOperator.operatorKey,
+    active_operator_name: owner.activeOperator.personName,
+    task_assigned_owner: owner.taskAssignedOwner,
+    booked_meeting_assigned_owner: owner.bookedMeetingAssignedOwner,
+    appointment_setter_name: owner.appointmentSetterName,
+    scouting_coordinator: owner.scoutingCoordinator,
+    profile_head_scout: owner.profileHeadScout,
+    resolved_owner_name: owner.resolvedOwnerName,
+    resolved_owner_role: owner.resolvedOwnerRole,
+    resolved_from_field: owner.resolvedFromField,
+    resolved_from_value: owner.resolvedFromValue,
+    materialization_status: owner.materializationStatus,
+    materialization_reason: owner.materializationReason,
+    owner_status: owner.status,
+    tracker_source_owner: owner.resolvedOwnerName,
+    tracker_owner_proof: owner.resolvedFromField,
+    is_tracked_owner: owner.canMaterializeForActiveOperator,
+    can_materialize_for_active_operator: owner.canMaterializeForActiveOperator,
+    occurred_at_source: args.payload?.occurred_at_source || 'input.occurredAt',
+  };
+  return buildCallLogBase({
+    factType: 'enrollment_payment',
+    trackerOutcome: 'closed_won',
+    occurredAt,
+    eventAt: occurredAt,
+    reportingAt: occurredAt,
+    athleteKey: identity.athleteKey,
+    athleteId: identity.athleteId,
+    athleteMainId: identity.athleteMainId,
+    athleteName: args.athleteName,
+    appointmentId: args.appointmentId,
+    liveEventId: args.liveEventId,
+    bookedEventTitle: args.bookedEventTitle,
+    rawCrmStage: 'Actual Meeting - Close Won',
+    rawTaskStatus: 'closed_won',
+    rawEventType: 'enrollment_payment',
+    sourceFamily: 'meeting_events',
+    sourceTable: 'call_log',
+    sourceRowId: args.sourceRowId || paymentDedupeKey,
+    sourceSystem: normalizeValue(args.source) || 'stripe_commissions',
+    sourceOwner: owner.resolvedOwnerName,
+    ownerProof: owner.resolvedFromField,
+    payload,
+    countsAsEnrollment: true,
+    revenueCents: args.revenueCents,
+    dedupeKey: `enrollment_payment:${identity.athleteKey}:${paymentDedupeKey}`,
   });
 }

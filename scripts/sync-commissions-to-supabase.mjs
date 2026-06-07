@@ -1,13 +1,7 @@
 #!/usr/bin/env node
 
 import fetch from 'node-fetch';
-import { buildMeetingOutcomeFact } from '../src/domain/call-tracker-facts.ts';
-import { upsertPostMeetingOutcomeFacts } from '../src/domain/supabase-persistence.ts';
-import {
-  crmStageForOutcome,
-  postMeetingResultForTitleOrStage,
-  taskStatusForTitleOrStage,
-} from '../src/domain/supabase-lifecycle-translator.ts';
+import { upsertEnrollmentPaymentFacts } from '../src/domain/supabase-persistence.ts';
 import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
@@ -155,10 +149,10 @@ const commissionPeriods = commissionPeriodsToSync();
 const commissionPayloads = await Promise.all(
   commissionPeriods.map((commperiod) => postJson('/commissions/stripe', { commperiod })),
 );
-// Stripe commission rows are paid close-won evidence, not call activity. They confirm or enrich
-// the same post_meeting_outcome fact selected by sales stage/event title when the title
-// lacks an ENR dollar prefix. Default sync checks the current and previous half-month period so
-// a newly paid post-meeting result is not missed immediately after a period boundary.
+// Stripe commission rows are paid close-won evidence, not call activity. Each paid row gets
+// payment-level ledger truth so recurring payments compound without inflating enrollment counts.
+// Default sync checks the current and previous half-month period so newly paid rows are not
+// missed immediately after a period boundary.
 const commissionEntries = commissionPayloads.flatMap((payload) =>
   (Array.isArray(payload.entries) ? payload.entries : []).map((entry) => ({
     ...entry,
@@ -203,7 +197,7 @@ function athleteKey(athleteId, athleteMainId) {
   return `${athleteId}:${athleteMainId}`;
 }
 
-const postMeetingOutcomeFacts = [];
+const enrollmentPaymentFacts = [];
 const skipped = [];
 const failures = [];
 const selectedClosedWonByAthlete = new Map();
@@ -272,22 +266,25 @@ for (const entry of paidEntries) {
       continue;
     }
 
-    const closeWonCrmStage = crmStageForOutcome('terminal_enrollment');
-    const closeWonTaskStatus =
-      taskStatusForTitleOrStage('(ENR)', closeWonCrmStage, 'closed_won') || 'closed_won';
-    const closeWonOutcome =
-      postMeetingResultForTitleOrStage(closeWonCrmStage, '(ENR)') || closeWonTaskStatus;
+    const paymentDedupeKey = String(entry.duplicate_key || entry.row_key || entry.account_id || '').trim();
+    if (!paymentDedupeKey) {
+      skipped.push({
+        athlete_id: athleteId,
+        athlete_main_id: athleteMainId,
+        athlete_name: entry.athlete_name,
+        reason: 'missing_payment_dedupe_key',
+        commission_account_id: entry.account_id,
+        commission_paid_at: entry.paid_at,
+      });
+      continue;
+    }
 
-    const postMeetingOutcomeFact = buildMeetingOutcomeFact({
+    enrollmentPaymentFacts.push({
       athleteId,
       athleteMainId,
       athleteName: entry.athlete_name,
       occurredAt: paidAt,
       source: 'stripe_commissions',
-      rawCrmStage: closeWonCrmStage,
-      rawTaskStatus: closeWonTaskStatus,
-      rawEventType: 'post_meeting_outcome',
-      dedupeOutcome: closeWonOutcome,
       appointmentId,
       liveEventId: String(bookedMeeting?.event_id || '').trim() || null,
       bookedEventTitle:
@@ -295,6 +292,8 @@ for (const entry of paidEntries) {
         [entry.product, entry.subscription_name].filter(Boolean).join(' - ') ||
         null,
       revenueCents: entry.amount_cents,
+      sourceRowId: String(entry.account_id || '').trim() || paymentDedupeKey,
+      paymentDedupeKey,
       ownerInput: {
         purpose: 'meeting_outcome',
         athleteId,
@@ -326,11 +325,10 @@ for (const entry of paidEntries) {
         commission_possible_duplicate: entry.possible_duplicate,
       },
     });
-    postMeetingOutcomeFacts.push(postMeetingOutcomeFact);
     selectedClosedWonByAthlete.set(athleteKey(athleteId, athleteMainId), {
       appointment_id: appointmentId,
-      dedupe_key: postMeetingOutcomeFact.dedupe_key,
-      reporting_at: postMeetingOutcomeFact.occurred_at,
+      dedupe_key: `enrollment_payment:${athleteKey(athleteId, athleteMainId)}:${paymentDedupeKey}`,
+      reporting_at: paidAt,
       source_system: 'stripe_commissions',
     });
   } catch (error) {
@@ -348,13 +346,13 @@ if (failures.length) {
   throw new Error(`Commission sync failed before writes: ${failures.length} unresolved row(s)`);
 }
 
-await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, postMeetingOutcomeFacts);
+await upsertEnrollmentPaymentFacts(SUPABASE_CONFIG, enrollmentPaymentFacts);
 
 console.log(JSON.stringify({
   commissionPeriods,
   sourceRows: commissionEntries.length,
   paidRows: paidEntries.length,
-  postMeetingOutcomeFactsUpserted: postMeetingOutcomeFacts.length,
+  enrollmentPaymentFactsUpserted: enrollmentPaymentFacts.length,
   duplicateEvidenceRows: commissionEntries.filter((entry) => entry.possible_duplicate).length,
   skipped,
 }, null, 2));

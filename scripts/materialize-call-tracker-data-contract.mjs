@@ -55,6 +55,7 @@ async function supabaseGet(path) {
 function eventSelect() {
   return [
     'id',
+    'fact_type',
     'athlete_key',
     'athlete_id',
     'athlete_main_id',
@@ -376,6 +377,68 @@ function isPaidClosedWon(row) {
   return row.tracker_outcome === 'closed_won' && paidCommissionSources.has(row.source) && Number(row.revenue_cents) > 0;
 }
 
+function paidCommissionIdentity(row) {
+  return String(row.payload_json?.commission_duplicate_key || row.dedupe_key || '').trim();
+}
+
+function paidCommissionQuality(row) {
+  return (
+    (String(row.dedupe_key || '').startsWith('enrollment_payment:') ? 100 : 0) +
+    (row.fact_type === 'enrollment_payment' ? 25 : 0) +
+    Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
+  );
+}
+
+function paidCommissionRows(rows) {
+  const byIdentity = new Map();
+  rows.filter(isPaidClosedWon).forEach((row) => {
+    const identity = paidCommissionIdentity(row);
+    const previous = byIdentity.get(identity);
+    if (!previous || paidCommissionQuality(row) > paidCommissionQuality(previous)) {
+      byIdentity.set(identity, row);
+    }
+  });
+  return Array.from(byIdentity.values());
+}
+
+function commissionCentsForRows(rows) {
+  return paidCommissionRows(rows).reduce((total, row) => total + commissionCentsForRow(row), 0);
+}
+
+function closedWonIdentity(row) {
+  return [
+    row.athlete_key,
+    row.athlete_main_id,
+    row.athlete_id,
+    normalizeKey(row.athlete_name),
+  ].find((value) => String(value || '').trim()) || normalizeKey(row.booked_event_title);
+}
+
+function closedWonQuality(row) {
+  return (
+    (isPaidClosedWon(row) ? 100 : 0) +
+    (Number(row.revenue_cents) > 0 ? 25 : 0) +
+    (row.source === 'stripe_commissions' ? 10 : 0) +
+    (String(row.dedupe_key || '').startsWith('enrollment_payment:') ? 4 : 0) +
+    (row.appointment_id ? 2 : 0) +
+    Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
+  );
+}
+
+function definitiveClosedWonRows(rows) {
+  const byIdentity = new Map();
+  rows
+    .filter((row) => row.tracker_outcome === 'closed_won')
+    .forEach((row) => {
+      const identity = closedWonIdentity(row);
+      const previous = byIdentity.get(identity);
+      if (!previous || closedWonQuality(row) > closedWonQuality(previous)) {
+        byIdentity.set(identity, row);
+      }
+    });
+  return Array.from(byIdentity.values());
+}
+
 function commissionPeriodLabel(start, end) {
   const startParts = localParts(start);
   const endParts = localParts(end);
@@ -397,8 +460,8 @@ function paycheck(rows, now) {
   const payDate = nextPayDate(now);
   const commissionPeriod = commissionPeriodForPayDate(payDate);
   const baseCents = basePayForDate(payDate);
-  const commissionCents = rows
-    .filter((row) => isPaidClosedWon(row) && rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
+  const commissionCents = paidCommissionRows(rows)
+    .filter((row) => rowBelongsToCommissionPeriod(row, commissionPeriod.start, commissionPeriod.end))
     .reduce((total, row) => total + commissionCentsForRow(row), 0);
   return {
     payDate: payDate.toISOString(),
@@ -436,13 +499,14 @@ function buildUiData(summary, events, generatedAt) {
     };
   }
   const meetingOutcomesTotal = Number(summary.meeting_outcomes_total) || 0;
-  const closeRate = meetingOutcomesTotal ? Math.round((Number(summary.closed_won || 0) / meetingOutcomesTotal) * 100) : 0;
+  const closedWonRows = definitiveClosedWonRows(rows);
+  const closeRate = meetingOutcomesTotal ? Math.round((closedWonRows.length / meetingOutcomesTotal) * 100) : 0;
   return {
     activePeriod: currentWeekPeriod(now),
     rangeLabel: currentWeekRangeLabel(now),
     summaryCards: {
-      moneyEarnedCents: Number(summary.money_earned_cents) || 0,
-      closedWon: Number(summary.closed_won) || 0,
+      moneyEarnedCents: commissionCentsForRows(rows),
+      closedWon: closedWonRows.length,
       contacts: correctedAllTimeContacts,
       rawContacts: rawAllTimeContacts,
       historicalContactsAdjustment: HISTORICAL_ALL_TIME_CONTACTS_ADJUSTMENT,
@@ -460,9 +524,7 @@ function buildUiData(summary, events, generatedAt) {
     },
     paycheck: paycheck(rows, now),
     periods,
-    closedWonRows: rows
-      .filter((row) => row.tracker_outcome === 'closed_won')
-      .sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0)),
+    closedWonRows: closedWonRows.sort((left, right) => Number(right.revenue_cents || 0) - Number(left.revenue_cents || 0)),
   };
 }
 
