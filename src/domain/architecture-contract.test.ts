@@ -233,18 +233,19 @@ test('Client Outreach proposed times uses slot picker without appointment truth'
   );
 });
 
-test('Post-call reschedule template hydration reads appointment truth', () => {
+test('Post-call reschedule template hydration reads the exact admin Events row', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
   const loadTemplateStart = scoutPrep.indexOf('const loadTemplate = async () => {');
   const loadTemplateEnd = scoutPrep.indexOf('const meetingTemplateKey =', loadTemplateStart);
   const loadTemplate = scoutPrep.slice(loadTemplateStart, loadTemplateEnd);
 
+  assert.match(loadTemplate, /fetchExactAdminEventsTabMeeting\(/);
+  assert.match(loadTemplate, /eventId:\s*initialBookedMeeting\?\.event_id \|\| currentBookedMeeting\?\.event_id/);
   assert.match(loadTemplate, /resolveBookedMeetingDetailsForForm\(/);
-  assert.match(
-    loadTemplate,
-    /isConfirmedRescheduleMeetingStage\(selectedStageLabel\)\s*\?\s*'appointment_truth'\s*:\s*'booked_meetings'/,
-  );
-  assert.match(loadTemplate, /source:\s*meetingDetailsSource/);
+  assert.match(loadTemplate, /initialBookedMeeting:\s*adminEventsTabMeeting \|\| initialBookedMeeting/);
+  assert.match(loadTemplate, /meeting_name:\s*adminEventsTabMeeting\.title/);
+  assert.match(loadTemplate, /details_template:\s*adminEventsTabMeeting\.description \|\| ''/);
+  assert.doesNotMatch(loadTemplate, /'appointment_truth'/);
 });
 
 test('Post-call reschedule full-title writes emit title audit logs', () => {

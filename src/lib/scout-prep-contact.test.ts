@@ -1021,8 +1021,8 @@ test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and a
     sport: 'Football',
   });
 
-  assert.match(body, /^Hi Jamie, this is Jerami Singleton/);
-  assert.match(body, /I’m following up on Bryson’s college football profile\./);
+  assert.match(body, /^Hi Jamie, this is Coach Singleton Football Scouting Coordinator with Prospect ID\./);
+  assert.match(body, /I’m reaching out on Bryson’s college football profile\./);
   assert.doesNotMatch(body, /I called about/);
   assert.match(
     body,
@@ -1039,6 +1039,7 @@ test('buildScoutPrepLeavingVoicemailBody: uses the provided sport for non-footba
     sport: "Men's Basketball",
   });
 
+  assert.match(body, /^Hi Amy, this is Coach Singleton Basketball Scouting Coordinator with Prospect ID\./);
   assert.match(body, /college basketball profile/);
   assert.doesNotMatch(body, /football/);
 });

@@ -404,7 +404,7 @@ function readEnvFile(filePath: string): Record<string, string> {
 }
 
 function findProjectRoot(): string {
-  const starts = [process.cwd(), path.resolve(__dirname, '..', '..'), __dirname];
+  const starts = [process.cwd(), REPO_ROOT_FALLBACK];
   const seen = new Set<string>();
   for (const start of starts) {
     let current = path.resolve(start);

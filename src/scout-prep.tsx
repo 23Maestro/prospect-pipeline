@@ -348,6 +348,29 @@ function findExactHeadScoutName(value?: string | null): string | null {
   );
 }
 
+async function fetchExactAdminEventsTabMeeting(args: {
+  athleteId: string;
+  athleteMainId: string;
+  eventId?: string | null;
+}): Promise<BookedMeetingEvent> {
+  const eventId = normalizeLogText(args.eventId);
+  if (!eventId) {
+    throw new Error('Missing previous Events tab event id.');
+  }
+
+  const response = await fetchAthleteBookedMeetings({
+    athleteId: args.athleteId,
+    athleteMainId: args.athleteMainId,
+  });
+  const event = (response.events || []).find(
+    (candidate) => normalizeLogText(candidate.event_id) === eventId,
+  );
+  if (!event?.title) {
+    throw new Error('Previous meeting title not found on athlete Events tab.');
+  }
+  return event;
+}
+
 async function showLoadingToast(title: string, message?: string) {
   const compactTitle = String(title || '')
     .trim()
@@ -821,6 +844,19 @@ function getTaskDisplayTitle(
     String(task?.description || '').trim() ||
     'Untitled Task'
   );
+}
+
+function buildScoutIdCallPrepDeepLink(task: ScoutPortalTask, context?: ScoutPrepContext | null): string {
+  const params = new URLSearchParams();
+  const athleteName = context?.contactInfo.studentAthlete.name || task.athlete_name;
+  if (task.task_id) params.set('taskId', task.task_id);
+  if (task.athlete_main_id || context?.resolved.athlete_main_id) {
+    params.set('athleteMainId', task.athlete_main_id || context?.resolved.athlete_main_id || '');
+  }
+  if (task.contact_id) params.set('contactId', task.contact_id);
+  if (athleteName) params.set('athleteName', athleteName);
+  params.set('focus', 'script');
+  return `scoutid://scout-prep/open?${params.toString()}`;
 }
 
 function isReschedulePendingTask(
@@ -1907,8 +1943,9 @@ function ReminderRecipientForm({
   defaultRecipientId?: string;
   actionTitle: string;
   mode: ReminderMode;
-  onSubmit: (values: ReminderRecipientFormValues & { remindAt?: Date }) => Promise<void>;
+  onSubmit: (values: ReminderRecipientFormValues & { remindAt?: Date }) => Promise<boolean>;
 }) {
+  const { pop } = useNavigation();
   const [recipientId, setRecipientId] = useState(defaultRecipientId || options[0]?.id);
   const [remindAt, setRemindAt] = useState<Date | null>(buildDefaultReminderDate());
 
@@ -1920,7 +1957,12 @@ function ReminderRecipientForm({
           <Action.SubmitForm
             title={actionTitle}
             icon="🔔"
-            onSubmit={() => onSubmit({ recipientId, remindAt: remindAt ?? undefined })}
+            onSubmit={async () => {
+              const didCreate = await onSubmit({ recipientId, remindAt: remindAt ?? undefined });
+              if (didCreate) {
+                pop();
+              }
+            }}
           />
         </ActionPanel>
       }
@@ -2765,6 +2807,7 @@ function UpdateAthleteTaskForm({
   athleteMainId,
   contactTask,
   initialTaskTitle,
+  initialDescription,
   onUpdated,
 }: {
   task: ScoutPortalTask;
@@ -2772,12 +2815,15 @@ function UpdateAthleteTaskForm({
   athleteMainId: string;
   contactTask: string;
   initialTaskTitle?: string | null;
+  initialDescription?: string | null;
   onUpdated?: () => void | Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
   const [isCompleting, setIsCompleting] = useState(false);
   const currentTaskTitle = String(initialTaskTitle || getTaskDisplayTitle(selectedTask)).trim();
-  const defaultTaskDescription = String(selectedTask.description || '').trim();
+  const defaultTaskDescription = String(
+    initialDescription ?? selectedTask.description ?? '',
+  ).trim();
   const taskUpdateVariant = getTaskSpecificUpdateVariant(selectedTask);
   const taskTitleInputPlaceholder =
     taskUpdateVariant === 'scheduled_follow_up'
@@ -3007,16 +3053,19 @@ function UpdateAthleteTaskPicker({
   initialContext = null,
   onTaskMutationComplete,
   closeAfterMutationViews = 1,
+  autoOpenScheduledFollowUp = false,
 }: {
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
   onTaskMutationComplete?: () => void | Promise<void>;
   closeAfterMutationViews?: number;
+  autoOpenScheduledFollowUp?: boolean;
 }) {
   const { push, pop } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext);
   const [isLoading, setIsLoading] = useState(!initialContext);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const didAutoOpenScheduledFollowUp = useRef(false);
 
   useEffect(() => {
     if (initialContext) {
@@ -3059,7 +3108,7 @@ function UpdateAthleteTaskPicker({
 
   async function handleOpenTaskUpdate(
     selectedTask: ScoutAthleteTask,
-    options: { initialTaskTitle?: string | null } = {},
+    options: { initialTaskTitle?: string | null; initialDescription?: string | null } = {},
   ) {
     const athleteMainId = String(
       context?.resolved.athlete_main_id || task.athlete_main_id || '',
@@ -3079,6 +3128,7 @@ function UpdateAthleteTaskPicker({
         athleteMainId={athleteMainId}
         contactTask={contactTask}
         initialTaskTitle={options.initialTaskTitle}
+        initialDescription={options.initialDescription}
         onUpdated={async () => {
           await popViewsThenRefreshRoot(
             pop,
@@ -3089,6 +3139,36 @@ function UpdateAthleteTaskPicker({
       />,
     );
   }
+
+  useEffect(() => {
+    if (
+      !autoOpenScheduledFollowUp ||
+      didAutoOpenScheduledFollowUp.current ||
+      isLoading ||
+      !context
+    ) {
+      return;
+    }
+
+    didAutoOpenScheduledFollowUp.current = true;
+    const commandContext = buildScoutPrepCommandContext({ context });
+    const selectedTask =
+      commandContext.tasks.find((candidate) => candidate.task_id === task.task_id) ||
+      commandContext.tasks[0];
+
+    if (!selectedTask) {
+      void showToast({
+        style: Toast.Style.Failure,
+        title: 'No incomplete task',
+      });
+      return;
+    }
+
+    void handleOpenTaskUpdate(selectedTask, {
+      initialTaskTitle: SCHEDULED_FOLLOW_UP_TASK_TITLE,
+      initialDescription: '',
+    });
+  }, [autoOpenScheduledFollowUp, context, isLoading, task.task_id]);
 
   async function handleCompleteTaskFromList(selectedTask: ScoutAthleteTask) {
     if (completingTaskId) return;
@@ -3173,19 +3253,20 @@ function UpdateAthleteTaskPicker({
                     onAction={() => void handleOpenTaskUpdate(candidate)}
                   />
                   <Action
+                    title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
+                    icon={Icon.CheckCircle}
+                    onAction={() => void handleCompleteTaskFromList(candidate)}
+                  />
+                  <Action
                     title="Set Scheduled Follow-Up"
                     icon={Icon.Calendar}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'f' }}
                     onAction={() =>
                       void handleOpenTaskUpdate(candidate, {
                         initialTaskTitle: SCHEDULED_FOLLOW_UP_TASK_TITLE,
+                        initialDescription: '',
                       })
                     }
-                  />
-                  <Action
-                    title={completingTaskId === candidate.task_id ? 'Completing…' : 'Complete Task'}
-                    icon={Icon.CheckCircle}
-                    onAction={() => void handleCompleteTaskFromList(candidate)}
                   />
                   {candidate.description ? (
                     <Action.CopyToClipboard
@@ -3358,21 +3439,27 @@ export function PostCallUpdateForm({
         const athleteMainId = String(
           task.athlete_main_id || context.resolved.athlete_main_id || '',
         ).trim();
-        const meetingDetailsSource = isConfirmedRescheduleMeetingStage(selectedStageLabel)
-          ? 'appointment_truth'
-          : 'booked_meetings';
+        const isConfirmedReschedule = isConfirmedRescheduleMeetingStage(selectedStageLabel);
+        const adminEventsTabMeeting = isConfirmedReschedule
+          ? await fetchExactAdminEventsTabMeeting({
+              athleteId,
+              athleteMainId,
+              eventId: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || null,
+            })
+          : null;
+        const meetingDetailsSource = 'booked_meetings';
         const resolvedBookedMeeting = await resolveBookedMeetingDetailsForForm(
           {
             athleteId,
             athleteMainId,
-            initialBookedMeeting,
+            initialBookedMeeting: adminEventsTabMeeting || initialBookedMeeting,
             source: meetingDetailsSource,
           },
           {
             getCachedMeetingDescription: getCachedBookedMeetingDescription,
           },
         );
-        const bookedMeeting = resolvedBookedMeeting?.bookedMeeting || null;
+        const bookedMeeting = adminEventsTabMeeting || resolvedBookedMeeting?.bookedMeeting || null;
         if (!active) {
           return;
         }
@@ -3380,8 +3467,18 @@ export function PostCallUpdateForm({
           athleteName: task.athlete_name,
           gradYear: task.grad_year,
         });
+        const resolvedTemplate = applyResolvedBookedMeetingPayloadToTemplate(
+          hydratedTemplate,
+          resolvedBookedMeeting,
+        );
         setMeetingTemplate(
-          applyResolvedBookedMeetingPayloadToTemplate(hydratedTemplate, resolvedBookedMeeting),
+          adminEventsTabMeeting
+            ? {
+                ...resolvedTemplate,
+                meeting_name: adminEventsTabMeeting.title,
+                details_template: adminEventsTabMeeting.description || '',
+              }
+            : resolvedTemplate,
         );
         setCurrentBookedMeeting(bookedMeeting);
         setCurrentBookedMeetingStartTime(resolvedBookedMeeting?.startTime || '');
@@ -3416,6 +3513,22 @@ export function PostCallUpdateForm({
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (!active) {
+          return;
+        }
+        if (isConfirmedRescheduleMeetingStage(selectedStageLabel)) {
+          setMeetingTemplate(null);
+          setCurrentBookedMeeting(null);
+          setCurrentBookedMeetingStartTime('');
+          setCurrentBookedMeetingFor('');
+          await showToast({
+            style: Toast.Style.Failure,
+            title: 'Events tab meeting required',
+            message,
+          });
+          logFailure('SCOUT_PREP_SALES_STAGE', 'load-meeting-template', message, {
+            contactId: task.contact_id,
+            athleteMainId: task.athlete_main_id || null,
+          });
           return;
         }
         try {
@@ -3786,6 +3899,7 @@ export function PostCallUpdateForm({
             openmeetings_list_length: '-1',
             template_id: '210',
             keep_as_open_slot: 'yes',
+            previous_event_id: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || '',
           };
           rescheduleMeetingResult = await submitRescheduleMeeting(rescheduleMeetingPayload);
           logTitleAudit('SCOUT_PREP_RESCHEDULE_TITLE_WRITE', 'submit', 'success', {
@@ -4310,7 +4424,10 @@ function ScoutPrepDetail({
       return;
     }
 
-    const createForOption = async (option: ReminderContactOption, remindAt?: Date) => {
+    const createForOption = async (
+      option: ReminderContactOption,
+      remindAt?: Date,
+    ): Promise<boolean> => {
       const toast = await showLoadingToast(
         mode === 'call' ? 'Call reminder' : 'Text reminder',
         option.name,
@@ -4335,10 +4452,12 @@ function ScoutPrepDetail({
           title: mode === 'call' ? 'Call reminder set' : 'Text reminder set',
           message: option.name,
         });
+        return true;
       } catch (error) {
         toast.style = Toast.Style.Failure;
         toast.title = 'Reminder failed';
         toast.message = error instanceof Error ? error.message : String(error);
+        return false;
       }
     };
 
@@ -4355,7 +4474,7 @@ function ScoutPrepDetail({
           if (!selected) {
             throw new Error('No reminder contact selected');
           }
-          await createForOption(selected, values.remindAt);
+          return createForOption(selected, values.remindAt);
         }}
       />,
     );
@@ -4600,6 +4719,23 @@ function ScoutPrepDetail({
     }
   }
 
+  async function handleOpenScoutIdCallPrep() {
+    try {
+      await open(buildScoutIdCallPrepDeepLink(task, context));
+      await showToast({
+        style: Toast.Style.Success,
+        title: 'ScoutID opened',
+        message: context?.contactInfo.studentAthlete.name || task.athlete_name,
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'ScoutID open failed',
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   async function handleResolveMaxPrepsContext() {
     const activeContext =
       context || (await ensureContext('MaxPreps', task.athlete_name, 'Missing Scout Prep context'));
@@ -4779,6 +4915,11 @@ function ScoutPrepDetail({
               icon="⬆️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
               onAction={() => void handleSyncCallPrepToNotion()}
+            />
+            <Action
+              title="ScoutID Call Prep"
+              icon={Icon.Window}
+              onAction={() => void handleOpenScoutIdCallPrep()}
             />
             <Action
               title="Refresh Scout Prep"
@@ -5214,22 +5355,26 @@ function ScoutPrepTaskItem({
             icon="❇️"
             target={<ScoutPrepDetail task={task} onReturnToRootList={onReturnToRootList} />}
           />
-          <Action title="Client Outreach" icon="💬" onAction={() => void handleClientOutreach()} />
+          <Action
+            title="Post-Call Update"
+            icon="🚀"
+            onAction={() =>
+              push(
+                <PostCallUpdateForm
+                  task={task}
+                  onSaved={returnToRootListAndCloseCurrentView}
+                  closeAfterSaveViews={0}
+                />,
+              )
+            }
+          />
+          <Action
+            title="Client Outreach"
+            icon="💬"
+            shortcut={{ modifiers: ['cmd', 'shift'], key: 'enter' }}
+            onAction={() => void handleClientOutreach()}
+          />
           <ActionPanel.Section title="Workflow">
-            <Action
-              title="Post-Call Update"
-              icon="🚀"
-              shortcut={{ modifiers: ['cmd'], key: 'u' }}
-              onAction={() =>
-                push(
-                  <PostCallUpdateForm
-                    task={task}
-                    onSaved={returnToRootListAndCloseCurrentView}
-                    closeAfterSaveViews={0}
-                  />,
-                )
-              }
-            />
             <Action
               title={dailyCallBlocksActionTitle}
               icon="📅"
@@ -5262,6 +5407,17 @@ function ScoutPrepTaskItem({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
               target={
                 <UpdateAthleteTaskPicker task={task} onTaskMutationComplete={onReturnToRootList} />
+              }
+            />
+            <Action.Push
+              title="Schedule Follow-Up"
+              icon="🗓️"
+              target={
+                <UpdateAthleteTaskPicker
+                  task={task}
+                  onTaskMutationComplete={onReturnToRootList}
+                  autoOpenScheduledFollowUp
+                />
               }
             />
             <Action
@@ -5630,10 +5786,12 @@ function PersonalFollowUpListItem({
                 title: 'Call reminder set',
                 message: selected.name,
               });
+              return true;
             } catch (error) {
               reminderToast.style = Toast.Style.Failure;
               reminderToast.title = 'Reminder failed';
               reminderToast.message = error instanceof Error ? error.message : String(error);
+              return false;
             }
           }}
         />,

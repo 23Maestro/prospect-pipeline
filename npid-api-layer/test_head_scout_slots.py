@@ -387,6 +387,48 @@ def test_parse_head_scout_booked_meetings_response_keeps_real_meetings_in_week()
     ]
 
 
+def test_parse_athlete_events_response_reads_admin_events_title_and_description():
+    payload = """
+    <table>
+      <thead>
+        <tr>
+          <th>Start Date / Time</th>
+          <th>End Date / Time</th>
+          <th>Assigned Owner</th>
+          <th>Title</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr class="event586540">
+          <td>Wed 06/10/26 07:00 PM</td>
+          <td>Wed 06/10/26 08:00 PM</td>
+          <td>Nasir Adderley</td>
+          <td>(CF) Michaale Mattison Football 2027 SC</td>
+          <td>
+            Main Number: (864) 376-2827 (Aunt)<br>
+            About The Athlete:<br>
+            V as a FR<br>
+            Deficit:<br>
+            2 offers - Aunt said a school in AL and TN
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    """
+
+    result = LegacyTranslator.parse_athlete_events_response(payload)
+
+    assert result["success"] is True
+    assert result["count"] == 1
+    event = result["events"][0]
+    assert event["event_id"] == "586540"
+    assert event["assigned_owner"] == "Nasir Adderley"
+    assert event["title"] == "(CF) Michaale Mattison Football 2027 SC"
+    assert "Main Number: (864) 376-2827 (Aunt)" in event["description"]
+    assert "2 offers - Aunt said a school in AL and TN" in event["description"]
+
+
 def test_apply_booked_meeting_title_prefix_replaces_known_prefix():
     result = LegacyTranslator.apply_booked_meeting_title_prefix(
         "(RSP) Victor Williams Football 2027 FL",
@@ -456,6 +498,7 @@ if __name__ == "__main__":
     test_parse_open_meetings_response_extracts_openeventid_and_start_time()
     test_parse_booked_meeting_response_returns_newest_match()
     test_parse_head_scout_booked_meetings_response_keeps_real_meetings_in_week()
+    test_parse_athlete_events_response_reads_admin_events_title_and_description()
     test_apply_booked_meeting_title_prefix_replaces_known_prefix()
     test_apply_booked_meeting_title_prefix_preserves_unknown_prefix()
     test_parse_booked_meeting_popup_response_extracts_title_and_existingtask()

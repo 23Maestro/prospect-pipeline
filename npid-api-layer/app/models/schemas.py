@@ -752,6 +752,7 @@ class RescheduleMeetingSubmitRequest(BaseModel):
     openmeetings_list_length: str = "-1"
     template_id: str = "210"
     keep_as_open_slot: str = "yes"
+    previous_event_id: Optional[str] = None
     meeting_for: Optional[str] = None
     meetingfor: Optional[str] = None
     calendar_owner_id: Optional[str] = None

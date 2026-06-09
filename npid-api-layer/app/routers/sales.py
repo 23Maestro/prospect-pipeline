@@ -755,13 +755,14 @@ async def submit_reschedule_meeting(request: Request, payload: RescheduleMeeting
     open_event_id = payload.open_event_id.strip()
     meeting_name = payload.meeting_name.strip()
     template_id = payload.template_id.strip() or "210"
+    previous_event_id = (payload.previous_event_id or "").strip()
 
     if not athlete_id or not athlete_main_id:
         raise HTTPException(status_code=400, detail="athlete_id and athlete_main_id are required")
     if not assigned_to or not open_event_id:
         raise HTTPException(status_code=400, detail="assigned_to and open_event_id are required")
-    if not meeting_name:
-        raise HTTPException(status_code=400, detail="meeting_name is required")
+    if not previous_event_id:
+        raise HTTPException(status_code=400, detail="previous_event_id is required")
 
     logger.info(
         "RESCHEDULE_MEETING_SUBMIT %s",
@@ -781,7 +782,29 @@ async def submit_reschedule_meeting(request: Request, payload: RescheduleMeeting
     )
 
     try:
-        endpoint, form_data = translator.reschedule_meeting_submit_to_legacy(payload)
+        events_endpoint, events_params = translator.athlete_events_to_legacy(
+            athlete_id=athlete_id,
+            athlete_main_id=athlete_main_id,
+        )
+        events_response = await session.get(events_endpoint, params=events_params)
+        events_result = translator.parse_athlete_events_response(events_response.text)
+        previous_event = next(
+            (
+                event
+                for event in events_result.get("events", [])
+                if str(event.get("event_id") or "").strip() == previous_event_id
+            ),
+            None,
+        )
+        meeting_name = str((previous_event or {}).get("title") or "").strip()
+        if not meeting_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Previous meeting title not found on athlete Events tab",
+            )
+
+        vetted_payload = payload.copy(update={"meeting_name": meeting_name})
+        endpoint, form_data = translator.reschedule_meeting_submit_to_legacy(vetted_payload)
         response = await session.post(endpoint, data=form_data)
         body_preview = (response.text or "")[:200]
         if response.status_code >= 400:

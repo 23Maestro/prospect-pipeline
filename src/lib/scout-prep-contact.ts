@@ -249,7 +249,9 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
 }): string {
   const parentFirstName = firstName(args.parentName) || args.parentName || 'Parent';
   const athleteFirstName = firstName(args.athleteName) || args.athleteName || 'your athlete';
-  const sport = sportLabel(args.sport).toLowerCase();
+  const sportName = sportLabel(args.sport);
+  const coordinatorSport = sportName.charAt(0).toUpperCase() + sportName.slice(1);
+  const sport = sportName.toLowerCase();
   const selectedVariant = resolveVoicemailFollowUpVariant({
     crmStage: args.crmStage,
     currentTask: args.currentTask,
@@ -266,9 +268,9 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
   }
 
   return [
-    `Hi ${parentFirstName}, this is Jerami Singleton with Prospect ID.`,
+    `Hi ${parentFirstName}, this is Coach Singleton ${coordinatorSport} Scouting Coordinator with Prospect ID.`,
     '',
-    `I’m following up on ${athleteFirstName}’s college ${sport} profile.`,
+    `I’m reaching out on ${athleteFirstName}’s college ${sport} profile.`,
     '',
     'If playing at the next level is still a real goal, call or text me back at 407-473-3637.',
   ].join('\n');

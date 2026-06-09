@@ -185,6 +185,7 @@ export type MeetingSetSubmitResponse = {
 
 export type RescheduleMeetingSubmitRequest = MeetingSetSubmitRequest & {
   keep_as_open_slot?: string;
+  previous_event_id?: string;
 };
 
 export type RescheduleMeetingSubmitResponse = MeetingSetSubmitResponse;
