@@ -60,7 +60,7 @@ async function fetchAppointmentReadiness(appointmentIds: string[]): Promise<Map<
     `id=in.(${appointmentIds.map((id) => `"${id.replace(/"/g, '')}"`).join(',')})`,
     `limit=${appointmentIds.length}`,
   ].join('&');
-  const response = await fetch(`${config.url}/rest/v1/appointments?${query}`, {
+  const response = await fetch(`${config.url}/rest/v1/tim_lite_appointments?${query}`, {
     cache: 'no-store',
     headers: supabaseHeaders(config),
   });

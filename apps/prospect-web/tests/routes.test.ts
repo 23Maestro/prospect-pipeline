@@ -58,7 +58,7 @@ test('/api/tim-lite/auth/login requires Prospect credentials', async () => {
   });
 });
 
-test('/api/tim-lite/meetings reads Tim cache through appointment truth', async () => {
+test('/api/tim-lite/meetings reads Tim cache through Tim support appointment status', async () => {
   process.env.TIM_LITE_ACCESS_TOKEN = 'private-link-token';
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
@@ -66,7 +66,7 @@ test('/api/tim-lite/meetings reads Tim cache through appointment truth', async (
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
-    if (String(url).includes('/appointments?')) {
+    if (String(url).includes('/tim_lite_appointments?')) {
       return Response.json([
         { id: 'appt_1', status: 'scheduled' },
         { id: 'appt_rsp', status: 'reschedule_pending' },
@@ -143,7 +143,7 @@ test('/api/tim-lite/meetings reads Tim cache through appointment truth', async (
   assert.match(calls[0].url, /\/rest\/v1\/tim_lite_confirmation_cache\?/);
   assert.match(calls[0].url, /operator_key=eq\.tim_risner/);
   assert.match(calls[0].url, /kind=in\.\(confirmation_1,confirmation_2\)/);
-  assert.match(calls[1].url, /\/rest\/v1\/appointments\?/);
+  assert.match(calls[1].url, /\/rest\/v1\/tim_lite_appointments\?/);
   const headers = calls[0].init?.headers as Record<string, string>;
   assert.equal(headers.authorization, 'Bearer service-role');
 });

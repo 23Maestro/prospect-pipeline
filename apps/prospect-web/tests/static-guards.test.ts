@@ -95,8 +95,12 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
   ].join('/');
   const allowedSourceFiles = new Set([
     'npid-api-layer/README.md',
+    'npid-api-layer/.env.template',
     'npid-api-layer/main.py',
+    'npid-api-layer/app/session.py',
     'npid-api-layer/app/routers/mobile.py',
+    'npid-api-layer/app/translators/legacy.py',
+    'npid-api-layer/test_mobile_booked_meetings.py',
     'npid-api-layer/test_mobile_booked_meetings.py',
     `${oldStaticPrefix}/app.js`,
     `${oldStaticPrefix}/call-tracker/app.js`,
@@ -136,6 +140,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/sync-current-pipeline-to-supabase.test.mjs',
     'scripts/sync-booked-meetings-to-supabase.mjs',
     'scripts/sync-booked-meetings-to-supabase.test.mjs',
+    'scripts/sync-tim-lite-mobile-cache.mjs',
     'scripts/scriptable/id-command-center.js',
     'scripts/scriptable/id-prospect-search.js',
     'scripts/scriptable/share-prospect-contact-card.js',
@@ -712,6 +717,23 @@ test('Coach Risner mobile is a stripped Set Meetings and Search surface over Tim
   assert.doesNotMatch(appText, /scriptable:\/\//);
   assert.doesNotMatch(appText, /\/scout-schedules/);
   assert.doesNotMatch(appText, /call-tracker/i);
+});
+
+test('Tim Lite has a repo-owned sync writer ready for always-on hosting', () => {
+  const scriptText = readFileSync(join(repoRoot, 'scripts/sync-tim-lite-mobile-cache.mjs'), 'utf8');
+  const packageText = readFileSync(join(repoRoot, 'package.json'), 'utf8');
+
+  assert.match(packageText, /"sync:tim-lite-mobile-cache"/);
+  assert.match(scriptText, /\/mobile\/coach-risner\/set-meetings/);
+  assert.match(scriptText, /tim_lite_appointments/);
+  assert.match(scriptText, /tim_lite_confirmation_cache/);
+  assert.match(scriptText, /buildConfirmationMessage/);
+  assert.match(scriptText, /buildSetMeetingConfirmationCacheRows/);
+  assert.match(scriptText, /PROSPECT_API_TOKEN/);
+  assert.match(scriptText, /DRY_RUN/);
+  assert.doesNotMatch(scriptText, /set_meeting_confirmation_cache/);
+  assert.doesNotMatch(scriptText, /insertMeetingSetEventsOnce/);
+  assert.doesNotMatch(scriptText, /lifecycleSalesStage/);
 });
 
 test('prospect mobile exposes set meetings, scout schedules, and contact search tabs', () => {

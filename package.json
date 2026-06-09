@@ -304,6 +304,7 @@
     "rotate:supabase-server-key": "node scripts/rotate-supabase-server-key.mjs",
     "sync:current-pipeline-supabase": "tsx scripts/sync-current-pipeline-to-supabase.mjs",
     "sync:booked-meetings-supabase": "tsx scripts/sync-booked-meetings-to-supabase.mjs",
+    "sync:tim-lite-mobile-cache": "tsx scripts/sync-tim-lite-mobile-cache.mjs",
     "resolve:set-meeting-confirmation-cache": "tsx scripts/resolve-set-meeting-confirmation-cache.mjs",
     "verify:set-meetings-mobile-readiness": "tsx scripts/verify-set-meetings-mobile-readiness.mjs",
     "sync:commissions-supabase": "tsx scripts/sync-commissions-to-supabase.mjs",

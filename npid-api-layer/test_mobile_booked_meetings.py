@@ -7,11 +7,13 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 from app.routers.mobile import (
     build_mobile_set_meetings_response,
+    get_coach_risner_session,
     is_actual_set_meeting_event,
     is_meeting_visible_until_end,
     is_visible_set_meeting_event,
     pick_confirmation_task,
 )
+from app.translators.legacy import LegacyTranslator
 
 
 def test_mobile_set_meeting_filter_keeps_active_confirmation_prefixes():
@@ -143,3 +145,19 @@ def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_en
     assert payload["events"][0]["athlete_name"] == "Matthew Lindsey"
     assert payload["events"][0]["operator_status"] == "active_meeting_queue"
     assert payload["events"][0]["confirmation_recipient"] is None
+
+
+def test_tim_lite_task_fetch_can_use_logged_in_session_without_jerami_assignedto():
+    endpoint, params = LegacyTranslator.portal_tasks_to_legacy(
+        assigned_to="",
+        range_value="thisWeek",
+    )
+
+    assert endpoint == "/tasks/taskslist"
+    assert params == {"range": "thisWeek"}
+
+
+def test_coach_risner_session_loads_from_isolated_session_file():
+    session = get_coach_risner_session()
+
+    assert str(session.session_file).endswith(".npid_sessions/coach_risner.pkl")

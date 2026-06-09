@@ -29,6 +29,7 @@ HEAD_SCOUT_TIMEZONE = ZoneInfo("America/New_York")
 ACTIVE_OPERATOR_NAME = "Jerami Singleton"
 DASHBOARD_BASE_URL = "https://dashboard.nationalpid.com"
 COACH_RISNER_SESSION_FILE = Path.home() / ".npid_sessions" / "coach_risner.pkl"
+COACH_RISNER_OPERATOR_NAME = "Tim Risner"
 
 
 def require_mobile_token(authorization: Optional[str]) -> None:
@@ -51,6 +52,14 @@ def get_session(request: Request) -> NPIDSession:
     from main import session_manager
 
     return session_manager
+
+
+def get_coach_risner_session() -> NPIDSession:
+    return NPIDSession(session_file=str(COACH_RISNER_SESSION_FILE))
+
+
+def get_coach_risner_assigned_to() -> str:
+    return os.getenv("COACH_RISNER_ASSIGNED_TO", "").strip()
 
 
 class ContactReminderIntakeRequest(BaseModel):
@@ -248,18 +257,30 @@ def normalize_match_key(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
 
 
-def is_confirmation_task(task: dict) -> bool:
+def is_confirmation_task(task: dict, assigned_owner: str = ACTIVE_OPERATOR_NAME) -> bool:
     title = str(task.get("title") or "").strip().lower()
     description = str(task.get("description") or "").strip().lower()
-    assigned_owner = str(task.get("assigned_owner") or "").strip().lower()
+    task_assigned_owner = str(task.get("assigned_owner") or "").strip().lower()
+    normalized_owner = assigned_owner.strip().lower()
     return (
-        assigned_owner == ACTIVE_OPERATOR_NAME.lower()
+        (not normalized_owner or task_assigned_owner == normalized_owner)
         and ("confirmation call" in title or "confirm the meeting set" in description)
     )
 
 
-def pick_confirmation_task(tasks: list[dict]) -> dict | None:
-    matches = [task for task in tasks if is_confirmation_task(task)]
+def is_confirmation_task_for_owner(task: dict, owner_name: str) -> bool:
+    title = str(task.get("title") or "").strip().lower()
+    description = str(task.get("description") or "").strip().lower()
+    assigned_owner = str(task.get("assigned_owner") or "").strip().lower()
+    normalized_owner = owner_name.strip().lower()
+    return (
+        (not normalized_owner or assigned_owner == normalized_owner)
+        and ("confirmation call" in title or "confirm the meeting set" in description)
+    )
+
+
+def pick_confirmation_task(tasks: list[dict], assigned_owner: str = ACTIVE_OPERATOR_NAME) -> dict | None:
+    matches = [task for task in tasks if is_confirmation_task_for_owner(task, assigned_owner)]
     if not matches:
         return None
 
@@ -286,9 +307,14 @@ def _negative_int(value: str) -> int:
         return 0
 
 
-async def fetch_scout_tasks(session: NPIDSession, translator: LegacyTranslator, range_value: str) -> list[dict]:
+async def fetch_scout_tasks(
+    session: NPIDSession,
+    translator: LegacyTranslator,
+    range_value: str,
+    assigned_to: str = "1408164",
+) -> list[dict]:
     endpoint, params = translator.portal_tasks_to_legacy(
-        assigned_to="1408164",
+        assigned_to=assigned_to,
         range_value=range_value,
         start=None,
         length=None,
@@ -314,10 +340,14 @@ def build_dashboard_task_url(athlete_id: str, athlete_main_id: str) -> str:
     return f"{DASHBOARD_BASE_URL}/admin/athletes?{query}"
 
 
-def build_mobile_set_meetings_response(calendar_result: dict, tasks: list[dict]) -> dict:
+def build_mobile_set_meetings_response(
+    calendar_result: dict,
+    tasks: list[dict],
+    operator_name: str = ACTIVE_OPERATOR_NAME,
+) -> dict:
     tasks_by_athlete: dict[str, list[dict]] = {}
     for task in tasks:
-        if not is_confirmation_task(task):
+        if not is_confirmation_task_for_owner(task, operator_name):
             continue
         key = normalize_match_key(task.get("athlete_name"))
         if key:
@@ -336,7 +366,7 @@ def build_mobile_set_meetings_response(calendar_result: dict, tasks: list[dict])
 
         title_key = normalize_match_key(clean_meeting_title(title))
         matching_key = next((key for key in tasks_by_athlete if key and key in title_key), None)
-        matched_task = pick_confirmation_task(tasks_by_athlete.get(matching_key, [])) if matching_key else None
+        matched_task = pick_confirmation_task(tasks_by_athlete.get(matching_key, []), operator_name) if matching_key else None
         if not matching_key or not matched_task:
             continue
         tasks_by_athlete.pop(matching_key, None)
@@ -368,7 +398,7 @@ def build_mobile_set_meetings_response(calendar_result: dict, tasks: list[dict])
                 "lifecycle_state": "scheduled",
                 "needs_confirmation_text": True,
                 "needs_manual_review": False,
-                "reason": "Weekly booked meeting assigned to Jerami confirmation queue.",
+                "reason": f"Weekly booked meeting assigned to {operator_name} confirmation queue.",
                 "operator_status": "active_meeting_queue",
                 "badges": [],
             }
@@ -385,6 +415,31 @@ def build_mobile_set_meetings_response(calendar_result: dict, tasks: list[dict])
             key=lambda event: (str(event.get("start") or ""), str(event.get("athlete_name") or "")),
         ),
     }
+
+
+async def hydrate_confirmation_context(
+    session: NPIDSession,
+    translator: LegacyTranslator,
+    payload: dict,
+) -> dict:
+    hydrated_events = []
+    for event in payload.get("events", []) or []:
+        contact_info = await fetch_contact_info(
+            session,
+            translator,
+            str(event.get("athlete_id") or ""),
+            str(event.get("athlete_main_id") or ""),
+        )
+        recipient = resolve_confirmation_recipient(contact_info)
+        hydrated_events.append(
+            {
+                **event,
+                "confirmation_recipient": recipient,
+                "contact_timezone": (contact_info or {}).get("timezone"),
+                "contact_timezone_label": (contact_info or {}).get("timezone_label"),
+            }
+        )
+    return {**payload, "events": hydrated_events}
 
 
 async def fetch_contact_info(session: NPIDSession, translator: LegacyTranslator, contact_id: str, athlete_main_id: str) -> dict | None:
@@ -461,6 +516,51 @@ async def get_mobile_set_meetings(
         end=end,
         task_range=task_range,
     )
+
+
+@router.get("/coach-risner/set-meetings")
+async def get_coach_risner_set_meetings(
+    request: Request,
+    start: str,
+    end: str,
+    task_range: str = "thisWeek",
+):
+    require_mobile_token(request.headers.get("authorization"))
+    if not COACH_RISNER_SESSION_FILE.exists():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Coach Risner Prospect session is missing. Log in through /tim-mobile first.",
+        )
+
+    session = get_coach_risner_session()
+    translator = LegacyTranslator()
+
+    try:
+        endpoint, params = translator.head_scout_slots_to_legacy(start=start, end=end)
+        response = await session.get(endpoint, params=params)
+        result = translator.parse_head_scout_booked_meetings_response(
+            raw_response=response.text,
+            week_start=start,
+            week_end=end,
+        )
+        tasks = await fetch_scout_tasks(
+            session,
+            translator,
+            "nextWeek" if task_range == "nextWeek" else "thisWeek",
+            assigned_to=get_coach_risner_assigned_to(),
+        )
+        payload = build_mobile_set_meetings_response(
+            result,
+            tasks,
+            operator_name=COACH_RISNER_OPERATOR_NAME,
+        )
+        return await hydrate_confirmation_context(session, translator, payload)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    finally:
+        await session.close()
 
 
 @router.post("/contact-reminder-intake")

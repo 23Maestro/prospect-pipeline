@@ -4251,8 +4251,9 @@ class LegacyTranslator:
         endpoint = "/tasks/taskslist"
         params: Dict[str, Any] = {
             "range": range_value,
-            "assignedto": assigned_to,
         }
+        if str(assigned_to or "").strip():
+            params["assignedto"] = assigned_to
         if start is not None:
             params["start"] = start
         if length is not None:

@@ -60,7 +60,8 @@ class NPIDSession:
     3. Uses 'X-Requested-With' to prevent 302 Login Redirect loops.
     """
 
-    def __init__(self):
+    def __init__(self, session_file: str = SESSION_FILE):
+        self.session_file = session_file
         # 1. Initialize Client Immediately
         self.client = self._build_client()
 
@@ -69,7 +70,7 @@ class NPIDSession:
         self.api_key: str = NPID_API_KEY
 
         # 2. Load Cookies Immediately (Mimics Python Client lines 31-40)
-        self._load_session_sync(SESSION_FILE)
+        self._load_session_sync(self.session_file)
         self._hydrate_csrf_from_cookie()
 
     def _build_client(self) -> httpx.AsyncClient:
@@ -134,7 +135,7 @@ class NPIDSession:
         self._replace_client()
         self.csrf_token = None
         self.is_authenticated = False
-        self._load_session_sync(SESSION_FILE)
+        self._load_session_sync(self.session_file)
         self._hydrate_csrf_from_cookie()
 
     def _hydrate_csrf_from_cookie(self):
