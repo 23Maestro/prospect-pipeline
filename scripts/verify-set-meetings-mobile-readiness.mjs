@@ -228,6 +228,36 @@ async function checkSchedulesRoute(windowRange) {
   };
 }
 
+async function checkProductionPrefixRoute() {
+  const webBase = String(process.env.PROSPECT_WEB_BASE || DEFAULT_PROSPECT_WEB_BASE).replace(/\/+$/, '');
+  const url = new URL(`${webBase}/api/set-meeting-confirmation-prefix`);
+  const body = {
+    event_id: '__set_meetings_mobile_readiness_probe__',
+    event_date: '2099-01-01',
+    prefix: '(ACF)',
+  };
+
+  try {
+    await fetchJson(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return {
+      ok: true,
+      status: 'unexpected_success',
+      error: '',
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: /^400\b/.test(message) && message.includes('Booked meeting title not found'),
+      status: /^400\b/.test(message) ? 'backend_reachable' : 'backend_unreachable',
+      error: message,
+    };
+  }
+}
+
 loadLocalEnv();
 
 const windowRange = buildDefaultWindow();
@@ -242,10 +272,11 @@ const live = await fetchLiveSetMeetings(windowRange);
 const cacheRows = await readConfirmationCacheRows(supabaseConfig, windowRange);
 const gaps = findCacheGaps(live.events, cacheRows);
 const schedules = await checkSchedulesRoute(windowRange);
+const prefixRoute = await checkProductionPrefixRoute();
 
 const appointmentCount = new Set(cacheRows.map((row) => String(row.appointment_id || '').trim()).filter(Boolean)).size;
 const summary = {
-  ok: gaps.length === 0 && schedules.local.ok && schedules.production.ok,
+  ok: gaps.length === 0 && schedules.local.ok && schedules.production.ok && prefixRoute.ok,
   window: windowRange,
   resolver: {
     appointmentsWritten: resolver.appointmentsWritten,
@@ -261,6 +292,7 @@ const summary = {
     gaps,
   },
   schedules,
+  prefixRoute,
 };
 
 console.log(JSON.stringify(summary, null, 2));

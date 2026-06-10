@@ -875,6 +875,7 @@ function normalizeContactTimezone(timezone, timezoneLabel) {
   if (/\b(est|eastern|et)\b/.test(key)) return 'America/New_York';
   if (/\b(cst|central|ct)\b/.test(key)) return 'America/Chicago';
   if (/\b(mst|mountain|mt)\b/.test(key)) return 'America/Denver';
+  if (/\b(pst|pacific|pt)\b/.test(key)) return 'America/Los_Angeles';
   return '';
 }
 
@@ -882,6 +883,7 @@ function timezoneAbbreviation(timezone, timezoneLabel) {
   const key = normalizeSearchText(`${timezone || ''} ${timezoneLabel || ''}`);
   if (key.includes('america/chicago') || /\b(cst|central|ct)\b/.test(key)) return 'CST';
   if (key.includes('america/denver') || /\b(mst|mountain|mt)\b/.test(key)) return 'MST';
+  if (key.includes('america/los_angeles') || key.includes('america/los angeles') || /\b(pst|pacific|pt)\b/.test(key)) return 'PT';
   return 'EST';
 }
 
@@ -901,7 +903,7 @@ function meetingTimezoneLabel(timezone) {
   const key = normalizeSearchText(String(timezone || ''));
   if (key.includes('america/chicago') || /\b(cst|central|ct)\b/.test(key)) return 'CT';
   if (key.includes('america/denver') || /\b(mst|mountain|mt)\b/.test(key)) return 'MT';
-  if (key.includes('america/los angeles') || /\b(pst|pacific|pt)\b/.test(key)) return 'PT';
+  if (key.includes('america/los_angeles') || key.includes('america/los angeles') || /\b(pst|pacific|pt)\b/.test(key)) return 'PT';
   return 'ET';
 }
 
@@ -966,7 +968,8 @@ function bindSmsButtons() {
     button.addEventListener('click', async () => {
       const body = button.getAttribute('data-sms-body') || '';
       const phone = normalizePhoneForSms(button.getAttribute('data-sms-phone') || '');
-      await updateConfirmationPrefixFromButton(button);
+      const prefixSaved = await updateConfirmationPrefixFromButton(button);
+      if (!prefixSaved) return;
       window.location.href = phone
         ? `sms:${phone}?body=${encodeURIComponent(body)}`
         : `sms:?body=${encodeURIComponent(body)}`;
@@ -978,9 +981,9 @@ async function updateConfirmationPrefixFromButton(button) {
   const eventId = button.getAttribute('data-event-id') || '';
   const eventDate = button.getAttribute('data-event-date') || '';
   const prefix = button.getAttribute('data-confirmation-prefix') || '';
-  if (!eventId || !eventDate || !prefix) return;
+  if (!eventId || !eventDate || !prefix) return true;
 
-  await updateMeetingPrefix({ eventId, eventDate, prefix });
+  return updateMeetingPrefix({ eventId, eventDate, prefix });
 }
 
 function bindConfirmationModalButtons() {
@@ -1038,7 +1041,8 @@ function showConfirmationModal(button) {
     smsButton.addEventListener('click', async () => {
       const body = smsButton.getAttribute('data-sms-body') || '';
       const smsPhone = normalizePhoneForSms(smsButton.getAttribute('data-sms-phone') || '');
-      await updateConfirmationPrefixFromButton(smsButton);
+      const prefixSaved = await updateConfirmationPrefixFromButton(smsButton);
+      if (!prefixSaved) return;
       closeConfirmationModal();
       window.location.href = smsPhone
         ? `sms:${smsPhone}?body=${encodeURIComponent(body)}`

@@ -1,5 +1,4 @@
 import Contacts
-import Foundation
 import RaycastSwiftMacros
 
 struct PhoneNumber: Codable {
@@ -216,9 +215,6 @@ private func requestContactAccess() async throws {
     try store.execute(request)
   }
   if !noteUpdates.isEmpty {
-    if hasChanges {
-      try await Task.sleep(nanoseconds: 400_000_000)
-    }
     try launchContactNotesUpdateWithContactsApp(noteUpdates, groupName: preferredGroup?.name ?? "ID Contacts")
   }
 
@@ -435,10 +431,6 @@ end timeout
 
   do {
     try process.run()
-    process.waitUntilExit()
-    guard process.terminationStatus == 0 else {
-      throw ContactsBridgeError.contactNoteUpdateFailed("Contacts note update exited with status \(process.terminationStatus)")
-    }
   } catch {
     throw ContactsBridgeError.contactNoteUpdateFailed(error.localizedDescription)
   }

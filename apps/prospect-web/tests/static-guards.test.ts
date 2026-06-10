@@ -215,6 +215,7 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/audit-meeting-readback-live-parity.mjs',
     'scripts/audit-meeting-readback-live-parity.test.mjs',
     'scripts/generate-code-index.test.mjs',
+    'scripts/verify-set-meetings-mobile-readiness.mjs',
     'src/lib/sales-stage.ts',
     'src/lib/scout-prep.tsx',
   ]);
@@ -649,9 +650,13 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(appText, /formatCachedMeetingLabel\(event\.current_meeting_label \|\| event\.start, event\.meeting_timezone\)/);
   assert.match(appText, /function normalizeMeetingTimezoneLabel/);
   assert.match(appText, /function meetingTimezoneLabel/);
+  assert.match(appText, /if \(\/\\b\(pst\|pacific\|pt\)\\b\/\.test\(key\)\) return 'America\/Los_Angeles';/);
+  assert.match(appText, /key\.includes\('america\/los_angeles'\) \|\| key\.includes\('america\/los angeles'\) \|\| \/\\b\(pst\|pacific\|pt\)\\b\/\.test\(key\)/);
   assert.match(appText, /buildBookedMeetingEventDate\(event\.start, event\.meeting_timezone\)/);
   assert.match(appText, /ordinalSuffix/);
   assert.match(appText, /\/api\/set-meeting-confirmation-prefix/);
+  assert.match(appText, /const prefixSaved = await updateConfirmationPrefixFromButton\(smsButton\);/);
+  assert.match(appText, /if \(!prefixSaved\) return;/);
   assert.match(appText, /\/api\/post-meeting-outcome/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\)"/);
   assert.match(appText, /data-confirmation-prefix="\(ACF\*2\)"/);
