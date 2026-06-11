@@ -1184,6 +1184,22 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
         },
         {
           athlete_name: 'Won Athlete',
+          occurred_at: '2026-06-02T16:30:00+00:00',
+          event_at: '2026-06-02T16:30:00+00:00',
+          reporting_at: '2026-06-02T16:30:00+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'confirmation_call',
+          raw_event_type: 'lifecycle_meeting_set',
+          source: 'call_tracker_events_owner_context',
+          appointment_id: 'appt-won',
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          materialization_status: 'operator_task',
+          created_at: '2026-06-02T16:30:00+00:00',
+        },
+        {
+          athlete_name: 'Won Athlete',
           occurred_at: '2026-06-02T17:00:00+00:00',
           event_at: '2026-06-02T17:00:00+00:00',
           tracker_outcome: 'closed_won',
@@ -1435,13 +1451,14 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
   const payload = await response.json();
   assert.equal(payload.contract, 'monthly-enrollment-tracker');
   assert.match(payload.data.title, /Enrollment Tracker/);
-  assert.equal(payload.data.summary.meetingsSet, 1);
-  assert.equal(payload.data.summary.enrollments, 0);
-  assert.equal(payload.data.summary.showRate, 0);
-  assert.equal(payload.data.rows.length, 1);
-  assert.equal(payload.data.rows[0].athleteName, 'Meeting Athlete');
-  assert.equal(payload.data.rows[0].status, 'Set');
-  assert.equal(payload.data.rows[0].headScout, 'Ryan Lietz');
+  assert.equal(payload.data.summary.meetingsSet, 3);
+  assert.equal(payload.data.summary.enrollments, 1);
+  assert.equal(payload.data.summary.showRate, 33);
+  assert.equal(payload.data.rows.length, 3);
+  const meetingAthlete = payload.data.rows.find((row: { athleteName?: string }) => row.athleteName === 'Meeting Athlete');
+  assert.equal(meetingAthlete?.status, 'Set');
+  assert.equal(meetingAthlete?.headScout, 'Ryan Lietz');
+  assert.equal(payload.data.rows.find((row: { athleteName?: string }) => row.athleteName === 'Won Athlete')?.status, 'Close Won');
   assert.equal(
     payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Baker'),
     false,
@@ -1456,8 +1473,9 @@ test('/api/meeting-readback-data returns meeting-only live readback rows', async
   );
   assert.equal(
     payload.data.rows.some((row: { athleteName?: string }) => row.athleteName === 'Kelle Johnson'),
-    false,
+    true,
   );
+  assert.equal(payload.data.rows.find((row: { athleteName?: string }) => row.athleteName === 'Kelle Johnson')?.status, 'No Show');
   assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_log');
   assert.equal(payload.data.supabaseReads.appointmentTable, 'appointments');
   assert.equal(payload.data.supabaseReads.athleteTable, 'athletes');

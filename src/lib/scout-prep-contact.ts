@@ -259,7 +259,7 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
 
   if (selectedVariant === 'call_attempt_2' || selectedVariant === 'call_attempt_3') {
     return [
-      `Hi ${parentFirstName}, Jerami with Prospect ID.`,
+      `Hi ${parentFirstName}, this is Coach Singleton with Prospect ID.`,
       '',
       `Checking back on ${athleteFirstName}’s college ${sport} profile.`,
       '',
@@ -461,10 +461,14 @@ function upsertGpaLine(template: string, gpa?: string | null): string {
   return `${template.trimEnd()}\n\n${nextLine}`;
 }
 
-function prependMaxPrepsUrl(template: string, url?: string | null): string {
+function formatMaxPrepsTopSlot(template: string, url?: string | null): string {
   const normalizedUrl = String(url || '').trim();
   if (!normalizedUrl) {
-    return template;
+    if (template.startsWith('\n\n')) {
+      return template;
+    }
+
+    return `\n\n${template.trimStart()}`;
   }
 
   const trimmed = template.trimStart();
@@ -490,7 +494,7 @@ export function mergeMeetingDetailsTemplate(
   if (context) {
     merged = replaceSectionBody(merged, 'About The Athlete', buildAthleteDetailsLines(context));
     merged = upsertGpaLine(merged, context.resolved.gpa);
-    merged = prependMaxPrepsUrl(
+    merged = formatMaxPrepsTopSlot(
       merged,
       context.resolved.maxpreps?.url || context.resolved.maxpreps_url,
     );

@@ -110,7 +110,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
 
   assert.match(
     message,
-    /^Good afternoon Ms\. Messerle, this is Jerami Singleton with Prospect ID\./,
+    /^Good afternoon Ms\. Messerle, this is Coach Singleton with Prospect ID\./,
   );
   assert.match(
     message,
@@ -350,7 +350,7 @@ test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
   assert.equal(
     message,
     [
-      'Hi [ParentFirst], this is Jerami with Prospect ID.',
+      'Hi [ParentFirst], this is Coach Singleton with Prospect ID.',
       '',
       'Kapri’s recruiting info came through.',
       '',
@@ -383,6 +383,7 @@ test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', 
   });
 
   assert.match(attempt1, /I received your info about playing college football/);
+  assert.match(attempt1, /^Good afternoon Joenny, this is Coach Singleton with Prospect ID\./);
   assert.match(attempt1, /If this is still a real goal, have a parent call or text me back/);
   assert.match(attempt2, /quick follow-up on your college football profile/);
   assert.match(attempt2, /If you still want help with next steps, have a parent call or text me/);

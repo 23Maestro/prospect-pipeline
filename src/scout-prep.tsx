@@ -4212,6 +4212,7 @@ export function PostCallUpdateForm({
                 id="meetingDetails"
                 title="Meeting Set Details"
                 defaultValue={meetingTemplate?.details_template || buildFallbackMeetingDetails()}
+                autoFocus
               />
               <Form.Dropdown
                 id="meetingFor"

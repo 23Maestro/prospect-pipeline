@@ -281,6 +281,33 @@ test('mergeMeetingDetailsTemplate: prepends MaxPreps URL when resolved', () => {
   );
 });
 
+test('mergeMeetingDetailsTemplate: reserves MaxPreps paste slot when unresolved', () => {
+  const template = [
+    'Main Number:',
+    'Backup Number:',
+    'Spoke To:',
+    'Other Parent:',
+    '',
+    'About The Athlete:',
+    '',
+    'Deficit:',
+  ].join('\n');
+  const context = buildContext({
+    resolved: {
+      maxpreps: null,
+      maxpreps_url: null,
+    },
+  });
+
+  const merged = mergeMeetingDetailsTemplate(
+    template,
+    selectScoutPrepContactNumbers(context),
+    context,
+  );
+
+  assert.match(merged, /^\n\nMain Number:/);
+});
+
 test('buildMeetingTemplateDefaults: prefers computed timezone when option exists', () => {
   const template: MeetingSetTemplateResponse = {
     success: true,
@@ -443,7 +470,7 @@ test('buildVoicemailFollowUpBody: duplicate parent and athlete phone uses studen
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Jaylin, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /^Good afternoon Jaylin, this is Coach Singleton with Prospect ID\./);
   assert.match(body, /I received your info about playing college football\./);
   assert.match(body, /If this is still a real goal, have a parent call or text me back\./);
   assert.doesNotMatch(body, /football scouting coordinator\nProspect ID/);
@@ -472,7 +499,7 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
     new Date('2026-04-17T09:00:00Z'),
   );
   const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
-  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /^Good morning Ms\. Smith, this is Coach Singleton with Prospect ID\./);
   assert.match(
     body,
     /Bryson’s football profile came through and I had a few quick questions about college goals\./,
@@ -502,7 +529,7 @@ test('buildVoicemailFollowUpBody: group text still uses parent template without 
     new Date('2026-04-15T09:00:00Z'),
   );
 
-  assert.match(body, /^Good morning Ms\. Smith, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /^Good morning Ms\. Smith, this is Coach Singleton with Prospect ID\./);
   assert.match(body, /Bryson’s football profile came through/);
   assert.doesNotMatch(body, /I just left you a voicemail/);
   assert.match(body, /Would later today or tomorrow work for a quick 10-minute call\?/);
@@ -548,7 +575,7 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Mr\. Bailey, this is Jerami Singleton with Prospect ID\./);
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Coach Singleton with Prospect ID\./);
   assert.match(body, /Jaylin’s football profile came through/);
   assert.doesNotMatch(body, /I just left you a voicemail/);
 });
@@ -804,7 +831,7 @@ test('buildVoicemailFollowUpBody: parent contact intro uses student athlete name
   assert.equal(
     body,
     [
-      'Hi [ParentFirst], this is Jerami with Prospect ID.',
+      'Hi [ParentFirst], this is Coach Singleton with Prospect ID.',
       '',
       'Kapri’s recruiting info came through.',
       '',
@@ -1067,7 +1094,7 @@ test('buildScoutPrepLeavingVoicemailBody: uses shorter voicemail for post-first-
     currentTask: 'Scheduled Follow Up Call the family second time and leave follow-up voicemail.',
   });
 
-  assert.match(body, /^Hi Jamie, Jerami with Prospect ID\./);
+  assert.match(body, /^Hi Jamie, this is Coach Singleton with Prospect ID\./);
   assert.match(body, /Checking back on Bryson’s college football profile\./);
   assert.match(
     body,
@@ -1086,7 +1113,7 @@ test('buildScoutPrepLeavingVoicemailBody: third attempt uses the same post-first
     currentTask: 'Call Attempt 3',
   });
 
-  assert.match(body, /^Hi Jamie, Jerami with Prospect ID\./);
+  assert.match(body, /^Hi Jamie, this is Coach Singleton with Prospect ID\./);
   assert.match(body, /Checking back on Bryson’s college football profile\./);
   assert.match(
     body,

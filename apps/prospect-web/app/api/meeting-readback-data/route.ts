@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getServerEnv } from '../../../lib/env';
+import { getFastApiBaseUrl, getFastApiToken, getMissingFastApiEnvMessage, getServerEnv } from '../../../lib/env';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -118,6 +118,10 @@ function normalizeKey(value: unknown) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
+function statusKey(value: unknown) {
+  return normalizeKey(value).replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+}
+
 function identityKey(row: JsonRow) {
   const athleteKey = normalizeKey(row.athlete_key);
   if (athleteKey) return athleteKey;
@@ -229,16 +233,80 @@ function moneyCents(facts: JsonRow[]) {
 }
 
 function isActiveMeetingAppointmentStatus(status: unknown) {
-  return ACTIVE_MEETING_APPOINTMENT_STATUSES.has(normalizeKey(status).replace(/\s+/g, '_'));
+  return ACTIVE_MEETING_APPOINTMENT_STATUSES.has(statusKey(status));
+}
+
+function outcomeStatusFor(row: JsonRow | null) {
+  const keys = [
+    statusKey(row?.tracker_outcome),
+    statusKey(row?.raw_crm_stage),
+    statusKey(row?.raw_task_status),
+  ].filter(Boolean);
+  if (row?.counts_as_enrollment === true || keys.some((key) => key === 'closed_won' || key === 'actual_meeting_close_won')) return 'Close Won';
+  if (keys.some((key) => key === 'closed_lost' || key === 'actual_meeting_close_lost')) return 'Close Lost';
+  if (keys.some((key) => key === 'follow_up' || key === 'actual_meeting_follow_up' || key === 'meeting_follow_up')) return 'Follow Up';
+  if (keys.some((key) => key === 'no_show' || key === 'meeting_result_no_show')) return 'No Show';
+  if (keys.some((key) => key === 'canceled' || key === 'meeting_result_canceled')) return 'Canceled';
+  if (keys.some((key) => key === 'reschedule_pending' || key === 'resolution_pending' || key === 'meeting_result_res_pending')) return 'Res. Pending';
+  if (keys.some((key) => key === 'rescheduled' || key === 'meeting_result_rescheduled')) return 'Rescheduled';
+  return null;
 }
 
 function statusFor(latestFact: JsonRow | null, latestAppointment: JsonRow | null) {
-  const outcome = normalizeKey(latestFact?.tracker_outcome).replace(/\s+/g, '_');
-  const appointmentStatus = normalizeKey(latestAppointment?.post_meeting_result || latestAppointment?.status).replace(/\s+/g, '_');
+  const outcomeStatus = outcomeStatusFor(latestFact);
+  if (outcomeStatus) return outcomeStatus;
+
+  const appointmentOutcomeStatus = outcomeStatusFor({
+    tracker_outcome: latestAppointment?.post_meeting_result,
+  });
+  if (appointmentOutcomeStatus) return appointmentOutcomeStatus;
+
+  const outcome = statusKey(latestFact?.tracker_outcome);
+  const appointmentStatus = statusKey(latestAppointment?.post_meeting_result || latestAppointment?.status);
   if (outcome === 'meeting_set' && isActiveMeetingAppointmentStatus(appointmentStatus)) {
     return 'Set';
   }
   return null;
+}
+
+function shouldDisplayMeetingStatus(status: string | null) {
+  return Boolean(status && status !== 'Res. Pending' && status !== 'Canceled');
+}
+
+function hasMeetingEnded(value: string | null | undefined, now = Date.now()) {
+  if (!value) return false;
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) return false;
+  return parsed + 60 * 60_000 <= now;
+}
+
+function getSelectedSalesStage(payload: JsonRow) {
+  const options = Array.isArray(payload?.options) ? payload.options : [];
+  const selected = options.find((option) => option?.selected);
+  return String(selected?.label || selected?.value || '').trim() || null;
+}
+
+async function fetchSelectedSalesStage(athleteId: string) {
+  if (!athleteId || getMissingFastApiEnvMessage()) return null;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+  try {
+    const response = await fetch(`${getFastApiBaseUrl()}/api/v1/sales/stages/${encodeURIComponent(athleteId)}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        authorization: `Bearer ${getFastApiToken()}`,
+        'x-mobile-proxy': 'vercel',
+        accept: 'application/json',
+      },
+    });
+    if (!response.ok) return null;
+    return getSelectedSalesStage(await response.json().catch(() => ({})));
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function outcomeWinner(facts: JsonRow[]) {
@@ -328,6 +396,7 @@ async function buildEnrollmentTracker() {
       return {
         when,
         whenLabel: etLabel(when),
+        athleteId: setFact.athlete_id || latestFact?.athlete_id || latestAppointment?.athlete_id || null,
         athleteName: athleteName(latestFact || setFact, athleteByKey),
         status,
         headScout: headScout(latestFact || setFact, latestAppointment),
@@ -337,8 +406,18 @@ async function buildEnrollmentTracker() {
     .filter((row) => row.status)
     .sort((left, right) => new Date(left.when || 0).getTime() - new Date(right.when || 0).getTime());
 
-  const enrollments = rows.filter((row) => row.status === 'Close Won').length;
-  const actualHeld = rows.filter((row) => row.status === 'Close Won' || row.status === 'Close Lost').length;
+  await Promise.all(
+    rows.map(async (row) => {
+      if (row.status !== 'Set' || !hasMeetingEnded(row.when) || !row.athleteId) return;
+      const selectedStage = await fetchSelectedSalesStage(String(row.athleteId));
+      const outcomeStatus = outcomeStatusFor({ raw_crm_stage: selectedStage });
+      if (outcomeStatus) row.status = outcomeStatus;
+    }),
+  );
+
+  const visibleRows = rows.filter((row) => shouldDisplayMeetingStatus(row.status));
+  const enrollments = visibleRows.filter((row) => row.status === 'Close Won').length;
+  const actualHeld = visibleRows.filter((row) => row.status === 'Close Won' || row.status === 'Close Lost' || row.status === 'Follow Up').length;
   const generatedAt = new Date().toISOString();
 
   return {
@@ -357,11 +436,11 @@ async function buildEnrollmentTracker() {
         athleteTable: 'athletes',
       },
       summary: {
-        meetingsSet: rows.length,
+        meetingsSet: visibleRows.length,
         enrollments,
-        showRate: rows.length ? Math.round((actualHeld / rows.length) * 100) : 0,
+        showRate: visibleRows.length ? Math.round((actualHeld / visibleRows.length) * 100) : 0,
       },
-      rows,
+      rows: visibleRows,
     },
   };
 }

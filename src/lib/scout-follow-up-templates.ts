@@ -52,6 +52,13 @@ function firstName(value?: string | null): string {
   );
 }
 
+function getSenderIntroName(senderName?: string | null): string {
+  const normalized = String(senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
+  return normalizeText(normalized) === normalizeText(DEFAULT_FOLLOW_UP_SENDER_NAME)
+    ? 'Coach Singleton'
+    : normalized;
+}
+
 function formatConfirmationClockLabel(date: Date, timezoneLabel?: string | null): string {
   return resolveConfirmationClockLabel({ meetingStart: date, meetingTimezone: timezoneLabel });
 }
@@ -271,6 +278,7 @@ export function buildVoicemailFollowUpMessage(args: {
 }): string {
   const greeting = String(args.greeting || '').trim() || 'Good morning there,';
   const senderName = String(args.senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
+  const senderIntroName = getSenderIntroName(senderName);
   const scoutLabel = sportScoutLabel(args.sport);
   const recipientType = args.recipientType || 'parent';
   const athleteFirstName = firstName(args.athleteName) || args.athleteName.trim() || 'your athlete';
@@ -295,7 +303,7 @@ export function buildVoicemailFollowUpMessage(args: {
         ]
       : args.variant === 'parent_contact_intro'
         ? [
-            `${greeting} this is ${firstName(senderName) || senderName} with Prospect ID.`,
+            `${greeting} this is ${senderIntroName} with Prospect ID.`,
             '',
             `${athleteFirstName}’s recruiting info came through.`,
             '',
@@ -350,7 +358,7 @@ export function buildVoicemailFollowUpMessage(args: {
                       ]
                     : recipientType === 'student_athlete'
                       ? [
-                          `${greeting} this is ${senderName} with Prospect ID. I received your info about playing college ${scoutLabel}.`,
+                          `${greeting} this is ${senderIntroName} with Prospect ID. I received your info about playing college ${scoutLabel}.`,
                           '',
                           'If this is still a real goal, have a parent call or text me back.',
                         ]
@@ -381,7 +389,7 @@ export function buildVoicemailFollowUpMessage(args: {
                                 'Would a calendar link be easier, or should I try you later today?',
                               ]
                             : [
-                                `${greeting} this is ${senderName} with Prospect ID. ${athleteFirstName}’s ${scoutLabel} profile came through and I had a few quick questions about college goals.`,
+                                `${greeting} this is ${senderIntroName} with Prospect ID. ${athleteFirstName}’s ${scoutLabel} profile came through and I had a few quick questions about college goals.`,
                                 '',
                                 'Would later today or tomorrow work for a quick 10-minute call?',
                               ];
