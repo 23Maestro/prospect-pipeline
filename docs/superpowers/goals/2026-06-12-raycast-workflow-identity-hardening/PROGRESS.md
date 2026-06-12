@@ -2,7 +2,7 @@
 
 ## Status
 
-Complete and pushed. `main` matches `origin/main` at commit `daed277c24da5db8d71cbf11340ff52fb8238e93` (`Refine Scout Prep reschedule and duplicate-state handling`). Linear issue `23M-51` should be closed after this receipt update is pushed.
+Complete and pushed. The implementation was verified at commit `daed277c24da5db8d71cbf11340ff52fb8238e93` (`Refine Scout Prep reschedule and duplicate-state handling`). The verification receipt was pushed afterward, and Linear issue `23M-51` is `Done`.
 
 ## Timeline
 
@@ -18,6 +18,7 @@ Complete and pushed. `main` matches `origin/main` at commit `daed277c24da5db8d71
 | 2026-06-12 | Updated Linear `23M-51` to `In Review` with proof notes. |
 | 2026-06-12 | Verified pushed commit `daed277c24da5db8d71cbf11340ff52fb8238e93` on `main` matches `origin/main`. |
 | 2026-06-12 | Re-ran focused identity audit, broad `npm test`, `git diff --check`, and `npx ray build` after cleanup commit. |
+| 2026-06-12 | Moved Linear `23M-51` to `Done` with final pushed-proof note. |
 
 ## Files Changed For This Slice
 
@@ -73,9 +74,10 @@ npx ray build
 
 - Branch: `main`
 - Remote: `origin/main`
-- Verified commit: `daed277c24da5db8d71cbf11340ff52fb8238e93`
-- Commit title: `Refine Scout Prep reschedule and duplicate-state handling`
-- Remote alignment: `git rev-parse HEAD` and `git rev-parse origin/main` returned the same commit.
+- Verified implementation commit: `daed277c24da5db8d71cbf11340ff52fb8238e93`
+- Implementation commit title: `Refine Scout Prep reschedule and duplicate-state handling`
+- Receipt update commit: `044c39aa` (`Update Raycast identity verification receipt`)
+- Remote alignment: `git rev-parse HEAD` and `git rev-parse origin/main` returned the same commit before the receipt update, and the receipt update was pushed afterward.
 
 ## Evidence Paths
 
