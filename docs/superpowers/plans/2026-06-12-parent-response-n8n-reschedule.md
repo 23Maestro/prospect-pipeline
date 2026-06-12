@@ -291,6 +291,12 @@ npm install -g vercel
 
 - [ ] Ask user to accept Vercel auth prompt if needed.
 - [ ] Set Vercel env vars.
+- [x] Add live readiness verifier for local Raycast/root env, current n8n shell env, Vercel production env, and workflow artifact:
+
+```sh
+npm run verify:parent-response-readiness
+```
+
 - [x] Run `cd apps/prospect-web && npm run verify`.
 - [x] Run focused root tests for any shared helper.
 - [ ] Create one dry-run request row.

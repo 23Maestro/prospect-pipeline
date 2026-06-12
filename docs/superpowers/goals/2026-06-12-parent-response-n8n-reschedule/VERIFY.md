@@ -24,6 +24,12 @@
   - confirms submitted-response query only
   - confirms notify route call
   - confirms final patch writes only notification metadata
+- Live readiness verifier:
+  - `npm run verify:parent-response-readiness`
+  - confirms local Raycast/root env has parent token and public base URL
+  - confirms current n8n shell env has Supabase and notify route settings
+  - confirms Vercel production env has Supabase, FastAPI, parent response, and Resend settings
+  - confirms the n8n workflow artifact exists
 - Focused Prospect Pipeline tests for any shared helper:
   - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
@@ -39,6 +45,7 @@
 - Confirm n8n version is `2.25.7`.
 - Import or verify the local workflow JSON.
 - Confirm `http://localhost:5678` responds.
+- Run `npm run verify:parent-response-readiness` until all sections pass.
 - Start n8n from a shell with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PARENT_RESPONSE_NOTIFY_BASE_URL`, and `PARENT_RESPONSE_NOTIFY_SECRET`.
 - Create one dry-run Supabase request row.
 - Open the Vercel parent URL.
