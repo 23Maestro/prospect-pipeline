@@ -96,11 +96,11 @@ export default function ParentResponseForm({ requestId, token, options }: Parent
               response_kind: 'ready_later',
               parent_note: 'None of the suggested times work. Family will follow up when ready.',
             },
-            'None of these work. We will follow up when ready.',
+            'None of these work',
           )
         }
       >
-        None of these work. We&apos;ll follow up when ready.
+        None of these work
       </button>
 
       {state.status === 'submitting' ? (
