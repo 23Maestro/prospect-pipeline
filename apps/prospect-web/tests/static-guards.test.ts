@@ -205,6 +205,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'supabase/tests/call-tracker-summary-activity-counts.test.mjs',
     'supabase/tests/meeting-set-materialization-backsync.test.mjs',
     'supabase/tests/athlete-lifecycle-timeline-contract.test.mjs',
+    'supabase/migrations/20260612150000_parent_response_requests.sql',
+    'supabase/tests/parent-response-requests-contract.test.mjs',
     'scripts/sync-commissions-to-supabase.mjs',
     'scripts/sync-commissions-to-supabase.test.mjs',
     'scripts/backfill-macos-contact-notes-from-cache.mjs',
@@ -216,6 +218,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/audit-meeting-readback-live-parity.test.mjs',
     'scripts/generate-code-index.test.mjs',
     'scripts/verify-set-meetings-mobile-readiness.mjs',
+    'src/domain/parent-response-request.test.ts',
+    'src/domain/parent-response-request.ts',
     'src/lib/sales-stage.ts',
     'src/lib/scout-prep.tsx',
   ]);

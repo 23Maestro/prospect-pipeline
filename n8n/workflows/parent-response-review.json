@@ -1,0 +1,244 @@
+{
+  "name": "Prospect Pipeline Parent Response Review",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "f8c0d8f7-0fb1-4784-a7ef-efb23c03c001",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -780,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{$env.SUPABASE_URL.replace(/\\/$/, '') + '/rest/v1/parent_response_requests'}}",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "select",
+              "value": "id,request_status,response_kind,approval_status,notification_status"
+            },
+            {
+              "name": "request_status",
+              "value": "in.(selected,none_work,ready_later)"
+            },
+            {
+              "name": "approval_status",
+              "value": "eq.pending"
+            },
+            {
+              "name": "notification_status",
+              "value": "neq.sent"
+            },
+            {
+              "name": "order",
+              "value": "updated_at.asc"
+            },
+            {
+              "name": "limit",
+              "value": "10"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "accept-profile",
+              "value": "={{$env.SUPABASE_SCHEMA || 'public'}}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "0f17b51b-9655-44ee-9fd4-51a1ba294002",
+      "name": "Find submitted responses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -540,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = Array.isArray($json) ? $json : (Array.isArray($json.body) ? $json.body : [$json]);\nreturn rows.filter((row) => row && row.id).map((row) => ({ json: row }));"
+      },
+      "id": "0f723194-05cd-40ef-beb8-ef2340dd3d1f",
+      "name": "Normalize response rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.PARENT_RESPONSE_NOTIFY_BASE_URL.replace(/\\/$/, '') + '/api/parent-response/' + $json.id + '/notify'}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-parent-response-secret",
+              "value": "={{$env.PARENT_RESPONSE_NOTIFY_SECRET}}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "c4e8184f-4397-496e-898b-51e89e96aa63",
+      "name": "Notify operator",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -60,
+        -20
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{$env.SUPABASE_URL.replace(/\\/$/, '') + '/rest/v1/parent_response_requests?id=eq.' + $json.request_id}}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "authorization",
+              "value": "=Bearer {{$env.SUPABASE_SERVICE_ROLE_KEY}}"
+            },
+            {
+              "name": "content-profile",
+              "value": "={{$env.SUPABASE_SCHEMA || 'public'}}"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "notification_status",
+              "value": "sent"
+            },
+            {
+              "name": "notification_sent_at",
+              "value": "={{$now.toISO()}}"
+            },
+            {
+              "name": "notification_error",
+              "value": ""
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "55858a7a-9e9a-4f1c-9252-2d3db4f14bf8",
+      "name": "Mark notification sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        180,
+        -20
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Find submitted responses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find submitted responses": {
+      "main": [
+        [
+          {
+            "node": "Normalize response rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize response rows": {
+      "main": [
+        [
+          {
+            "node": "Notify operator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify operator": {
+      "main": [
+        [
+          {
+            "node": "Mark notification sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b31d9d2c-2970-4c59-9608-d9f35d8888a1",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "id": "parent-response-review",
+  "tags": []
+}
