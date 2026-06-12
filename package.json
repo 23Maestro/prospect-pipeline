@@ -331,6 +331,8 @@
     "resolve:set-meeting-confirmation-cache": "tsx scripts/resolve-set-meeting-confirmation-cache.mjs",
     "verify:set-meetings-mobile-readiness": "tsx scripts/verify-set-meetings-mobile-readiness.mjs",
     "verify:parent-response-readiness": "node scripts/verify-parent-response-readiness.mjs",
+    "n8n:parent-response:check": "node scripts/start-parent-response-n8n.mjs --check",
+    "n8n:parent-response:start": "node scripts/start-parent-response-n8n.mjs",
     "sync:commissions-supabase": "tsx scripts/sync-commissions-to-supabase.mjs",
     "watch:confirmation-tasks": "tsx scripts/watch-confirmation-tasks.mjs",
     "test:call-tracker-ownership": "node --import tsx --test scripts/call-tracker-ownership.test.mjs",

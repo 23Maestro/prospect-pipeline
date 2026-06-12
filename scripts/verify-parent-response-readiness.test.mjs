@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildParentResponseN8nEnv,
   buildReadinessReport,
   parseVercelEnvList,
 } from './verify-parent-response-readiness.mjs';
@@ -55,4 +56,25 @@ test('buildReadinessReport reports missing parent response live env', () => {
     report.sections.find((section) => section.name === 'Vercel production env')?.missing,
     ['RESEND_API_KEY', 'PARENT_RESPONSE_NOTIFY_FROM', 'PARENT_RESPONSE_NOTIFY_TO'],
   );
+});
+
+test('buildParentResponseN8nEnv maps secret key and preserves explicit service role key', () => {
+  const fromSecret = buildParentResponseN8nEnv(
+    {
+      SUPABASE_SECRET_KEY: 'secret-key',
+      PARENT_RESPONSE_NOTIFY_SECRET: 'notify-secret',
+    },
+    '/tmp/missing-parent-response-env-root',
+  );
+  assert.equal(fromSecret.SUPABASE_SERVICE_ROLE_KEY, 'secret-key');
+  assert.equal(fromSecret.PARENT_RESPONSE_NOTIFY_SECRET, 'notify-secret');
+
+  const explicit = buildParentResponseN8nEnv(
+    {
+      SUPABASE_SECRET_KEY: 'secret-key',
+      SUPABASE_SERVICE_ROLE_KEY: 'service-role-key',
+    },
+    '/tmp/missing-parent-response-env-root',
+  );
+  assert.equal(explicit.SUPABASE_SERVICE_ROLE_KEY, 'service-role-key');
 });

@@ -41,7 +41,7 @@ const VERCEL_PRODUCTION_REQUIREMENTS = [
   ['PARENT_RESPONSE_NOTIFY_TO'],
 ];
 
-function readEnvFile(filePath) {
+export function readEnvFile(filePath) {
   if (!existsSync(filePath)) return new Map();
   const entries = new Map();
   const lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
@@ -66,6 +66,28 @@ export function collectLocalEnvKeys(rootDir = REPO_ROOT) {
     }
   }
   return keys;
+}
+
+export function collectLocalEnvEntries(rootDir = REPO_ROOT) {
+  const entries = new Map();
+  for (const relativePath of LOCAL_ENV_FILES) {
+    const env = readEnvFile(resolve(rootDir, relativePath));
+    for (const [key, value] of env.entries()) {
+      if (String(value || '').trim()) entries.set(key, value);
+    }
+  }
+  return entries;
+}
+
+export function buildParentResponseN8nEnv(baseEnv = process.env, rootDir = REPO_ROOT) {
+  const env = { ...baseEnv };
+  for (const [key, value] of collectLocalEnvEntries(rootDir).entries()) {
+    if (!String(env[key] || '').trim()) env[key] = value;
+  }
+  if (!String(env.SUPABASE_SERVICE_ROLE_KEY || '').trim() && String(env.SUPABASE_SECRET_KEY || '').trim()) {
+    env.SUPABASE_SERVICE_ROLE_KEY = env.SUPABASE_SECRET_KEY;
+  }
+  return env;
 }
 
 export function collectProcessEnvKeys(env = process.env) {
@@ -153,7 +175,7 @@ function main() {
 
   const report = buildReadinessReport({
     localKeys: collectLocalEnvKeys(),
-    n8nKeys: collectProcessEnvKeys(),
+    n8nKeys: collectProcessEnvKeys(buildParentResponseN8nEnv()),
     vercelProductionKeys,
   });
   printReport(report);

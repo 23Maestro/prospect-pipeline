@@ -24,6 +24,10 @@
   - confirms submitted-response query only
   - confirms notify route call
   - confirms final patch writes only notification metadata
+- n8n env/start helper:
+  - `node --test scripts/start-parent-response-n8n.test.mjs`
+  - `npm run n8n:parent-response:check`
+  - confirms ignored repo env can start n8n without shell-sourcing `.env`
 - Live readiness verifier:
   - `npm run verify:parent-response-readiness`
   - confirms local Raycast/root env has parent token and public base URL
@@ -46,7 +50,7 @@
 - Import or verify the local workflow JSON.
 - Confirm `http://localhost:5678` responds.
 - Run `npm run verify:parent-response-readiness` until all sections pass.
-- Start n8n from a shell with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PARENT_RESPONSE_NOTIFY_BASE_URL`, and `PARENT_RESPONSE_NOTIFY_SECRET`.
+- Start n8n with `npm run n8n:parent-response:start`.
 - Create one dry-run Supabase request row.
 - Open the Vercel parent URL.
 - Submit a selected slot.

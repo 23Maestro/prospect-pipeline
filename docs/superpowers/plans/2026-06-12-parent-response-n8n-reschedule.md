@@ -272,7 +272,9 @@ n8n
 ```
 
 - [x] Open `http://localhost:5678`.
-- [ ] Create credentials for Supabase using HTTP Request or Postgres node.
+- [x] Add repo-owned n8n env loader so HTTP Request nodes receive Supabase and notify route env without hardcoded credentials:
+  - `npm run n8n:parent-response:check`
+  - `npm run n8n:parent-response:start`
 - [x] Create workflow JSON:
   - Schedule Trigger every 5 minutes.
   - Query `parent_response_requests` where `request_status in ('selected', 'none_work', 'ready_later')` and `approval_status = 'pending'`.

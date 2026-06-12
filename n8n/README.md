@@ -25,7 +25,21 @@ http://localhost:5678
 
 ## Required Environment
 
-Start n8n from a shell that has these variables available:
+Check the repo-owned env loader before starting n8n:
+
+```sh
+npm run n8n:parent-response:check
+```
+
+Start n8n with the same repo-owned env loader:
+
+```sh
+npm run n8n:parent-response:start
+```
+
+The starter reads ignored local env files and maps `SUPABASE_SECRET_KEY` to
+`SUPABASE_SERVICE_ROLE_KEY` for n8n. If starting n8n manually, the shell must
+have these variables available:
 
 ```sh
 export SUPABASE_URL="https://PROJECT_REF.supabase.co"
