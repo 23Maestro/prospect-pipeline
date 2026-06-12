@@ -333,7 +333,7 @@ test('call tracker public contract documents count flags as the reporting source
   assert.equal(contract.liveSupabaseApi.canonicalEventTable, 'call_log');
   assert.ok(contract.data.generatedAt);
   assert.equal(contract.data.supabaseReads.canonicalEventTable, 'call_log');
-  assert.equal(contract.data.supabaseReads.lifecycleSourceTable, 'lifecycle_events');
+  assert.equal(contract.data.supabaseReads.sourceMode, 'call_log_only');
   assert.equal(typeof contract.data.summary.dials, 'number');
   assert.equal(typeof contract.data.summary.contacts, 'number');
   assert.equal(typeof contract.data.summary.meetings_set, 'number');

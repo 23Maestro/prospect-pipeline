@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-08T03:45:09.220Z",
+  "generatedAt": "2026-06-12T04:33:19.032Z",
   "weeks": [
     {
       "archivedAt": "2026-06-08T03:45:09.220Z",
@@ -7,10 +7,10 @@
       "startDate": "2026-06-01",
       "endDate": "2026-06-05",
       "label": "This Week, Jun 1 - Jun 7",
-      "dials": 280,
-      "contacts": 53,
-      "meetingsSet": 18,
-      "setRate": 34,
+      "dials": 127,
+      "contacts": 18,
+      "meetingsSet": 16,
+      "setRate": 89,
       "allTimeAtArchive": {
         "dials": 959,
         "contacts": 201,

@@ -626,9 +626,85 @@ test('/api/call-tracker-data reads live Supabase call_log for the browser contra
   assert.equal(payload.data.summary.dials, 1);
   assert.equal(payload.data.events.some((row: { athlete_name?: string }) => row.athlete_name === 'Live Athlete'), true);
   assert.equal(payload.data.supabaseReads.canonicalEventTable, 'call_log');
+  assert.equal(payload.data.supabaseReads.sourceMode, 'call_log_only');
   assert.match(payload.data.ui.monthResultLabel, /^[A-Z][a-z]+ Results$/);
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 1);
+  assert.equal(calls.some((call) => call.url.includes('/lifecycle_events?')), false);
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
+});
+
+test('/api/call-tracker-data shows same-task immediate meeting set as one tracker row', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_log?')) {
+      const base = {
+        athlete_key: '1499731:954461',
+        athlete_id: '1499731',
+        athlete_main_id: '954461',
+        athlete_name: 'Braylon Jenkins',
+        occurred_at: '2026-06-11T20:49:00+00:00',
+        event_at: '2026-06-11T20:49:00+00:00',
+        reporting_at: '2026-06-11T20:49:00+00:00',
+        raw_crm_stage: 'Meeting Set',
+        raw_task_status: 'Call Attempt 1',
+        active_operator_name: 'Jerami Singleton',
+        task_assigned_owner: 'Jerami Singleton',
+        materialization_status: 'operator_task',
+        materialization_reason: 'task_assigned_owner_matches_active_operator',
+        resolved_owner_name: 'Jerami Singleton',
+        resolved_owner_source_field: 'task.assigned_owner',
+        can_materialize_for_active_operator: true,
+        payload_json: { task_id: '698726' },
+        created_at: '2026-06-11T20:49:00+00:00',
+      };
+      return Response.json([
+        {
+          ...base,
+          fact_type: 'meeting_set',
+          tracker_outcome: 'meeting_set',
+          raw_event_type: 'lifecycle_meeting_set',
+          source_system: 'lifecycle_meeting_set',
+          appointment_id: '630216',
+          booked_event_title: 'Braylon Jenkins Football 2028 AR',
+          revenue_cents: null,
+          dedupe_key: 'meeting_set:1499731:954461:630216',
+          counts_as_dial: true,
+          counts_as_contact: true,
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+        },
+        {
+          ...base,
+          fact_type: 'call_activity',
+          tracker_outcome: 'voicemail',
+          raw_event_type: 'call_activity',
+          source_system: 'call_activity',
+          appointment_id: null,
+          booked_event_title: null,
+          revenue_cents: null,
+          dedupe_key: 'call_activity:698726',
+          counts_as_dial: true,
+          counts_as_contact: false,
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: false,
+        },
+      ]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const braylonRows = payload.data.events.filter((row: { athlete_name?: string }) => row.athlete_name === 'Braylon Jenkins');
+  assert.equal(braylonRows.length, 1);
+  assert.equal(braylonRows[0].tracker_outcome, 'meeting_set');
+  assert.equal(payload.data.summary.dials, 1);
+  assert.equal(payload.data.summary.voicemail_only, 0);
+  assert.equal(payload.data.ui.periods['week-3'].dials, 1);
 });
 
 test('/api/call-tracker-data dedupes meeting-set rows by appointment', async () => {

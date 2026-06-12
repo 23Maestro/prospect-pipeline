@@ -901,9 +901,9 @@ function renderTable() {
           <td>${shortDate(rowDisplayAt(row))}</td>
           <td class="name-cell">${row.athlete_name || ''}</td>
           <td><span class="pill ${outcome}">${labels[outcome] || outcome}</span></td>
-          <td>${displayStage(row)}</td>
-          <td class="event-title" title="${eventTitle(row)}">
-            <span>${eventTitle(row)}</span>
+          <td>${displayTask(row)}</td>
+          <td class="event-title" title="${displayStage(row)}">
+            <span>${displayStage(row)}</span>
           </td>
           <td class="money-cell">${Number(row.revenue_cents || 0) ? money(row.revenue_cents) : ''}</td>
         </tr>
@@ -951,22 +951,16 @@ function titleCaseLabel(value) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
+function displayTask(row) {
+  return titleCaseLabel(row.raw_task_status || '');
+}
+
 function displayStage(row) {
-  return titleCaseLabel(row.raw_crm_stage || row.raw_task_status || row.raw_event_type || '');
+  return titleCaseLabel(row.raw_crm_stage || row.raw_event_type || '');
 }
 
 function displayOutcome(row) {
-  if (row.tracker_outcome === 'voicemail' && displayStage(row) === 'Meeting Set') {
-    return 'spoke_follow_up';
-  }
   return row.tracker_outcome;
-}
-
-function eventTitle(row) {
-  if (row.tracker_outcome === 'meeting_set' && row.appointment_starts_at) {
-    return `${row.booked_event_title || 'Meeting Set'} • ${shortDate(row.appointment_starts_at)}`;
-  }
-  return row.booked_event_title || row.appointment_id || '';
 }
 
 function render() {

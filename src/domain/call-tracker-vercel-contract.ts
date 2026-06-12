@@ -9,7 +9,7 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
       canonicalEventTable: 'call_log',
       compatibilityRead: false,
       plainEnglish:
-        'The Vercel API reads canonical call_log rows directly. Rows must carry proof fields plus count booleans so the browser never recomputes business meaning.',
+        'The Vercel API reads canonical call_log rows directly. It must not merge lifecycle_events fallback rows into the live tracker. Rows must carry proof fields plus count booleans so the browser never recomputes business meaning.',
       requiredFields: [
         'athlete_name',
         'occurred_at',
@@ -77,8 +77,8 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
     },
     {
       sourceTable: 'lifecycle_events',
-      rawMeaning: 'Pipeline lifecycle transitions. Meeting Set and task activity facts live here so proof sticks at ingest instead of being repaired later.',
-      feedsEventFeedAs: 'raw_event_type = lifecycle_meeting_set or lifecycle_call_activity',
+      rawMeaning: 'Pipeline lifecycle transitions. Meeting Set lifecycle facts may materialize into call_log; lifecycle_events itself remains audit/history.',
+      feedsEventFeedAs: 'raw_event_type = lifecycle_meeting_set after materialization into call_log',
       ownsCounts: ['countsAsDial', 'countsAsContact', 'countsAsMeetingSet'],
       mustCarry: [
         'event_type = meeting_set',

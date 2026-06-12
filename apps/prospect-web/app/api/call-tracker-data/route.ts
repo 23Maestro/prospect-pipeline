@@ -90,33 +90,6 @@ const callLogFields = [
   'created_at',
 ];
 
-const lifecycleFields = [
-  'id',
-  'athlete_key',
-  'athlete_id',
-  'athlete_main_id',
-  'event_type',
-  'dedupe_key',
-  'crm_stage',
-  'task_status',
-  PAYLOAD_FIELD,
-  'created_at',
-];
-
-const activityByStage = new Map<string, readonly [string, string, string, boolean, boolean]>([
-  ['left voice mail 1', ['call_attempt_1', 'dial', 'voicemail', true, false]],
-  ['left voicemail 1', ['call_attempt_1', 'dial', 'voicemail', true, false]],
-  ['left voice mail 2', ['call_attempt_2', 'dial', 'voicemail', true, false]],
-  ['left voicemail 2', ['call_attempt_2', 'dial', 'voicemail', true, false]],
-  ['never spoke to', ['call_attempt_3', 'dial', 'voicemail', true, false]],
-  ['called - unable to leave vm', ['unable_to_leave_vm', 'dial', 'unable_to_leave_vm', true, false]],
-  ['spoke to - not interested', ['spoke_to_not_interested', 'contact', 'not_interested', true, true]],
-  ['spoke to - athlete, not parent', ['spoke_to_athlete_not_parent', 'contact', 'spoke_follow_up', true, true]],
-  ['spoke to - too young', ['spoke_to_too_young', 'contact', 'spoke_follow_up', true, true]],
-  ['spoke to - follow up', ['spoke_to_follow_up', 'contact', 'spoke_follow_up', true, true]],
-  ['spoke to - i need to follow up', ['spoke_to_follow_up', 'contact', 'spoke_follow_up', true, true]],
-]);
-
 function noStoreJson(body: unknown, init?: ResponseInit) {
   const response = NextResponse.json(body, init);
   response.headers.set('cache-control', 'no-store, max-age=0');
@@ -372,115 +345,6 @@ function payload(row: Record<string, any>) {
   return row?.[PAYLOAD_FIELD] && typeof row[PAYLOAD_FIELD] === 'object' && !Array.isArray(row[PAYLOAD_FIELD]) ? row[PAYLOAD_FIELD] : {};
 }
 
-function getPath(source: any, path: string[]) {
-  return path.reduce((current, key) => (!current || typeof current !== 'object' ? undefined : current[key]), source);
-}
-
-function firstValue(row: Record<string, any>, paths: string[][]) {
-  const body = payload(row);
-  for (const path of paths) {
-    const value = path[0] === '$row' ? getPath(row, path.slice(1)) : getPath(body, path);
-    const text = String(value || '').trim();
-    if (text) return text;
-  }
-  return '';
-}
-
-function classifyLifecycleActivity(row: Record<string, any>) {
-  const stage = normalizeKey(row.crm_stage);
-  const direct = activityByStage.get(stage);
-  if (direct) return direct;
-  const status = normalizeKey(row.task_status);
-  if (status.includes('call attempt 2')) return activityByStage.get('left voice mail 2');
-  if (status.includes('call attempt 3')) return activityByStage.get('never spoke to');
-  if (status.includes('call attempt 1') || status === 'call attempt') return activityByStage.get('left voice mail 1');
-  if (status.includes('unable') && status.includes('leave') && status.includes('vm')) return activityByStage.get('called - unable to leave vm');
-  if (status.includes('not interested')) return activityByStage.get('spoke to - not interested');
-  if (status.includes('athlete') && status.includes('not parent')) return activityByStage.get('spoke to - athlete, not parent');
-  if (status.includes('too young')) return activityByStage.get('spoke to - too young');
-  if (status.includes('spoke') && status.includes('follow')) return activityByStage.get('spoke to - follow up');
-  const body = payload(row);
-  if (body.tracker_outcome && (body.counts_as_dial === true || body.counts_as_contact === true)) {
-    return [
-      String(body.activity_subtype || body.tracker_outcome),
-      String(body.activity_kind || (body.counts_as_contact ? 'contact' : 'dial')),
-      String(body.tracker_outcome),
-      body.counts_as_dial === true,
-      body.counts_as_contact === true,
-    ] as const;
-  }
-  return null;
-}
-
-function lifecycleActivityToEvent(row: Record<string, any>) {
-  if (row.event_type === 'meeting_set') return null;
-  if (!row.athlete_id || !row.athlete_main_id || !row.athlete_key) return null;
-  const activity = classifyLifecycleActivity(row);
-  if (!activity) return null;
-  const [activitySubtype, , trackerOutcome, countsAsDial, countsAsContact] = activity;
-  const body = payload(row);
-  const status = firstValue(row, [
-    ['materialization_status'],
-    ['materialization_proof', 'materialization_status'],
-    ['owner_context', 'materialization_status'],
-  ]);
-  const taskAssignedOwner = firstValue(row, [
-    ['task_assigned_owner'],
-    ['assigned_owner'],
-    ['owner_context', 'task_assigned_owner'],
-    ['materialization_proof', 'task_assigned_owner'],
-  ]);
-  const activeOperator = firstValue(row, [['active_operator_name'], ['owner_context', 'active_operator_name']]) || 'Jerami Singleton';
-  if (status !== 'operator_task' && taskAssignedOwner !== activeOperator) return null;
-  const occurredAt =
-    firstValue(row, [
-      ['completion_date'],
-      ['completed_at'],
-      ['occurred_at'],
-      ['due_at'],
-      ['due_date'],
-      ['$row', 'created_at'],
-    ]) || row.created_at;
-  const taskId = firstValue(row, [
-    ['task_id'],
-    ['taskId'],
-    ['current_task_id'],
-    ['selected_task_id'],
-    ['matched_weekly_task_id'],
-    ['materialization_proof', 'task_id'],
-    ['owner_context', 'task_id'],
-  ]) || `lifecycle:${row.id}`;
-  return {
-    athlete_name: firstValue(row, [['athlete_name'], ['name'], ['$row', 'athlete_name']]) || null,
-    occurred_at: occurredAt,
-    event_at: occurredAt,
-    reporting_at: occurredAt,
-    reporting_date_et: localDateKey(occurredAt),
-    tracker_outcome: trackerOutcome,
-    raw_crm_stage: null,
-    raw_task_status: activitySubtype,
-    raw_event_type: 'lifecycle_call_activity',
-    source: 'lifecycle_events',
-    appointment_id: null,
-    live_event_id: null,
-    booked_event_title: firstValue(row, [['task_title'], ['taskTitle'], ['current_task_title']]) || row.task_status || row.crm_stage || activitySubtype,
-    revenue_cents: null,
-    dedupe_key: `activity:${taskId}`,
-    active_operator_name: activeOperator,
-    task_assigned_owner: taskAssignedOwner || activeOperator,
-    counts_as_dial: countsAsDial,
-    counts_as_contact: countsAsContact,
-    counts_as_meeting_set: false,
-    counts_as_post_meeting_outcome: false,
-    materialization_status: status || 'operator_task',
-    [MATERIALIZATION_REASON_FIELD]: body[MATERIALIZATION_REASON_FIELD] || body.materialization_proof?.reason || null,
-    resolved_owner_name: body.source_owner || body.owner_context?.resolved_owner_name || activeOperator,
-    resolved_owner_source_field: body.owner_proof || body.owner_context?.owner_proof || null,
-    can_materialize_for_active_operator: true,
-    created_at: row.created_at,
-  };
-}
-
 function mergeEventRows(viewRows: Array<Record<string, any>>, lifecycleRows: Array<Record<string, any>>) {
   const byKey = new Map<string, Record<string, any>>();
   for (const row of [...viewRows, ...lifecycleRows]) {
@@ -489,6 +353,26 @@ function mergeEventRows(viewRows: Array<Record<string, any>>, lifecycleRows: Arr
     if (!previous || rowQuality(row) > rowQuality(previous)) byKey.set(key, row);
   }
   return [...byKey.values()].sort((left, right) => new Date(right.event_at || right.occurred_at).getTime() - new Date(left.event_at || left.occurred_at).getTime());
+}
+
+function taskIdForRow(row: Record<string, any>) {
+  const body = payload(row);
+  return String(body.task_id || body.current_task_id || body.selected_task_id || row.source_row_id || '').trim();
+}
+
+function collapseMeetingSetCompanionCallActivity(rows: Array<Record<string, any>>) {
+  const meetingSetTaskIds = new Set(
+    rows
+      .filter((row) => row.tracker_outcome === 'meeting_set' && row.counts_as_meeting_set === true)
+      .map(taskIdForRow)
+      .filter(Boolean),
+  );
+  if (!meetingSetTaskIds.size) return rows;
+  return rows.filter((row) => {
+    if (row.fact_type !== 'call_activity') return true;
+    const taskId = taskIdForRow(row);
+    return !taskId || !meetingSetTaskIds.has(taskId);
+  });
 }
 
 function callLogRowToEvent(row: Record<string, any>) {
@@ -542,20 +426,6 @@ function summaryFromRows(rows: Array<Record<string, any>>) {
     needs_review: rows.filter((row) => row.tracker_outcome === 'needs_review').length,
     dials: rows.filter((row) => row.counts_as_dial === true).length,
     contacts: rows.filter((row) => row.counts_as_contact === true).length,
-  };
-}
-
-function addLifecycleDeltasToSummary(fallback: Record<string, any>, lifecycleRows: Array<Record<string, any>>) {
-  return {
-    ...fallback,
-    dials: (Number(fallback.dials) || 0) + lifecycleRows.filter((row) => row.counts_as_dial === true).length,
-    contacts: (Number(fallback.contacts) || 0) + lifecycleRows.filter((row) => row.counts_as_contact === true).length,
-    meetings_set: Number(fallback.meetings_set) || 0,
-    meeting_outcomes_total: Number(fallback.meeting_outcomes_total) || 0,
-    closed_won: Number(fallback.closed_won) || 0,
-    money_earned_cents: Number(fallback.money_earned_cents) || 0,
-    voicemail_only: (Number(fallback.voicemail_only) || 0) + lifecycleRows.filter((row) => row.tracker_outcome === 'voicemail').length,
-    appointments_tracked: Number(fallback.appointments_tracked) || 0,
   };
 }
 
@@ -748,20 +618,14 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
 
 async function buildLiveContract() {
   const canonicalEventTable = 'call_log';
-  const [callLogRows, lifecycleRows] = await Promise.all([
-    supabaseGet([`${canonicalEventTable}?select=${encodeURIComponent(callLogFields.join(','))}`, 'order=reporting_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
-    supabaseGet([`lifecycle_events?select=${encodeURIComponent(lifecycleFields.join(','))}`, 'order=created_at.desc', `limit=${EVENT_LIMIT}`].join('&')),
-  ]);
+  const callLogRows = await supabaseGet([`${canonicalEventTable}?select=${encodeURIComponent(callLogFields.join(','))}`, 'order=reporting_at.desc', `limit=${EVENT_LIMIT}`].join('&'));
 
   const generatedAt = new Date().toISOString();
   const viewEvents = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
-  const lifecycleEvents = (Array.isArray(lifecycleRows) ? lifecycleRows : []).map(lifecycleActivityToEvent).filter(Boolean) as Array<Record<string, any>>;
-  const viewDedupeKeys = new Set(viewEvents.map((row: Record<string, any>) => row.dedupe_key).filter(Boolean));
-  const lifecycleDeltaEvents = lifecycleEvents.filter((row) => !viewDedupeKeys.has(row.dedupe_key));
-  const materializedEvents = mergeEventRows(viewEvents, lifecycleEvents);
+  const materializedEvents = collapseMeetingSetCompanionCallActivity(mergeEventRows(viewEvents, []));
   const summary = resolveMeetingSetSummary(
-    addLifecycleDeltasToSummary(summaryFromRows(viewEvents), lifecycleDeltaEvents),
-    [...viewEvents, ...lifecycleDeltaEvents],
+    summaryFromRows(materializedEvents),
+    materializedEvents,
     materializedEvents,
   );
   const publicEvents = materializedEvents.filter(isDashboardVisibleEvent).map(publicRow);
@@ -778,7 +642,7 @@ async function buildLiveContract() {
       eventLimit: EVENT_LIMIT,
       supabaseReads: {
         canonicalEventTable,
-        lifecycleSourceTable: 'lifecycle_events',
+        sourceMode: 'call_log_only',
       },
       summary,
       events: publicEvents,

@@ -29,11 +29,12 @@ test('period cards are scoped from event booleans, not all-time summary totals',
   assert.match(source, /dials: Number\(summary\.dials\) \|\| 0/);
 });
 
-test('materializer reads lifecycle task facts directly instead of depending on backsync writes', () => {
-  assert.match(source, /buildCallActivityEventFromLifecycle/);
-  assert.match(source, /lifecycle_events\?select=/);
-  assert.match(source, /lifecycle_call_activity/);
-  assert.match(source, /mergeEventRows\(viewEvents, lifecycleEvents\)/);
+test('materializer reads call_log only and does not re-add lifecycle fallback rows', () => {
+  assert.doesNotMatch(source, /buildCallActivityEventFromLifecycle/);
+  assert.doesNotMatch(source, /lifecycle_events\?select=/);
+  assert.doesNotMatch(source, /lifecycle_call_activity/);
+  assert.match(source, /sourceMode: 'call_log_only'/);
+  assert.match(source, /collapseMeetingSetCompanionCallActivity\(mergeEventRows\(viewEvents\)\)/);
 });
 
 test('materialized event rows carry non-null count booleans with key outcome invariants', () => {
@@ -50,7 +51,7 @@ test('materialized event rows carry non-null count booleans with key outcome inv
     if (row.tracker_outcome === 'meeting_set') {
       assert.equal(row.counts_as_meeting_set, true);
     }
-    if (['closed_won', 'closed_lost', 'reschedule_pending', 'rescheduled', 'canceled', 'no_show'].includes(row.tracker_outcome)) {
+    if (['closed_lost', 'reschedule_pending', 'rescheduled', 'canceled', 'no_show'].includes(row.tracker_outcome)) {
       assert.equal(row.counts_as_post_meeting_outcome, true);
     }
   }

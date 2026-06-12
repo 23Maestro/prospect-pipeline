@@ -193,8 +193,8 @@ export default function ProspectCallTrackerPage() {
                   <th>When</th>
                   <th>Name</th>
                   <th>Outcome</th>
+                  <th>Task</th>
                   <th>Stage</th>
-                  <th>Event</th>
                   <th className="money-cell">Money</th>
                 </tr>
               </thead>
