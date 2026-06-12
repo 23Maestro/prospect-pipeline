@@ -283,14 +283,21 @@ n8n
 
 ## Task 8: Verification and Deploy
 
-- [ ] Install Vercel CLI only if needed:
+- [x] Confirm Vercel CLI access through `npx vercel`:
 
 ```sh
-npm install -g vercel
+npx vercel --version
 ```
 
-- [ ] Ask user to accept Vercel auth prompt if needed.
-- [ ] Set Vercel env vars.
+- [x] Confirm Vercel auth and linked `apps/prospect-web` project.
+- [x] Set generated Vercel production env vars for:
+  - `PARENT_RESPONSE_TOKEN_SECRET`
+  - `PARENT_RESPONSE_NOTIFY_SECRET`
+  - `PARENT_RESPONSE_APPROVAL_SECRET`
+- [ ] Set Resend Vercel production env vars:
+  - `RESEND_API_KEY`
+  - `PARENT_RESPONSE_NOTIFY_FROM`
+  - `PARENT_RESPONSE_NOTIFY_TO`
 - [x] Add live readiness verifier for local Raycast/root env, current n8n shell env, Vercel production env, and workflow artifact:
 
 ```sh
@@ -299,6 +306,8 @@ npm run verify:parent-response-readiness
 
 - [x] Run `cd apps/prospect-web && npm run verify`.
 - [x] Run focused root tests for any shared helper.
+- [x] Deploy Prospect Web production alias with parent response routes:
+  - `https://prospect-web.vercel.app`
 - [ ] Create one dry-run request row.
 - [ ] Submit parent response.
 - [ ] Confirm Supabase state.

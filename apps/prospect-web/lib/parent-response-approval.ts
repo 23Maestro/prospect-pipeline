@@ -1,14 +1,67 @@
-import type {
-  RescheduleMeetingSubmitRequest,
-  RescheduleMeetingSubmitResponse,
-  SalesStageUpdateResponse,
-} from '../../../src/features/scout-prep/types';
-import {
-  applyApprovedParentResponseReschedule,
-  type ParentResponseApprovalRequest,
-} from '../../../src/lib/parent-response-approval';
 import { getFastApiBaseUrl, getFastApiToken, getMissingFastApiEnvMessage } from './env';
 import { getServerEnv } from './env';
+
+const CONFIRMED_RESCHEDULE_STAGE = 'Meeting Result - Rescheduled';
+
+type RescheduleMeetingSubmitRequest = {
+  athlete_id: string;
+  athlete_main_id: string;
+  meeting_name: string;
+  meeting_timezone: string;
+  assigned_to: string;
+  open_event_id: string;
+  task_description: string;
+  start_time: string;
+  meeting_length: string;
+  openmeetings_list_length: string;
+  template_id: string;
+  keep_as_open_slot: string;
+  previous_event_id?: string;
+};
+
+type RescheduleMeetingSubmitResponse = {
+  success?: boolean;
+  stage?: string;
+  created_task?: {
+    task_id?: string | null;
+    title?: string | null;
+  } | null;
+};
+
+type SalesStageUpdateResponse = {
+  success?: boolean;
+  stage?: string;
+};
+
+type ParentResponseApprovalOption = {
+  option_id?: string | null;
+  display_label?: string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  timezone?: string | null;
+  timezone_label?: string | null;
+  open_event_id?: string | null;
+  assigned_to?: string | null;
+  head_scout_name?: string | null;
+  source_payload?: Record<string, unknown> | null;
+};
+
+export type ParentResponseApprovalRequest = {
+  id: string;
+  appointment_id?: string | null;
+  athlete_id: string;
+  athlete_main_id: string;
+  athlete_name: string;
+  original_head_scout_name?: string | null;
+  original_meeting_timezone?: string | null;
+  request_status: string;
+  approval_status: string;
+  response_kind?: string | null;
+  selected_option_id?: string | null;
+  proposed_options: ParentResponseApprovalOption[];
+  response_payload?: Record<string, unknown> | null;
+  approval_payload?: Record<string, unknown> | null;
+};
 
 function asText(value: unknown): string {
   return String(value || '').trim();
@@ -76,6 +129,80 @@ function athleteKey(args: Pick<RecordRescheduledArgs, 'athleteId' | 'athleteMain
 
 function payloadText(payload: Record<string, unknown> | null | undefined, key: string) {
   return asText(payload?.[key]);
+}
+
+function selectedOption(row: ParentResponseApprovalRequest): ParentResponseApprovalOption {
+  const selectedOptionId = asText(row.selected_option_id);
+  if (!selectedOptionId) throw new Error('Parent response approval requires selected_option_id');
+  const option = (row.proposed_options || []).find(
+    (candidate) => asText(candidate.option_id) === selectedOptionId,
+  );
+  if (!option) throw new Error('Selected parent response option was not found');
+  return option;
+}
+
+function optionPayloadText(option: ParentResponseApprovalOption, key: string): string {
+  return payloadText(option.source_payload, key);
+}
+
+function buildReschedulePayload(
+  row: ParentResponseApprovalRequest,
+  option: ParentResponseApprovalOption,
+): RescheduleMeetingSubmitRequest {
+  const approvalPayload = row.approval_payload || {};
+  const openEventId = asText(option.open_event_id) || optionPayloadText(option, 'open_event_id');
+  const assignedTo =
+    asText(option.assigned_to) ||
+    optionPayloadText(option, 'assigned_to') ||
+    optionPayloadText(option, 'meeting_for') ||
+    payloadText(approvalPayload, 'assigned_to');
+  const startTime = asText(option.starts_at) || optionPayloadText(option, 'start_time');
+  const meetingTimezone =
+    asText(option.timezone) ||
+    asText(option.timezone_label) ||
+    asText(row.original_meeting_timezone) ||
+    payloadText(approvalPayload, 'meeting_timezone');
+  const previousAppointmentId =
+    payloadText(approvalPayload, 'previous_appointment_id') || asText(row.appointment_id);
+  const meetingName =
+    payloadText(approvalPayload, 'meeting_name') ||
+    payloadText(approvalPayload, 'previous_meeting_title') ||
+    asText(row.athlete_name);
+  const taskDescription =
+    payloadText(approvalPayload, 'task_description') ||
+    payloadText(approvalPayload, 'previous_meeting_text') ||
+    asText(option.display_label);
+
+  if (!openEventId) throw new Error('Parent response approval requires open_event_id');
+  if (!assignedTo) throw new Error('Parent response approval requires assigned_to');
+  if (!startTime) throw new Error('Parent response approval requires selected option start time');
+  if (!meetingTimezone) throw new Error('Parent response approval requires meeting timezone');
+  if (!previousAppointmentId) {
+    throw new Error('Parent response approval requires previous appointment identity');
+  }
+
+  return {
+    athlete_id: asText(row.athlete_id),
+    athlete_main_id: asText(row.athlete_main_id),
+    meeting_name: meetingName,
+    meeting_timezone: meetingTimezone,
+    assigned_to: assignedTo,
+    open_event_id: openEventId,
+    task_description: taskDescription,
+    start_time: startTime,
+    meeting_length: payloadText(approvalPayload, 'meeting_length') || '01:00',
+    openmeetings_list_length: '-1',
+    template_id: payloadText(approvalPayload, 'template_id') || '210',
+    keep_as_open_slot: 'yes',
+    previous_event_id: previousAppointmentId,
+  };
+}
+
+function getApprovalOperator() {
+  return {
+    personName: String(process.env.PARENT_RESPONSE_OPERATOR_NAME || '').trim() || 'Jerami Singleton',
+    operatorKey: String(process.env.PARENT_RESPONSE_OPERATOR_KEY || '').trim() || 'jerami_singleton',
+  };
 }
 
 function timezoneOffsetMs(date: Date, timeZone: string): number {
@@ -246,23 +373,64 @@ async function fastApiJson<T>(path: string, init: RequestInit): Promise<T> {
 }
 
 export async function approveParentResponseRequest(row: ParentResponseApprovalRequest) {
-  return applyApprovedParentResponseReschedule(row, {
-    submitRescheduleMeeting: (payload: RescheduleMeetingSubmitRequest) =>
-      fastApiJson<RescheduleMeetingSubmitResponse>('/api/v1/sales/reschedule-meeting', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify(payload),
-      }),
-    updateSalesStage: (args) =>
-      fastApiJson<SalesStageUpdateResponse>('/api/v1/sales/stage', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', accept: 'application/json' },
-        body: JSON.stringify({
-          athlete_id: args.athleteId,
-          athlete_main_id: args.athleteMainId,
-          stage: args.stage,
-        }),
-      }),
-    recordRescheduled: recordRescheduledFromVercel,
+  if (asText(row.response_kind) !== 'selected_slot' || asText(row.request_status) !== 'selected') {
+    throw new Error('Only selected parent response slots can be approved');
+  }
+  if (asText(row.approval_status) !== 'pending') {
+    throw new Error('Parent response approval is no longer pending');
+  }
+
+  const option = selectedOption(row);
+  const reschedulePayload = buildReschedulePayload(row, option);
+  const rescheduleResult = await fastApiJson<RescheduleMeetingSubmitResponse>(
+    '/api/v1/sales/reschedule-meeting',
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify(reschedulePayload),
+    },
+  );
+  const salesStageResult = await fastApiJson<SalesStageUpdateResponse>('/api/v1/sales/stage', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify({
+      athlete_id: row.athlete_id,
+      athlete_main_id: row.athlete_main_id,
+      stage: CONFIRMED_RESCHEDULE_STAGE,
+    }),
   });
+  const approvalOperator = getApprovalOperator();
+  const durableWrite = await recordRescheduledFromVercel({
+    athleteId: asText(row.athlete_id),
+    athleteMainId: asText(row.athlete_main_id),
+    athleteName: asText(row.athlete_name),
+    crmStage: salesStageResult.stage || CONFIRMED_RESCHEDULE_STAGE,
+    taskStatus: rescheduleResult.created_task?.title || 'Confirmation Call',
+    headScout: asText(option.head_scout_name) || asText(row.original_head_scout_name) || null,
+    currentTaskId: rescheduleResult.created_task?.task_id || null,
+    currentTaskTitle: rescheduleResult.created_task?.title || null,
+    previousAppointmentId: reschedulePayload.previous_event_id || asText(row.appointment_id) || null,
+    appointmentId: reschedulePayload.open_event_id,
+    sourceEventId: reschedulePayload.open_event_id,
+    startsAt: asText(option.starts_at) || reschedulePayload.start_time,
+    dueAt: asText(option.starts_at) || reschedulePayload.start_time,
+    payload: {
+      meeting_timezone: reschedulePayload.meeting_timezone,
+      previous_appointment_id: reschedulePayload.previous_event_id || asText(row.appointment_id) || null,
+      operator_owner: approvalOperator.personName,
+      operator_owner_key: approvalOperator.operatorKey,
+      owner_proof: 'parent_response_operator_approval',
+      parent_response_request_id: row.id,
+      selected_option_id: row.selected_option_id || null,
+    },
+  });
+
+  return {
+    stage: salesStageResult.stage || CONFIRMED_RESCHEDULE_STAGE,
+    selectedOption: option,
+    reschedulePayload,
+    rescheduleResult,
+    salesStageResult,
+    durableWrite,
+  };
 }

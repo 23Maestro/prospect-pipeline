@@ -42,6 +42,14 @@
 - Confirmed Vercel auth is available through `npx vercel` as `23maestro`, and `apps/prospect-web` is linked to project `prospect-web`.
 - Confirmed production Vercel currently has Supabase/FastAPI env but is missing `PARENT_RESPONSE_TOKEN_SECRET`, `PARENT_RESPONSE_NOTIFY_SECRET`, `PARENT_RESPONSE_APPROVAL_SECRET`, `RESEND_API_KEY`, `PARENT_RESPONSE_NOTIFY_FROM`, and `PARENT_RESPONSE_NOTIFY_TO`.
 - Confirmed local root/Raycast env is missing `PARENT_RESPONSE_TOKEN_SECRET` and `PARENT_RESPONSE_PUBLIC_BASE_URL`; the current n8n shell is missing its Supabase and notify-route env.
+- Generated and configured shared parent response token, notify, and approval secrets in ignored local `.env` and Vercel production.
+- Added local `PARENT_RESPONSE_PUBLIC_BASE_URL` and `PARENT_RESPONSE_NOTIFY_BASE_URL` values pointing at `https://prospect-web.vercel.app`.
+- Confirmed local/Raycast readiness passes after ignored env setup; confirmed n8n shell readiness passes when launched with the parsed local env and `SUPABASE_SECRET_KEY` mapped to `SUPABASE_SERVICE_ROLE_KEY`.
+- First production deploy failed because `apps/prospect-web/lib/parent-response-approval.ts` imported root `src` files that Vercel does not upload for the app project.
+- Made the Prospect Web approval adapter deployable by keeping its approval payload assembly and minimal response types inside `apps/prospect-web/lib/parent-response-approval.ts`, while preserving reschedule -> stage -> durable write order.
+- Deployed Prospect Web production successfully:
+  - deployment: `https://prospect-idvug9ycc-23maestros-projects.vercel.app`
+  - alias: `https://prospect-web.vercel.app`
 - Verified:
   - `node --test supabase/tests/parent-response-requests-contract.test.mjs`
   - `npx tsx --test src/domain/parent-response-request.test.ts`
@@ -57,6 +65,8 @@
   - `node --test n8n/workflows/parent-response-review.test.mjs`
   - `node --test scripts/verify-parent-response-readiness.test.mjs`
   - `npm run verify:parent-response-readiness` (expected FAIL until missing env is configured)
+  - `npx vercel env ls`
+  - `npx vercel deploy --prod -y`
   - `n8n --version`
   - `curl -fsSI http://localhost:5678`
   - `n8n import:workflow --input=n8n/workflows/parent-response-review.json`
@@ -80,8 +90,4 @@ V1 should use Vercel for the parent-facing page and protected approval routes. S
 - Resend API key.
 - Verified sender/from domain or address for Resend.
 - Operator notification email address.
-- Vercel auth prompt if installing/using Vercel CLI.
-- Supabase/Vercel env var confirmation before deployment.
-- n8n shell env for `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PARENT_RESPONSE_NOTIFY_BASE_URL`, and `PARENT_RESPONSE_NOTIFY_SECRET`.
-- Parent response shared token/base URL in local Raycast/root env.
 - Dry-run Supabase row and local n8n UI/manual workflow execution before live use.
