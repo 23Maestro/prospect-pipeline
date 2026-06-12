@@ -39,6 +39,13 @@
   - `npm run sync:parent-response-vercel-env:check`
   - sync command refuses to run until parent response and Resend vars exist in ignored local env
   - sync command writes only the allowlisted parent response/Resend vars to Vercel production
+- Parent response production submit dry-run:
+  - `node --test scripts/verify-parent-response-live-dry-run.test.mjs`
+  - `npm run verify:parent-response-live-dry-run`
+  - creates a fake `parent_response_requests` row
+  - submits `ready_later` through the production Vercel route
+  - reads Supabase back and then marks the support row canceled / dry-run verified
+  - must not touch lifecycle, appointment, CRM stage, or task status surfaces
 - Focused Prospect Pipeline tests for any shared helper:
   - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
@@ -57,6 +64,7 @@
 - Run `npm run verify:parent-response-readiness` until all sections pass.
 - Run `npm run sync:parent-response-vercel-env:check` after adding Resend values to ignored `.env`.
 - Run `npm run sync:parent-response-vercel-env` to push the allowlisted values to Vercel production.
+- Run `npm run verify:parent-response-live-dry-run` to prove production submit and Supabase readback.
 - Start n8n with `npm run n8n:parent-response:start`.
 - Create one dry-run Supabase request row.
 - Open the Vercel parent URL.

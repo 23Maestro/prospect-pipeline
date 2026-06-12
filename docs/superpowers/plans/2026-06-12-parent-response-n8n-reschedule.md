@@ -313,8 +313,8 @@ npm run verify:parent-response-readiness
 - [x] Run focused root tests for any shared helper.
 - [x] Deploy Prospect Web production alias with parent response routes:
   - `https://prospect-web.vercel.app`
-- [ ] Create one dry-run request row.
-- [ ] Submit parent response.
-- [ ] Confirm Supabase state.
+- [x] Create one dry-run request row.
+- [x] Submit parent response.
+- [x] Confirm Supabase state.
 - [ ] Confirm Resend notification.
 - [ ] Approve one test with explicit operator confirmation.

@@ -47,6 +47,13 @@
 - Confirmed local/Raycast readiness passes after ignored env setup; confirmed n8n shell readiness passes when launched with the parsed local env and `SUPABASE_SECRET_KEY` mapped to `SUPABASE_SERVICE_ROLE_KEY`.
 - Added `scripts/start-parent-response-n8n.mjs` and npm commands to check/start n8n with parsed ignored repo env instead of shell-sourcing `.env`.
 - Added `scripts/sync-parent-response-vercel-env.mjs` and npm commands to sync only allowlisted parent response/Resend env values from ignored local env to Vercel production.
+- Applied live Supabase migration `20260612150000_parent_response_requests.sql` to project `udwqtwppbtrtvvsgqwml` after the first live dry-run proved the table was missing.
+- Added `scripts/verify-parent-response-live-dry-run.mjs` and npm command for a gated production submit/readback dry-run that writes only fake `parent_response_requests` support state and then marks the row canceled.
+- Ran production dry-run successfully:
+  - request id `69360c0f-e2b5-48e1-9c8f-f8ec9b45e78f`
+  - submit status `200`
+  - Supabase readback `request_status=ready_later`, `response_kind=ready_later`, `notification_status=pending`
+  - cleanup marked the support row canceled / dry-run verified
 - First production deploy failed because `apps/prospect-web/lib/parent-response-approval.ts` imported root `src` files that Vercel does not upload for the app project.
 - Made the Prospect Web approval adapter deployable by keeping its approval payload assembly and minimal response types inside `apps/prospect-web/lib/parent-response-approval.ts`, while preserving reschedule -> stage -> durable write order.
 - Deployed Prospect Web production successfully:
@@ -68,9 +75,12 @@
   - `node --test scripts/verify-parent-response-readiness.test.mjs`
   - `node --test scripts/start-parent-response-n8n.test.mjs`
   - `node --test scripts/sync-parent-response-vercel-env.test.mjs`
+  - `node --import tsx --test scripts/verify-parent-response-live-dry-run.test.mjs`
   - `npm run n8n:parent-response:check`
   - `npm run sync:parent-response-vercel-env:check` (expected FAIL until Resend values are added to ignored local env)
   - `npm run verify:parent-response-readiness` (expected FAIL until missing env is configured)
+  - `npm run verify:parent-response-live-dry-run`
+  - `/opt/homebrew/bin/supabase db push`
   - `npx vercel env ls`
   - `npx vercel deploy --prod -y`
   - `n8n --version`
