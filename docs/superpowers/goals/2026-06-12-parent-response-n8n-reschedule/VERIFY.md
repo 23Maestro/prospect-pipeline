@@ -15,7 +15,12 @@
   - notify route sends a mocked Resend email
 - Static guard proving browser code does not expose service role, Resend key, approval secret, or token hash secret.
 - `npm run verify` in `apps/prospect-web`.
-- Focused Prospect Pipeline tests for any shared approval helper.
+- Focused Prospect Pipeline tests for any shared helper:
+  - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
+  - `node --import tsx --test src/domain/architecture-contract.test.ts`
+  - `npm run test:domain`
+  - `npm run build`
+  - `npm test`
 - `git diff --check`.
 
 ## Required Live/Manual Proof Before Real Use

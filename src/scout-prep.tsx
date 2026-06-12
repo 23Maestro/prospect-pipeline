@@ -16,6 +16,7 @@ import {
   clearSearchBar,
   showToast,
   useNavigation,
+  getPreferenceValues,
 } from '@raycast/api';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -178,7 +179,14 @@ import {
   recordMeetingSet,
   recordRescheduled,
   recordVoicemailFollowUpSent,
+  getSupabasePersistenceConfig,
 } from './lib/supabase-lifecycle';
+import {
+  createSignedParentResponseRequest,
+  getParentResponseRuntimeConfig,
+  type ParentResponseProposedOption,
+  type ParentResponseRuntimePreferences,
+} from './lib/parent-response-request-writer';
 import {
   hasAthleteContactCacheForTask,
   syncAthleteContactCacheFromScoutPrepContext,
@@ -1852,6 +1860,8 @@ type RescheduleVoicemailSlotOption = {
   zoneLabel: string;
   weekLabel: string;
   start: string;
+  end: string;
+  openEventId: string;
 };
 
 function normalizeNameKey(value?: string | null): string {
@@ -4592,6 +4602,26 @@ function ScoutPrepDetail({
     );
   }
 
+  async function handleCreateParentResponseLink() {
+    const toast = await showLoadingToast('Parent response link', task.athlete_name);
+    try {
+      const activeContext = await loadLiveScoutPrepContextForDetail();
+      setContext(activeContext);
+      renderScoutPrepContext(activeContext);
+      const created = await createParentRescheduleResponseLink({
+        task,
+        context: activeContext,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Parent link copied';
+      toast.message = `${created.optionCount} slots`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Parent link failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
+  }
+
   async function resolveNotesContext(options?: {
     loadingTitle?: string;
   }): Promise<ScoutPrepContext | null> {
@@ -4980,6 +5010,11 @@ function ScoutPrepDetail({
               onAction={() => void handleOpenScoutIdCallPrep()}
             />
             <Action
+              title="Create Parent Reschedule Link"
+              icon={Icon.Link}
+              onAction={() => void handleCreateParentResponseLink()}
+            />
+            <Action
               title="Refresh Scout Prep"
               icon="🔄"
               shortcut={{ modifiers: ['cmd', 'opt'], key: 'r' }}
@@ -5210,6 +5245,24 @@ function ScoutPrepTaskItem({
         closeAfterCompleteViews={1}
       />,
     );
+  }
+
+  async function handleCreateParentResponseLinkFromTask() {
+    const toast = await showLoadingToast('Parent response link', task.athlete_name);
+    try {
+      const { context } = await loadScoutPrepContextForDisplay(task, { forceLive: true });
+      const created = await createParentRescheduleResponseLink({
+        task,
+        context,
+      });
+      toast.style = Toast.Style.Success;
+      toast.title = 'Parent link copied';
+      toast.message = `${created.optionCount} slots`;
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Parent link failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    }
   }
 
   async function handleResolveMaxPrepsContextFromTask() {
@@ -5450,6 +5503,11 @@ function ScoutPrepTaskItem({
               icon="🕘"
               shortcut={{ modifiers: ['cmd'], key: 's' }}
               onAction={() => void handleSetConfirmationMorning()}
+            />
+            <Action
+              title="Create Parent Reschedule Link"
+              icon={Icon.Link}
+              onAction={() => void handleCreateParentResponseLinkFromTask()}
             />
             {showDirectCompleteAction ? (
               <Action
@@ -6371,6 +6429,8 @@ async function buildRankedRescheduleSlotPlan(args: {
         zoneLabel: display.zoneLabel,
         weekLabel: weekOffset > 0 ? 'next week' : 'this week',
         start: slot.start,
+        end: slot.end,
+        openEventId: slot.id,
       };
     });
 
@@ -6392,6 +6452,148 @@ async function buildRankedRescheduleSlotPlan(args: {
       payloadWeekLabels.length > 1
         ? `${payloadWeekLabels[0]} / ${payloadWeekLabels[payloadWeekLabels.length - 1]}`
         : payloadWeekLabels[0] || null,
+  };
+}
+
+function isParentResponseRecoveryStage(stageLabel?: string | null): boolean {
+  const outcome = classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome;
+  return outcome === 'resolution_pending';
+}
+
+function buildParentResponseProposedOptions(args: {
+  plan: RankedRescheduleSlotPlan;
+  clientTimezone?: string | null;
+}): ParentResponseProposedOption[] {
+  const previousScout = normalizeNameKey(args.plan.previousHeadScoutName);
+  const sameScoutSlots = args.plan.slots.filter(
+    (slot) => previousScout && normalizeNameKey(slot.scoutName) === previousScout,
+  );
+  return sameScoutSlots.slice(0, 3).map((slot, index) => ({
+    option_id: `slot-${index + 1}`,
+    display_label: slot.messageLabel,
+    starts_at: slot.start,
+    ends_at: slot.end,
+    timezone: args.clientTimezone || null,
+    timezone_label: slot.zoneLabel,
+    open_event_id: slot.openEventId,
+    head_scout_name: slot.scoutName,
+    source_payload: {
+      source_slot_id: slot.id,
+      scout_name: slot.scoutName,
+      week_label: slot.weekLabel,
+      is_previous_scout: slot.isPreviousScout,
+    },
+  }));
+}
+
+function buildParentResponseLinkCopy(args: {
+  athleteName: string;
+  url: string;
+  options: ParentResponseProposedOption[];
+}): string {
+  return [
+    `Reschedule link for ${args.athleteName}:`,
+    args.url,
+    '',
+    'Proposed times:',
+    ...args.options.map((option, index) => `${index + 1}. ${option.display_label}`),
+  ].join('\n');
+}
+
+async function createParentRescheduleResponseLink(args: {
+  task: ScoutPortalTask;
+  context: ScoutPrepContext;
+}): Promise<{
+  url: string;
+  requestId: string;
+  optionCount: number;
+}> {
+  const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
+  const athleteMainId = String(
+    args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
+  ).trim();
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete IDs for parent response link');
+  }
+
+  const selectedStage = await getSelectedCrmStageLabel(athleteId);
+  if (!isParentResponseRecoveryStage(selectedStage)) {
+    throw new Error(
+      `Set sales stage to Meeting Result - Res. Pending before creating a parent response link.`,
+    );
+  }
+
+  const plan = await buildRankedRescheduleSlotPlan({
+    task: args.task,
+    context: args.context,
+    requirePreviousMeeting: true,
+    weekOffsets: [0, 1],
+  });
+  if (!plan.previousMeeting) {
+    throw new Error('Missing previous meeting for parent response link');
+  }
+
+  const clientTimezone =
+    plan.previousMeeting.meetingTimezone ||
+    resolveTimezone(args.context.resolved.city, args.context.resolved.state) ||
+    null;
+  const proposedOptions = buildParentResponseProposedOptions({ plan, clientTimezone });
+  if (!proposedOptions.length) {
+    throw new Error('No same-scout openings found for parent response link');
+  }
+
+  const supabaseConfig = getSupabasePersistenceConfig();
+  if (!supabaseConfig) {
+    throw new Error('Missing Supabase credentials for parent response link');
+  }
+
+  const runtime = getParentResponseRuntimeConfig(
+    getPreferenceValues<ParentResponseRuntimePreferences>(),
+  );
+  const recipient = getVoicemailFollowUpRecipients(args.context).find(
+    (candidate) => candidate.id !== 'groupAll',
+  );
+  const athleteName =
+    args.context.contactInfo.studentAthlete.name || args.task.athlete_name || 'Student Athlete';
+  const created = await createSignedParentResponseRequest(supabaseConfig, runtime, {
+    appointmentId:
+      plan.previousMeeting.openEventId ||
+      plan.previousMeeting.bookedMeeting.event_id ||
+      plan.previousMeeting.bookedMeeting.title,
+    athleteId,
+    athleteMainId,
+    athleteName,
+    recipientName: recipient?.name || null,
+    recipientPhone: recipient?.phones[0] || null,
+    originalHeadScoutName: plan.previousHeadScoutName,
+    originalMeetingStartsAt: plan.previousMeeting.bookedMeeting.start,
+    originalMeetingTimezone: clientTimezone,
+    createdByOperatorKey: null,
+    proposedOptions,
+    source: 'scout_prep_reschedule_pending_link',
+    responsePayload: {
+      created_from_stage: selectedStage,
+      current_task_id: args.task.task_id || null,
+      current_task_title: args.task.title || null,
+    },
+    approvalPayload: {
+      previous_appointment_id:
+        plan.previousMeeting.openEventId || plan.previousMeeting.bookedMeeting.event_id || null,
+      previous_meeting_title: plan.previousMeeting.title,
+      previous_head_scout_name: plan.previousHeadScoutName,
+      previous_meeting_text: plan.previousMeetingText,
+    },
+  });
+  const copiedText = buildParentResponseLinkCopy({
+    athleteName,
+    url: created.url,
+    options: proposedOptions,
+  });
+  await copyTextToPasteboard(copiedText);
+  return {
+    url: created.url,
+    requestId: created.requestId,
+    optionCount: proposedOptions.length,
   };
 }
 

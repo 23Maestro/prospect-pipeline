@@ -226,12 +226,12 @@ Expected: PASS.
 
 ## Task 4: Human-Triggered Request Creation
 
-- [ ] Identify the exact Prospect Pipeline surface for `Send Reschedule Link`.
-- [ ] Require current state evidence that the athlete is in `Meeting Result - Res. Pending` or a deliberately supported no-show recovery state.
-- [ ] Refresh current context before fetching slots.
-- [ ] Fetch current openings only at button/action time.
-- [ ] Create `parent_response_requests` with proposed options from that fresh fetch.
-- [ ] Do not let n8n or cron create request rows.
+- [x] Identify the exact Prospect Pipeline surface for `Create Parent Reschedule Link` in Scout Prep detail and task-row Workflow actions.
+- [x] Require current state evidence that the athlete is in `Meeting Result - Res. Pending` or a deliberately supported no-show recovery state.
+- [x] Refresh current context before fetching slots.
+- [x] Fetch current openings only at button/action time.
+- [x] Create `parent_response_requests` with proposed options from that fresh fetch.
+- [x] Do not let n8n or cron create request rows.
 
 ## Task 5: Resend Notification
 

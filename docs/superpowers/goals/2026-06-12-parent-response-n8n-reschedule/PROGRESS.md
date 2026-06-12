@@ -25,9 +25,18 @@
 - Added notification metadata fields to `parent_response_requests` so local n8n can mark notification delivery without touching business state.
 - Added importable local n8n workflow JSON at `n8n/workflows/parent-response-review.json`.
 - Imported the workflow successfully into local `n8n@2.25.7`.
+- Added Scout Prep Workflow actions named `Create Parent Reschedule Link` on the detail view and task rows.
+- Added a parent-response request writer that signs one-time links and inserts intent-only request rows without writing lifecycle, appointment, or sales-stage truth.
+- The link action refreshes Scout Prep context live, checks the selected CRM stage is `Meeting Result - Res. Pending`, fetches fresh same-head-scout openings at action time, inserts `parent_response_requests`, and copies parent-facing link text.
+- Added Raycast preferences and env examples for `PARENT_RESPONSE_TOKEN_SECRET` and `PARENT_RESPONSE_PUBLIC_BASE_URL`.
 - Verified:
   - `node --test supabase/tests/parent-response-requests-contract.test.mjs`
   - `npx tsx --test src/domain/parent-response-request.test.ts`
+  - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
+  - `node --import tsx --test src/domain/architecture-contract.test.ts`
+  - `npm run test:domain`
+  - `npm run build`
+  - `npm test`
   - `cd apps/prospect-web && npx tsx --test tests/parent-response-routes.test.ts`
   - `cd apps/prospect-web && npm run verify`
   - `node -e "const fs=require('fs'); const workflow=JSON.parse(fs.readFileSync('n8n/workflows/parent-response-review.json','utf8')); ..."`

@@ -220,6 +220,8 @@ test('migration changes stay inside Prospect Web and Call Tracker data-contract 
     'scripts/verify-set-meetings-mobile-readiness.mjs',
     'src/domain/parent-response-request.test.ts',
     'src/domain/parent-response-request.ts',
+    'src/lib/parent-response-request-writer.test.ts',
+    'src/lib/parent-response-request-writer.ts',
     'src/lib/sales-stage.ts',
     'src/lib/scout-prep.tsx',
   ]);

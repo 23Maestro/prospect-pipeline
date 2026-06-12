@@ -171,6 +171,21 @@
       "required": false
     },
     {
+      "name": "parentResponseTokenSecret",
+      "title": "Parent Response Token Secret",
+      "description": "Secret used to hash one-time parent response link tokens.",
+      "type": "password",
+      "required": false
+    },
+    {
+      "name": "parentResponsePublicBaseUrl",
+      "title": "Parent Response Public Base URL",
+      "description": "Public Prospect Web URL used when creating parent response links.",
+      "type": "textfield",
+      "placeholder": "https://prospect-web.vercel.app",
+      "required": false
+    },
+    {
       "name": "dropboxToken",
       "title": "Dropbox API Token",
       "description": "Your Dropbox API token for file request creation",
