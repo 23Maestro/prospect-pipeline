@@ -300,6 +300,9 @@ npx vercel --version
   - `RESEND_API_KEY`
   - `PARENT_RESPONSE_NOTIFY_FROM`
   - `PARENT_RESPONSE_NOTIFY_TO`
+- [x] Add repo-owned parent response Vercel env sync helper:
+  - `npm run sync:parent-response-vercel-env:check`
+  - `npm run sync:parent-response-vercel-env`
 - [x] Add live readiness verifier for local Raycast/root env, current n8n shell env, Vercel production env, and workflow artifact:
 
 ```sh

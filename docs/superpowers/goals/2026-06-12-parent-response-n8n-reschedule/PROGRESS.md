@@ -46,6 +46,7 @@
 - Added local `PARENT_RESPONSE_PUBLIC_BASE_URL` and `PARENT_RESPONSE_NOTIFY_BASE_URL` values pointing at `https://prospect-web.vercel.app`.
 - Confirmed local/Raycast readiness passes after ignored env setup; confirmed n8n shell readiness passes when launched with the parsed local env and `SUPABASE_SECRET_KEY` mapped to `SUPABASE_SERVICE_ROLE_KEY`.
 - Added `scripts/start-parent-response-n8n.mjs` and npm commands to check/start n8n with parsed ignored repo env instead of shell-sourcing `.env`.
+- Added `scripts/sync-parent-response-vercel-env.mjs` and npm commands to sync only allowlisted parent response/Resend env values from ignored local env to Vercel production.
 - First production deploy failed because `apps/prospect-web/lib/parent-response-approval.ts` imported root `src` files that Vercel does not upload for the app project.
 - Made the Prospect Web approval adapter deployable by keeping its approval payload assembly and minimal response types inside `apps/prospect-web/lib/parent-response-approval.ts`, while preserving reschedule -> stage -> durable write order.
 - Deployed Prospect Web production successfully:
@@ -66,7 +67,9 @@
   - `node --test n8n/workflows/parent-response-review.test.mjs`
   - `node --test scripts/verify-parent-response-readiness.test.mjs`
   - `node --test scripts/start-parent-response-n8n.test.mjs`
+  - `node --test scripts/sync-parent-response-vercel-env.test.mjs`
   - `npm run n8n:parent-response:check`
+  - `npm run sync:parent-response-vercel-env:check` (expected FAIL until Resend values are added to ignored local env)
   - `npm run verify:parent-response-readiness` (expected FAIL until missing env is configured)
   - `npx vercel env ls`
   - `npx vercel deploy --prod -y`

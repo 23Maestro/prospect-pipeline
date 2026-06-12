@@ -34,6 +34,11 @@
   - confirms current n8n shell env has Supabase and notify route settings
   - confirms Vercel production env has Supabase, FastAPI, parent response, and Resend settings
   - confirms the n8n workflow artifact exists
+- Parent response Vercel env sync:
+  - `node --test scripts/sync-parent-response-vercel-env.test.mjs`
+  - `npm run sync:parent-response-vercel-env:check`
+  - sync command refuses to run until parent response and Resend vars exist in ignored local env
+  - sync command writes only the allowlisted parent response/Resend vars to Vercel production
 - Focused Prospect Pipeline tests for any shared helper:
   - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
@@ -50,6 +55,8 @@
 - Import or verify the local workflow JSON.
 - Confirm `http://localhost:5678` responds.
 - Run `npm run verify:parent-response-readiness` until all sections pass.
+- Run `npm run sync:parent-response-vercel-env:check` after adding Resend values to ignored `.env`.
+- Run `npm run sync:parent-response-vercel-env` to push the allowlisted values to Vercel production.
 - Start n8n with `npm run n8n:parent-response:start`.
 - Create one dry-run Supabase request row.
 - Open the Vercel parent URL.

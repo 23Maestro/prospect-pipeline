@@ -333,6 +333,8 @@
     "verify:parent-response-readiness": "node scripts/verify-parent-response-readiness.mjs",
     "n8n:parent-response:check": "node scripts/start-parent-response-n8n.mjs --check",
     "n8n:parent-response:start": "node scripts/start-parent-response-n8n.mjs",
+    "sync:parent-response-vercel-env": "node scripts/sync-parent-response-vercel-env.mjs",
+    "sync:parent-response-vercel-env:check": "node scripts/sync-parent-response-vercel-env.mjs --check",
     "sync:commissions-supabase": "tsx scripts/sync-commissions-to-supabase.mjs",
     "watch:confirmation-tasks": "tsx scripts/watch-confirmation-tasks.mjs",
     "test:call-tracker-ownership": "node --import tsx --test scripts/call-tracker-ownership.test.mjs",

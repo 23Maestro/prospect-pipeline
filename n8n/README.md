@@ -58,6 +58,14 @@ PARENT_RESPONSE_NOTIFY_FROM
 PARENT_RESPONSE_NOTIFY_TO
 ```
 
+After adding those values to ignored local `.env`, check and sync the
+allowlisted production variables with:
+
+```sh
+npm run sync:parent-response-vercel-env:check
+npm run sync:parent-response-vercel-env
+```
+
 Approval is intentionally separate and requires `PARENT_RESPONSE_APPROVAL_SECRET`.
 
 ## Import
