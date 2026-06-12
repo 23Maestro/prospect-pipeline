@@ -135,6 +135,7 @@ import {
   type ScoutPrepBatchRow,
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
+import { selectParentRescheduleSlots } from './domain/parent-reschedule-slot-selection';
 import { apiLogger, searchLogger } from './lib/logger';
 import { resolveTimezone } from './lib/scout-prep-ai';
 import {
@@ -6464,11 +6465,11 @@ function buildParentResponseProposedOptions(args: {
   plan: RankedRescheduleSlotPlan;
   clientTimezone?: string | null;
 }): ParentResponseProposedOption[] {
-  const previousScout = normalizeNameKey(args.plan.previousHeadScoutName);
-  const sameScoutSlots = args.plan.slots.filter(
-    (slot) => previousScout && normalizeNameKey(slot.scoutName) === previousScout,
-  );
-  return sameScoutSlots.slice(0, 3).map((slot, index) => ({
+  const selectedSlots = selectParentRescheduleSlots({
+    slots: args.plan.slots,
+    previousHeadScoutName: args.plan.previousHeadScoutName,
+  });
+  return selectedSlots.map((slot, index) => ({
     option_id: `slot-${index + 1}`,
     display_label: slot.messageLabel,
     starts_at: slot.start,
