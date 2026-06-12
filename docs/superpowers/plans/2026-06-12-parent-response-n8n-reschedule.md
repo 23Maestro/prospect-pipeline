@@ -265,13 +265,13 @@ Approval links are intentionally deferred until the approval route can reuse the
 
 ## Task 7: Local n8n, No Docker
 
-- [ ] Start local n8n:
+- [x] Start local n8n:
 
 ```sh
 n8n
 ```
 
-- [ ] Open `http://localhost:5678`.
+- [x] Open `http://localhost:5678`.
 - [ ] Create credentials for Supabase using HTTP Request or Postgres node.
 - [x] Create workflow JSON:
   - Schedule Trigger every 5 minutes.
@@ -279,6 +279,7 @@ n8n
   - HTTP Request to Vercel notify route.
   - Mark `notification_status`, `notification_sent_at`, and `notification_error` only.
 - [x] Export/import workflow JSON at `n8n/workflows/parent-response-review.json`.
+- [x] Add workflow contract test proving n8n stays downstream and patches only notification metadata.
 
 ## Task 8: Verification and Deploy
 

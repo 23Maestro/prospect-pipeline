@@ -18,6 +18,12 @@
   - approval route calls the reschedule adapter path and marks applied only after durable write attempt
 - Static guard proving browser code does not expose service role, Resend key, approval secret, or token hash secret.
 - `npm run verify` in `apps/prospect-web`.
+- n8n workflow contract:
+  - `node --test n8n/workflows/parent-response-review.test.mjs`
+  - confirms local workflow is inactive by default
+  - confirms submitted-response query only
+  - confirms notify route call
+  - confirms final patch writes only notification metadata
 - Focused Prospect Pipeline tests for any shared helper:
   - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
@@ -32,6 +38,8 @@
 - Start n8n locally from npm/nvm, not Docker.
 - Confirm n8n version is `2.25.7`.
 - Import or verify the local workflow JSON.
+- Confirm `http://localhost:5678` responds.
+- Start n8n from a shell with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PARENT_RESPONSE_NOTIFY_BASE_URL`, and `PARENT_RESPONSE_NOTIFY_SECRET`.
 - Create one dry-run Supabase request row.
 - Open the Vercel parent URL.
 - Submit a selected slot.

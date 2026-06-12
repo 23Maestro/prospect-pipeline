@@ -33,6 +33,12 @@
 - Added protected Prospect Web approval route at `/api/parent-response/[requestId]/approve`; it requires `PARENT_RESPONSE_APPROVAL_SECRET` and explicit `confirm: true`.
 - Approval now marks support rows `applied` only after adapter success and durable write attempt; adapter failures mark `approval_status = failed`.
 - Parent response options now persist the head-scout `assigned_to` adapter value needed for later approval.
+- Added `n8n/README.md` with local startup, required env, import, and dry-run verification steps.
+- Added `n8n/workflows/parent-response-review.test.mjs` to prove the n8n workflow stays downstream of submitted responses and patches only notification metadata.
+- Confirmed local n8n starts from npm/nvm and serves `http://localhost:5678`.
+- Re-imported `n8n/workflows/parent-response-review.json` into local n8n as inactive workflow `parent-response-review`.
+- Observed unrelated existing active n8n workflows `pipeline.n8n_INBOX1` and `pipeline.n8n_ASSIGN2` failing startup activation because `n8n-nodes-base.executeCommand` is unavailable; did not modify those workflows.
+- Confirmed the current shell and `apps/prospect-web/.env.local` do not yet provide the Supabase, Resend, notify, approval, or token secrets needed for a live dry run.
 - Verified:
   - `node --test supabase/tests/parent-response-requests-contract.test.mjs`
   - `npx tsx --test src/domain/parent-response-request.test.ts`
@@ -45,7 +51,10 @@
   - `cd apps/prospect-web && npx tsx --test tests/parent-response-routes.test.ts`
   - `cd apps/prospect-web && npm run verify`
   - `node -e "const fs=require('fs'); const workflow=JSON.parse(fs.readFileSync('n8n/workflows/parent-response-review.json','utf8')); ..."`
+  - `node --test n8n/workflows/parent-response-review.test.mjs`
   - `n8n --version`
+  - `curl -fsSI http://localhost:5678`
+  - `n8n import:workflow --input=n8n/workflows/parent-response-review.json`
   - `git diff --check`
 
 ### Current Direction
@@ -68,4 +77,5 @@ V1 should use Vercel for the parent-facing page and protected approval routes. S
 - Operator notification email address.
 - Vercel auth prompt if installing/using Vercel CLI.
 - Supabase/Vercel env var confirmation before deployment.
+- n8n shell env for `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `PARENT_RESPONSE_NOTIFY_BASE_URL`, and `PARENT_RESPONSE_NOTIFY_SECRET`.
 - Dry-run Supabase row and local n8n UI/manual workflow execution before live use.
