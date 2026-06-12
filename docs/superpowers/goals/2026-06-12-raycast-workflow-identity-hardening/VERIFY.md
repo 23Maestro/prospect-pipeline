@@ -11,7 +11,7 @@
 | R5. Audit maps actions to buckets, canonical IDs, adapter fields, allowed derivers, required patterns, and forbidden derivations. | Inspect exported `RAYCAST_WORKFLOW_IDENTITY_CONTRACTS`; run audit unit tests. | Contracts exist for five action surfaces and tests assert each mapping. | `scripts/audit-raycast-workflow-identity-contract.mjs` |
 | R6. Architecture remains shared identity spine plus bucket-owned resolvers, not a catch-all resolver. | Inspect `GOAL.md`, contract allowed derivers, and domain helper placement. | Resolver added to Meetings-owned `appointment-truth`; no god resolver introduced. | `src/domain/appointment-truth.ts` |
 | R7. Local proof includes focused tests, broad tests, diff check, and Raycast build. | Run command list below. | All commands pass locally. | `.tmp/honest-test-report.json` for `npm test`; terminal output for other commands. |
-| R8. Linear tracking is updated. | Check Linear issue `23M-51`. | Issue is `In Review` with a proof comment. | Linear `23M-51` |
+| R8. Linear tracking is updated. | Check Linear issue `23M-51`. | Issue records proof and is closed after the verified commit is pushed. | Linear `23M-51` |
 
 ## Commands
 
