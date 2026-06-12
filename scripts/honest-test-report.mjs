@@ -21,6 +21,10 @@ export const TEST_SUITES = [
     command: 'node --test scripts/backfill-appointment-truth.test.mjs supabase/tests/*.test.mjs',
   },
   {
+    name: 'raycast workflow identity contracts',
+    command: 'node --test scripts/audit-raycast-workflow-identity-contract.test.mjs',
+  },
+  {
     name: 'sync script unit contracts',
     command:
       'npm run test:call-tracker-ownership && node --test scripts/sync-current-pipeline-to-supabase.test.mjs scripts/sync-booked-meetings-to-supabase.test.mjs scripts/sync-supabase-pipeline.test.mjs scripts/lifecycle-call-tracker-backsync-core.test.mjs',

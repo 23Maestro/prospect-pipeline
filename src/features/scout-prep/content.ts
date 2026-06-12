@@ -610,6 +610,10 @@ function buildProspectIdFrameScriptLines(pronouns: AthletePronouns): ScriptMapLi
       'We only work with 500 students per grad year, so we’re strict about academics and what the talent level matches up with.',
     ),
     scriptLine(
+      'stable',
+      'We have an 80% scholarship rate, with 20% going D1.',
+    ),
+    scriptLine(
       'profile_contingent',
       `I’m not looking to blow smoke. If ${pronouns.subject}’s good enough and has the grades, great, let’s get moving. If not, we’ve got to focus on the places we’ve got to improve.`,
     ),

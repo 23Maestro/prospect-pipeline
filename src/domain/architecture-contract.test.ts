@@ -248,6 +248,15 @@ test('Post-call reschedule template hydration reads the exact admin Events row',
   assert.doesNotMatch(loadTemplate, /'appointment_truth'/);
 });
 
+test('Scout Prep keeps confirmed reschedule inside the Post-Call Update sales-stage dropdown', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const salesStageContract = readRepoFile('src/domain/sales-stage-contract.ts');
+
+  assert.doesNotMatch(scoutPrep, /title="Meeting Set - Rescheduled"/);
+  assert.doesNotMatch(scoutPrep, /initialStageLabel="Meeting Result - Rescheduled"/);
+  assert.match(salesStageContract, /'Meeting Result - Rescheduled'/);
+});
+
 test('Post-call reschedule full-title writes emit title audit logs', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
   const rescheduleSubmitStart = scoutPrep.indexOf(
@@ -263,6 +272,28 @@ test('Post-call reschedule full-title writes emit title audit logs', () => {
   assert.match(rescheduleSubmit, /meetingNameMatchesHeadScoutName/);
   assert.match(rescheduleSubmit, /meetingNameMatchesCurrentBookedMeetingTitle/);
   assert.match(rescheduleSubmit, /submitRescheduleMeeting\(rescheduleMeetingPayload\)/);
+});
+
+test('Post-call confirmed reschedule uses one Meetings identity for Laravel and Supabase', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const formStart = scoutPrep.indexOf('export function PostCallUpdateForm');
+  const formEnd = scoutPrep.indexOf('function ScoutPrepTaskItem', formStart);
+  const formSource = scoutPrep.slice(formStart, formEnd);
+
+  assert.match(
+    scoutPrep,
+    /resolveConfirmedRescheduleAppointmentIdentity/,
+  );
+  assert.match(
+    formSource,
+    /rescheduleAppointmentIdentity = resolveConfirmedRescheduleAppointmentIdentity/,
+  );
+  assert.match(formSource, /previous_event_id:\s*rescheduleAppointmentIdentity\.previousEventId/);
+  assert.match(formSource, /previousAppointmentId:\s*rescheduleAppointmentIdentity\.previousAppointmentId/);
+  assert.match(formSource, /previous_appointment_id:\s*rescheduleAppointmentIdentity\.previousAppointmentId/);
+  assert.doesNotMatch(formSource, /previous_event_id:\s*initialBookedMeeting\?\.event_id/);
+  assert.doesNotMatch(formSource, /previousAppointmentId:\s*initialBookedMeeting\?\.event_id/);
+  assert.doesNotMatch(formSource, /previous_appointment_id:\s*initialBookedMeeting\?\.event_id/);
 });
 
 test('Set Meetings confirmation send path does not rebuild confirmation cache', () => {
@@ -323,10 +354,13 @@ test('Scout Prep contact context resolves timezone from athlete city and state',
   assert.doesNotMatch(contactNoteFlow, /appointment truth timezone/);
   assert.doesNotMatch(contactNoteFlow, /meetingTimezone|current_meeting_timezone|appointment/);
   assert.match(scoutPrep, /saveProspectContacts\([\s\S]*?uniqueCandidates\.map\(\(\) => adminUrl\),[\s\S]*?uniqueCandidates\.map\(\(\) => contactNote\),[\s\S]*?\)/);
+  assert.match(scoutPrep, /normalizePhoneForMessages\(candidate\.phone\) \|\| candidate\.phone/);
+  assert.match(scoutPrep, /createProspectContactsBatch\([\s\S]*?buildScoutPrepAdminUrl\([\s\S]*?''[\s\S]*?\)/);
   assert.doesNotMatch(scoutPrep, /appendProspectContactNotes|runAppleScript|osascript/);
   const contactsBridge = readRepoFile('swift/contacts/Sources/ContactsBridge.swift');
-  assert.match(contactsBridge, /contact\.urlAddresses = \[CNLabeledValue\(label: CNLabelHome, value: url as NSString\)\]/);
-  assert.match(contactsBridge, /set note of contactPerson to targetNote/);
+  assert.match(contactsBridge, /appendHomeUrlIfMissing\(url, to: contact\)/);
+  assert.match(contactsBridge, /findContactByPhone\(normalizedPhone, store: store, keys: keys\)/);
+  assert.doesNotMatch(contactsBridge, /launchContactNotesUpdateWithContactsApp|osascript|set note of contactPerson/);
   assert.doesNotMatch(contactsBridge, /appendTimezonePayload|queryItems|contact\.organizationName|CNContactNoteKey|contact\.note|kABNoteProperty/);
 });
 

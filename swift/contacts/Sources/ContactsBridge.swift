@@ -23,7 +23,6 @@ struct SavedProspectContact: Codable {
 
 enum ContactsBridgeError: Error {
   case accessDenied
-  case contactNoteUpdateFailed(String)
 }
 
 private func requestContactAccess() async throws {
@@ -120,6 +119,7 @@ private func requestContactAccess() async throws {
 }
 
 @raycast func saveProspectContacts(firstNames: [String], lastNames: [String], phones: [String], urls: [String], notes: [String]) async throws -> [SavedProspectContact] {
+  _ = notes
   let store = CNContactStore()
   try await requestContactAccess()
 
@@ -128,7 +128,6 @@ private func requestContactAccess() async throws {
   let request = CNSaveRequest()
   var hasChanges = false
   var results: [SavedProspectContact] = []
-  var noteUpdates: [ProspectContactNoteUpdate] = []
 
   for index in firstNames.indices {
     guard index < lastNames.count, index < phones.count else {
@@ -139,14 +138,11 @@ private func requestContactAccess() async throws {
     let lastName = lastNames[index]
     let phone = phones[index]
     let url = index < urls.count ? urls[index].trimmingCharacters(in: .whitespacesAndNewlines) : ""
-    let note = index < notes.count ? notes[index].trimmingCharacters(in: .whitespacesAndNewlines) : ""
     let match = try findProspectContact(firstName: firstName, lastName: lastName, phone: phone, store: store)
     let contact: CNMutableContact
     var status: String
     let isNewContact: Bool
     var needsUpdate = false
-    var shouldUpdateNotes = false
-    var shouldUseContactSaveRequest = true
 
     switch match {
     case .samePhone(let existingContact):
@@ -154,19 +150,18 @@ private func requestContactAccess() async throws {
       let backfillPlan = resolveExistingContactBackfillPlan(
         contact: existingContact,
         url: url,
-        note: note,
         isPreferredGroupMember: preferredGroup.map { _ in groupMemberIds.contains(existingContact.identifier) } ?? true
       )
       status = backfillPlan.status
       isNewContact = false
-      shouldUpdateNotes =
-        backfillPlan.shouldUpdateContactUrl
-        || backfillPlan.shouldAddToPreferredGroup
-        || backfillPlan.shouldUpdateNotes
-      shouldUseContactSaveRequest = false
+      if backfillPlan.shouldUpdateContactUrl {
+        appendHomeUrlIfMissing(url, to: contact)
+        needsUpdate = true
+      }
     case .sameName(let existingContact):
       contact = existingContact.mutableCopy() as! CNMutableContact
       contact.phoneNumbers.append(CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: phone)))
+      appendHomeUrlIfMissing(url, to: contact)
       status = "updated"
       isNewContact = false
       needsUpdate = true
@@ -175,32 +170,22 @@ private func requestContactAccess() async throws {
       contact.givenName = firstName
       contact.familyName = lastName
       contact.phoneNumbers = [CNLabeledValue(label: CNLabelPhoneNumberMobile, value: CNPhoneNumber(stringValue: phone))]
+      appendHomeUrlIfMissing(url, to: contact)
       status = "created"
       isNewContact = true
     }
 
-    if shouldUseContactSaveRequest, status != "exists", !url.isEmpty {
-      contact.urlAddresses = [CNLabeledValue(label: CNLabelHome, value: url as NSString)]
-      needsUpdate = true
-    }
-
-    if shouldUseContactSaveRequest, isNewContact {
+    if isNewContact {
       request.add(contact, toContainerWithIdentifier: nil)
       hasChanges = true
-    } else if shouldUseContactSaveRequest, needsUpdate {
+    } else if needsUpdate {
       request.update(contact)
       hasChanges = true
     }
 
-    if shouldUseContactSaveRequest, let preferredGroup, status != "exists", !groupMemberIds.contains(contact.identifier) {
+    if let preferredGroup, status != "exists", !groupMemberIds.contains(contact.identifier) {
       request.addMember(contact, to: preferredGroup)
       hasChanges = true
-    }
-
-    let shouldQueueNoteUpdate =
-      shouldUpdateNotes || (status != "exists" && (!url.isEmpty || !note.isEmpty))
-    if shouldQueueNoteUpdate {
-      noteUpdates.append(ProspectContactNoteUpdate(phone: phone, url: url, note: note))
     }
 
     results.append(SavedProspectContact(
@@ -214,17 +199,8 @@ private func requestContactAccess() async throws {
   if hasChanges {
     try store.execute(request)
   }
-  if !noteUpdates.isEmpty {
-    try launchContactNotesUpdateWithContactsApp(noteUpdates, groupName: preferredGroup?.name ?? "ID Contacts")
-  }
 
   return results
-}
-
-private struct ProspectContactNoteUpdate {
-  let phone: String
-  let url: String
-  let note: String
 }
 
 private enum ProspectContactMatch {
@@ -236,7 +212,6 @@ private enum ProspectContactMatch {
 struct ExistingContactBackfillPlan {
   let shouldUpdateContactUrl: Bool
   let shouldAddToPreferredGroup: Bool
-  let shouldUpdateNotes: Bool
 
   var status: String {
     shouldUpdateContactUrl || shouldAddToPreferredGroup ? "updated" : "exists"
@@ -246,16 +221,13 @@ struct ExistingContactBackfillPlan {
 func resolveExistingContactBackfillPlan(
   contact: CNContact,
   url: String,
-  note: String,
   isPreferredGroupMember: Bool
 ) -> ExistingContactBackfillPlan {
   let trimmedUrl = url.trimmingCharacters(in: .whitespacesAndNewlines)
-  let trimmedNote = note.trimmingCharacters(in: .whitespacesAndNewlines)
   let shouldUpdateContactUrl = !trimmedUrl.isEmpty && !contactHasUrl(contact, url: trimmedUrl)
   return ExistingContactBackfillPlan(
     shouldUpdateContactUrl: shouldUpdateContactUrl,
-    shouldAddToPreferredGroup: !isPreferredGroupMember,
-    shouldUpdateNotes: !trimmedNote.isEmpty || shouldUpdateContactUrl
+    shouldAddToPreferredGroup: !isPreferredGroupMember
   )
 }
 
@@ -311,6 +283,20 @@ private func findProspectContact(firstName: String, lastName: String, phone: Str
   return .none
 }
 
+func contactHasPhone(_ contact: CNContact, normalizedPhone: String) -> Bool {
+  contact.phoneNumbers.contains { labeledValue in
+    normalizePhone(labeledValue.value.stringValue) == normalizedPhone
+  }
+}
+
+func normalizePhone(_ phone: String) -> String {
+  let digits = phone.filter { $0.isNumber }
+  if digits.count == 11 && digits.hasPrefix("1") {
+    return String(digits.dropFirst())
+  }
+  return digits
+}
+
 private func findContactByPhone(_ normalizedPhone: String, store: CNContactStore, keys: [CNKeyDescriptor]) throws -> CNContact? {
   guard !normalizedPhone.isEmpty else {
     return nil
@@ -326,127 +312,6 @@ private func findContactByPhone(_ normalizedPhone: String, store: CNContactStore
   }
 
   return matchedContact
-}
-
-private func contactHasPhone(_ contact: CNContact, normalizedPhone: String) -> Bool {
-  contact.phoneNumbers.contains { labeledValue in
-    normalizePhone(labeledValue.value.stringValue) == normalizedPhone
-  }
-}
-
-private func normalizePhone(_ phone: String) -> String {
-  let digits = phone.filter { $0.isNumber }
-  if digits.count == 11 && digits.hasPrefix("1") {
-    return String(digits.dropFirst())
-  }
-  return digits
-}
-
-private func launchContactNotesUpdateWithContactsApp(_ updates: [ProspectContactNoteUpdate], groupName: String) throws {
-  let rows = updates
-    .map { update in
-      ProspectContactNoteUpdate(
-        phone: normalizePhone(update.phone),
-        url: update.url.trimmingCharacters(in: .whitespacesAndNewlines),
-        note: update.note.trimmingCharacters(in: .whitespacesAndNewlines)
-      )
-    }
-    .filter { !$0.phone.isEmpty && (!$0.url.isEmpty || !$0.note.isEmpty) }
-  guard !rows.isEmpty else {
-    return
-  }
-
-  let phoneList = rows.map { appleScriptStringLiteral($0.phone) }.joined(separator: ", ")
-  let urlList = rows.map { appleScriptStringLiteral($0.url) }.joined(separator: ", ")
-  let noteList = rows.map { appleScriptStringLiteral($0.note) }.joined(separator: ", ")
-  let script = """
-on digitsOnly(rawValue)
-  set allowedCharacters to "0123456789"
-  set outputValue to ""
-  repeat with i from 1 to length of rawValue
-    set currentCharacter to character i of rawValue
-    if allowedCharacters contains currentCharacter then set outputValue to outputValue & currentCharacter
-  end repeat
-  if length of outputValue is 11 and outputValue starts with "1" then return text 2 thru -1 of outputValue
-  return outputValue
-end digitsOnly
-
-set targetPhones to {\(phoneList)}
-set targetUrls to {\(urlList)}
-set targetNotes to {\(noteList)}
-
-with timeout of 20 seconds
-  tell application "Contacts"
-    set targetGroup to missing value
-    try
-      set targetGroup to group \(appleScriptStringLiteral(groupName))
-    end try
-    repeat with contactPerson in people
-      repeat with contactPhone in phones of contactPerson
-        set normalizedPhone to my digitsOnly(value of contactPhone as text)
-        repeat with targetIndex from 1 to count of targetPhones
-          if normalizedPhone is item targetIndex of targetPhones then
-            set targetUrl to item targetIndex of targetUrls
-            set targetNote to item targetIndex of targetNotes
-            if targetGroup is not missing value then
-              set memberIds to id of every person of targetGroup
-              if memberIds does not contain id of contactPerson then add contactPerson to targetGroup
-            end if
-            if targetUrl is not "" then
-              set home page of contactPerson to targetUrl
-              set visibleUrlUpdated to false
-              repeat with contactUrl in urls of contactPerson
-                if (label of contactUrl as text) is "home" then
-                  set value of contactUrl to targetUrl
-                  set visibleUrlUpdated to true
-                  exit repeat
-                end if
-                if (value of contactUrl as text) is targetUrl then
-                  set visibleUrlUpdated to true
-                  exit repeat
-                end if
-              end repeat
-              if visibleUrlUpdated is false then make new url at end of urls of contactPerson with properties {label:"home", value:targetUrl}
-            end if
-            if targetNote is not "" then
-              set existingNote to note of contactPerson
-              if existingNote is missing value then set existingNote to ""
-              if existingNote contains targetUrl then set existingNote to ""
-              if existingNote does not contain targetNote then set note of contactPerson to targetNote
-            end if
-          end if
-        end repeat
-      end repeat
-    end repeat
-    save
-  end tell
-end timeout
-"""
-
-  let process = Process()
-  process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-  process.arguments = ["-e", script]
-  process.standardOutput = FileHandle.nullDevice
-  process.standardError = FileHandle.nullDevice
-
-  do {
-    try process.run()
-  } catch {
-    throw ContactsBridgeError.contactNoteUpdateFailed(error.localizedDescription)
-  }
-}
-
-private func appleScriptStringLiteral(_ value: String) -> String {
-  return value
-    .components(separatedBy: .newlines)
-    .map { "\"\(escapeAppleScript($0))\"" }
-    .joined(separator: " & linefeed & ")
-}
-
-private func escapeAppleScript(_ value: String) -> String {
-  return value
-    .replacingOccurrences(of: "\\", with: "\\\\")
-    .replacingOccurrences(of: "\"", with: "\\\"")
 }
 
 private func findPreferredGroup(store: CNContactStore) throws -> CNGroup? {

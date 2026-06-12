@@ -10,6 +10,7 @@ test('honest test runner exposes the expected local proof suites', () => {
       'domain contracts',
       'supabase lifecycle',
       'appointment truth and sql contracts',
+      'raycast workflow identity contracts',
       'sync script unit contracts',
     ],
   );

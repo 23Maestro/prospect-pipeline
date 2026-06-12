@@ -88,6 +88,14 @@
       "description": "View current Meeting Set bookings",
       "mode": "view",
       "icon": "booked-meetings.png"
+    },
+    {
+      "name": "reconcile-scheduled-follow-up-tasks",
+      "title": "Reconcile Scheduled Follow-Ups",
+      "description": "Applies cached scheduled follow-up notes when Laravel creates the follow-up task.",
+      "mode": "no-view",
+      "interval": "5m",
+      "icon": "scout-prep.png"
     }
   ],
   "tools": [

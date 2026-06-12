@@ -39,7 +39,6 @@ import type {
 import {
   buildMessagesComposeUrlForRecipients,
   buildMeetingSetCallNotesMarkdown,
-  buildProspectContactAdminNote,
   buildProspectContactShortcutPayloadFromName,
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
@@ -91,6 +90,11 @@ import {
   type PersonalFollowUpEntry,
 } from './lib/personal-follow-up-cache';
 import {
+  enqueuePendingScheduledFollowUpUpdate,
+  isSpokeToNeedFollowUpStage,
+  reconcilePendingScheduledFollowUpUpdates,
+} from './lib/scheduled-follow-up-reconciler';
+import {
   fetchCuratedSalesStageOptions,
   fetchMeetingSetTemplate,
   fetchRescheduleMeetingTemplate,
@@ -106,6 +110,7 @@ import {
   needsPostCallMeetingSchedulingFields,
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './domain/sales-stage-contract';
+import { resolveConfirmedRescheduleAppointmentIdentity } from './domain/appointment-truth';
 import {
   isConfirmationCallTask,
   getTaskSpecificUpdateVariant,
@@ -146,6 +151,7 @@ import {
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
 import {
+  resolveEventsTabMeetingForReschedule,
   resolveBookedMeetingDetailsForForm,
   selectCurrentBookedMeeting,
   type ResolvedBookedMeetingDetails,
@@ -353,22 +359,7 @@ async function fetchExactAdminEventsTabMeeting(args: {
   athleteMainId: string;
   eventId?: string | null;
 }): Promise<BookedMeetingEvent> {
-  const eventId = normalizeLogText(args.eventId);
-  if (!eventId) {
-    throw new Error('Missing previous Events tab event id.');
-  }
-
-  const response = await fetchAthleteBookedMeetings({
-    athleteId: args.athleteId,
-    athleteMainId: args.athleteMainId,
-  });
-  const event = (response.events || []).find(
-    (candidate) => normalizeLogText(candidate.event_id) === eventId,
-  );
-  if (!event?.title) {
-    throw new Error('Previous meeting title not found on athlete Events tab.');
-  }
-  return event;
+  return resolveEventsTabMeetingForReschedule(args);
 }
 
 async function showLoadingToast(title: string, message?: string) {
@@ -1246,7 +1237,7 @@ async function createProspectContactsBatch(
   const uniqueCandidates = Array.from(
     new Map(
       candidates.map((candidate) => [
-        `${candidate.phone}|${candidate.name.toLowerCase()}`,
+        normalizePhoneForMessages(candidate.phone) || candidate.phone,
         candidate,
       ]),
     ).values(),
@@ -1387,7 +1378,7 @@ function ScoutPrepContactDetail({
           task,
           context.resolved.athlete_main_id || context.task.athlete_main_id,
         ),
-        buildProspectContactAdminNote(context),
+        '',
       );
       toast.style = Toast.Style.Success;
       toast.title = 'Contacts ready';
@@ -3667,7 +3658,11 @@ export function PostCallUpdateForm({
     selectedStageLabel,
   ]);
 
-  async function handleSubmit(values: Record<string, string | undefined>) {
+  type PostCallUpdateFormValues = Record<string, string | undefined> & {
+    scheduledFollowUpDueDate?: Date;
+  };
+
+  async function handleSubmit(values: PostCallUpdateFormValues) {
     if (isSaving) {
       return;
     }
@@ -3679,6 +3674,16 @@ export function PostCallUpdateForm({
       await showToast({
         style: Toast.Style.Failure,
         title: 'Pick a stage',
+      });
+      return;
+    }
+    const shouldCacheScheduledFollowUp = isSpokeToNeedFollowUpStage(stageLabel);
+    const scheduledFollowUpNote = String(values.scheduledFollowUpNote || '').trim();
+    const scheduledFollowUpDueDate = values.scheduledFollowUpDueDate as Date | undefined;
+    if (shouldCacheScheduledFollowUp && (!scheduledFollowUpNote || !scheduledFollowUpDueDate)) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'Follow-up note and date required',
       });
       return;
     }
@@ -3788,6 +3793,9 @@ export function PostCallUpdateForm({
       let rescheduleMeetingPayload: RescheduleMeetingSubmitRequest | null = null;
       let rescheduleStartsAt: string | null = null;
       let rescheduleHeadScout: string | null = null;
+      let rescheduleAppointmentIdentity: ReturnType<
+        typeof resolveConfirmedRescheduleAppointmentIdentity
+      > = null;
       const preUpdateContextForStage = await getPreUpdateContext();
       if (needsMeetingSchedulingFields(stageLabel)) {
         const assignedTo = String(
@@ -3853,12 +3861,20 @@ export function PostCallUpdateForm({
           }
           meetingSetResult = await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
         } else if (isConfirmedRescheduleMeetingStage(stageLabel)) {
+          rescheduleAppointmentIdentity = resolveConfirmedRescheduleAppointmentIdentity({
+            initialBookedMeeting,
+            currentBookedMeeting,
+          });
+          if (!rescheduleAppointmentIdentity) {
+            throw new Error('Confirmed reschedule requires previous appointment identity');
+          }
           const matchingHeadScoutTitle = findExactHeadScoutName(meetingName);
           rescheduleTitleAuditContext = {
             athleteId,
             athleteMainId,
             stageLabel,
-            previousAppointmentId: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || null,
+            previousAppointmentId: rescheduleAppointmentIdentity.previousAppointmentId,
+            previousAppointmentIdentitySource: rescheduleAppointmentIdentity.source,
             targetOpenEventId: openEventId,
             selectedMeetingFor: assignedTo,
             selectedScoutName: selectedScout?.scout_name || null,
@@ -3899,7 +3915,7 @@ export function PostCallUpdateForm({
             openmeetings_list_length: '-1',
             template_id: '210',
             keep_as_open_slot: 'yes',
-            previous_event_id: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || '',
+            previous_event_id: rescheduleAppointmentIdentity.previousEventId,
           };
           rescheduleMeetingResult = await submitRescheduleMeeting(rescheduleMeetingPayload);
           logTitleAudit('SCOUT_PREP_RESCHEDULE_TITLE_WRITE', 'submit', 'success', {
@@ -3928,8 +3944,36 @@ export function PostCallUpdateForm({
         athleteId,
         athleteName: preUpdateContextForStage.contactInfo.studentAthlete.name || task.athlete_name,
         stage: basePlan.laravelSalesStageUpdate?.stage || stageLabel,
-        appointmentId: initialBookedMeeting?.event_id || currentBookedMeeting?.event_id || null,
+        appointmentId:
+          rescheduleAppointmentIdentity?.previousAppointmentId ||
+          initialBookedMeeting?.event_id ||
+          currentBookedMeeting?.event_id ||
+          null,
       });
+      if (shouldCacheScheduledFollowUp) {
+        await enqueuePendingScheduledFollowUpUpdate({
+          athleteId,
+          athleteMainId,
+          athleteName: preUpdateContextForStage.contactInfo.studentAthlete.name || task.athlete_name,
+          sourceTaskId: task.task_id || null,
+          stageLabel,
+          note: scheduledFollowUpNote,
+          dueDate: formatDateForLegacyInput(scheduledFollowUpDueDate as Date),
+          dueTime: formatTimeForLegacyInput(scheduledFollowUpDueDate as Date),
+        });
+        await reconcilePendingScheduledFollowUpUpdates().catch((error) => {
+          logFailure(
+            'SCOUT_PREP_SCHEDULED_FOLLOW_UP_RECONCILE',
+            'best-effort',
+            error instanceof Error ? error.message : String(error),
+            {
+              contactId: athleteId,
+              athleteMainId,
+              stageLabel,
+            },
+          );
+        });
+      }
       if (isReschedulePendingUpdate) {
         await addAthleteNote({
           athleteId,
@@ -4037,7 +4081,7 @@ export function PostCallUpdateForm({
           );
         }
       }
-      if (rescheduleMeetingPayload && rescheduleMeetingResult) {
+      if (rescheduleMeetingPayload && rescheduleMeetingResult && rescheduleAppointmentIdentity) {
         try {
           await recordRescheduled({
             athleteId,
@@ -4048,14 +4092,14 @@ export function PostCallUpdateForm({
             headScout: rescheduleHeadScout,
             currentTaskId: rescheduleMeetingResult.created_task?.task_id || null,
             currentTaskTitle: rescheduleMeetingResult.created_task?.title || null,
-            previousAppointmentId: initialBookedMeeting?.event_id || null,
+            previousAppointmentId: rescheduleAppointmentIdentity.previousAppointmentId,
             appointmentId: rescheduleMeetingPayload.open_event_id,
             sourceEventId: rescheduleMeetingPayload.open_event_id,
             startsAt: rescheduleStartsAt,
             dueAt: rescheduleStartsAt,
             payload: {
               meeting_timezone: rescheduleMeetingPayload.meeting_timezone,
-              previous_appointment_id: initialBookedMeeting?.event_id || null,
+              previous_appointment_id: rescheduleAppointmentIdentity.previousAppointmentId,
               operator_owner: actionPlan.ownerContext.activeOperator.personName,
               operator_owner_key: actionPlan.ownerContext.activeOperator.operatorKey,
               owner_proof: actionPlan.ownerContext.ownerProof || 'raycast_operator_context',
@@ -4158,7 +4202,7 @@ export function PostCallUpdateForm({
         <ActionPanel>
           <Action.SubmitForm
             title={isSaving ? 'Saving…' : 'Save'}
-            onSubmit={(values) => void handleSubmit(values as Record<string, string | undefined>)}
+            onSubmit={(values) => void handleSubmit(values as PostCallUpdateFormValues)}
           />
         </ActionPanel>
       }
@@ -4255,6 +4299,19 @@ export function PostCallUpdateForm({
               />
             </>
           )}
+        </>
+      ) : null}
+
+      {isSpokeToNeedFollowUpStage(selectedStageLabel) ? (
+        <>
+          <Form.Separator />
+          <Form.TextArea
+            id="scheduledFollowUpNote"
+            title="Follow-Up Note"
+            placeholder="Spoke to mom. Follow up Friday after 3."
+            autoFocus
+          />
+          <Form.DatePicker id="scheduledFollowUpDueDate" title="Follow-Up Task Due Date" />
         </>
       ) : null}
 
@@ -5317,8 +5374,8 @@ function ScoutPrepTaskItem({
         return;
       }
 
-      toast.style = result.skipped.length ? Toast.Style.Failure : Toast.Style.Success;
-      toast.title = result.skipped.length ? 'Partial repeat' : 'Repeat marked';
+      toast.style = Toast.Style.Success;
+      toast.title = 'Repeat marked';
       toast.message = result.skipped.length
         ? `${result.completed.length} marked, ${result.skipped.length} review`
         : `${result.completed.length} marked`;

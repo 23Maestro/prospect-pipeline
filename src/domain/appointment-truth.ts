@@ -24,6 +24,21 @@ export type AppointmentTruthRow = {
   updated_at?: string | null;
 };
 
+export type ConfirmedRescheduleAppointmentIdentitySource =
+  | 'initial_booked_meeting'
+  | 'current_booked_meeting';
+
+export type ConfirmedRescheduleAppointmentIdentity = {
+  previousAppointmentId: string;
+  previousEventId: string;
+  source: ConfirmedRescheduleAppointmentIdentitySource;
+};
+
+export type ConfirmedRescheduleAppointmentIdentityInput = {
+  initialBookedMeeting?: { event_id?: string | number | null } | null;
+  currentBookedMeeting?: { event_id?: string | number | null } | null;
+};
+
 export const ACTIVE_APPOINTMENT_STATUSES = [
   'scheduled',
   'rescheduled',
@@ -49,6 +64,37 @@ export const APPOINTMENT_TRUTH_PRESERVE_FIELDS = [
 
 export function hasAppointmentTruthValue(value: unknown): boolean {
   return String(value || '').trim().length > 0;
+}
+
+function cleanAppointmentId(value?: string | number | null): string | null {
+  const text = String(value || '').trim();
+  return text || null;
+}
+
+export function resolveConfirmedRescheduleAppointmentIdentity(
+  input: ConfirmedRescheduleAppointmentIdentityInput,
+): ConfirmedRescheduleAppointmentIdentity | null {
+  const candidates: Array<{
+    source: ConfirmedRescheduleAppointmentIdentitySource;
+    appointmentId: string | null;
+  }> = [
+    {
+      source: 'initial_booked_meeting',
+      appointmentId: cleanAppointmentId(input.initialBookedMeeting?.event_id),
+    },
+    {
+      source: 'current_booked_meeting',
+      appointmentId: cleanAppointmentId(input.currentBookedMeeting?.event_id),
+    },
+  ];
+  const resolved = candidates.find((candidate) => Boolean(candidate.appointmentId));
+  if (!resolved?.appointmentId) return null;
+
+  return {
+    previousAppointmentId: resolved.appointmentId,
+    previousEventId: resolved.appointmentId,
+    source: resolved.source,
+  };
 }
 
 export function isActiveAppointmentStatus(status?: string | null): boolean {

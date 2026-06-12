@@ -245,6 +245,46 @@ export function selectCurrentBookedMeeting(
   );
 }
 
+export async function resolveEventsTabMeetingForReschedule(
+  args: {
+    athleteId?: string | null;
+    athleteMainId?: string | null;
+    eventId?: string | null;
+  },
+  dependencies: Pick<ResolverDependencies, 'fetchAthleteBookedMeetings'> = {},
+): Promise<BookedMeetingEvent> {
+  const athleteId = clean(args.athleteId);
+  const athleteMainId = clean(args.athleteMainId);
+  const eventId = clean(args.eventId);
+  const fetchMeetings = dependencies.fetchAthleteBookedMeetings || fetchAthleteBookedMeetings;
+
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete id for Events tab meeting lookup.');
+  }
+
+  const response = await fetchMeetings({ athleteId, athleteMainId });
+  const events = Array.isArray(response.events) ? response.events : [];
+
+  if (eventId) {
+    const event = events.find((candidate) => clean(candidate.event_id) === eventId);
+    if (!event?.title) {
+      throw new Error('Previous meeting title not found on athlete Events tab.');
+    }
+    return event;
+  }
+
+  const candidates = events.filter(
+    (event) => Boolean(clean(event.event_id)) && Boolean(clean(event.title)),
+  );
+  if (candidates.length === 1) {
+    return candidates[0];
+  }
+  if (candidates.length > 1) {
+    throw new Error('Multiple Events tab meetings found; choose the previous meeting first.');
+  }
+  throw new Error('Previous meeting title not found on athlete Events tab.');
+}
+
 function normalizeFormData(
   formData?: BookedMeetingDetailsResponse['form_data'],
 ): Record<string, string> {

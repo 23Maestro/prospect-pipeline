@@ -1175,8 +1175,9 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
   assert.match(card, /> Safe to say he’s pretty serious about playing in college\?/);
   assert.match(
     card,
-    /> What we do at Prospect ID is we introduce certain athletes directly to college coaches\. {2}\n> We send them recruits\. {2}\n> We only work with 500 students per grad year, so we’re strict about academics and what the talent level matches up with\. {2}\n> I’m not looking to blow smoke\. If he’s good enough and has the grades, great, let’s get moving\. If not, we’ve got to focus on the places we’ve got to improve\. {2}\n> Really, I’m reaching out to find out what his academics are like, what he’s like on the field, and if this works for us and works for you guys\./,
+    /> What we do at Prospect ID is we introduce certain athletes directly to college coaches\. {2}\n> We send them recruits\. {2}\n> We only work with 500 students per grad year, so we’re strict about academics and what the talent level matches up with\. {2}\n> We have an 80% scholarship rate, with 20% going D1\. {2}\n> I’m not looking to blow smoke\. If he’s good enough and has the grades, great, let’s get moving\. If not, we’ve got to focus on the places we’ve got to improve\. {2}\n> Really, I’m reaching out to find out what his academics are like, what he’s like on the field, and if this works for us and works for you guys\./,
   );
+  assert.doesNotMatch(card, /\bTim\b/);
   assert.doesNotMatch(card, /\\n/);
   assert.doesNotMatch(card, /^>$/m);
   assert.match(card, /### Academics \/ Major[\s\S]*With a 3\.7, academics can be a real strength in the recruiting conversation\./);

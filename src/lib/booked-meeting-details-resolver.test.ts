@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  resolveEventsTabMeetingForReschedule,
   resolveBookedMeetingDetailsForForm,
   type ResolvedBookedMeetingDetails,
 } from './booked-meeting-details-resolver';
@@ -174,6 +175,32 @@ test('resolves booked meeting rows that only have eventlist labels', async () =>
   assert.equal(result?.bookedMeeting.event_id, 'evt_label_only');
   assert.equal(result?.bookedMeeting.assigned_owner, 'Ryan Lietz');
   assert.equal(result?.description, 'Eventlist-only description');
+});
+
+test('reschedule can hydrate the previous Events tab meeting when Scout Prep has no prior event id', async () => {
+  const visibleEventsTabMeeting = bookedMeeting({
+    event_id: '628744',
+    title: '(ACF*2) Joziah Zenobia Football 2030 WI',
+    assigned_owner: 'David Foley',
+    start: '2026-06-11T21:00:00',
+    end: '2026-06-11T22:00:00',
+    description: 'Main Number: (262) 420-7303',
+  });
+
+  const result = await resolveEventsTabMeetingForReschedule(
+    {
+      athleteId: '1499999',
+      athleteMainId: '953999',
+      eventId: null,
+    },
+    {
+      fetchAthleteBookedMeetings: async () => meetingsResponse([visibleEventsTabMeeting]),
+    },
+  );
+
+  assert.equal(result.event_id, '628744');
+  assert.equal(result.title, '(ACF*2) Joziah Zenobia Football 2030 WI');
+  assert.equal(result.description, 'Main Number: (262) 420-7303');
 });
 
 test('falls back to booked event description when popup fetch fails', async () => {

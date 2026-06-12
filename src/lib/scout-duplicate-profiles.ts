@@ -327,15 +327,12 @@ export function getDuplicateSearchRowClearReason(row: DuplicateProfileSearchRow,
     return 'different_grad_year_table_clear';
   }
 
-  const currentSport = normalizeDuplicateEvidenceValue(task.sport);
-  const candidateSport = normalizeDuplicateEvidenceValue(row.sport);
   const currentState = normalizeDuplicateEvidenceValue(task.state);
   const candidateState = normalizeDuplicateEvidenceValue(row.state);
-  const sameSport = Boolean(currentSport && candidateSport && currentSport === candidateSport);
   const sameState = Boolean(currentState && candidateState && currentState === candidateState);
 
-  if (sameSport && currentState && candidateState && !sameState) {
-    return 'same_sport_different_state_table_clear';
+  if (currentState && candidateState && !sameState) {
+    return 'different_state_table_clear';
   }
 
   return null;
@@ -445,8 +442,8 @@ export function classifyDuplicateProfileEnvelope(args: {
     return { isDuplicate: true, reason: 'likely_same_kid_multi_sport', evidence: evidenceList };
   }
 
-  if (hasContactMatch && differentState) {
-    return { isDuplicate: true, reason: 'contact_match_different_state', evidence: evidenceList };
+  if (differentState) {
+    return { isDuplicate: false, reason: 'different_state_table_clear', evidence: evidenceList };
   }
 
   if (hasContactMatch && differentGradYear) {
@@ -459,10 +456,6 @@ export function classifyDuplicateProfileEnvelope(args: {
 
   if (sameGradYear && sameSport && sameState) {
     return { isDuplicate: true, reason: 'table_profile_match', evidence: evidenceList };
-  }
-
-  if (differentState) {
-    return { isDuplicate: false, reason: 'different_state_unresolved', evidence: evidenceList };
   }
 
   if (differentSport) {

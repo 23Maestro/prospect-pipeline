@@ -4,6 +4,7 @@ import {
   assertAppointmentTruthWrite,
   isActiveAppointmentStatus,
   mergeAppointmentTruthRow,
+  resolveConfirmedRescheduleAppointmentIdentity,
   validateAppointmentTruthWrite,
   type AppointmentTruthRow,
 } from './appointment-truth';
@@ -79,4 +80,37 @@ test('reschedule appointment truth requires previous appointment identity', () =
       }),
     /previous_appointment_id/,
   );
+});
+
+test('confirmed reschedule uses one previous appointment identity for Laravel and Supabase', () => {
+  const identity = resolveConfirmedRescheduleAppointmentIdentity({
+    initialBookedMeeting: null,
+    currentBookedMeeting: {
+      event_id: 'current-booked-meeting',
+      title: 'Victor Williams Football 2027 FL',
+    },
+  });
+
+  assert.deepEqual(identity, {
+    previousAppointmentId: 'current-booked-meeting',
+    previousEventId: 'current-booked-meeting',
+    source: 'current_booked_meeting',
+  });
+});
+
+test('confirmed reschedule prefers initial booked meeting identity when present', () => {
+  const identity = resolveConfirmedRescheduleAppointmentIdentity({
+    initialBookedMeeting: {
+      event_id: 'initial-events-tab-meeting',
+      title: 'Victor Williams Football 2027 FL',
+    },
+    currentBookedMeeting: {
+      event_id: 'current-booked-meeting',
+      title: 'Victor Williams Football 2027 FL',
+    },
+  });
+
+  assert.equal(identity?.previousAppointmentId, 'initial-events-tab-meeting');
+  assert.equal(identity?.previousEventId, 'initial-events-tab-meeting');
+  assert.equal(identity?.source, 'initial_booked_meeting');
 });

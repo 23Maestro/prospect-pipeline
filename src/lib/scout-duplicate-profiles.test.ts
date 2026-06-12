@@ -241,7 +241,7 @@ test('getDuplicateSearchRowClearReason clears table-obvious non-duplicates', () 
         grad_year: '2028',
       }),
     ),
-    'same_sport_different_state_table_clear',
+    'different_state_table_clear',
   );
 
   assert.equal(
@@ -331,7 +331,7 @@ test('classifyDuplicateProfileEnvelope accepts exact table profile match without
   assert.equal(decision.reason, 'table_profile_match');
 });
 
-test('classifyDuplicateProfileEnvelope allows different state only with contact match', () => {
+test('classifyDuplicateProfileEnvelope skips different state even with contact match', () => {
   const decision = classifyDuplicateProfileEnvelope({
     current: buildEnvelope(),
     candidate: buildEnvelope({
@@ -347,8 +347,65 @@ test('classifyDuplicateProfileEnvelope allows different state only with contact 
     }),
   });
 
-  assert.equal(decision.isDuplicate, true);
-  assert.equal(decision.reason, 'contact_match_different_state');
+  assert.equal(decision.isDuplicate, false);
+  assert.equal(decision.reason, 'different_state_table_clear');
+});
+
+test('runDuplicateProfileResolutionForTask clears same-grad different-state candidates before detail lookup', async () => {
+  let contactLookups = 0;
+  let taskFetches = 0;
+
+  const result = await runDuplicateProfileResolutionForTask(
+    buildTask({
+      contact_id: '1489567',
+      athlete_id: '1489567',
+      athlete_main_id: '951406',
+      athlete_name: 'Braylon Jenkins',
+      grad_year: '2028',
+      sport: 'Football',
+      high_school: '',
+      state: 'AR',
+    }),
+    {
+      searchRows: async () => [
+        {
+          athleteId: '1489567',
+          athleteMainId: '951406',
+          firstName: 'Braylon',
+          lastName: 'Jenkins',
+          fullName: 'Braylon Jenkins',
+          sport: 'Football',
+          state: 'AR',
+          gradYear: '2028',
+        },
+        {
+          athleteId: '1490000',
+          athleteMainId: '951499',
+          firstName: 'Braylon',
+          lastName: 'Jenkins',
+          fullName: 'Braylon Jenkins',
+          sport: 'Football',
+          state: 'MS',
+          gradYear: '2028',
+        },
+      ],
+      loadContactInfo: async () => {
+        contactLookups += 1;
+        return buildContactInfo() as any;
+      },
+      fetchTasks: async () => {
+        taskFetches += 1;
+        return [];
+      },
+    },
+  );
+
+  assert.equal(result.matchCount, 2);
+  assert.deepEqual(result.completed, []);
+  assert.deepEqual(result.cleared, [{ athleteId: '1490000', reason: 'different_state_table_clear' }]);
+  assert.deepEqual(result.skipped, []);
+  assert.equal(contactLookups, 0);
+  assert.equal(taskFetches, 0);
 });
 
 test('runDuplicateProfileResolutionForTask skips exact-name matches without secondary proof', async () => {
