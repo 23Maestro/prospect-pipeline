@@ -21,6 +21,7 @@ export type ParentResponseProposedOption = {
   timezone?: string | null;
   timezone_label?: string | null;
   open_event_id?: string | null;
+  assigned_to?: string | null;
   head_scout_name?: string | null;
   source_payload?: Record<string, unknown> | null;
 };

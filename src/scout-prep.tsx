@@ -6476,10 +6476,18 @@ function buildParentResponseProposedOptions(args: {
     timezone: args.clientTimezone || null,
     timezone_label: slot.zoneLabel,
     open_event_id: slot.openEventId,
+    assigned_to:
+      HEAD_SCOUT_ORDER.find(
+        (scout) => normalizeNameKey(scout.scout_name) === normalizeNameKey(slot.scoutName),
+      )?.meeting_for || null,
     head_scout_name: slot.scoutName,
     source_payload: {
       source_slot_id: slot.id,
       scout_name: slot.scoutName,
+      assigned_to:
+        HEAD_SCOUT_ORDER.find(
+          (scout) => normalizeNameKey(scout.scout_name) === normalizeNameKey(slot.scoutName),
+        )?.meeting_for || null,
       week_label: slot.weekLabel,
       is_previous_scout: slot.isPreviousScout,
     },

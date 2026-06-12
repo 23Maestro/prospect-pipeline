@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { hashParentResponseToken } from '../../../src/domain/parent-response-request';
+import { POST as approveParentResponsePOST } from '../app/api/parent-response/[requestId]/approve/route';
 import { POST as notifyParentResponsePOST } from '../app/api/parent-response/[requestId]/notify/route';
 import { POST as submitParentResponsePOST } from '../app/api/parent-response/[requestId]/submit/route';
 
@@ -18,9 +19,12 @@ async function setupEnvAndHash() {
   process.env.SUPABASE_SCHEMA = 'public';
   process.env.PARENT_RESPONSE_TOKEN_SECRET = 'token-pepper';
   process.env.PARENT_RESPONSE_NOTIFY_SECRET = 'notify-secret';
+  process.env.PARENT_RESPONSE_APPROVAL_SECRET = 'approval-secret';
   process.env.RESEND_API_KEY = 'resend-key';
   process.env.PARENT_RESPONSE_NOTIFY_FROM = 'Scout Prep <updates@example.com>';
   process.env.PARENT_RESPONSE_NOTIFY_TO = 'operator@example.com';
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'prospect-token';
   return hashParentResponseToken('parent-token', 'token-pepper');
 }
 
@@ -40,9 +44,19 @@ function requestRow(overrides: Record<string, unknown> = {}) {
       {
         option_id: 'slot-1',
         display_label: 'Monday 6:00 PM ET',
+        starts_at: '2026-06-15T18:00',
+        ends_at: '2026-06-15T19:00',
+        timezone: 'America/New_York',
         open_event_id: 'open_1',
+        assigned_to: '1354049',
+        head_scout_name: 'Coach Ryan',
       },
     ],
+    approval_payload: {
+      previous_appointment_id: 'appt_previous',
+      previous_meeting_title: 'Coach Ryan - Jamiya Turner',
+      previous_meeting_text: 'Previous saved meeting notes',
+    },
     ...overrides,
   };
 }
@@ -346,4 +360,160 @@ test('/api/parent-response notify sends ready-later review email without approva
   assert.match(resendBody.text, /Response: said they will follow up when ready/);
   assert.match(resendBody.text, /Parent note: We will follow up next week/);
   assert.doesNotMatch(resendBody.text, /Selected slot:/);
+});
+
+test('/api/parent-response approve rejects invalid secret', async () => {
+  await setupEnvAndHash();
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return Response.json([]);
+  };
+
+  const response = await approveParentResponsePOST(
+    new Request('https://example.test/api/parent-response/111/approve', {
+      method: 'POST',
+      headers: { 'x-parent-response-approval-secret': 'wrong' },
+      body: JSON.stringify({ confirm: true }),
+    }),
+    { params: { requestId: '111' } },
+  );
+
+  assert.equal(response.status, 401);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'Invalid parent response approval secret',
+  });
+  assert.equal(called, false);
+});
+
+test('/api/parent-response approve requires explicit operator confirmation', async () => {
+  await setupEnvAndHash();
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return Response.json([]);
+  };
+
+  const response = await approveParentResponsePOST(
+    new Request('https://example.test/api/parent-response/111/approve', {
+      method: 'POST',
+      headers: { 'x-parent-response-approval-secret': 'approval-secret' },
+      body: JSON.stringify({}),
+    }),
+    { params: { requestId: '111' } },
+  );
+
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'Approval requires confirm: true',
+  });
+  assert.equal(called, false);
+});
+
+test('/api/parent-response approve applies selected slot through reschedule path and marks row applied', async () => {
+  const tokenHash = await setupEnvAndHash();
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    const urlText = String(url);
+    calls.push({ url: urlText, init });
+    if (urlText.includes('/rest/v1/parent_response_requests?') && init?.method !== 'PATCH') {
+      return Response.json([
+        requestRow({
+          token_hash: tokenHash,
+          request_status: 'selected',
+          approval_status: 'pending',
+          response_kind: 'selected_slot',
+          selected_option_id: 'slot-1',
+        }),
+      ]);
+    }
+    if (urlText.endsWith('/api/v1/sales/reschedule-meeting')) {
+      return Response.json({
+        success: true,
+        athlete_id: '149',
+        athlete_main_id: '953',
+        assigned_to: '1354049',
+        open_event_id: 'open_1',
+        meeting_name: 'Coach Ryan - Jamiya Turner',
+        template_id: '210',
+        status_code: 200,
+        email_sent: true,
+        created_task: { task_id: 'task-1', title: 'Confirmation Call' },
+      });
+    }
+    if (urlText.endsWith('/api/v1/sales/stage')) {
+      return Response.json({
+        success: true,
+        stage: 'Meeting Result - Rescheduled',
+        athlete_id: '149',
+        athlete_main_id: '953',
+        status_code: 200,
+        tasks_count: 1,
+      });
+    }
+    if (urlText.includes('/rest/v1/parent_response_requests?') && init?.method === 'PATCH') {
+      return Response.json([
+        requestRow({
+          token_hash: tokenHash,
+          request_status: 'applied',
+          approval_status: 'applied',
+        }),
+      ]);
+    }
+    if (
+      urlText.includes('/rest/v1/appointments?') &&
+      (!init?.method || init.method === 'GET')
+    ) {
+      return Response.json([]);
+    }
+    return new Response('', { status: 200 });
+  };
+
+  const response = await approveParentResponsePOST(
+    new Request('https://example.test/api/parent-response/111/approve', {
+      method: 'POST',
+      headers: {
+        'x-parent-response-approval-secret': 'approval-secret',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ confirm: true }),
+    }),
+    { params: { requestId: '111' } },
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.approval_status, 'applied');
+  assert.equal(payload.stage, 'Meeting Result - Rescheduled');
+  assert.equal(payload.open_event_id, 'open_1');
+
+  const rescheduleIndex = calls.findIndex((call) => call.url.endsWith('/api/v1/sales/reschedule-meeting'));
+  const stageIndex = calls.findIndex((call) => call.url.endsWith('/api/v1/sales/stage'));
+  const appliedIndex = calls.findIndex(
+    (call) => call.url.includes('/rest/v1/parent_response_requests?') && call.init?.method === 'PATCH',
+  );
+  const appointmentWriteIndex = calls.findIndex(
+    (call) => call.url.includes('/rest/v1/appointments?') && call.init?.method === 'POST',
+  );
+  assert.ok(rescheduleIndex > 0);
+  assert.ok(stageIndex > rescheduleIndex);
+  assert.ok(appliedIndex > stageIndex);
+  assert.ok(appointmentWriteIndex > stageIndex);
+
+  const rescheduleBody = JSON.parse(String(calls[rescheduleIndex].init?.body));
+  assert.equal(rescheduleBody.previous_event_id, 'appt_previous');
+  assert.equal(rescheduleBody.open_event_id, 'open_1');
+  assert.equal(rescheduleBody.assigned_to, '1354049');
+  const stageBody = JSON.parse(String(calls[stageIndex].init?.body));
+  assert.equal(stageBody.stage, 'Meeting Result - Rescheduled');
+  const appliedBody = JSON.parse(String(calls[appliedIndex].init?.body));
+  assert.equal(appliedBody.request_status, 'applied');
+  assert.equal(appliedBody.approval_status, 'applied');
+  assert.equal('crm_stage' in appliedBody, false);
+  assert.equal('appointment_status' in appliedBody, false);
+  const appointmentRows = JSON.parse(String(calls[appointmentWriteIndex].init?.body));
+  assert.equal(appointmentRows[0].starts_at, '2026-06-15T22:00:00.000Z');
 });

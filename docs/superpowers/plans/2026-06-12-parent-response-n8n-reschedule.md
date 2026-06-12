@@ -253,15 +253,15 @@ Approval links are intentionally deferred until the approval route can reuse the
 
 ## Task 6: Approval Route
 
-- [ ] Extract or add a Prospect Pipeline helper for confirmed reschedule approval only if it can preserve the traced Raycast sequence.
-- [ ] Approval route must require `PARENT_RESPONSE_APPROVAL_SECRET`.
-- [ ] Approval route must load the Supabase row server-side.
-- [ ] Approval route must call the helper that owns:
+- [x] Extract or add a Prospect Pipeline helper for confirmed reschedule approval only if it can preserve the traced Raycast sequence.
+- [x] Approval route must require `PARENT_RESPONSE_APPROVAL_SECRET`.
+- [x] Approval route must load the Supabase row server-side.
+- [x] Approval route must call the helper that owns:
   - `submitRescheduleMeeting(...)`
   - `updateSalesStage(...)`
   - `recordRescheduled(...)`
-- [ ] Approval route must mark approval failed if adapter call fails.
-- [ ] Approval route must mark applied only after adapter success and durable write attempt.
+- [x] Approval route must mark approval failed if adapter call fails.
+- [x] Approval route must mark applied only after adapter success and durable write attempt.
 
 ## Task 7: Local n8n, No Docker
 
@@ -290,8 +290,8 @@ npm install -g vercel
 
 - [ ] Ask user to accept Vercel auth prompt if needed.
 - [ ] Set Vercel env vars.
-- [ ] Run `cd apps/prospect-web && npm run verify`.
-- [ ] Run focused root tests for any shared helper.
+- [x] Run `cd apps/prospect-web && npm run verify`.
+- [x] Run focused root tests for any shared helper.
 - [ ] Create one dry-run request row.
 - [ ] Submit parent response.
 - [ ] Confirm Supabase state.

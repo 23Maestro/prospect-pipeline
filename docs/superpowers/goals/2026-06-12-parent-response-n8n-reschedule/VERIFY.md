@@ -13,9 +13,13 @@
   - ready-later response write
   - notify route requires protected operator token
   - notify route sends a mocked Resend email
+  - approval route requires protected operator token
+  - approval route requires explicit confirmation
+  - approval route calls the reschedule adapter path and marks applied only after durable write attempt
 - Static guard proving browser code does not expose service role, Resend key, approval secret, or token hash secret.
 - `npm run verify` in `apps/prospect-web`.
 - Focused Prospect Pipeline tests for any shared helper:
+  - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/domain/architecture-contract.test.ts`
   - `npm run test:domain`

@@ -29,10 +29,15 @@
 - Added a parent-response request writer that signs one-time links and inserts intent-only request rows without writing lifecycle, appointment, or sales-stage truth.
 - The link action refreshes Scout Prep context live, checks the selected CRM stage is `Meeting Result - Res. Pending`, fetches fresh same-head-scout openings at action time, inserts `parent_response_requests`, and copies parent-facing link text.
 - Added Raycast preferences and env examples for `PARENT_RESPONSE_TOKEN_SECRET` and `PARENT_RESPONSE_PUBLIC_BASE_URL`.
+- Added a confirmed parent-response approval helper that preserves the Raycast order: reschedule adapter, sales-stage update, then durable reschedule write.
+- Added protected Prospect Web approval route at `/api/parent-response/[requestId]/approve`; it requires `PARENT_RESPONSE_APPROVAL_SECRET` and explicit `confirm: true`.
+- Approval now marks support rows `applied` only after adapter success and durable write attempt; adapter failures mark `approval_status = failed`.
+- Parent response options now persist the head-scout `assigned_to` adapter value needed for later approval.
 - Verified:
   - `node --test supabase/tests/parent-response-requests-contract.test.mjs`
   - `npx tsx --test src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
+  - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/domain/architecture-contract.test.ts`
   - `npm run test:domain`
   - `npm run build`
