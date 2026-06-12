@@ -65,6 +65,7 @@ import {
   filterWeeklySetMeetingCandidates,
 } from './domain/set-meetings-candidate';
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
+import { postCallStageForAppointmentTitlePrefix } from './domain/sales-stage-contract';
 import { getActiveOperator } from './domain/owners';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
@@ -1574,12 +1575,7 @@ export function HeadScoutBookingsList({
       toast.title = 'Saved';
       toast.message = result.updated_title;
       setRefreshRequest((current) => ({ tick: current.tick + 1, forceLive: true }));
-      const followUpStage =
-        prefix === '(RSP)'
-          ? 'Meeting Result - Res. Pending'
-          : prefix === '(CAN)'
-            ? 'Meeting Result - Canceled'
-            : null;
+      const followUpStage = postCallStageForAppointmentTitlePrefix(prefix);
       if (followUpStage && candidate.athleteId) {
         push(
           <PostCallUpdateForm

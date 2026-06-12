@@ -17,6 +17,7 @@ export type StudentAthleteMessageResolution = {
   contactId: string | null;
   crmStage: string | null;
   taskStatus: string | null;
+  currentTaskId: string | null;
   currentTaskTitle: string | null;
   timezone: string | null;
   timezoneLabel: string | null;
@@ -108,6 +109,7 @@ export function buildStudentAthleteMessageResolutions(
       contactId: row.contactId || row.athleteId,
       crmStage: row.crmStage,
       taskStatus: row.taskStatus,
+      currentTaskId: row.currentTaskId,
       currentTaskTitle: row.currentTaskTitle,
       timezone: row.timezone,
       timezoneLabel: row.timezoneLabel,

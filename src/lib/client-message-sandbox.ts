@@ -43,6 +43,7 @@ export type ClientDirectoryMatch = {
   segment: ClientSegment;
   crmStage?: string | null;
   taskStatus?: string | null;
+  currentTaskId?: string | null;
   currentTaskTitle?: string | null;
   contactId?: string | null;
   athleteMainId?: string | null;
@@ -263,6 +264,7 @@ function mergeMatch(
     athleteName: existing.athleteName || incoming.athleteName,
     crmStage: existing.crmStage || incoming.crmStage,
     taskStatus: existing.taskStatus || incoming.taskStatus,
+    currentTaskId: existing.currentTaskId || incoming.currentTaskId,
     currentTaskTitle: existing.currentTaskTitle || incoming.currentTaskTitle,
     contactId: existing.contactId || incoming.contactId,
     athleteMainId: existing.athleteMainId || incoming.athleteMainId,
@@ -454,6 +456,7 @@ function mergeContactCacheMatches(
         segment: 'client',
         crmStage: resolution.crmStage,
         taskStatus: resolution.taskStatus,
+        currentTaskId: resolution.currentTaskId,
         currentTaskTitle: resolution.currentTaskTitle,
         contactId: resolution.contactId,
         athleteMainId: resolution.athleteMainId,

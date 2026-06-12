@@ -641,8 +641,9 @@ test('Set Meetings reschedule actions pass the booked meeting into Scout Prep po
 
   assert.match(actionPanel, /initialStageLabel="Meeting Result - Res\. Pending"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
   assert.match(actionPanel, /initialStageLabel="Meeting Result - Rescheduled"[\s\S]*initialBookedMeeting=\{candidate\.bookedMeeting\}/);
-  assert.match(source, /prefix === '\(RSP\)'[\s\S]*'Meeting Result - Res\. Pending'/);
-  assert.match(source, /prefix === '\(CAN\)'[\s\S]*'Meeting Result - Canceled'/);
+  assert.match(source, /postCallStageForAppointmentTitlePrefix\(prefix\)/);
+  assert.doesNotMatch(source, /prefix === '\(RSP\)'[\s\S]*'Meeting Result - Res\. Pending'/);
+  assert.doesNotMatch(source, /prefix === '\(CAN\)'[\s\S]*'Meeting Result - Canceled'/);
   assert.match(source, /title: result\.updated_title \|\| meeting\.title/);
 });
 

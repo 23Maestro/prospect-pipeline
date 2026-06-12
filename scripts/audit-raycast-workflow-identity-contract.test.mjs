@@ -102,6 +102,88 @@ test('head scout confirmation identity contract maps action bucket and canonical
   ]);
 });
 
+test('client messages task identity contracts map buckets and canonical ids', () => {
+  const exportContract = RAYCAST_WORKFLOW_IDENTITY_CONTRACTS.find(
+    (candidate) => candidate.id === 'client-messages.export.current-task-id',
+  );
+  const completionContract = RAYCAST_WORKFLOW_IDENTITY_CONTRACTS.find(
+    (candidate) => candidate.id === 'client-messages.send.task-completion',
+  );
+
+  assert.equal(exportContract?.bucket, 'Client Communication');
+  assert.deepEqual(exportContract?.canonicalIds, [
+    {
+      name: 'currentTaskId',
+      adapterFields: ['currentTaskId', 'task_id', 'taskId'],
+      allowedDerivers: [
+        'src/lib/supabase-lifecycle.ts',
+        'src/lib/client-message-export.ts',
+      ],
+    },
+  ]);
+  assert.equal(completionContract?.bucket, 'Client Communication, Pre-Meeting Tasks');
+  assert.deepEqual(completionContract?.canonicalIds, [
+    {
+      name: 'currentTaskId',
+      adapterFields: ['taskId', 'task_id'],
+      allowedDerivers: [
+        'src/lib/supabase-lifecycle.ts',
+        'src/lib/client-message-export.ts',
+        'src/lib/client-message-sandbox.ts',
+        'src/lib/scout-prep-task-completion.ts',
+      ],
+    },
+  ]);
+});
+
+test('head scout prefix outcome and pending client contracts map buckets and canonical ids', () => {
+  const prefixContract = RAYCAST_WORKFLOW_IDENTITY_CONTRACTS.find(
+    (candidate) => candidate.id === 'head-scout.prefix-outcome-stage',
+  );
+  const pendingContract = RAYCAST_WORKFLOW_IDENTITY_CONTRACTS.find(
+    (candidate) => candidate.id === 'pending-clients.watchlist.source-event-identity',
+  );
+
+  assert.equal(prefixContract?.bucket, 'Meetings, Enrollments & Outcomes, Lifecycle & Stage Truth');
+  assert.deepEqual(prefixContract?.canonicalIds, [
+    {
+      name: 'postCallStage',
+      adapterFields: ['initialStageLabel'],
+      allowedDerivers: ['src/domain/sales-stage-contract.ts'],
+    },
+  ]);
+  assert.equal(pendingContract?.bucket, 'Enrollments & Outcomes');
+  assert.deepEqual(pendingContract?.canonicalIds, [
+    {
+      name: 'sourceEventId',
+      adapterFields: ['source_event_id', 'sourceEventId'],
+      allowedDerivers: [
+        'src/domain/pending-client-watchlist.ts',
+        'src/lib/pending-client-watchlist.ts',
+      ],
+    },
+  ]);
+});
+
+test('batch stage completion contract maps action bucket and canonical ids', () => {
+  const contract = RAYCAST_WORKFLOW_IDENTITY_CONTRACTS.find(
+    (candidate) => candidate.id === 'scout-prep.batch-stage-completion.action-plan',
+  );
+
+  assert.equal(contract?.bucket, 'Lifecycle & Stage Truth, Pre-Meeting Tasks');
+  assert.deepEqual(contract?.canonicalIds, [
+    {
+      name: 'taskId',
+      adapterFields: ['task_id', 'taskId'],
+      allowedDerivers: [
+        'src/domain/post-call-action.ts',
+        'src/domain/scout-task-selection.ts',
+        'src/lib/scout-prep-task-completion.ts',
+      ],
+    },
+  ]);
+});
+
 test('current Scout Prep confirmed reschedule uses one canonical previous appointment identity', () => {
   const source = readFileSync(join(repoRoot, 'src/scout-prep.tsx'), 'utf8');
   const findings = auditRaycastWorkflowIdentityText({
@@ -161,6 +243,9 @@ test('audit flags UI-local Meeting Set appointment identity split from the actio
       'missing-post-call-task-completion-plan',
       'missing-post-call-task-id-from-plan',
       'missing-post-call-crm-stage-from-plan',
+      'missing-batch-post-call-action-plan',
+      'missing-batch-task-id-from-plan',
+      'missing-batch-crm-stage-from-plan',
     ],
   );
 });
@@ -205,6 +290,9 @@ test('audit flags UI-local Post-Call task completion identity and stage coupling
       'missing-post-call-task-id-from-plan',
       'missing-post-call-crm-stage-from-plan',
       'ui-local-post-call-task-completion-derivation',
+      'missing-batch-post-call-action-plan',
+      'missing-batch-task-id-from-plan',
+      'missing-batch-crm-stage-from-plan',
     ],
   );
 });
@@ -252,6 +340,9 @@ test('audit flags split Laravel and Supabase previous appointment derivation in 
       'ui-local-previous-appointment-derivation',
       'ui-local-previous-appointment-derivation',
       'ui-local-previous-appointment-derivation',
+      'missing-batch-post-call-action-plan',
+      'missing-batch-task-id-from-plan',
+      'missing-batch-crm-stage-from-plan',
     ],
   );
 });
@@ -297,6 +388,9 @@ test('audit flags UI-local contact-cache durable identity assembly', () => {
     [
       'missing-contact-cache-context-sync',
       'ui-local-contact-cache-identity-derivation',
+      'missing-batch-post-call-action-plan',
+      'missing-batch-task-id-from-plan',
+      'missing-batch-crm-stage-from-plan',
     ],
   );
 });
@@ -327,6 +421,130 @@ test('audit flags split Head Scout confirmation appointment identity', () => {
       'missing-head-scout-candidate-identity-key',
       'missing-head-scout-cache-read-from-booked-meeting',
       'ui-local-head-scout-confirmation-appointment-derivation',
+      'missing-prefix-stage-domain-helper',
+      'missing-pending-client-resolve-helper',
+      'missing-pending-client-row-source-event-id',
+    ],
+  );
+});
+
+test('audit flags Client Messages completion without canonical currentTaskId', () => {
+  const source = `
+    await completeScoutPrepTaskAfterVoicemail({
+      athleteId,
+      athleteMainId,
+      crmStage: chat.clientMatch.crmStage || null,
+      taskTitle,
+    });
+  `;
+
+  const findings = auditRaycastWorkflowIdentityText({
+    relativePath: 'src/client-message-inbox.tsx',
+    source,
+  });
+
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    ['missing-client-message-task-id-from-match'],
+  );
+});
+
+test('audit flags Client Messages export without canonical currentTaskId', () => {
+  const source = `
+    export type PipelineClientExportRow = {
+      currentTaskTitle: string | null;
+    };
+    return {
+      currentTaskTitle: row.currentTaskTitle || row.taskStatus || null,
+    };
+  `;
+
+  const findings = auditRaycastWorkflowIdentityText({
+    relativePath: 'src/lib/client-message-export.ts',
+    source,
+  });
+
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    [
+      'missing-client-message-export-current-task-id-field',
+      'missing-client-message-client-current-task-id',
+      'missing-client-message-pending-current-task-id',
+    ],
+  );
+});
+
+test('audit flags Head Scout inline prefix-to-stage mapping', () => {
+  const source = `
+    function buildSetMeetingCandidateIdentityKey(candidate) {}
+    await updateBookedMeetingTitlePrefix({ eventId: candidate.bookedMeeting.event_id });
+    await readCachedSetMeetingConfirmation({ appointmentId: candidate.bookedMeeting?.event_id });
+    const followUpStage =
+      prefix === '(RSP)'
+        ? 'Meeting Result - Res. Pending'
+        : prefix === '(CAN)'
+          ? 'Meeting Result - Canceled'
+          : null;
+    await markPendingClientResolved(sourceEventId);
+    await handleMarkResolved(row.source_event_id);
+  `;
+
+  const findings = auditRaycastWorkflowIdentityText({
+    relativePath: 'src/head-scout-schedules.tsx',
+    source,
+  });
+
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    [
+      'missing-prefix-stage-domain-helper',
+      'ui-local-prefix-stage-derivation',
+    ],
+  );
+});
+
+test('audit flags batch stage completion that bypasses the post-call action plan', () => {
+  const source = `
+    const rescheduleAppointmentIdentity = resolveConfirmedRescheduleAppointmentIdentity({});
+    const reschedulePayload = {
+      previous_event_id: rescheduleAppointmentIdentity.previousEventId,
+    };
+    await recordRescheduled({
+      previousAppointmentId: rescheduleAppointmentIdentity.previousAppointmentId,
+      payload: { previous_appointment_id: rescheduleAppointmentIdentity.previousAppointmentId },
+    });
+    const initialPlan = buildPostCallActionPlan({});
+    await submitMeetingSet(initialPlan.laravelMeetingSetSubmit);
+    const actionPlan = buildPostCallActionPlan({ meetingSetResult });
+    await recordMeetingSet(actionPlan.supabaseLifecycleWrite.args);
+    await syncMeetingSetConfirmationCacheFromScoutPrep({
+      meetingSet: { openEventId: meetingSetInput.openEventId },
+    });
+    const taskCompletion = actionPlan.laravelTaskCompletion;
+    await completeScoutPrepTaskAfterVoicemail({
+      taskId: taskCompletion.taskId,
+      crmStage: taskCompletion.crmStage,
+    });
+    await syncAthleteContactCacheFromScoutPrepContext({ context: activeContext });
+    function runScoutPrepStageCompletionBatchRow(args) {
+      await completeScoutPrepTaskAfterVoicemail({
+        taskId: args.row.task.task_id,
+        crmStage: args.stageLabel,
+      });
+    }
+  `;
+
+  const findings = auditRaycastWorkflowIdentityText({
+    relativePath: 'src/scout-prep.tsx',
+    source,
+  });
+
+  assert.deepEqual(
+    findings.map((finding) => finding.ruleId),
+    [
+      'missing-batch-post-call-action-plan',
+      'missing-batch-task-id-from-plan',
+      'missing-batch-crm-stage-from-plan',
     ],
   );
 });

@@ -25,6 +25,7 @@ export type PipelineClientExportRow = {
   associatedClients: PipelineClientAssociate[];
   crmStage: string | null;
   taskStatus: string | null;
+  currentTaskId: string | null;
   currentTaskTitle: string | null;
   segment: ClientMessageSegment;
 };
@@ -166,6 +167,7 @@ function buildPendingDraft(task: ScoutPortalTask): DraftRow | null {
     athleteName,
     crmStage: 'Call Attempt',
     taskStatus: currentTaskTitle,
+    currentTaskId: String(task.task_id || '').trim() || null,
     currentTaskTitle,
     segment: 'pending',
   };
@@ -202,6 +204,7 @@ function buildClientDraft(
     athleteName,
     crmStage: row.crmStage || null,
     taskStatus: row.taskStatus || null,
+    currentTaskId: row.currentTaskId || null,
     currentTaskTitle: row.currentTaskTitle || row.taskStatus || null,
     segment: 'client',
   };
@@ -219,6 +222,7 @@ function mergeDraftRows(existing: DraftRow | undefined, incoming: DraftRow): Dra
     ...incoming,
     crmStage: existing.crmStage || incoming.crmStage,
     taskStatus: existing.taskStatus || incoming.taskStatus,
+    currentTaskId: existing.currentTaskId || incoming.currentTaskId,
     currentTaskTitle: existing.currentTaskTitle || incoming.currentTaskTitle,
     segment,
   };

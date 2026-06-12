@@ -9,6 +9,7 @@ import {
   isCuratedSalesStageLabel,
   needsPostCallMeetingSchedulingFields,
   normalizeSalesStageLabelForLaravel,
+  postCallStageForAppointmentTitlePrefix,
   POST_CALL_UPDATE_EXCLUDED_STAGE_LABELS,
 } from './sales-stage-contract';
 
@@ -79,6 +80,13 @@ test('post-call scheduling form is limited to Meeting Set and confirmed reschedu
     normalizedStage: 'Meeting Result - Res. Pending',
     outcome: 'resolution_pending',
   });
+});
+
+test('appointment title prefixes map to post-call outcome stages in the domain', () => {
+  assert.equal(postCallStageForAppointmentTitlePrefix('(RSP)'), 'Meeting Result - Res. Pending');
+  assert.equal(postCallStageForAppointmentTitlePrefix('(CAN)'), 'Meeting Result - Canceled');
+  assert.equal(postCallStageForAppointmentTitlePrefix('(CF)'), null);
+  assert.equal(postCallStageForAppointmentTitlePrefix(null), null);
 });
 
 test('new opportunity is recognized but not a completed post-call outcome', () => {

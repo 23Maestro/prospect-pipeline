@@ -137,6 +137,13 @@ export function classifyPostMeetingOutcomeStage(
   return outcome ? { kind: 'post_meeting_outcome', normalizedStage, outcome } : null;
 }
 
+export function postCallStageForAppointmentTitlePrefix(prefix?: string | null): string | null {
+  const normalized = String(prefix || '').trim().toUpperCase();
+  if (normalized === '(RSP)') return 'Meeting Result - Res. Pending';
+  if (normalized === '(CAN)') return 'Meeting Result - Canceled';
+  return null;
+}
+
 export function isConfirmedRescheduleSchedulingStage(stage: string): boolean {
   const normalizedStage = normalizeSalesStageLabelForLaravel(stage);
   return classifyPostMeetingOutcomeStage(normalizedStage)?.outcome === 'rescheduled';

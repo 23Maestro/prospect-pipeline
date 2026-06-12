@@ -18,6 +18,7 @@ function cacheRow(
     normalizedPhone: '6155551000',
     crmStage: 'Meeting Set',
     taskStatus: 'Meeting Set',
+    currentTaskId: 'task-1',
     currentTaskTitle: 'Confirmation Call',
     timezone: 'America/Chicago',
     timezoneLabel: 'CST',
@@ -45,6 +46,7 @@ test('message resolver groups athlete family contacts for matched phones', () =>
     ['parent1', 'studentAthlete'],
   );
   assert.equal(resolutions[0].athleteName, 'Avery Jones');
+  assert.equal(resolutions[0].currentTaskId, 'task-1');
   assert.equal(resolutions[0].timezone, 'America/Chicago');
   assert.equal(resolutions[0].timezoneLabel, 'CST');
   assert.equal(resolutions[0].ambiguity, 'none');

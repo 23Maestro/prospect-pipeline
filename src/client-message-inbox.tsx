@@ -171,6 +171,7 @@ async function completeClientMessageTaskIfAvailable(chat: ClientInboxChat): Prom
     athleteMainId,
     athleteName: chat.clientMatch.athleteName || chat.displayName,
     contactTask: athleteId,
+    taskId: chat.clientMatch.currentTaskId || null,
     crmStage: chat.clientMatch.crmStage || null,
     taskTitle,
     description: taskTitle,

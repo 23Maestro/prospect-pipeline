@@ -248,6 +248,212 @@ export const RAYCAST_WORKFLOW_IDENTITY_CONTRACTS = [
       },
     ],
   },
+  {
+    id: 'client-messages.export.current-task-id',
+    action: 'Client Messages / export client directory',
+    bucket: 'Client Communication',
+    file: 'src/lib/client-message-export.ts',
+    canonicalIds: [
+      {
+        name: 'currentTaskId',
+        adapterFields: ['currentTaskId', 'task_id', 'taskId'],
+        allowedDerivers: [
+          'src/lib/supabase-lifecycle.ts',
+          'src/lib/client-message-export.ts',
+        ],
+      },
+    ],
+    requiredPatterns: [
+      {
+        ruleId: 'missing-client-message-export-current-task-id-field',
+        pattern: /currentTaskId:\s*string\s*\|\s*null/u,
+        message:
+          'Client Messages export rows must carry the canonical currentTaskId when lifecycle truth provides it.',
+      },
+      {
+        ruleId: 'missing-client-message-client-current-task-id',
+        pattern: /currentTaskId:\s*row\.currentTaskId\s*\|\|\s*null/u,
+        message:
+          'Client lifecycle rows must preserve Supabase currentTaskId into the Client Messages export.',
+      },
+      {
+        ruleId: 'missing-client-message-pending-current-task-id',
+        pattern: /currentTaskId:\s*String\(task\.task_id\s*\|\|\s*''\)\.trim\(\)\s*\|\|\s*null/u,
+        message:
+          'Pending task rows must preserve Laravel task_id into the Client Messages export.',
+      },
+    ],
+    forbiddenPatterns: [],
+  },
+  {
+    id: 'client-messages.contact-cache.current-task-id',
+    action: 'Client Messages / contact-cache admission',
+    bucket: 'Admin Data & Contacts',
+    file: 'src/lib/athlete-contact-cache.ts',
+    canonicalIds: [
+      {
+        name: 'currentTaskId',
+        adapterFields: ['current_task_id', 'currentTaskId'],
+        allowedDerivers: [
+          'src/lib/supabase-lifecycle.ts',
+          'src/lib/athlete-contact-cache.ts',
+          'src/lib/student-athlete-message-resolver.ts',
+        ],
+      },
+    ],
+    requiredPatterns: [
+      {
+        ruleId: 'missing-contact-cache-current-task-id-select',
+        pattern: /select=athlete_key,crm_stage,task_status,current_task_id,event_type/u,
+        message:
+          'Contact-cache Client Messages admission must read lifecycle current_task_id with stage/title context.',
+      },
+      {
+        ruleId: 'missing-contact-cache-current-task-id-output',
+        pattern: /currentTaskId:\s*String\(lifecycle\?\.current_task_id\s*\|\|\s*''\)\.trim\(\)\s*\|\|\s*null/u,
+        message:
+          'Contact-cache Client Messages admission must expose currentTaskId to downstream message completion.',
+      },
+    ],
+    forbiddenPatterns: [],
+  },
+  {
+    id: 'client-messages.send.task-completion',
+    action: 'Client Messages / Send Follow-Up / task completion',
+    bucket: 'Client Communication, Pre-Meeting Tasks',
+    file: 'src/client-message-inbox.tsx',
+    canonicalIds: [
+      {
+        name: 'currentTaskId',
+        adapterFields: ['taskId', 'task_id'],
+        allowedDerivers: [
+          'src/lib/supabase-lifecycle.ts',
+          'src/lib/client-message-export.ts',
+          'src/lib/client-message-sandbox.ts',
+          'src/lib/scout-prep-task-completion.ts',
+        ],
+      },
+    ],
+    requiredPatterns: [
+      {
+        ruleId: 'missing-client-message-task-id-from-match',
+        pattern: /taskId:\s*chat\.clientMatch\.currentTaskId\s*\|\|\s*null/u,
+        message:
+          'Client Messages task completion must pass the canonical currentTaskId when available.',
+      },
+    ],
+    forbiddenPatterns: [],
+  },
+  {
+    id: 'head-scout.prefix-outcome-stage',
+    action: 'Head Scout Schedules / Meeting Prefix / post-call stage',
+    bucket: 'Meetings, Enrollments & Outcomes, Lifecycle & Stage Truth',
+    file: 'src/head-scout-schedules.tsx',
+    canonicalIds: [
+      {
+        name: 'postCallStage',
+        adapterFields: ['initialStageLabel'],
+        allowedDerivers: ['src/domain/sales-stage-contract.ts'],
+      },
+    ],
+    requiredPatterns: [
+      {
+        ruleId: 'missing-prefix-stage-domain-helper',
+        pattern: /postCallStageForAppointmentTitlePrefix\(prefix\)/u,
+        message:
+          'Head Scout prefix actions must resolve post-call outcome stage through the lifecycle/stage domain.',
+      },
+    ],
+    forbiddenPatterns: [
+      {
+        ruleId: 'ui-local-prefix-stage-derivation',
+        pattern:
+          /prefix\s*===\s*'\(RSP\)'[\s\S]*?'Meeting Result - Res\. Pending'[\s\S]*?prefix\s*===\s*'\(CAN\)'[\s\S]*?'Meeting Result - Canceled'/u,
+        message:
+          'Head Scout UI must not map appointment title prefixes to lifecycle stages inline.',
+      },
+    ],
+  },
+  {
+    id: 'scout-prep.batch-stage-completion.action-plan',
+    action: 'Scout Prep / Batch Operations / sales stage task completion',
+    bucket: 'Lifecycle & Stage Truth, Pre-Meeting Tasks',
+    file: 'src/scout-prep.tsx',
+    canonicalIds: [
+      {
+        name: 'taskId',
+        adapterFields: ['task_id', 'taskId'],
+        allowedDerivers: [
+          'src/domain/post-call-action.ts',
+          'src/domain/scout-task-selection.ts',
+          'src/lib/scout-prep-task-completion.ts',
+        ],
+      },
+    ],
+    requiredPatterns: [
+      {
+        ruleId: 'missing-batch-post-call-action-plan',
+        pattern:
+          /function\s+runScoutPrepStageCompletionBatchRow[\s\S]*?const\s+actionPlan\s*=\s*buildPostCallActionPlan\(/u,
+        message:
+          'Batch sales-stage completion must use the shared post-call action plan before task completion.',
+      },
+      {
+        ruleId: 'missing-batch-task-id-from-plan',
+        pattern:
+          /function\s+runScoutPrepStageCompletionBatchRow[\s\S]*?taskId:\s*taskCompletion\.taskId/u,
+        message:
+          'Batch sales-stage completion taskId must come from the action-plan task completion.',
+      },
+      {
+        ruleId: 'missing-batch-crm-stage-from-plan',
+        pattern:
+          /function\s+runScoutPrepStageCompletionBatchRow[\s\S]*?crmStage:\s*taskCompletion\.crmStage/u,
+        message:
+          'Batch sales-stage completion crmStage must come from the action-plan task completion.',
+      },
+    ],
+    forbiddenPatterns: [],
+  },
+  {
+    id: 'pending-clients.watchlist.source-event-identity',
+    action: 'Head Scout Schedules / Pending Clients / Remove',
+    bucket: 'Enrollments & Outcomes',
+    file: 'src/head-scout-schedules.tsx',
+    canonicalIds: [
+      {
+        name: 'sourceEventId',
+        adapterFields: ['source_event_id', 'sourceEventId'],
+        allowedDerivers: [
+          'src/domain/pending-client-watchlist.ts',
+          'src/lib/pending-client-watchlist.ts',
+        ],
+      },
+    ],
+    requiredPatterns: [
+      {
+        ruleId: 'missing-pending-client-resolve-helper',
+        pattern: /markPendingClientResolved\(sourceEventId\)/u,
+        message:
+          'Pending Client removal must patch the watchlist through the Pending Client helper.',
+      },
+      {
+        ruleId: 'missing-pending-client-row-source-event-id',
+        pattern: /handleMarkResolved\(row\.source_event_id\)/u,
+        message:
+          'Pending Client removal must pass the watchlist row source_event_id to the helper.',
+      },
+    ],
+    forbiddenPatterns: [
+      {
+        ruleId: 'pending-client-source-event-used-as-task-completion-id',
+        pattern:
+          /completeScoutPrepTaskAfterVoicemail\(\{[\s\S]*?taskId:\s*row\.source_event_id/u,
+        message:
+          'Pending Client source_event_id identifies the watchlist row/event support surface, not a Laravel task completion id.',
+      },
+    ],
+  },
 ];
 
 function lineNumberForIndex(source, index) {
