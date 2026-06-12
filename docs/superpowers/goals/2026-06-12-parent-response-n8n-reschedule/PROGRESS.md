@@ -54,6 +54,7 @@
   - submit status `200`
   - Supabase readback `request_status=ready_later`, `response_kind=ready_later`, `notification_status=pending`
   - cleanup marked the support row canceled / dry-run verified
+- Ran a production notify-route dry-run against disposable request `e0ecd65a-39ba-4d96-8bc4-65173dfe9989`; the route accepted the protected notify secret, read the submitted row, returned `502` with `Missing Resend notification environment`, and the support row was cleaned up afterward.
 - First production deploy failed because `apps/prospect-web/lib/parent-response-approval.ts` imported root `src` files that Vercel does not upload for the app project.
 - Made the Prospect Web approval adapter deployable by keeping its approval payload assembly and minimal response types inside `apps/prospect-web/lib/parent-response-approval.ts`, while preserving reschedule -> stage -> durable write order.
 - Deployed Prospect Web production successfully:
@@ -80,6 +81,7 @@
   - `npm run sync:parent-response-vercel-env:check` (expected FAIL until Resend values are added to ignored local env)
   - `npm run verify:parent-response-readiness` (expected FAIL until missing env is configured)
   - `npm run verify:parent-response-live-dry-run`
+  - production notify-route dry-run against a disposable submitted row
   - `/opt/homebrew/bin/supabase db push`
   - `npx vercel env ls`
   - `npx vercel deploy --prod -y`

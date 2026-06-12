@@ -46,6 +46,11 @@
   - submits `ready_later` through the production Vercel route
   - reads Supabase back and then marks the support row canceled / dry-run verified
   - must not touch lifecycle, appointment, CRM stage, or task status surfaces
+- Parent response production notify dry-run before Resend env exists:
+  - create a disposable submitted fake `parent_response_requests` row
+  - call production `/api/parent-response/:requestId/notify` with `PARENT_RESPONSE_NOTIFY_SECRET`
+  - confirm the deployed route accepts the secret, reads the row, and fails only on missing Resend notification environment
+  - mark the support row canceled / dry-run verified
 - Focused Prospect Pipeline tests for any shared helper:
   - `node --import tsx --test src/lib/parent-response-approval.test.ts src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
   - `node --import tsx --test src/lib/parent-response-request-writer.test.ts src/domain/parent-response-request.test.ts`
