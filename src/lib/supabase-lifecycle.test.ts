@@ -251,6 +251,30 @@ test('reschedule-pending sales stage projects onto the current appointment post-
   );
 });
 
+test('post-meeting sales stages project canonical appointment outcomes through workflow context', () => {
+  assert.deepEqual(
+    [
+      ['Actual Meeting - Follow Up', 'follow_up', 'sales_stage_follow_up'],
+      ['Meeting Result - No Show', 'no_show', 'sales_stage_no_show'],
+      ['Meeting Result - Canceled', 'canceled', 'sales_stage_canceled'],
+      ['Actual Meeting Closed Won', 'closed_won', 'sales_stage_closed_won'],
+      ['Closed Lost', 'closed_lost', 'sales_stage_closed_lost'],
+    ].map(([crmStage, postMeetingResult, statusReason]) =>
+      resolveAppointmentPostMeetingResultProjectionForSalesStage({
+        crmStage,
+        appointmentId: '611014',
+      }),
+    ),
+    [
+      { appointmentId: '611014', postMeetingResult: 'follow_up', statusReason: 'sales_stage_follow_up' },
+      { appointmentId: '611014', postMeetingResult: 'no_show', statusReason: 'sales_stage_no_show' },
+      { appointmentId: '611014', postMeetingResult: 'canceled', statusReason: 'sales_stage_canceled' },
+      { appointmentId: '611014', postMeetingResult: 'closed_won', statusReason: 'sales_stage_closed_won' },
+      { appointmentId: '611014', postMeetingResult: 'closed_lost', statusReason: 'sales_stage_closed_lost' },
+    ],
+  );
+});
+
 test('sales stage post-meeting result projection needs an appointment id', () => {
   assert.equal(
     resolveAppointmentPostMeetingResultProjectionForSalesStage({
@@ -654,7 +678,7 @@ test('Set Meetings prefix actions use command Y U H J N shortcuts', () => {
   assert.doesNotMatch(source, /modifiers: \['opt'\], key: APPOINTMENT_SHORTCUT_KEYS\[index\]/);
 });
 
-test('Scout Prep Reschedule Pending fast path conditionally updates stage plus two Notes-tab writes', () => {
+test('Scout Prep Reschedule Pending fast path projects stage plus two Notes-tab writes', () => {
   const commandSource = fs.readFileSync('src/scout-prep.tsx', 'utf8');
   const handleSubmit = commandSource.slice(
     commandSource.indexOf('async function handleSubmit'),
@@ -676,8 +700,13 @@ test('Scout Prep Reschedule Pending fast path conditionally updates stage plus t
   assert.match(handleSubmit, /cacheMeetingDescriptionForReschedulePending\(\{/);
   assert.match(handleSubmit, /isReschedulePendingStage\(stageLabel\)/);
   assert.match(handleSubmit, /requiresPostMeetingOperatorNote/);
-  assert.match(rescheduleFastPath, /if \(!isReschedulePendingStage\(selectedCurrentStageLabel\)\)/);
+  assert.doesNotMatch(commandSource, /recordPendingClientWatchlistFromPostCall/);
+  assert.doesNotMatch(
+    rescheduleFastPath,
+    /if \(!isReschedulePendingStage\(selectedCurrentStageLabel\)\)/,
+  );
   assert.match(rescheduleFastPath, /await updateSalesStage\(\{/);
+  assert.match(rescheduleFastPath, /appointmentId: initialBookedMeeting\?\.event_id \|\| null/);
   assert.match(rescheduleFastPath, /title: getPostMeetingScoutNotesTitle\(stageLabel\)/);
   assert.match(commandSource, /CAN And Scout Notes/);
   assert.match(rescheduleFastPath, /await addAthleteNote\(\{\s*athleteId,\s*athleteMainId,\s*title: reschedulePendingOperatorNoteTitle/s);

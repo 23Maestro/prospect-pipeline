@@ -378,15 +378,20 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
   );
 });
 
-test('pending client Raycast loader reads watchlist plus appointment truth for meeting display', () => {
+test('pending client Raycast loader reads appointment outcomes plus support tombstones for meeting display', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.match(source, /'appointments'/);
+  assert.match(source, /post_meeting_result\.in\./);
+  assert.match(source, /status\.in\./);
+  assert.match(source, /reschedule_pending/);
+  assert.match(source, /no_show/);
   assert.match(source, /pending_client_watchlist/);
+  assert.match(source, /status=in\.\("resolved","expired"\)/);
   assert.match(source, /resolveBookedMeetingDetailsForForm/);
   assert.match(source, /meeting_timezone/);
-  assert.match(source, /status=eq\.watching/);
-  assert.match(source, /expires_at=gte/);
+  assert.doesNotMatch(source, /status=eq\.watching/);
+  assert.doesNotMatch(source, /expires_at=gte/);
   assert.doesNotMatch(source, /active_athlete_meeting_truth/);
-  assert.doesNotMatch(source, /id=in\.\(/);
   assert.doesNotMatch(source, /readCurrentPipelineRows/);
   assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
   assert.doesNotMatch(source, /fetchAthleteNotes/);
@@ -570,7 +575,11 @@ test('no-show evidence accepts legacy title prefixes and CRM no-show stages', ()
 
 test('pending client loader avoids live source adapters for the review list', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.match(source, /'appointments'/);
+  assert.match(source, /post_meeting_result\.in\./);
+  assert.match(source, /status\.in\./);
   assert.match(source, /pending_client_watchlist/);
+  assert.doesNotMatch(source, /status=eq\.watching/);
   assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
   assert.doesNotMatch(source, /athlete_pipeline_state/);
 });

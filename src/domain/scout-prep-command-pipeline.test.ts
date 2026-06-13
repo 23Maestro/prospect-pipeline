@@ -5,6 +5,7 @@ import type { ScoutPrepContext } from '../features/scout-prep/types';
 import {
   buildConfirmationActionPayload,
   buildScoutPrepCommandContext,
+  buildSetMeetingsCommandContext,
   buildSetMeetingsCommandContextFromBookedMeetings,
 } from './scout-prep-command-pipeline';
 
@@ -119,4 +120,43 @@ test('Set Meetings command context excludes non-operator meeting candidates', ()
   });
 
   assert.deepEqual(context.candidates.map((candidate) => candidate.athleteName), ['Avery Jones']);
+});
+
+test('Set Meetings command context collapses duplicate appointment identities before Raycast render', () => {
+  const context = buildSetMeetingsCommandContext({
+    candidates: [
+      {
+        key: '1499052:953816',
+        athleteId: '1499052',
+        athleteMainId: '953816',
+        athleteName: 'Duplicate Athlete',
+        bookedMeeting: {
+          event_id: '625661',
+          title: 'Duplicate Athlete Football',
+          start: '2026-06-12T19:00:00.000Z',
+          end: '2026-06-12T20:00:00.000Z',
+          date_time_label: 'Fri 06/12/26 3:00 PM',
+        },
+      },
+      {
+        key: '1499052:953816',
+        athleteId: '1499052',
+        athleteMainId: '953816',
+        athleteName: 'Duplicate Athlete',
+        taskId: '9001',
+        currentTask: 'Confirmation Call',
+        adminUrl: 'https://dashboard.nationalpid.com/admin/contacts/1499052',
+        bookedMeeting: {
+          event_id: '625661',
+          title: 'Duplicate Athlete Football',
+          start: '2026-06-12T19:00:00.000Z',
+          end: '2026-06-12T20:00:00.000Z',
+          date_time_label: 'Fri 06/12/26 3:00 PM',
+        },
+      },
+    ],
+  });
+
+  assert.equal(context.candidates.length, 1);
+  assert.equal(context.candidates[0].taskId, '9001');
 });

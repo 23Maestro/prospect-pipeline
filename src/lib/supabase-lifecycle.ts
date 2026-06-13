@@ -24,6 +24,7 @@ import {
   assertAppointmentTruthWrite,
   mergeAppointmentTruthRow,
 } from '../domain/appointment-truth';
+import { resolveWorkflowContext } from '../domain/workflow-context';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
@@ -329,8 +330,15 @@ export type ActiveMeetingFallbackRow = {
 
 export type AppointmentPostMeetingResultProjection = {
   appointmentId: string;
-  postMeetingResult: 'reschedule_pending';
-  statusReason: 'sales_stage_reschedule_pending';
+  postMeetingResult:
+    | 'follow_up'
+    | 'reschedule_pending'
+    | 'rescheduled'
+    | 'no_show'
+    | 'canceled'
+    | 'closed_won'
+    | 'closed_lost';
+  statusReason: string;
 };
 
 export type WeeklyScheduledAppointmentRow = {
@@ -1003,13 +1011,19 @@ export function resolveAppointmentPostMeetingResultProjectionForSalesStage(args:
   const appointmentId = normalizeValue(args.appointmentId);
   if (!appointmentId) return null;
 
-  const lifecycle = resolveSalesLifecycle(args.crmStage);
-  if (lifecycle.normalizedStage !== 'reschedule_pending') return null;
+  const workflowContext = resolveWorkflowContext({
+    salesStage: args.crmStage,
+    appointmentId,
+  });
+  const postMeetingResult = normalizeValue(workflowContext.post_meeting_result) as
+    | AppointmentPostMeetingResultProjection['postMeetingResult']
+    | '';
+  if (!postMeetingResult) return null;
 
   return {
     appointmentId,
-    postMeetingResult: 'reschedule_pending',
-    statusReason: 'sales_stage_reschedule_pending',
+    postMeetingResult,
+    statusReason: `sales_stage_${postMeetingResult}`,
   };
 }
 

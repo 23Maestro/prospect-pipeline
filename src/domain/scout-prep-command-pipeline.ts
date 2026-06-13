@@ -16,6 +16,7 @@ import {
   getReminderTimeLabel,
 } from './outreach-time-wording';
 import {
+  buildSetMeetingCandidateIdentityKey,
   buildSetMeetingCandidatesFromBookedMeetings,
   sortSetMeetingCandidates,
 } from './set-meetings-candidate';
@@ -82,6 +83,39 @@ export type VoicemailActionPayload = {
   recipients: ReturnType<typeof getVoicemailFollowUpRecipients>;
   currentTask: string | null;
 };
+
+function candidateCompletenessScore(candidate: HeadScoutFollowUpCandidate): number {
+  return [
+    candidate.athleteId,
+    candidate.athleteMainId,
+    candidate.taskId,
+    candidate.currentTask,
+    candidate.adminUrl,
+    candidate.taskUrl,
+    candidate.parent1Name,
+    candidate.parent2Name,
+    candidate.bookedMeeting?.event_id,
+    candidate.bookedMeeting?.start,
+    candidate.bookedMeeting?.end,
+    candidate.headScoutName,
+  ].filter((value) => String(value || '').trim()).length;
+}
+
+function dedupeSetMeetingCandidatesByIdentity(
+  candidates: HeadScoutFollowUpCandidate[],
+): HeadScoutFollowUpCandidate[] {
+  const byIdentity = new Map<string, HeadScoutFollowUpCandidate>();
+
+  for (const candidate of candidates) {
+    const key = buildSetMeetingCandidateIdentityKey(candidate);
+    const existing = byIdentity.get(key);
+    if (!existing || candidateCompletenessScore(candidate) > candidateCompletenessScore(existing)) {
+      byIdentity.set(key, candidate);
+    }
+  }
+
+  return Array.from(byIdentity.values());
+}
 
 export type MeetingSetActionPayload = {
   athleteId: string;
@@ -162,7 +196,7 @@ export function buildSetMeetingsCommandContext(args: {
   weekLabel?: string | null;
   selectedScout?: string | null;
 }): SetMeetingsCommandContext {
-  const candidates = sortSetMeetingCandidates(args.candidates);
+  const candidates = sortSetMeetingCandidates(dedupeSetMeetingCandidatesByIdentity(args.candidates));
   return {
     activeOperator: getActiveOperator(),
     candidates,

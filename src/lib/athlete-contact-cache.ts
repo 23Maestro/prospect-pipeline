@@ -63,7 +63,6 @@ type AthleteLifecycleReadRow = {
   athlete_key?: string | null;
   crm_stage?: string | null;
   task_status?: string | null;
-  current_task_id?: string | null;
   event_type?: string | null;
   payload_json?: Record<string, unknown> | null;
   created_at?: string | null;
@@ -73,7 +72,6 @@ type AthleteLifecycleState = {
   athlete_key?: string | null;
   crm_stage?: string | null;
   task_status?: string | null;
-  current_task_id?: string | null;
   next_action?: string | null;
   is_terminal?: boolean | null;
   normalized_stage?: string | null;
@@ -211,7 +209,6 @@ function lifecycleStateFromEvent(row: AthleteLifecycleReadRow): AthleteLifecycle
     athlete_key: row.athlete_key,
     crm_stage: crmStage || null,
     task_status: taskStatus || null,
-    current_task_id: String(row.current_task_id || '').trim() || null,
     next_action: taskStatus || crmStage || eventType || null,
     is_terminal: isTerminal,
     normalized_stage: normalizedStage,
@@ -227,7 +224,7 @@ async function readLifecycleEventsByAthleteKey(
     config,
     'lifecycle_events',
     [
-      'select=athlete_key,crm_stage,task_status,current_task_id,event_type,payload_json,created_at',
+      'select=athlete_key,crm_stage,task_status,event_type,payload_json,created_at',
       `athlete_key=in.${postgrestInList(athleteKeys)}`,
       'order=created_at.desc',
     ].join('&'),
@@ -299,7 +296,7 @@ export async function lookupActiveAthleteContactCacheForPhones(
         normalizedPhone,
         crmStage: String(lifecycle?.crm_stage || '').trim() || null,
         taskStatus: String(lifecycle?.task_status || '').trim() || null,
-        currentTaskId: String(lifecycle?.current_task_id || '').trim() || null,
+        currentTaskId: null,
         currentTaskTitle: String(lifecycle?.next_action || '').trim() || null,
         timezone: String(row.timezone || '').trim() || null,
         timezoneLabel: String(row.timezone_label || '').trim() || null,

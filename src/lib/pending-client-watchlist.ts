@@ -2,7 +2,9 @@ import { getPreferenceValues } from '@raycast/api';
 import fs from 'fs';
 import path from 'path';
 import {
+  buildPendingClientWatchlistRow,
   buildPendingClientResolvedPatch,
+  cleanPendingClientAthleteName,
   isPendingClientResolvedByFutureConfirmation,
   PENDING_CLIENT_LIST_LIMIT,
   type SetMeetingConfirmationCacheRowInput,
@@ -11,6 +13,7 @@ import {
 import {
   patchPendingClientWatchlistRow,
   readRows,
+  upsertPendingClientWatchlistRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
 import { resolveBookedMeetingDetailsForForm } from './booked-meeting-details-resolver';
@@ -35,8 +38,38 @@ export type PendingClientWatchlistLoadResult = {
   aiUnavailableCount: number;
 };
 
+type AppointmentPendingClientRow = {
+  id?: string | null;
+  athlete_key?: string | null;
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  head_scout?: string | null;
+  starts_at?: string | null;
+  status?: string | null;
+  source_event_id?: string | null;
+  meeting_timezone?: string | null;
+  meeting_timezone_label?: string | null;
+  post_meeting_result?: string | null;
+  source_payload?: Record<string, unknown> | null;
+  updated_at?: string | null;
+};
+
+type AthleteNameRow = {
+  athlete_key?: string | null;
+  athlete_name?: string | null;
+};
+
 const DEFAULT_SCHEMA = 'public';
 const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const PENDING_CLIENT_APPOINTMENT_OUTCOMES = [
+  'follow_up',
+  'reschedule_pending',
+  'no_show',
+  'canceled',
+] as const;
+const PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY = PENDING_CLIENT_APPOINTMENT_OUTCOMES.map(
+  quotePostgrestInValue,
+).join(',');
 
 function readEnvFile(filePath: string): Record<string, string> {
   try {
@@ -116,6 +149,104 @@ function getSupabaseConfig(): SupabasePersistenceConfig | null {
 function extractAppointmentId(row: PendingClientWatchlistRow): string | null {
   const source = String(row.source_event_id || '').trim();
   return source.startsWith('appointment:') ? source.slice('appointment:'.length).trim() : null;
+}
+
+function quotePostgrestInValue(value: string): string {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function pendingClientAppointmentOutcome(row: AppointmentPendingClientRow): string {
+  const postMeetingResult = String(row.post_meeting_result || '').trim();
+  if (PENDING_CLIENT_APPOINTMENT_OUTCOMES.some((outcome) => outcome === postMeetingResult)) {
+    return postMeetingResult;
+  }
+  const status = String(row.status || '').trim();
+  return PENDING_CLIENT_APPOINTMENT_OUTCOMES.some((outcome) => outcome === status) ? status : '';
+}
+
+function workflowPayload(row: AppointmentPendingClientRow): Record<string, unknown> {
+  const payload = row.source_payload && typeof row.source_payload === 'object' ? row.source_payload : {};
+  const context = payload.workflow_context;
+  return context && typeof context === 'object' && !Array.isArray(context)
+    ? (context as Record<string, unknown>)
+    : payload;
+}
+
+function payloadText(payload: Record<string, unknown>, key: string): string | null {
+  const value = payload[key];
+  const text = String(value || '').trim();
+  return text || null;
+}
+
+function pendingClientOutcomeLabel(outcome?: string | null): string {
+  switch (String(outcome || '').trim()) {
+    case 'follow_up':
+      return 'Follow Up';
+    case 'no_show':
+      return 'No Show';
+    case 'canceled':
+      return 'Canceled';
+    case 'reschedule_pending':
+    default:
+      return 'Reschedule Pending';
+  }
+}
+
+function appointmentWatchlistSourceId(row: AppointmentPendingClientRow): string {
+  return `appointment:${String(row.id || row.source_event_id || '').trim()}`;
+}
+
+function buildPendingClientRowsFromAppointments(
+  appointments: AppointmentPendingClientRow[],
+  athleteNamesByKey: Map<string, string>,
+): PendingClientWatchlistDisplayRow[] {
+  return appointments.flatMap((appointment) => {
+    const appointmentId = String(appointment.id || appointment.source_event_id || '').trim();
+    const startsAt = String(appointment.starts_at || '').trim();
+    if (!appointmentId || !startsAt) return [];
+
+    const payload = workflowPayload(appointment);
+    const athleteKey = String(appointment.athlete_key || '').trim();
+    const athleteName =
+      payloadText(payload, 'athlete_name') ||
+      athleteNamesByKey.get(athleteKey) ||
+      cleanPendingClientAthleteName(
+        payloadText(payload, 'meeting_title_current') || payloadText(payload, 'meeting_title_base'),
+      ) ||
+      null;
+    const outcome = pendingClientAppointmentOutcome(appointment);
+    const title =
+      payloadText(payload, 'meeting_title_current') ||
+      payloadText(payload, 'meeting_title_base') ||
+      `${athleteName || 'Pending Client'} - ${pendingClientOutcomeLabel(outcome)}`;
+
+    const row = buildPendingClientWatchlistRow({
+      event: {
+        event_id: appointmentWatchlistSourceId(appointment),
+        title,
+        assigned_owner: appointment.head_scout,
+        start: startsAt,
+        end: null,
+      },
+      description: `Pending client review from appointment outcome: ${outcome}.`,
+      matchedSignals: [outcome],
+      actionTag: 'Operator Input',
+      aiVerdict: 'pending_client',
+      athleteId: appointment.athlete_id,
+      athleteMainId: appointment.athlete_main_id,
+      athleteName,
+    });
+
+    return [
+      {
+        ...row,
+        appointment_starts_at: startsAt,
+        meeting_timezone: appointment.meeting_timezone || null,
+        meeting_timezone_label: appointment.meeting_timezone_label || null,
+        last_seen_at: appointment.updated_at || row.last_seen_at,
+      },
+    ];
+  });
 }
 
 function athleteDedupeKey(row: PendingClientWatchlistDisplayRow): string {
@@ -210,16 +341,55 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
   }
 
   const now = new Date();
-  const activeRows = await readRows<PendingClientWatchlistRow>(
+  const watchStart = new Date(now);
+  watchStart.setUTCDate(watchStart.getUTCDate() - 30);
+  const appointmentRows = await readRows<AppointmentPendingClientRow>(
     config,
-    'pending_client_watchlist',
+    'appointments',
     [
-      'select=*',
-      'status=eq.watching',
-      `expires_at=gte.${encodeURIComponent(now.toISOString())}`,
-      'order=event_start.desc',
-      `limit=${PENDING_CLIENT_LIST_LIMIT}`,
+      'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,meeting_timezone,meeting_timezone_label,post_meeting_result,source_payload,updated_at',
+      `or=(post_meeting_result.in.(${PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY}),status.in.(${PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY}))`,
+      `starts_at=gte.${encodeURIComponent(watchStart.toISOString())}`,
+      'order=starts_at.desc',
+      `limit=${PENDING_CLIENT_LIST_LIMIT * 2}`,
     ].join('&'),
+  );
+  const athleteKeys = Array.from(
+    new Set(appointmentRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
+  );
+  const athleteRows = athleteKeys.length
+    ? await readRows<AthleteNameRow>(
+        config,
+        'athletes',
+        [
+          'select=athlete_key,athlete_name',
+          `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+        ].join('&'),
+      ).catch(() => [])
+    : [];
+  const athleteNamesByKey = new Map(
+    athleteRows
+      .map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()])
+      .filter(([key, name]) => key && name) as Array<[string, string]>,
+  );
+  const appointmentRowsForDisplay = buildPendingClientRowsFromAppointments(
+    appointmentRows,
+    athleteNamesByKey,
+  );
+  const appointmentSourceIds = appointmentRowsForDisplay.map((row) => row.source_event_id);
+  const resolvedRows = appointmentSourceIds.length
+    ? await readRows<Pick<PendingClientWatchlistRow, 'source_event_id' | 'status'>>(
+        config,
+        'pending_client_watchlist',
+        [
+          'select=source_event_id,status',
+          `source_event_id=in.(${appointmentSourceIds.map(quotePostgrestInValue).join(',')})`,
+          'status=in.("resolved","expired")',
+        ].join('&'),
+      ).catch(() => [])
+    : [];
+  const resolvedSourceIds = new Set(
+    resolvedRows.map((row) => String(row.source_event_id || '').trim()).filter(Boolean),
   );
   const confirmationRows = await readRows<SetMeetingConfirmationCacheRowInput>(
     config,
@@ -233,25 +403,70 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       `limit=${PENDING_CLIENT_LIST_LIMIT * 10}`,
     ].join('&'),
   ).catch(() => []);
-  const unresolvedRows = activeRows.filter(
-    (row) => !isPendingClientResolvedByFutureConfirmation(row, confirmationRows, now),
+  const unresolvedRows = appointmentRowsForDisplay.filter(
+    (row) =>
+      !resolvedSourceIds.has(String(row.source_event_id || '').trim()) &&
+      !isPendingClientResolvedByFutureConfirmation(row, confirmationRows, now),
   );
   const rows = dedupePendingClientRows(
     await enrichPendingClientRowsWithAppointmentTruth(unresolvedRows),
-  );
+  ).slice(0, PENDING_CLIENT_LIST_LIMIT);
 
   return {
     rows,
-    scannedCount: rows.length,
+    scannedCount: appointmentRowsForDisplay.length,
     confirmedCount: rows.length,
     aiUnavailableCount: 0,
   };
 }
 
-export async function markPendingClientResolved(sourceEventId: string): Promise<void> {
+export async function markPendingClientResolved(
+  rowOrSourceEventId: PendingClientWatchlistRow | string,
+): Promise<void> {
   const config = getSupabaseConfig();
   if (!config) {
     throw new Error('Missing Supabase URL or key');
   }
-  await patchPendingClientWatchlistRow(config, sourceEventId, buildPendingClientResolvedPatch());
+  const resolvedPatch = buildPendingClientResolvedPatch();
+  if (typeof rowOrSourceEventId === 'string') {
+    await patchPendingClientWatchlistRow(config, rowOrSourceEventId, resolvedPatch);
+    return;
+  }
+  const row = rowOrSourceEventId;
+  const storageRow: PendingClientWatchlistRow = {
+    source_event_id: row.source_event_id,
+    athlete_id: row.athlete_id,
+    athlete_main_id: row.athlete_main_id,
+    athlete_name: row.athlete_name,
+    head_scout: row.head_scout,
+    head_scout_key: row.head_scout_key,
+    calendar_owner_id: row.calendar_owner_id,
+    detected_by_operator: row.detected_by_operator,
+    detected_by_operator_key: row.detected_by_operator_key,
+    owner_context: row.owner_context,
+    resolved_by_operator: row.resolved_by_operator,
+    resolved_by_operator_key: row.resolved_by_operator_key,
+    event_title: row.event_title,
+    event_start: row.event_start,
+    event_end: row.event_end,
+    description: row.description,
+    matched_signals: row.matched_signals,
+    action_tag: row.action_tag,
+    ai_verdict: row.ai_verdict,
+    status: row.status,
+    first_seen_at: row.first_seen_at,
+    last_seen_at: row.last_seen_at,
+    expires_at: row.expires_at,
+    resolved_at: row.resolved_at,
+  };
+  await upsertPendingClientWatchlistRows(config, [
+    {
+      ...storageRow,
+      ...resolvedPatch,
+      status: 'resolved',
+      first_seen_at: row.first_seen_at || new Date().toISOString(),
+      last_seen_at: row.last_seen_at || new Date().toISOString(),
+      expires_at: row.expires_at || new Date().toISOString(),
+    },
+  ]);
 }

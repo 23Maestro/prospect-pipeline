@@ -3863,16 +3863,14 @@ export function PostCallUpdateForm({
         }
       }
       if (isReschedulePendingUpdate) {
-        if (!isReschedulePendingStage(selectedCurrentStageLabel)) {
-          const stageContext = await getPreUpdateContext();
-          await updateSalesStage({
-            athleteMainId,
-            athleteId,
-            athleteName: stageContext.contactInfo.studentAthlete.name || task.athlete_name,
-            stage: stageLabel,
-            appointmentId: initialBookedMeeting?.event_id || null,
-          });
-        }
+        const stageContext = await getPreUpdateContext();
+        await updateSalesStage({
+          athleteMainId,
+          athleteId,
+          athleteName: stageContext.contactInfo.studentAthlete.name || task.athlete_name,
+          stage: stageLabel,
+          appointmentId: initialBookedMeeting?.event_id || null,
+        });
         await addAthleteNote({
           athleteId,
           athleteMainId,

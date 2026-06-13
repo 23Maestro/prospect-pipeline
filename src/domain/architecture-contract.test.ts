@@ -653,8 +653,13 @@ test('Client message UI verifies direct sends while normal Scout Prep and Set Me
   assert.match(clientMessages, /No task completed/);
   assert.match(clientMessages, /function ClientMessageSendForm/);
   assert.match(clientMessages, /title="Send Message"/);
-  assert.match(clientMessages, /title="Send Follow-Up"[\s\S]*target=\{<ClientMessageSendForm/);
+  assert.doesNotMatch(clientMessages, /title="Send Follow-Up"[\s\S]*target=\{<ClientMessageSendForm/);
   assert.match(clientMessages, /title=\{`Send Reschedule/);
+  assert.match(
+    clientMessages,
+    /<ActionPanel.Section title="Navigation">[\s\S]*title="Open Thread"[\s\S]*<ActionPanel.Section title="Workflow">[\s\S]*title="Book Cal Follow-Up"/,
+  );
+  assert.doesNotMatch(clientMessages, /title="Export Inbox"/);
   assert.doesNotMatch(clientMessages, /FollowUpDraftForm/);
   assert.doesNotMatch(clientMessages, /sendClientMessage\(/);
   assert.doesNotMatch(setMeetings, /sendClientMessage\(/);

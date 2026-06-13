@@ -49,10 +49,97 @@ test('classifies reply themes from actionable client wording', () => {
   assert.deepEqual(MISSED_CLIENT_REPLY_FLAGS, ['reschedule_request', 'outreach_callback']);
   assert.equal(classifyClientMessageTheme('Can we reschedule?'), 'reschedule_request');
   assert.equal(classifyClientMessageTheme('Need to move the meeting'), 'reschedule_request');
+  assert.equal(classifyClientMessageTheme('1'), 'reschedule_request');
+  assert.equal(classifyClientMessageTheme('one'), 'reschedule_request');
+  assert.equal(
+    classifyClientMessageTheme('still interested, need to reschedule'),
+    'reschedule_request',
+  );
   assert.equal(classifyClientMessageTheme('Tomorrow works better'), 'outreach_callback');
   assert.equal(classifyClientMessageTheme('I am working right now'), 'outreach_callback');
   assert.equal(classifyClientMessageTheme('Can you call me after work?'), 'outreach_callback');
   assert.equal(classifyClientMessageTheme('Thanks'), null);
+});
+
+test('no-show option reply 1 is needs reply until operator proposes new times', () => {
+  const needsReplySnapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-13T17:00:00.000Z',
+    chats: [chat({ athleteMainId: '456', taskTitle: 'Meeting Result - No Show' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'no-show-options',
+          body: [
+            'Hi Jacoreyia, reply with the best fit:',
+            '',
+            '1 - still interested, need to reschedule',
+            '2 - interested, timing is bad',
+            '3 - no longer interested',
+          ].join('\n'),
+          date: '2026-06-13T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'client-one',
+          body: '1',
+          date: '2026-06-13T14:05:00.000Z',
+        }),
+      ],
+    },
+  });
+
+  assert.equal(needsReplySnapshot.rows.length, 1);
+  assert.equal(needsReplySnapshot.rows[0].theme, 'reschedule_request');
+  assert.equal(needsReplySnapshot.rows[0].operatorRepliedAfter, false);
+  assert.equal(
+    findPendingClientReplyThemeState(
+      { athlete_main_id: '456', athlete_name: 'Avery Jones' },
+      needsReplySnapshot,
+    )?.status,
+    'needs_reply',
+  );
+
+  const awaitingSnapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-13T17:00:00.000Z',
+    chats: [chat({ athleteMainId: '456', taskTitle: 'Meeting Result - No Show' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'no-show-options',
+          body: [
+            'Hi Jacoreyia, reply with the best fit:',
+            '',
+            '1 - still interested, need to reschedule',
+            '2 - interested, timing is bad',
+            '3 - no longer interested',
+          ].join('\n'),
+          date: '2026-06-13T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'client-one',
+          body: '1',
+          date: '2026-06-13T14:05:00.000Z',
+        }),
+        message({
+          guid: 'operator-times',
+          body: 'Here are two new times to reschedule: 1 - Mon 3PM ET, 2 - Tue 4PM ET',
+          date: '2026-06-13T14:10:00.000Z',
+          isFromMe: true,
+        }),
+      ],
+    },
+  });
+
+  assert.equal(awaitingSnapshot.rows[0].operatorRepliedAfter, true);
+  assert.equal(awaitingSnapshot.rows[0].operatorRescheduleOfferAfter, true);
+  assert.equal(
+    findPendingClientReplyThemeState(
+      { athlete_main_id: '456', athlete_name: 'Avery Jones' },
+      awaitingSnapshot,
+    )?.status,
+    'awaiting_reschedule',
+  );
 });
 
 test('flags only obvious missed reschedule replies after confirmation templates', () => {
@@ -501,28 +588,29 @@ test('client thread markdown renders all messages as dialogue', () => {
     timezoneLabel: 'CST',
     messages: [
       message({
+        guid: 'client',
+        body: 'Can we reschedule?',
+        senderName: 'Morgan Armstrong',
+        date: '2026-05-27T15:00:00.000Z',
+      }),
+      message({
         guid: 'operator',
         body: 'Coach Ryan has Avery down for the meeting today at 5:00 PM.',
         senderName: 'Me',
         date: '2026-05-27T14:00:00.000Z',
         isFromMe: true,
       }),
-      message({
-        guid: 'client',
-        body: 'Can we reschedule?',
-        senderName: 'Morgan Armstrong',
-        date: '2026-05-27T15:00:00.000Z',
-      }),
     ],
   });
 
   assert.match(markdown, /^# Morgan Armstrong/);
-  assert.match(markdown, /> \*\*Me\*\*/);
-  assert.match(markdown, /> Wednesday, May 27 at 9AM CT\n>/);
-  assert.match(markdown, /> Coach Ryan has Avery down/);
-  assert.match(markdown, /> \*\*Morgan Armstrong\*\*/);
-  assert.match(markdown, /> Wednesday, May 27 at 10AM CT\n>/);
-  assert.match(markdown, /> Can we reschedule\?/);
+  assert.match(markdown, /### Me/);
+  assert.match(markdown, /_Wednesday, May 27 at 9AM CT_/);
+  assert.match(markdown, /Coach Ryan has Avery down/);
+  assert.match(markdown, /### Morgan Armstrong/);
+  assert.match(markdown, /_Wednesday, May 27 at 10AM CT_/);
+  assert.match(markdown, /Can we reschedule\?/);
+  assert.ok(markdown.indexOf('Coach Ryan has Avery down') < markdown.indexOf('Can we reschedule?'));
   assert.doesNotMatch(markdown, /2026-05-27T/);
 });
 

@@ -20,6 +20,7 @@ import fs from 'fs';
 import path from 'path';
 import { setTimeout } from 'timers/promises';
 import { useEffect, useMemo, useState } from 'react';
+import { usePromise } from '@raycast/utils';
 import { ConfirmationReminderMessageForm } from './components/follow-up-message-forms';
 import {
   enrichHeadScoutFollowUpCandidate,
@@ -93,8 +94,17 @@ import {
   shouldRenderCachedSetMeetingsSnapshot,
 } from './lib/set-meetings-cache';
 import {
+  buildClientReplyThemeReviewSnapshotForChats,
+  getClientThreadMessages,
+  loadClientInboxChats,
+  type ClientInboxChat,
+} from './lib/client-message-sandbox';
+import {
+  buildClientReplyThemeThreadMarkdown,
+  clientReplyThemeReviewDisplayName,
   findPendingClientReplyThemeState,
   readCachedClientReplyThemeReviewSnapshot,
+  writeCachedClientReplyThemeReviewSnapshot,
   type ClientReplyThemeReviewSnapshot,
   type PendingClientReplyThemeState,
 } from './lib/client-message-reply-themes';
@@ -244,6 +254,25 @@ const clientReplyThemeReviewStorage = {
   getItem: (key: string) => LocalStorage.getItem<string>(key),
   setItem: (key: string, value: string) => LocalStorage.setItem(key, value),
 };
+
+type PendingClientMessageEvidence = {
+  chats: ClientInboxChat[];
+  snapshot: ClientReplyThemeReviewSnapshot | null;
+};
+
+async function loadPendingClientMessageEvidence(): Promise<PendingClientMessageEvidence> {
+  try {
+    const chats = await loadClientInboxChats('', 100);
+    const snapshot = await buildClientReplyThemeReviewSnapshotForChats(chats);
+    await writeCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage, snapshot);
+    return { chats, snapshot };
+  } catch {
+    return {
+      chats: [],
+      snapshot: await readCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage),
+    };
+  }
+}
 
 type HeadScoutScheduleListProps = {
   scout: HeadScoutSchedule;
@@ -789,15 +818,6 @@ function buildPendingClientTaskUrl(
   return url.toString();
 }
 
-function buildPendingClientAthleteProfileUrl(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-): string | null {
-  const athleteId = String(row.athlete_id || '').trim();
-  return athleteId
-    ? `https://dashboard.nationalpid.com/athlete/profile/${encodeURIComponent(athleteId)}`
-    : null;
-}
-
 function getPendingClientDisplayTag(
   row: PendingClientWatchlistLoadResult['rows'][number],
   replyState?: PendingClientReplyThemeState | null,
@@ -950,6 +970,80 @@ function buildPendingClientDetailMetadata(row: PendingClientWatchlistLoadResult[
   );
 }
 
+function pendingClientMatchKey(value?: string | null): string {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function findPendingClientChat(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+  chats: ClientInboxChat[],
+): ClientInboxChat | null {
+  const athleteMainId = String(row.athlete_main_id || '').trim();
+  if (athleteMainId) {
+    const match = chats.find((chat) => String(chat.clientMatch.athleteMainId || '').trim() === athleteMainId);
+    if (match) return match;
+  }
+
+  const athleteId = String(row.athlete_id || '').trim();
+  if (athleteId) {
+    const match = chats.find((chat) => String(chat.clientMatch.contactId || '').trim() === athleteId);
+    if (match) return match;
+  }
+
+  const name = pendingClientMatchKey(row.athlete_name || row.event_title);
+  if (!name) return null;
+  return (
+    chats.find((chat) =>
+      [chat.clientMatch.athleteName, chat.displayName]
+        .map(pendingClientMatchKey)
+        .filter(Boolean)
+        .some((candidate) => candidate === name || candidate.includes(name) || name.includes(candidate)),
+    ) || null
+  );
+}
+
+function PendingClientMessageThread({
+  chat,
+  replyState,
+}: {
+  chat?: ClientInboxChat | null;
+  replyState?: PendingClientReplyThemeState | null;
+}) {
+  const match = replyState?.row || null;
+  const chatGuid = match?.chatGuid || chat?.guid || '';
+  const title = match ? clientReplyThemeReviewDisplayName(match) : chat?.displayName || 'Client Thread';
+  const { data, isLoading, revalidate } = usePromise(getClientThreadMessages, [
+    chatGuid,
+    title,
+  ]);
+
+  return (
+    <Detail
+      navigationTitle={title}
+      isLoading={isLoading}
+      markdown={buildClientReplyThemeThreadMarkdown({
+        clientName: title,
+        timeZone: match?.timezone || chat?.clientMatch.timezone,
+        timezoneLabel: match?.timezoneLabel || chat?.clientMatch.timezoneLabel,
+        messages: data || [],
+      })}
+      actions={
+        <ActionPanel>
+          <Action
+            title="Refresh Thread"
+            icon={Icon.ArrowClockwise}
+            onAction={() => void revalidate()}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+}
+
 function PendingClientOperatorNoteForm({
   row,
   onSaved,
@@ -1099,6 +1193,7 @@ function PendingClientsWatchlist() {
   const [result, setResult] = useState<PendingClientWatchlistLoadResult | null>(null);
   const [replyThemeSnapshot, setReplyThemeSnapshot] =
     useState<ClientReplyThemeReviewSnapshot | null>(null);
+  const [messageChats, setMessageChats] = useState<ClientInboxChat[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -1109,13 +1204,14 @@ function PendingClientsWatchlist() {
     async function load() {
       setIsLoading(true);
       try {
-        const [loaded, reviewSnapshot] = await Promise.all([
+        const [loaded, messageEvidence] = await Promise.all([
           loadPendingClientWatchlist(),
-          readCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage),
+          loadPendingClientMessageEvidence(),
         ]);
         if (!cancelled) {
           setResult(loaded);
-          setReplyThemeSnapshot(reviewSnapshot);
+          setReplyThemeSnapshot(messageEvidence.snapshot);
+          setMessageChats(messageEvidence.chats);
         }
       } catch (error) {
         if (!cancelled) {
@@ -1126,6 +1222,7 @@ function PendingClientsWatchlist() {
           });
           setResult({ rows: [], scannedCount: 0, confirmedCount: 0, aiUnavailableCount: 0 });
           setReplyThemeSnapshot(null);
+          setMessageChats([]);
         }
       } finally {
         if (!cancelled) {
@@ -1140,11 +1237,12 @@ function PendingClientsWatchlist() {
     };
   }, [refreshTick]);
 
-  async function handleMarkResolved(sourceEventId: string) {
+  async function handleMarkResolved(row: PendingClientWatchlistRow) {
+    const sourceEventId = row.source_event_id;
     setResolvingId(sourceEventId);
     const toast = await showLoadingToast('Resolving', 'Pending Client');
     try {
-      await markPendingClientResolved(sourceEventId);
+      await markPendingClientResolved(row);
       toast.style = Toast.Style.Success;
       toast.title = 'Removed';
       setRefreshTick((current) => current + 1);
@@ -1175,10 +1273,11 @@ function PendingClientsWatchlist() {
             const signals = row.matched_signals || [];
             const actionTag = row.action_tag || 'Missing Notes';
             const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
+            const matchedChat = findPendingClientChat(row, messageChats);
             const displayTag = getPendingClientDisplayTag(row, replyState);
-            const athleteProfileUrl = buildPendingClientAthleteProfileUrl(row);
             const taskUrl = buildPendingClientTaskUrl(row);
             const adminUrl = buildPendingClientAdminUrl(row);
+            const launchAdminUrl = taskUrl || adminUrl;
             const athleteName =
               row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
             return (
@@ -1203,6 +1302,18 @@ function PendingClientsWatchlist() {
                 }
                 actions={
                   <ActionPanel>
+                    {replyState || matchedChat ? (
+                      <ActionPanel.Section title="Open">
+                        <Action.Push
+                          title="Open Thread"
+                          icon="💬"
+                          shortcut={{ modifiers: ['cmd'], key: 'm' }}
+                          target={
+                            <PendingClientMessageThread chat={matchedChat} replyState={replyState} />
+                          }
+                        />
+                      </ActionPanel.Section>
+                    ) : null}
                     <ActionPanel.Section title="Follow Up">
                       {shouldShowPendingClientRescheduleAction(row) ? (
                         <Action.Push
@@ -1218,7 +1329,7 @@ function PendingClientsWatchlist() {
                         />
                       ) : null}
                       <Action.Push
-                        title="Note"
+                        title="Add Note"
                         icon="✍️"
                         shortcut={{ modifiers: ['cmd'], key: 'n' }}
                         target={
@@ -1231,35 +1342,18 @@ function PendingClientsWatchlist() {
                       <Action
                         title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
                         icon="✅"
-                        onAction={() => void handleMarkResolved(row.source_event_id)}
+                        shortcut={{ modifiers: ['cmd'], key: 'x' }}
+                        onAction={() => void handleMarkResolved(row)}
                       />
                     </ActionPanel.Section>
-                    {athleteProfileUrl || taskUrl || adminUrl ? (
+                    {launchAdminUrl ? (
                       <ActionPanel.Section title="Athlete">
-                        {athleteProfileUrl ? (
-                          <Action.OpenInBrowser
-                            title="Open Student-Athlete Page"
-                            icon={Icon.Person}
-                            shortcut={{ modifiers: ['cmd'], key: 'o' }}
-                            url={athleteProfileUrl}
-                          />
-                        ) : null}
-                        {taskUrl ? (
-                          <Action.OpenInBrowser
-                            title="Open Task List"
-                            icon={Icon.List}
-                            shortcut={{ modifiers: ['cmd', 'shift'], key: 't' }}
-                            url={taskUrl}
-                          />
-                        ) : null}
-                        {adminUrl ? (
-                          <Action.OpenInBrowser
-                            title="Open Event List"
-                            icon={Icon.Calendar}
-                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'e' }}
-                            url={adminUrl}
-                          />
-                        ) : null}
+                        <Action.OpenInBrowser
+                          title="Open Admin"
+                          icon="🌐"
+                          shortcut={{ modifiers: ['cmd'], key: 'o' }}
+                          url={launchAdminUrl}
+                        />
                       </ActionPanel.Section>
                     ) : null}
                     <ActionPanel.Section>

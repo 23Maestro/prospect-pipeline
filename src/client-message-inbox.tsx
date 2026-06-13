@@ -19,7 +19,6 @@ import { useForm, usePromise } from '@raycast/utils';
 import { format } from 'date-fns';
 import { useEffect, useState } from 'react';
 
-import ExportClientMessageInboxCommand from './export-client-message-inbox';
 import {
   buildDefaultReminderDate,
   buildReminderDraft,
@@ -32,13 +31,13 @@ import { createCalFollowUpBooking } from './lib/cal-follow-ups';
 import {
   type ClientInboxChat,
   type ClientThreadMessage,
+  buildClientReplyThemeReviewSnapshotForChats,
   getClientThreadMessages,
   sendVerifiedClientMessage,
   useClientInboxChats,
 } from './lib/client-message-sandbox';
 import { completeScoutPrepTaskAfterVoicemail } from './lib/scout-prep';
 import {
-  buildClientReplyThemeReviewSnapshot,
   buildClientReplyThemeThreadMarkdown,
   clientReplyThemeReviewBucketLabel,
   clientReplyThemeReviewDisplayName,
@@ -670,40 +669,7 @@ function ClientReviewRescheduleSlotList({
 }
 
 async function buildAndCacheReplyThemeReview(chats: ClientInboxChat[]) {
-  const messagesByChatGuidEntries = await Promise.all(
-    chats.map(async (chat) => {
-      const messages = await getClientThreadMessages(chat.guid, chat.displayName).catch(
-        () => [] as ClientThreadMessage[],
-      );
-      return [
-        chat.guid,
-        messages.map((message) => ({
-          guid: message.guid,
-          body: message.body,
-          date: message.date,
-          senderName: message.senderName,
-          sender: message.sender,
-          isFromMe: message.is_from_me,
-        })),
-      ] as const;
-    }),
-  );
-
-  const snapshot = buildClientReplyThemeReviewSnapshot({
-    chats: chats.map((chat) => ({
-      guid: chat.guid,
-      displayName: chat.displayName,
-      lastMessageDate: chat.last_message_date,
-      athleteName: chat.clientMatch.athleteName,
-      contactId: chat.clientMatch.contactId,
-      athleteMainId: chat.clientMatch.athleteMainId,
-      timezone: chat.clientMatch.timezone,
-      timezoneLabel: chat.clientMatch.timezoneLabel,
-      taskTitle: chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus,
-      matchedPhones: chat.matchedPhones,
-    })),
-    messagesByChatGuid: Object.fromEntries(messagesByChatGuidEntries),
-  });
+  const snapshot = await buildClientReplyThemeReviewSnapshotForChats(chats);
   await writeCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage, snapshot);
   return snapshot;
 }
@@ -1132,25 +1098,6 @@ export default function ClientMessageInboxCommand(
           ]}
           actions={
             <ActionPanel>
-              <ActionPanel.Section title="Workflow">
-                <Action.Push
-                  title="Send Follow-Up"
-                  icon="✈️"
-                  target={<ClientMessageSendForm chat={chat} onSent={revalidateDirectory} />}
-                />
-                <Action
-                  title="Book Cal Follow-Up"
-                  icon="📞"
-                  shortcut={{ modifiers: ['cmd'], key: '3' }}
-                  onAction={() => void handleCreateCalFollowUp(chat)}
-                />
-                <Action
-                  title="Create Calendar Follow-Up"
-                  icon="📆"
-                  shortcut={{ modifiers: ['cmd'], key: '4' }}
-                  onAction={() => void handleCreateAppleCalendarFollowUp(chat)}
-                />
-              </ActionPanel.Section>
               <ActionPanel.Section title="Navigation">
                 <Action.Push title="Open Thread" icon="💬" target={<ClientThread chat={chat} />} />
                 <Action
@@ -1173,6 +1120,20 @@ export default function ClientMessageInboxCommand(
                   onAction={() => void openScoutPrepFromClientMessage(chat)}
                 />
               </ActionPanel.Section>
+              <ActionPanel.Section title="Workflow">
+                <Action
+                  title="Book Cal Follow-Up"
+                  icon="📞"
+                  shortcut={{ modifiers: ['cmd'], key: '3' }}
+                  onAction={() => void handleCreateCalFollowUp(chat)}
+                />
+                <Action
+                  title="Create Calendar Follow-Up"
+                  icon="📆"
+                  shortcut={{ modifiers: ['cmd'], key: '4' }}
+                  onAction={() => void handleCreateAppleCalendarFollowUp(chat)}
+                />
+              </ActionPanel.Section>
               <ActionPanel.Section title="Review">
                 <Action.Push
                   title="Review Follow Ups"
@@ -1181,11 +1142,6 @@ export default function ClientMessageInboxCommand(
                 />
               </ActionPanel.Section>
               <ActionPanel.Section title="Source">
-                <Action.Push
-                  title="Export Inbox"
-                  icon="📤"
-                  target={<ExportClientMessageInboxCommand />}
-                />
                 <Action title="Refresh Source" icon="🔄" onAction={revalidateDirectory} />
               </ActionPanel.Section>
             </ActionPanel>
@@ -1198,7 +1154,7 @@ export default function ClientMessageInboxCommand(
         description={
           directory?.generatedAt
             ? `Existing ID Client threads are loaded first. Export enrichment updated ${directory.generatedAt}.`
-            : `No matching ID Client threads found yet. Export path: ${directory?.exportPath || ''}`
+            : 'No cache-admitted Client Message threads found yet.'
         }
         actions={
           <ActionPanel>
@@ -1210,11 +1166,6 @@ export default function ClientMessageInboxCommand(
               />
             </ActionPanel.Section>
             <ActionPanel.Section title="Source">
-              <Action.Push
-                title="Export Inbox"
-                icon="📤"
-                target={<ExportClientMessageInboxCommand />}
-              />
               <Action title="Refresh Source" icon="🔄" onAction={revalidateDirectory} />
             </ActionPanel.Section>
           </ActionPanel>

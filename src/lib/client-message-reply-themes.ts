@@ -269,33 +269,36 @@ export function buildClientReplyThemeThreadMarkdown(args: {
   >;
 }): string {
   const lines = [`# ${markdownEscape(args.clientName) || 'Client Thread'}`];
-  for (const message of args.messages) {
+  const messages = [...args.messages].sort((left, right) =>
+    normalizeText(left.date).localeCompare(normalizeText(right.date)),
+  );
+  for (const message of messages) {
     const body = normalizeText(message.body);
     if (!body) continue;
     const sender = message.isFromMe ? 'Me' : normalizeText(message.senderName) || args.clientName;
     const date = formatClientReplyThemeMessageDate(message.date, args.timeZone, args.timezoneLabel);
     lines.push('');
-    lines.push(`> **${markdownEscape(sender)}**`);
-    if (date) {
-      lines.push(`> ${markdownEscape(date)}`);
-      lines.push('>');
-    }
+    lines.push(`### ${markdownEscape(sender)}`);
+    if (date) lines.push(`_${markdownEscape(date)}_`);
+    lines.push('');
     for (const part of body.split(/\r?\n/)) {
-      lines.push(`> ${markdownEscape(part)}`);
+      const text = markdownEscape(part);
+      if (text) lines.push(text);
     }
   }
-  return lines.join('\n');
+  return lines.join('\n').replace(/\n{3,}/g, '\n\n');
 }
 
 const FLAG_PATTERNS: Record<ClientMessageTheme, RegExp> = {
-  reschedule_request: /\b(reschedule|re-schedule|move\s+(the\s+)?meeting|different\s+time)\b/i,
+  reschedule_request:
+    /(?:\b(reschedule|re-schedule|move\s+(the\s+)?meeting|different\s+time|still\s+interested|need\s+to\s+reschedule)\b|^\s*(?:1|one)\s*$)/i,
   outreach_callback:
     /\b(tomorrow|tmrw|later\s+today|available\s+today|free\s+today|working|at\s+work|work\s+meeting|call\s+me|call\s+back|after\s+work)\b/i,
 };
 
 const TEMPLATE_PATTERNS: Record<ClientMessageTemplateContext, RegExp> = {
   confirmation:
-    /\b(prospect\s+id\s+zoom\s+meeting|please\s+reply\s+yes|still\s+has\s+you\s+down\s+for|has\s+.+\s+down\s+for\s+the\s+meeting|coach\s+.+\s+meeting|meeting\s+(today|tomorrow|tonight)|zoom\s+meeting|confirm)\b/i,
+    /\b(prospect\s+id\s+zoom\s+meeting|please\s+reply\s+yes|reply\s+with\s+the\s+best\s+fit|still\s+interested,\s*need\s+to\s+reschedule|no\s+longer\s+interested|still\s+has\s+you\s+down\s+for|has\s+.+\s+down\s+for\s+the\s+meeting|coach\s+.+\s+meeting|meeting\s+(today|tomorrow|tonight)|zoom\s+meeting|confirm)\b/i,
   outreach_attempt:
     /\b(profile\s+came\s+through|college\s+.+\s+goals|would\s+later\s+today\s+or\s+tomorrow\s+work|last\s+follow-up|any\s+updates\s+or\s+questions|quick\s+(10\s+minute|ten\s+minute)?\s*call|wanted\s+to\s+connect|prospect\s+id.+call|call\s+about)\b/i,
 };
@@ -312,8 +315,8 @@ function normalizeText(value?: string | null): string {
   return String(value || '').trim();
 }
 
-function isPendingRescheduleContext(value?: string | null): boolean {
-  return /\breschedule\s+pending\b|\bpending\s+reschedule\b|\bres\.\s*pending\b/i.test(
+function isPostMeetingRecoveryContext(value?: string | null): boolean {
+  return /\breschedule\s+pending\b|\bpending\s+reschedule\b|\bres\.\s*pending\b|\bno\s*show\b|\bcancel(?:ed|led|ation)?\b/i.test(
     normalizeText(value),
   );
 }
@@ -415,7 +418,7 @@ export function buildClientReplyThemeReviewSnapshot(args: {
           isOperatorRescheduleOffer(candidate.body),
       );
       const keepPendingRescheduleVisible =
-        candidateTheme === 'reschedule_request' && isPendingRescheduleContext(chat.taskTitle);
+        candidateTheme === 'reschedule_request' && isPostMeetingRecoveryContext(chat.taskTitle);
 
       const baseRow: ClientReplyThemeReviewRow = {
         id: `${chat.guid}:${message.guid}:${candidateTheme}`,

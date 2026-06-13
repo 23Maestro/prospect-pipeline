@@ -9,6 +9,11 @@ import {
   type StudentAthleteMessageAssociatedContact,
   type StudentAthleteMessageResolution,
 } from './student-athlete-message-resolver';
+import {
+  buildClientReplyThemeReviewSnapshot,
+  type ClientReplyThemeReviewMessageInput,
+  type ClientReplyThemeReviewSnapshot,
+} from './client-message-reply-themes';
 
 const DB_PATH = resolve(homedir(), 'Library/Messages/chat.db');
 
@@ -63,6 +68,39 @@ type SQLChat = {
   participant_count: number;
   last_message_date: string;
 };
+
+const CLIENT_INBOX_CHATS_SQL = `
+      SELECT
+        chat.guid,
+        chat.chat_identifier,
+        MAX(handle.id) as participant_identifier,
+        chat.display_name,
+        chat.service_name,
+        CASE
+          WHEN chat.chat_identifier LIKE '%chat%' AND chat.display_name IS NOT NULL AND chat.display_name != ''
+          THEN chat.display_name
+          ELSE NULL
+        END as group_name,
+        CASE WHEN COUNT(DISTINCT handle.id) > 1 THEN 1 ELSE 0 END as is_group,
+        COUNT(DISTINCT handle.id) as participant_count,
+        strftime('%Y-%m-%dT%H:%M:%fZ', datetime(
+          MAX(message.date) / 1000000000 + strftime('%s', '2001-01-01'),
+          'unixepoch'
+        )) AS last_message_date,
+        CASE
+          WHEN COUNT(DISTINCT handle.id) > 1 THEN GROUP_CONCAT(DISTINCT handle.id)
+          ELSE handle.id
+        END as group_participants
+      FROM chat
+      JOIN chat_message_join ON chat."ROWID" = chat_message_join.chat_id
+      JOIN message ON chat_message_join.message_id = message."ROWID"
+      LEFT JOIN chat_handle_join ON chat."ROWID" = chat_handle_join.chat_id
+      LEFT JOIN handle ON chat_handle_join.handle_id = handle."ROWID"
+      WHERE handle.id IS NOT NULL
+      GROUP BY chat.guid
+      ORDER BY last_message_date DESC
+      LIMIT 1000;
+    `;
 
 type SQLMessage = {
   guid: string;
@@ -318,62 +356,17 @@ export async function loadClientDirectory(chats: SQLChat[] = []) {
   };
 }
 
-export function useClientInboxChats(searchText = '') {
-  const {
-    data: rawData,
-    isLoading: isLoadingChats,
-    permissionView,
-    ...rest
-  } = useSQL<SQLChat>(
-    DB_PATH,
-    `
-      SELECT
-        chat.guid,
-        chat.chat_identifier,
-        MAX(handle.id) as participant_identifier,
-        chat.display_name,
-        chat.service_name,
-        CASE
-          WHEN chat.chat_identifier LIKE '%chat%' AND chat.display_name IS NOT NULL AND chat.display_name != ''
-          THEN chat.display_name
-          ELSE NULL
-        END as group_name,
-        CASE WHEN COUNT(DISTINCT handle.id) > 1 THEN 1 ELSE 0 END as is_group,
-        COUNT(DISTINCT handle.id) as participant_count,
-        strftime('%Y-%m-%dT%H:%M:%fZ', datetime(
-          MAX(message.date) / 1000000000 + strftime('%s', '2001-01-01'),
-          'unixepoch'
-        )) AS last_message_date,
-        CASE
-          WHEN COUNT(DISTINCT handle.id) > 1 THEN GROUP_CONCAT(DISTINCT handle.id)
-          ELSE handle.id
-        END as group_participants
-      FROM chat
-      JOIN chat_message_join ON chat."ROWID" = chat_message_join.chat_id
-      JOIN message ON chat_message_join.message_id = message."ROWID"
-      LEFT JOIN chat_handle_join ON chat."ROWID" = chat_handle_join.chat_id
-      LEFT JOIN handle ON chat_handle_join.handle_id = handle."ROWID"
-      WHERE handle.id IS NOT NULL
-      GROUP BY chat.guid
-      ORDER BY last_message_date DESC
-      LIMIT 1000;
-    `,
-    {
-      permissionPriming: 'This is required to read your Messages chats.',
-    },
-  );
-
-  const {
-    data: clientDirectory,
-    isLoading: isLoadingDirectory,
-    revalidate: revalidateDirectory,
-  } = usePromise(loadClientDirectory, [rawData || []]);
-
-  const chats = (
-    (rawData || [])
+function buildClientInboxChatsFromDirectory(
+  rawData: SQLChat[],
+  matchesByPhone?: Map<string, ClientDirectoryMatch>,
+  searchText = '',
+  limit = 50,
+): ClientInboxChat[] {
+  return (
+    rawData
       .map((chat) => {
         const participantIdentifier = String(chat.participant_identifier || '').trim();
-        const resolvedMatch = resolveClientMatchForChat(chat, clientDirectory?.matchesByPhone);
+        const resolvedMatch = resolveClientMatchForChat(chat, matchesByPhone);
         if (!resolvedMatch) return null;
         return {
           ...chat,
@@ -405,7 +398,86 @@ export function useClientInboxChats(searchText = '') {
         terms,
       );
     })
-    .slice(0, 50);
+    .slice(0, limit);
+}
+
+export async function loadClientInboxChats(searchText = '', limit = 50): Promise<ClientInboxChat[]> {
+  const rawData = await executeSQL<SQLChat>(DB_PATH, CLIENT_INBOX_CHATS_SQL);
+  const clientDirectory = await loadClientDirectory(rawData || []);
+  return buildClientInboxChatsFromDirectory(
+    rawData || [],
+    clientDirectory.matchesByPhone,
+    searchText,
+    limit,
+  );
+}
+
+export async function buildClientReplyThemeReviewSnapshotForChats(
+  chats: ClientInboxChat[],
+): Promise<ClientReplyThemeReviewSnapshot> {
+  const messagesByChatGuidEntries = await Promise.all(
+    chats.map(async (chat) => {
+      const messages = await getClientThreadMessages(chat.guid, chat.displayName).catch(
+        () => [] as ClientThreadMessage[],
+      );
+      return [
+        chat.guid,
+        messages.map(
+          (message): ClientReplyThemeReviewMessageInput => ({
+            guid: message.guid,
+            body: message.body,
+            date: message.date,
+            senderName: message.senderName,
+            sender: message.sender,
+            isFromMe: message.is_from_me,
+          }),
+        ),
+      ] as const;
+    }),
+  );
+
+  return buildClientReplyThemeReviewSnapshot({
+    chats: chats.map((chat) => ({
+      guid: chat.guid,
+      displayName: chat.displayName,
+      lastMessageDate: chat.last_message_date,
+      athleteName: chat.clientMatch.athleteName,
+      contactId: chat.clientMatch.contactId,
+      athleteMainId: chat.clientMatch.athleteMainId,
+      timezone: chat.clientMatch.timezone,
+      timezoneLabel: chat.clientMatch.timezoneLabel,
+      taskTitle: chat.clientMatch.currentTaskTitle || chat.clientMatch.taskStatus,
+      matchedPhones: chat.matchedPhones,
+    })),
+    messagesByChatGuid: Object.fromEntries(messagesByChatGuidEntries),
+  });
+}
+
+export function useClientInboxChats(searchText = '') {
+  const {
+    data: rawData,
+    isLoading: isLoadingChats,
+    permissionView,
+    ...rest
+  } = useSQL<SQLChat>(
+    DB_PATH,
+    CLIENT_INBOX_CHATS_SQL,
+    {
+      permissionPriming: 'This is required to read your Messages chats.',
+    },
+  );
+
+  const {
+    data: clientDirectory,
+    isLoading: isLoadingDirectory,
+    revalidate: revalidateDirectory,
+  } = usePromise(loadClientDirectory, [rawData || []]);
+
+  const chats = buildClientInboxChatsFromDirectory(
+    rawData || [],
+    clientDirectory?.matchesByPhone,
+    searchText,
+  );
 
   return {
     data: chats,
