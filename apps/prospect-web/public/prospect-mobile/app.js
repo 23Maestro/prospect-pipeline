@@ -44,6 +44,11 @@ const state = {
   scheduleScoutSearch: {
     active: false,
     query: '',
+    selectedName: '',
+  },
+  scheduleSlotSelection: {
+    active: false,
+    selectedKeys: [],
   },
 };
 
@@ -54,9 +59,11 @@ const statusLine = document.querySelector('#status-line');
 const weekToolbar = document.querySelector('#week-toolbar');
 const FADE_DURATION_MS = 150;
 const ROUTE_CACHE_TTL_MS = 5 * 60 * 1000;
+const ADD_CLIPJAR_SHORTCUT_URL = 'shortcuts://run-shortcut?name=Add%20ClipJar';
 const initialContactQuery = applyStartupSearchParams();
 let initialContactSearchPending = Boolean(initialContactQuery);
 const routeResponseCache = new Map();
+let toastTimer = 0;
 
 window.addEventListener('popstate', () => {
   setCurrentRoute(routes[toWorkflowPath(window.location.pathname)] ? toWorkflowPath(window.location.pathname) : '/set-meetings');
@@ -77,6 +84,7 @@ document.querySelectorAll('[data-route]').forEach((link) => {
 document.querySelectorAll('[data-week]').forEach((button) => {
   button.addEventListener('click', () => {
     state.week = button.getAttribute('data-week') || 'this';
+    state.scheduleSlotSelection.selectedKeys = [];
     void loadRoute();
   });
 });
@@ -390,59 +398,42 @@ async function renderScoutSchedules(payload, renderContext) {
       visibleSlots: filterVisibleScoutSlots(Array.isArray(scout.slots) ? scout.slots : []),
     }))
     .filter((scout) => scout.visibleSlots.length);
+  const scoutFilteredGroups = filterScheduleGroupsByScout(groups, state.scheduleScoutSearch.selectedName);
+  const selectedContact = findSelectedContactGroup(state.scheduleSearch.results, state.scheduleSearch.selectedId);
+  const timezone = selectedContact?.timezone || 'America/New_York';
+  const timezoneLabel = selectedContact?.timezoneLabel || 'Eastern';
+
   if (state.scheduleSearch.active) {
-    await setContentHtml(buildScheduleSearchHtml(groups), renderContext);
+    await setContentHtml(buildScheduleSearchHtml(scoutFilteredGroups), renderContext);
     if (!isActiveRoute(renderContext)) return 0;
+    bindScheduleActionEntry(groups);
     bindContactSearch('schedule');
     bindCopyButtons();
-    return groups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
+    bindScheduleSlotSelection();
+    return scoutFilteredGroups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
   }
 
-  const visibleGroups = filterScheduleGroupsByScout(groups, state.scheduleScoutSearch.query);
+  const visibleGroups = scoutFilteredGroups;
   if (!groups.length) {
-    await setContentHtml(`${buildScheduleSearchBarHtml()}<div class="empty-state">No open scout slots found for this window.</div>`, renderContext);
+    await setContentHtml(`${buildScheduleActionEntryHtml(groups)}<div class="empty-state">No open scout slots found for this window.</div>`, renderContext);
     if (!isActiveRoute(renderContext)) return 0;
-    bindScheduleSearchEntry();
+    bindScheduleActionEntry(groups);
     return 0;
   }
 
   const visibleCount = visibleGroups.reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
   await setContentHtml(
-    `${buildScheduleSearchBarHtml()}${
+    `${buildScheduleActionEntryHtml(groups)}${
       visibleGroups.length
-        ? `<div class="schedule-list">${visibleGroups
-    .map((scout) => {
-      const rows = scout.visibleSlots
-        .map((slot) => {
-          const dateLabel = formatSlotDate(slot.start);
-          const range = formatSlotRange(slot.start, slot.end);
-          const copyText = formatSlotCopyLabel(slot.start);
-          return `
-            <article class="row">
-              <div class="row-header">
-                <div>
-                  <h2 class="row-title">${escapeHtml(dateLabel)}</h2>
-                  <p class="row-subtitle">${escapeHtml(range)}</p>
-                </div>
-                <p class="row-meta">${escapeHtml(scout.state || '')}</p>
-              </div>
-              <div class="row-actions">
-                <button class="copy-button" type="button" data-copy="${escapeAttribute(copyText)}">Copy</button>
-              </div>
-            </article>
-          `;
-        })
-        .join('');
-      return `<h2 class="group-title">${escapeHtml(scout.scout_name)} - ${scout.visibleSlots.length}</h2>${rows}`;
-    })
-    .join('')}</div>`
+        ? `<div class="schedule-list">${buildScheduleGroupsHtml(visibleGroups, timezone, timezoneLabel)}</div>${buildSelectedSlotsBarHtml()}`
         : '<div class="empty-state">No scouts match that search.</div>'
     }`,
     renderContext,
   );
   if (!isActiveRoute(renderContext)) return 0;
-  bindScheduleSearchEntry();
+  bindScheduleActionEntry(groups);
   bindCopyButtons();
+  bindScheduleSlotSelection();
   return visibleCount;
 }
 
@@ -465,36 +456,43 @@ function buildScheduleSearchHtml(groups) {
   const timezone = selected?.timezone || 'America/New_York';
   const timezoneLabel = selected?.timezoneLabel || 'Eastern';
   return `
+    ${buildScheduleActionEntryHtml(groups)}
     <section class="search-panel schedule-search-panel">
       ${buildContactSearchFormHtml(searchState.query, 'schedule')}
       ${buildContactResultsHtml(results, searchState.selectedId, 'schedule')}
       ${
         selected
-          ? `<h2 class="group-title">${escapeHtml(selected.title)} - ${escapeHtml(timezoneLabel)}</h2>${buildScheduleGroupsHtml(groups, timezone, timezoneLabel)}`
+          ? `<h2 class="group-title">${escapeHtml(selected.title)} - ${escapeHtml(timezoneLabel)}</h2>${buildScheduleGroupsHtml(groups, timezone, timezoneLabel)}${buildSelectedSlotsBarHtml()}`
           : ''
       }
     </section>
   `;
 }
 
-function buildScheduleSearchBarHtml() {
-  const scoutSearch = state.scheduleScoutSearch;
+function buildScheduleActionEntryHtml(groups) {
   return `
     <section class="search-entry">
-      <div class="schedule-search-actions">
-        <button class="schedule-action-button scout-search-button" type="button" data-scout-search-start>Search Scouts</button>
-        <button class="schedule-action-button contact-search-button" type="button" data-schedule-search-start>Search Contacts</button>
-      </div>
-      ${
-        scoutSearch.active
-          ? `<form class="scout-filter-form" data-scout-filter-form>
-              <input class="search-input" name="query" type="search" inputmode="search" autocomplete="off" placeholder="Scout name" value="${escapeAttribute(scoutSearch.query || '')}" />
-              <button class="link-button search-cancel" type="button" data-scout-search-cancel>Done</button>
-            </form>`
-          : ''
-      }
+      <button class="schedule-actions-button" type="button" data-schedule-actions-start>Schedule Actions</button>
+      ${buildScheduleFilterChipsHtml(groups)}
     </section>
   `;
+}
+
+function buildScheduleFilterChipsHtml(groups) {
+  const chips = [];
+  const selectedScout = state.scheduleScoutSearch.selectedName;
+  const selectedContact = findSelectedContactGroup(state.scheduleSearch.results, state.scheduleSearch.selectedId);
+  if (selectedScout) {
+    const slotCount = filterScheduleGroupsByScout(groups, selectedScout).reduce((sum, scout) => sum + scout.visibleSlots.length, 0);
+    chips.push(`<button class="filter-chip scout-chip" type="button" data-clear-scout-filter>${escapeHtml(selectedScout)} - ${slotCount}</button>`);
+  }
+  if (selectedContact) {
+    chips.push(`<button class="filter-chip contact-chip" type="button" data-clear-contact-filter>${escapeHtml(selectedContact.title)}</button>`);
+  }
+  if (state.scheduleSlotSelection.active) {
+    chips.push(`<button class="filter-chip slot-chip" type="button" data-stop-slot-selection>Selecting ${state.scheduleSlotSelection.selectedKeys.length}</button>`);
+  }
+  return chips.length ? `<div class="filter-chip-row">${chips.join('')}</div>` : '';
 }
 
 function buildContactSearchFormHtml(query, scope) {
@@ -540,8 +538,8 @@ function buildSelectedContactCardsHtml(group) {
       ${
         group.adminUrl || group.profileUrl
           ? `<div class="matched-result-actions">
-              ${group.adminUrl ? `<a class="link-button admin-button" href="${escapeAttribute(group.adminUrl)}" target="_blank" rel="noreferrer">Admin</a>` : ''}
-              ${group.profileUrl ? `<a class="link-button" href="${escapeAttribute(group.profileUrl)}" target="_blank" rel="noreferrer">Profile</a>` : ''}
+              ${group.adminUrl ? `<a class="link-button admin-button matched-admin-action" href="${escapeAttribute(group.adminUrl)}" target="_blank" rel="noreferrer">Admin</a>` : ''}
+              ${group.profileUrl ? `<a class="link-button matched-profile-action" href="${escapeAttribute(group.profileUrl)}" target="_blank" rel="noreferrer">Profile</a>` : ''}
             </div>`
           : ''
       }
@@ -587,9 +585,18 @@ function buildScheduleGroupsHtml(groups, timezone, timezoneLabel) {
           const dateLabel = formatSlotDateForTimezone(slot.start, timezone);
           const range = formatSlotRangeForTimezone(slot.start, slot.end, timezone, timezoneLabel);
           const copyText = formatSlotCopyLabelForTimezone(slot.start, timezone, timezoneLabel);
+          const slotKey = buildScheduleSlotKey(scout, slot);
+          const checked = state.scheduleSlotSelection.selectedKeys.includes(slotKey) ? ' checked' : '';
+          const slotSelect = state.scheduleSlotSelection.active
+            ? `<label class="slot-select-control" aria-label="Select ${escapeAttribute(copyText)}">
+                <input type="checkbox" data-slot-select data-slot-key="${escapeAttribute(slotKey)}" data-slot-copy="${escapeAttribute(copyText)}"${checked} />
+                <span></span>
+              </label>`
+            : '';
           return `
-            <article class="row">
+            <article class="row schedule-slot-row${state.scheduleSlotSelection.active ? ' selectable' : ''}">
               <div class="row-header">
+                ${slotSelect}
                 <div>
                   <h2 class="row-title">${escapeHtml(dateLabel)}</h2>
                   <p class="row-subtitle">${escapeHtml(range)}</p>
@@ -606,6 +613,27 @@ function buildScheduleGroupsHtml(groups, timezone, timezoneLabel) {
       return `<h2 class="group-title">${escapeHtml(scout.scout_name)} - ${scout.visibleSlots.length}</h2>${rows}`;
     })
     .join('');
+}
+
+function buildSelectedSlotsBarHtml() {
+  if (!state.scheduleSlotSelection.active) return '';
+  const count = state.scheduleSlotSelection.selectedKeys.length;
+  return `
+    <div class="selected-slots-bar" role="region" aria-label="Selected slots">
+      <button class="confirm-slots-button" type="button" data-confirm-selected-slots>
+        Confirm Slots${count ? ` (${count})` : ''}
+      </button>
+    </div>
+  `;
+}
+
+function buildScheduleSlotKey(scout, slot) {
+  return [
+    scout?.scout_name || scout?.name || '',
+    scout?.state || '',
+    slot?.start || '',
+    slot?.end || '',
+  ].join('|');
 }
 
 function filterScheduleGroupsByScout(groups, query) {
@@ -629,40 +657,154 @@ function normalizeScoutSearchText(value) {
   return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-function bindScheduleSearchEntry() {
-  document.querySelector('[data-scout-search-start]')?.addEventListener('click', async () => {
-    state.scheduleScoutSearch.active = true;
+function bindScheduleActionEntry(groups) {
+  document.querySelector('[data-schedule-actions-start]')?.addEventListener('click', () => {
+    showScheduleActionsModal(groups);
+  });
+
+  document.querySelector('[data-clear-scout-filter]')?.addEventListener('click', async () => {
+    state.scheduleScoutSearch.selectedName = '';
+    state.scheduleScoutSearch.query = '';
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    setStatus('Scout cleared');
+  });
+
+  document.querySelector('[data-clear-contact-filter]')?.addEventListener('click', async () => {
     state.scheduleSearch.active = false;
     state.scheduleSearch.selectedId = '';
     await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
-    document.querySelector('[data-scout-filter-form] .search-input')?.focus();
+    setStatus('Contact cleared');
   });
 
-  document.querySelector('[data-scout-search-cancel]')?.addEventListener('click', async () => {
-    state.scheduleScoutSearch.active = false;
-    state.scheduleScoutSearch.query = '';
+  document.querySelector('[data-stop-slot-selection]')?.addEventListener('click', async () => {
+    state.scheduleSlotSelection.active = false;
+    state.scheduleSlotSelection.selectedKeys = [];
     await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    setStatus('Selection off');
   });
+}
 
-  document.querySelector('[data-scout-filter-form]')?.addEventListener('submit', (event) => {
-    event.preventDefault();
+function showScheduleActionsModal(groups) {
+  closeScheduleActionsModal();
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-schedule-actions-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel" role="dialog" aria-modal="true" aria-label="Schedule actions">
+      <div class="modal-header">
+        <h2 class="modal-title">Schedule Actions</h2>
+        <p class="modal-subtitle">Choose a schedule filter or slot action.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="modal-button scout-search-modal-button" type="button" data-open-scout-picker>Search Scouts</button>
+        <button class="modal-button contact-search-modal-button" type="button" data-open-schedule-contact-search>Search Contacts</button>
+        <button class="modal-button success" type="button" data-start-slot-selection>Select Slots</button>
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeScheduleActionsModal();
   });
-
-  document.querySelector('[data-scout-filter-form] .search-input')?.addEventListener('input', async (event) => {
-    state.scheduleScoutSearch.query = event.currentTarget.value || '';
-    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
-    const input = document.querySelector('[data-scout-filter-form] .search-input');
-    input?.focus();
-    input?.setSelectionRange(input.value.length, input.value.length);
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeScheduleActionsModal);
+  modal.querySelector('[data-open-scout-picker]')?.addEventListener('click', () => {
+    closeScheduleActionsModal();
+    showScoutPickerModal(groups);
   });
-
-  document.querySelector('[data-schedule-search-start]')?.addEventListener('click', async () => {
+  modal.querySelector('[data-open-schedule-contact-search]')?.addEventListener('click', async () => {
+    closeScheduleActionsModal();
     state.scheduleSearch.active = true;
-    state.scheduleSearch.selectedId = '';
-    state.scheduleScoutSearch.active = false;
     await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
     document.querySelector('.search-input')?.focus();
   });
+  modal.querySelector('[data-start-slot-selection]')?.addEventListener('click', async () => {
+    closeScheduleActionsModal();
+    state.scheduleSlotSelection.active = true;
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    setStatus('Select slots');
+  });
+
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+  modal.querySelector('[data-open-scout-picker]')?.focus();
+}
+
+function showScoutPickerModal(groups) {
+  closeScoutPickerModal();
+  const availableGroups = Array.isArray(groups) ? groups : [];
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-scout-picker-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel scout-picker-panel" role="dialog" aria-modal="true" aria-label="Scout picker">
+      <div class="modal-header">
+        <h2 class="modal-title">Search Scouts</h2>
+        <p class="modal-subtitle">Pick a scout to load their cached slots.</p>
+      </div>
+      <div class="scout-picker-grid">
+        ${
+          availableGroups.length
+            ? availableGroups.map((scout, index) => {
+                const scoutName = scout.scout_name || scout.name || 'Scout';
+                const active = state.scheduleScoutSearch.selectedName === scoutName ? ' active' : '';
+                return `<button class="scout-picker-button scout-color-${index % 8}${active}" type="button" data-scout-pick="${escapeAttribute(scoutName)}">
+                  <span>${escapeHtml(shortScoutName(scoutName))}</span>
+                  <small>${scout.visibleSlots.length} slots</small>
+                </button>`;
+              }).join('')
+            : '<button class="modal-button secondary" type="button" disabled>No scouts loaded</button>'
+        }
+      </div>
+      <div class="modal-actions">
+        <button class="modal-button secondary" type="button" data-clear-scout-pick>All Scouts</button>
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeScoutPickerModal();
+  });
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeScoutPickerModal);
+  modal.querySelector('[data-clear-scout-pick]')?.addEventListener('click', async () => {
+    state.scheduleScoutSearch.selectedName = '';
+    state.scheduleScoutSearch.query = '';
+    closeScoutPickerModal();
+    await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    setStatus('All scouts');
+  });
+  modal.querySelectorAll('[data-scout-pick]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      state.scheduleScoutSearch.selectedName = button.getAttribute('data-scout-pick') || '';
+      state.scheduleScoutSearch.query = state.scheduleScoutSearch.selectedName;
+      closeScoutPickerModal();
+      await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+      setStatus('Scout loaded');
+    });
+  });
+
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+  modal.querySelector('[data-scout-pick]')?.focus();
+}
+
+function shortScoutName(value) {
+  return String(value || '')
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .join(' ');
+}
+
+function closeScheduleActionsModal() {
+  document.querySelector('[data-schedule-actions-modal]')?.remove();
+  document.body.classList.remove('modal-open');
+}
+
+function closeScoutPickerModal() {
+  document.querySelector('[data-scout-picker-modal]')?.remove();
+  document.body.classList.remove('modal-open');
 }
 
 function bindContactSearch(scope) {
@@ -675,7 +817,6 @@ function bindContactSearch(scope) {
 
   document.querySelector('[data-schedule-search-cancel]')?.addEventListener('click', async () => {
     state.scheduleSearch.active = false;
-    state.scheduleSearch.selectedId = '';
     await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
   });
 
@@ -687,6 +828,39 @@ function bindContactSearch(scope) {
       await rerenderSearchScope(scope);
       bindCopyButtons();
     });
+  });
+}
+
+function bindScheduleSlotSelection() {
+  document.querySelectorAll('[data-slot-select]').forEach((input) => {
+    input.addEventListener('change', async () => {
+      const key = input.getAttribute('data-slot-key') || '';
+      if (!key) return;
+      const selected = new Set(state.scheduleSlotSelection.selectedKeys);
+      if (input.checked) selected.add(key);
+      else selected.delete(key);
+      state.scheduleSlotSelection.selectedKeys = Array.from(selected);
+      await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+    });
+  });
+
+  document.querySelector('[data-confirm-selected-slots]')?.addEventListener('click', async () => {
+    const selectedCopies = Array.from(document.querySelectorAll('[data-slot-select]:checked'))
+      .map((input) => input.getAttribute('data-slot-copy') || '')
+      .filter(Boolean);
+    if (!selectedCopies.length) {
+      setStatus('Select slots');
+      return;
+    }
+    const copied = await writeClipboardText(selectedCopies.join('\n'));
+    if (!copied) {
+      setStatus('Copy failed');
+      return;
+    }
+    state.scheduleSlotSelection.active = false;
+    state.scheduleSlotSelection.selectedKeys = [];
+    setStatus('Slots copied');
+    window.location.href = ADD_CLIPJAR_SHORTCUT_URL;
   });
 }
 
@@ -1028,10 +1202,36 @@ function toIsoDate(date) {
 function bindCopyButtons() {
   document.querySelectorAll('[data-copy]').forEach((button) => {
     button.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(button.getAttribute('data-copy') || '');
-      setStatus('Copied');
+      const copied = await writeClipboardText(button.getAttribute('data-copy') || '');
+      setStatus(copied ? 'Copied' : 'Copy failed');
     });
   });
+}
+
+async function writeClipboardText(text) {
+  const value = String(text || '');
+  if (!value) return false;
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.top = '-1000px';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    try {
+      return document.execCommand('copy');
+    } catch {
+      return false;
+    } finally {
+      textarea.remove();
+    }
+  }
 }
 
 function bindScriptableContactButtons() {
@@ -1040,13 +1240,12 @@ function bindScriptableContactButtons() {
       const clipboardText = button.getAttribute('data-contact-clipboard') || '';
       const scriptableUrl = button.getAttribute('data-scriptable-url') || '';
       if (!scriptableUrl) return;
-      try {
-        await navigator.clipboard.writeText(clipboardText);
-        setStatus('Contact selected');
-      } catch {
+      const copied = await writeClipboardText(clipboardText);
+      if (!copied) {
         setStatus('Clipboard failed');
         return;
       }
+      setStatus('Contact selected');
       window.location.href = scriptableUrl;
     });
   });
@@ -1210,9 +1409,9 @@ function parseRecipientContacts(value) {
 async function copyContactPhoneFromModal(button) {
   const phone = button.getAttribute('data-contact-phone-copy') || '';
   if (!phone) return;
-  await navigator.clipboard.writeText(phone);
+  const copied = await writeClipboardText(phone);
   closeContactCopyModal();
-  setStatus('Copied');
+  setStatus(copied ? 'Copied' : 'Copy failed');
 }
 
 function showAdminModal(button) {
@@ -1245,7 +1444,7 @@ function showAdminModal(button) {
         <button class="modal-button danger" type="button" data-prefix-action="(CAN)">Set (CAN)</button>
         ${
           adminUrl
-            ? `<a class="modal-button secondary" href="${escapeAttribute(adminUrl)}" target="_blank" rel="noreferrer">Open Admin</a>`
+            ? `<a class="modal-button admin-modal-button" href="${escapeAttribute(adminUrl)}" target="_blank" rel="noreferrer">Open Admin</a>`
             : ''
         }
         <button class="modal-button secondary" type="button" data-modal-close>Close</button>
@@ -1313,6 +1512,8 @@ function closeContactCopyModal() {
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
+    closeScheduleActionsModal();
+    closeScoutPickerModal();
     closeAdminModal();
     closeConfirmationModal();
     closeContactCopyModal();
@@ -1398,6 +1599,9 @@ function setCurrentRoute(nextRoute) {
     state.scheduleSearch.selectedId = '';
     state.scheduleScoutSearch.active = false;
     state.scheduleScoutSearch.query = '';
+    state.scheduleScoutSearch.selectedName = '';
+    state.scheduleSlotSelection.active = false;
+    state.scheduleSlotSelection.selectedKeys = [];
   }
   if (nextRoute !== '/contact-search') {
     state.contactSearch.selectedId = '';
@@ -1426,7 +1630,33 @@ async function setLoading(isLoading, message = '', renderContext) {
 }
 
 function setStatus(message) {
-  statusLine.textContent = message;
+  const text = String(message || '');
+  statusLine.textContent = text;
+  if (shouldShowToast(text)) showToast(text);
+}
+
+function shouldShowToast(message) {
+  if (!message) return false;
+  if (/^(Updated|Cached|Refreshing|Searching|Could not refresh|\d+ found)/.test(message)) return false;
+  return message.length <= 36;
+}
+
+function showToast(message) {
+  let toast = document.querySelector('[data-mobile-toast]');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.className = 'mobile-toast';
+    toast.setAttribute('data-mobile-toast', '');
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('show');
+  window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast.classList.remove('show');
+  }, 1450);
 }
 
 function setContentHtml(html, renderContext) {

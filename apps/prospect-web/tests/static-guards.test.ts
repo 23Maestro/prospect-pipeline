@@ -798,7 +798,8 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(appText, /buildContactClipboardPayload/);
   assert.match(appText, /data-contact-clipboard/);
   assert.match(appText, /bindScriptableContactButtons/);
-  assert.match(appText, /navigator\.clipboard\.writeText\(clipboardText\)/);
+  assert.match(appText, /writeClipboardText\(clipboardText\)/);
+  assert.match(appText, /document\.execCommand\('copy'\)/);
   assert.match(appText, /ID New Contact/);
   assert.match(appText, /ID iCal Follow-Up/);
   assert.doesNotMatch(pageText, /data-route="\/contact-reminder"/);
@@ -819,29 +820,41 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   assert.match(appText, /timezone-tag/);
   assert.match(appText, /state\.scheduleSearch/);
   assert.match(appText, /Search Contacts/);
-  assert.match(appText, /data-schedule-search-start/);
+  assert.match(appText, /data-open-schedule-contact-search/);
+  assert.match(appText, /findSelectedContactGroup\(state\.scheduleSearch\.results, state\.scheduleSearch\.selectedId\)/);
   assert.doesNotMatch(appText, /\/api\/contact-search/);
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
   assert.match(appText, /scope === 'schedule'[\s\S]*searchAthleteContactCache/);
 });
 
-test('prospect mobile scout schedules use short cache and local scout search', () => {
+test('prospect mobile scout schedules use short cache and modal schedule actions', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
   const stylesText = readFileSync(join(appRoot, 'public/prospect-mobile/styles.css'), 'utf8');
   assert.match(appText, /ROUTE_CACHE_TTL_MS = 5 \* 60 \* 1000/);
   assert.match(appText, /routeResponseCache/);
   assert.match(appText, /getCachedRoutePayload\(cacheKey\)/);
   assert.match(appText, /loadRoute\(\{ forceRefresh: true \}\)/);
+  assert.match(appText, /Schedule Actions/);
+  assert.match(appText, /data-schedule-actions-start/);
   assert.match(appText, /Search Scouts/);
+  assert.match(appText, /showScoutPickerModal/);
   assert.match(appText, /state\.scheduleScoutSearch/);
+  assert.match(appText, /selectedName/);
   assert.match(appText, /filterScheduleGroupsByScout/);
   assert.match(appText, /normalizeScoutSearchText/);
-  assert.match(appText, /formatSlotCopyLabel\(slot\.start\)/);
+  assert.match(appText, /data-start-slot-selection/);
+  assert.match(appText, /data-confirm-selected-slots/);
+  assert.match(appText, /ADD_CLIPJAR_SHORTCUT_URL/);
+  assert.match(appText, /selectedCopies\.join\('\\n'\)/);
+  assert.match(appText, /formatSlotCopyLabel\(start\)/);
   assert.match(appText, /formatSlotCopyLabelForTimezone\(slot\.start, timezone, timezoneLabel\)/);
+  assert.match(appText, /showToast/);
   assert.match(appText, / at /);
   assert.doesNotMatch(appText, /const copyText = `\$\{scout\.scout_name\}: \$\{dateLabel\}, \$\{range\}`/);
-  assert.match(stylesText, /\.scout-search-button \{[\s\S]*background: #0070f3;/);
-  assert.match(stylesText, /\.contact-search-button \{[\s\S]*background: #b45309;/);
+  assert.match(stylesText, /\.schedule-actions-button \{[\s\S]*background: linear-gradient\(180deg, #ef4444, #991b1b\)/);
+  assert.match(stylesText, /\.scout-picker-button \{/);
+  assert.match(stylesText, /\.confirm-slots-button \{[\s\S]*border-radius: 999px/);
+  assert.match(stylesText, /\.mobile-toast \{/);
 });
 
 test('prospect mobile contact search supports shortcut query params', () => {

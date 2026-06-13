@@ -8,7 +8,10 @@
     "build": "next build",
     "start": "next start",
     "test": "node --import tsx --test tests/*.test.ts",
-    "verify": "npm run test && npm run build"
+    "test:prospect-mobile": "node --import tsx --test --test-name-pattern \"prospect mobile\" tests/static-guards.test.ts",
+    "verify": "npm run test && npm run build",
+    "verify:prospect-mobile": "npm run test:prospect-mobile && npm run build",
+    "deploy:prod": "npm run verify:prospect-mobile && npx vercel deploy --prod -y"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.86.0",
