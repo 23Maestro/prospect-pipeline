@@ -851,12 +851,16 @@ test('prospect mobile scout schedules use short cache and modal schedule actions
   assert.match(appText, /formatSlotCopyLabel\(start\)/);
   assert.match(appText, /formatSlotCopyLabelForTimezone\(slot\.start, timezone, timezoneLabel\)/);
   assert.match(appText, /showToast/);
-  assert.match(appText, /statusLine\.textContent = '';\s*showToast\(text\);/);
+  assert.match(appText, /function buildStatusDisplay\(message\)/);
+  assert.match(appText, /statusLine\.innerHTML = status\.html/);
+  assert.match(appText, /text\.replace\(\/\^Updated\\s\+\/, ''\)/);
   assert.match(appText, / at /);
   assert.doesNotMatch(appText, /const copyText = `\$\{scout\.scout_name\}: \$\{dateLabel\}, \$\{range\}`/);
   assert.match(stylesText, /\.schedule-actions-button \{[\s\S]*background: linear-gradient\(180deg, #ef4444, #991b1b\)/);
   assert.match(stylesText, /\.scout-picker-button \{/);
   assert.match(stylesText, /\.confirm-slots-button \{[\s\S]*border-radius: 999px/);
+  assert.match(stylesText, /\.status-dot \{/);
+  assert.match(stylesText, /\.status-loading \.status-dot \{/);
   assert.match(stylesText, /\.mobile-toast \{/);
   assert.match(stylesText, /\.mobile-toast-dot \{/);
 });

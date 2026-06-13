@@ -12,9 +12,10 @@ export default function ProspectMobilePage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-      <meta name="theme-color" content="#070816" />
+      <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070816" />
+      <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fbff" />
       <link rel="icon" href="/prospect-id-shield.svg" />
-      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260613-toast-selection" />
+      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260613-status-hud" />
       <main className="app-shell">
         <header className="topbar">
           <div className="brand-lockup">
@@ -81,7 +82,7 @@ export default function ProspectMobilePage() {
           __html: `window.__PROSPECT_SUPABASE__ = ${JSON.stringify(supabaseConfig)};`,
         }}
       />
-      <Script type="module" src="/prospect-mobile/app.js?v=20260613-toast-selection" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260613-status-hud" strategy="afterInteractive" />
     </>
   );
 }

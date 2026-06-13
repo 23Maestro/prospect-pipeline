@@ -1641,10 +1641,34 @@ function setStatus(message) {
   const text = String(message || '');
   if (shouldShowToast(text)) {
     statusLine.textContent = '';
+    statusLine.className = 'status-line';
     showToast(text);
     return;
   }
-  statusLine.textContent = text;
+  const status = buildStatusDisplay(text);
+  statusLine.className = `status-line ${status.className}`.trim();
+  statusLine.innerHTML = status.html;
+}
+
+function buildStatusDisplay(message) {
+  const text = String(message || '').trim();
+  if (!text) return { className: '', html: '' };
+  let className = 'status-idle';
+  let label = text;
+  if (/^(Refreshing|Searching)$/.test(text)) {
+    className = 'status-loading';
+  } else if (/^Could not refresh/.test(text)) {
+    className = 'status-error';
+  } else if (/^Updated\s+/.test(text)) {
+    className = 'status-idle';
+    label = text.replace(/^Updated\s+/, '');
+  } else if (/^Cached\s+/.test(text) || /^\d+ found$/.test(text)) {
+    className = 'status-idle';
+  }
+  return {
+    className,
+    html: `<span class="status-dot" aria-hidden="true"></span><span>${escapeHtml(label)}</span>`,
+  };
 }
 
 function shouldShowToast(message) {
