@@ -86,6 +86,24 @@ export function isTaskSpecificUpdateVariant(
   return Boolean(getTaskSpecificUpdateVariant(task));
 }
 
+export function isCallAttemptTaskForDirectCompletion(
+  task?: Pick<ScoutTaskInput, 'title' | 'description' | 'row_text'> | null,
+): boolean {
+  const title = normalizeTaskTitleForMatch(task?.title).replace(/\s*-\s*/g, ' ');
+  const text = normalizeTaskMatchText({
+    title: task?.title,
+    description: task?.description,
+    row_text: task?.row_text,
+  }).replace(/[-_]+/g, ' ');
+  return /^call attempt\s*[123]\b/.test(title) || /\bcall attempt\s*[123]\b/.test(text);
+}
+
+export function shouldConfirmScoutPrepDirectCompletion(
+  task?: Pick<ScoutTaskInput, 'title' | 'description' | 'row_text'> | null,
+): boolean {
+  return isCallAttemptTaskForDirectCompletion(task);
+}
+
 export function getIncompleteTasks<T extends ScoutTaskInput>(tasks: T[] = []): T[] {
   return sortNewestTaskIdFirst(
     tasks.filter((task) => isIncompleteTaskValue(task.completion_date) && taskId(task)),

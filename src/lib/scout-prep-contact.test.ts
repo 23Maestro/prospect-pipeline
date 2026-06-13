@@ -14,6 +14,7 @@ import {
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
   getVoicemailFollowUpRecipients,
+  getProspectContactRoleShortcutCandidates,
   getProspectContactShortcutCandidates,
   hydrateMeetingSetTemplateForForm,
   mapTimezoneToLegacyRecruitZone,
@@ -139,6 +140,43 @@ test('getProspectContactShortcutCandidates: duplicate parent and athlete phone u
       id: 'studentAthlete',
       label: 'Student Athlete',
       name: 'Jaylin Bailey',
+      phone: '310-555-1111',
+    },
+  ]);
+});
+
+test('getProspectContactRoleShortcutCandidates: keeps same-phone parent and athlete roles', () => {
+  const candidates = getProspectContactRoleShortcutCandidates(
+    buildContext({
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Capri Harris',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent1: {
+          name: 'Vicky Harris',
+          relationship: 'Mother',
+          email: null,
+          phone: '(310) 555-1111',
+        },
+        parent2: null,
+      },
+    }),
+  );
+
+  assert.deepEqual(candidates, [
+    {
+      id: 'parent1',
+      label: 'Parent 1',
+      name: 'Vicky Harris',
+      phone: '310-555-1111',
+    },
+    {
+      id: 'studentAthlete',
+      label: 'Student Athlete',
+      name: 'Capri Harris',
       phone: '310-555-1111',
     },
   ]);

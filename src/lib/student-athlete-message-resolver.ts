@@ -65,18 +65,21 @@ function relationshipRole(row: AthleteContactCacheClientMatch): string {
 
 function associatedContactsForAthlete(
   rows: AthleteContactCacheClientMatch[],
+  ambiguousPhones: Set<string>,
 ): StudentAthleteMessageAssociatedContact[] {
   return Array.from(
     new Map(
-      rows.map((row) => [
-        `${relationshipRole(row)}:${row.normalizedPhone}`,
-        {
-          role: relationshipRole(row),
-          name: toDisplayName(row.contactName) || row.contactName,
-          relationshipLabel: row.relationshipLabel,
-          normalizedPhoneNumber: row.normalizedPhone,
-        } satisfies StudentAthleteMessageAssociatedContact,
-      ]),
+      rows
+        .filter((row) => !ambiguousPhones.has(row.normalizedPhone))
+        .map((row) => [
+          `${relationshipRole(row)}:${row.normalizedPhone}`,
+          {
+            role: relationshipRole(row),
+            name: toDisplayName(row.contactName) || row.contactName,
+            relationshipLabel: row.relationshipLabel,
+            normalizedPhoneNumber: row.normalizedPhone,
+          } satisfies StudentAthleteMessageAssociatedContact,
+        ]),
     ).values(),
   );
 }
@@ -95,11 +98,22 @@ export function buildStudentAthleteMessageResolutions(
     );
   }
 
-  return rows.map((row) => {
+  const ambiguousPhones = new Set(
+    Array.from(athleteKeysByPhone.entries())
+      .filter(([, athleteKeys]) => athleteKeys.size > 1)
+      .map(([normalizedPhone]) => normalizedPhone),
+  );
+
+  return rows.flatMap((row) => {
+    if (ambiguousPhones.has(row.normalizedPhone)) {
+      return [];
+    }
+
     const associatedContacts = associatedContactsForAthlete(
       rowsByAthleteKey.get(row.athleteKey) || [row],
+      ambiguousPhones,
     );
-    return {
+    return [{
       normalizedPhone: row.normalizedPhone,
       displayName: toDisplayName(row.contactName) || row.contactName,
       athleteKey: row.athleteKey,
@@ -114,10 +128,9 @@ export function buildStudentAthleteMessageResolutions(
       timezone: row.timezone,
       timezoneLabel: row.timezoneLabel,
       associatedContacts,
-      ambiguity:
-        (athleteKeysByPhone.get(row.normalizedPhone)?.size || 0) > 1 ? 'multiple_athletes' : 'none',
+      ambiguity: 'none',
       source: 'athlete_contact_cache',
-    } satisfies StudentAthleteMessageResolution;
+    } satisfies StudentAthleteMessageResolution];
   });
 }
 

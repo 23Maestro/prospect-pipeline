@@ -52,7 +52,7 @@ test('message resolver groups athlete family contacts for matched phones', () =>
   assert.equal(resolutions[0].ambiguity, 'none');
 });
 
-test('message resolver flags a phone linked to multiple athletes', () => {
+test('message resolver omits phones linked to multiple athletes', () => {
   const resolutions = buildStudentAthleteMessageResolutions([
     cacheRow({ athleteKey: 'athlete-1:main-1', athleteName: 'Avery Jones' }),
     cacheRow({
@@ -64,8 +64,40 @@ test('message resolver flags a phone linked to multiple athletes', () => {
     }),
   ]);
 
+  assert.deepEqual(resolutions, []);
+});
+
+test('message resolver removes ambiguous family phones from associated contacts', () => {
+  const resolutions = buildStudentAthleteMessageResolutions([
+    cacheRow({
+      athleteKey: 'athlete-1:main-1',
+      athleteName: 'Avery Jones',
+      contactName: 'Avery Jones',
+      relationshipLabel: 'Student Athlete',
+      normalizedPhone: '6155552000',
+    }),
+    cacheRow({
+      athleteKey: 'athlete-1:main-1',
+      athleteName: 'Avery Jones',
+      contactName: 'Tiffany Jones',
+      relationshipLabel: 'Mother',
+      normalizedPhone: '6155551000',
+    }),
+    cacheRow({
+      athleteKey: 'athlete-2:main-2',
+      athleteId: 'athlete-2',
+      athleteMainId: 'main-2',
+      athleteName: 'Blake Smith',
+      contactName: 'Tiffany Jones',
+      relationshipLabel: 'Mother',
+      normalizedPhone: '6155551000',
+    }),
+  ]);
+
+  assert.equal(resolutions.length, 1);
+  assert.equal(resolutions[0].normalizedPhone, '6155552000');
   assert.deepEqual(
-    resolutions.map((resolution) => resolution.ambiguity),
-    ['multiple_athletes', 'multiple_athletes'],
+    resolutions[0].associatedContacts.map((contact) => contact.normalizedPhoneNumber),
+    ['6155552000'],
   );
 });

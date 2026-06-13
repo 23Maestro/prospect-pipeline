@@ -11,6 +11,7 @@ import {
 import {
   buildMeetingDetailsContactSection,
   getMeetingReminderRecipient,
+  getProspectContactRoleShortcutCandidates,
   getProspectContactShortcutCandidates,
   getVoicemailFollowUpRecipients,
   normalizePhoneForMessages,
@@ -24,6 +25,7 @@ import {
 
 export {
   getMeetingReminderRecipient,
+  getProspectContactRoleShortcutCandidates,
   getProspectContactShortcutCandidates,
   getVoicemailFollowUpRecipients,
   normalizePhoneForMessages,

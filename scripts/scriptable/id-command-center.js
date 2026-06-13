@@ -2,46 +2,39 @@
 
 const commands = [
   {
-    title: "ID: Call Tracker",
+    title: "SC: Calls",
     icon: "activity",
     gradient: ["#4A0E17", "#9E182A"], // Crimson red
     type: "link",
     value: "https://prospect-web.vercel.app/prospect-call-tracker"
   },
   {
-    title: "ID: Mobile Commands",
+    title: "SC: Mobile",
     icon: "compass",
     gradient: ["#2E1117", "#7B2630"], // Smoked ruby
     type: "link",
     value: "https://prospect-web.vercel.app/prospect-mobile"
   },
   {
-    title: "ID: Search",
-    icon: "search",
-    gradient: ["#1F1607", "#A66314"], // Smoked amber
-    type: "shortcut",
-    value: "ID Search"
-  },
-  {
-    title: "ID: Share Cards",
-    icon: "id-card",
-    gradient: ["#25180E", "#7A3B16"], // Burnt copper
-    type: "script",
-    value: "share-prospect-contact-card"
-  },
-  {
-    title: "ID: New Contact",
+    title: "New Contact",
     icon: "user-plus",
     gradient: ["#0E2524", "#1E6A63"], // Dark oxidized teal
     type: "script",
     value: "ID New Contact"
   },
   {
-    title: "ID: iCal Follow-Up",
+    title: "iCalendar Follow-Up",
     icon: "calendar-plus",
     gradient: ["#171A24", "#3B435B"], // Gunmetal blue
     type: "script",
     value: "ID iCal Follow-Up"
+  },
+  {
+    title: "Search Top 500",
+    icon: "search",
+    gradient: ["#1F1607", "#A66314"], // Smoked amber
+    type: "script",
+    value: "ID Prospect Search"
   }
 ]
 

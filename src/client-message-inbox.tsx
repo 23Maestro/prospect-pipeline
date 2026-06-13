@@ -51,18 +51,10 @@ import {
   type ClientReplyThemeReviewRow,
 } from './lib/client-message-reply-themes';
 import {
-  fetchHeadScoutSlots,
-  filterVisibleHeadScoutSlots,
-  formatHeadScoutNaturalSlotLabel,
-  formatHeadScoutWeekLabel,
-  displayHeadScoutZoneLabel,
-  type HeadScoutSlot,
-} from './lib/head-scout-schedules';
-import {
-  resolveBookedMeetingDetailsForForm,
-  type ResolvedBookedMeetingDetails,
-} from './lib/booked-meeting-details-resolver';
-import { getCachedBookedMeetingDescription } from './lib/booked-meeting-description-cache';
+  buildRescheduleRecoverySlotPlan,
+  normalizeRescheduleRecoveryNameKey,
+  type RescheduleRecoverySlotOption,
+} from './lib/reschedule-recovery-context';
 import { openMessagesServiceClientInbox } from './lib/messages-service';
 import { buildVoicemailFollowUpMessage } from './lib/scout-follow-up-templates';
 
@@ -445,102 +437,10 @@ function firstName(value?: string | null): string {
 }
 
 function normalizeNameKey(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^coach\s+/i, '')
-    .replace(/\s+/g, ' ');
+  return normalizeRescheduleRecoveryNameKey(value);
 }
 
-type ClientReviewRescheduleSlotOption = {
-  id: string;
-  title: string;
-  scoutName: string;
-  messageLabel: string;
-  isPreviousScout: boolean;
-  dateLabel: string;
-  timeLabel: string;
-  weekLabel: string;
-};
-
-function buildClientReviewRescheduleSlotOptions(args: {
-  slots: Array<HeadScoutSlot & { scout_name: string }>;
-  previousHeadScoutName?: string | null;
-  clientTimezone?: string | null;
-  weekLabel: string;
-}): ClientReviewRescheduleSlotOption[] {
-  const previousKey = normalizeNameKey(args.previousHeadScoutName);
-  return filterVisibleHeadScoutSlots(args.slots)
-    .sort((left, right) => {
-      const leftPrevious = Boolean(
-        previousKey && normalizeNameKey(left.scout_name) === previousKey,
-      );
-      const rightPrevious = Boolean(
-        previousKey && normalizeNameKey(right.scout_name) === previousKey,
-      );
-      if (leftPrevious !== rightPrevious) return leftPrevious ? -1 : 1;
-      return left.start.localeCompare(right.start);
-    })
-    .map((slot) => {
-      const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, args.clientTimezone);
-      return {
-        id: `${slot.scout_name}:${slot.id}`,
-        title: display.messageLabel,
-        scoutName: slot.scout_name,
-        messageLabel: display.messageLabel,
-        isPreviousScout: Boolean(previousKey && normalizeNameKey(slot.scout_name) === previousKey),
-        dateLabel: display.dateLabel,
-        timeLabel: display.timeLabel,
-        weekLabel: args.weekLabel,
-      };
-    });
-}
-
-function buildPreviousMeetingText(
-  resolved?: ResolvedBookedMeetingDetails | null,
-  fallbackTimezone?: string | null,
-): string | null {
-  const meeting = resolved?.bookedMeeting;
-  if (!meeting) return null;
-  const timeLabel =
-    meeting.start && meeting.end
-      ? formatHeadScoutNaturalSlotLabel(
-          meeting.start,
-          meeting.end,
-          resolved?.meetingTimezone || fallbackTimezone || null,
-        ).messageLabel
-      : String(meeting.date_time_label || '').trim();
-  const scoutName = String(meeting.assigned_owner || '').trim();
-  return [timeLabel, scoutName].filter(Boolean).join(' • ') || null;
-}
-
-function resolveReviewClientTimezone(
-  row: Pick<ClientReplyThemeReviewRow, 'timezone' | 'timezoneLabel'>,
-  chat: ClientInboxChat,
-  previousMeeting?: ResolvedBookedMeetingDetails | null,
-) {
-  const timezone =
-    String(
-      row.timezone || chat.clientMatch.timezone || previousMeeting?.meetingTimezone || '',
-    ).trim() || null;
-  const timezoneLabel =
-    displayHeadScoutZoneLabel(row.timezoneLabel || chat.clientMatch.timezoneLabel) ||
-    (timezone ? null : 'Eastern');
-  const inferredLabel = timezone
-    ? displayHeadScoutZoneLabel(
-        new Intl.DateTimeFormat('en-US', {
-          timeZone: timezone,
-          timeZoneName: 'short',
-        })
-          .formatToParts(new Date())
-          .find((part) => part.type === 'timeZoneName')?.value,
-      )
-    : null;
-  return {
-    timezone,
-    displayLabel: timezoneLabel || inferredLabel || 'Eastern',
-  };
-}
+type ClientReviewRescheduleSlotOption = RescheduleRecoverySlotOption;
 
 function ClientThreadMarkdown({ chat }: { chat: ClientInboxChat }) {
   const { data: messages, isLoading } = usePromise(getClientThreadMessages, [
@@ -588,12 +488,11 @@ function ClientReviewRescheduleSlotList({
   const [weekOffset, setWeekOffset] = useState(0);
   const [weekLabel, setWeekLabel] = useState<string | null>(null);
   const [clientTimezoneLabel, setClientTimezoneLabel] = useState<string | null>(
-    resolveReviewClientTimezone(row, chat).displayLabel,
+    row.timezoneLabel || chat.clientMatch.timezoneLabel || null,
   );
 
   useEffect(() => {
     let isMounted = true;
-    const baseClientTimezone = resolveReviewClientTimezone(row, chat).timezone;
     async function loadSlots() {
       setIsLoading(true);
       setErrorMessage(null);
@@ -602,53 +501,24 @@ function ClientReviewRescheduleSlotList({
         const athleteMainId = String(
           row.athleteMainId || chat.clientMatch.athleteMainId || '',
         ).trim();
-        const [meetingResult, slotsResult] = await Promise.allSettled([
-          athleteId && athleteMainId
-            ? resolveBookedMeetingDetailsForForm(
-                { athleteId, athleteMainId, source: 'appointment_truth' },
-                { getCachedMeetingDescription: getCachedBookedMeetingDescription },
-              )
-            : Promise.resolve(null),
-          fetchHeadScoutSlots(weekOffset),
-        ]);
+        const plan = await buildRescheduleRecoverySlotPlan({
+          identity: {
+            athleteId,
+            athleteMainId,
+            fallbackTimezone: row.timezone || chat.clientMatch.timezone,
+            fallbackTimezoneLabel: row.timezoneLabel || chat.clientMatch.timezoneLabel,
+            fallbackHeadScoutName: chat.clientMatch.displayName,
+          },
+          requirePreviousMeeting: true,
+          weekOffsets: weekOffset > 0 ? [weekOffset] : [0, 1],
+        });
         if (!isMounted) return;
 
-        const previousMeeting =
-          meetingResult.status === 'fulfilled' && meetingResult.value ? meetingResult.value : null;
-        const clientTimezone = resolveReviewClientTimezone(row, chat, previousMeeting);
-        const nextPreviousHeadScout =
-          String(previousMeeting?.bookedMeeting?.assigned_owner || '').trim() || null;
-        const slotPayload = slotsResult.status === 'fulfilled' ? slotsResult.value : null;
-        const schedules = slotsResult.status === 'fulfilled' ? slotsResult.value.scouts || [] : [];
-        const nextSlots = schedules.flatMap((schedule) =>
-          (schedule.slots || []).map((slot) => ({
-            ...slot,
-            scout_name: slot.scout_name || schedule.scout_name,
-          })),
-        );
-        setPreviousHeadScoutName(nextPreviousHeadScout);
-        setClientTimezoneLabel(clientTimezone.displayLabel);
-        setPreviousMeetingText(buildPreviousMeetingText(previousMeeting, clientTimezone.timezone));
-        setSlots(
-          buildClientReviewRescheduleSlotOptions({
-            slots: nextSlots,
-            previousHeadScoutName: nextPreviousHeadScout,
-            clientTimezone: clientTimezone.timezone || baseClientTimezone,
-            weekLabel: weekOffset > 0 ? 'next week' : 'this week',
-          }),
-        );
-        setWeekLabel(
-          slotPayload
-            ? formatHeadScoutWeekLabel(slotPayload.week_start, slotPayload.week_end)
-            : null,
-        );
-        if (slotsResult.status === 'rejected') {
-          setErrorMessage(
-            slotsResult.reason instanceof Error
-              ? slotsResult.reason.message
-              : String(slotsResult.reason),
-          );
-        }
+        setPreviousHeadScoutName(plan.previousHeadScoutName);
+        setClientTimezoneLabel(plan.clientTimezoneLabel);
+        setPreviousMeetingText(plan.previousMeetingText);
+        setSlots(plan.slots);
+        setWeekLabel(plan.weekLabel);
       } catch (error) {
         if (!isMounted) return;
         setErrorMessage(error instanceof Error ? error.message : String(error));

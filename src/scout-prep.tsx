@@ -10,18 +10,24 @@ import {
   LaunchProps,
   LaunchType,
   Toast,
+  Alert,
   Clipboard,
   open,
   launchCommand,
   clearSearchBar,
   showToast,
+  confirmAlert,
   useNavigation,
   getPreferenceValues,
 } from '@raycast/api';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { saveProspectContacts, searchContacts } from 'swift:../swift/contacts';
+import {
+  saveProspectContacts,
+  saveProspectContactsWithNameOverride,
+  searchContacts,
+} from 'swift:../swift/contacts';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 import { exportDailyCallBlocks, type TaskCounts } from './daily-call-blocks';
 import { AthleteNotesList, AddAthleteNoteForm } from './components/athlete-notes';
@@ -44,6 +50,7 @@ import {
   buildScoutPrepLeavingVoicemailBody,
   buildVoicemailFollowUpBody,
   getVoicemailFollowUpRecipients,
+  getProspectContactRoleShortcutCandidates,
   getProspectContactShortcutCandidates,
   normalizePhoneForMessages,
   resolveProspectContactCreateFailureToast,
@@ -114,11 +121,14 @@ import {
 import { resolveConfirmedRescheduleAppointmentIdentity } from './domain/appointment-truth';
 import {
   isConfirmationCallTask,
+  isIncompleteTaskValue,
+  isTaskSpecificUpdateVariant,
   getTaskSpecificUpdateVariant,
   getTopmostIncompleteTask,
   getVoicemailLifecycleStageLabel,
   getVoicemailLifecycleTaskTitle,
   resolveVoicemailLifecycleTaskForCompletion,
+  shouldConfirmScoutPrepDirectCompletion,
 } from './domain/scout-task-selection';
 import {
   SCOUT_PREP_BATCH_OPERATIONS,
@@ -141,15 +151,10 @@ import { resolveTimezone } from './lib/scout-prep-ai';
 import {
   easternLocalIsoToDate,
   fetchAthleteBookedMeetings,
-  fetchHeadScoutSlots,
   fetchOpenMeetings,
-  filterVisibleHeadScoutSlots,
-  formatHeadScoutNaturalSlotLabel,
   formatHeadScoutSlotForTimezone,
-  formatHeadScoutWeekLabel,
   HEAD_SCOUT_ORDER,
   type BookedMeetingEvent,
-  type HeadScoutSlot,
   type OpenMeetingSlot,
 } from './lib/head-scout-schedules';
 import {
@@ -217,9 +222,15 @@ import {
   runDuplicateProfileResolutionForTask,
 } from './lib/scout-duplicate-profiles';
 import {
-  resolveIanaTimeZoneFromLegacyLabel,
   resolveLegacyTimezoneLabelFromIana,
 } from './domain/outreach-time-wording';
+import {
+  buildPreviousMeetingTextForReschedule,
+  buildRankedRescheduleSlotPlan,
+  normalizeRescheduleRecoveryNameKey,
+  type RescheduleRecoverySlotOption,
+  type RescheduleRecoverySlotPlan,
+} from './lib/reschedule-recovery-context';
 
 const FEATURE = 'scout-prep';
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
@@ -859,42 +870,45 @@ function buildScoutIdCallPrepDeepLink(task: ScoutPortalTask, context?: ScoutPrep
   return `scoutid://scout-prep/open?${params.toString()}`;
 }
 
-function isReschedulePendingTask(
-  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
-): boolean {
-  const title = stripMoveThisTaskPrefix(task?.title) || String(task?.title || '').trim();
-  const normalizedTitle = title.toLowerCase();
-  return (
-    /^\s*\(rsp\)/i.test(String(task?.title || '')) ||
-    normalizedTitle.includes('reschedule pending') ||
-    normalizedTitle.includes('rescheduled pending') ||
-    normalizedTitle.includes('rescheduled') ||
-    normalizedTitle.includes('res pending') ||
-    normalizedTitle.includes('res. pending')
-  );
-}
-
-function isConfirmationCallTaskTitle(
-  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
-): boolean {
-  const title = stripMoveThisTaskPrefix(task?.title) || String(task?.title || '').trim();
-  return title.toLowerCase().includes('confirmation call');
-}
-
-function isFollowUpTaskTitle(
-  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
-): boolean {
-  const title = stripMoveThisTaskPrefix(task?.title) || String(task?.title || '').trim();
-  const normalizedTitle = title.toLowerCase();
-  return normalizedTitle.includes('follow up') || normalizedTitle.includes('follow-up');
-}
-
 function canCompleteTaskFromActionPanel(
   task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
 ): boolean {
-  return (
-    isConfirmationCallTaskTitle(task) || isReschedulePendingTask(task) || isFollowUpTaskTitle(task)
-  );
+  return Boolean(String(task?.task_id || '').trim()) && isIncompleteTaskValue(task?.completion_date);
+}
+
+function buildTaskNoteForAthleteNotes(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+) {
+  const description = String(task?.description || '').trim();
+  if (!description || !isTaskSpecificUpdateVariant(task)) {
+    return [];
+  }
+  const title = getTaskDisplayTitle(task);
+  return [
+    {
+      title: `Task Note: ${title}`,
+      description,
+      metadata: 'Scout Prep Task',
+      created_by: String(task?.assigned_owner || '').trim() || 'Task List',
+      created_at: task?.due_date || null,
+    },
+  ];
+}
+
+async function confirmDirectCompletionIfNeeded(
+  task?: Partial<ScoutAthleteTask> | Partial<ScoutPortalTask> | null,
+): Promise<boolean> {
+  if (!shouldConfirmScoutPrepDirectCompletion(task)) {
+    return true;
+  }
+  return confirmAlert({
+    title: 'Complete call attempt?',
+    message: `${getTaskDisplayTitle(task)} will be completed for this athlete.`,
+    primaryAction: {
+      title: 'Complete Task',
+      style: Alert.ActionStyle.Destructive,
+    },
+  });
 }
 
 function resolveDirectCompletionTask(
@@ -1238,6 +1252,7 @@ async function createProspectContactsBatch(
   candidates: ProspectContactShortcutCandidate[],
   adminUrl: string,
   contactNote: string,
+  options?: { overwriteNames?: boolean },
 ): Promise<ProspectContactBatchSummary> {
   if (!candidates.length) {
     throw new Error('No eligible contacts found');
@@ -1260,13 +1275,21 @@ async function createProspectContactsBatch(
     return [firstName || '', lastName || '', phone || ''];
   });
 
-  const savedContacts = await saveProspectContacts(
-    args.filter((_, index) => index % 3 === 0),
-    args.filter((_, index) => index % 3 === 1),
-    args.filter((_, index) => index % 3 === 2),
-    uniqueCandidates.map(() => adminUrl),
-    uniqueCandidates.map(() => contactNote),
-  );
+  const firstNames = args.filter((_, index) => index % 3 === 0);
+  const lastNames = args.filter((_, index) => index % 3 === 1);
+  const phones = args.filter((_, index) => index % 3 === 2);
+  const urls = uniqueCandidates.map(() => adminUrl);
+  const notes = uniqueCandidates.map(() => contactNote);
+  const savedContacts = options?.overwriteNames
+    ? await saveProspectContactsWithNameOverride(
+        firstNames,
+        lastNames,
+        phones,
+        urls,
+        notes,
+        uniqueCandidates.map(() => true),
+      )
+    : await saveProspectContacts(firstNames, lastNames, phones, urls, notes);
 
   const candidateByKey = new Map(
     uniqueCandidates.map((candidate) => [`${candidate.name}|${candidate.phone}`, candidate]),
@@ -1368,6 +1391,15 @@ function ScoutPrepContactDetail({
   }, [task.contact_id]);
 
   async function handleCreateAllProspectContacts() {
+    if (!context) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No contact ready',
+        message: 'Contact info is still loading.',
+      });
+      return;
+    }
+
     if (!contactCandidates.length) {
       await showToast({
         style: Toast.Style.Failure,
@@ -1410,6 +1442,50 @@ function ScoutPrepContactDetail({
     }
   }
 
+  async function handleSaveProspectContactRole(candidate: ProspectContactShortcutCandidate) {
+    if (!context) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: 'No contact ready',
+        message: 'Contact info is still loading.',
+      });
+      return;
+    }
+
+    setIsCreatingContact(true);
+    const roleLabel = prospectContactRoleLabel(candidate);
+    const toast = await showLoadingToast(`Save ${roleLabel} contact`, candidate.name);
+    try {
+      const summary = await createProspectContactsBatch(
+        [candidate],
+        buildScoutPrepAdminUrl(
+          task,
+          context.resolved.athlete_main_id || context.task.athlete_main_id,
+        ),
+        '',
+        { overwriteNames: true },
+      );
+      toast.style = Toast.Style.Success;
+      toast.title = `${roleLabel} contact ready`;
+
+      const detailParts = [
+        candidate.name,
+        summary.createdCount ? 'created' : null,
+        summary.updatedCount ? 'updated' : null,
+        summary.existingCount ? 'existing' : null,
+      ].filter(Boolean);
+
+      toast.message = detailParts.join(' • ');
+    } catch (error) {
+      const failureToast = resolveProspectContactCreateFailureToast(error);
+      toast.style = failureToast.duplicateLike ? Toast.Style.Success : Toast.Style.Failure;
+      toast.title = failureToast.title;
+      toast.message = failureToast.message;
+    } finally {
+      setIsCreatingContact(false);
+    }
+  }
+
   const contactInfo = context?.contactInfo;
   const contactCandidates = context
     ? getProspectContactShortcutCandidates(context).sort(
@@ -1418,6 +1494,16 @@ function ScoutPrepContactDetail({
           ['parent1', 'studentAthlete', 'parent2'].indexOf(right.id),
       )
     : [];
+  const contactRoleCandidateById = new Map(
+    context
+      ? getProspectContactRoleShortcutCandidates(context).map((candidate) => [
+          candidate.id,
+          candidate,
+        ])
+      : [],
+  );
+  const parent1ContactCandidate = contactRoleCandidateById.get('parent1');
+  const parent2ContactCandidate = contactRoleCandidateById.get('parent2');
 
   return (
     <Detail
@@ -1435,6 +1521,14 @@ function ScoutPrepContactDetail({
                   onAction={() =>
                     void copyToClipboardWithToast(contactInfo.parent1.phone || '', 'P1')
                   }
+                />
+              ) : null}
+              {parent1ContactCandidate ? (
+                <Action
+                  title="Save as Parent 1 Contact"
+                  icon="👤"
+                  shortcut={{ modifiers: ['cmd'], key: '2' }}
+                  onAction={() => void handleSaveProspectContactRole(parent1ContactCandidate)}
                 />
               ) : null}
             </ActionPanel.Section>
@@ -1461,6 +1555,14 @@ function ScoutPrepContactDetail({
                   onAction={() =>
                     void copyToClipboardWithToast(contactInfo.parent2.phone || '', 'P2')
                   }
+                />
+              ) : null}
+              {parent2ContactCandidate ? (
+                <Action
+                  title="Save as Parent 2 Contact"
+                  icon="👤"
+                  shortcut={{ modifiers: ['cmd'], key: '3' }}
+                  onAction={() => void handleSaveProspectContactRole(parent2ContactCandidate)}
                 />
               ) : null}
             </ActionPanel.Section>
@@ -1849,29 +1951,9 @@ function buildMessageContactOptions(
   return options;
 }
 
-type RescheduleVoicemailSlotOption = {
-  id: string;
-  title: string;
-  subtitle?: string | null;
-  scoutName: string;
-  messageLabel: string;
-  isPreviousScout: boolean;
-  dateLabel: string;
-  timeLabel: string;
-  zoneLabel: string;
-  weekLabel: string;
-  start: string;
-  end: string;
-  openEventId: string;
-};
+type RescheduleVoicemailSlotOption = RescheduleRecoverySlotOption;
 
-function normalizeNameKey(value?: string | null): string {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/^coach\s+/i, '')
-    .replace(/\s+/g, ' ');
-}
+const normalizeNameKey = normalizeRescheduleRecoveryNameKey;
 
 const RESCHEDULE_TIME_TAG_COLORS = [
   Color.Blue,
@@ -1891,29 +1973,6 @@ function rescheduleTimeTagColorFor(value?: string | null): Color {
   const timeKey = normalized.match(/\b\d{1,2}(?::\d{2})?\s*(?:AM|PM)\b/)?.[0] || normalized;
   const total = timeKey.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
   return RESCHEDULE_TIME_TAG_COLORS[total % RESCHEDULE_TIME_TAG_COLORS.length];
-}
-
-function buildPreviousMeetingTextForReschedule(
-  resolved: ResolvedBookedMeetingDetails | null,
-  context: ScoutPrepContext,
-): string | null {
-  const meeting = resolved?.bookedMeeting;
-  if (!meeting) {
-    return null;
-  }
-
-  const athleteTimezone =
-    resolved.meetingTimezone || resolveTimezone(context.resolved.city, context.resolved.state);
-  if (!athleteTimezone) {
-    throw new Error('Missing client timezone for Reschedule Pending');
-  }
-  const slotLabel =
-    meeting.start && meeting.end
-      ? formatHeadScoutNaturalSlotLabel(meeting.start, meeting.end, athleteTimezone).messageLabel
-      : String(meeting.date_time_label || '').trim();
-  const scoutName = String(meeting.assigned_owner || '').trim();
-
-  return [slotLabel, scoutName].filter(Boolean).join(' • ') || null;
 }
 
 function isRescheduleVoicemailVariant(variant?: VoicemailFollowUpVariant | null): boolean {
@@ -2292,7 +2351,13 @@ export function VoicemailFollowUpRecipientForm({
           },
         );
         if (!active) return;
-        setPreviousMeetingText(buildPreviousMeetingTextForReschedule(resolved, context));
+        setPreviousMeetingText(
+          buildPreviousMeetingTextForReschedule(resolved, {
+            city: context.resolved.city,
+            state: context.resolved.state,
+            fallbackTimezone: context.resolved.timezone,
+          }),
+        );
       } catch {
         if (!active) return;
         setPreviousMeetingText(null);
@@ -2810,6 +2875,7 @@ function UpdateAthleteTaskForm({
   contactTask,
   initialTaskTitle,
   initialDescription,
+  initialFocus = 'description',
   onUpdated,
 }: {
   task: ScoutPortalTask;
@@ -2818,6 +2884,7 @@ function UpdateAthleteTaskForm({
   contactTask: string;
   initialTaskTitle?: string | null;
   initialDescription?: string | null;
+  initialFocus?: 'description' | 'dueDate';
   onUpdated?: () => void | Promise<void>;
 }) {
   const [isSaving, setIsSaving] = useState(false);
@@ -3034,12 +3101,13 @@ function UpdateAthleteTaskForm({
         title="Description"
         placeholder="Describe what changed and what should happen next."
         defaultValue={defaultTaskDescription}
-        autoFocus
+        autoFocus={initialFocus === 'description'}
       />
       <Form.DatePicker
         id="dueDate"
         title="Task Due Date"
         defaultValue={buildDefaultTaskDate(selectedTask.due_date)}
+        autoFocus={initialFocus === 'dueDate'}
       />
       <Form.Checkbox
         id="completeTask"
@@ -3055,18 +3123,21 @@ function UpdateAthleteTaskPicker({
   initialContext = null,
   onTaskMutationComplete,
   closeAfterMutationViews = 1,
+  autoOpenSingleTask = false,
   autoOpenScheduledFollowUp = false,
 }: {
   task: ScoutPortalTask;
   initialContext?: ScoutPrepContext | null;
   onTaskMutationComplete?: () => void | Promise<void>;
   closeAfterMutationViews?: number;
+  autoOpenSingleTask?: boolean;
   autoOpenScheduledFollowUp?: boolean;
 }) {
   const { push, pop } = useNavigation();
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext);
   const [isLoading, setIsLoading] = useState(!initialContext);
   const [completingTaskId, setCompletingTaskId] = useState<string | null>(null);
+  const didAutoOpenSingleTask = useRef(false);
   const didAutoOpenScheduledFollowUp = useRef(false);
 
   useEffect(() => {
@@ -3110,7 +3181,11 @@ function UpdateAthleteTaskPicker({
 
   async function handleOpenTaskUpdate(
     selectedTask: ScoutAthleteTask,
-    options: { initialTaskTitle?: string | null; initialDescription?: string | null } = {},
+    options: {
+      initialTaskTitle?: string | null;
+      initialDescription?: string | null;
+      initialFocus?: 'description' | 'dueDate';
+    } = {},
   ) {
     const athleteMainId = String(
       context?.resolved.athlete_main_id || task.athlete_main_id || '',
@@ -3131,6 +3206,7 @@ function UpdateAthleteTaskPicker({
         contactTask={contactTask}
         initialTaskTitle={options.initialTaskTitle}
         initialDescription={options.initialDescription}
+        initialFocus={options.initialFocus}
         onUpdated={async () => {
           await popViewsThenRefreshRoot(
             pop,
@@ -3141,6 +3217,24 @@ function UpdateAthleteTaskPicker({
       />,
     );
   }
+
+  useEffect(() => {
+    if (
+      !autoOpenSingleTask ||
+      autoOpenScheduledFollowUp ||
+      didAutoOpenSingleTask.current ||
+      isLoading ||
+      !context ||
+      incompleteTasks.length !== 1
+    ) {
+      return;
+    }
+
+    didAutoOpenSingleTask.current = true;
+    void handleOpenTaskUpdate(incompleteTasks[0], {
+      initialFocus: 'dueDate',
+    });
+  }, [autoOpenSingleTask, autoOpenScheduledFollowUp, context, incompleteTasks, isLoading]);
 
   useEffect(() => {
     if (
@@ -3169,11 +3263,13 @@ function UpdateAthleteTaskPicker({
     void handleOpenTaskUpdate(selectedTask, {
       initialTaskTitle: SCHEDULED_FOLLOW_UP_TASK_TITLE,
       initialDescription: '',
+      initialFocus: 'description',
     });
   }, [autoOpenScheduledFollowUp, context, isLoading, task.task_id]);
 
   async function handleCompleteTaskFromList(selectedTask: ScoutAthleteTask) {
     if (completingTaskId) return;
+    if (!(await confirmDirectCompletionIfNeeded(selectedTask))) return;
 
     const athleteMainId = String(
       context?.resolved.athlete_main_id || task.athlete_main_id || '',
@@ -4641,6 +4737,7 @@ function ScoutPrepDetail({
           notesContext.resolved.athlete_main_id || notesContext.task.athlete_main_id,
         )}
         athleteName={notesContext.contactInfo.studentAthlete.name || task.athlete_name}
+        prependedNotes={buildTaskNoteForAthleteNotes(task)}
       />,
     );
   }
@@ -4701,6 +4798,7 @@ function ScoutPrepDetail({
 
   async function handleCompleteTask() {
     if (isCompletingTask) return;
+    if (!(await confirmDirectCompletionIfNeeded(task))) return;
 
     setIsCompletingTask(true);
     const toast = await showLoadingToast('Completing', getTaskDisplayTitle(task));
@@ -5045,6 +5143,7 @@ function ScoutPrepDetail({
                   initialContext={context}
                   onTaskMutationComplete={onReturnToRootList}
                   closeAfterMutationViews={2}
+                  autoOpenSingleTask
                 />
               }
             />
@@ -5200,6 +5299,7 @@ function ScoutPrepTaskItem({
 
   async function handleCompleteTask() {
     if (isCompletingTask) return;
+    if (!(await confirmDirectCompletionIfNeeded(task))) return;
 
     setIsCompletingTask(true);
     const toast = await showLoadingToast('Completing', getTaskDisplayTitle(task));
@@ -5356,6 +5456,7 @@ function ScoutPrepTaskItem({
         athleteId={String(context.task.contact_id)}
         athleteMainId={String(context.resolved.athlete_main_id || context.task.athlete_main_id)}
         athleteName={context.contactInfo.studentAthlete.name || task.athlete_name}
+        prependedNotes={buildTaskNoteForAthleteNotes(task)}
       />,
     );
   }
@@ -5523,7 +5624,11 @@ function ScoutPrepTaskItem({
               icon="✏️"
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'u' }}
               target={
-                <UpdateAthleteTaskPicker task={task} onTaskMutationComplete={onReturnToRootList} />
+                <UpdateAthleteTaskPicker
+                  task={task}
+                  onTaskMutationComplete={onReturnToRootList}
+                  autoOpenSingleTask
+                />
               }
             />
             <Action.Push
@@ -6232,229 +6337,7 @@ type RescheduleBatchPlan = {
   slots: RescheduleVoicemailSlotOption[];
 };
 
-type RankedRescheduleSlotPlan = {
-  previousMeeting: ResolvedBookedMeetingDetails | null;
-  previousMeetingText: string;
-  previousHeadScoutName: string | null;
-  slots: RescheduleVoicemailSlotOption[];
-  suggestedSlots: RescheduleVoicemailSlotOption[];
-  weekLabel: string | null;
-};
-
-const RESCHEDULE_SLOT_DIFFERENT_SCOUT_PENALTY = 2_500;
-const RESCHEDULE_SLOT_SHORT_NOTICE_HOURS = 24;
-const RESCHEDULE_SLOT_SHORT_NOTICE_PENALTY = 8_000;
-const RESCHEDULE_SLOT_SAME_WEEKEND_ON_LATE_WEEK_PENALTY = 1_500;
-const RESCHEDULE_SLOT_EARLIER_THAN_PREVIOUS_TIME_PENALTY = 45;
-
-function localMinutesForEasternStamp(start: string, timeZone?: string | null): number | null {
-  const parsed = easternLocalIsoToDate(start);
-  if (!parsed) return null;
-  const renderTimeZone = resolveIanaTimeZoneFromLegacyLabel(timeZone || 'America/New_York');
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: renderTimeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(parsed);
-  const hour = Number.parseInt(parts.find((part) => part.type === 'hour')?.value || '', 10);
-  const minute = Number.parseInt(parts.find((part) => part.type === 'minute')?.value || '', 10);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
-  return (hour === 24 ? 0 : hour) * 60 + minute;
-}
-
-function localWeekdayForDate(date: Date, timeZone?: string | null): number | null {
-  const weekday = new Intl.DateTimeFormat('en-US', {
-    timeZone: timeZone || 'America/New_York',
-    weekday: 'short',
-  }).format(date);
-  const weekdays: Record<string, number> = {
-    Sun: 0,
-    Mon: 1,
-    Tue: 2,
-    Wed: 3,
-    Thu: 4,
-    Fri: 5,
-    Sat: 6,
-  };
-  return weekdays[weekday] ?? null;
-}
-
-function hoursUntilDate(date: Date, now = new Date()): number {
-  return (date.getTime() - now.getTime()) / (60 * 60 * 1000);
-}
-
-function scoreRescheduleSlot(args: {
-  slot: HeadScoutSlot & { scout_name: string };
-  previousHeadScoutName: string | null;
-  targetMinutes: number | null;
-  clientTimezone: string | null;
-  weekOffset: number;
-  now?: Date;
-}): number {
-  const sameScout =
-    args.previousHeadScoutName &&
-    normalizeNameKey(args.slot.scout_name) === normalizeNameKey(args.previousHeadScoutName)
-      ? 0
-      : RESCHEDULE_SLOT_DIFFERENT_SCOUT_PENALTY;
-  const slotMinutes = localMinutesForEasternStamp(args.slot.start, args.clientTimezone);
-  const timeDistance =
-    slotMinutes !== null && args.targetMinutes !== null
-      ? Math.abs(slotMinutes - args.targetMinutes)
-      : 1_000;
-  const earlierThanPreviousTime =
-    slotMinutes !== null && args.targetMinutes !== null && slotMinutes < args.targetMinutes
-      ? RESCHEDULE_SLOT_EARLIER_THAN_PREVIOUS_TIME_PENALTY
-      : 0;
-  const slotDate = easternLocalIsoToDate(args.slot.start);
-  const noticeHours = slotDate ? hoursUntilDate(slotDate, args.now) : null;
-  const shortNotice =
-    noticeHours !== null && noticeHours < RESCHEDULE_SLOT_SHORT_NOTICE_HOURS
-      ? RESCHEDULE_SLOT_SHORT_NOTICE_PENALTY
-      : 0;
-  const currentWeekday = localWeekdayForDate(args.now || new Date(), args.clientTimezone);
-  const slotWeekday = slotDate ? localWeekdayForDate(slotDate, args.clientTimezone) : null;
-  const rushedWeekend =
-    args.weekOffset === 0 &&
-    currentWeekday !== null &&
-    currentWeekday >= 5 &&
-    (slotWeekday === 0 || slotWeekday === 6)
-      ? RESCHEDULE_SLOT_SAME_WEEKEND_ON_LATE_WEEK_PENALTY
-      : 0;
-  return (
-    sameScout +
-    args.weekOffset * 100 +
-    timeDistance +
-    earlierThanPreviousTime +
-    shortNotice +
-    rushedWeekend
-  );
-}
-
-async function buildRankedRescheduleSlotPlan(args: {
-  task: ScoutPortalTask;
-  context: ScoutPrepContext;
-  requirePreviousMeeting?: boolean;
-  weekOffsets?: number[];
-}): Promise<RankedRescheduleSlotPlan> {
-  const mustHavePreviousMeeting = args.requirePreviousMeeting !== false;
-  const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
-  const athleteMainId = String(
-    args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
-  ).trim();
-  const previousMeeting =
-    mustHavePreviousMeeting && athleteId && athleteMainId
-      ? await resolveBookedMeetingDetailsForForm(
-          { athleteId, athleteMainId, source: 'latest_appointment_truth' },
-          {
-            getCachedMeetingDescription: getCachedBookedMeetingDescription,
-          },
-        )
-      : null;
-  if (mustHavePreviousMeeting && !previousMeeting) {
-    throw new Error('Missing booked meeting for Reschedule Pending');
-  }
-
-  const clientTimezone =
-    previousMeeting?.meetingTimezone ||
-    resolveTimezone(args.context.resolved.city, args.context.resolved.state) ||
-    null;
-  const previousHeadScoutName =
-    String(previousMeeting?.bookedMeeting.assigned_owner || '').trim() ||
-    String(args.context.resolved.head_scout || '').trim() ||
-    null;
-  const targetMinutes = previousMeeting?.bookedMeeting.start
-    ? localMinutesForEasternStamp(previousMeeting.bookedMeeting.start, clientTimezone)
-    : null;
-  const previousMeetingText =
-    (mustHavePreviousMeeting && previousMeeting
-      ? buildPreviousMeetingTextForReschedule(previousMeeting, args.context)
-      : null) ||
-    [previousHeadScoutName, previousMeeting?.bookedMeeting.start].filter(Boolean).join(' • ');
-  const now = new Date();
-  const weekOffsets = args.weekOffsets?.length ? args.weekOffsets : [0, 1];
-
-  const slotPayloads = await Promise.all(
-    weekOffsets.map((weekOffset) => fetchHeadScoutSlots(weekOffset)),
-  );
-  const payloadWeekLabels = slotPayloads
-    .map((payload) => formatHeadScoutWeekLabel(payload.week_start, payload.week_end))
-    .filter(Boolean);
-  const scoredSlots = slotPayloads.flatMap((payload, payloadIndex) => {
-    const weekOffset = weekOffsets[payloadIndex] ?? payloadIndex;
-    const rawSlots = (payload.scouts || []).flatMap((schedule) =>
-      (schedule.slots || []).map((slot) => ({
-        ...slot,
-        scout_name: slot.scout_name || schedule.scout_name,
-      })),
-    );
-    return filterVisibleHeadScoutSlots(rawSlots).map((slot) => ({ slot, weekOffset }));
-  });
-
-  const slots = scoredSlots
-    .sort((left, right) => {
-      const leftScore = scoreRescheduleSlot({
-        slot: left.slot,
-        previousHeadScoutName,
-        targetMinutes,
-        clientTimezone,
-        weekOffset: left.weekOffset,
-        now,
-      });
-      const rightScore = scoreRescheduleSlot({
-        slot: right.slot,
-        previousHeadScoutName,
-        targetMinutes,
-        clientTimezone,
-        weekOffset: right.weekOffset,
-        now,
-      });
-      if (leftScore !== rightScore) return leftScore - rightScore;
-      return left.slot.start.localeCompare(right.slot.start);
-    })
-    .map(({ slot, weekOffset }) => {
-      const display = formatHeadScoutNaturalSlotLabel(slot.start, slot.end, clientTimezone);
-      const isPreviousScout = Boolean(
-        previousHeadScoutName &&
-        normalizeNameKey(slot.scout_name) === normalizeNameKey(previousHeadScoutName),
-      );
-      return {
-        id: `${slot.scout_name}:${slot.id}`,
-        title: display.messageLabel,
-        subtitle: slot.scout_name,
-        scoutName: slot.scout_name,
-        messageLabel: display.messageLabel,
-        isPreviousScout,
-        dateLabel: display.dateLabel,
-        timeLabel: display.timeLabel,
-        zoneLabel: display.zoneLabel,
-        weekLabel: weekOffset > 0 ? 'next week' : 'this week',
-        start: slot.start,
-        end: slot.end,
-        openEventId: slot.id,
-      };
-    });
-
-  const suggestedSlots = slots
-    .slice(0, 2)
-    .sort((left, right) => left.start.localeCompare(right.start));
-
-  if (suggestedSlots.length < 2) {
-    throw new Error('Missing two reschedule slot options');
-  }
-
-  return {
-    previousMeeting,
-    previousMeetingText,
-    previousHeadScoutName,
-    slots,
-    suggestedSlots,
-    weekLabel:
-      payloadWeekLabels.length > 1
-        ? `${payloadWeekLabels[0]} / ${payloadWeekLabels[payloadWeekLabels.length - 1]}`
-        : payloadWeekLabels[0] || null,
-  };
-}
+type RankedRescheduleSlotPlan = RescheduleRecoverySlotPlan;
 
 function isParentResponseRecoveryStage(stageLabel?: string | null): boolean {
   const outcome = classifyPostMeetingOutcomeStage(String(stageLabel || ''))?.outcome;
@@ -8145,18 +8028,11 @@ export default function ScoutPrepCommand(
   }
 
   function buildBatchSourceTasks(): ScoutPortalTask[] {
-    const seen = new Set<string>();
-    return [
-      ...taskBuckets.todayPastDue,
-      ...taskBuckets.all,
-      ...taskBuckets.tomorrow,
-      ...taskBuckets.future,
-    ].filter((task) => {
-      const key = buildScoutPrepTaskItemId(task);
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
+    return buildTaskBucketRows({
+      filter: DEFAULT_TASK_LIST_FILTER,
+      taskBuckets,
+      sort: taskListSort,
+    }).map((row) => row.task);
   }
 
   function buildBatchVoicemailTarget() {

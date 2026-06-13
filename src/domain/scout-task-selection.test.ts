@@ -7,6 +7,7 @@ import {
   getIncompleteTasks,
   getTaskSpecificUpdateVariant,
   getTopmostIncompleteTask,
+  shouldConfirmScoutPrepDirectCompletion,
   isIncompleteTaskValue,
   resolvePostCallTaskToComplete,
   resolveVoicemailLifecycleTaskForCompletion,
@@ -51,6 +52,24 @@ test('task-specific update variants match follow-up task title forms', () => {
     'scheduled_follow_up',
   );
   assert.equal(getTaskSpecificUpdateVariant({ title: 'Call Attempt 2' }), null);
+});
+
+test('direct task completion confirmation is only required for call attempts', () => {
+  assert.equal(shouldConfirmScoutPrepDirectCompletion({ title: 'Call Attempt 1' }), true);
+  assert.equal(
+    shouldConfirmScoutPrepDirectCompletion({ title: '(SC Move This Task) Call Attempt 2' }),
+    true,
+  );
+  assert.equal(
+    shouldConfirmScoutPrepDirectCompletion({
+      title: 'Manual cleanup',
+      description: 'Please complete Call Attempt 3 after text reply.',
+    }),
+    true,
+  );
+  assert.equal(shouldConfirmScoutPrepDirectCompletion({ title: 'SCHEDULED FOLLOW-UP' }), false);
+  assert.equal(shouldConfirmScoutPrepDirectCompletion({ title: 'Reschedule Pending' }), false);
+  assert.equal(shouldConfirmScoutPrepDirectCompletion({ title: 'Confirmation Call' }), false);
 });
 
 test('confirmation task selection chooses newest incomplete confirmation task', () => {

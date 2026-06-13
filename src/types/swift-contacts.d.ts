@@ -26,6 +26,14 @@ declare module 'swift:../../swift/contacts' {
     urls: string[],
     notes: string[],
   ): Promise<SavedProspectContact[]>;
+  export function saveProspectContactsWithNameOverride(
+    firstNames: string[],
+    lastNames: string[],
+    phones: string[],
+    urls: string[],
+    notes: string[],
+    overwriteNames: boolean[],
+  ): Promise<SavedProspectContact[]>;
 }
 
 declare module 'swift:../swift/contacts' {
@@ -51,5 +59,13 @@ declare module 'swift:../swift/contacts' {
     phones: string[],
     urls: string[],
     notes: string[],
+  ): Promise<SavedProspectContact[]>;
+  export function saveProspectContactsWithNameOverride(
+    firstNames: string[],
+    lastNames: string[],
+    phones: string[],
+    urls: string[],
+    notes: string[],
+    overwriteNames: boolean[],
   ): Promise<SavedProspectContact[]>;
 }

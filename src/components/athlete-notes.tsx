@@ -8,11 +8,18 @@ interface AthleteNotesListProps {
   athleteId: string;
   athleteMainId: string;
   athleteName?: string;
+  prependedNotes?: AthleteNote[];
 }
 
-export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: AthleteNotesListProps) {
+export function AthleteNotesList({
+  athleteId,
+  athleteMainId,
+  athleteName,
+  prependedNotes = [],
+}: AthleteNotesListProps) {
   const [notes, setNotes] = useState<AthleteNote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const visibleNotes = [...prependedNotes, ...notes];
 
   useEffect(() => {
     const load = async () => {
@@ -55,10 +62,10 @@ export function AthleteNotesList({ athleteId, athleteMainId, athleteName }: Athl
       navigationTitle={`Athlete Notes • ${athleteName ?? athleteId}`}
       searchBarPlaceholder="Search notes..."
     >
-      {notes.length === 0 ? (
+      {visibleNotes.length === 0 ? (
         <List.EmptyView title="No notes found" description="Add a note from the previous screen." />
       ) : (
-        notes.map((note, index) => (
+        visibleNotes.map((note, index) => (
           <AthleteNoteItem key={`${note.title}-${index}`} note={note} index={index} />
         ))
       )}

@@ -147,7 +147,23 @@ export function selectScoutPrepContactNumbers(
 export function getProspectContactShortcutCandidates(
   context: ScoutPrepContext,
 ): ProspectContactShortcutCandidate[] {
-  const candidates = buildContactCandidates(context)
+  const candidates = getProspectContactRoleShortcutCandidates(context);
+
+  const uniqueByPhone = new Map<string, ProspectContactShortcutCandidate>();
+  for (const candidate of candidates) {
+    const existing = uniqueByPhone.get(candidate.phone);
+    if (!existing || candidate.id === 'studentAthlete') {
+      uniqueByPhone.set(candidate.phone, candidate);
+    }
+  }
+
+  return Array.from(uniqueByPhone.values());
+}
+
+export function getProspectContactRoleShortcutCandidates(
+  context: ScoutPrepContext,
+): ProspectContactShortcutCandidate[] {
+  return buildContactCandidates(context)
     .filter(
       (candidate): candidate is ContactCandidate & { name: string; normalizedPhone: string } =>
         Boolean(candidate.name && candidate.normalizedPhone),
@@ -163,16 +179,6 @@ export function getProspectContactShortcutCandidates(
       name: candidate.name,
       phone: candidate.normalizedPhone,
     }));
-
-  const uniqueByPhone = new Map<string, ProspectContactShortcutCandidate>();
-  for (const candidate of candidates) {
-    const existing = uniqueByPhone.get(candidate.phone);
-    if (!existing || candidate.id === 'studentAthlete') {
-      uniqueByPhone.set(candidate.phone, candidate);
-    }
-  }
-
-  return Array.from(uniqueByPhone.values());
 }
 
 export function getVoicemailFollowUpRecipients(

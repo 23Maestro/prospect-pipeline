@@ -119,6 +119,28 @@ private func requestContactAccess() async throws {
 }
 
 @raycast func saveProspectContacts(firstNames: [String], lastNames: [String], phones: [String], urls: [String], notes: [String]) async throws -> [SavedProspectContact] {
+  return try await saveProspectContactsInternal(
+    firstNames: firstNames,
+    lastNames: lastNames,
+    phones: phones,
+    urls: urls,
+    notes: notes,
+    overwriteNames: []
+  )
+}
+
+@raycast func saveProspectContactsWithNameOverride(firstNames: [String], lastNames: [String], phones: [String], urls: [String], notes: [String], overwriteNames: [Bool]) async throws -> [SavedProspectContact] {
+  return try await saveProspectContactsInternal(
+    firstNames: firstNames,
+    lastNames: lastNames,
+    phones: phones,
+    urls: urls,
+    notes: notes,
+    overwriteNames: overwriteNames
+  )
+}
+
+private func saveProspectContactsInternal(firstNames: [String], lastNames: [String], phones: [String], urls: [String], notes: [String], overwriteNames: [Bool]) async throws -> [SavedProspectContact] {
   _ = notes
   let store = CNContactStore()
   try await requestContactAccess()
@@ -138,6 +160,8 @@ private func requestContactAccess() async throws {
     let lastName = lastNames[index]
     let phone = phones[index]
     let url = index < urls.count ? urls[index].trimmingCharacters(in: .whitespacesAndNewlines) : ""
+    let shouldOverwriteName = index < overwriteNames.count ? overwriteNames[index] : false
+    let normalizedPhone = normalizePhone(phone)
     let match = try findProspectContact(firstName: firstName, lastName: lastName, phone: phone, store: store)
     let contact: CNMutableContact
     var status: String
@@ -147,6 +171,12 @@ private func requestContactAccess() async throws {
     switch match {
     case .samePhone(let existingContact):
       contact = existingContact.mutableCopy() as! CNMutableContact
+      let duplicateContacts = shouldOverwriteName
+        ? try findContactsByPhone(normalizedPhone, store: store, keys: prospectContactKeys())
+        : []
+      let shouldUpdateName =
+        shouldOverwriteName &&
+        (contact.givenName != firstName || contact.familyName != lastName)
       let backfillPlan = resolveExistingContactBackfillPlan(
         contact: existingContact,
         url: url,
@@ -154,9 +184,22 @@ private func requestContactAccess() async throws {
       )
       status = backfillPlan.status
       isNewContact = false
+      if shouldUpdateName {
+        contact.givenName = firstName
+        contact.familyName = lastName
+        status = "updated"
+        needsUpdate = true
+      }
       if backfillPlan.shouldUpdateContactUrl {
         appendHomeUrlIfMissing(url, to: contact)
         needsUpdate = true
+      }
+      if shouldOverwriteName {
+        for duplicateContact in duplicateContacts where duplicateContact.identifier != existingContact.identifier {
+          request.delete(duplicateContact.mutableCopy() as! CNMutableContact)
+          needsUpdate = true
+          status = "updated"
+        }
       }
     case .sameName(let existingContact):
       contact = existingContact.mutableCopy() as! CNMutableContact
@@ -252,13 +295,7 @@ private func appendHomeUrlIfMissing(_ url: String, to contact: CNMutableContact)
 }
 
 private func findProspectContact(firstName: String, lastName: String, phone: String, store: CNContactStore) throws -> ProspectContactMatch {
-  let keys: [CNKeyDescriptor] = [
-    CNContactIdentifierKey as CNKeyDescriptor,
-    CNContactGivenNameKey as CNKeyDescriptor,
-    CNContactFamilyNameKey as CNKeyDescriptor,
-    CNContactPhoneNumbersKey as CNKeyDescriptor,
-    CNContactUrlAddressesKey as CNKeyDescriptor,
-  ]
+  let keys = prospectContactKeys()
   let predicate = CNContact.predicateForContacts(matchingName: "\(firstName) \(lastName)")
   let contacts = try store.unifiedContacts(matching: predicate, keysToFetch: keys)
   let nameMatches = contacts.filter { contact in
@@ -283,6 +320,16 @@ private func findProspectContact(firstName: String, lastName: String, phone: Str
   return .none
 }
 
+private func prospectContactKeys() -> [CNKeyDescriptor] {
+  [
+    CNContactIdentifierKey as CNKeyDescriptor,
+    CNContactGivenNameKey as CNKeyDescriptor,
+    CNContactFamilyNameKey as CNKeyDescriptor,
+    CNContactPhoneNumbersKey as CNKeyDescriptor,
+    CNContactUrlAddressesKey as CNKeyDescriptor,
+  ]
+}
+
 func contactHasPhone(_ contact: CNContact, normalizedPhone: String) -> Bool {
   contact.phoneNumbers.contains { labeledValue in
     normalizePhone(labeledValue.value.stringValue) == normalizedPhone
@@ -298,20 +345,23 @@ func normalizePhone(_ phone: String) -> String {
 }
 
 private func findContactByPhone(_ normalizedPhone: String, store: CNContactStore, keys: [CNKeyDescriptor]) throws -> CNContact? {
+  try findContactsByPhone(normalizedPhone, store: store, keys: keys).first
+}
+
+private func findContactsByPhone(_ normalizedPhone: String, store: CNContactStore, keys: [CNKeyDescriptor]) throws -> [CNContact] {
   guard !normalizedPhone.isEmpty else {
-    return nil
+    return []
   }
 
-  var matchedContact: CNContact?
+  var matchedContacts: [CNContact] = []
   let request = CNContactFetchRequest(keysToFetch: keys)
-  try store.enumerateContacts(with: request) { contact, stop in
+  try store.enumerateContacts(with: request) { contact, _ in
     if contactHasPhone(contact, normalizedPhone: normalizedPhone) {
-      matchedContact = contact
-      stop.pointee = true
+      matchedContacts.append(contact)
     }
   }
 
-  return matchedContact
+  return matchedContacts
 }
 
 private func findPreferredGroup(store: CNContactStore) throws -> CNGroup? {

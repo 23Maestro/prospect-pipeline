@@ -188,16 +188,20 @@ test('Scouting Command post-call helper wraps Raycast post-call writer paths', (
 
 test('one-off and batch reschedule voicemail share ranked slot suggestions', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const rescheduleRecovery = readRepoFile('src/lib/reschedule-recovery-context.ts');
   const pickerStart = scoutPrep.indexOf('function RescheduleSlotSelectionList');
   const formStart = scoutPrep.indexOf('export function VoicemailFollowUpRecipientForm');
   const batchPlanStart = scoutPrep.indexOf('async function buildRescheduleBatchPlan');
   const batchPlanEnd = scoutPrep.indexOf('async function runScoutPrepStageCompletionBatchRow');
 
-  assert.match(scoutPrep, /function scoreRescheduleSlot\(/);
+  assert.match(scoutPrep, /from '\.\/lib\/reschedule-recovery-context'/);
+  assert.match(rescheduleRecovery, /export function scoreRescheduleRecoverySlot\(/);
   assert.doesNotMatch(scoutPrep, /scoreRescheduleBatchSlot/);
-  assert.match(scoutPrep, /async function buildRankedRescheduleSlotPlan/);
+  assert.doesNotMatch(scoutPrep, /function scoreRescheduleSlot\(/);
+  assert.doesNotMatch(scoutPrep, /async function buildRankedRescheduleSlotPlan/);
+  assert.match(rescheduleRecovery, /export async function buildRankedRescheduleSlotPlan/);
   assert.match(
-    scoutPrep,
+    rescheduleRecovery,
     /const weekOffsets = args\.weekOffsets\?\.length \? args\.weekOffsets : \[0, 1\]/,
   );
 
@@ -215,22 +219,39 @@ test('one-off and batch reschedule voicemail share ranked slot suggestions', () 
 
 test('Client Outreach proposed times uses slot picker without appointment truth', () => {
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
-  const planStart = scoutPrep.indexOf('async function buildRankedRescheduleSlotPlan');
-  const planEnd = scoutPrep.indexOf('async function buildRescheduleBatchPlan');
-  const plan = scoutPrep.slice(planStart, planEnd);
+  const rescheduleRecovery = readRepoFile('src/lib/reschedule-recovery-context.ts');
 
   assert.match(
     scoutPrep,
     /requirePreviousMeeting=\{isRescheduleVoicemailVariant\(selectedVariant\)\}/,
   );
-  assert.match(plan, /const mustHavePreviousMeeting = args\.requirePreviousMeeting !== false/);
-  assert.match(plan, /mustHavePreviousMeeting && athleteId && athleteMainId/);
-  assert.match(plan, /resolveBookedMeetingDetailsForForm\(/);
-  assert.doesNotMatch(plan, /resolveRequiredAppointmentTruthMeeting\(/);
   assert.match(
-    plan,
-    /resolveTimezone\(args\.context\.resolved\.city, args\.context\.resolved\.state\)/,
+    rescheduleRecovery,
+    /const mustHavePreviousMeeting = args\.requirePreviousMeeting !== false/,
   );
+  assert.match(rescheduleRecovery, /mustHavePreviousMeeting && athleteId && athleteMainId/);
+  assert.match(rescheduleRecovery, /resolveBookedMeetingDetailsForForm\(/);
+  assert.doesNotMatch(rescheduleRecovery, /resolveRequiredAppointmentTruthMeeting\(/);
+  assert.match(
+    rescheduleRecovery,
+    /resolveTimezone\(identity\.city, identity\.state\)/,
+  );
+});
+
+test('Client Messages and Pending Clients use the shared reschedule recovery foundation', () => {
+  const clientMessages = readRepoFile('src/client-message-inbox.tsx');
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const rescheduleRecovery = readRepoFile('src/lib/reschedule-recovery-context.ts');
+
+  assert.match(clientMessages, /from '\.\/lib\/reschedule-recovery-context'/);
+  assert.match(clientMessages, /buildRescheduleRecoverySlotPlan\(\{/);
+  assert.doesNotMatch(clientMessages, /function buildClientReviewRescheduleSlotOptions/);
+  assert.doesNotMatch(clientMessages, /function resolveReviewClientTimezone/);
+  assert.match(headScoutSchedules, /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/);
+  assert.match(scoutPrep, /buildRankedRescheduleSlotPlan\(\{/);
+  assert.match(rescheduleRecovery, /export async function buildRescheduleRecoverySlotPlan/);
+  assert.match(rescheduleRecovery, /previousMeetingSource: 'latest_appointment_truth'/);
 });
 
 test('Post-call reschedule template hydration reads the exact admin Events row', () => {
@@ -353,13 +374,21 @@ test('Scout Prep contact context resolves timezone from athlete city and state',
   assert.match(contactNoteFlow, /resolveTimezone\(context\.resolved\.city, context\.resolved\.state\)/);
   assert.doesNotMatch(contactNoteFlow, /appointment truth timezone/);
   assert.doesNotMatch(contactNoteFlow, /meetingTimezone|current_meeting_timezone|appointment/);
-  assert.match(scoutPrep, /saveProspectContacts\([\s\S]*?uniqueCandidates\.map\(\(\) => adminUrl\),[\s\S]*?uniqueCandidates\.map\(\(\) => contactNote\),[\s\S]*?\)/);
+  assert.match(scoutPrep, /saveProspectContacts\(firstNames, lastNames, phones, urls, notes\)/);
+  assert.match(scoutPrep, /saveProspectContactsWithNameOverride\([\s\S]*?uniqueCandidates\.map\(\(\) => true\),[\s\S]*?\)/);
+  assert.match(scoutPrep, /handleCreateAllProspectContacts\([\s\S]*?createProspectContactsBatch\([\s\S]*?contactCandidates,[\s\S]*?''[\s\S]*?\)/);
+  assert.match(scoutPrep, /handleSaveProspectContactRole\([\s\S]*?createProspectContactsBatch\([\s\S]*?\[candidate\],[\s\S]*?\{ overwriteNames: true \}[\s\S]*?\)/);
+  assert.match(scoutPrep, /title="Save as Parent 1 Contact"[\s\S]*?shortcut=\{\{ modifiers: \['cmd'\], key: '2' \}\}/);
+  assert.match(scoutPrep, /title="Save as Parent 2 Contact"[\s\S]*?shortcut=\{\{ modifiers: \['cmd'\], key: '3' \}\}/);
+  assert.doesNotMatch(scoutPrep, /Save as Student Athlete Contact/);
   assert.match(scoutPrep, /normalizePhoneForMessages\(candidate\.phone\) \|\| candidate\.phone/);
   assert.match(scoutPrep, /createProspectContactsBatch\([\s\S]*?buildScoutPrepAdminUrl\([\s\S]*?''[\s\S]*?\)/);
   assert.doesNotMatch(scoutPrep, /appendProspectContactNotes|runAppleScript|osascript/);
   const contactsBridge = readRepoFile('swift/contacts/Sources/ContactsBridge.swift');
   assert.match(contactsBridge, /appendHomeUrlIfMissing\(url, to: contact\)/);
   assert.match(contactsBridge, /findContactByPhone\(normalizedPhone, store: store, keys: keys\)/);
+  assert.match(contactsBridge, /findContactsByPhone\(normalizedPhone, store: store, keys: prospectContactKeys\(\)\)/);
+  assert.match(contactsBridge, /request\.delete\(duplicateContact\.mutableCopy\(\) as! CNMutableContact\)/);
   assert.doesNotMatch(contactsBridge, /launchContactNotesUpdateWithContactsApp|osascript|set note of contactPerson/);
   assert.doesNotMatch(contactsBridge, /appendTimezonePayload|queryItems|contact\.organizationName|CNContactNoteKey|contact\.note|kABNoteProperty/);
 });
@@ -594,6 +623,20 @@ test('Scout Prep launches Client Messages against contact-cache matched threads'
   );
 });
 
+test('Client Messages admits threads only through student-athlete contact-cache identity', () => {
+  const sandbox = readRepoFile('src/lib/client-message-sandbox.ts');
+
+  assert.match(sandbox, /resolveStudentAthleteMessagesForPhones\(chatPhones\)/);
+  assert.match(sandbox, /mergeContactCacheMatches\(matchesByPhone, contactCacheResolutions\)/);
+  assert.doesNotMatch(sandbox, /fetchContactsInGroup/);
+  assert.doesNotMatch(sandbox, /CLIENT_CONTACT_GROUP_CANDIDATES/);
+  assert.doesNotMatch(sandbox, /searchParentContactsByName/);
+  assert.doesNotMatch(sandbox, /resolveBackendMatchForContact/);
+  assert.doesNotMatch(sandbox, /contactsByPhone/);
+  assert.doesNotMatch(sandbox, /source: 'contacts'/);
+  assert.doesNotMatch(sandbox, /source: 'backend'/);
+});
+
 test('Client message UI verifies direct sends while normal Scout Prep and Set Meetings use native draft handoff', () => {
   const clientMessages = readRepoFile('src/client-message-inbox.tsx');
   const scoutPrep = readRepoFile('src/scout-prep.tsx');
@@ -639,6 +682,14 @@ test('Scout Prep home keeps the preferred due-today sorted view as the root stat
   assert.match(command, /useState<TaskListSort>\(DEFAULT_TASK_LIST_SORT\)/);
   assert.match(command, /setTaskListFilter\(DEFAULT_TASK_LIST_FILTER\)/);
   assert.match(command, /setTaskListSort\(DEFAULT_TASK_LIST_SORT\)/);
+  assert.match(
+    command,
+    /function buildBatchSourceTasks\(\): ScoutPortalTask\[\] \{[\s\S]*filter: DEFAULT_TASK_LIST_FILTER,[\s\S]*taskBuckets,[\s\S]*sort: taskListSort,[\s\S]*\}\)\.map\(\(row\) => row\.task\);[\s\S]*\}/,
+  );
+  assert.doesNotMatch(
+    command,
+    /function buildBatchSourceTasks\(\): ScoutPortalTask\[\] \{[\s\S]*\.\.\.taskBuckets\.tomorrow[\s\S]*\.\.\.taskBuckets\.future/,
+  );
   assert.doesNotMatch(command, /selectedSortLabel/);
 });
 
