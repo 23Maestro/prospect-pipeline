@@ -722,7 +722,7 @@ function showScheduleActionsModal(groups) {
     closeScheduleActionsModal();
     state.scheduleSlotSelection.active = true;
     await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
-    setStatus('Select slots');
+    setStatus('Selection on');
   });
 
   document.body.classList.add('modal-open');
@@ -833,14 +833,14 @@ function bindContactSearch(scope) {
 
 function bindScheduleSlotSelection() {
   document.querySelectorAll('[data-slot-select]').forEach((input) => {
-    input.addEventListener('change', async () => {
+    input.addEventListener('change', () => {
       const key = input.getAttribute('data-slot-key') || '';
       if (!key) return;
       const selected = new Set(state.scheduleSlotSelection.selectedKeys);
       if (input.checked) selected.add(key);
       else selected.delete(key);
       state.scheduleSlotSelection.selectedKeys = Array.from(selected);
-      await renderScoutSchedules(undefined, currentRenderContext('/scout-schedules'));
+      updateSelectedSlotsUi();
     });
   });
 
@@ -862,6 +862,14 @@ function bindScheduleSlotSelection() {
     setStatus('Slots copied');
     window.location.href = ADD_CLIPJAR_SHORTCUT_URL;
   });
+}
+
+function updateSelectedSlotsUi() {
+  const count = state.scheduleSlotSelection.selectedKeys.length;
+  const stopButton = document.querySelector('[data-stop-slot-selection]');
+  if (stopButton) stopButton.textContent = `Selecting ${count}`;
+  const confirmButton = document.querySelector('[data-confirm-selected-slots]');
+  if (confirmButton) confirmButton.textContent = `Confirm Slots${count ? ` (${count})` : ''}`;
 }
 
 async function runContactSearchQuery(query, scope, options = {}) {
@@ -1631,8 +1639,12 @@ async function setLoading(isLoading, message = '', renderContext) {
 
 function setStatus(message) {
   const text = String(message || '');
+  if (shouldShowToast(text)) {
+    statusLine.textContent = '';
+    showToast(text);
+    return;
+  }
   statusLine.textContent = text;
-  if (shouldShowToast(text)) showToast(text);
 }
 
 function shouldShowToast(message) {
@@ -1651,7 +1663,9 @@ function showToast(message) {
     toast.setAttribute('aria-live', 'polite');
     document.body.appendChild(toast);
   }
-  toast.textContent = message;
+  toast.classList.toggle('error', /failed|missing|could not|couldn/i.test(message));
+  toast.innerHTML = '<span class="mobile-toast-dot" aria-hidden="true"></span><span data-mobile-toast-message></span>';
+  toast.querySelector('[data-mobile-toast-message]').textContent = message;
   toast.classList.add('show');
   window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
