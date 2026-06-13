@@ -784,6 +784,9 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);
   assert.match(appText, /search_athlete_contact_cache/);
+  assert.match(appText, /\/api\/prospect-mobile\/search/);
+  assert.match(appText, /groupRawProspectRows/);
+  assert.match(appText, /sourceLabel: 'Prospect'/);
   assert.match(appText, /matched-result-actions/);
   assert.match(appText, /class="link-button admin-button"/);
   assert.match(appText, /buildAthleteAdminUrl/);
@@ -819,6 +822,7 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   assert.match(appText, /data-schedule-search-start/);
   assert.doesNotMatch(appText, /\/api\/contact-search/);
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
+  assert.match(appText, /scope === 'schedule'[\s\S]*searchAthleteContactCache/);
 });
 
 test('prospect mobile scout schedules use short cache and local scout search', () => {

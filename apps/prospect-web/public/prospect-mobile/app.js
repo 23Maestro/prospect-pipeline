@@ -524,7 +524,7 @@ function buildContactResultsHtml(results, selectedId, scope) {
                 <strong>${escapeHtml(group.title)}</strong>
                 <small>${escapeHtml(group.subtitle)}</small>
               </span>
-              <span>Select</span>
+              <span>${escapeHtml(group.sourceLabel || 'Select')}</span>
             </button>
           `;
         })
@@ -537,7 +537,14 @@ function buildSelectedContactCardsHtml(group) {
   const timezoneTag = buildCurrentTimezoneTag(group.timezone, group.timezoneLabel);
   return `
     <div class="contact-card-list">
-      ${group.adminUrl ? `<div class="matched-result-actions"><a class="link-button admin-button" href="${escapeAttribute(group.adminUrl)}" target="_blank" rel="noreferrer">Admin</a></div>` : ''}
+      ${
+        group.adminUrl || group.profileUrl
+          ? `<div class="matched-result-actions">
+              ${group.adminUrl ? `<a class="link-button admin-button" href="${escapeAttribute(group.adminUrl)}" target="_blank" rel="noreferrer">Admin</a>` : ''}
+              ${group.profileUrl ? `<a class="link-button" href="${escapeAttribute(group.profileUrl)}" target="_blank" rel="noreferrer">Profile</a>` : ''}
+            </div>`
+          : ''
+      }
       ${group.contacts.map((contact) => buildSelectedContactCardHtml(contact, timezoneTag)).join('')}
     </div>
   `;
@@ -545,6 +552,7 @@ function buildSelectedContactCardsHtml(group) {
 
 function buildSelectedContactCardHtml(contact, timezoneTag) {
   const phone = contact.phone || '';
+  const email = contact.email || '';
   const createUrl = buildScriptablePhoneActionUrl('ID New Contact', phone);
   const followUpUrl = buildScriptablePhoneActionUrl('ID iCal Follow-Up', phone);
   const clipboardPayload = buildContactClipboardPayload(contact);
@@ -555,12 +563,13 @@ function buildSelectedContactCardHtml(contact, timezoneTag) {
           <h2 class="row-title">${escapeHtml(contact.name)}</h2>
           <p class="row-subtitle">${escapeHtml(contact.relationship || 'Contact')}</p>
         </div>
-        <p class="row-meta">${escapeHtml(formatPhoneLabel(phone))}</p>
+        <p class="row-meta">${escapeHtml(formatPhoneLabel(phone) || email)}</p>
       </div>
       <div class="row-actions">
-        <button class="copy-button contact-copy-button" type="button" data-copy="${escapeAttribute(phone)}">Copy</button>
-        <button class="link-button contact-create-button" type="button" data-scriptable-url="${escapeAttribute(createUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Create</button>
-        <button class="link-button contact-follow-up-button" type="button" data-scriptable-url="${escapeAttribute(followUpUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Follow-Up</button>
+        ${phone ? `<button class="copy-button contact-copy-button" type="button" data-copy="${escapeAttribute(phone)}">Copy Phone</button>` : ''}
+        ${email ? `<button class="copy-button contact-copy-button" type="button" data-copy="${escapeAttribute(email)}">Copy Email</button>` : ''}
+        ${phone ? `<button class="link-button contact-create-button" type="button" data-scriptable-url="${escapeAttribute(createUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Create</button>` : ''}
+        ${phone ? `<button class="link-button contact-follow-up-button" type="button" data-scriptable-url="${escapeAttribute(followUpUrl)}" data-contact-clipboard="${escapeAttribute(clipboardPayload)}">Follow-Up</button>` : ''}
         ${timezoneTag ? `<span class="timezone-tag">${escapeHtml(timezoneTag)}</span>` : ''}
       </div>
     </article>
@@ -698,7 +707,9 @@ async function runContactSearchQuery(query, scope, options = {}) {
   }
 
   setStatus('Searching');
-  const results = groupContactSearchRows(await searchAthleteContactCache(trimmedQuery), trimmedQuery);
+  const results = scope === 'schedule'
+    ? groupContactSearchRows(await searchAthleteContactCache(trimmedQuery), trimmedQuery)
+    : await searchProspectMobile(trimmedQuery);
   if (scope === 'schedule') {
     state.scheduleSearch.results = results;
     if (options.autoSelectSingle && results.length === 1) state.scheduleSearch.selectedId = results[0].id;
@@ -744,6 +755,22 @@ async function searchAthleteContactCache(query) {
     throw new Error(rows.message || rows.error || `Supabase ${response.status}`);
   }
   return Array.isArray(rows) ? rows : [];
+}
+
+async function searchProspectMobile(query) {
+  const response = await fetch('/api/prospect-mobile/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `Search ${response.status}`);
+  }
+  if (payload.mode === 'contact_cache') {
+    return groupContactSearchRows(Array.isArray(payload.rows) ? payload.rows : [], query);
+  }
+  return groupRawProspectRows(Array.isArray(payload.results) ? payload.results : []);
 }
 
 function groupContactSearchRows(rows, query) {
@@ -804,8 +831,70 @@ function groupContactSearchRows(rows, query) {
       ...group,
       title,
       subtitle,
+      sourceLabel: 'Cache',
     };
   });
+}
+
+function groupRawProspectRows(rows) {
+  return rows
+    .map((row, index) => {
+      const athleteId = String(row.athlete_id || '').trim();
+      const athleteMainId = String(row.athlete_main_id || '').trim();
+      if (!athleteId) return null;
+      const contacts = buildRawProspectContacts(row);
+      const subtitle = [
+        row.grad_year ? `Class of ${row.grad_year}` : '',
+        row.sport || '',
+        row.high_school || '',
+      ]
+        .filter(Boolean)
+        .join(' - ');
+      return {
+        id: `raw:${athleteId}:${athleteMainId || index}`,
+        athleteName: row.name || `Athlete ${athleteId}`,
+        athleteId,
+        athleteMainId,
+        title: row.name || `Athlete ${athleteId}`,
+        subtitle: subtitle || row.parent_name || row.email || 'Prospect Search',
+        adminUrl: buildAthleteAdminUrl(athleteId, athleteMainId),
+        profileUrl: row.url || `https://dashboard.nationalpid.com/athlete/profile/${encodeURIComponent(athleteId)}`,
+        matchKind: 'raw',
+        sourceLabel: 'Prospect',
+        contacts,
+      };
+    })
+    .filter(Boolean);
+}
+
+function buildRawProspectContacts(row) {
+  const contacts = [];
+  const athleteName = row.name || 'Student Athlete';
+  if (row.phone || row.email) {
+    contacts.push({
+      name: athleteName,
+      relationship: 'Student Athlete',
+      phone: row.phone || '',
+      email: row.email || '',
+    });
+  }
+  if (row.parent_name || row.parent_phone || row.parent_email) {
+    contacts.push({
+      name: row.parent_name || 'Parent',
+      relationship: 'Parent',
+      phone: row.parent_phone || '',
+      email: row.parent_email || '',
+    });
+  }
+  if (!contacts.length) {
+    contacts.push({
+      name: athleteName,
+      relationship: 'Prospect',
+      phone: '',
+      email: '',
+    });
+  }
+  return contacts;
 }
 
 function buildAthleteAdminUrl(athleteId, athleteMainId) {

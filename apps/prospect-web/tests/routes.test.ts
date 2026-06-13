@@ -5,6 +5,7 @@ import { GET as meetingReadbackDataGET } from '../app/api/meeting-readback-data/
 import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
 import { POST as postMeetingOutcomePOST } from '../app/api/post-meeting-outcome/route';
+import { POST as prospectMobileSearchPOST } from '../app/api/prospect-mobile/search/route';
 import { GET as prospectMobileSetMeetingsGET } from '../app/api/prospect-mobile/set-meetings/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
 import { createCoachRisnerSessionSetCookie } from '../app/api/tim-lite/access';
@@ -56,6 +57,88 @@ test('/api/tim-lite/auth/login requires Prospect credentials', async () => {
     error: 'Prospect email and password are required',
     code: 'coach_risner_credentials_required',
   });
+});
+
+test('/api/prospect-mobile/search uses contact cache first for phone searches', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json([
+      {
+        athlete_key: '149:953',
+        athlete_id: '149',
+        athlete_main_id: '953',
+        athlete_name: 'Jamiya Turner',
+        contact_name: 'Parent One',
+        relationship_label: 'Parent 1',
+        phone: '(555) 111-2222',
+        normalized_phone: '5551112222',
+      },
+    ]);
+  };
+
+  const response = await prospectMobileSearchPOST(
+    new Request('https://example.test/api/prospect-mobile/search', {
+      method: 'POST',
+      body: JSON.stringify({ query: '(555) 111-2222' }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.mode, 'contact_cache');
+  assert.equal(payload.count, 1);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://supabase.example/rest/v1/rpc/search_athlete_contact_cache');
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), { input_query: '(555) 111-2222' });
+});
+
+test('/api/prospect-mobile/search sends email searches to athlete and parent raw search', async () => {
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    return Response.json({
+      success: true,
+      count: 1,
+      results: [
+        {
+          athlete_id: '149',
+          athlete_main_id: '953',
+          name: 'Jamiya Turner',
+          parent_name: 'Parent One',
+          parent_email: 'parent@example.com',
+        },
+      ],
+    });
+  };
+
+  const response = await prospectMobileSearchPOST(
+    new Request('https://example.test/api/prospect-mobile/search', {
+      method: 'POST',
+      body: JSON.stringify({ query: 'parent@example.com' }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.mode, 'raw_email');
+  assert.equal(payload.count, 1);
+  assert.equal(payload.results[0].name, 'Jamiya Turner');
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, 'https://tailnet.example/api/v1/athlete/raw-search');
+  assert.equal(calls[1].url, 'https://tailnet.example/api/v1/athlete/raw-search');
+  assert.equal(JSON.parse(String(calls[0].init?.body)).email, 'parent@example.com');
+  assert.equal(JSON.parse(String(calls[1].init?.body)).searching_for, 'Parent');
+  assert.equal(calls[0].init?.headers?.['x-mobile-proxy' as keyof HeadersInit], 'vercel');
 });
 
 test('/api/tim-lite/meetings reads Tim cache through Tim support appointment status', async () => {
