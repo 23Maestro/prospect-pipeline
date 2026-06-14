@@ -880,8 +880,7 @@ test('home command center uses the reduced glowing shield svg', () => {
   const stylesText = readFileSync(join(appRoot, 'app/globals.css'), 'utf8');
 
   assert.match(pageText, /Command Center/);
-  assert.match(pageText, /href: '\/prospect-call-tracker'[\s\S]*title: 'SC: Calls'/);
-  assert.match(pageText, /href: '\/prospect-mobile'[\s\S]*title: 'scoutOS'/);
+  assert.match(pageText, /href: '\/prospect-mobile'[\s\S]*title: 'scoutOS'[\s\S]*href: '\/prospect-call-tracker'[\s\S]*title: 'SC: Calls'/);
   assert.match(pageText, /href: '\/prospect-meetings'[\s\S]*title: 'SC: Meetings'/);
   assert.doesNotMatch(pageText, /home-actions/);
   assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
@@ -889,6 +888,7 @@ test('home command center uses the reduced glowing shield svg', () => {
   assert.doesNotMatch(pageText, /\/prospect-call-tracker\/prospect-pipeline\.png/);
   assert.match(stylesText, /color-scheme: dark light/);
   assert.match(stylesText, /\.home-surface-calls \{[\s\S]*rgba\(185, 28, 28, 0\.88\)/);
+  assert.match(stylesText, /\.home-surface-scout \{[\s\S]*rgba\(56, 189, 248, 0\.28\)/);
   assert.match(stylesText, /\.home-surface-scout strong \{[\s\S]*color: #b7d0ff;/);
   assert.match(stylesText, /\.home-surface-meetings \{[\s\S]*background:[\s\S]*rgba\(255, 255, 255, 0\.95\)/);
   assert.doesNotMatch(stylesText, /\.home-actions a \+ a/);

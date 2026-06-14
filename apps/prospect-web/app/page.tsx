@@ -2,14 +2,14 @@ export const dynamic = 'force-static';
 
 const surfaces = [
   {
-    href: '/prospect-call-tracker',
-    title: 'SC: Calls',
-    tone: 'calls',
-  },
-  {
     href: '/prospect-mobile',
     title: 'scoutOS',
     tone: 'scout',
+  },
+  {
+    href: '/prospect-call-tracker',
+    title: 'SC: Calls',
+    tone: 'calls',
   },
   {
     href: '/prospect-meetings',
