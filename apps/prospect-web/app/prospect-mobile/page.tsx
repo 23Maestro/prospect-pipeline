@@ -15,7 +15,7 @@ export default function ProspectMobilePage() {
       <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070816" />
       <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fbff" />
       <link rel="icon" href="/prospect-id-shield.svg" />
-      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260613-status-hud" />
+      <link rel="stylesheet" href="/prospect-mobile/styles.css?v=20260614-scoutos" />
       <main className="app-shell">
         <header className="topbar">
           <div className="brand-lockup">
@@ -26,7 +26,7 @@ export default function ProspectMobilePage() {
                 className="mobile-mark shrink-0"
               />
             </a>
-            <h1 id="page-title">SC: Mobile</h1>
+            <h1 id="page-title">scoutOS</h1>
           </div>
           <button className="icon-button" id="refresh-button" type="button" aria-label="Refresh">
             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -82,7 +82,7 @@ export default function ProspectMobilePage() {
           __html: `window.__PROSPECT_SUPABASE__ = ${JSON.stringify(supabaseConfig)};`,
         }}
       />
-      <Script type="module" src="/prospect-mobile/app.js?v=20260613-status-hud" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260614-scoutos" strategy="afterInteractive" />
     </>
   );
 }

@@ -102,7 +102,7 @@ async function loadRoute(options = {}) {
   const requestId = ++state.routeRequestId;
   const renderContext = { routeKey, requestId };
   const route = routes[routeKey];
-  pageTitle.textContent = 'SC: Mobile';
+  pageTitle.textContent = 'scoutOS';
   weekToolbar.hidden = !route.usesWeek;
   setActiveNavigation();
 

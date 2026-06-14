@@ -765,14 +765,14 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(pageText, /data-route="\/set-meetings"/);
   assert.match(pageText, /data-route="\/scout-schedules"/);
   assert.match(pageText, /data-route="\/contact-search"/);
-  assert.match(pageText, /SC: Mobile/);
+  assert.match(pageText, /scoutOS/);
   assert.match(pageText, /className="brand-home-link" href="\/" aria-label="Back to Command Center"/);
   assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
   assert.match(pageText, /alt="Prospect ID"/);
   assert.match(pageText, /className="mobile-mark shrink-0"/);
   assert.doesNotMatch(pageText, /className="brand-mark"/);
   assert.doesNotMatch(pageText, /\/prospect-mobile\/assets\/prospect-pipeline\.png/);
-  assert.match(appText, /pageTitle\.textContent = 'SC: Mobile'/);
+  assert.match(appText, /pageTitle\.textContent = 'scoutOS'/);
   assert.match(stylesText, /--command-bg:[\s\S]*#081120/);
   assert.match(stylesText, /background: var\(--command-bg\)/);
   assert.match(stylesText, /\.topbar \{[\s\S]*border: 0;[\s\S]*background: transparent;[\s\S]*box-shadow: none;/);
@@ -780,7 +780,7 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(stylesText, /\.mobile-mark \{[\s\S]*width: 52px;[\s\S]*height: 52px;/);
   assert.match(stylesText, /\.mobile-mark \{[\s\S]*drop-shadow\(0 0 24px rgba\(0, 112, 243, 0\.3\)\)/);
   assert.match(stylesText, /\.shrink-0 \{[\s\S]*flex-shrink: 0;/);
-  assert.match(stylesText, /text-shadow:[\s\S]*rgba\(0, 112, 243, 0\.22\)/);
+  assert.match(stylesText, /text-shadow:[\s\S]*rgba\(59, 130, 246, 0\.28\)/);
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);
   assert.match(appText, /search_athlete_contact_cache/);
@@ -880,13 +880,17 @@ test('home command center uses the reduced glowing shield svg', () => {
   const stylesText = readFileSync(join(appRoot, 'app/globals.css'), 'utf8');
 
   assert.match(pageText, /Command Center/);
-  assert.match(pageText, /href: '\/prospect-call-tracker'[\s\S]*title: 'Prospect Call Tracker'/);
-  assert.match(pageText, /href: '\/prospect-mobile'[\s\S]*title: 'Prospect Mobile'/);
+  assert.match(pageText, /href: '\/prospect-call-tracker'[\s\S]*title: 'SC: Calls'/);
+  assert.match(pageText, /href: '\/prospect-mobile'[\s\S]*title: 'scoutOS'/);
   assert.match(pageText, /href: '\/prospect-meetings'[\s\S]*title: 'SC: Meetings'/);
+  assert.doesNotMatch(pageText, /home-actions/);
   assert.match(pageText, /src="\/prospect-id-shield\.svg"/);
   assert.match(pageText, /alt="Prospect ID"/);
   assert.doesNotMatch(pageText, /\/prospect-call-tracker\/prospect-pipeline\.png/);
-  assert.match(stylesText, /\.home-actions a \{[\s\S]*background: #0a0a0a;[\s\S]*color: var\(--geist-text\);/);
+  assert.match(stylesText, /color-scheme: dark light/);
+  assert.match(stylesText, /\.home-surface-calls \{[\s\S]*rgba\(185, 28, 28, 0\.88\)/);
+  assert.match(stylesText, /\.home-surface-scout strong \{[\s\S]*color: #b7d0ff;/);
+  assert.match(stylesText, /\.home-surface-meetings \{[\s\S]*background:[\s\S]*rgba\(255, 255, 255, 0\.95\)/);
   assert.doesNotMatch(stylesText, /\.home-actions a \+ a/);
   assert.match(stylesText, /\.home-mark \{[\s\S]*width: 28px;[\s\S]*height: 28px;/);
   assert.match(stylesText, /\.home-mark \{[\s\S]*drop-shadow\(0 0 20px rgba\(0, 112, 243, 0\.28\)\)/);

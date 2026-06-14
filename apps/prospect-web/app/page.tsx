@@ -3,15 +3,18 @@ export const dynamic = 'force-static';
 const surfaces = [
   {
     href: '/prospect-call-tracker',
-    title: 'Prospect Call Tracker',
+    title: 'SC: Calls',
+    tone: 'calls',
   },
   {
     href: '/prospect-mobile',
-    title: 'Prospect Mobile',
+    title: 'scoutOS',
+    tone: 'scout',
   },
   {
     href: '/prospect-meetings',
     title: 'SC: Meetings',
+    tone: 'meetings',
   },
 ];
 
@@ -32,11 +35,6 @@ export default function HomePage() {
       <section className="home-grid">
         <div className="home-copy">
           <h1>Command Center</h1>
-          <div className="home-actions">
-            {surfaces.map((surface) => (
-              <a key={surface.href} href={surface.href}>{surface.title}</a>
-            ))}
-          </div>
         </div>
 
         <div className="home-panel">
@@ -48,7 +46,7 @@ export default function HomePage() {
             <a
               key={surface.href}
               href={surface.href}
-              className="home-surface"
+              className={`home-surface home-surface-${surface.tone}`}
             >
               <span>
                 <strong>{surface.title}</strong>
