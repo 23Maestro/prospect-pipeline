@@ -50,8 +50,10 @@ export default function ProspectMeetingsPage() {
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070816" />
+      <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fbff" />
       <link rel="icon" href="/prospect-id-shield.svg" />
-      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260603-enrollment-tracker" />
+      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260614-light-mode" />
       <main className="shell">
         <header className="topbar">
           <div className="brand-row">
