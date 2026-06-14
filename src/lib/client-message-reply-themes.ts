@@ -25,6 +25,31 @@ export type ClientReplyThemeReviewMessageInput = {
   isFromMe?: boolean;
 };
 
+export type PendingClientThemeBucket =
+  | 'RSP'
+  | 'No Show'
+  | 'Cancel'
+  | 'Call Attempt'
+  | 'Opt Out'
+  | 'Unclassified';
+
+export type ClientReplyMessageEvidence = {
+  guid: string;
+  body: string;
+  date: string | null;
+  senderName: string | null;
+  isFromMe: boolean;
+};
+
+export type ClientReplyEvidence = {
+  themeBucket: PendingClientThemeBucket;
+  lastMeaningfulInbound: ClientReplyMessageEvidence | null;
+  lastMeaningfulOutbound: ClientReplyMessageEvidence | null;
+  operatorRepliedAfterInbound: boolean;
+  operatorReplyProposedTimes: boolean;
+  clientOptedOut: boolean;
+};
+
 export type ClientReplyThemeReviewRow = {
   id: string;
   chatGuid: string;
@@ -45,6 +70,7 @@ export type ClientReplyThemeReviewRow = {
   matchedPhones: string[];
   operatorRepliedAfter: boolean;
   operatorRescheduleOfferAfter: boolean;
+  replyEvidence?: ClientReplyEvidence;
   followUpEvidence?: string[];
 };
 
@@ -192,7 +218,7 @@ export function findPendingClientReplyThemeState(
   const rows = snapshot?.rows || [];
   const match = rows.find(
     (row) =>
-      row.theme === 'reschedule_request' &&
+      (row.theme === 'reschedule_request' || row.theme === 'outreach_callback') &&
       clientReplyThemeRowMatchesPendingClient(row, pendingClient),
   );
   if (!match) return null;
@@ -291,7 +317,7 @@ export function buildClientReplyThemeThreadMarkdown(args: {
 
 const FLAG_PATTERNS: Record<ClientMessageTheme, RegExp> = {
   reschedule_request:
-    /(?:\b(reschedule|re-schedule|move\s+(the\s+)?meeting|different\s+time|still\s+interested|need\s+to\s+reschedule)\b|^\s*(?:1|one)\s*$)/i,
+    /(?:\b(reschedule|re-schedule|move\s+(the\s+)?meeting|different\s+time|still\s+interested|need\s+to\s+reschedule|bad\s+timing|timing\s+is\s+bad|no\s+longer\s+interested|not\s+interested|cancel(?:ed|led)?|opt\s*out)\b|^\s*(?:1|one|2|two|3|three)\s*$)/i,
   outreach_callback:
     /\b(tomorrow|tmrw|later\s+today|available\s+today|free\s+today|working|at\s+work|work\s+meeting|call\s+me|call\s+back|after\s+work)\b/i,
 };
@@ -321,6 +347,40 @@ function isPostMeetingRecoveryContext(value?: string | null): boolean {
   );
 }
 
+function isClientOptOut(text?: string | null): boolean {
+  return /\b(no\s+longer\s+interested|not\s+interested|no\s+interest|do\s+not\s+contact|don't\s+contact|stop|unsubscribe|opt\s*out)\b/i.test(
+    normalizeText(text),
+  );
+}
+
+function isCallAttemptTiming(text?: string | null): boolean {
+  return /\b(later\s+today|tomorrow|tmrw|tonight|after\s+work|at\s+work|working|call\s+me|call\s+back|available\s+(?:today|tomorrow)|free\s+(?:today|tomorrow)|\d{1,2}(?::\d{2})?\s*(?:am|pm))\b/i.test(
+    normalizeText(text),
+  );
+}
+
+export function classifyPendingClientThemeBucket(
+  text?: string | null,
+  theme?: ClientMessageTheme | null,
+  taskTitle?: string | null,
+): PendingClientThemeBucket {
+  const body = normalizeText(text);
+  const task = normalizeText(taskTitle);
+  const combined = `${task}\n${body}`;
+  if (isClientOptOut(body)) return 'Opt Out';
+  if (/\bno\s*show\b/i.test(task)) return 'No Show';
+  if (/\breschedule\s+pending\b|\bres\.\s*pending\b|\bpending\s+reschedule\b/i.test(task)) {
+    return 'RSP';
+  }
+  if (/\bcancel(?:ed|led|ation)?\b/i.test(combined)) return 'Cancel';
+  if (isCallAttemptTiming(body) || /\bcall\s+attempt\b/i.test(task)) return 'Call Attempt';
+  if (theme === 'outreach_callback') return 'Call Attempt';
+  if (theme === 'reschedule_request' || /\breschedule|different\s+time|move\s+(?:the\s+)?meeting\b/i.test(body)) {
+    return 'RSP';
+  }
+  return 'Unclassified';
+}
+
 export function classifyClientMessageThemes(text?: string | null): ClientMessageTheme[] {
   const normalized = normalizeText(text);
   if (!normalized) return [];
@@ -337,6 +397,18 @@ function sortMessagesOldestFirst(
   return [...messages].sort((left, right) =>
     normalizeText(left.date).localeCompare(normalizeText(right.date)),
   );
+}
+
+function toMessageEvidence(
+  message: ClientReplyThemeReviewMessageInput,
+): ClientReplyMessageEvidence {
+  return {
+    guid: normalizeText(message.guid),
+    body: normalizeText(message.body),
+    date: normalizeText(message.date) || null,
+    senderName: normalizeText(message.senderName) || null,
+    isFromMe: Boolean(message.isFromMe),
+  };
 }
 
 function templateContextForOutbound(text?: string | null): ClientMessageTemplateContext | null {
@@ -358,6 +430,34 @@ export function isOperatorRescheduleOffer(text?: string | null): boolean {
     return false;
   }
   return RESCHEDULE_OFFER_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+function buildClientReplyEvidence(args: {
+  messages: ClientReplyThemeReviewMessageInput[];
+  inbound: ClientReplyThemeReviewMessageInput;
+  theme: ClientMessageTheme;
+  taskTitle?: string | null;
+}): ClientReplyEvidence {
+  const inboundDate = normalizeText(args.inbound.date);
+  const meaningful = args.messages.filter((message) => normalizeText(message.body));
+  const inboundMessages = meaningful.filter((message) => !message.isFromMe);
+  const outboundMessages = meaningful.filter((message) => message.isFromMe);
+  const outboundAfterInbound = outboundMessages.filter(
+    (message) => normalizeText(message.date) > inboundDate,
+  );
+  const lastInbound = inboundMessages[inboundMessages.length - 1] || args.inbound;
+  const lastOutbound = outboundMessages[outboundMessages.length - 1] || null;
+
+  return {
+    themeBucket: classifyPendingClientThemeBucket(args.inbound.body, args.theme, args.taskTitle),
+    lastMeaningfulInbound: lastInbound ? toMessageEvidence(lastInbound) : null,
+    lastMeaningfulOutbound: lastOutbound ? toMessageEvidence(lastOutbound) : null,
+    operatorRepliedAfterInbound: outboundAfterInbound.length > 0,
+    operatorReplyProposedTimes: outboundAfterInbound.some((message) =>
+      isOperatorRescheduleOffer(message.body),
+    ),
+    clientOptedOut: isClientOptOut(args.inbound.body),
+  };
 }
 
 function flagMatchesTemplateContext(
@@ -440,6 +540,12 @@ export function buildClientReplyThemeReviewSnapshot(args: {
         matchedPhones: chat.matchedPhones || [],
         operatorRepliedAfter,
         operatorRescheduleOfferAfter,
+        replyEvidence: buildClientReplyEvidence({
+          messages,
+          inbound: message,
+          theme: candidateTheme,
+          taskTitle: chat.taskTitle,
+        }),
       };
 
       if (theme && latestTemplateContext) {

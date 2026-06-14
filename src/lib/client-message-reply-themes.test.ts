@@ -5,6 +5,7 @@ import {
   buildClientReplyThemeReviewSnapshot,
   buildClientReplyThemeThreadMarkdown,
   classifyClientMessageTheme,
+  classifyPendingClientThemeBucket,
   clientReplyThemeReviewBucketLabel,
   clientReplyThemeReviewDisplayName,
   clientReplyThemeReviewReasonLabel,
@@ -91,6 +92,10 @@ test('no-show option reply 1 is needs reply until operator proposes new times', 
   assert.equal(needsReplySnapshot.rows.length, 1);
   assert.equal(needsReplySnapshot.rows[0].theme, 'reschedule_request');
   assert.equal(needsReplySnapshot.rows[0].operatorRepliedAfter, false);
+  assert.equal(needsReplySnapshot.rows[0].replyEvidence?.themeBucket, 'No Show');
+  assert.equal(needsReplySnapshot.rows[0].replyEvidence?.lastMeaningfulInbound?.body, '1');
+  assert.equal(needsReplySnapshot.rows[0].replyEvidence?.operatorRepliedAfterInbound, false);
+  assert.equal(needsReplySnapshot.rows[0].replyEvidence?.operatorReplyProposedTimes, false);
   assert.equal(
     findPendingClientReplyThemeState(
       { athlete_main_id: '456', athlete_name: 'Avery Jones' },
@@ -133,6 +138,9 @@ test('no-show option reply 1 is needs reply until operator proposes new times', 
 
   assert.equal(awaitingSnapshot.rows[0].operatorRepliedAfter, true);
   assert.equal(awaitingSnapshot.rows[0].operatorRescheduleOfferAfter, true);
+  assert.equal(awaitingSnapshot.rows[0].replyEvidence?.themeBucket, 'No Show');
+  assert.equal(awaitingSnapshot.rows[0].replyEvidence?.operatorRepliedAfterInbound, true);
+  assert.equal(awaitingSnapshot.rows[0].replyEvidence?.operatorReplyProposedTimes, true);
   assert.equal(
     findPendingClientReplyThemeState(
       { athlete_main_id: '456', athlete_name: 'Avery Jones' },
@@ -140,6 +148,69 @@ test('no-show option reply 1 is needs reply until operator proposes new times', 
     )?.status,
     'awaiting_reschedule',
   );
+});
+
+test('reschedule reply evidence distinguishes generic reply from proposed times', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-13T12:00:00.000Z',
+    chats: [
+      chat({
+        guid: 'chat-rsp',
+        displayName: 'Parent',
+        athleteName: 'Avery Jones',
+        athleteMainId: '9001',
+        taskTitle: 'Reschedule Pending',
+      }),
+    ],
+    messagesByChatGuid: {
+      'chat-rsp': [
+        message({
+          guid: 'out-1',
+          isFromMe: true,
+          date: '2026-06-13T10:00:00.000Z',
+          body: 'Please reply with the best fit. 1 reschedule, 2 bad timing, 3 no longer interested.',
+        }),
+        message({
+          guid: 'in-1',
+          isFromMe: false,
+          date: '2026-06-13T10:05:00.000Z',
+          body: '1',
+        }),
+        message({
+          guid: 'out-2',
+          isFromMe: true,
+          date: '2026-06-13T10:10:00.000Z',
+          body: 'No problem, I will check with Coach.',
+        }),
+      ],
+    },
+  });
+
+  assert.equal(snapshot.rows[0].operatorRepliedAfter, true);
+  assert.equal(snapshot.rows[0].operatorRescheduleOfferAfter, false);
+  assert.equal(snapshot.rows[0].replyEvidence?.themeBucket, 'RSP');
+  assert.equal(snapshot.rows[0].replyEvidence?.lastMeaningfulInbound?.body, '1');
+  assert.equal(
+    snapshot.rows[0].replyEvidence?.lastMeaningfulOutbound?.body,
+    'No problem, I will check with Coach.',
+  );
+});
+
+test('classifies pending client theme buckets from reply text and task context', () => {
+  const fixtures = [
+    ['1', 'Meeting Result - No Show', 'No Show'],
+    ['2', 'Meeting Result - No Show', 'No Show'],
+    ['3', 'Meeting Result - No Show', 'No Show'],
+    ['Can we do later today?', 'Call Attempt 1', 'Call Attempt'],
+    ['Call me after work', 'Call Attempt 2', 'Call Attempt'],
+    ['We need to cancel but maybe another week', 'Meeting Result - Canceled', 'Cancel'],
+    ['Not interested anymore', 'Meeting Result - Canceled', 'Opt Out'],
+    ['Need to reschedule', 'Reschedule Pending', 'RSP'],
+  ] as const;
+
+  for (const [body, taskTitle, expected] of fixtures) {
+    assert.equal(classifyPendingClientThemeBucket(body, 'reschedule_request', taskTitle), expected);
+  }
 });
 
 test('flags only obvious missed reschedule replies after confirmation templates', () => {
@@ -199,6 +270,41 @@ test('flags only obvious missed callback replies after outreach attempt template
   assert.equal(snapshot.rows.length, 1);
   assert.equal(snapshot.rows[0].theme, 'outreach_callback');
   assert.equal(snapshot.rows[0].templateContext, 'outreach_attempt');
+});
+
+test('matches pending clients to callback timing evidence', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-05-27T17:00:00.000Z',
+    chats: [chat({ taskTitle: 'Call Attempt 1' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'attempt',
+          body: 'This is Jerami with Prospect ID. Avery’s profile came through and I wanted to ask a few quick questions about his college football goals.',
+          date: '2026-05-27T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'actionable',
+          body: 'Can you call me after work?',
+          date: '2026-05-27T16:00:00.000Z',
+        }),
+      ],
+    },
+  });
+
+  const state = findPendingClientReplyThemeState(
+    {
+      athlete_main_id: '456',
+      athlete_name: 'Avery Jones',
+      event_title: 'Call Attempt 1',
+    },
+    snapshot,
+  );
+
+  assert.equal(state?.status, 'needs_reply');
+  assert.equal(state?.row.theme, 'outreach_callback');
+  assert.equal(state?.row.replyEvidence?.themeBucket, 'Call Attempt');
 });
 
 test('flags reschedule after loose confirmation-like outbound context', () => {

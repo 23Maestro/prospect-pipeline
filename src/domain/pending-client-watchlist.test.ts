@@ -11,6 +11,7 @@ import {
   cleanPendingClientAthleteName,
   classifyPendingClientActionTag,
   classifyPendingClientLifecycle,
+  classifyPendingClientOperatorQueue,
   filterReadySetMeetingConfirmationGroups,
   filterPendingClientCandidateEvents,
   findPendingClientSignals,
@@ -282,6 +283,119 @@ test('pending client watchlist row persists the helper action tag', () => {
   });
 
   assert.equal(row.action_tag, 'Payment Watch');
+});
+
+function pendingClientRow(overrides = {}) {
+  return buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'pending-client:queue',
+      title: '(RSP) Avery Jones Football 2027 TN',
+      assigned_owner: 'Ryan Lietz',
+      start: '2026-06-13T10:00',
+      end: '2026-06-13T11:00',
+    },
+    description: 'Lifecycle: reschedule_pending',
+    matchedSignals: [],
+    actionTag: 'Operator Input',
+    aiVerdict: 'pending_client',
+    athleteId: '123',
+    athleteMainId: '456',
+    athleteName: 'Avery Jones',
+    now: new Date('2026-06-13T15:00:00.000Z'),
+    ...overrides,
+  });
+}
+
+test('pending client operator queue labels reply evidence before generic action tags', () => {
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow(),
+      replyEvidence: {
+        themeBucket: 'RSP',
+        lastMeaningfulInbound: { body: '1' },
+        operatorReplyProposedTimes: false,
+      },
+    }).label,
+    'Needs Times',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow(),
+      replyEvidence: {
+        themeBucket: 'RSP',
+        lastMeaningfulInbound: { body: '1' },
+        operatorReplyProposedTimes: true,
+      },
+    }).label,
+    'Awaiting RSP',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow({ event: { title: '(NS) Avery Jones', start: '2026-06-13T10:00' } }),
+      replyEvidence: {
+        themeBucket: 'No Show',
+        lastMeaningfulInbound: { body: '1' },
+        operatorReplyProposedTimes: false,
+      },
+    }).label,
+    'Needs Times',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow({ event: { title: '(NS) Avery Jones', start: '2026-06-13T10:00' } }),
+      replyEvidence: {
+        themeBucket: 'No Show',
+        lastMeaningfulInbound: { body: '2' },
+        operatorReplyProposedTimes: false,
+      },
+    }).label,
+    'Timing Bad',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow({ event: { title: '(NS) Avery Jones', start: '2026-06-13T10:00' } }),
+      replyEvidence: {
+        themeBucket: 'No Show',
+        lastMeaningfulInbound: { body: '3' },
+        operatorReplyProposedTimes: false,
+      },
+    }).label,
+    'No Interest',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow({ event: { title: '(CAN) Avery Jones', start: '2026-06-13T10:00' } }),
+      replyEvidence: {
+        themeBucket: 'Cancel',
+        lastMeaningfulInbound: { body: 'Timing is bad right now' },
+        operatorReplyProposedTimes: false,
+      },
+    }).label,
+    'Timing Issue',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow({ event: { title: '(CAN) Avery Jones', start: '2026-06-13T10:00' } }),
+      replyEvidence: {
+        themeBucket: 'Cancel',
+        lastMeaningfulInbound: { body: 'Not interested anymore' },
+        operatorReplyProposedTimes: false,
+        clientOptedOut: true,
+      },
+    }).label,
+    'No Interest',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
+      row: pendingClientRow({ actionTag: 'Scout Update' }),
+      replyEvidence: {
+        themeBucket: 'Call Attempt',
+        lastMeaningfulInbound: { body: 'Call me after work' },
+        operatorReplyProposedTimes: false,
+      },
+    }).label,
+    'Call Back',
+  );
 });
 
 test('pending client payment watch does not require appointment truth backing', () => {

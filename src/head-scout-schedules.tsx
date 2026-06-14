@@ -68,6 +68,7 @@ import {
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
 import { postCallStageForAppointmentTitlePrefix } from './domain/sales-stage-contract';
 import { getActiveOperator } from './domain/owners';
+import { classifyPendingClientOperatorQueue } from './domain/pending-client-watchlist';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import {
@@ -825,26 +826,30 @@ function getPendingClientDisplayTag(
   label: string;
   color: Color;
 } {
-  if (replyState?.status === 'needs_reply') {
-    return { label: 'Needs Reply', color: Color.Red };
-  }
-  if (replyState?.status === 'awaiting_reschedule') {
-    return { label: 'Awaiting RSP', color: Color.Yellow };
-  }
-  if (isPendingClientCanceled(row)) {
-    return { label: 'OP Input', color: Color.Red };
+  if (replyState && !replyState.row.replyEvidence) {
+    return replyState.status === 'awaiting_reschedule'
+      ? { label: 'Awaiting RSP', color: Color.Yellow }
+      : { label: 'Needs Reply', color: Color.Red };
   }
 
-  switch (row.action_tag) {
-    case 'Payment Watch':
-      return { label: 'Payment', color: Color.Green };
-    case 'Operator Input':
-      return { label: 'OP Input', color: Color.Red };
-    case 'Scout Update':
-      return { label: 'Follow Up', color: Color.Blue };
-    default:
-      return { label: 'No Note', color: Color.Orange };
-  }
+  const { label } = classifyPendingClientOperatorQueue({
+    row,
+    replyEvidence: replyState?.row.replyEvidence,
+  });
+  const colorByLabel: Record<typeof label, Color> = {
+    'Needs Times': Color.Red,
+    'Awaiting RSP': Color.Yellow,
+    'Needs Reply': Color.Red,
+    'Timing Bad': Color.Orange,
+    'Timing Issue': Color.Orange,
+    'No Interest': Color.Red,
+    'Call Back': Color.Blue,
+    'Operator Input': Color.Red,
+    'Follow Up': Color.Blue,
+    Payment: Color.Green,
+    'No Note': Color.Orange,
+  };
+  return { label, color: colorByLabel[label] };
 }
 
 function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
@@ -936,12 +941,46 @@ function extractPendingClientNote(row: PendingClientWatchlistLoadResult['rows'][
   return [body, '', buildPendingClientNextSteps(row, Boolean(scoutNote))].join('\n');
 }
 
+function compactPendingClientThreadEvidence(value?: string | null): string {
+  const compacted = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!compacted) return '';
+  return compacted.length > 180 ? `${compacted.slice(0, 177)}...` : compacted;
+}
+
+function buildPendingClientThreadEvidenceMarkdown(
+  replyState?: PendingClientReplyThemeState | null,
+): string | null {
+  const evidence = replyState?.row.replyEvidence;
+  if (!evidence) return null;
+  const inbound = compactPendingClientThreadEvidence(evidence.lastMeaningfulInbound?.body);
+  const outbound = compactPendingClientThreadEvidence(evidence.lastMeaningfulOutbound?.body);
+  const replyStatus = evidence.clientOptedOut
+    ? 'client opted out'
+    : evidence.operatorReplyProposedTimes
+      ? 'proposed times'
+      : evidence.operatorRepliedAfterInbound
+        ? 'replied without times'
+        : 'no reply after inbound';
+  return [
+    '## Thread Evidence',
+    '',
+    `- Theme: ${evidence.themeBucket}`,
+    inbound ? `- Last inbound: ${inbound}` : null,
+    outbound ? `- Last outbound: ${outbound}` : null,
+    `- Reply status: ${replyStatus}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+}
+
 function buildPendingClientDetailMarkdown(
   row: PendingClientWatchlistLoadResult['rows'][number],
+  replyState?: PendingClientReplyThemeState | null,
 ): string {
   const salesStage = extractPendingClientSalesStage(row);
   const scout = row.head_scout || 'Unresolved';
   const meeting = getPendingClientMeetingLabel(row);
+  const threadEvidence = buildPendingClientThreadEvidenceMarkdown(replyState);
   return [
     '# Note',
     '',
@@ -952,6 +991,8 @@ function buildPendingClientDetailMarkdown(
     salesStage ? `**Sales Stage:** ${salesStage}` : null,
     '',
     extractPendingClientNote(row),
+    threadEvidence ? '' : null,
+    threadEvidence,
   ]
     .filter((line) => line !== null)
     .join('\n');
@@ -1237,12 +1278,11 @@ function PendingClientsWatchlist() {
     };
   }, [refreshTick]);
 
-  async function handleMarkResolved(row: PendingClientWatchlistRow) {
-    const sourceEventId = row.source_event_id;
+  async function handleMarkResolved(sourceEventId: string) {
     setResolvingId(sourceEventId);
     const toast = await showLoadingToast('Resolving', 'Pending Client');
     try {
-      await markPendingClientResolved(row);
+      await markPendingClientResolved(sourceEventId);
       toast.style = Toast.Style.Success;
       toast.title = 'Removed';
       setRefreshTick((current) => current + 1);
@@ -1296,7 +1336,7 @@ function PendingClientsWatchlist() {
                 ]}
                 detail={
                   <List.Item.Detail
-                    markdown={buildPendingClientDetailMarkdown(row)}
+                    markdown={buildPendingClientDetailMarkdown(row, replyState)}
                     metadata={buildPendingClientDetailMetadata(row)}
                   />
                 }
@@ -1329,7 +1369,7 @@ function PendingClientsWatchlist() {
                         />
                       ) : null}
                       <Action.Push
-                        title="Add Note"
+                        title="Note"
                         icon="✍️"
                         shortcut={{ modifiers: ['cmd'], key: 'n' }}
                         target={
@@ -1343,7 +1383,7 @@ function PendingClientsWatchlist() {
                         title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
                         icon="✅"
                         shortcut={{ modifiers: ['cmd'], key: 'x' }}
-                        onAction={() => void handleMarkResolved(row)}
+                        onAction={() => void handleMarkResolved(row.source_event_id)}
                       />
                     </ActionPanel.Section>
                     {launchAdminUrl ? (

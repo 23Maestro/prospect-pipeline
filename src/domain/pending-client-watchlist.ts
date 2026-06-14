@@ -113,6 +113,32 @@ export type PendingClientWatchlistRow = PendingClientOwnerSnapshot & {
   resolved_at?: string | null;
 };
 
+export type PendingClientOperatorQueueLabel =
+  | 'Needs Times'
+  | 'Awaiting RSP'
+  | 'Needs Reply'
+  | 'Timing Bad'
+  | 'Timing Issue'
+  | 'No Interest'
+  | 'Call Back'
+  | 'Operator Input'
+  | 'Follow Up'
+  | 'Payment'
+  | 'No Note';
+
+export type PendingClientOperatorQueueReplyEvidence = {
+  themeBucket?: string | null;
+  lastMeaningfulInbound?: { body?: string | null } | null;
+  operatorRepliedAfterInbound?: boolean | null;
+  operatorReplyProposedTimes?: boolean | null;
+  clientOptedOut?: boolean | null;
+};
+
+export type PendingClientOperatorQueueClassification = {
+  label: PendingClientOperatorQueueLabel;
+  priority: number;
+};
+
 function sourceEventAppointmentId(value?: string | null): string | null {
   const source = normalizeText(value);
   if (!source) return null;
@@ -553,6 +579,77 @@ export function classifyPendingClientActionTag(args: {
     return 'Payment Watch';
   }
   return 'Scout Update';
+}
+
+function pendingClientReplyBody(
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
+): string {
+  return normalizeText(replyEvidence?.lastMeaningfulInbound?.body).toLowerCase();
+}
+
+function isNoInterestReply(
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
+): boolean {
+  const body = pendingClientReplyBody(replyEvidence);
+  return (
+    Boolean(replyEvidence?.clientOptedOut) ||
+    normalizeText(replyEvidence?.themeBucket) === 'Opt Out' ||
+    /^(?:3|three)$/.test(body) ||
+    /\b(no\s+longer\s+interested|not\s+interested|no\s+interest|do\s+not\s+contact|don't\s+contact|stop|unsubscribe|opt\s*out)\b/i.test(
+      body,
+    )
+  );
+}
+
+function isTimingBadReply(
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
+): boolean {
+  const body = pendingClientReplyBody(replyEvidence);
+  return /^(?:2|two)$/.test(body) || /\b(bad\s+timing|timing\s+is\s+bad|not\s+(?:a\s+)?good\s+time)\b/i.test(body);
+}
+
+export function classifyPendingClientOperatorQueue(args: {
+  row: PendingClientWatchlistRow;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+}): PendingClientOperatorQueueClassification {
+  const bucket = normalizeText(args.replyEvidence?.themeBucket);
+  const proposedTimes = Boolean(args.replyEvidence?.operatorReplyProposedTimes);
+
+  if (isNoInterestReply(args.replyEvidence)) {
+    return { label: 'No Interest', priority: 10 };
+  }
+
+  if (bucket === 'RSP') {
+    return proposedTimes
+      ? { label: 'Awaiting RSP', priority: 30 }
+      : { label: 'Needs Times', priority: 20 };
+  }
+
+  if (bucket === 'No Show') {
+    if (isTimingBadReply(args.replyEvidence)) return { label: 'Timing Bad', priority: 25 };
+    return proposedTimes
+      ? { label: 'Awaiting RSP', priority: 30 }
+      : { label: 'Needs Times', priority: 20 };
+  }
+
+  if (bucket === 'Cancel') {
+    return { label: 'Timing Issue', priority: 35 };
+  }
+
+  if (bucket === 'Call Attempt') {
+    return { label: 'Call Back', priority: 40 };
+  }
+
+  switch (args.row.action_tag) {
+    case 'Payment Watch':
+      return { label: 'Payment', priority: 70 };
+    case 'Operator Input':
+      return { label: 'Operator Input', priority: 60 };
+    case 'Scout Update':
+      return { label: 'Follow Up', priority: 80 };
+    default:
+      return { label: 'No Note', priority: 90 };
+  }
 }
 
 export function normalizePendingClientAIVerdict(

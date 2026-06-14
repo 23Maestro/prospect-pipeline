@@ -150,10 +150,13 @@ test('/api/parent-response submit stores selected slot intent only', async () =>
     request_status: 'selected',
     response_kind: 'selected_slot',
     selected_option_id: 'slot-1',
+    notification: { status: 'sent', error: '' },
   });
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.match(calls[0].url, /\/rest\/v1\/parent_response_requests\?/);
   assert.match(calls[1].url, /\/rest\/v1\/parent_response_requests\?/);
+  assert.match(calls[2].url, /\/api\/parent-response\/111\/notify$/);
+  assert.equal((calls[2].init?.headers as Record<string, string>)['x-parent-response-secret'], 'notify-secret');
   assert.equal(calls[1].init?.method, 'PATCH');
   const update = JSON.parse(String(calls[1].init?.body));
   assert.equal(update.request_status, 'selected');
@@ -201,6 +204,7 @@ test('/api/parent-response submit stores none-work intent only', async () => {
     request_status: 'none_work',
     response_kind: 'none_work',
     selected_option_id: null,
+    notification: { status: 'sent', error: '' },
   });
   const update = JSON.parse(String(calls[1].init?.body));
   assert.equal(update.request_status, 'none_work');
@@ -248,6 +252,7 @@ test('/api/parent-response submit stores ready-later human follow-up intent only
     request_status: 'ready_later',
     response_kind: 'ready_later',
     selected_option_id: null,
+    notification: { status: 'sent', error: '' },
   });
   const update = JSON.parse(String(calls[1].init?.body));
   assert.equal(update.request_status, 'ready_later');
@@ -314,10 +319,15 @@ test('/api/parent-response notify sends selected slot email through Resend', asy
   const payload = await response.json();
   assert.equal(payload.success, true);
   assert.equal(payload.response_kind, 'selected_slot');
-  assert.equal(calls.length, 2);
+  assert.equal(calls.length, 3);
   assert.match(calls[0].url, /\/rest\/v1\/parent_response_requests\?/);
   assert.equal(calls[1].url, 'https://api.resend.com/emails');
   assert.equal(calls[1].init?.method, 'POST');
+  assert.equal(calls[2].init?.method, 'PATCH');
+  const statusUpdate = JSON.parse(String(calls[2].init?.body));
+  assert.equal(statusUpdate.notification_status, 'sent');
+  assert.ok(statusUpdate.notification_sent_at);
+  assert.equal(statusUpdate.notification_error, null);
   const resendBody = JSON.parse(String(calls[1].init?.body));
   assert.equal(resendBody.from, 'Scout Prep <updates@example.com>');
   assert.equal(resendBody.to, 'operator@example.com');
@@ -356,6 +366,9 @@ test('/api/parent-response notify sends ready-later review email without approva
 
   assert.equal(response.status, 200);
   const resendBody = JSON.parse(String(calls[1].init?.body));
+  assert.equal(calls[2].init?.method, 'PATCH');
+  const statusUpdate = JSON.parse(String(calls[2].init?.body));
+  assert.equal(statusUpdate.notification_status, 'sent');
   assert.match(resendBody.subject, /will follow up when ready/);
   assert.match(resendBody.text, /Response: said they will follow up when ready/);
   assert.match(resendBody.text, /Parent note: We will follow up next week/);

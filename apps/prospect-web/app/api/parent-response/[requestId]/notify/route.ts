@@ -1,5 +1,5 @@
 import { getServerEnv } from '../../../../../lib/env';
-import { fetchParentResponseRequest } from '../../../../../lib/parent-response';
+import { fetchParentResponseRequest, updateParentResponseRequest } from '../../../../../lib/parent-response';
 import { jsonResponse, methodNotAllowed, upstreamUnavailable } from '../../../../../lib/response-shapes';
 
 function asText(value: unknown): string {
@@ -98,10 +98,25 @@ export async function POST(
     }
 
     const requestUrl = new URL(request.url);
-    const resendResult = await sendResendEmail({
-      subject: `${row.athlete_name}: parent ${responseLabel(row.response_kind)}`,
-      text: buildEmailText(row, requestUrl),
-    });
+    let resendResult: Record<string, unknown>;
+    try {
+      resendResult = await sendResendEmail({
+        subject: `${row.athlete_name}: parent ${responseLabel(row.response_kind)}`,
+        text: buildEmailText(row, requestUrl),
+      });
+      await updateParentResponseRequest(requestId, {
+        notification_status: 'sent',
+        notification_sent_at: new Date().toISOString(),
+        notification_error: null,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await updateParentResponseRequest(requestId, {
+        notification_status: 'failed',
+        notification_error: message,
+      }).catch(() => null);
+      throw error;
+    }
 
     return jsonResponse({
       success: true,

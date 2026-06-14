@@ -158,8 +158,7 @@ test('client-message contact cache admission reads lifecycle events instead of p
   assert.match(source, /lifecycle_events/);
   assert.match(source, /normalizeCrmSalesStage/);
   assert.match(source, /shouldAdmitContactCacheMatch/);
-  assert.match(source, /select=athlete_key,crm_stage,task_status,event_type,payload_json,created_at/);
-  assert.doesNotMatch(source, /select=athlete_key,crm_stage,task_status,current_task_id/);
+  assert.match(source, /select=athlete_key,crm_stage,task_status,current_task_id,event_type,payload_json,created_at/);
   assert.doesNotMatch(source, /athlete_lifecycle_current/);
   assert.doesNotMatch(source, /'athlete_pipeline_state'/);
 });
