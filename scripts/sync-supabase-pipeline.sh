@@ -29,7 +29,17 @@ trap 'rmdir "${LOCK_DIR}" 2>/dev/null || true' EXIT
 
 cd "${PROJECT_ROOT}"
 
-echo "[$(timestamp)] sync start"
+echo "[$(timestamp)] drift wrapper start"
+
+RUN_CURRENT_PIPELINE_REPAIR="${RUN_CURRENT_PIPELINE_REPAIR:-0}"
+RUN_COMMISSION_SYNC="${RUN_COMMISSION_SYNC:-0}"
+
+if [[ "${RUN_CURRENT_PIPELINE_REPAIR}" != "1" && "${RUN_COMMISSION_SYNC}" != "1" ]]; then
+  echo "[$(timestamp)] no scheduled Supabase writers enabled"
+  echo "[$(timestamp)] action-time Scout Prep writes own lifecycle, meeting, and pending-client movement"
+  echo "[$(timestamp)] drift wrapper complete"
+  exit 0
+fi
 
 if ! API_TIMEOUT_SECONDS=10 "${PROJECT_ROOT}/scripts/wait-for-api.sh"; then
   echo "[$(timestamp)] local API unavailable; asking ${API_OWNER_LABEL} to restore Overmind-owned API"
@@ -37,9 +47,20 @@ if ! API_TIMEOUT_SECONDS=10 "${PROJECT_ROOT}/scripts/wait-for-api.sh"; then
   API_TIMEOUT_SECONDS=45 "${PROJECT_ROOT}/scripts/wait-for-api.sh"
 fi
 
-# Canonical scheduled Supabase sync lane.
-# Keep repair/reconcile jobs out of this cron path; those require explicit manual runs.
-npm run sync:current-pipeline-supabase
-npm run sync:commissions-supabase
+# Front-facing Scout Prep movement is written at the moment of the user action.
+# This repair path is explicit only so a scheduler cannot become lifecycle truth again.
+if [[ "${RUN_CURRENT_PIPELINE_REPAIR}" == "1" ]]; then
+  echo "[$(timestamp)] explicit current-pipeline repair enabled"
+  npm run sync:current-pipeline-supabase
+else
+  echo "[$(timestamp)] current-pipeline repair skipped"
+fi
 
-echo "[$(timestamp)] sync complete"
+if [[ "${RUN_COMMISSION_SYNC}" == "1" ]]; then
+  echo "[$(timestamp)] explicit commission sync enabled"
+  npm run sync:commissions-supabase
+else
+  echo "[$(timestamp)] commission sync skipped"
+fi
+
+echo "[$(timestamp)] drift wrapper complete"

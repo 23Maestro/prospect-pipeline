@@ -904,6 +904,7 @@ export default function ClientMessageInboxCommand(
     permissionView,
     revalidateDirectory,
     directory,
+    directoryError,
   } = useClientInboxChats(searchText);
 
   if (permissionView) {
@@ -1150,9 +1151,11 @@ export default function ClientMessageInboxCommand(
       ))}
 
       <List.EmptyView
-        title="No client chats found"
+        title={directoryError ? 'Client Messages source failed' : 'No client chats found'}
         description={
-          directory?.generatedAt
+          directoryError
+            ? directoryError.message
+            : directory?.generatedAt
             ? `Existing ID Client threads are loaded first. Export enrichment updated ${directory.generatedAt}.`
             : 'No cache-admitted Client Message threads found yet.'
         }

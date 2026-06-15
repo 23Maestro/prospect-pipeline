@@ -308,8 +308,16 @@ function countsAsContact(row) {
   return row.counts_as_contact === true;
 }
 
+function isScheduledConfirmationTaskMeetingArtifact(row) {
+  return (
+    row.tracker_outcome === 'meeting_set' &&
+    normalizeKey(row.source) === 'scout_tasks_current_pipeline' &&
+    normalizeKey(row.raw_task_status) === 'confirmation_call'
+  );
+}
+
 function countsAsMeetingSet(row) {
-  return row.counts_as_meeting_set === true;
+  return row.counts_as_meeting_set === true && !isScheduledConfirmationTaskMeetingArtifact(row);
 }
 
 function isPaidClosedWon(row) {
@@ -536,6 +544,12 @@ function activeTopCardMetrics() {
     if (!isWeekTotalView() && details) {
       return {
         label: archivePeriodLabel(state.activePeriod),
+        ...metricsFromRows(scopedActivityRows()),
+      };
+    }
+    if (details) {
+      return {
+        label,
         ...metricsFromRows(scopedActivityRows()),
       };
     }

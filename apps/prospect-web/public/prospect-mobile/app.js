@@ -50,6 +50,18 @@ const state = {
     active: false,
     selectedKeys: [],
   },
+  setMeetingsMode: 'booked',
+  setMeetingsPayload: null,
+  rescheduleQueue: {
+    events: [],
+    loadedAt: 0,
+  },
+  rescheduleDrawer: {
+    event: null,
+    scoutName: '',
+    schedulePayload: null,
+    week: 'this',
+  },
 };
 
 const pageTitle = document.querySelector('#page-title');
@@ -202,15 +214,30 @@ function formatCacheAge(cachedAt) {
 
 async function renderSetMeetings(payload, renderContext) {
   const data = payload || {};
+  if (payload) state.setMeetingsPayload = payload;
   if (!isActiveRoute(renderContext)) return 0;
+  if (state.setMeetingsMode === 'reschedule') {
+    const queue = await fetchRecentRescheduleQueue();
+    if (!isActiveRoute(renderContext)) return 0;
+    await setContentHtml(
+      `${buildSetMeetingsModeToggleHtml()}${buildRescheduleQueueHtml(queue.events)}`,
+      renderContext,
+    );
+    if (!isActiveRoute(renderContext)) return 0;
+    bindSetMeetingsModeToggle();
+    bindRescheduleQueueActions();
+    return queue.events.length;
+  }
+
   const events = Array.isArray(data?.events) ? data.events : [];
   if (!events.length) {
-    await setContentHtml('<div class="empty-state">No booked set meetings found for this window.</div>', renderContext);
+    await setContentHtml(`${buildSetMeetingsModeToggleHtml()}<div class="empty-state">No booked set meetings found for this window.</div>`, renderContext);
+    bindSetMeetingsModeToggle();
     return 0;
   }
 
   await setContentHtml(
-    events
+    `${buildSetMeetingsModeToggleHtml()}${events
       .map((event) => {
       const title = event.athlete_name || cleanMeetingTitle(event.title || 'Booked meeting');
       const owner = event.head_scout_name || event.assigned_owner || 'Scout not resolved';
@@ -253,15 +280,108 @@ async function renderSetMeetings(payload, renderContext) {
         </article>
       `;
       })
-      .join(''),
+      .join('')}`,
     renderContext,
   );
+  bindSetMeetingsModeToggle();
   bindCopyButtons();
   bindSmsButtons();
   bindConfirmationModalButtons();
   bindAdminModalButtons();
   bindContactCopyModalButtons();
   return events.length;
+}
+
+function buildSetMeetingsModeToggleHtml() {
+  const bookedActive = state.setMeetingsMode === 'booked' ? ' active' : '';
+  const rescheduleActive = state.setMeetingsMode === 'reschedule' ? ' active' : '';
+  return `
+    <section class="mode-toolbar" aria-label="Set meeting mode">
+      <button class="mode-button${bookedActive}" type="button" data-set-meetings-mode="booked">Upcoming</button>
+      <button class="mode-button${rescheduleActive}" type="button" data-set-meetings-mode="reschedule">Needs Reschedule</button>
+    </section>
+  `;
+}
+
+function bindSetMeetingsModeToggle() {
+  document.querySelectorAll('[data-set-meetings-mode]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const mode = button.getAttribute('data-set-meetings-mode') || 'booked';
+      if (mode === state.setMeetingsMode) return;
+      state.setMeetingsMode = mode;
+      await renderSetMeetings(state.setMeetingsPayload, currentRenderContext('/set-meetings'));
+    });
+  });
+}
+
+async function fetchRecentRescheduleQueue(options = {}) {
+  const athleteId = String(options.athleteId || '').trim();
+  const athleteMainId = String(options.athleteMainId || '').trim();
+  const params = new URLSearchParams();
+  if (athleteId) params.set('athlete_id', athleteId);
+  if (athleteMainId) params.set('athlete_main_id', athleteMainId);
+  const response = await fetch(`/api/prospect-mobile/reschedule-queue${params.toString() ? `?${params}` : ''}`, {
+    headers: { accept: 'application/json' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `Queue ${response.status}`);
+  }
+  if (!athleteId && !athleteMainId) {
+    state.rescheduleQueue = {
+      events: Array.isArray(payload.events) ? payload.events : [],
+      loadedAt: Date.now(),
+    };
+  }
+  return {
+    ...payload,
+    events: Array.isArray(payload.events) ? payload.events : [],
+  };
+}
+
+function buildRescheduleQueueHtml(events) {
+  const rows = Array.isArray(events) ? events : [];
+  if (!rows.length) {
+    return '<div class="empty-state">No recent reschedule pending clients.</div>';
+  }
+  return rows
+    .map((event) => {
+      const title = event.athlete_name || 'Reschedule pending';
+      const scout = event.head_scout_name || 'Scout not resolved';
+      const updated = formatRelativeDate(event.updated_at) || 'Recent RSP';
+      const previous = formatCachedMeetingLabel(event.previous_meeting_start, event.meeting_timezone) || 'Previous meeting';
+      const adminUrl = event.admin_url || buildAthleteAdminUrl(event.athlete_id, event.athlete_main_id);
+      return `
+        <article class="row reschedule-row">
+          <div class="row-header">
+            <div>
+              <h2 class="row-title">${escapeHtml(title)}</h2>
+              <p class="row-subtitle">${escapeHtml(scout)} - ${escapeHtml(previous)}</p>
+            </div>
+            <p class="row-meta">${escapeHtml(updated)}</p>
+          </div>
+          <div class="row-actions">
+            <button class="copy-button reschedule-button" type="button" data-reschedule-client="${escapeAttribute(encodeRescheduleEvent(event))}">Reschedule</button>
+            ${adminUrl ? `<a class="link-button admin-button" href="${escapeAttribute(adminUrl)}" target="_blank" rel="noreferrer">Admin</a>` : ''}
+          </div>
+        </article>
+      `;
+    })
+    .join('');
+}
+
+function bindRescheduleQueueActions() {
+  bindCopyButtons();
+  document.querySelectorAll('[data-reschedule-client]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const event = decodeRescheduleEvent(button.getAttribute('data-reschedule-client') || '');
+      if (!event) {
+        setStatus('Missing client');
+        return;
+      }
+      await showRescheduleDrawer(event);
+    });
+  });
 }
 
 async function fetchSetMeetingsFromSupabase(week) {
@@ -382,6 +502,7 @@ async function renderContactSearch(_payload, renderContext) {
   bindContactSearch('contact');
   bindCopyButtons();
   bindScriptableContactButtons();
+  bindSearchRescheduleButtons();
   return state.contactSearch.results.length;
 }
 
@@ -540,6 +661,7 @@ function buildSelectedContactCardsHtml(group) {
           ? `<div class="matched-result-actions">
               ${group.adminUrl ? `<a class="link-button admin-button matched-admin-action" href="${escapeAttribute(group.adminUrl)}" target="_blank" rel="noreferrer">Admin</a>` : ''}
               ${group.profileUrl ? `<a class="link-button matched-profile-action" href="${escapeAttribute(group.profileUrl)}" target="_blank" rel="noreferrer">Profile</a>` : ''}
+              <button class="link-button reschedule-search-button" type="button" data-search-reschedule-athlete-id="${escapeAttribute(group.athleteId || '')}" data-search-reschedule-athlete-main-id="${escapeAttribute(group.athleteMainId || '')}">Reschedule</button>
             </div>`
           : ''
       }
@@ -787,6 +909,268 @@ function showScoutPickerModal(groups) {
   document.body.classList.add('modal-open');
   document.body.appendChild(modal);
   modal.querySelector('[data-scout-pick]')?.focus();
+}
+
+async function showRescheduleDrawer(event) {
+  closeRescheduleDrawer();
+  state.rescheduleDrawer.event = event;
+  state.rescheduleDrawer.scoutName = event.head_scout_name || '';
+  state.rescheduleDrawer.week = state.week || 'this';
+  showLoadingModal('Loading slots');
+  setStatus('Loading slots');
+  try {
+    state.rescheduleDrawer.schedulePayload = await loadRescheduleSchedulePayload(state.rescheduleDrawer.week);
+    closeLoadingModal();
+    renderRescheduleDrawer();
+  } catch (error) {
+    closeLoadingModal();
+    setStatus(`Slots failed: ${error.message || error}`);
+  }
+}
+
+async function loadRescheduleSchedulePayload(week = state.week || 'this') {
+  if (week === state.week && state.schedulePayload?.scouts?.length) return state.schedulePayload;
+  const cacheKey = buildRouteCacheKey('/scout-schedules', week);
+  const cached = getCachedRoutePayload(cacheKey);
+  if (cached?.scouts?.length) return cached;
+  const response = await fetch(`/api/head-scout-schedules?week=${encodeURIComponent(week)}`, {
+    headers: { accept: 'application/json' },
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `Slots ${response.status}`);
+  }
+  setCachedRoutePayload(cacheKey, payload);
+  if (week === state.week) state.schedulePayload = payload;
+  return payload;
+}
+
+function renderRescheduleDrawer() {
+  const event = state.rescheduleDrawer.event;
+  if (!event) return;
+  const groups = buildVisibleRescheduleGroups(state.rescheduleDrawer.schedulePayload);
+  const selectedScout = resolveRescheduleScoutName(groups, state.rescheduleDrawer.scoutName);
+  state.rescheduleDrawer.scoutName = selectedScout;
+  const selectedGroup = groups.find((group) => (group.scout_name || group.name || '') === selectedScout) || groups[0] || null;
+  const slots = selectedGroup?.visibleSlots || [];
+  const timezone = event.meeting_timezone || 'America/New_York';
+  const timezoneLabel = event.meeting_timezone_label || timezoneAbbreviation(timezone, event.meeting_timezone_label);
+  const adminUrl = event.admin_url || buildAthleteAdminUrl(event.athlete_id, event.athlete_main_id);
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-reschedule-drawer', '');
+  modal.innerHTML = `
+    <section class="modal-panel reschedule-panel" role="dialog" aria-modal="true" aria-label="Reschedule client">
+      <div class="modal-header">
+        <h2 class="modal-title">${escapeHtml(event.athlete_name || 'Reschedule pending')}</h2>
+        <p class="modal-subtitle">${escapeHtml(selectedScout || 'Select scout')}</p>
+      </div>
+      <div class="reschedule-summary">
+        <span>RSP</span>
+        <strong>${escapeHtml(formatCachedMeetingLabel(event.previous_meeting_start, timezone) || 'Previous meeting')}</strong>
+      </div>
+      <div class="reschedule-scout-row">
+        <button class="modal-button scout-search-modal-button" type="button" data-reschedule-scout-picker>Search Scouts</button>
+        <button class="modal-button secondary" type="button" data-reschedule-week-toggle>${state.rescheduleDrawer.week === 'next' ? 'This Week' : 'Next Week'}</button>
+      </div>
+      ${
+        adminUrl
+          ? `<a class="modal-button admin-modal-button" href="${escapeAttribute(adminUrl)}" target="_blank" rel="noreferrer">Admin</a>`
+          : ''
+      }
+      <label class="field">
+        <span>Open Slot</span>
+        <select data-reschedule-slot>
+          ${
+            slots.length
+              ? slots.slice(0, 12).map((slot) => {
+                  const slotPayload = {
+                    open_event_id: slot.id,
+                    start_time: slot.start,
+                    assigned_to: selectedGroup.meeting_for,
+                    head_scout_name: selectedScout,
+                    display_label: formatSlotCopyLabelForTimezone(slot.start, timezone, timezoneLabel),
+                  };
+                  const label = `${formatSlotDateForTimezone(slot.start, timezone)} - ${formatSlotRangeForTimezone(slot.start, slot.end, timezone, timezoneLabel)}`;
+                  return `<option value="${escapeAttribute(encodeRescheduleEvent(slotPayload))}">${escapeHtml(label)}</option>`;
+                }).join('')
+              : '<option value="">No slots loaded</option>'
+          }
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button class="modal-button success" type="button" data-submit-reschedule${slots.length ? '' : ' disabled'}>Submit Reschedule</button>
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+
+  modal.addEventListener('click', (clickEvent) => {
+    if (clickEvent.target === modal) closeRescheduleDrawer();
+  });
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeRescheduleDrawer);
+  modal.querySelector('[data-reschedule-scout-picker]')?.addEventListener('click', () => {
+    showRescheduleScoutPicker(groups);
+  });
+  modal.querySelector('[data-reschedule-week-toggle]')?.addEventListener('click', async () => {
+    const nextWeek = state.rescheduleDrawer.week === 'next' ? 'this' : 'next';
+    state.rescheduleDrawer.week = nextWeek;
+    closeRescheduleDrawer();
+    showLoadingModal(nextWeek === 'next' ? 'Loading next week' : 'Loading this week');
+    setStatus(nextWeek === 'next' ? 'Next week' : 'This week');
+    try {
+      state.rescheduleDrawer.schedulePayload = await loadRescheduleSchedulePayload(nextWeek);
+      closeLoadingModal();
+      renderRescheduleDrawer();
+    } catch (error) {
+      closeLoadingModal();
+      setStatus(`Slots failed: ${error.message || error}`);
+    }
+  });
+  modal.querySelector('[data-submit-reschedule]')?.addEventListener('click', async () => {
+    await submitSelectedReschedule(modal);
+  });
+
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+  modal.querySelector('[data-reschedule-slot]')?.focus();
+}
+
+function buildVisibleRescheduleGroups(payload) {
+  const scouts = Array.isArray(payload?.scouts) ? payload.scouts : [];
+  return scouts
+    .map((scout) => ({
+      ...scout,
+      visibleSlots: filterVisibleScoutSlots(Array.isArray(scout.slots) ? scout.slots : []),
+    }))
+    .filter((scout) => scout.visibleSlots.length);
+}
+
+function resolveRescheduleScoutName(groups, preferredScout) {
+  const preferred = String(preferredScout || '').trim();
+  if (preferred) {
+    const exact = groups.find((group) => normalizeScoutSearchText(group.scout_name || group.name) === normalizeScoutSearchText(preferred));
+    if (exact) return exact.scout_name || exact.name || preferred;
+  }
+  return groups[0]?.scout_name || groups[0]?.name || preferred;
+}
+
+function showRescheduleScoutPicker(groups) {
+  closeScoutPickerModal();
+  const availableGroups = Array.isArray(groups) ? groups : [];
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop';
+  modal.setAttribute('data-scout-picker-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel scout-picker-panel" role="dialog" aria-modal="true" aria-label="Reschedule scout picker">
+      <div class="modal-header">
+        <h2 class="modal-title">Search Scouts</h2>
+        <p class="modal-subtitle">Pick the scout for this reschedule.</p>
+      </div>
+      <div class="scout-picker-grid">
+        ${
+          availableGroups.length
+            ? availableGroups.map((scout, index) => {
+                const scoutName = scout.scout_name || scout.name || 'Scout';
+                const active = state.rescheduleDrawer.scoutName === scoutName ? ' active' : '';
+                return `<button class="scout-picker-button scout-color-${index % 8}${active}" type="button" data-reschedule-scout-pick="${escapeAttribute(scoutName)}">
+                  <span>${escapeHtml(shortScoutName(scoutName))}</span>
+                  <small>${scout.visibleSlots.length} slots</small>
+                </button>`;
+              }).join('')
+            : '<button class="modal-button secondary" type="button" disabled>No scouts loaded</button>'
+        }
+      </div>
+      <div class="modal-actions">
+        <button class="modal-button secondary" type="button" data-modal-close>Close</button>
+      </div>
+    </section>
+  `;
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) closeScoutPickerModal();
+  });
+  modal.querySelector('[data-modal-close]')?.addEventListener('click', closeScoutPickerModal);
+  modal.querySelectorAll('[data-reschedule-scout-pick]').forEach((button) => {
+    button.addEventListener('click', () => {
+      state.rescheduleDrawer.scoutName = button.getAttribute('data-reschedule-scout-pick') || '';
+      closeScoutPickerModal();
+      closeRescheduleDrawer();
+      renderRescheduleDrawer();
+      setStatus('Scout loaded');
+    });
+  });
+  document.body.appendChild(modal);
+  modal.querySelector('[data-reschedule-scout-pick]')?.focus();
+}
+
+async function submitSelectedReschedule(modal) {
+  const event = state.rescheduleDrawer.event;
+  const select = modal.querySelector('[data-reschedule-slot]');
+  const slot = decodeRescheduleEvent(select?.value || '');
+  if (!event || !slot?.open_event_id || !slot?.assigned_to || !slot?.start_time) {
+    setStatus('Select slot');
+    return;
+  }
+  const submitButton = modal.querySelector('[data-submit-reschedule]');
+  submitButton.disabled = true;
+  setStatus('Saving');
+  try {
+    const response = await fetch('/api/prospect-mobile/reschedule', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        athlete_id: event.athlete_id,
+        athlete_main_id: event.athlete_main_id,
+        athlete_name: event.athlete_name,
+        previous_appointment_id: event.appointment_id,
+        previous_meeting_title: event.previous_meeting_title,
+        previous_meeting_text: event.previous_meeting_text,
+        meeting_timezone: event.meeting_timezone || 'America/New_York',
+        meeting_timezone_label: event.meeting_timezone_label || '',
+        open_event_id: slot.open_event_id,
+        assigned_to: slot.assigned_to,
+        start_time: slot.start_time,
+        head_scout_name: slot.head_scout_name || state.rescheduleDrawer.scoutName,
+      }),
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.success === false) {
+      throw new Error(payload.error || payload.message || `HTTP ${response.status}`);
+    }
+    closeRescheduleDrawer();
+    state.rescheduleQueue.events = state.rescheduleQueue.events.filter(
+      (row) => String(row.appointment_id || '') !== String(event.appointment_id || ''),
+    );
+    await renderSetMeetings(state.setMeetingsPayload, currentRenderContext('/set-meetings'));
+    setStatus('Rescheduled');
+  } catch (error) {
+    submitButton.disabled = false;
+    setStatus(`Save failed: ${error.message || error}`);
+  }
+}
+
+function closeRescheduleDrawer() {
+  document.querySelector('[data-reschedule-drawer]')?.remove();
+  document.body.classList.remove('modal-open');
+}
+
+function showLoadingModal(message = 'Loading') {
+  closeLoadingModal();
+  const modal = document.createElement('div');
+  modal.className = 'modal-backdrop loading-backdrop';
+  modal.setAttribute('data-loading-modal', '');
+  modal.innerHTML = `
+    <section class="modal-panel loading-panel" role="status" aria-live="polite">
+      <span class="loading-spinner" aria-hidden="true"></span>
+      <strong>${escapeHtml(message)}</strong>
+    </section>
+  `;
+  document.body.classList.add('modal-open');
+  document.body.appendChild(modal);
+}
+
+function closeLoadingModal() {
+  document.querySelector('[data-loading-modal]')?.remove();
 }
 
 function shortScoutName(value) {
@@ -1152,10 +1536,10 @@ function normalizeContactTimezone(timezone, timezoneLabel) {
 
 function timezoneAbbreviation(timezone, timezoneLabel) {
   const key = normalizeSearchText(`${timezone || ''} ${timezoneLabel || ''}`);
-  if (key.includes('america/chicago') || /\b(cst|central|ct)\b/.test(key)) return 'CST';
-  if (key.includes('america/denver') || /\b(mst|mountain|mt)\b/.test(key)) return 'MST';
+  if (key.includes('america/chicago') || /\b(cst|central|ct)\b/.test(key)) return 'CT';
+  if (key.includes('america/denver') || /\b(mst|mountain|mt)\b/.test(key)) return 'MT';
   if (key.includes('america/los_angeles') || key.includes('america/los angeles') || /\b(pst|pacific|pt)\b/.test(key)) return 'PT';
-  return 'EST';
+  return 'ET';
 }
 
 function normalizeMeetingTimezoneLabel(timezone) {
@@ -1518,6 +1902,31 @@ function closeContactCopyModal() {
   document.body.classList.remove('modal-open');
 }
 
+function bindSearchRescheduleButtons() {
+  document.querySelectorAll('[data-search-reschedule-athlete-id]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const athleteId = button.getAttribute('data-search-reschedule-athlete-id') || '';
+      const athleteMainId = button.getAttribute('data-search-reschedule-athlete-main-id') || '';
+      if (!athleteId) {
+        setStatus('Missing athlete');
+        return;
+      }
+      setStatus('Checking RSP');
+      try {
+        const queue = await fetchRecentRescheduleQueue({ athleteId, athleteMainId });
+        const event = queue.events[0];
+        if (!event) {
+          setStatus('No recent RSP');
+          return;
+        }
+        await showRescheduleDrawer(event);
+      } catch (error) {
+        setStatus(`RSP failed: ${error.message || error}`);
+      }
+    });
+  });
+}
+
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') {
     closeScheduleActionsModal();
@@ -1525,6 +1934,7 @@ document.addEventListener('keydown', (event) => {
     closeAdminModal();
     closeConfirmationModal();
     closeContactCopyModal();
+    closeRescheduleDrawer();
   }
 });
 
@@ -1836,7 +2246,7 @@ function formatSlotRangeForTimezone(start, end, timezone, timezoneLabel) {
     hour: 'numeric',
     minute: '2-digit',
   });
-  return `${formatter.format(startDate)} - ${formatter.format(endDate)} ${timezoneLabel || 'Eastern'}`;
+  return `${formatter.format(startDate)} - ${formatter.format(endDate)} ${naturalTimezoneLabel(timezone, timezoneLabel)}`;
 }
 
 function formatSlotCopyLabelForTimezone(start, timezone, timezoneLabel) {
@@ -1857,6 +2267,18 @@ function formatSlotCopyLabelForTimezone(start, timezone, timezoneLabel) {
 }
 
 function timezoneLabelForCopy(value) {
+  return naturalTimezoneLabel('', value);
+}
+
+function naturalTimezoneLabel(timezone, timezoneLabel) {
+  const key = normalizeSearchText(`${timezone || ''} ${timezoneLabel || ''}`);
+  if (key.includes('america/chicago') || /\bcentral\b|\bct\b|\bcst\b/.test(key)) return 'CT';
+  if (key.includes('america/denver') || /\bmountain\b|\bmt\b|\bmst\b/.test(key)) return 'MT';
+  if (key.includes('america/los_angeles') || key.includes('america/los angeles') || /\bpacific\b|\bpt\b|\bpst\b/.test(key)) return 'PT';
+  return 'ET';
+}
+
+function legacyTimezoneLabelForCopy(value) {
   const key = normalizeSearchText(value);
   if (/\bcentral\b|\bct\b|\bcst\b/.test(key)) return 'CT';
   if (/\bmountain\b|\bmt\b|\bmst\b/.test(key)) return 'MT';
@@ -1924,6 +2346,32 @@ function normalizePhoneForSms(value) {
 
 function buildScriptableContactCardUrl(scoutName) {
   return `scriptable:///run/share-prospect-contact-card?scout=${encodeURIComponent(String(scoutName || ''))}`;
+}
+
+function formatRelativeDate(value) {
+  const parsed = new Date(String(value || '').trim());
+  if (Number.isNaN(parsed.getTime())) return '';
+  const ageMs = Date.now() - parsed.getTime();
+  const ageHours = Math.max(0, Math.floor(ageMs / 36e5));
+  if (ageHours < 1) return 'Now';
+  if (ageHours < 24) return `${ageHours}h`;
+  return `${Math.floor(ageHours / 24)}d`;
+}
+
+function encodeRescheduleEvent(value) {
+  try {
+    return btoa(unescape(encodeURIComponent(JSON.stringify(value || {}))));
+  } catch {
+    return '';
+  }
+}
+
+function decodeRescheduleEvent(value) {
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(String(value || '')))));
+  } catch {
+    return null;
+  }
 }
 
 function clipboardIconSvg() {

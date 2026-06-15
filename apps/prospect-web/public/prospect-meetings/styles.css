@@ -571,4 +571,34 @@ code {
     background: rgba(15, 23, 42, 0.05);
     color: #475569;
   }
+
+  .status-chip.set {
+    border-color: rgba(0, 112, 243, 0.32);
+    background: rgba(0, 112, 243, 0.13);
+    color: #0057bd;
+  }
+
+  .status-chip.pending {
+    border-color: rgba(180, 83, 9, 0.34);
+    background: rgba(245, 158, 11, 0.16);
+    color: #92400e;
+  }
+
+  .status-chip.won {
+    border-color: rgba(4, 120, 58, 0.3);
+    background: rgba(0, 200, 83, 0.16);
+    color: #04783a;
+  }
+
+  .status-chip.bad {
+    border-color: rgba(185, 28, 28, 0.28);
+    background: rgba(239, 68, 68, 0.13);
+    color: #b91c1c;
+  }
+
+  .status-chip.review {
+    border-color: rgba(126, 34, 206, 0.28);
+    background: rgba(168, 85, 247, 0.13);
+    color: #7e22ce;
+  }
 }

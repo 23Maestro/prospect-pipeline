@@ -205,7 +205,7 @@ export default function ProspectCallTrackerPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-call-tracker/app.js?v=20260518-live-selector" strategy="afterInteractive" />
+      <Script src="/prospect-call-tracker/app.js?v=20260615-archive-counts" strategy="afterInteractive" />
     </>
   );
 }

@@ -63,7 +63,6 @@ type AthleteLifecycleReadRow = {
   athlete_key?: string | null;
   crm_stage?: string | null;
   task_status?: string | null;
-  current_task_id?: string | null;
   event_type?: string | null;
   payload_json?: Record<string, unknown> | null;
   created_at?: string | null;
@@ -74,6 +73,7 @@ type AthleteLifecycleState = {
   crm_stage?: string | null;
   task_status?: string | null;
   current_task_id?: string | null;
+  current_task_title?: string | null;
   next_action?: string | null;
   is_terminal?: boolean | null;
   normalized_stage?: string | null;
@@ -122,27 +122,84 @@ function readRepoEnv(): Record<string, string> {
   );
 }
 
-function getSupabaseConfig(): SupabasePersistenceConfig | null {
+function uniqueConfigValues(values: string[]): string[] {
+  const seen = new Set<string>();
+  return values
+    .map((value) => String(value || '').trim())
+    .filter((value) => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+}
+
+function buildSupabaseConfigCandidates(): SupabasePersistenceConfig[] {
   const prefs = getPreferenceValues<Preferences>();
   const repoEnv = readRepoEnv();
-  const url = String(process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '')
-    .trim()
-    .replace(/\/+$/, '');
-  const key = String(
-    process.env.SUPABASE_SECRET_KEY ||
-      repoEnv.SUPABASE_SECRET_KEY ||
-      prefs.supabaseSecretKey ||
-      process.env.SUPABASE_SERVICE_ROLE_KEY ||
-      repoEnv.SUPABASE_SERVICE_ROLE_KEY ||
-      prefs.supabaseServiceRoleKey ||
-      '',
-  ).trim();
+  const urls = uniqueConfigValues([
+    repoEnv.SUPABASE_URL,
+    prefs.supabaseUrl || '',
+    process.env.SUPABASE_URL || '',
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.VITE_SUPABASE_URL || '',
+  ]).map((url) => url.replace(/\/+$/, ''));
+  const keys = uniqueConfigValues([
+    repoEnv.SUPABASE_SECRET_KEY,
+    repoEnv.SUPABASE_SERVICE_ROLE_KEY,
+    prefs.supabaseSecretKey || '',
+    prefs.supabaseServiceRoleKey || '',
+    process.env.SUPABASE_SECRET_KEY || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    process.env.SUPABASE_ANON_KEY || '',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+    process.env.VITE_SUPABASE_ANON_KEY || '',
+    process.env.SUPABASE_KEY || '',
+  ]);
   const schema =
     String(
-      process.env.SUPABASE_SCHEMA || repoEnv.SUPABASE_SCHEMA || prefs.supabaseSchema || '',
+      repoEnv.SUPABASE_SCHEMA || prefs.supabaseSchema || process.env.SUPABASE_SCHEMA || '',
     ).trim() || DEFAULT_SCHEMA;
-  if (!url || !key) return null;
-  return { url, key, schema };
+
+  return urls.flatMap((url) =>
+    keys.map((key) => ({
+      url,
+      key,
+      schema,
+    })),
+  );
+}
+
+async function isSupabaseConfigUsable(
+  config: SupabasePersistenceConfig,
+  table = 'athlete_contact_cache',
+): Promise<boolean> {
+  try {
+    const response = await fetch(`${config.url}/rest/v1/${table}?select=*&limit=1`, {
+      headers: {
+        apikey: config.key,
+        Authorization: `Bearer ${config.key}`,
+        'Accept-Profile': config.schema,
+        'Content-Profile': config.schema,
+      },
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function getSupabaseConfig(table = 'athlete_contact_cache'): Promise<SupabasePersistenceConfig | null> {
+  const candidates = buildSupabaseConfigCandidates();
+  for (const candidate of candidates) {
+    if (await isSupabaseConfigUsable(candidate, table)) {
+      return {
+        url: candidate.url,
+        key: candidate.key,
+        schema: candidate.schema,
+      };
+    }
+  }
+  return null;
 }
 
 function logPlanSkipped(plan: AthleteContactCacheSyncPlan) {
@@ -205,14 +262,24 @@ function lifecycleStateFromEvent(row: AthleteLifecycleReadRow): AthleteLifecycle
   const crmStage = String(row.crm_stage || '').trim();
   const taskStatus = String(row.task_status || '').trim();
   const eventType = String(row.event_type || '').trim();
+  const payload = row.payload_json && typeof row.payload_json === 'object' ? row.payload_json : {};
+  const currentTaskId =
+    String(payload.current_task_id || '').trim() ||
+    String(payload.task_id || '').trim() ||
+    String(payload.selected_task_id || '').trim();
+  const currentTaskTitle =
+    String(payload.current_task_title || '').trim() ||
+    String(payload.task_title || '').trim() ||
+    String(payload.selected_task_title || '').trim();
   const normalizedStage = normalizeCrmSalesStage(crmStage || taskStatus || eventType);
   const isTerminal = ['closed_won', 'closed_lost', 'inactive'].includes(normalizedStage);
   return {
     athlete_key: row.athlete_key,
     crm_stage: crmStage || null,
     task_status: taskStatus || null,
-    current_task_id: String(row.current_task_id || '').trim() || null,
-    next_action: taskStatus || crmStage || eventType || null,
+    current_task_id: currentTaskId || null,
+    current_task_title: currentTaskTitle || null,
+    next_action: currentTaskTitle || taskStatus || crmStage || eventType || null,
     is_terminal: isTerminal,
     normalized_stage: normalizedStage,
   };
@@ -227,7 +294,7 @@ async function readLifecycleEventsByAthleteKey(
     config,
     'lifecycle_events',
     [
-      'select=athlete_key,crm_stage,task_status,current_task_id,event_type,payload_json,created_at',
+      'select=athlete_key,crm_stage,task_status,event_type,payload_json,created_at',
       `athlete_key=in.${postgrestInList(athleteKeys)}`,
       'order=created_at.desc',
     ].join('&'),
@@ -254,8 +321,10 @@ export async function lookupActiveAthleteContactCacheForPhones(
   const phones = uniqueNormalizedPhones(rawPhones);
   if (!phones.length) return [];
 
-  const config = getSupabaseConfig();
-  if (!config) return [];
+  const config = await getSupabaseConfig('athlete_contact_cache');
+  if (!config) {
+    throw new Error('No valid Supabase config for athlete_contact_cache.');
+  }
 
   const cacheRows = await readActiveContactCacheRowsForPhones(config, phones);
   const athleteKeys = Array.from(
@@ -320,7 +389,7 @@ export async function syncAthleteContactCacheFromScoutPrepContext(args: {
     return { enabled: false, action: plan.action, count: 0 };
   }
 
-  const config = getSupabaseConfig();
+  const config = await getSupabaseConfig('athlete_contact_cache');
   if (!config) {
     return { enabled: false, action: plan.action, count: 0 };
   }
@@ -357,7 +426,7 @@ export async function hasAthleteContactCacheForTask(
     return { enabled: false, cached: false, athleteKey: null };
   }
 
-  const config = getSupabaseConfig();
+  const config = await getSupabaseConfig('athlete_contact_cache');
   if (!config) {
     return { enabled: false, cached: false, athleteKey: null };
   }

@@ -3,6 +3,7 @@ set -euo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 export WINDOW_DAYS="${WINDOW_DAYS:-9}"
+export READ_ONLY="${READ_ONLY:-1}"
 
 cd /Users/singleton23/Raycast/prospect-pipeline
 

@@ -513,6 +513,18 @@ test('pending client Raycast loader reads appointment outcomes plus support tomb
   assert.doesNotMatch(source, /currentMeeting\\.description/);
 });
 
+test('pending client Raycast loader suppresses stale RSP after newer active replacement appointment', () => {
+  const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  assert.match(source, /function hasNewerActiveReplacementAppointment/);
+  assert.match(source, /ACTIVE_REPLACEMENT_APPOINTMENT_STATUSES/);
+  assert.match(source, /ACTIVE_REPLACEMENT_POST_MEETING_RESULTS = new Set\(\['', 'rescheduled'\]\)/);
+  assert.match(source, /status=in\.\(\$\{ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY\}\)/);
+  assert.match(source, /groupActiveReplacementAppointmentsByAthleteKey/);
+  assert.match(source, /const actionableAppointmentRows = appointmentRows\.filter/);
+  assert.match(source, /!hasNewerActiveReplacementAppointment\(row, activeReplacementsByAthleteKey\)/);
+  assert.match(source, /buildPendingClientRowsFromAppointments\(\s*actionableAppointmentRows,/);
+});
+
 test('pending client Raycast loader collapses duplicate active rows per athlete', () => {
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /function dedupePendingClientRows/);

@@ -343,9 +343,7 @@ function mergeContactCacheMatches(
 export async function loadClientDirectory(chats: SQLChat[] = []) {
   const matchesByPhone = new Map<string, ClientDirectoryMatch>();
   const chatPhones = Array.from(new Set(chats.flatMap((chat) => getChatParticipantPhones(chat))));
-  const contactCacheResolutions = await resolveStudentAthleteMessagesForPhones(chatPhones).catch(
-    () => [] as StudentAthleteMessageResolution[],
-  );
+  const contactCacheResolutions = await resolveStudentAthleteMessagesForPhones(chatPhones);
 
   mergeContactCacheMatches(matchesByPhone, contactCacheResolutions);
 
@@ -470,6 +468,7 @@ export function useClientInboxChats(searchText = '') {
   const {
     data: clientDirectory,
     isLoading: isLoadingDirectory,
+    error: directoryError,
     revalidate: revalidateDirectory,
   } = usePromise(loadClientDirectory, [rawData || []]);
 
@@ -485,6 +484,7 @@ export function useClientInboxChats(searchText = '') {
     permissionView,
     revalidateDirectory,
     directory: clientDirectory,
+    directoryError,
     ...rest,
   };
 }

@@ -204,13 +204,32 @@ function normalizeKey(value: unknown) {
 
 function rowQuality(row: Record<string, any>) {
   return (
-    (row.counts_as_meeting_set === true ? 32 : 0) +
+    (isCountableMeetingSet(row) ? 32 : 0) +
     (row.dedupe_key ? 8 : 0) +
     (row.booked_event_title ? 4 : 0) +
     (row.appointment_id ? 2 : 0) +
     (row.event_at ? 1 : 0) +
     Math.floor(new Date(row.event_at || row.occurred_at || 0).getTime() / 100000000000)
   );
+}
+
+function isScheduledConfirmationTaskMeetingArtifact(row: Record<string, any>) {
+  return (
+    row.tracker_outcome === 'meeting_set' &&
+    normalizeKey(row.source) === 'scout_tasks_current_pipeline' &&
+    normalizeKey(row.raw_task_status) === 'confirmation_call'
+  );
+}
+
+function isCountableMeetingSet(row: Record<string, any>) {
+  return row.counts_as_meeting_set === true && !isScheduledConfirmationTaskMeetingArtifact(row);
+}
+
+function normalizeDashboardTruth(row: Record<string, any>) {
+  return {
+    ...row,
+    counts_as_meeting_set: isCountableMeetingSet(row),
+  };
 }
 
 function displayRows(rows: Array<Record<string, any>>) {
@@ -266,7 +285,7 @@ function eventIdentityKey(row: Record<string, any>) {
 
 function isDashboardVisibleEvent(row: Record<string, any>) {
   if (row.tracker_outcome === 'closed_won') return true;
-  return row.tracker_outcome !== 'meeting_set' || row.counts_as_meeting_set === true;
+  return row.tracker_outcome !== 'meeting_set' || isCountableMeetingSet(row);
 }
 
 function isPaidClosedWon(row: Record<string, any>) {
@@ -363,7 +382,7 @@ function taskIdForRow(row: Record<string, any>) {
 function collapseMeetingSetCompanionCallActivity(rows: Array<Record<string, any>>) {
   const meetingSetTaskIds = new Set(
     rows
-      .filter((row) => row.tracker_outcome === 'meeting_set' && row.counts_as_meeting_set === true)
+      .filter((row) => row.tracker_outcome === 'meeting_set' && isCountableMeetingSet(row))
       .map(taskIdForRow)
       .filter(Boolean),
   );
@@ -402,7 +421,7 @@ function summaryFromRows(rows: Array<Record<string, any>>) {
       ].includes(row.tracker_outcome),
     ).length,
     voicemail_only: rows.filter((row) => row.tracker_outcome === 'voicemail').length,
-    meetings_set: rows.filter((row) => row.counts_as_meeting_set === true).length,
+    meetings_set: rows.filter(isCountableMeetingSet).length,
     reschedule_pending: rows.filter((row) => row.tracker_outcome === 'reschedule_pending').length,
     closed_won: rows.filter((row) => row.tracker_outcome === 'closed_won').length,
     money_earned_cents: rows
@@ -434,8 +453,8 @@ function resolveMeetingSetSummary(
   rawRows: Array<Record<string, any>>,
   resolvedRows: Array<Record<string, any>>,
 ) {
-  const rawMeetingSets = rawRows.filter((row) => row.counts_as_meeting_set === true).length;
-  const resolvedMeetingSets = resolvedRows.filter((row) => row.counts_as_meeting_set === true).length;
+  const rawMeetingSets = rawRows.filter(isCountableMeetingSet).length;
+  const resolvedMeetingSets = resolvedRows.filter(isCountableMeetingSet).length;
   const removedDuplicates = Math.max(0, rawMeetingSets - resolvedMeetingSets);
   return {
     ...fallback,
@@ -575,7 +594,7 @@ function buildUiData(summary: Record<string, any>, events: Array<Record<string, 
     const scoped = rowsForPeriod(rows, now, period);
     const dials = scoped.filter((row) => row.counts_as_dial === true).length;
     const contacts = scoped.filter((row) => row.counts_as_contact === true).length;
-    const meetingsSet = scoped.filter((row) => row.counts_as_meeting_set === true).length;
+    const meetingsSet = scoped.filter(isCountableMeetingSet).length;
     periods[period] = {
       label: periodLabel(now, period),
       localDateKey: period === 'week-total' ? null : localDateKey(periodDate(now, period)),
@@ -622,7 +641,9 @@ async function buildLiveContract() {
 
   const generatedAt = new Date().toISOString();
   const viewEvents = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
-  const materializedEvents = collapseMeetingSetCompanionCallActivity(mergeEventRows(viewEvents, []));
+  const materializedEvents = collapseMeetingSetCompanionCallActivity(mergeEventRows(viewEvents, [])).map(
+    normalizeDashboardTruth,
+  );
   const summary = resolveMeetingSetSummary(
     summaryFromRows(materializedEvents),
     materializedEvents,

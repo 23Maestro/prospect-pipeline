@@ -6,6 +6,8 @@ import { DELETE, GET, POST } from '../app/api/call-tracker-sync/route';
 import { GET as healthGET } from '../app/api/health/route';
 import { POST as postMeetingOutcomePOST } from '../app/api/post-meeting-outcome/route';
 import { POST as prospectMobileSearchPOST } from '../app/api/prospect-mobile/search/route';
+import { GET as prospectMobileRescheduleQueueGET } from '../app/api/prospect-mobile/reschedule-queue/route';
+import { POST as prospectMobileReschedulePOST } from '../app/api/prospect-mobile/reschedule/route';
 import { GET as prospectMobileSetMeetingsGET } from '../app/api/prospect-mobile/set-meetings/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
 import { createCoachRisnerSessionSetCookie } from '../app/api/tim-lite/access';
@@ -319,6 +321,188 @@ test('/api/prospect-mobile/set-meetings filters confirmation cache through appoi
   assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Expired Active'), false);
   assert.match(calls[0].url, /\/rest\/v1\/set_meeting_confirmation_cache\?/);
   assert.match(calls[1].url, /\/rest\/v1\/appointments\?/);
+});
+
+test('/api/prospect-mobile/reschedule-queue reads recent RSP appointment outcomes', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    if (String(url).includes('/athletes?')) {
+      return Response.json([{ athlete_key: '149:953', athlete_name: 'Jamiya Turner' }]);
+    }
+    return Response.json([
+      {
+        id: '628106',
+        athlete_key: '149:953',
+        athlete_id: '149',
+        athlete_main_id: '953',
+        head_scout: 'Ryan Lietz',
+        starts_at: '2026-06-12T00:00:00Z',
+        status: 'scheduled',
+        meeting_timezone: 'America/Chicago',
+        meeting_timezone_label: 'Central',
+        post_meeting_result: 'reschedule_pending',
+        source_payload: { meeting_title_base: 'Jamiya Turner Football' },
+        updated_at: '2026-06-14T12:00:00Z',
+      },
+    ]);
+  };
+
+  const response = await prospectMobileRescheduleQueueGET(
+    new Request('https://example.test/api/prospect-mobile/reschedule-queue?athlete_id=149'),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.count, 1);
+  assert.equal(payload.events[0].appointment_id, '628106');
+  assert.equal(payload.events[0].head_scout_name, 'Ryan Lietz');
+  assert.equal(payload.events[0].athlete_name, 'Jamiya Turner');
+  assert.match(calls[0].url, /post_meeting_result=eq\.reschedule_pending/);
+  assert.match(calls[0].url, /updated_at=gte\./);
+  assert.match(calls[0].url, /athlete_id=eq\.149/);
+  assert.doesNotMatch(calls[1].url, /post_meeting_result=is\.null/);
+  assert.match(calls[1].url, /status=in\.\(scheduled,confirmation_queued,confirmation_sent,rescheduled\)/);
+});
+
+test('/api/prospect-mobile/reschedule-queue suppresses RSP rows after newer active reschedule exists', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.includes('post_meeting_result=is.null')) {
+      assert.fail('reschedule queue replacement lookup must not require null post_meeting_result');
+    }
+    if (requestUrl.includes('status=in.(scheduled,confirmation_queued,confirmation_sent,rescheduled)')) {
+      return Response.json([
+        {
+          id: '630596',
+          athlete_key: 'other-athlete',
+          starts_at: '2026-06-16T01:00:00Z',
+          status: 'scheduled',
+          post_meeting_result: 'no_show',
+        },
+        {
+          id: '630597',
+          athlete_key: '1499140:953897',
+          starts_at: '2026-06-16T01:00:00Z',
+          status: 'scheduled',
+          post_meeting_result: 'rescheduled',
+        },
+      ]);
+    }
+    if (requestUrl.includes('/athletes?')) {
+      return Response.json([{ athlete_key: '1499140:953897', athlete_name: 'Joziah Zenobia' }]);
+    }
+    return Response.json([
+      {
+        id: '630447',
+        athlete_key: '1499140:953897',
+        athlete_id: '1499140',
+        athlete_main_id: '953897',
+        head_scout: 'David Foley',
+        starts_at: '2026-06-12T01:00:00Z',
+        status: 'scheduled',
+        post_meeting_result: 'reschedule_pending',
+        updated_at: '2026-06-11T22:25:42Z',
+      },
+    ]);
+  };
+
+  const response = await prospectMobileRescheduleQueueGET(
+    new Request('https://example.test/api/prospect-mobile/reschedule-queue'),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.count, 0);
+  assert.deepEqual(payload.events, []);
+  assert.equal(calls.some((call) => call.url.includes('/athletes?')), false);
+  assert.equal(calls.some((call) => call.url.includes('post_meeting_result=is.null')), false);
+});
+
+test('/api/prospect-mobile/reschedule submits Laravel reschedule and records Supabase truth', async () => {
+  process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
+  process.env.PROSPECT_API_TOKEN = 'secret';
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.endsWith('/api/v1/sales/reschedule-meeting')) {
+      return Response.json({
+        success: true,
+        created_task: { task_id: 'task_1', title: 'Confirmation Call' },
+        email_sent: true,
+      });
+    }
+    if (requestUrl.endsWith('/api/v1/sales/stage')) {
+      return Response.json({ success: true, stage: 'Meeting Result - Rescheduled' });
+    }
+    if (requestUrl.includes('/rest/v1/')) {
+      return new Response('', { status: 200 });
+    }
+    return Response.json({ success: false, error: 'unexpected' }, { status: 500 });
+  };
+
+  const response = await prospectMobileReschedulePOST(
+    new Request('https://example.test/api/prospect-mobile/reschedule', {
+      method: 'POST',
+      body: JSON.stringify({
+        athlete_id: '149',
+        athlete_main_id: '953',
+        athlete_name: 'Jamiya Turner',
+        previous_appointment_id: '628106',
+        previous_meeting_title: 'Jamiya Turner Football',
+        previous_meeting_text: 'Previous notes',
+        meeting_timezone: 'America/Chicago',
+        meeting_timezone_label: 'Central',
+        open_event_id: 'open_1',
+        assigned_to: '1354049',
+        start_time: '2026-06-16T19:00',
+        head_scout_name: 'Ryan Lietz',
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.stage, 'Meeting Result - Rescheduled');
+  assert.equal(payload.open_event_id, 'open_1');
+  assert.deepEqual(JSON.parse(String(calls[0].init?.body)), {
+    athlete_id: '149',
+    athlete_main_id: '953',
+    meeting_name: 'Jamiya Turner Football',
+    meeting_timezone: 'America/Chicago',
+    assigned_to: '1354049',
+    open_event_id: 'open_1',
+    task_description: 'Previous notes',
+    start_time: '2026-06-16T19:00',
+    meeting_length: '01:00',
+    openmeetings_list_length: '-1',
+    template_id: '210',
+    keep_as_open_slot: 'yes',
+    previous_event_id: '628106',
+  });
+  assert.deepEqual(JSON.parse(String(calls[1].init?.body)), {
+    athlete_id: '149',
+    athlete_main_id: '953',
+    stage: 'Meeting Result - Rescheduled',
+  });
+  assert.equal(calls.filter((call) => call.url.includes('/rest/v1/appointments')).length, 2);
+  assert.equal(calls.some((call) => call.url.includes('/rest/v1/lifecycle_events')), true);
+  assert.equal(String(calls.at(-1)?.init?.body).includes('rescheduled_replaced_by_new_appointment'), true);
 });
 
 test('/api/tim-lite/search calls Tim cache RPC through server Supabase', async () => {
@@ -937,6 +1121,72 @@ test('/api/call-tracker-data does not count appointment changes as new meeting s
   assert.equal(payload.data.summary.appointments_tracked, 1);
   assert.equal(payload.data.summary.dials, 2);
   assert.equal(payload.data.summary.contacts, 2);
+});
+
+test('/api/call-tracker-data excludes scheduled confirmation-task artifacts from meeting counts', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  globalThis.fetch = async (url) => {
+    const requestUrl = String(url);
+    if (requestUrl.includes('/call_log?')) {
+      const artifactBase = {
+        athlete_name: null,
+        occurred_at: '2026-06-14T13:00:00+00:00',
+        event_at: '2026-06-14T13:00:00+00:00',
+        reporting_at: '2026-06-14T13:00:00+00:00',
+        tracker_outcome: 'meeting_set',
+        raw_crm_stage: 'Meeting Set',
+        raw_task_status: 'confirmation_call',
+        raw_event_type: 'lifecycle_meeting_set',
+        source_system: 'scout_tasks_current_pipeline',
+        counts_as_dial: true,
+        counts_as_contact: true,
+        counts_as_meeting_set: true,
+        counts_as_post_meeting_outcome: false,
+        materialization_status: 'operator_task',
+        created_at: '2026-06-14T13:00:00+00:00',
+      };
+      return Response.json([
+        {
+          athlete_name: 'Real Meeting',
+          occurred_at: '2026-06-14T15:00:00+00:00',
+          event_at: '2026-06-14T15:00:00+00:00',
+          reporting_at: '2026-06-14T15:00:00+00:00',
+          tracker_outcome: 'meeting_set',
+          raw_crm_stage: 'Meeting Set',
+          raw_task_status: 'Call Attempt 1',
+          raw_event_type: 'lifecycle_meeting_set',
+          source_system: 'lifecycle_meeting_set',
+          appointment_id: 'real-appt',
+          booked_event_title: 'Real Meeting Football 2028 TX',
+          counts_as_dial: true,
+          counts_as_contact: true,
+          counts_as_meeting_set: true,
+          counts_as_post_meeting_outcome: false,
+          materialization_status: 'operator_task',
+          created_at: '2026-06-14T15:00:00+00:00',
+        },
+        { ...artifactBase, appointment_id: 'artifact-1', booked_event_title: '(ACF) Artifact One' },
+        { ...artifactBase, appointment_id: 'artifact-2', booked_event_title: 'Artifact Two' },
+        { ...artifactBase, appointment_id: 'artifact-3', booked_event_title: 'Artifact Three' },
+      ]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.data.summary.meetings_set, 1);
+  assert.equal(payload.data.ui.periods['week-total'].meetingsSet, 1);
+  assert.equal(
+    payload.data.events.some(
+      (row: { source?: string; raw_task_status?: string }) =>
+        row.source === 'scout_tasks_current_pipeline' && row.raw_task_status === 'confirmation_call',
+    ),
+    false,
+  );
 });
 
 test('/api/call-tracker-data keeps same-athlete meeting facts on separate reporting dates', async () => {

@@ -33,7 +33,7 @@ Rules:
 - Pending Clients may read confirmation cache as aligned meeting-support evidence; it must not use confirmation cache to decide lifecycle stage, post-meeting outcome, or active appointment status.
 - Pending Clients admission comes from `appointments.post_meeting_result`, not `pending_client_watchlist.status=watching`. The watchlist table may store resolved/expired tombstones or support metadata for appointment-derived rows, but it must not block clients whose appointment outcome already says operator follow-up is needed.
 - A confirmation-prep writer that verifies a live booked meeting may upsert the matching active `appointments` row through the canonical appointment writer. It must leave `post_meeting_result` null for the new active appointment and must not infer lifecycle from the cache.
-- The hourly cron must not run broad booked-meeting backfills that overwrite appointment time from Laravel local calendar strings.
+- The hourly cron must not run front-facing current-pipeline business writers or broad booked-meeting backfills that overwrite appointment time from Laravel local calendar strings.
 - `pending_client_watchlist.event_start` and `event_end` are timestamp instants, not display strings. If a source adapter returns a legacy no-offset head-scout meeting stamp, normalize it as Eastern meeting-local time before writing Supabase.
 - `call_log.event_at` and `reporting_at` for post-meeting outcome facts are the meeting event instant. `occurred_at` may record when the cron or payment evidence observed the outcome, but UI/reporting must not use detection time as meeting time.
 
@@ -53,9 +53,10 @@ These scripts may write Supabase only through canonical writer paths, but they a
 
 | Script | Role |
 | --- | --- |
-| `scripts/sync-current-pipeline-to-supabase.mjs` | Scheduled current-pipeline sync lane for Laravel current task/stage facts. Uses `workflow-context` for shared identity/profile/title/stage/status values and must not invent missing title/profile facts. |
+| `scripts/sync-current-pipeline-to-supabase.mjs` | Manual drift/repair lane for Laravel current task/stage facts. Uses `workflow-context` for shared identity/profile/title/stage/status values and must not invent missing title/profile facts. It must not be scheduled as the primary front-facing writer for Scout Prep movement. |
 | `scripts/sync-booked-meetings-to-supabase.mjs` | Manual audit/repair for booked meeting facts and external calendar state. It is not part of the hourly cron because appointment time mutation needs confirmed evidence. |
 | `scripts/sync-commissions-to-supabase.mjs` | Audit/reconcile commission rows. |
+| `scripts/watch-ended-meeting-outcomes.mjs` | Narrow ended-meeting watcher for active `appointments` rows that ended within the last 7 days and still have no `post_meeting_result`. It may write real post-meeting outcomes through canonical lifecycle/reporting paths after Laravel/FastAPI confirms the sales stage changed. It must not write a stored outcome while Laravel still says Meeting Set, and it must not mutate meeting time. |
 | `scripts/backsync-lifecycle-call-activity-events.mjs` | Legacy repair only. |
 | `scripts/materialize-call-tracker-data-contract.mjs` | Legacy/static browser contract materialization only. |
 
@@ -74,6 +75,7 @@ See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned del
 ## Rules
 
 - Do not add new script-local lifecycle translation helpers.
+- Do not let scheduled jobs own normal Scout Prep lifecycle, meeting-set, reschedule-pending, no-show, or pending-client movement; those writes belong to the successful action-time workflow.
 - Resolve shared workflow values through `src/domain/workflow-context.ts` before writing cross-table Scout Prep / Set Meetings facts.
 - Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, active appointment status, and post-meeting outcome translation.
 - Use `src/lib/supabase-lifecycle.ts` for Raycast action-time Supabase writes.

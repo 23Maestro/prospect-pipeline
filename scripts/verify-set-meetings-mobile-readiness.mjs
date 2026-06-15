@@ -136,6 +136,10 @@ function runResolver(windowRange) {
   return parsed;
 }
 
+function shouldSkipResolverWrites() {
+  return process.env.READ_ONLY === '1' || process.env.SKIP_RESOLVER_WRITES === '1';
+}
+
 async function fetchLiveSetMeetings(windowRange) {
   const apiBase = String(process.env.API_BASE || DEFAULT_API_BASE).replace(/\/+$/, '');
   const url = new URL(`${apiBase}/mobile/set-meetings`);
@@ -267,7 +271,9 @@ if (!url || !serviceRoleKey) {
 }
 
 const supabaseConfig = { url, key: serviceRoleKey, schema };
-const resolver = runResolver(windowRange);
+const resolver = shouldSkipResolverWrites()
+  ? { skipped: true, appointmentsWritten: 0, cacheRowsPrepared: 0 }
+  : runResolver(windowRange);
 const live = await fetchLiveSetMeetings(windowRange);
 const cacheRows = await readConfirmationCacheRows(supabaseConfig, windowRange);
 const gaps = findCacheGaps(live.events, cacheRows);
@@ -279,6 +285,7 @@ const summary = {
   ok: gaps.length === 0 && schedules.local.ok && schedules.production.ok && prefixRoute.ok,
   window: windowRange,
   resolver: {
+    skipped: resolver.skipped === true,
     appointmentsWritten: resolver.appointmentsWritten,
     cacheRowsPrepared: resolver.cacheRowsPrepared,
   },

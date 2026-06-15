@@ -189,9 +189,9 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
   liveSupabaseApi: {
     route: 'apps/prospect-web/app/api/call-tracker-data/route.ts',
     browserUrl: '/api/call-tracker-data',
-    workflowCron: 'scripts/sync-supabase-pipeline.sh',
+    workflowCron: null,
     canonicalEventTable: 'call_log',
     plainEnglish:
-      'The workflow cron writes pipeline facts into Supabase only. Vercel serves the static app and the lightweight API route reads canonical call_log live.',
+      'No scheduled workflow cron owns front-facing pipeline movement. Raycast action-time writes own Scout Prep business movement; Vercel serves the static app and the lightweight API route reads canonical call_log live.',
   },
 } as const;

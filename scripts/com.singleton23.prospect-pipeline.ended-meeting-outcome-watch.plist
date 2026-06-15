@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.singleton23.prospect-pipeline.ended-meeting-outcome-watch</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>/Users/singleton23/Raycast/prospect-pipeline/scripts/run-ended-meeting-outcome-watch.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/Users/singleton23/Raycast/prospect-pipeline</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Users/singleton23/.nvm/versions/node/v22.16.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>America/New_York</string>
+    <key>API_BASE</key>
+    <string>http://127.0.0.1:8000/api/v1</string>
+    <key>WINDOW_DAYS</key>
+    <string>7</string>
+    <key>LIMIT</key>
+    <string>50</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/singleton23/raycast_logs/ended-meeting-outcome-watch/launchd.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/Users/singleton23/raycast_logs/ended-meeting-outcome-watch/launchd.err.log</string>
+</dict>
+</plist>

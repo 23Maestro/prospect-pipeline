@@ -70,6 +70,16 @@ const PENDING_CLIENT_APPOINTMENT_OUTCOMES = [
 const PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY = PENDING_CLIENT_APPOINTMENT_OUTCOMES.map(
   quotePostgrestInValue,
 ).join(',');
+const ACTIVE_REPLACEMENT_APPOINTMENT_STATUSES = [
+  'scheduled',
+  'confirmation_queued',
+  'confirmation_sent',
+  'rescheduled',
+] as const;
+const ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY = ACTIVE_REPLACEMENT_APPOINTMENT_STATUSES.map(
+  quotePostgrestInValue,
+).join(',');
+const ACTIVE_REPLACEMENT_POST_MEETING_RESULTS = new Set(['', 'rescheduled']);
 
 function readEnvFile(filePath: string): Record<string, string> {
   try {
@@ -162,6 +172,41 @@ function pendingClientAppointmentOutcome(row: AppointmentPendingClientRow): stri
   }
   const status = String(row.status || '').trim();
   return PENDING_CLIENT_APPOINTMENT_OUTCOMES.some((outcome) => outcome === status) ? status : '';
+}
+
+function hasNewerActiveReplacementAppointment(
+  row: AppointmentPendingClientRow,
+  activeRowsByAthleteKey: Map<string, AppointmentPendingClientRow[]>,
+): boolean {
+  const athleteKey = String(row.athlete_key || '').trim();
+  if (!athleteKey) return false;
+  const startsAt = Date.parse(String(row.starts_at || '').trim());
+  if (!Number.isFinite(startsAt)) return false;
+  return (activeRowsByAthleteKey.get(athleteKey) || []).some((candidate) => {
+    if (String(candidate.id || '').trim() === String(row.id || '').trim()) return false;
+    const candidateStartsAt = Date.parse(String(candidate.starts_at || '').trim());
+    return Number.isFinite(candidateStartsAt) && candidateStartsAt > startsAt;
+  });
+}
+
+function groupActiveReplacementAppointmentsByAthleteKey(
+  rows: AppointmentPendingClientRow[],
+): Map<string, AppointmentPendingClientRow[]> {
+  const byAthleteKey = new Map<string, AppointmentPendingClientRow[]>();
+  for (const row of rows) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    const status = String(row.status || '').trim().toLowerCase();
+    const postMeetingResult = String(row.post_meeting_result || '').trim().toLowerCase();
+    if (
+      !athleteKey ||
+      !ACTIVE_REPLACEMENT_APPOINTMENT_STATUSES.some((candidate) => candidate === status) ||
+      !ACTIVE_REPLACEMENT_POST_MEETING_RESULTS.has(postMeetingResult)
+    ) {
+      continue;
+    }
+    byAthleteKey.set(athleteKey, [...(byAthleteKey.get(athleteKey) || []), row]);
+  }
+  return byAthleteKey;
 }
 
 function workflowPayload(row: AppointmentPendingClientRow): Record<string, unknown> {
@@ -357,6 +402,24 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
   const athleteKeys = Array.from(
     new Set(appointmentRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
   );
+  const activeReplacementRows = athleteKeys.length
+    ? await readRows<AppointmentPendingClientRow>(
+        config,
+        'appointments',
+        [
+          'select=id,athlete_key,starts_at,status,post_meeting_result',
+          `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+          `status=in.(${ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY})`,
+          'order=starts_at.asc',
+          `limit=${PENDING_CLIENT_LIST_LIMIT * 4}`,
+        ].join('&'),
+      ).catch(() => [])
+    : [];
+  const activeReplacementsByAthleteKey =
+    groupActiveReplacementAppointmentsByAthleteKey(activeReplacementRows);
+  const actionableAppointmentRows = appointmentRows.filter(
+    (row) => !hasNewerActiveReplacementAppointment(row, activeReplacementsByAthleteKey),
+  );
   const athleteRows = athleteKeys.length
     ? await readRows<AthleteNameRow>(
         config,
@@ -373,7 +436,7 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       .filter(([key, name]) => key && name) as Array<[string, string]>,
   );
   const appointmentRowsForDisplay = buildPendingClientRowsFromAppointments(
-    appointmentRows,
+    actionableAppointmentRows,
     athleteNamesByKey,
   );
   const appointmentSourceIds = appointmentRowsForDisplay.map((row) => row.source_event_id);

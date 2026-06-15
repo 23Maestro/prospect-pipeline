@@ -76,8 +76,11 @@ test('one-time confirmation cache resolver writes cache plus verified appointmen
   assert.doesNotMatch(confirmationCacheResolverSource, /recordMeetingSet/);
 });
 
-test('mobile set meetings readiness guard writes cache before checking mobile routes', () => {
-  assert.match(mobileReadinessGuardSource, /runResolver\(windowRange\)/);
+test('mobile set meetings readiness guard defaults to read-only before checking mobile routes', () => {
+  assert.match(mobileReadinessGuardSource, /shouldSkipResolverWrites/);
+  assert.match(mobileReadinessGuardSource, /READ_ONLY/);
+  assert.match(mobileReadinessGuardSource, /SKIP_RESOLVER_WRITES/);
+  assert.match(mobileReadinessGuardSource, /skipped: true/);
   assert.match(mobileReadinessGuardSource, /fetchLiveSetMeetings\(windowRange\)/);
   assert.match(mobileReadinessGuardSource, /readConfirmationCacheRows\(supabaseConfig, windowRange\)/);
   assert.match(mobileReadinessGuardSource, /findCacheGaps\(live\.events, cacheRows\)/);

@@ -500,7 +500,8 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
     'call_log.booked_event_starts_at',
     'A post-meeting watcher may update appointment `post_meeting_result` and `status_reason`; it may not update `status` or `starts_at`',
     '`reschedule_pending` is a post-meeting outcome/Pending Clients state',
-    'The hourly cron must not run broad booked-meeting backfills',
+    'The hourly cron must not run front-facing current-pipeline business writers',
+    'Do not let scheduled jobs own normal Scout Prep lifecycle',
   ].forEach((phrase) =>
     assert.match(doc, new RegExp(phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))),
   );
@@ -508,7 +509,7 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
   const syncCurrentPipeline = readRepoFile('scripts/sync-current-pipeline-to-supabase.mjs');
   assert.match(
     syncCurrentPipeline,
-    /Scheduled current-pipeline sync lane for Laravel task\/stage facts/,
+    /Manual current-pipeline drift\/repair lane for Laravel task\/stage facts/,
   );
   assert.match(syncCurrentPipeline, /resolveWorkflowContext/);
 

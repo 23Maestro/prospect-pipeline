@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-// Scheduled current-pipeline sync lane for Laravel task/stage facts.
+// Manual current-pipeline drift/repair lane for Laravel task/stage facts.
 // Scout Prep Raycast actions remain primary action-time writers.
 
 import fetch from 'node-fetch';

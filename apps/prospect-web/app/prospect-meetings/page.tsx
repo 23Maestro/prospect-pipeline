@@ -53,7 +53,7 @@ export default function ProspectMeetingsPage() {
       <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070816" />
       <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fbff" />
       <link rel="icon" href="/prospect-id-shield.svg" />
-      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260614-light-mode" />
+      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260615-status-contrast" />
       <main className="shell">
         <header className="topbar">
           <div className="brand-row">

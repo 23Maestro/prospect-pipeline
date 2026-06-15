@@ -158,7 +158,22 @@ test('client-message contact cache admission reads lifecycle events instead of p
   assert.match(source, /lifecycle_events/);
   assert.match(source, /normalizeCrmSalesStage/);
   assert.match(source, /shouldAdmitContactCacheMatch/);
-  assert.match(source, /select=athlete_key,crm_stage,task_status,current_task_id,event_type,payload_json,created_at/);
+  assert.match(source, /select=athlete_key,crm_stage,task_status,event_type,payload_json,created_at/);
+  assert.match(source, /payload\.current_task_id/);
   assert.doesNotMatch(source, /athlete_lifecycle_current/);
   assert.doesNotMatch(source, /'athlete_pipeline_state'/);
+});
+
+test('client-message contact cache config validates candidates instead of trusting one env key', () => {
+  const source = fs.readFileSync('src/lib/athlete-contact-cache.ts', 'utf8');
+  assert.match(source, /buildSupabaseConfigCandidates/);
+  assert.match(source, /isSupabaseConfigUsable/);
+  assert.match(source, /await getSupabaseConfig\('athlete_contact_cache'\)/);
+  assert.doesNotMatch(source, /process\.env\.SUPABASE_SECRET_KEY \|\|\s*repoEnv\.SUPABASE_SECRET_KEY/);
+});
+
+test('client-message directory load does not hide contact cache failures as an empty inbox', () => {
+  const source = fs.readFileSync('src/lib/client-message-sandbox.ts', 'utf8');
+  assert.match(source, /const contactCacheResolutions = await resolveStudentAthleteMessagesForPhones\(chatPhones\)/);
+  assert.doesNotMatch(source, /resolveStudentAthleteMessagesForPhones\(chatPhones\)\.catch/);
 });
