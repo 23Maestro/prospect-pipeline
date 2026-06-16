@@ -71,6 +71,12 @@ const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
   WI: 'Wisconsin',
   WY: 'Wyoming',
 };
+const STATE_ABBREVIATIONS_BY_NAME: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_NAMES_BY_ABBREVIATION).map(([abbreviation, name]) => [
+    name.toLowerCase(),
+    abbreviation,
+  ]),
+);
 
 function logInfo(
   event: string,
@@ -128,6 +134,20 @@ function formatSearchState(state?: string | null): string | null {
   return STATE_NAMES_BY_ABBREVIATION[normalized] || titleCaseWords(rawState);
 }
 
+function formatSearchStateAbbreviation(state?: string | null): string | null {
+  const rawState = clean(state);
+  if (!rawState) {
+    return null;
+  }
+
+  const normalized = rawState.toUpperCase();
+  if (STATE_NAMES_BY_ABBREVIATION[normalized]) {
+    return normalized;
+  }
+
+  return STATE_ABBREVIATIONS_BY_NAME[rawState.toLowerCase()] || normalized;
+}
+
 export function buildMaxPrepsSearchLabel(input: {
   highSchool?: string | null;
   state?: string | null;
@@ -142,6 +162,19 @@ export function buildMaxPrepsSearchLabel(input: {
   const sport = cleanSearchLabelPart(titleCaseWords(input.sport));
   const sportTeam = sport ? (/\bteam$/i.test(sport) ? sport : `${sport} Team`) : null;
   return [highSchool, state, sportTeam].filter(Boolean).join(' ');
+}
+
+export function buildMissingHighSchoolMaxPrepsSearchLabel(input: {
+  state?: string | null;
+  sport?: string | null;
+}): string | null {
+  const sport = cleanSearchLabelPart(input.sport).toLowerCase();
+  const state = cleanSearchLabelPart(formatSearchStateAbbreviation(input.state));
+  if (!sport || !state) {
+    return null;
+  }
+
+  return `${sport} high school ${state}`;
 }
 
 function isMaxPrepsUrl(value: string): boolean {

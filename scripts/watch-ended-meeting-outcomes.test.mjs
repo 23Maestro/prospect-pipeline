@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   appointmentEndIso,
+  athleteNameFromMeetingTitle,
+  buildWatcherFailureEmail,
+  buildAthleteName,
   isWatchCandidate,
   resolveWatcherDecision,
   selectedStageFromPayload,
@@ -164,4 +167,73 @@ test('watcher reads selected stage from FastAPI sales-stage payloads and derives
     appointmentEndIso({ starts_at: '2026-06-15T16:00:00.000Z' }),
     '2026-06-15T17:00:00.000Z',
   );
+});
+
+test('ended meeting watcher never treats athlete key as athlete name', () => {
+  assert.equal(athleteNameFromMeetingTitle('(ACF) Deontae Griffin Football 2029 AR'), 'Deontae Griffin');
+  assert.equal(
+    buildAthleteName(
+      {
+        athlete_id: '1499628',
+        athlete_main_id: '954358',
+        source_payload: {
+          booked_event_title: '(ACF) Deontae Griffin Football 2029 AR',
+        },
+      },
+      { athlete_name: '1499628:954358' },
+    ),
+    'Deontae Griffin',
+  );
+  assert.equal(
+    buildAthleteName(
+      {
+        athlete_id: '1499628',
+        athlete_main_id: '954358',
+      },
+      { athlete_name: '1499628:954358' },
+      null,
+      {
+        athleteName: '1499628:954358',
+        contactCacheAthleteName: 'Deontae Griffin',
+        confirmationCacheAthleteName: 'Deontae Griffin',
+      },
+    ),
+    'Deontae Griffin',
+  );
+  assert.throws(
+    () =>
+      buildAthleteName(
+        {
+          athlete_id: '1499628',
+          athlete_main_id: '954358',
+          source_payload: { athlete_name: '1499628:954358' },
+        },
+        {},
+      ),
+    /Missing real athlete name/,
+  );
+});
+
+test('ended meeting watcher failure email tells operator to fix source data', () => {
+  const email = buildWatcherFailureEmail({
+    dryRun: false,
+    windowDays: 7,
+    candidates: 1,
+    failures: [
+      {
+        appointmentId: '630569',
+        athleteId: '1499628',
+        athleteMainId: '954358',
+        error: 'Missing real athlete name for 1499628:954358',
+      },
+    ],
+  });
+  assert.equal(email.subject, 'Prospect Pipeline watcher failed: 1 row');
+  assert.match(email.body, /What happened/);
+  assert.match(email.body, /Why this matters/);
+  assert.match(email.body, /Appointment 630569/);
+  assert.match(email.body, /Athlete key: 1499628:954358/);
+  assert.match(email.body, /scripts\/watch-ended-meeting-outcomes\.mjs/);
+  assert.match(email.body, /docs\/architecture\/scout-prep-supabase-source-of-truth\.md/);
+  assert.match(email.body, /Do not add broad fallback guesses/);
 });

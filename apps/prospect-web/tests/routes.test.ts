@@ -369,6 +369,59 @@ test('/api/prospect-mobile/reschedule-queue reads recent RSP appointment outcome
   assert.match(calls[1].url, /status=in\.\(scheduled,confirmation_queued,confirmation_sent,rescheduled\)/);
 });
 
+test('/api/prospect-mobile/reschedule-queue resolves key-shaped names from same-key Supabase context', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.includes('/athlete_contact_cache?')) {
+      return Response.json([{ athlete_key: '1499520:954251', athlete_name: 'Real Prospect' }]);
+    }
+    if (requestUrl.includes('/athletes?')) {
+      return Response.json([{ athlete_key: '1499520:954251', athlete_name: '1499520:954251' }]);
+    }
+    if (requestUrl.includes('/set_meeting_confirmation_cache?') || requestUrl.includes('/call_log?')) {
+      return Response.json([]);
+    }
+    if (requestUrl.includes('status=in.(scheduled,confirmation_queued,confirmation_sent,rescheduled)')) {
+      return Response.json([]);
+    }
+    return Response.json([
+      {
+        id: '630600',
+        athlete_key: '1499520:954251',
+        athlete_id: '1499520',
+        athlete_main_id: '954251',
+        head_scout: 'Kenton Manis',
+        starts_at: '2026-06-14T20:00:00Z',
+        status: 'scheduled',
+        post_meeting_result: 'reschedule_pending',
+        source_payload: {
+          workflow_context: {
+            athlete_name: '1499520:954251',
+            meeting_title_base: '1499520:954251 Football 2029 CA',
+          },
+        },
+        updated_at: '2026-06-15T18:00:00Z',
+      },
+    ]);
+  };
+
+  const response = await prospectMobileRescheduleQueueGET(
+    new Request('https://example.test/api/prospect-mobile/reschedule-queue'),
+  );
+
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.events[0].athlete_name, 'Real Prospect');
+  assert.equal(payload.events[0].previous_meeting_title, 'Real Prospect');
+  assert.equal(calls.some((call) => call.url.includes('/athlete_contact_cache?')), true);
+});
+
 test('/api/prospect-mobile/reschedule-queue suppresses RSP rows after newer active reschedule exists', async () => {
   process.env.SUPABASE_URL = 'https://supabase.example';
   process.env.SUPABASE_SECRET_KEY = 'service-role';
@@ -898,6 +951,74 @@ test('/api/call-tracker-data reads live Supabase call_log for the browser contra
   assert.equal(calls.length, 1);
   assert.equal(calls.some((call) => call.url.includes('/lifecycle_events?')), false);
   assert.equal(calls[0].init?.headers?.['Authorization' as keyof HeadersInit], 'Bearer service-role');
+});
+
+test('/api/call-tracker-data resolves key-shaped athlete names from same-key Supabase context', async () => {
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
+  const calls: Array<{ url: string; init?: RequestInit }> = [];
+  globalThis.fetch = async (url, init) => {
+    calls.push({ url: String(url), init });
+    const requestUrl = String(url);
+    if (requestUrl.includes('/athlete_contact_cache?')) {
+      return Response.json([{ athlete_key: '1499585:954315', athlete_name: 'Deontae Griffin' }]);
+    }
+    if (requestUrl.includes('/athletes?')) {
+      return Response.json([{ athlete_key: '1499585:954315', athlete_name: '1499585:954315' }]);
+    }
+    if (requestUrl.includes('/set_meeting_confirmation_cache?')) {
+      return Response.json([]);
+    }
+    if (requestUrl.includes('/call_log?select=athlete_key%2Cathlete_name')) {
+      return Response.json([]);
+    }
+    if (requestUrl.includes('/call_log?')) {
+      return Response.json([
+        {
+          athlete_key: '1499585:954315',
+          athlete_id: '1499585',
+          athlete_main_id: '954315',
+          athlete_name: '1499585:954315',
+          occurred_at: '2026-06-15T17:00:00+00:00',
+          event_at: '2026-06-15T17:00:00+00:00',
+          reporting_at: '2026-06-15T17:00:00+00:00',
+          tracker_outcome: 'spoke_follow_up',
+          raw_crm_stage: 'Actual Meeting Follow Up',
+          raw_task_status: 'Meeting Follow Up',
+          raw_event_type: 'call_activity',
+          source_system: 'call_log',
+          appointment_id: null,
+          live_event_id: null,
+          booked_event_title: null,
+          revenue_cents: null,
+          dedupe_key: 'activity:key-shaped-name',
+          active_operator_name: 'Jerami Singleton',
+          task_assigned_owner: 'Jerami Singleton',
+          counts_as_dial: true,
+          counts_as_contact: true,
+          counts_as_meeting_set: false,
+          counts_as_post_meeting_outcome: false,
+          materialization_status: 'operator_task',
+          materialization_reason: 'task_assigned_owner_matches_active_operator',
+          resolved_owner_name: 'Jerami Singleton',
+          resolved_owner_source_field: 'task.assigned_owner',
+          can_materialize_for_active_operator: true,
+          payload_json: {},
+          created_at: '2026-06-15T17:00:00+00:00',
+        },
+      ]);
+    }
+    return Response.json({ error: requestUrl }, { status: 404 });
+  };
+
+  const response = await callTrackerDataGET();
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  const eventNames = payload.data.events.map((row: { athlete_name?: string }) => row.athlete_name);
+  assert.equal(eventNames.includes('Deontae Griffin'), true);
+  assert.equal(eventNames.some((name: string) => /^\d+:\d+/.test(name)), false);
+  assert.equal(calls.some((call) => call.url.includes('/athlete_contact_cache?')), true);
 });
 
 test('/api/call-tracker-data shows same-task immediate meeting set as one tracker row', async () => {

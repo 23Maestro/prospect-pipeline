@@ -69,6 +69,12 @@ export type DuplicateProfileResolutionResult = {
   skipped: Array<{ athleteId: string; reason: string }>;
 };
 
+export type DuplicateProfileToastSummary = {
+  status: 'success' | 'failure';
+  title: 'No duplicate' | 'Review duplicate' | 'Repeat marked';
+  message: string;
+};
+
 type DuplicateProfileIdentityDetails = {
   athlete_id?: string | null;
   athlete_main_id?: string | null;
@@ -478,6 +484,35 @@ export function buildRepeatProfileDescription(description?: string | null): stri
     return existing;
   }
   return `${existing}\n${REPEAT_PROFILE_MARKER}`;
+}
+
+export function summarizeDuplicateProfileResolutionToast(args: {
+  result: DuplicateProfileResolutionResult;
+  athleteName: string;
+}): DuplicateProfileToastSummary {
+  if (!args.result.completed.length && !args.result.skipped.length) {
+    return {
+      status: 'success',
+      title: 'No duplicate',
+      message: args.athleteName,
+    };
+  }
+
+  if (!args.result.completed.length && args.result.skipped.length) {
+    return {
+      status: 'failure',
+      title: 'Review duplicate',
+      message: args.result.skipped[0]?.reason || 'No duplicate task updated',
+    };
+  }
+
+  return {
+    status: 'success',
+    title: 'Repeat marked',
+    message: args.result.skipped.length
+      ? `${args.result.completed.length} marked, ${args.result.skipped.length} review`
+      : `${args.result.completed.length} marked`,
+  };
 }
 
 function taskHasRepeatProfileMarker(task: Partial<ScoutAthleteTask> | Partial<AthleteTaskSummary>): boolean {

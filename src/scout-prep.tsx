@@ -204,6 +204,7 @@ import {
   verifyRecentClientMessageSend,
 } from './lib/client-message-sandbox';
 import {
+  buildMissingHighSchoolMaxPrepsSearchLabel,
   buildMaxPrepsSearchLabel,
   resolveMaxPrepsScoutContext,
 } from './lib/maxpreps-scout-context';
@@ -220,6 +221,7 @@ import {
   isCallAttempt1PortalTask,
   normalizeDuplicateAthleteName,
   runDuplicateProfileResolutionForTask,
+  summarizeDuplicateProfileResolutionToast,
 } from './lib/scout-duplicate-profiles';
 import {
   resolveLegacyTimezoneLabelFromIana,
@@ -470,6 +472,16 @@ async function triggerMaxPrepsSearch(searchLabel: string) {
   });
 }
 
+async function triggerMissingHighSchoolMaxPrepsSearch(searchLabel: string) {
+  await open(
+    `kmtrigger://macro=AE7EEE0F-D04A-4761-8DCA-295C93A492BB&value=${encodeURIComponent(searchLabel)}`,
+  );
+  await showToast({
+    style: Toast.Style.Success,
+    title: 'High School Search Sent',
+  });
+}
+
 function titleCaseWords(value?: string | null): string {
   return String(value || '')
     .trim()
@@ -500,6 +512,17 @@ function formatStateForHighSchoolCopy(state?: string | null): string | null {
 function buildHighSchoolCopyLabel(context?: ScoutPrepContext | null): string | null {
   return buildMaxPrepsSearchLabel({
     highSchool: context?.resolved.high_school,
+    state: context?.resolved.state,
+    sport: context?.resolved.sport,
+  });
+}
+
+function buildMissingHighSchoolCopyLabel(context?: ScoutPrepContext | null): string | null {
+  if (context?.resolved.high_school) {
+    return null;
+  }
+
+  return buildMissingHighSchoolMaxPrepsSearchLabel({
     state: context?.resolved.state,
     sport: context?.resolved.sport,
   });
@@ -4459,6 +4482,7 @@ function ScoutPrepDetail({
     null,
   );
   const highSchoolCopyLabel = buildHighSchoolCopyLabel(context);
+  const missingHighSchoolCopyLabel = buildMissingHighSchoolCopyLabel(context);
   const showDirectCompleteAction = canCompleteTaskFromActionPanel(task);
 
   async function returnToRootListAndCloseDetail() {
@@ -5207,12 +5231,16 @@ function ScoutPrepDetail({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
               url={buildScoutPrepPlayerIdUrl(task, context?.resolved.athlete_id)}
             />
-            {highSchoolCopyLabel ? (
+            {highSchoolCopyLabel || missingHighSchoolCopyLabel ? (
               <Action
                 title="Open MaxPreps Search"
                 icon="🔎"
                 shortcut={{ modifiers: ['cmd'], key: 'h' }}
-                onAction={() => void triggerMaxPrepsSearch(highSchoolCopyLabel)}
+                onAction={() =>
+                  void (highSchoolCopyLabel
+                    ? triggerMaxPrepsSearch(highSchoolCopyLabel)
+                    : triggerMissingHighSchoolMaxPrepsSearch(missingHighSchoolCopyLabel!))
+                }
               />
             ) : null}
             {highSchoolCopyLabel ? (
@@ -5513,25 +5541,13 @@ function ScoutPrepTaskItem({
     const toast = await showLoadingToast('Dup Check', task.athlete_name);
     try {
       const result = await runDuplicateProfileResolutionForTask(task);
-      if (!result.completed.length && !result.skipped.length) {
-        toast.style = Toast.Style.Success;
-        toast.title = 'No duplicate';
-        toast.message = task.athlete_name;
-        return;
-      }
-
-      if (!result.completed.length && result.skipped.length) {
-        toast.style = Toast.Style.Failure;
-        toast.title = 'Review duplicate';
-        toast.message = result.skipped[0]?.reason || 'No duplicate task updated';
-        return;
-      }
-
-      toast.style = Toast.Style.Success;
-      toast.title = 'Repeat marked';
-      toast.message = result.skipped.length
-        ? `${result.completed.length} marked, ${result.skipped.length} review`
-        : `${result.completed.length} marked`;
+      const summary = summarizeDuplicateProfileResolutionToast({
+        result,
+        athleteName: task.athlete_name,
+      });
+      toast.style = summary.status === 'success' ? Toast.Style.Success : Toast.Style.Failure;
+      toast.title = summary.title;
+      toast.message = summary.message;
     } catch (error) {
       toast.style = Toast.Style.Failure;
       toast.title = 'Check failed';
@@ -5546,6 +5562,12 @@ function ScoutPrepTaskItem({
     state: task.state,
     sport: task.sport,
   });
+  const taskMissingHighSchoolSearchLabel = task.high_school
+    ? null
+    : buildMissingHighSchoolMaxPrepsSearchLabel({
+        state: task.state,
+        sport: task.sport,
+      });
 
   return (
     <List.Item
@@ -5706,12 +5728,16 @@ function ScoutPrepTaskItem({
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
               url={buildScoutPrepPlayerIdUrl(task)}
             />
-            {taskMaxPrepsSearchLabel ? (
+            {taskMaxPrepsSearchLabel || taskMissingHighSchoolSearchLabel ? (
               <Action
                 title="Open MaxPreps Search"
                 icon="🔎"
                 shortcut={{ modifiers: ['cmd'], key: 'h' }}
-                onAction={() => void triggerMaxPrepsSearch(taskMaxPrepsSearchLabel)}
+                onAction={() =>
+                  void (taskMaxPrepsSearchLabel
+                    ? triggerMaxPrepsSearch(taskMaxPrepsSearchLabel)
+                    : triggerMissingHighSchoolMaxPrepsSearch(taskMissingHighSchoolSearchLabel!))
+                }
               />
             ) : null}
             {taskMaxPrepsSearchLabel ? (

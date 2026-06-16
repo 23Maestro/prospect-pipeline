@@ -34,6 +34,16 @@ function asText(value: unknown): string {
   return String(value || '').trim();
 }
 
+function isIdentityText(value: unknown): boolean {
+  const text = asText(value);
+  return /^\d+:\d+(?:\b|$)/.test(text);
+}
+
+function realText(value: unknown): string {
+  const text = asText(value);
+  return text && !isIdentityText(text) ? text : '';
+}
+
 function quotePostgrestInValue(value: string): string {
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
@@ -50,32 +60,66 @@ function payloadText(payload: Record<string, unknown>, key: string): string {
   return asText(payload[key]);
 }
 
+function payloadRealText(payload: Record<string, unknown>, key: string): string {
+  return realText(payload[key]);
+}
+
+function cleanTitleName(value: unknown): string {
+  const cleaned = asText(value)
+    .replace(/^Follow Up -\s*/i, '')
+    .replace(/^\([^)]+\)(?:\*\d+)?\s*/i, '')
+    .trim();
+  if (!cleaned || isIdentityText(cleaned)) return '';
+  const match = cleaned.match(/^(.+?)\s+\S+\s+(?:19|20)\d{2}\s+[A-Z]{2}\b/i);
+  return realText(match?.[1]) || realText(cleaned);
+}
+
 function recentCutoff(days = 7, now = new Date()) {
   const cutoff = new Date(now);
   cutoff.setUTCDate(cutoff.getUTCDate() - days);
   return cutoff.toISOString();
 }
 
-async function fetchAthleteNames(keys: string[]) {
-  if (!keys.length) return new Map<string, string>();
+function addAthleteNames(target: Map<string, string>, rows: AthleteRow[]) {
+  for (const row of rows) {
+    const key = asText(row.athlete_key);
+    const name = realText(row.athlete_name);
+    if (key && name && !target.has(key)) target.set(key, name);
+  }
+}
+
+async function fetchAthleteNameRows(table: string, keys: string[]) {
   const config = getSupabaseRestConfig();
   const query = [
     'select=athlete_key,athlete_name',
     `athlete_key=in.(${keys.map(quotePostgrestInValue).join(',')})`,
-  ].join('&');
-  const response = await fetch(`${config.url}/rest/v1/athletes?${query}`, {
+    table === 'athletes' ? null : 'order=updated_at.desc',
+  ].filter(Boolean).join('&');
+  const response = await fetch(`${config.url}/rest/v1/${table}?${query}`, {
     cache: 'no-store',
     headers: supabaseHeaders(config),
   });
   const rows = await response.json().catch(() => []);
   if (!response.ok) {
-    throw new Error(rows.message || rows.error || `Supabase athletes ${response.status}`);
+    throw new Error(rows.message || rows.error || `Supabase ${table} ${response.status}`);
   }
-  return new Map(
-    (Array.isArray(rows) ? rows as AthleteRow[] : [])
-      .map((row): [string, string] => [asText(row.athlete_key), asText(row.athlete_name)])
-      .filter(([key, name]) => key && name),
-  );
+  return Array.isArray(rows) ? rows as AthleteRow[] : [];
+}
+
+async function fetchAthleteNames(keys: string[]) {
+  if (!keys.length) return new Map<string, string>();
+  const [athleteRows, contactRows, confirmationRows, callLogRows] = await Promise.all([
+    fetchAthleteNameRows('athletes', keys),
+    fetchAthleteNameRows('athlete_contact_cache', keys),
+    fetchAthleteNameRows('set_meeting_confirmation_cache', keys),
+    fetchAthleteNameRows('call_log', keys),
+  ]);
+  const names = new Map<string, string>();
+  addAthleteNames(names, athleteRows);
+  addAthleteNames(names, contactRows);
+  addAthleteNames(names, confirmationRows);
+  addAthleteNames(names, callLogRows);
+  return names;
 }
 
 async function fetchActiveReplacementAppointments(rows: AppointmentRow[]) {
@@ -170,9 +214,10 @@ export async function GET(request: Request) {
         const payload = payloadFor(row);
         const athleteKey = asText(row.athlete_key);
         const athleteName =
-          payloadText(payload, 'athlete_name') ||
+          payloadRealText(payload, 'athlete_name') ||
           athleteNames.get(athleteKey) ||
-          payloadText(payload, 'meeting_title_base') ||
+          cleanTitleName(payloadText(payload, 'meeting_title_base')) ||
+          cleanTitleName(payloadText(payload, 'meeting_title_current')) ||
           'Reschedule pending';
         return {
           key: row.id || row.source_event_id,
@@ -188,8 +233,8 @@ export async function GET(request: Request) {
           status: row.status,
           post_meeting_result: row.post_meeting_result,
           previous_meeting_title:
-            payloadText(payload, 'meeting_title_current') ||
-            payloadText(payload, 'meeting_title_base') ||
+            cleanTitleName(payloadText(payload, 'meeting_title_current')) ||
+            cleanTitleName(payloadText(payload, 'meeting_title_base')) ||
             athleteName,
           previous_meeting_text:
             payloadText(payload, 'previous_meeting_text') ||

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildMissingHighSchoolMaxPrepsSearchLabel,
   buildMaxPrepsSearchLabel,
   extractMaxPrepsUrlFromSearchMarkdown,
   maxPrepsSportSlugCandidates,
@@ -17,6 +18,16 @@ test('buildMaxPrepsSearchLabel: formats the KM placeholder search string', () =>
       sport: "Men's Soccer",
     }),
     "Lorena High School Texas Men's Soccer Team",
+  );
+});
+
+test('buildMissingHighSchoolMaxPrepsSearchLabel: formats the KM fallback search string', () => {
+  assert.equal(
+    buildMissingHighSchoolMaxPrepsSearchLabel({
+      state: 'New York',
+      sport: 'Softball',
+    }),
+    'softball high school NY',
   );
 });
 

@@ -198,6 +198,24 @@ function eventDateKey(row: Record<string, any>) {
   return row.reporting_date_et || localDateKey(row.reporting_at || row.occurred_at);
 }
 
+function asText(value: unknown) {
+  return String(value || '').trim();
+}
+
+function isIdentityText(value: unknown) {
+  const text = asText(value);
+  return /^\d+:\d+(?:\b|$)/.test(text);
+}
+
+function realText(value: unknown) {
+  const text = asText(value);
+  return text && !isIdentityText(text) ? text : '';
+}
+
+function quotePostgrestInValue(value: string) {
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
 function normalizeKey(value: unknown) {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -362,6 +380,100 @@ function filterCounts(rows: Array<Record<string, any>>) {
 
 function payload(row: Record<string, any>) {
   return row?.[PAYLOAD_FIELD] && typeof row[PAYLOAD_FIELD] === 'object' && !Array.isArray(row[PAYLOAD_FIELD]) ? row[PAYLOAD_FIELD] : {};
+}
+
+function cleanTitleName(value: unknown) {
+  const cleaned = asText(value)
+    .replace(/^Follow Up -\s*/i, '')
+    .replace(/^\([^)]+\)(?:\*\d+)?\s*/i, '')
+    .trim();
+  if (!cleaned || isIdentityText(cleaned)) return '';
+  const match = cleaned.match(/^(.+?)\s+\S+\s+(?:19|20)\d{2}\s+[A-Z]{2}\b/i);
+  return realText(match?.[1]) || realText(cleaned);
+}
+
+function payloadRealText(row: Record<string, any>, key: string) {
+  return realText(payload(row)[key]);
+}
+
+function rowAthleteKey(row: Record<string, any>) {
+  return asText(row.athlete_key) || [asText(row.athlete_id), asText(row.athlete_main_id)].filter(Boolean).join(':');
+}
+
+function addAthleteNames(target: Map<string, string>, rows: Array<Record<string, any>>) {
+  for (const row of rows) {
+    const key = rowAthleteKey(row);
+    const name =
+      realText(row.athlete_name) ||
+      payloadRealText(row, 'athlete_name') ||
+      cleanTitleName(row.booked_event_title) ||
+      cleanTitleName(payload(row).meeting_title_base) ||
+      cleanTitleName(payload(row).meeting_title_current);
+    if (key && name && !target.has(key)) target.set(key, name);
+  }
+}
+
+async function fetchAthleteNameRows(table: string, keys: string[]) {
+  if (!keys.length) return [];
+  const order =
+    table === 'call_log'
+      ? 'order=reporting_at.desc'
+      : table === 'athletes'
+        ? null
+        : 'order=updated_at.desc';
+  return supabaseGet(
+    [
+      `${table}?select=athlete_key,athlete_name`,
+      `athlete_key=in.(${keys.map(quotePostgrestInValue).join(',')})`,
+      order,
+    ]
+      .filter(Boolean)
+      .join('&'),
+  );
+}
+
+async function resolveAthleteNames(rows: Array<Record<string, any>>) {
+  const names = new Map<string, string>();
+  addAthleteNames(names, rows);
+  const keysNeedingContext = Array.from(
+    new Set(
+      rows
+        .filter((row) => {
+          const key = rowAthleteKey(row);
+          return key && !names.has(key) && (!realText(row.athlete_name) || isIdentityText(row.athlete_name));
+        })
+        .map(rowAthleteKey),
+    ),
+  );
+  if (!keysNeedingContext.length) return names;
+
+  const [athleteRows, contactRows, confirmationRows, callLogRows] = await Promise.all([
+    fetchAthleteNameRows('athletes', keysNeedingContext),
+    fetchAthleteNameRows('athlete_contact_cache', keysNeedingContext),
+    fetchAthleteNameRows('set_meeting_confirmation_cache', keysNeedingContext),
+    fetchAthleteNameRows('call_log', keysNeedingContext),
+  ]);
+  addAthleteNames(names, Array.isArray(athleteRows) ? athleteRows : []);
+  addAthleteNames(names, Array.isArray(contactRows) ? contactRows : []);
+  addAthleteNames(names, Array.isArray(confirmationRows) ? confirmationRows : []);
+  addAthleteNames(names, Array.isArray(callLogRows) ? callLogRows : []);
+  return names;
+}
+
+function repairAthleteName(row: Record<string, any>, athleteNames: Map<string, string>) {
+  const key = rowAthleteKey(row);
+  const athleteName =
+    realText(row.athlete_name) ||
+    athleteNames.get(key) ||
+    payloadRealText(row, 'athlete_name') ||
+    cleanTitleName(row.booked_event_title) ||
+    cleanTitleName(payload(row).meeting_title_base) ||
+    cleanTitleName(payload(row).meeting_title_current) ||
+    'Unknown Athlete';
+  return {
+    ...row,
+    athlete_name: athleteName,
+  };
 }
 
 function mergeEventRows(viewRows: Array<Record<string, any>>, lifecycleRows: Array<Record<string, any>>) {
@@ -641,7 +753,9 @@ async function buildLiveContract() {
 
   const generatedAt = new Date().toISOString();
   const viewEvents = (Array.isArray(callLogRows) ? callLogRows : []).map(callLogRowToEvent);
-  const materializedEvents = collapseMeetingSetCompanionCallActivity(mergeEventRows(viewEvents, [])).map(
+  const athleteNames = await resolveAthleteNames(viewEvents);
+  const repairedEvents = viewEvents.map((row) => repairAthleteName(row, athleteNames));
+  const materializedEvents = collapseMeetingSetCompanionCallActivity(mergeEventRows(repairedEvents, [])).map(
     normalizeDashboardTruth,
   );
   const summary = resolveMeetingSetSummary(

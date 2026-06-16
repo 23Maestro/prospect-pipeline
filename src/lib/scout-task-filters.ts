@@ -18,6 +18,11 @@ export type TaskBucketRow = {
 };
 
 export const TASK_LIST_PAGE_SIZE = 100;
+export const SCOUT_PREP_DEFAULT_TASK_LIST_SORT: TaskListSort = [
+  { key: 'callAttempt', direction: 'asc' },
+  { key: 'gradYear', direction: 'asc' },
+];
+export const SCOUT_PREP_DUPLICATE_CHECK_BATCH_LIMIT = 10;
 
 export function getTaskPageOffset(pageIndex: number, pageSize = TASK_LIST_PAGE_SIZE): number {
   return Math.max(pageIndex, 0) * pageSize;
@@ -67,6 +72,28 @@ export function buildTaskBucketRows(args: {
     ? sortScoutPrepTasks(sourceTasks, args.sort)
     : sourceTasks;
   return tasks.map((task) => ({ kind: 'task', task }) satisfies TaskBucketRow);
+}
+
+export function buildTodayPastDueDuplicateCheckBatchTasks(args: {
+  taskBuckets: Pick<Record<ScoutTaskRange, ScoutPortalTask[]>, 'todayPastDue'> &
+    Partial<Record<ScoutTaskRange, ScoutPortalTask[]>>;
+  limit?: number;
+  sort?: TaskListSort;
+}): ScoutPortalTask[] {
+  const limit = Math.max(1, args.limit || SCOUT_PREP_DUPLICATE_CHECK_BATCH_LIMIT);
+  const taskBuckets: Record<ScoutTaskRange, ScoutPortalTask[]> = {
+    todayPastDue: args.taskBuckets.todayPastDue || [],
+    all: args.taskBuckets.all || [],
+    tomorrow: args.taskBuckets.tomorrow || [],
+    future: args.taskBuckets.future || [],
+  };
+  return buildTaskBucketRows({
+    filter: 'todayPastDue',
+    taskBuckets,
+    sort: args.sort === undefined ? SCOUT_PREP_DEFAULT_TASK_LIST_SORT : args.sort,
+  })
+    .map((row) => row.task)
+    .slice(0, limit);
 }
 
 function filterVisibleTaskBucketTasks(tasks: ScoutPortalTask[], range: ScoutTaskRange): ScoutPortalTask[] {

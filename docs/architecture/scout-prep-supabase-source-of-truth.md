@@ -77,6 +77,8 @@ See `docs/architecture/supabase-clean-house-truth-map.md` for the repo-owned del
 - Do not add new script-local lifecycle translation helpers.
 - Do not let scheduled jobs own normal Scout Prep lifecycle, meeting-set, reschedule-pending, no-show, or pending-client movement; those writes belong to the successful action-time workflow.
 - Resolve shared workflow values through `src/domain/workflow-context.ts` before writing cross-table Scout Prep / Set Meetings facts.
+- When a value is missing from the immediate row but the row has an `athlete_key`, first resolve associated Supabase context by that key before calling Laravel/FastAPI or inventing a fallback. Check bucket-appropriate Supabase support surfaces such as `athletes`, `athlete_contact_cache`, `set_meeting_confirmation_cache`, `appointments`, and `call_log`. Identity keys are join handles only; never use an `athlete_key` string such as `1499628:954358` as an athlete name, display label, meeting title base, or profile fact.
+- If same-key Supabase context cannot resolve a required value, fail loudly and send the operator a bug notification through the dedicated `BUG_NOTIFICATIONS_*` channel. Do not silently continue with arbitrary display or reporting fallbacks.
 - Use `src/domain/supabase-lifecycle-translator.ts` for event prefix, CRM stage, task status, active appointment status, and post-meeting outcome translation.
 - Use `src/lib/supabase-lifecycle.ts` for Raycast action-time Supabase writes.
 - Treat confirmation cache as confirmation-message support only.

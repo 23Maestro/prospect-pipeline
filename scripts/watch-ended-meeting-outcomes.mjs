@@ -32,6 +32,7 @@ const LOCK_DIR = process.env.ENDED_MEETING_WATCH_LOCK_DIR || '/tmp/prospect-pipe
 const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
 
 const POST_MEETING_PENDING_RESULTS = new Set(['follow_up', 'reschedule_pending', 'no_show', 'canceled']);
+let repoEnvCache = null;
 
 const {
   projectRef,
@@ -76,6 +77,80 @@ export function parseArgs(argv) {
 
 function normalizeText(value) {
   return String(value || '').trim();
+}
+
+function readRepoEnv() {
+  if (repoEnvCache) return repoEnvCache;
+  repoEnvCache = {};
+  try {
+    const text = readFileSync(join(process.cwd(), '.env'), 'utf8');
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
+      const index = trimmed.indexOf('=');
+      repoEnvCache[trimmed.slice(0, index).trim()] = trimmed.slice(index + 1).trim();
+    }
+  } catch {
+    // Local env is optional; production should provide process.env.
+  }
+  return repoEnvCache;
+}
+
+function envValue(name) {
+  return normalizeText(process.env[name]) || normalizeText(readRepoEnv()[name]);
+}
+
+function isAthleteKeyText(value) {
+  return /^\d+:\d+$/.test(normalizeText(value));
+}
+
+function realName(value) {
+  const text = normalizeText(value);
+  if (!text || isAthleteKeyText(text)) return null;
+  return text;
+}
+
+export function athleteNameFromMeetingTitle(title) {
+  const cleaned = normalizeText(title)
+    .replace(/^Follow Up -\s*/i, '')
+    .replace(/^\([^)]+\)(?:\*\d+)?\s*/i, '')
+    .trim();
+  if (!cleaned || isAthleteKeyText(cleaned)) return null;
+  const match = cleaned.match(/^(.+?)\s+\S+\s+(?:19|20)\d{2}\s+[A-Z]{2}\b/i);
+  return realName(match?.[1]) || null;
+}
+
+async function readRowsSafe(table, query) {
+  return readRows(SUPABASE_CONFIG, table, query).catch(() => []);
+}
+
+export async function readSupabaseAthleteContext(athleteKey) {
+  const key = normalizeText(athleteKey);
+  if (!key) return {};
+  const encodedKey = encodeURIComponent(key);
+  const [athleteRows, contactRows, confirmationRows, callLogRows] = await Promise.all([
+    readRowsSafe('athletes', `select=athlete_name&athlete_key=eq.${encodedKey}&limit=1`),
+    readRowsSafe(
+      'athlete_contact_cache',
+      `select=athlete_name&athlete_key=eq.${encodedKey}&order=updated_at.desc&limit=5`,
+    ),
+    readRowsSafe(
+      'set_meeting_confirmation_cache',
+      `select=athlete_name&athlete_key=eq.${encodedKey}&order=updated_at.desc&limit=5`,
+    ),
+    readRowsSafe(
+      'call_log',
+      `select=athlete_name&athlete_key=eq.${encodedKey}&order=updated_at.desc&limit=5`,
+    ),
+  ]);
+
+  return {
+    athleteName: athleteRows.find((row) => realName(row?.athlete_name))?.athlete_name || null,
+    contactCacheAthleteName: contactRows.find((row) => realName(row?.athlete_name))?.athlete_name || null,
+    confirmationCacheAthleteName:
+      confirmationRows.find((row) => realName(row?.athlete_name))?.athlete_name || null,
+    callLogAthleteName: callLogRows.find((row) => realName(row?.athlete_name))?.athlete_name || null,
+  };
 }
 
 function normalizeIsoValue(value) {
@@ -265,10 +340,26 @@ async function fetchSelectedSalesStage(athleteId) {
     .catch(() => null);
 }
 
-function buildAthleteName(appointment, profile) {
-  return normalizeText(profile?.athlete_name || appointment?.source_payload?.athlete_name) ||
-    normalizeText(appointment?.athlete_name) ||
-    buildAthleteKey(appointment.athlete_id, appointment.athlete_main_id);
+export function buildAthleteName(appointment, profile, liveEvent = null, supabaseContext = {}) {
+  const athleteName =
+    realName(supabaseContext?.athleteName) ||
+    realName(supabaseContext?.contactCacheAthleteName) ||
+    realName(supabaseContext?.confirmationCacheAthleteName) ||
+    realName(supabaseContext?.callLogAthleteName) ||
+    realName(profile?.athlete_name) ||
+    realName(profile?.athleteName) ||
+    realName(appointment?.source_payload?.athlete_name) ||
+    realName(appointment?.athlete_name) ||
+    athleteNameFromMeetingTitle(liveEvent?.title) ||
+    athleteNameFromMeetingTitle(appointment?.source_payload?.meeting_name) ||
+    athleteNameFromMeetingTitle(appointment?.source_payload?.booked_event_title);
+
+  if (!athleteName) {
+    throw new Error(
+      `Missing real athlete name for ${buildAthleteKey(appointment.athlete_id, appointment.athlete_main_id)}`,
+    );
+  }
+  return athleteName;
 }
 
 async function deleteConflictingWatcherOutcomeFacts(args) {
@@ -285,17 +376,98 @@ async function deleteConflictingWatcherOutcomeFacts(args) {
   });
 }
 
+export function buildWatcherFailureEmail(args) {
+  const failures = Array.isArray(args?.failures) ? args.failures : [];
+  const subject = `Prospect Pipeline watcher failed: ${failures.length} row${failures.length === 1 ? '' : 's'}`;
+  const renderedFailures = failures.slice(0, 10).map((failure, index) => {
+    const athleteKey =
+      normalizeText(failure.athleteId) && normalizeText(failure.athleteMainId)
+        ? `${normalizeText(failure.athleteId)}:${normalizeText(failure.athleteMainId)}`
+        : 'unknown';
+    return [
+      `${index + 1}. Appointment ${normalizeText(failure.appointmentId) || 'unknown'}`,
+      `   Athlete key: ${athleteKey}`,
+      `   Error: ${normalizeText(failure.error) || 'unknown'}`,
+      '   Meaning: required same-key Supabase context was missing or invalid, so the watcher refused to write fallback data.',
+      '   Check first: athletes, athlete_contact_cache, set_meeting_confirmation_cache, appointments, call_log.',
+    ].join('\n');
+  });
+  const body = [
+    'Prospect Pipeline bug notification',
+    '',
+    'What happened',
+    'The ended-meeting watcher stopped on one or more rows instead of writing arbitrary fallback data.',
+    '',
+    'Why this matters',
+    'This protects Supabase truth from key-shaped or fabricated values leaking into athlete names, meeting titles, workflow context, or reporting facts.',
+    '',
+    'Run context',
+    `- Script: scripts/watch-ended-meeting-outcomes.mjs`,
+    `- Mode: ${args?.dryRun ? 'dry-run' : 'write'}`,
+    `- Window days: ${args?.windowDays ?? 'unknown'}`,
+    `- Candidate count: ${args?.candidates ?? 'unknown'}`,
+    `- Failure count: ${failures.length}`,
+    '',
+    'Failed rows',
+    ...renderedFailures,
+    failures.length > 10 ? `...and ${failures.length - 10} more` : null,
+    '',
+    'Related code and contract',
+    '- scripts/watch-ended-meeting-outcomes.mjs: watcher, same-key Supabase context lookup, and bug notification sender',
+    '- scripts/watch-ended-meeting-outcomes.test.mjs: regression coverage for no key-shaped names and notification text',
+    '- docs/architecture/scout-prep-supabase-source-of-truth.md: no arbitrary fallback rule and BUG_NOTIFICATIONS_* channel',
+    '',
+    'Operator action',
+    'Fix the missing Supabase/source-domain value for the listed athlete key or appointment. Do not add broad fallback guesses.',
+  ]
+    .filter(Boolean)
+    .join('\n');
+  return { subject, body };
+}
+
+async function sendWatcherFailureEmail(summary) {
+  if (!Array.isArray(summary.failures) || !summary.failures.length) return null;
+  const apiKey = envValue('BUG_NOTIFICATIONS_RESEND_API_KEY') || envValue('RESEND_API_KEY');
+  const from = envValue('BUG_NOTIFICATIONS_FROM');
+  const to = envValue('BUG_NOTIFICATIONS_TO');
+  if (!apiKey || !from || !to) {
+    return { sent: false, reason: 'missing_bug_notifications_env' };
+  }
+
+  const email = buildWatcherFailureEmail(summary);
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from,
+      to: to.split(',').map((value) => value.trim()).filter(Boolean),
+      subject: email.subject,
+      text: email.body,
+    }),
+  });
+  const text = await response.text().catch(() => '');
+  if (!response.ok) {
+    throw new Error(`Resend alert failed: HTTP ${response.status} ${text.slice(0, 200)}`);
+  }
+  return { sent: true };
+}
+
 async function processAppointment(appointment, args) {
   const athleteId = normalizeText(appointment.athlete_id);
   const athleteMainId = normalizeText(appointment.athlete_main_id);
-  const [selectedStage, liveEvent, tasks, profile] = await Promise.all([
+  const athleteKey = buildAthleteKey(athleteId, athleteMainId);
+  const [selectedStage, liveEvent, tasks, profile, supabaseContext] = await Promise.all([
     fetchSelectedSalesStage(athleteId),
     fetchLiveEvent(appointment),
     fetchTasks(athleteId, athleteMainId),
     apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve?force_refresh=true`).catch(() => ({})),
+    readSupabaseAthleteContext(athleteKey),
   ]);
   const decision = resolveWatcherDecision({ appointment, selectedStage, liveEvent });
-  const athleteName = buildAthleteName(appointment, profile);
+  const athleteName = buildAthleteName(appointment, profile, liveEvent, supabaseContext);
   const currentTask = tasks.find((task) => normalizeText(task?.title).toLowerCase().includes('confirmation call')) || tasks[0] || null;
   const workflowContext = resolveWorkflowContext({
     athleteId,
@@ -312,7 +484,7 @@ async function processAppointment(appointment, args) {
   });
   const baseResult = {
     appointmentId: appointment.id,
-    athleteKey: buildAthleteKey(athleteId, athleteMainId),
+    athleteKey,
     athleteName,
     selectedStage,
     liveEventId: normalizeText(liveEvent?.event_id),
@@ -456,7 +628,7 @@ export async function runEndedMeetingOutcomeWatch(args = parseArgs(process.argv.
         });
       }
     }
-    return {
+    const summary = {
       dryRun: args.dryRun,
       windowDays: args.windowDays,
       candidates: appointments.length,
@@ -468,6 +640,17 @@ export async function runEndedMeetingOutcomeWatch(args = parseArgs(process.argv.
         return counts;
       }, {}),
     };
+    if (failures.length) {
+      try {
+        summary.notification = await sendWatcherFailureEmail(summary);
+      } catch (error) {
+        summary.notification = {
+          sent: false,
+          reason: error instanceof Error ? error.message : String(error),
+        };
+      }
+    }
+    return summary;
   } finally {
     releaseLock();
   }

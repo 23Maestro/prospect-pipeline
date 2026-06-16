@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildTaskBucketRows,
+  buildTodayPastDueDuplicateCheckBatchTasks,
   buildTaskPageLabel,
   getTaskPageOffset,
   getTaskSectionTitle,
@@ -78,6 +79,46 @@ test('todayPastDue hides marked repeat tasks from the home task list', () => {
   assert.deepEqual(
     rows.map((row) => row.task.athlete_name),
     ['Active Athlete'],
+  );
+});
+
+test('duplicate check batch uses top 10 rendered Today/PastDue rows', () => {
+  const todayPastDue = [
+    buildTask('Attempt 3 Junior 1', '04/22/2026 09:00 AM', '2027', 'Call Attempt 3'),
+    buildTask('Attempt 1 Senior 1', '04/22/2026 09:00 AM', '2026', 'Call Attempt 1'),
+    buildTask('Marked Repeat Athlete', '04/22/2026 09:00 AM', '2028', 'REPEAT'),
+    buildTask('Attempt 1 Junior 1', '04/22/2026 09:00 AM', '2027', 'Call Attempt 1'),
+    buildTask('Attempt 2 Senior 1', '04/22/2026 09:00 AM', '2026', 'Call Attempt 2'),
+    buildTask('Attempt 1 Senior 2', '04/22/2026 09:00 AM', '2026', 'Call Attempt 1'),
+    buildTask('Attempt 1 Junior 2', '04/22/2026 09:00 AM', '2027', 'Call Attempt 1'),
+    buildTask('Attempt 2 Senior 2', '04/22/2026 09:00 AM', '2026', 'Call Attempt 2'),
+    buildTask('Attempt 2 Junior 1', '04/22/2026 09:00 AM', '2027', 'Call Attempt 2'),
+    buildTask('Attempt 3 Senior 1', '04/22/2026 09:00 AM', '2026', 'Call Attempt 3'),
+    buildTask('Attempt 3 Junior 2', '04/22/2026 09:00 AM', '2027', 'Call Attempt 3'),
+    buildTask('Attempt 3 Senior 2', '04/22/2026 09:00 AM', '2026', 'Call Attempt 3'),
+  ];
+
+  const tasks = buildTodayPastDueDuplicateCheckBatchTasks({
+    taskBuckets: {
+      ...buildBuckets(),
+      todayPastDue,
+    },
+  });
+
+  assert.deepEqual(
+    tasks.map((task) => task.athlete_name),
+    [
+      'Attempt 1 Senior 1',
+      'Attempt 1 Senior 2',
+      'Attempt 1 Junior 1',
+      'Attempt 1 Junior 2',
+      'Attempt 2 Senior 1',
+      'Attempt 2 Senior 2',
+      'Attempt 2 Junior 1',
+      'Attempt 3 Senior 1',
+      'Attempt 3 Senior 2',
+      'Attempt 3 Junior 1',
+    ],
   );
 });
 
