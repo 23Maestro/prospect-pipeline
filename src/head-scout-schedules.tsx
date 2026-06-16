@@ -64,11 +64,15 @@ import {
   buildSetMeetingCandidatesFromAppointments,
   buildSetMeetingCandidatesFromBookedMeetings,
   filterWeeklySetMeetingCandidates,
+  mergeSetMeetingAppointmentAndBookedMeetingCandidates,
 } from './domain/set-meetings-candidate';
 import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipeline';
 import { postCallStageForAppointmentTitlePrefix } from './domain/sales-stage-contract';
 import { getActiveOperator } from './domain/owners';
-import { classifyPendingClientOperatorQueue } from './domain/pending-client-watchlist';
+import {
+  classifyPendingClientCentralQueue,
+  type PendingClientCentralFilter,
+} from './domain/pending-client-watchlist';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
 import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import {
@@ -95,12 +99,15 @@ import {
   shouldRenderCachedSetMeetingsSnapshot,
 } from './lib/set-meetings-cache';
 import {
+  buildClientInboxThreadEvidenceReceipt,
   buildClientReplyThemeReviewSnapshotForChats,
   getClientThreadMessages,
   loadClientInboxChats,
   type ClientInboxChat,
+  type ClientThreadMessage,
 } from './lib/client-message-sandbox';
 import {
+  buildClientReplyThemeRunReceipt,
   buildClientReplyThemeThreadMarkdown,
   clientReplyThemeReviewDisplayName,
   findPendingClientReplyThemeState,
@@ -109,6 +116,13 @@ import {
   type ClientReplyThemeReviewSnapshot,
   type PendingClientReplyThemeState,
 } from './lib/client-message-reply-themes';
+import {
+  buildClientMessageActionProposal,
+  buildClientMessageActionProposalEvidenceJson,
+  buildClientMessageActionProposalMarkdown,
+  buildClientMessageActionProposalVisualUrl,
+} from './lib/client-message-action-proposals';
+import { buildClientMessageThreadEvidenceReceipt } from './lib/client-message-evidence-receipts';
 import { getWeeklyScheduledAppointmentRows } from './lib/supabase-lifecycle';
 
 const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
@@ -584,17 +598,20 @@ async function loadWeeklyOperatorMeetingCandidates(
     fetchHeadScoutBookedMeetings(weekOffset).catch(() => null),
     fetchScoutPortalTasks(weekOffset > 0 ? 'nextWeek' : 'thisWeek'),
   ]);
-  const baseCandidates = weeklyAppointments.length
-    ? buildSetMeetingCandidatesFromAppointments({
-        appointments: weeklyAppointments,
-        tasks: operatorTasks || [],
-        operatorName,
-      })
-    : buildSetMeetingCandidatesFromBookedMeetings({
-        bookedMeetings: weekly?.events || [],
-        tasks: operatorTasks || [],
-        operatorName,
-      });
+  const appointmentCandidates = buildSetMeetingCandidatesFromAppointments({
+    appointments: weeklyAppointments,
+    tasks: operatorTasks || [],
+    operatorName,
+  });
+  const bookedMeetingCandidates = buildSetMeetingCandidatesFromBookedMeetings({
+    bookedMeetings: weekly?.events || [],
+    tasks: operatorTasks || [],
+    operatorName,
+  });
+  const baseCandidates = mergeSetMeetingAppointmentAndBookedMeetingCandidates({
+    appointmentCandidates,
+    bookedMeetingCandidates,
+  });
   const weeklyCandidates = await hydrateWeeklyCandidatesFromAthleteMeetings(
     baseCandidates,
     weekly?.week_start || weekWindow.start,
@@ -819,37 +836,32 @@ function buildPendingClientTaskUrl(
   return url.toString();
 }
 
-function getPendingClientDisplayTag(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-  replyState?: PendingClientReplyThemeState | null,
-): {
-  label: string;
-  color: Color;
-} {
-  if (replyState && !replyState.row.replyEvidence) {
-    return replyState.status === 'awaiting_reschedule'
-      ? { label: 'Awaiting RSP', color: Color.Yellow }
-      : { label: 'Needs Reply', color: Color.Red };
-  }
+const PENDING_CLIENT_FILTERS: readonly {
+  value: PendingClientCentralFilter | 'all';
+  title: string;
+}[] = [
+  { value: 'all', title: 'All' },
+  { value: 'reschedule', title: 'RSP' },
+  { value: 'no_show', title: 'No Show' },
+  { value: 'payments', title: 'Payments' },
+  { value: 'review_follow_ups', title: 'Review Follow Ups' },
+];
 
-  const { label } = classifyPendingClientOperatorQueue({
-    row,
-    replyEvidence: replyState?.row.replyEvidence,
-  });
-  const colorByLabel: Record<typeof label, Color> = {
-    'Needs Times': Color.Red,
-    'Awaiting RSP': Color.Yellow,
-    'Needs Reply': Color.Red,
-    'Timing Bad': Color.Orange,
-    'Timing Issue': Color.Orange,
-    'No Interest': Color.Red,
-    'Call Back': Color.Blue,
-    'Operator Input': Color.Red,
-    'Follow Up': Color.Blue,
-    Payment: Color.Green,
-    'No Note': Color.Orange,
-  };
-  return { label, color: colorByLabel[label] };
+function pendingClientCentralTagColor(
+  filter: PendingClientCentralFilter,
+  actionLabel: ReturnType<typeof classifyPendingClientCentralQueue>['actionLabel'],
+): Color {
+  if (actionLabel === 'Awaiting Client') return Color.SecondaryText;
+  if (actionLabel === 'Bad Timing') return Color.Orange;
+  if (actionLabel === 'Review') return Color.Orange;
+  if (filter === 'payments') return Color.Green;
+  if (filter === 'review_follow_ups') return Color.Blue;
+  if (filter === 'no_show') return Color.Red;
+  return Color.Purple;
+}
+
+function pendingClientFilterTitle(filter: PendingClientCentralFilter | 'all'): string {
+  return PENDING_CLIENT_FILTERS.find((item) => item.value === filter)?.title || 'All';
 }
 
 function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
@@ -956,11 +968,13 @@ function buildPendingClientThreadEvidenceMarkdown(
   const outbound = compactPendingClientThreadEvidence(evidence.lastMeaningfulOutbound?.body);
   const replyStatus = evidence.clientOptedOut
     ? 'client opted out'
-    : evidence.operatorReplyProposedTimes
-      ? 'proposed times'
-      : evidence.operatorRepliedAfterInbound
-        ? 'replied without times'
-        : 'no reply after inbound';
+    : evidence.clientRepliedAfterOperatorTimes
+      ? 'client replied after proposed times'
+      : evidence.operatorReplyProposedTimes
+        ? 'proposed times'
+        : evidence.operatorRepliedAfterInbound
+          ? 'replied without times'
+          : 'no reply after inbound';
   return [
     '## Thread Evidence',
     '',
@@ -1044,6 +1058,132 @@ function findPendingClientChat(
         .filter(Boolean)
         .some((candidate) => candidate === name || candidate.includes(name) || name.includes(candidate)),
     ) || null
+  );
+}
+
+function buildPendingClientThreadEvidenceReceipt(
+  replyState: PendingClientReplyThemeState,
+  messages: ClientThreadMessage[],
+  chat?: ClientInboxChat | null,
+) {
+  if (chat) {
+    return buildClientInboxThreadEvidenceReceipt(chat, messages);
+  }
+
+  const row = replyState.row;
+  return buildClientMessageThreadEvidenceReceipt({
+    chat: {
+      guid: row.chatGuid,
+      serviceName: 'iMessage',
+      isGroup: false,
+      participantCount: row.matchedPhones.length || 1,
+      matchedPhones: row.matchedPhones,
+      clientMatch: {
+        source: 'contact_cache',
+        segment: 'pending',
+        contactId: row.contactId,
+        athleteMainId: row.athleteMainId,
+        currentTaskId: null,
+        currentTaskTitle: row.taskTitle,
+        crmStage: null,
+        taskStatus: row.taskTitle,
+        ambiguity: 'none',
+        associatedClientsCount: row.matchedPhones.length ? 1 : 0,
+      },
+    },
+    messages: messages.map((message) => ({
+      guid: message.guid,
+      date: message.date,
+      isFromMe: message.is_from_me,
+      body: message.body,
+      bodySource: message.body ? 'attributedBody' : 'empty',
+    })),
+  });
+}
+
+function PendingClientEvidenceDetail({
+  chat,
+  replyState,
+}: {
+  chat?: ClientInboxChat | null;
+  replyState: PendingClientReplyThemeState;
+}) {
+  const match = replyState.row;
+  const title = clientReplyThemeReviewDisplayName(match);
+  const {
+    data = [],
+    isLoading,
+    revalidate,
+  } = usePromise(getClientThreadMessages, [match.chatGuid, title]);
+  const threadReceipt = buildPendingClientThreadEvidenceReceipt(replyState, data, chat);
+  const classifierReceipt = buildClientReplyThemeRunReceipt(match);
+  const proposal = buildClientMessageActionProposal({
+    threadReceipt,
+    classifierReceipt,
+  });
+  const markdown = buildClientMessageActionProposalMarkdown({
+    title,
+    threadReceipt,
+    classifierReceipt,
+    proposal,
+  });
+  const evidenceJson = buildClientMessageActionProposalEvidenceJson({
+    title,
+    threadReceipt,
+    classifierReceipt,
+    proposal,
+  });
+
+  return (
+    <Detail
+      navigationTitle="10x Evidence"
+      isLoading={isLoading}
+      markdown={markdown}
+      actions={
+        <ActionPanel>
+          {!isLoading ? (
+            <ActionPanel.Section title="Evidence">
+              <Action.CopyToClipboard
+                title="Copy Evidence JSON"
+                icon="📋"
+                content={evidenceJson}
+                concealed
+              />
+            </ActionPanel.Section>
+          ) : null}
+          <ActionPanel.Section title="Source">
+            <Action
+              title="Refresh Evidence"
+              icon={Icon.ArrowClockwise}
+              onAction={() => void revalidate()}
+            />
+          </ActionPanel.Section>
+        </ActionPanel>
+      }
+    />
+  );
+}
+
+async function openPendingClientEvidenceVisual(args: {
+  chat?: ClientInboxChat | null;
+  replyState: PendingClientReplyThemeState;
+}) {
+  const match = args.replyState.row;
+  const title = clientReplyThemeReviewDisplayName(match);
+  const messages = await getClientThreadMessages(match.chatGuid, title);
+  const threadReceipt = buildPendingClientThreadEvidenceReceipt(args.replyState, messages, args.chat);
+  const classifierReceipt = buildClientReplyThemeRunReceipt(match);
+  const proposal = buildClientMessageActionProposal({
+    threadReceipt,
+    classifierReceipt,
+  });
+  await open(
+    buildClientMessageActionProposalVisualUrl({
+      title,
+      threadReceipt,
+      classifierReceipt,
+      proposal,
+    }),
   );
 }
 
@@ -1235,6 +1375,7 @@ function PendingClientsWatchlist() {
   const [replyThemeSnapshot, setReplyThemeSnapshot] =
     useState<ClientReplyThemeReviewSnapshot | null>(null);
   const [messageChats, setMessageChats] = useState<ClientInboxChat[]>([]);
+  const [selectedFilter, setSelectedFilter] = useState<PendingClientCentralFilter | 'all'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -1295,7 +1436,30 @@ function PendingClientsWatchlist() {
     }
   }
 
-  const rows = result?.rows || [];
+  const rowModels = (result?.rows || [])
+    .map((row) => {
+      const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
+      const queue = classifyPendingClientCentralQueue({
+        row,
+        replyEvidence: replyState?.row.replyEvidence,
+      });
+      return { row, replyState, queue };
+    })
+    .filter((item) => selectedFilter === 'all' || item.queue.filter === selectedFilter)
+    .sort((left, right) => left.queue.priority - right.queue.priority);
+  const allRows = result?.rows || [];
+  const allCounts = allRows.reduce<Record<PendingClientCentralFilter, number>>(
+    (acc, row) => {
+      const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
+      const queue = classifyPendingClientCentralQueue({
+        row,
+        replyEvidence: replyState?.row.replyEvidence,
+      });
+      acc[queue.filter] += 1;
+      return acc;
+    },
+    { reschedule: 0, no_show: 0, payments: 0, review_follow_ups: 0 },
+  );
 
   return (
     <List
@@ -1303,23 +1467,42 @@ function PendingClientsWatchlist() {
       isShowingDetail
       navigationTitle="Pending Clients"
       searchBarPlaceholder="Search pending"
-    >
-      {rows.length ? (
-        <List.Section
-          title="Pending Clients"
-          subtitle={`${rows.length}${result ? `/${result.scannedCount}` : ''}`}
+      searchBarAccessory={
+        <List.Dropdown
+          tooltip="Filter Pending Clients"
+          value={selectedFilter}
+          onChange={(value) => setSelectedFilter(value as PendingClientCentralFilter | 'all')}
         >
-          {rows.map((row) => {
+          <List.Dropdown.Item title={`All (${allRows.length})`} value="all" />
+          <List.Dropdown.Item title={`RSP (${allCounts.reschedule})`} value="reschedule" />
+          <List.Dropdown.Item title={`No Show (${allCounts.no_show})`} value="no_show" />
+          <List.Dropdown.Item title={`Payments (${allCounts.payments})`} value="payments" />
+          <List.Dropdown.Item
+            title={`Review Follow Ups (${allCounts.review_follow_ups})`}
+            value="review_follow_ups"
+          />
+        </List.Dropdown>
+      }
+    >
+      {rowModels.length ? (
+        <List.Section
+          title={pendingClientFilterTitle(selectedFilter)}
+          subtitle={`${rowModels.length}${result ? `/${result.scannedCount}` : ''}`}
+        >
+          {rowModels.map(({ row, replyState, queue }) => {
             const signals = row.matched_signals || [];
             const actionTag = row.action_tag || 'Missing Notes';
-            const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
             const matchedChat = findPendingClientChat(row, messageChats);
-            const displayTag = getPendingClientDisplayTag(row, replyState);
             const taskUrl = buildPendingClientTaskUrl(row);
             const adminUrl = buildPendingClientAdminUrl(row);
             const launchAdminUrl = taskUrl || adminUrl;
             const athleteName =
               row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+            const displayTag = {
+              label: queue.filter === 'payments' ? queue.label : `${queue.label} · ${queue.actionLabel}`,
+              color: pendingClientCentralTagColor(queue.filter, queue.actionLabel),
+            };
+            const isPaymentReminder = queue.filter === 'payments';
             return (
               <List.Item
                 key={row.source_event_id}
@@ -1342,8 +1525,29 @@ function PendingClientsWatchlist() {
                 }
                 actions={
                   <ActionPanel>
-                    {replyState || matchedChat ? (
+                    {!isPaymentReminder && (replyState || matchedChat) ? (
                       <ActionPanel.Section title="Open">
+                        {replyState ? (
+                          <Action
+                            title="Open Evidence Visual"
+                            icon="🧾"
+                            shortcut={{ modifiers: ['cmd'], key: 'e' }}
+                            onAction={async () => {
+                              try {
+                                await openPendingClientEvidenceVisual({
+                                  chat: matchedChat,
+                                  replyState,
+                                });
+                              } catch (error) {
+                                await showToast({
+                                  style: Toast.Style.Failure,
+                                  title: 'Evidence failed',
+                                  message: error instanceof Error ? error.message : String(error),
+                                });
+                              }
+                            }}
+                          />
+                        ) : null}
                         <Action.Push
                           title="Open Thread"
                           icon="💬"
@@ -1354,38 +1558,40 @@ function PendingClientsWatchlist() {
                         />
                       </ActionPanel.Section>
                     ) : null}
-                    <ActionPanel.Section title="Follow Up">
-                      {shouldShowPendingClientRescheduleAction(row) ? (
+                    {!isPaymentReminder ? (
+                      <ActionPanel.Section title="Follow Up">
+                        {shouldShowPendingClientRescheduleAction(row) ? (
+                          <Action.Push
+                            title="Send"
+                            icon="💬"
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                            target={
+                              <PendingClientRescheduleFollowUp
+                                row={row}
+                                onComplete={() => setRefreshTick((current) => current + 1)}
+                              />
+                            }
+                          />
+                        ) : null}
                         <Action.Push
-                          title="Send"
-                          icon="💬"
-                          shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                          title="Note"
+                          icon="✍️"
+                          shortcut={{ modifiers: ['cmd'], key: 'n' }}
                           target={
-                            <PendingClientRescheduleFollowUp
+                            <PendingClientOperatorNoteForm
                               row={row}
-                              onComplete={() => setRefreshTick((current) => current + 1)}
+                              onSaved={() => setRefreshTick((current) => current + 1)}
                             />
                           }
                         />
-                      ) : null}
-                      <Action.Push
-                        title="Note"
-                        icon="✍️"
-                        shortcut={{ modifiers: ['cmd'], key: 'n' }}
-                        target={
-                          <PendingClientOperatorNoteForm
-                            row={row}
-                            onSaved={() => setRefreshTick((current) => current + 1)}
-                          />
-                        }
-                      />
-                      <Action
-                        title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
-                        icon="✅"
-                        shortcut={{ modifiers: ['cmd'], key: 'x' }}
-                        onAction={() => void handleMarkResolved(row.source_event_id)}
-                      />
-                    </ActionPanel.Section>
+                        <Action
+                          title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
+                          icon="✅"
+                          shortcut={{ modifiers: ['cmd'], key: 'x' }}
+                          onAction={() => void handleMarkResolved(row.source_event_id)}
+                        />
+                      </ActionPanel.Section>
+                    ) : null}
                     {launchAdminUrl ? (
                       <ActionPanel.Section title="Athlete">
                         <Action.OpenInBrowser

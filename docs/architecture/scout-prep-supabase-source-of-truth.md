@@ -19,13 +19,14 @@ Meeting time means one thing across the system: the appointment start/end instan
 
 | Field meaning | Canonical durable field | Support copies | Allowed writers | Not allowed |
 | --- | --- | --- | --- | --- |
-| Meeting start instant | `appointments.starts_at` | `set_meeting_confirmation_cache.meeting_starts_at`, `pending_client_watchlist.event_start`, `call_log.booked_event_starts_at` | Raycast action-time meeting set/reschedule writers and explicit human-approved repair | Sales-stage reconciler, post-meeting watcher, Call Tracker reporting repair |
-| Meeting end instant | derived one-hour end or stored support end | `set_meeting_confirmation_cache.meeting_ends_at`, `pending_client_watchlist.event_end`, `call_log.booked_event_ends_at` | Same writer that owns the corresponding start instant | Sales-stage reconciler, post-meeting watcher, Call Tracker reporting repair |
+| Meeting start instant | `appointments.starts_at` | `set_meeting_confirmation_cache.meeting_starts_at`, `pending_client_watchlist.event_start`, `call_log.booked_event_starts_at` | Raycast action-time meeting set/reschedule writers, explicit human-approved repair, and the ended-meeting watcher only when writing a different live replacement event id for a confirmed Rescheduled stage | Sales-stage reconciler, Call Tracker reporting repair, watcher mutation of the watched appointment time |
+| Meeting end instant | derived one-hour end or stored support end | `set_meeting_confirmation_cache.meeting_ends_at`, `pending_client_watchlist.event_end`, `call_log.booked_event_ends_at` | Same writer that owns the corresponding start instant | Sales-stage reconciler, Call Tracker reporting repair, watcher mutation of the watched appointment time |
 | Meeting timezone | `appointments.meeting_timezone` / `meeting_timezone_label` | confirmation-message support rows and contact cache fallback evidence | Raycast meeting set/reschedule writer, explicit timezone repair from confirmed source evidence | Post-meeting outcome logic |
 
 Rules:
 
-- A post-meeting watcher may update appointment `post_meeting_result` and `status_reason`; it may not update `status` or `starts_at`.
+- A post-meeting watcher may update the watched appointment `post_meeting_result` and `status_reason`; it may not update the watched row's `status` or `starts_at`.
+- When the post-meeting watcher sees a confirmed Rescheduled sales stage and a different live booked event id, it may upsert that replacement event as a new active `appointments` row with `previous_appointment_id`, `original_appointment_id`, `reschedule_sequence`, active reschedule status, and `post_meeting_result=null`.
 - `reschedule_pending` is a post-meeting outcome/Pending Clients state. It is not an active appointment `status` and must not cause Set Meetings or active appointment truth to show an old appointment row.
 - An ended appointment while Laravel still says Meeting Set is a computed polling condition, not a stored `post_meeting_result`. Store only real outcomes or explicit Pending Clients task states.
 - A reporting writer may copy already-confirmed meeting start/end into `call_log`; it may not invent or normalize appointment time truth.
@@ -56,7 +57,7 @@ These scripts may write Supabase only through canonical writer paths, but they a
 | `scripts/sync-current-pipeline-to-supabase.mjs` | Manual drift/repair lane for Laravel current task/stage facts. Uses `workflow-context` for shared identity/profile/title/stage/status values and must not invent missing title/profile facts. It must not be scheduled as the primary front-facing writer for Scout Prep movement. |
 | `scripts/sync-booked-meetings-to-supabase.mjs` | Manual audit/repair for booked meeting facts and external calendar state. It is not part of the hourly cron because appointment time mutation needs confirmed evidence. |
 | `scripts/sync-commissions-to-supabase.mjs` | Audit/reconcile commission rows. |
-| `scripts/watch-ended-meeting-outcomes.mjs` | Narrow ended-meeting watcher for active `appointments` rows that ended within the last 7 days and still have no `post_meeting_result`. It may write real post-meeting outcomes through canonical lifecycle/reporting paths after Laravel/FastAPI confirms the sales stage changed. It must not write a stored outcome while Laravel still says Meeting Set, and it must not mutate meeting time. |
+| `scripts/watch-ended-meeting-outcomes.mjs` | Narrow ended-meeting watcher for active `appointments` rows that ended within the last 7 days and still have no `post_meeting_result`. It may write real post-meeting outcomes through canonical lifecycle/reporting paths after Laravel/FastAPI confirms the sales stage changed. When Laravel/FastAPI says Rescheduled and the athlete event list exposes a different live replacement event id, it may upsert that replacement as the new active appointment row. It must not write a stored outcome while Laravel still says Meeting Set, and it must not mutate the watched appointment's meeting time. |
 | `scripts/backsync-lifecycle-call-activity-events.mjs` | Legacy repair only. |
 | `scripts/materialize-call-tracker-data-contract.mjs` | Legacy/static browser contract materialization only. |
 

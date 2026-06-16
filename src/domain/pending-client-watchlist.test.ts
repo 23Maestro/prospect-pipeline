@@ -10,6 +10,7 @@ import {
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
   classifyPendingClientActionTag,
+  classifyPendingClientCentralQueue,
   classifyPendingClientLifecycle,
   classifyPendingClientOperatorQueue,
   filterReadySetMeetingConfirmationGroups,
@@ -23,6 +24,9 @@ import {
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
   selectLatestPendingClientNote,
+  type PendingClientCentralQueueClassification,
+  type PendingClientOperatorQueueReplyEvidence,
+  type PendingClientWatchlistRow,
 } from './pending-client-watchlist';
 
 test('pending client event filter keeps recent follow-up rows across all scouts', () => {
@@ -112,6 +116,30 @@ test('pending client watch note rejects meeting descriptions and keeps real foll
   assert.equal(hasPendingClientWatchNote('   \n  '), false);
   assert.equal(hasPendingClientWatchNote('Date\nCreated By\nTitle\nDescription'), false);
   assert.equal(hasPendingClientWatchNote('Date Created By Title Description'), false);
+});
+
+test('pending client rows reject athlete-key text as display name', () => {
+  const row = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'appointment:630246',
+      title: '(RSP) Daylen Johnson Football 2029 CA',
+      assigned_owner: 'Kenton Manis',
+      start: '2026-06-14T20:00:00.000Z',
+      end: '2026-06-14T21:00:00.000Z',
+    },
+    athleteId: '1499520',
+    athleteMainId: '954251',
+    athleteName: '1499520:954251',
+    description: 'Pending client review from appointment outcome: reschedule_pending.',
+    matchedSignals: ['reschedule_pending'],
+    actionTag: 'Operator Input',
+    aiVerdict: 'pending_client',
+    now: new Date('2026-06-16T18:00:00.000Z'),
+  });
+
+  assert.equal(row.athlete_name, 'Daylen Johnson');
+  assert.equal(cleanPendingClientAthleteName('(CAN) Christan Hirniak Football 2027 IL'), 'Christan Hirniak');
+  assert.equal(cleanPendingClientAthleteName('1499520:954251'), '');
 });
 
 test('pending client notes source chooses the latest real notes-tab entry', () => {
@@ -331,6 +359,18 @@ test('pending client operator queue labels reply evidence before generic action 
   );
   assert.equal(
     classifyPendingClientOperatorQueue({
+      row: pendingClientRow(),
+      replyEvidence: {
+        themeBucket: 'RSP',
+        lastMeaningfulInbound: { body: 'Friday works' },
+        operatorReplyProposedTimes: true,
+        clientRepliedAfterOperatorTimes: true,
+      },
+    }).label,
+    'Review Reply',
+  );
+  assert.equal(
+    classifyPendingClientOperatorQueue({
       row: pendingClientRow({ event: { title: '(NS) Avery Jones', start: '2026-06-13T10:00' } }),
       replyEvidence: {
         themeBucket: 'No Show',
@@ -396,6 +436,115 @@ test('pending client operator queue labels reply evidence before generic action 
     }).label,
     'Call Back',
   );
+});
+
+test('pending client central queue collapses review work to four router lanes', () => {
+  const baseRow = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'appointment:630246',
+      title: '(RSP) Daylen Johnson Football 2029 CA',
+      assigned_owner: 'Kenton Manis',
+      start: '2026-06-14T20:00:00.000Z',
+      end: '2026-06-14T21:00:00.000Z',
+    },
+    athleteId: '1499520',
+    athleteMainId: '954251',
+    athleteName: 'Daylen Johnson',
+    description: 'Pending client review from appointment outcome: reschedule_pending.',
+    matchedSignals: ['reschedule_pending'],
+    actionTag: 'Operator Input',
+    aiVerdict: 'pending_client',
+    now: new Date('2026-06-16T18:00:00.000Z'),
+  });
+
+  const cases: {
+    name: string;
+    row: PendingClientWatchlistRow;
+    replyEvidence: PendingClientOperatorQueueReplyEvidence | null;
+    expected: PendingClientCentralQueueClassification;
+  }[] = [
+    {
+      name: 'RSP · Offer Slots',
+      row: baseRow,
+      replyEvidence: { themeBucket: 'RSP', operatorReplyProposedTimes: false },
+      expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Offer Slots', priority: 10 },
+    },
+    {
+      name: 'RSP · Awaiting Client',
+      row: baseRow,
+      replyEvidence: { themeBucket: 'RSP', operatorReplyProposedTimes: true },
+      expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Awaiting Client', priority: 20 },
+    },
+    {
+      name: 'RSP · Review Reply',
+      row: baseRow,
+      replyEvidence: { themeBucket: 'RSP', operatorReplyProposedTimes: true, clientRepliedAfterOperatorTimes: true },
+      expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Review Reply', priority: 20 },
+    },
+    {
+      name: 'No Show · Offer Slots',
+      row: { ...baseRow, event_title: 'No Show' },
+      replyEvidence: { themeBucket: 'No Show', operatorReplyProposedTimes: false },
+      expected: { filter: 'no_show', label: 'No Show', actionLabel: 'Offer Slots', priority: 10 },
+    },
+    {
+      name: 'No Show · Awaiting Client',
+      row: { ...baseRow, event_title: 'No Show' },
+      replyEvidence: { themeBucket: 'No Show', operatorReplyProposedTimes: true },
+      expected: { filter: 'no_show', label: 'No Show', actionLabel: 'Awaiting Client', priority: 20 },
+    },
+    {
+      name: 'No Show · Bad Timing',
+      row: { ...baseRow, event_title: 'No Show' },
+      replyEvidence: {
+        themeBucket: 'No Show',
+        lastMeaningfulInbound: { body: 'Bad timing right now' },
+        operatorReplyProposedTimes: false,
+      },
+      expected: { filter: 'no_show', label: 'No Show', actionLabel: 'Bad Timing', priority: 15 },
+    },
+    {
+      name: 'Review Follow Ups · Needs Reply',
+      row: { ...baseRow, description: 'Call attempt 2. Parent said tomorrow works.' },
+      replyEvidence: { themeBucket: 'Call Attempt', operatorRepliedAfterInbound: false },
+      expected: { filter: 'review_follow_ups', label: 'Review Follow Ups', actionLabel: 'Needs Reply', priority: 30 },
+    },
+    {
+      name: 'Review Follow Ups · Review',
+      row: { ...baseRow, description: 'Call attempt 2. Operator already responded.' },
+      replyEvidence: { themeBucket: 'Call Attempt', operatorRepliedAfterInbound: true },
+      expected: { filter: 'review_follow_ups', label: 'Review Follow Ups', actionLabel: 'Review', priority: 30 },
+    },
+    {
+      name: 'Payments',
+      row: { ...baseRow, action_tag: 'Payment Watch', matched_signals: ['payment'] },
+      replyEvidence: null,
+      expected: { filter: 'payments', label: 'Payments', actionLabel: 'Payments', priority: 40 },
+    },
+  ];
+
+  const allowedRowTags = new Set([
+    'RSP · Offer Slots',
+    'RSP · Awaiting Client',
+    'RSP · Review Reply',
+    'No Show · Offer Slots',
+    'No Show · Awaiting Client',
+    'No Show · Bad Timing',
+    'Review Follow Ups · Needs Reply',
+    'Review Follow Ups · Review',
+    'Payments',
+  ]);
+
+  for (const testCase of cases) {
+    const actual = classifyPendingClientCentralQueue({
+      row: testCase.row,
+      replyEvidence: testCase.replyEvidence,
+    });
+    const rowTag = actual.filter === 'payments' ? actual.label : `${actual.label} · ${actual.actionLabel}`;
+
+    assert.deepEqual(actual, testCase.expected, testCase.name);
+    assert.ok(allowedRowTags.has(rowTag), testCase.name);
+  }
 });
 
 test('pending client payment watch does not require appointment truth backing', () => {
@@ -517,11 +666,17 @@ test('pending client Raycast loader suppresses stale RSP after newer active repl
   const source = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
   assert.match(source, /function hasNewerActiveReplacementAppointment/);
   assert.match(source, /ACTIVE_REPLACEMENT_APPOINTMENT_STATUSES/);
-  assert.match(source, /ACTIVE_REPLACEMENT_POST_MEETING_RESULTS = new Set\(\['', 'rescheduled'\]\)/);
+  assert.match(
+    source,
+    /ACTIVE_REPLACEMENT_POST_MEETING_RESULTS = new Set\(\['', 'rescheduled'\]\)/,
+  );
   assert.match(source, /status=in\.\(\$\{ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY\}\)/);
   assert.match(source, /groupActiveReplacementAppointmentsByAthleteKey/);
   assert.match(source, /const actionableAppointmentRows = appointmentRows\.filter/);
-  assert.match(source, /!hasNewerActiveReplacementAppointment\(row, activeReplacementsByAthleteKey\)/);
+  assert.match(
+    source,
+    /!hasNewerActiveReplacementAppointment\(row, activeReplacementsByAthleteKey\)/,
+  );
   assert.match(source, /buildPendingClientRowsFromAppointments\(\s*actionableAppointmentRows,/);
 });
 

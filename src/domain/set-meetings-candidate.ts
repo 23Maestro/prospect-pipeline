@@ -358,6 +358,24 @@ export function buildSetMeetingCandidatesFromSupabaseFallback(
   return candidates;
 }
 
+export function mergeSetMeetingAppointmentAndBookedMeetingCandidates(args: {
+  appointmentCandidates: HeadScoutFollowUpCandidate[];
+  bookedMeetingCandidates: HeadScoutFollowUpCandidate[];
+}): HeadScoutFollowUpCandidate[] {
+  const merged = [...args.appointmentCandidates];
+  const existingKeys = new Set(merged.map((candidate) => buildSetMeetingCandidateIdentityKey(candidate)));
+
+  for (const candidate of args.bookedMeetingCandidates) {
+    const key = buildSetMeetingCandidateIdentityKey(candidate);
+    if (!existingKeys.has(key)) {
+      merged.push(candidate);
+      existingKeys.add(key);
+    }
+  }
+
+  return merged;
+}
+
 export function enrichSetMeetingCandidate(candidate: HeadScoutFollowUpCandidate): HeadScoutFollowUpCandidate {
   return candidate;
 }

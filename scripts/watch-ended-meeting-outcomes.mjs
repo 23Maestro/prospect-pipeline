@@ -11,6 +11,7 @@ import { resolveOwnerContext } from '../src/domain/owner-resolution.ts';
 import {
   readRows,
   supabaseRequest,
+  upsertAppointments,
   upsertPendingClientWatchlistRows,
   upsertPostMeetingOutcomeFacts,
 } from '../src/domain/supabase-persistence.ts';
@@ -158,6 +159,123 @@ function normalizeIsoValue(value) {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
+function getWallParts(date, timeZone) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(date);
+  const value = (type) => parts.find((part) => part.type === type)?.value || '';
+  const hour = Number.parseInt(value('hour'), 10);
+  return {
+    year: Number.parseInt(value('year'), 10),
+    month: Number.parseInt(value('month'), 10),
+    day: Number.parseInt(value('day'), 10),
+    hour: hour === 24 ? 0 : hour,
+    minute: Number.parseInt(value('minute'), 10) || 0,
+    second: Number.parseInt(value('second'), 10) || 0,
+  };
+}
+
+function zonedWallTimeToUtcDate(args) {
+  const expectedWallUtc = Date.UTC(
+    args.year,
+    args.month - 1,
+    args.day,
+    args.hour,
+    args.minute,
+    args.second || 0,
+  );
+  const initial = new Date(expectedWallUtc);
+  const actualWall = getWallParts(initial, args.timeZone);
+  const actualWallUtc = Date.UTC(
+    actualWall.year,
+    actualWall.month - 1,
+    actualWall.day,
+    actualWall.hour,
+    actualWall.minute,
+    actualWall.second,
+  );
+  return new Date(initial.getTime() - (actualWallUtc - expectedWallUtc));
+}
+
+export function parseLiveEventTimeAsEastern(value) {
+  const trimmed = normalizeText(value);
+  if (!trimmed) return null;
+  if (/(?:z|[+-]\d{2}:?\d{2})$/i.test(trimmed)) return normalizeIsoValue(trimmed);
+
+  const match = trimmed.match(
+    /^(\d{4})-(\d{2})-(\d{2})[T\s](\d{1,2}):(\d{2})(?::(\d{2}))?$/,
+  );
+  if (!match) return normalizeIsoValue(trimmed);
+
+  return zonedWallTimeToUtcDate({
+    year: Number.parseInt(match[1], 10),
+    month: Number.parseInt(match[2], 10),
+    day: Number.parseInt(match[3], 10),
+    hour: Number.parseInt(match[4], 10),
+    minute: Number.parseInt(match[5], 10),
+    second: Number.parseInt(match[6] || '0', 10),
+    timeZone: 'America/New_York',
+  }).toISOString();
+}
+
+export function buildReplacementAppointmentRow(args) {
+  const appointment = args.appointment || {};
+  const liveEvent = args.liveEvent || {};
+  const replacementId = normalizeText(liveEvent.event_id);
+  const previousAppointmentId = normalizeText(appointment.id);
+  const startsAt = parseLiveEventTimeAsEastern(liveEvent.start);
+  if (!replacementId || !previousAppointmentId || replacementId === previousAppointmentId || !startsAt) {
+    return null;
+  }
+
+  const endsAt = parseLiveEventTimeAsEastern(liveEvent.end);
+  const previousSequence = Number.parseInt(normalizeText(appointment.reschedule_sequence || '0'), 10);
+  const originalAppointmentId =
+    normalizeText(appointment.original_appointment_id) ||
+    normalizeText(appointment.previous_appointment_id) ||
+    previousAppointmentId;
+  return {
+    id: replacementId,
+    athlete_key: args.athleteKey,
+    athlete_id: normalizeText(appointment.athlete_id),
+    athlete_main_id: normalizeText(appointment.athlete_main_id),
+    head_scout: normalizeText(liveEvent.assigned_owner) || normalizeText(appointment.head_scout) || null,
+    starts_at: startsAt,
+    status: 'rescheduled',
+    source_event_id: replacementId,
+    meeting_timezone: 'America/New_York',
+    meeting_timezone_label: 'EST',
+    previous_appointment_id: previousAppointmentId,
+    original_appointment_id: originalAppointmentId,
+    reschedule_sequence: Number.isFinite(previousSequence) ? previousSequence + 1 : 1,
+    operator_owner: normalizeText(appointment.operator_owner) || null,
+    operator_owner_key: normalizeText(appointment.operator_owner_key) || null,
+    appointment_role: 'reschedule',
+    status_reason: 'watcher_live_replacement_written',
+    source_system: 'ended_meeting_outcome_watch',
+    source_payload: {
+      writer: 'ended_meeting_outcome_watch',
+      watched_appointment_id: previousAppointmentId,
+      previous_appointment_id: previousAppointmentId,
+      source_event_id: replacementId,
+      booked_event_id: replacementId,
+      booked_event_title: normalizeText(liveEvent.title) || null,
+      meeting_name: normalizeText(liveEvent.title) || normalizeText(appointment.source_payload?.meeting_name) || null,
+      meeting_timezone_source: 'live_calendar_assumed_eastern',
+      live_event: liveEvent,
+      ...(endsAt ? { ends_at: endsAt } : {}),
+    },
+    post_meeting_result: null,
+  };
 }
 
 function quotePostgrestInValue(value) {
@@ -563,6 +681,10 @@ async function processAppointment(appointment, args) {
         }),
       ]
     : [];
+  const replacementAppointmentRow =
+    decision.postMeetingResult === 'rescheduled'
+      ? buildReplacementAppointmentRow({ appointment, liveEvent, athleteKey })
+      : null;
 
   if (!args.dryRun) {
     await lifecycleSalesStage({
@@ -587,6 +709,9 @@ async function processAppointment(appointment, args) {
       appointmentId: appointment.id,
       trackerOutcome: decision.postMeetingResult,
     });
+    if (replacementAppointmentRow) {
+      await upsertAppointments(SUPABASE_CONFIG, [replacementAppointmentRow]);
+    }
     await upsertPostMeetingOutcomeFacts(SUPABASE_CONFIG, [outcomeFact]);
     await upsertPendingClientWatchlistRows(SUPABASE_CONFIG, pendingClientRows);
   }
@@ -596,6 +721,7 @@ async function processAppointment(appointment, args) {
     dryRun: args.dryRun,
     wouldWrite: args.dryRun,
     postMeetingOutcomeFacts: 1,
+    replacementAppointments: replacementAppointmentRow ? 1 : 0,
     pendingClientRows: pendingClientRows.length,
   };
 }

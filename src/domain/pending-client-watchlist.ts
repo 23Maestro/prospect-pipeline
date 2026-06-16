@@ -116,6 +116,7 @@ export type PendingClientWatchlistRow = PendingClientOwnerSnapshot & {
 export type PendingClientOperatorQueueLabel =
   | 'Needs Times'
   | 'Awaiting RSP'
+  | 'Review Reply'
   | 'Needs Reply'
   | 'Timing Bad'
   | 'Timing Issue'
@@ -131,11 +132,28 @@ export type PendingClientOperatorQueueReplyEvidence = {
   lastMeaningfulInbound?: { body?: string | null } | null;
   operatorRepliedAfterInbound?: boolean | null;
   operatorReplyProposedTimes?: boolean | null;
+  clientRepliedAfterOperatorTimes?: boolean | null;
   clientOptedOut?: boolean | null;
 };
 
 export type PendingClientOperatorQueueClassification = {
   label: PendingClientOperatorQueueLabel;
+  priority: number;
+};
+
+export type PendingClientCentralFilter = 'reschedule' | 'no_show' | 'payments' | 'review_follow_ups';
+
+export type PendingClientCentralQueueClassification = {
+  filter: PendingClientCentralFilter;
+  label: 'RSP' | 'No Show' | 'Payments' | 'Review Follow Ups';
+  actionLabel:
+    | 'Offer Slots'
+    | 'Awaiting Client'
+    | 'Review Reply'
+    | 'Needs Reply'
+    | 'Review'
+    | 'Bad Timing'
+    | 'Payments';
   priority: number;
 };
 
@@ -174,6 +192,16 @@ function normalizeText(value?: string | number | null): string {
 
 function normalizeComparableText(value?: string | number | null): string {
   return normalizeText(value).replace(/\s+/g, ' ');
+}
+
+export function isPendingClientAthleteKeyText(value?: string | number | null): boolean {
+  return /^\d+:\d+$/.test(normalizeText(value));
+}
+
+export function realPendingClientAthleteName(value?: string | number | null): string | null {
+  const text = normalizeText(value);
+  if (!text || isPendingClientAthleteKeyText(text)) return null;
+  return text;
 }
 
 function parseDateMs(value?: string | null): number {
@@ -614,9 +642,18 @@ export function classifyPendingClientOperatorQueue(args: {
 }): PendingClientOperatorQueueClassification {
   const bucket = normalizeText(args.replyEvidence?.themeBucket);
   const proposedTimes = Boolean(args.replyEvidence?.operatorReplyProposedTimes);
+  const clientRepliedAfterTimes = Boolean(args.replyEvidence?.clientRepliedAfterOperatorTimes);
 
   if (isNoInterestReply(args.replyEvidence)) {
     return { label: 'No Interest', priority: 10 };
+  }
+
+  if (
+    proposedTimes &&
+    clientRepliedAfterTimes &&
+    (bucket === 'RSP' || bucket === 'No Show' || bucket === 'Cancel')
+  ) {
+    return { label: 'Review Reply', priority: 15 };
   }
 
   if (bucket === 'RSP') {
@@ -652,6 +689,95 @@ export function classifyPendingClientOperatorQueue(args: {
   }
 }
 
+function pendingClientRowText(row: PendingClientWatchlistRow): string {
+  return [
+    row.action_tag,
+    row.event_title,
+    row.description,
+    row.matched_signals?.join(' '),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+export function classifyPendingClientCentralQueue(args: {
+  row: PendingClientWatchlistRow;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+}): PendingClientCentralQueueClassification {
+  const rowText = pendingClientRowText(args.row);
+  const themeBucket = normalizeText(args.replyEvidence?.themeBucket);
+  const proposedTimes = Boolean(args.replyEvidence?.operatorReplyProposedTimes);
+  const clientRepliedAfterTimes = Boolean(args.replyEvidence?.clientRepliedAfterOperatorTimes);
+  const needsReply = !args.replyEvidence?.operatorRepliedAfterInbound || clientRepliedAfterTimes;
+
+  if (
+    args.row.action_tag === 'Payment Watch' ||
+    themeBucket === 'Payment' ||
+    /\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard|\$\s*\d+)/i.test(rowText)
+  ) {
+    return {
+      filter: 'payments',
+      label: 'Payments',
+      actionLabel: 'Payments',
+      priority: 40,
+    };
+  }
+
+  if (
+    themeBucket === 'No Show' ||
+    /\bno show\b/i.test(rowText)
+  ) {
+    if (isTimingBadReply(args.replyEvidence)) {
+      return {
+        filter: 'no_show',
+        label: 'No Show',
+        actionLabel: 'Bad Timing',
+        priority: 15,
+      };
+    }
+
+    return {
+      filter: 'no_show',
+      label: 'No Show',
+      actionLabel: proposedTimes ? 'Awaiting Client' : 'Offer Slots',
+      priority: proposedTimes ? 20 : 10,
+    };
+  }
+
+  if (themeBucket === 'Call Attempt') {
+    return {
+      filter: 'review_follow_ups',
+      label: 'Review Follow Ups',
+      actionLabel: needsReply ? 'Needs Reply' : 'Review',
+      priority: 30,
+    };
+  }
+
+  if (
+    themeBucket === 'RSP' ||
+    /\b(?:reschedule|rsp|cancel|canceled|cancelled)\b|\((?:rsp|can)\)/i.test(rowText)
+  ) {
+    return {
+      filter: 'reschedule',
+      label: 'RSP',
+      actionLabel: clientRepliedAfterTimes
+        ? 'Review Reply'
+        : proposedTimes
+          ? 'Awaiting Client'
+          : 'Offer Slots',
+      priority: proposedTimes ? 20 : 10,
+    };
+  }
+
+  return {
+    filter: 'review_follow_ups',
+    label: 'Review Follow Ups',
+    actionLabel: needsReply ? 'Needs Reply' : 'Review',
+    priority: 30,
+  };
+}
+
 export function normalizePendingClientAIVerdict(
   value?: string | null,
 ): PendingClientAIVerdict | null {
@@ -662,9 +788,14 @@ export function cleanPendingClientAthleteName(title?: string | null): string {
   const cleaned = normalizeText(title)
     .replace(/^Follow Up -\s*/i, '')
     .replace(/^\(FU\)(?:\*\d+)?\s*/i, '')
+    .replace(/^\([^)]+\)(?:\*\d+)?\s*/i, '')
     .trim();
+  if (isPendingClientAthleteKeyText(cleaned)) return '';
   const sportMatch = cleaned.match(SPORT_BOUNDARY_PATTERN);
-  return (sportMatch ? cleaned.slice(0, sportMatch.index).trim() : cleaned).replace(/\s+/g, ' ');
+  return (
+    realPendingClientAthleteName(sportMatch ? cleaned.slice(0, sportMatch.index).trim() : cleaned) ||
+    ''
+  ).replace(/\s+/g, ' ');
 }
 
 export function pendingClientExpiresAt(eventStart?: string | null): string {
@@ -732,7 +863,9 @@ export function buildPendingClientWatchlistRow(args: {
     athlete_id: normalizeText(args.athleteId) || null,
     athlete_main_id: normalizeText(args.athleteMainId) || null,
     athlete_name:
-      normalizeText(args.athleteName) || cleanPendingClientAthleteName(eventTitle) || null,
+      realPendingClientAthleteName(args.athleteName) ||
+      cleanPendingClientAthleteName(eventTitle) ||
+      null,
     ...buildPendingClientOwnerSnapshot({
       assignedOwner: args.event.assigned_owner,
       activeOperator: args.activeOperator,

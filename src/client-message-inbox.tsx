@@ -10,6 +10,7 @@ import {
   Toast,
   LaunchType,
   launchCommand,
+  open,
   popToRoot,
   showHUD,
   showToast,
@@ -31,13 +32,23 @@ import { createCalFollowUpBooking } from './lib/cal-follow-ups';
 import {
   type ClientInboxChat,
   type ClientThreadMessage,
+  buildClientInboxThreadEvidenceReceipt,
   buildClientReplyThemeReviewSnapshotForChats,
   getClientThreadMessages,
   sendVerifiedClientMessage,
   useClientInboxChats,
 } from './lib/client-message-sandbox';
+import {
+  buildClientMessageActionProposal,
+  buildClientMessageActionProposalEvidenceJson,
+  buildClientMessageActionProposalMarkdown,
+  buildClientMessageActionProposalVisualUrl,
+  clientMessageOperatorActionLabel,
+  clientMessageOperatorActionTagTone,
+} from './lib/client-message-action-proposals';
 import { completeScoutPrepTaskAfterVoicemail } from './lib/scout-prep';
 import {
+  buildClientReplyThemeRunReceipt,
   buildClientReplyThemeThreadMarkdown,
   clientReplyThemeReviewBucketLabel,
   clientReplyThemeReviewDisplayName,
@@ -51,7 +62,6 @@ import {
 } from './lib/client-message-reply-themes';
 import {
   buildRescheduleRecoverySlotPlan,
-  normalizeRescheduleRecoveryNameKey,
   type RescheduleRecoverySlotOption,
 } from './lib/reschedule-recovery-context';
 import { openMessagesServiceClientInbox } from './lib/messages-service';
@@ -111,7 +121,9 @@ function buildClientMessageContactOptions(chat: ClientInboxChat): ClientMessageC
   const contacts: ClientMessageContactOption[] = [];
   const seenPhones = new Set<string>();
   const addContact = (contact: ClientMessageContactOption) => {
-    const phone = String(contact.phone || '').replace(/\D/g, '').trim();
+    const phone = String(contact.phone || '')
+      .replace(/\D/g, '')
+      .trim();
     if (!phone || seenPhones.has(phone)) return;
     seenPhones.add(phone);
     contacts.push({ ...contact, phone });
@@ -119,10 +131,10 @@ function buildClientMessageContactOptions(chat: ClientInboxChat): ClientMessageC
 
   for (const contact of chat.clientMatch.associatedClients || []) {
     addContact({
-      id: contact.id,
-      label: contact.label,
-      name: contact.name,
-      phone: contact.phone,
+      id: contact.role,
+      label: contact.relationshipLabel,
+      name: contact.name || contact.relationshipLabel,
+      phone: contact.normalizedPhoneNumber,
     });
   }
 
@@ -244,11 +256,7 @@ function ClientMessageSendForm({
           />
         ))}
       </Form.Dropdown>
-      <Form.TextArea
-        {...itemProps.message}
-        title="Message"
-        placeholder="Write the follow-up."
-      />
+      <Form.TextArea {...itemProps.message} title="Message" placeholder="Write the follow-up." />
     </Form>
   );
 }
@@ -427,16 +435,21 @@ function reviewToneColor(bucket: ClientReplyThemeReviewBucketKey): Color {
   return Color.SecondaryText;
 }
 
+function operatorActionToneColor(
+  action: ReturnType<typeof buildClientReplyThemeRunReceipt>['operatorAction'],
+): Color {
+  const tone = clientMessageOperatorActionTagTone(action);
+  if (tone === 'urgent') return Color.Red;
+  if (tone === 'warning') return Color.Orange;
+  return Color.SecondaryText;
+}
+
 function firstName(value?: string | null): string {
   return (
     String(value || '')
       .trim()
       .split(/\s+/)[0] || ''
   );
-}
-
-function normalizeNameKey(value?: string | null): string {
-  return normalizeRescheduleRecoveryNameKey(value);
 }
 
 type ClientReviewRescheduleSlotOption = RescheduleRecoverySlotOption;
@@ -466,6 +479,84 @@ function ClientThreadMarkdown({ chat }: { chat: ClientInboxChat }) {
         </ActionPanel>
       }
     />
+  );
+}
+
+function ClientReviewEvidenceDetail({
+  chat,
+  row,
+}: {
+  chat: ClientInboxChat;
+  row: ClientReplyThemeReviewRow;
+}) {
+  const { data: messages = [], isLoading } = usePromise(getClientThreadMessages, [
+    chat.guid,
+    chat.displayName,
+  ]);
+  const threadReceipt = buildClientInboxThreadEvidenceReceipt(chat, messages);
+  const classifierReceipt = buildClientReplyThemeRunReceipt(row);
+  const proposal = buildClientMessageActionProposal({
+    threadReceipt,
+    classifierReceipt,
+  });
+  const markdown = buildClientMessageActionProposalMarkdown({
+    title: clientReplyThemeReviewDisplayName(row),
+    threadReceipt,
+    classifierReceipt,
+    proposal,
+  });
+  const evidenceJson = buildClientMessageActionProposalEvidenceJson({
+    title: clientReplyThemeReviewDisplayName(row),
+    threadReceipt,
+    classifierReceipt,
+    proposal,
+  });
+
+  return (
+    <Detail
+      isLoading={isLoading}
+      navigationTitle="10x Evidence"
+      markdown={markdown}
+      actions={
+        isLoading ? null : (
+          <ActionPanel>
+            <ActionPanel.Section title="Evidence">
+              <Action.CopyToClipboard
+                title="Copy Evidence JSON"
+                icon="📋"
+                content={evidenceJson}
+                concealed
+              />
+            </ActionPanel.Section>
+            <ActionPanel.Section title="Navigation">
+              <Action.Open title="Open in Messages" icon="💬" target={getMessagesUrl(chat)} />
+            </ActionPanel.Section>
+          </ActionPanel>
+        )
+      }
+    />
+  );
+}
+
+async function openClientReviewEvidenceVisual(args: {
+  chat: ClientInboxChat;
+  row: ClientReplyThemeReviewRow;
+}) {
+  const title = clientReplyThemeReviewDisplayName(args.row);
+  const messages = await getClientThreadMessages(args.chat.guid, args.chat.displayName);
+  const threadReceipt = buildClientInboxThreadEvidenceReceipt(args.chat, messages);
+  const classifierReceipt = buildClientReplyThemeRunReceipt(args.row);
+  const proposal = buildClientMessageActionProposal({
+    threadReceipt,
+    classifierReceipt,
+  });
+  await open(
+    buildClientMessageActionProposalVisualUrl({
+      title,
+      threadReceipt,
+      classifierReceipt,
+      proposal,
+    }),
   );
 }
 
@@ -758,6 +849,7 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
       isTripleCheck ? 'replied_after' : 'no_operator_reply',
     );
     const canReschedule = bucket === 'rows' && row.theme === 'reschedule_request';
+    const operatorAction = buildClientReplyThemeRunReceipt(row).operatorAction;
     return (
       <List.Item
         key={`${bucket}:${row.id}`}
@@ -768,6 +860,12 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
             tag: {
               value: clientReplyThemeReviewToneLabel(bucket),
               color: reviewToneColor(bucket),
+            },
+          },
+          {
+            tag: {
+              value: clientMessageOperatorActionLabel(operatorAction),
+              color: operatorActionToneColor(operatorAction),
             },
           },
           ...(reasonLabel ? [{ tag: { value: reasonLabel, color: Color.Orange } }] : []),
@@ -805,6 +903,22 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
                   />
                 </ActionPanel.Section>
                 <ActionPanel.Section title="Navigation">
+                  <Action
+                    title="Open Evidence Visual"
+                    icon="🧾"
+                    shortcut={{ modifiers: ['cmd'], key: 'e' }}
+                    onAction={async () => {
+                      try {
+                        await openClientReviewEvidenceVisual({ chat, row });
+                      } catch (error) {
+                        await showToast({
+                          style: Toast.Style.Failure,
+                          title: 'Evidence failed',
+                          message: error instanceof Error ? error.message : String(error),
+                        });
+                      }
+                    }}
+                  />
                   <Action.Push
                     title="Open Thread"
                     icon="💬"
@@ -820,6 +934,22 @@ function ClientReplyThemeReview({ chats }: { chats: ClientInboxChat[] }) {
               </>
             ) : chat ? (
               <ActionPanel.Section title="Navigation">
+                <Action
+                  title="Open Evidence Visual"
+                  icon="🧾"
+                  shortcut={{ modifiers: ['cmd'], key: 'e' }}
+                  onAction={async () => {
+                    try {
+                      await openClientReviewEvidenceVisual({ chat, row });
+                    } catch (error) {
+                      await showToast({
+                        style: Toast.Style.Failure,
+                        title: 'Evidence failed',
+                        message: error instanceof Error ? error.message : String(error),
+                      });
+                    }
+                  }}
+                />
                 <Action.Push
                   title="Open Thread"
                   icon="💬"
@@ -1156,8 +1286,8 @@ export default function ClientMessageInboxCommand(
           directoryError
             ? directoryError.message
             : directory?.generatedAt
-            ? `Existing ID Client threads are loaded first. Export enrichment updated ${directory.generatedAt}.`
-            : 'No cache-admitted Client Message threads found yet.'
+              ? `Existing ID Client threads are loaded first. Export enrichment updated ${directory.generatedAt}.`
+              : 'No cache-admitted Client Message threads found yet.'
         }
         actions={
           <ActionPanel>

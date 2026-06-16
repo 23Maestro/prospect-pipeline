@@ -3,9 +3,11 @@ import test from 'node:test';
 import {
   appointmentEndIso,
   athleteNameFromMeetingTitle,
+  buildReplacementAppointmentRow,
   buildWatcherFailureEmail,
   buildAthleteName,
   isWatchCandidate,
+  parseLiveEventTimeAsEastern,
   resolveWatcherDecision,
   selectedStageFromPayload,
 } from './watch-ended-meeting-outcomes.mjs';
@@ -153,6 +155,45 @@ test('rescheduled stage requires evidence of a replacement live event', () => {
       taskStatus: 'confirmation_call',
     },
   );
+});
+
+test('rescheduled replacement live event builds active replacement appointment truth', () => {
+  assert.equal(parseLiveEventTimeAsEastern('2026-06-16T20:00'), '2026-06-17T00:00:00.000Z');
+
+  const row = buildReplacementAppointmentRow({
+    athleteKey: '1499820:954548',
+    appointment: {
+      id: '673775',
+      athlete_id: '1499820',
+      athlete_main_id: '954548',
+      head_scout: 'Nasir Adderley',
+      operator_owner: 'Jerami Singleton',
+      operator_owner_key: 'jerami_singleton',
+      original_appointment_id: '673775',
+      reschedule_sequence: 0,
+      source_payload: {
+        meeting_name: 'Niko Acors Football 2028 VA',
+      },
+    },
+    liveEvent: {
+      event_id: '695750',
+      title: '(ACF)*2 Niko Acors Football 2028 VA',
+      assigned_owner: 'Nasir Adderley',
+      start: '2026-06-16T20:00',
+      end: '2026-06-16T21:00',
+    },
+  });
+
+  assert.equal(row.id, '695750');
+  assert.equal(row.starts_at, '2026-06-17T00:00:00.000Z');
+  assert.equal(row.status, 'rescheduled');
+  assert.equal(row.post_meeting_result, null);
+  assert.equal(row.previous_appointment_id, '673775');
+  assert.equal(row.original_appointment_id, '673775');
+  assert.equal(row.reschedule_sequence, 1);
+  assert.equal(row.appointment_role, 'reschedule');
+  assert.equal(row.source_system, 'ended_meeting_outcome_watch');
+  assert.equal(row.source_payload.ends_at, '2026-06-17T01:00:00.000Z');
 });
 
 test('watcher reads selected stage from FastAPI sales-stage payloads and derives end fallback', () => {

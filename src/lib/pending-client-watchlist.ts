@@ -6,6 +6,7 @@ import {
   buildPendingClientResolvedPatch,
   cleanPendingClientAthleteName,
   isPendingClientResolvedByFutureConfirmation,
+  realPendingClientAthleteName,
   PENDING_CLIENT_LIST_LIMIT,
   type SetMeetingConfirmationCacheRowInput,
   type PendingClientWatchlistRow,
@@ -223,6 +224,21 @@ function payloadText(payload: Record<string, unknown>, key: string): string | nu
   return text || null;
 }
 
+function resolveDisplayAthleteName(
+  athleteKey: string,
+  payload: Record<string, unknown>,
+  athleteNamesByKey: Map<string, string>,
+): string | null {
+  return (
+    realPendingClientAthleteName(payloadText(payload, 'athlete_name')) ||
+    realPendingClientAthleteName(athleteNamesByKey.get(athleteKey)) ||
+    cleanPendingClientAthleteName(
+      payloadText(payload, 'meeting_title_current') || payloadText(payload, 'meeting_title_base'),
+    ) ||
+    null
+  );
+}
+
 function pendingClientOutcomeLabel(outcome?: string | null): string {
   switch (String(outcome || '').trim()) {
     case 'follow_up':
@@ -252,13 +268,7 @@ function buildPendingClientRowsFromAppointments(
 
     const payload = workflowPayload(appointment);
     const athleteKey = String(appointment.athlete_key || '').trim();
-    const athleteName =
-      payloadText(payload, 'athlete_name') ||
-      athleteNamesByKey.get(athleteKey) ||
-      cleanPendingClientAthleteName(
-        payloadText(payload, 'meeting_title_current') || payloadText(payload, 'meeting_title_base'),
-      ) ||
-      null;
+    const athleteName = resolveDisplayAthleteName(athleteKey, payload, athleteNamesByKey);
     const outcome = pendingClientAppointmentOutcome(appointment);
     const title =
       payloadText(payload, 'meeting_title_current') ||
@@ -421,18 +431,43 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     (row) => !hasNewerActiveReplacementAppointment(row, activeReplacementsByAthleteKey),
   );
   const athleteRows = athleteKeys.length
-    ? await readRows<AthleteNameRow>(
-        config,
-        'athletes',
-        [
-          'select=athlete_key,athlete_name',
-          `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
-        ].join('&'),
-      ).catch(() => [])
+    ? (
+        await Promise.all([
+          readRows<AthleteNameRow>(
+            config,
+            'athletes',
+            [
+              'select=athlete_key,athlete_name',
+              `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+            ].join('&'),
+          ).catch(() => []),
+          readRows<AthleteNameRow>(
+            config,
+            'athlete_contact_cache',
+            [
+              'select=athlete_key,athlete_name',
+              `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+              'order=updated_at.desc',
+            ].join('&'),
+          ).catch(() => []),
+          readRows<AthleteNameRow>(
+            config,
+            'set_meeting_confirmation_cache',
+            [
+              'select=athlete_key,athlete_name',
+              `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+              'order=updated_at.desc',
+            ].join('&'),
+          ).catch(() => []),
+        ])
+      ).flat()
     : [];
   const athleteNamesByKey = new Map(
     athleteRows
-      .map((row) => [String(row.athlete_key || '').trim(), String(row.athlete_name || '').trim()])
+      .map((row) => [
+        String(row.athlete_key || '').trim(),
+        realPendingClientAthleteName(row.athlete_name) || '',
+      ])
       .filter(([key, name]) => key && name) as Array<[string, string]>,
   );
   const appointmentRowsForDisplay = buildPendingClientRowsFromAppointments(

@@ -9,6 +9,7 @@ import {
   buildSetMeetingCandidatesFromBookedMeetings,
   filterWeeklySetMeetingCandidates,
   getMeetingSortValue,
+  mergeSetMeetingAppointmentAndBookedMeetingCandidates,
   selectCurrentSetMeetingAppointmentRows,
   sortSetMeetingCandidates,
 } from './set-meetings-candidate';
@@ -195,6 +196,65 @@ test('weekly appointments are Set Meetings render truth before confirmation task
   assert.equal(candidates[0].taskId, '');
   assert.equal(candidates[0].bookedMeeting?.event_id, '587281');
   assert.equal(candidates[0].headScoutName, 'Ryan Lietz');
+});
+
+test('live booked meeting fills missing reschedule appointment even after confirmation task is completed', () => {
+  const appointmentCandidates = buildSetMeetingCandidatesFromAppointments({
+    operatorName: 'Jerami Singleton',
+    appointments: [
+      {
+        id: '673775',
+        sourceEventId: '673775',
+        athleteId: '1499820',
+        athleteMainId: '954548',
+        athleteName: 'Niko Acors',
+        headScout: 'Nasir Adderley',
+        startsAt: '2026-06-15T23:00:00.000Z',
+        meetingTitle: 'Niko Acors Football 2028 VA',
+        status: 'scheduled',
+        postMeetingResult: 'rescheduled',
+      },
+    ],
+    tasks: [],
+  });
+  const bookedMeetingCandidates = buildSetMeetingCandidatesFromBookedMeetings({
+    operatorName: 'Jerami Singleton',
+    bookedMeetings: [
+      {
+        event_id: '695750',
+        title: '(ACF)*2 Niko Acors Football 2028 VA',
+        assigned_owner: 'Nasir Adderley',
+        start: '2026-06-16T20:00',
+        end: '2026-06-16T21:00',
+        date_time_label: 'Tue 06/16/26 8:00 PM - 9:00 PM',
+      },
+    ],
+    tasks: [
+      {
+        task_id: '698828',
+        athlete_id: '1499820',
+        athlete_main_id: '954548',
+        athlete_name: 'Niko Acors',
+        assigned_owner: 'Jerami Singleton',
+        title: 'Confirmation Call',
+        description: 'Reschedule this task to the day you want to confirm the Meeting Set.',
+        due_date: 'Mon 06/15/26 09:00 AM',
+        completion_date: 'Mon 06/15/26 10:02 PM',
+      },
+    ],
+  });
+
+  const merged = mergeSetMeetingAppointmentAndBookedMeetingCandidates({
+    appointmentCandidates,
+    bookedMeetingCandidates,
+  });
+
+  assert.equal(appointmentCandidates.length, 0);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].athleteName, 'Niko Acors');
+  assert.equal(merged[0].bookedMeeting?.event_id, '695750');
+  assert.equal(merged[0].taskId, '698828');
+  assert.equal(merged[0].followUpTask?.completionDate, 'Mon 06/15/26 10:02 PM');
 });
 
 test('weekly Set Meetings hides expired same-week appointment rows', () => {

@@ -45,8 +45,10 @@ export type ClientReplyEvidence = {
   themeBucket: PendingClientThemeBucket;
   lastMeaningfulInbound: ClientReplyMessageEvidence | null;
   lastMeaningfulOutbound: ClientReplyMessageEvidence | null;
+  lastOperatorRescheduleOffer?: ClientReplyMessageEvidence | null;
   operatorRepliedAfterInbound: boolean;
   operatorReplyProposedTimes: boolean;
+  clientRepliedAfterOperatorTimes?: boolean;
   clientOptedOut: boolean;
 };
 
@@ -103,7 +105,300 @@ export type ClientReplyThemeReviewStorage = {
   setItem: (key: string, value: string) => Promise<void>;
 };
 
+export type ClientReplyThreadDiagnostics = {
+  version: 1;
+  observationIds: ClientReplyEvidenceObservationId[];
+  totalMessages: number;
+  inboundCount: number;
+  outboundCount: number;
+  emptyBodyCount: number;
+  latestDirection: 'client' | 'operator' | 'none';
+  lastInboundAt: string | null;
+  lastOutboundAt: string | null;
+  clientRepliedAfterLastOutbound: boolean;
+  outboundTemplateContexts: ClientMessageTemplateContext[];
+  inboundThemes: ClientMessageTheme[];
+  outboundRescheduleOfferCount: number;
+  taskSuggestsPostMeetingRecovery: boolean;
+  latestClientReplySignals: ClientReplyLatestClientSignal[];
+  nonSubstantiveMessageCount: number;
+  reactionOnlyCount: number;
+};
+
+export type ClientReplyEvidenceObservationId =
+  | 'messages_present'
+  | 'empty_body_present'
+  | 'latest_message_from_client'
+  | 'latest_message_from_operator'
+  | 'client_replied_after_last_outbound'
+  | 'known_inbound_theme_detected'
+  | 'no_known_inbound_theme'
+  | 'outbound_template_context_detected'
+  | 'no_outbound_template_context'
+  | 'operator_reschedule_offer_detected'
+  | 'post_meeting_recovery_context'
+  | 'non_substantive_message_present'
+  | 'client_reaction_only_present';
+
+export type ClientReplyLatestClientSignal =
+  | 'short_reply'
+  | 'contains_question'
+  | 'contains_numeric_choice'
+  | 'contains_affirmation'
+  | 'contains_negative'
+  | 'contains_thanks'
+  | 'contains_call_word'
+  | 'contains_schedule_word'
+  | 'contains_time_word'
+  | 'contains_day_word';
+
+export type ClientReplyEvidenceObservationDefinition = {
+  id: ClientReplyEvidenceObservationId;
+  label: string;
+  proves: string;
+  doesNotProve: string;
+  parserImpact: string;
+};
+
+export type ClientReplyLatestClientSignalDefinition = {
+  id: ClientReplyLatestClientSignal;
+  label: string;
+  means: string;
+  parserImpact: string;
+};
+
+export type ClientReplyThreadDiagnosticMeaning = {
+  state:
+    | 'operator_latest_no_open_client_reply'
+    | 'client_latest_unparsed_reply'
+    | 'client_latest_unparsed_scheduling_reply'
+    | 'client_latest_unparsed_weak_reply'
+    | 'theme_present_but_operator_latest'
+    | 'theme_present_missing_template_context'
+    | 'insufficient_message_evidence';
+  interpretation: string;
+  nextHardeningTarget:
+    | 'none/read_only'
+    | 'expand_reply_theme_patterns'
+    | 'expand_outbound_template_context'
+    | 'inspect_message_decoding'
+    | 'manual_source_review';
+};
+
+export type ClientReplyThemeRunReceiptMutationResult =
+  | 'none/read_only'
+  | 'proposed'
+  | 'approved'
+  | 'failed';
+
+export type ClientReplyThemeRunReceiptOperatorAction =
+  | 'needs_first_contact_reply'
+  | 'needs_reschedule_times'
+  | 'awaiting_client_reschedule_choice'
+  | 'review_reschedule_reply'
+  | 'review_opt_out'
+  | 'needs_review';
+
+export type ClientReplyThemeEvidenceMeaning = {
+  operatorAction: ClientReplyThemeRunReceiptOperatorAction;
+  interpretation: string;
+  requiredEvidence: string[];
+};
+
+export type ClientReplyThemeRunReceipt = {
+  version: 1;
+  flow: '10x_communications';
+  step: string;
+  generatedAt: string;
+  mutationResult: ClientReplyThemeRunReceiptMutationResult;
+  sourceSurfaces: string[];
+  ids: {
+    chatGuid: string;
+    messageGuid: string;
+    contactId: string | null;
+    athleteMainId: string | null;
+    matchedPhonesCount: number;
+  };
+  direction: {
+    lastInboundGuid: string | null;
+    lastOutboundGuid: string | null;
+    operatorRepliedAfterInbound: boolean;
+    operatorReplyProposedTimes: boolean;
+  };
+  classifier: {
+    theme: ClientMessageTheme;
+    templateContext: ClientMessageTemplateContext;
+    themeBucket: PendingClientThemeBucket;
+    clientOptedOut: boolean;
+  };
+  operatorAction: ClientReplyThemeRunReceiptOperatorAction;
+  evidenceMeaning: ClientReplyThemeEvidenceMeaning;
+};
+
 export const CLIENT_REPLY_THEME_REVIEW_CACHE_KEY = 'client-message:reply-theme-review:v1';
+
+export const CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS: Record<
+  ClientReplyEvidenceObservationId,
+  ClientReplyEvidenceObservationDefinition
+> = {
+  messages_present: {
+    id: 'messages_present',
+    label: 'Messages decoded',
+    proves: 'At least one message row was available for this admitted thread.',
+    doesNotProve: 'It does not prove the latest message is actionable.',
+    parserImpact: 'Allows direction, theme, and template diagnostics to run.',
+  },
+  empty_body_present: {
+    id: 'empty_body_present',
+    label: 'Undecoded or empty message present',
+    proves: 'At least one message row had no decoded body after SQL extraction.',
+    doesNotProve: 'It does not prove the thread is missing actionable context.',
+    parserImpact: 'Use as a decoding-audit clue, not as action evidence.',
+  },
+  latest_message_from_client: {
+    id: 'latest_message_from_client',
+    label: 'Client sent latest meaningful message',
+    proves: 'The newest decoded non-empty message in the thread is inbound.',
+    doesNotProve: 'It does not prove the client reply matches a known workflow.',
+    parserImpact: 'If no known theme is detected, route to reply-pattern hardening.',
+  },
+  latest_message_from_operator: {
+    id: 'latest_message_from_operator',
+    label: 'Operator sent latest meaningful message',
+    proves: 'The newest decoded non-empty message in the thread is outbound.',
+    doesNotProve: 'It does not prove the task is resolved in Supabase or Laravel.',
+    parserImpact: 'Usually read-only unless a prior client theme lacks outbound context.',
+  },
+  client_replied_after_last_outbound: {
+    id: 'client_replied_after_last_outbound',
+    label: 'Client replied after operator',
+    proves: 'The latest inbound message timestamp is newer than the latest outbound timestamp.',
+    doesNotProve: 'It does not prove the reply accepts a time or needs a reschedule.',
+    parserImpact: 'Raises priority for classification or human review.',
+  },
+  non_substantive_message_present: {
+    id: 'non_substantive_message_present',
+    label: 'Non-substantive message row present',
+    proves: 'At least one decoded message row was an attachment/contact-card placeholder or reaction-only row.',
+    doesNotProve: 'It does not prove the client sent a reply that needs action.',
+    parserImpact: 'Exclude from latest-direction and theme decisions while keeping it visible for SQL diagnostics.',
+  },
+  client_reaction_only_present: {
+    id: 'client_reaction_only_present',
+    label: 'Client reaction-only row present',
+    proves: 'A client row appears to be a Messages tapback/reaction to a prior message.',
+    doesNotProve: 'It does not prove acceptance, rejection, or reschedule intent.',
+    parserImpact: 'Do not classify as a client reply or manual review target by itself.',
+  },
+  known_inbound_theme_detected: {
+    id: 'known_inbound_theme_detected',
+    label: 'Known inbound theme detected',
+    proves: 'A client message matched a deterministic reply theme such as reschedule_request or outreach_callback.',
+    doesNotProve: 'It does not prove the message belongs to the current task without outbound template context.',
+    parserImpact: 'Eligible for action proposal when paired with the correct template context.',
+  },
+  no_known_inbound_theme: {
+    id: 'no_known_inbound_theme',
+    label: 'No known inbound theme',
+    proves: 'Decoded inbound text did not match the current deterministic reply-theme patterns.',
+    doesNotProve: 'It does not prove the client reply is irrelevant.',
+    parserImpact: 'Use latestClientReplySignals to decide whether to expand reply patterns.',
+  },
+  outbound_template_context_detected: {
+    id: 'outbound_template_context_detected',
+    label: 'Outbound template context detected',
+    proves: 'An operator message matched a known outbound workflow template family.',
+    doesNotProve: 'It does not prove the client responded to that exact template.',
+    parserImpact: 'Provides the workflow lane for a known inbound theme.',
+  },
+  no_outbound_template_context: {
+    id: 'no_outbound_template_context',
+    label: 'No outbound template context',
+    proves: 'No decoded operator message matched the known outbound workflow template families.',
+    doesNotProve: 'It does not prove no operator message was sent.',
+    parserImpact: 'Route known client themes here to outbound-template hardening.',
+  },
+  operator_reschedule_offer_detected: {
+    id: 'operator_reschedule_offer_detected',
+    label: 'Operator proposed reschedule options',
+    proves: 'A decoded operator message matched reschedule-option language.',
+    doesNotProve: 'It does not prove a calendar event or reminder was created.',
+    parserImpact: 'Separates waiting-for-client from needing-to-send-times.',
+  },
+  post_meeting_recovery_context: {
+    id: 'post_meeting_recovery_context',
+    label: 'Post-meeting recovery task context',
+    proves: 'The task title indicates no-show, cancel, or reschedule-pending recovery.',
+    doesNotProve: 'It does not prove the durable appointment outcome by itself.',
+    parserImpact: 'Lets reschedule evidence map to Pending Clients review rather than first-contact outreach.',
+  },
+};
+
+export const CLIENT_REPLY_LATEST_CLIENT_SIGNAL_DEFINITIONS: Record<
+  ClientReplyLatestClientSignal,
+  ClientReplyLatestClientSignalDefinition
+> = {
+  short_reply: {
+    id: 'short_reply',
+    label: 'Short reply',
+    means: 'The latest client message has five words or fewer.',
+    parserImpact: 'Useful for numeric choices, acknowledgements, and terse scheduling replies.',
+  },
+  contains_question: {
+    id: 'contains_question',
+    label: 'Question mark',
+    means: 'The latest client message contains a question mark.',
+    parserImpact: 'Prioritize human review when no deterministic theme matches.',
+  },
+  contains_numeric_choice: {
+    id: 'contains_numeric_choice',
+    label: 'Numeric choice',
+    means: 'The latest client message begins with 1, 2, 3, one, two, or three.',
+    parserImpact: 'Candidate for reschedule/follow-up option parsing when template context exists.',
+  },
+  contains_affirmation: {
+    id: 'contains_affirmation',
+    label: 'Affirmation',
+    means: 'The latest client message includes yes/ok/works/sounds-good style language.',
+    parserImpact: 'Candidate for schedule acceptance parsing, not enough alone.',
+  },
+  contains_negative: {
+    id: 'contains_negative',
+    label: 'Negative or conflict language',
+    means: 'The latest client message includes no/not/busy/unavailable style language.',
+    parserImpact: 'Candidate for reschedule conflict or opt-out review depending on stronger theme evidence.',
+  },
+  contains_thanks: {
+    id: 'contains_thanks',
+    label: 'Thanks language',
+    means: 'The latest client message includes thanks or appreciation language.',
+    parserImpact: 'Usually weak evidence unless paired with schedule or call language.',
+  },
+  contains_call_word: {
+    id: 'contains_call_word',
+    label: 'Call word',
+    means: 'The latest client message includes call, phone, talk, or ring.',
+    parserImpact: 'Candidate for first-contact callback pattern expansion.',
+  },
+  contains_schedule_word: {
+    id: 'contains_schedule_word',
+    label: 'Schedule word',
+    means: 'The latest client message includes schedule, meeting, appointment, slot, time, or works language.',
+    parserImpact: 'Candidate for reschedule or first-contact time parsing.',
+  },
+  contains_time_word: {
+    id: 'contains_time_word',
+    label: 'Time word',
+    means: 'The latest client message includes am/pm, daypart, later, before/after, or a clock-like number.',
+    parserImpact: 'Candidate for scheduling parser expansion when paired with call or schedule words.',
+  },
+  contains_day_word: {
+    id: 'contains_day_word',
+    label: 'Day word',
+    means: 'The latest client message includes today, tomorrow, or a weekday.',
+    parserImpact: 'Candidate for first-contact or reschedule time parsing.',
+  },
+};
 
 export function clientReplyThemeReviewBucketLabel(
   bucket: ClientReplyThemeReviewBucketKey,
@@ -179,7 +474,7 @@ export type PendingClientReplyThemeMatchInput = {
 };
 
 export type PendingClientReplyThemeState = {
-  status: 'needs_reply' | 'awaiting_reschedule';
+  status: 'needs_reply' | 'awaiting_reschedule' | 'client_replied_after_times';
   row: ClientReplyThemeReviewRow;
 };
 
@@ -222,9 +517,137 @@ export function findPendingClientReplyThemeState(
       clientReplyThemeRowMatchesPendingClient(row, pendingClient),
   );
   if (!match) return null;
+  if (match.replyEvidence?.clientRepliedAfterOperatorTimes) {
+    return {
+      status: 'client_replied_after_times',
+      row: match,
+    };
+  }
   return {
     status: match.operatorRescheduleOfferAfter ? 'awaiting_reschedule' : 'needs_reply',
     row: match,
+  };
+}
+
+function operatorActionForReplyThemeRow(
+  row: ClientReplyThemeReviewRow,
+): ClientReplyThemeRunReceiptOperatorAction {
+  const evidence = row.replyEvidence;
+  if (evidence?.clientOptedOut) return 'review_opt_out';
+  if (evidence?.clientRepliedAfterOperatorTimes) return 'review_reschedule_reply';
+  if (row.operatorRescheduleOfferAfter || evidence?.operatorReplyProposedTimes) {
+    return 'awaiting_client_reschedule_choice';
+  }
+  if (evidence?.themeBucket === 'Call Attempt') return 'needs_first_contact_reply';
+  if (evidence && ['RSP', 'No Show', 'Cancel'].includes(evidence.themeBucket)) {
+    return 'needs_reschedule_times';
+  }
+  return 'needs_review';
+}
+
+function evidenceMeaningForOperatorAction(
+  operatorAction: ClientReplyThemeRunReceiptOperatorAction,
+): ClientReplyThemeEvidenceMeaning {
+  if (operatorAction === 'review_opt_out') {
+    return {
+      operatorAction,
+      interpretation: 'Client wording indicates opt-out or no-interest language; operator must review before any follow-up.',
+      requiredEvidence: ['clientOptedOut=true', 'actionable inbound client message'],
+    };
+  }
+  if (operatorAction === 'review_reschedule_reply') {
+    return {
+      operatorAction,
+      interpretation: 'Operator proposed reschedule times, then the client replied after those proposed times.',
+      requiredEvidence: [
+        'operatorReplyProposedTimes=true',
+        'clientRepliedAfterOperatorTimes=true',
+        'post-meeting recovery or reschedule context',
+      ],
+    };
+  }
+  if (operatorAction === 'awaiting_client_reschedule_choice') {
+    return {
+      operatorAction,
+      interpretation: 'Operator already sent reschedule options and no later client reply was detected.',
+      requiredEvidence: [
+        'operatorReplyProposedTimes=true',
+        'clientRepliedAfterOperatorTimes=false',
+      ],
+    };
+  }
+  if (operatorAction === 'needs_first_contact_reply') {
+    return {
+      operatorAction,
+      interpretation: 'Client replied with callback/timing language after an outreach-attempt template.',
+      requiredEvidence: [
+        'theme=outreach_callback',
+        'templateContext=outreach_attempt',
+        'themeBucket=Call Attempt',
+      ],
+    };
+  }
+  if (operatorAction === 'needs_reschedule_times') {
+    return {
+      operatorAction,
+      interpretation: 'Client reply indicates post-meeting recovery or reschedule intent and no reschedule times have been sent after that reply.',
+      requiredEvidence: [
+        'theme=reschedule_request',
+        'themeBucket=RSP|No Show|Cancel',
+        'operatorReplyProposedTimes=false',
+      ],
+    };
+  }
+  return {
+    operatorAction,
+    interpretation: 'Evidence is insufficient for a deterministic next action; human review is required.',
+    requiredEvidence: ['unclassified or ambiguous reply evidence'],
+  };
+}
+
+export function buildClientReplyThemeRunReceipt(
+  row: ClientReplyThemeReviewRow,
+  options: {
+    generatedAt?: string;
+    step?: string;
+    mutationResult?: ClientReplyThemeRunReceiptMutationResult;
+    sourceSurfaces?: string[];
+  } = {},
+): ClientReplyThemeRunReceipt {
+  const evidence = row.replyEvidence;
+  const operatorAction = operatorActionForReplyThemeRow(row);
+  return {
+    version: 1,
+    flow: '10x_communications',
+    step: options.step || 'classify-client-reply',
+    generatedAt: options.generatedAt || new Date().toISOString(),
+    mutationResult: options.mutationResult || 'none/read_only',
+    sourceSurfaces: options.sourceSurfaces || [
+      'local_messages_sql',
+      'athlete_contact_cache',
+      'client-message-reply-themes',
+    ],
+    ids: {
+      chatGuid: row.chatGuid,
+      messageGuid: row.messageGuid,
+      contactId: row.contactId,
+      athleteMainId: row.athleteMainId,
+      matchedPhonesCount: row.matchedPhones.length,
+    },
+    direction: {
+      lastInboundGuid: evidence?.lastMeaningfulInbound?.guid || null,
+      lastOutboundGuid: evidence?.lastMeaningfulOutbound?.guid || null,
+      operatorRepliedAfterInbound: Boolean(evidence?.operatorRepliedAfterInbound),
+      operatorReplyProposedTimes: Boolean(evidence?.operatorReplyProposedTimes),
+    },
+    classifier: {
+      theme: row.theme,
+      templateContext: row.templateContext,
+      themeBucket: evidence?.themeBucket || 'Unclassified',
+      clientOptedOut: Boolean(evidence?.clientOptedOut),
+    },
+    operatorAction,
+    evidenceMeaning: evidenceMeaningForOperatorAction(operatorAction),
   };
 }
 
@@ -341,6 +764,23 @@ function normalizeText(value?: string | null): string {
   return String(value || '').trim();
 }
 
+function isReactionOnlyMessage(text?: string | null): boolean {
+  return /^(?:Loved|Liked|Disliked|Laughed at|Emphasized|Questioned)\s+[“"][\s\S]+[”"]$/i.test(
+    normalizeText(text),
+  );
+}
+
+function isAttachmentOnlyPlaceholder(text?: string | null): boolean {
+  return /^[\uFFFC\s]+$/.test(String(text || ''));
+}
+
+function isSubstantiveMessageBody(text?: string | null): boolean {
+  const normalized = normalizeText(text);
+  return Boolean(
+    normalized && !isAttachmentOnlyPlaceholder(normalized) && !isReactionOnlyMessage(normalized),
+  );
+}
+
 function isPostMeetingRecoveryContext(value?: string | null): boolean {
   return /\breschedule\s+pending\b|\bpending\s+reschedule\b|\bres\.\s*pending\b|\bno\s*show\b|\bcancel(?:ed|led|ation)?\b/i.test(
     normalizeText(value),
@@ -375,7 +815,10 @@ export function classifyPendingClientThemeBucket(
   if (/\bcancel(?:ed|led|ation)?\b/i.test(combined)) return 'Cancel';
   if (isCallAttemptTiming(body) || /\bcall\s+attempt\b/i.test(task)) return 'Call Attempt';
   if (theme === 'outreach_callback') return 'Call Attempt';
-  if (theme === 'reschedule_request' || /\breschedule|different\s+time|move\s+(?:the\s+)?meeting\b/i.test(body)) {
+  if (
+    theme === 'reschedule_request' ||
+    /\breschedule|different\s+time|move\s+(?:the\s+)?meeting\b/i.test(body)
+  ) {
     return 'RSP';
   }
   return 'Unclassified';
@@ -383,7 +826,7 @@ export function classifyPendingClientThemeBucket(
 
 export function classifyClientMessageThemes(text?: string | null): ClientMessageTheme[] {
   const normalized = normalizeText(text);
-  if (!normalized) return [];
+  if (!normalized || !isSubstantiveMessageBody(normalized)) return [];
   return MISSED_CLIENT_REPLY_FLAGS.filter((theme) => FLAG_PATTERNS[theme].test(normalized));
 }
 
@@ -432,6 +875,233 @@ export function isOperatorRescheduleOffer(text?: string | null): boolean {
   return RESCHEDULE_OFFER_PATTERNS.some((pattern) => pattern.test(normalized));
 }
 
+function latestClientReplySignals(text?: string | null): ClientReplyLatestClientSignal[] {
+  const normalized = normalizeText(text);
+  if (!normalized) return [];
+  const signals: ClientReplyLatestClientSignal[] = [];
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  if (wordCount <= 5) signals.push('short_reply');
+  if (/\?/.test(normalized)) signals.push('contains_question');
+  if (/^\s*(?:1|2|3|one|two|three)\b/i.test(normalized)) {
+    signals.push('contains_numeric_choice');
+  }
+  if (/\b(?:yes|yeah|yep|ok|okay|works?|that works|sounds good|perfect|great)\b/i.test(normalized)) {
+    signals.push('contains_affirmation');
+  }
+  if (/\b(?:no|not|can't|cannot|wont|won't|busy|unavailable)\b/i.test(normalized)) {
+    signals.push('contains_negative');
+  }
+  if (/\b(?:thanks|thank you|appreciate)\b/i.test(normalized)) {
+    signals.push('contains_thanks');
+  }
+  if (/\b(?:call|phone|talk|ring)\b/i.test(normalized)) {
+    signals.push('contains_call_word');
+  }
+  if (/\b(?:schedule|scheduled|reschedule|meeting|appointment|slot|time|works?)\b/i.test(normalized)) {
+    signals.push('contains_schedule_word');
+  }
+  if (/\b(?:am|pm|morning|afternoon|evening|tonight|later|after|before|\d{1,2}(?::\d{2})?)\b/i.test(normalized)) {
+    signals.push('contains_time_word');
+  }
+  if (/\b(?:today|tomorrow|tmrw|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i.test(normalized)) {
+    signals.push('contains_day_word');
+  }
+  return Array.from(new Set(signals));
+}
+
+function buildObservationIds(args: {
+  totalMessages: number;
+  emptyBodyCount: number;
+  latestDirection: ClientReplyThreadDiagnostics['latestDirection'];
+  clientRepliedAfterLastOutbound: boolean;
+  inboundThemes: ClientMessageTheme[];
+  outboundTemplateContexts: ClientMessageTemplateContext[];
+  outboundRescheduleOfferCount: number;
+  taskSuggestsPostMeetingRecovery: boolean;
+  nonSubstantiveMessageCount: number;
+  reactionOnlyCount: number;
+}): ClientReplyEvidenceObservationId[] {
+  const observations: ClientReplyEvidenceObservationId[] = [];
+  if (args.totalMessages > 0) observations.push('messages_present');
+  if (args.emptyBodyCount > 0) observations.push('empty_body_present');
+  if (args.nonSubstantiveMessageCount > 0) {
+    observations.push('non_substantive_message_present');
+  }
+  if (args.reactionOnlyCount > 0) {
+    observations.push('client_reaction_only_present');
+  }
+  if (args.latestDirection === 'client') observations.push('latest_message_from_client');
+  if (args.latestDirection === 'operator') observations.push('latest_message_from_operator');
+  if (args.clientRepliedAfterLastOutbound) {
+    observations.push('client_replied_after_last_outbound');
+  }
+  observations.push(
+    args.inboundThemes.length ? 'known_inbound_theme_detected' : 'no_known_inbound_theme',
+  );
+  observations.push(
+    args.outboundTemplateContexts.length
+      ? 'outbound_template_context_detected'
+      : 'no_outbound_template_context',
+  );
+  if (args.outboundRescheduleOfferCount > 0) {
+    observations.push('operator_reschedule_offer_detected');
+  }
+  if (args.taskSuggestsPostMeetingRecovery) {
+    observations.push('post_meeting_recovery_context');
+  }
+  return observations;
+}
+
+export function buildClientReplyThreadDiagnostics(args: {
+  messages: ClientReplyThemeReviewMessageInput[];
+  taskTitle?: string | null;
+}): ClientReplyThreadDiagnostics {
+  const messages = sortMessagesOldestFirst(args.messages || []);
+  const messagesWithDecodedBody = messages.filter((message) => normalizeText(message.body));
+  const reactionOnlyCount = messagesWithDecodedBody.filter((message) =>
+    isReactionOnlyMessage(message.body),
+  ).length;
+  const nonSubstantiveMessageCount = messagesWithDecodedBody.filter(
+    (message) => !isSubstantiveMessageBody(message.body),
+  ).length;
+  const messagesWithBody = messages.filter((message) => isSubstantiveMessageBody(message.body));
+  const inboundMessages = messagesWithBody.filter((message) => !message.isFromMe);
+  const outboundMessages = messagesWithBody.filter((message) => message.isFromMe);
+  const lastMessage = messagesWithBody[messagesWithBody.length - 1] || null;
+  const lastInbound = inboundMessages[inboundMessages.length - 1] || null;
+  const lastOutbound = outboundMessages[outboundMessages.length - 1] || null;
+  const outboundTemplateContexts = Array.from(
+    new Set(
+      outboundMessages
+        .map((message) => templateContextForOutbound(message.body))
+        .filter((context): context is ClientMessageTemplateContext => Boolean(context)),
+    ),
+  );
+  const inboundThemes = Array.from(
+    new Set(inboundMessages.flatMap((message) => classifyClientMessageThemes(message.body))),
+  );
+  const latestDirection = lastMessage ? (lastMessage.isFromMe ? 'operator' : 'client') : 'none';
+  const emptyBodyCount = messages.filter((message) => !normalizeText(message.body)).length;
+  const clientRepliedAfterLastOutbound =
+    Boolean(normalizeText(lastInbound?.date)) &&
+    (!normalizeText(lastOutbound?.date) ||
+      normalizeText(lastInbound?.date) > normalizeText(lastOutbound?.date));
+  const outboundRescheduleOfferCount = outboundMessages.filter((message) =>
+    isOperatorRescheduleOffer(message.body),
+  ).length;
+  const taskSuggestsPostMeetingRecovery = isPostMeetingRecoveryContext(args.taskTitle);
+
+  return {
+    version: 1,
+    observationIds: buildObservationIds({
+      totalMessages: messages.length,
+      emptyBodyCount,
+      latestDirection,
+      clientRepliedAfterLastOutbound,
+      inboundThemes,
+      outboundTemplateContexts,
+      outboundRescheduleOfferCount,
+      taskSuggestsPostMeetingRecovery,
+      nonSubstantiveMessageCount,
+      reactionOnlyCount,
+    }),
+    totalMessages: messages.length,
+    inboundCount: inboundMessages.length,
+    outboundCount: outboundMessages.length,
+    emptyBodyCount,
+    latestDirection,
+    lastInboundAt: normalizeText(lastInbound?.date) || null,
+    lastOutboundAt: normalizeText(lastOutbound?.date) || null,
+    clientRepliedAfterLastOutbound,
+    outboundTemplateContexts,
+    inboundThemes,
+    outboundRescheduleOfferCount,
+    taskSuggestsPostMeetingRecovery,
+    latestClientReplySignals:
+      latestDirection === 'client' ? latestClientReplySignals(lastMessage?.body) : [],
+    nonSubstantiveMessageCount,
+    reactionOnlyCount,
+  };
+}
+
+export function interpretClientReplyThreadDiagnostics(
+  diagnostics: ClientReplyThreadDiagnostics,
+): ClientReplyThreadDiagnosticMeaning {
+  if (!diagnostics.totalMessages || (!diagnostics.inboundCount && !diagnostics.outboundCount)) {
+    return {
+      state: 'insufficient_message_evidence',
+      interpretation: 'No decoded inbound/outbound message evidence was available for this thread.',
+      nextHardeningTarget: 'inspect_message_decoding',
+    };
+  }
+  if (diagnostics.latestDirection === 'client' && !diagnostics.inboundThemes.length) {
+    const signals = new Set(diagnostics.latestClientReplySignals);
+    const hasSchedulingSignal =
+      signals.has('contains_schedule_word') ||
+      signals.has('contains_time_word') ||
+      signals.has('contains_day_word') ||
+      signals.has('contains_numeric_choice');
+    const hasCallSchedulingSignal = signals.has('contains_call_word') && hasSchedulingSignal;
+    if (
+      diagnostics.taskSuggestsPostMeetingRecovery &&
+      diagnostics.outboundTemplateContexts.length &&
+      (hasCallSchedulingSignal ||
+        (signals.has('contains_schedule_word') && signals.has('contains_time_word')))
+    ) {
+      return {
+        state: 'client_latest_unparsed_scheduling_reply',
+        interpretation:
+          'Client sent the latest message with scheduling-like signals in a post-meeting recovery thread, but no deterministic reply theme matched.',
+        nextHardeningTarget: 'manual_source_review',
+      };
+    }
+    if (!diagnostics.outboundTemplateContexts.length && !hasSchedulingSignal) {
+      return {
+        state: 'client_latest_unparsed_weak_reply',
+        interpretation:
+          'Client sent the latest message, but only weak or context-free signals were detected; this is not enough to expand automation patterns.',
+        nextHardeningTarget: 'none/read_only',
+      };
+    }
+    return {
+      state: 'client_latest_unparsed_reply',
+      interpretation:
+        'Client sent the latest meaningful message, but deterministic reply-theme parsing found no known actionable theme.',
+      nextHardeningTarget: 'expand_reply_theme_patterns',
+    };
+  }
+  if (diagnostics.inboundThemes.length && !diagnostics.outboundTemplateContexts.length) {
+    return {
+      state: 'theme_present_missing_template_context',
+      interpretation:
+        'Client wording matched a known theme, but no prior outbound template context explains what workflow it belongs to.',
+      nextHardeningTarget: 'expand_outbound_template_context',
+    };
+  }
+  if (diagnostics.latestDirection === 'operator') {
+    if (diagnostics.inboundThemes.length) {
+      return {
+        state: 'theme_present_but_operator_latest',
+        interpretation:
+          'A known client theme exists in the thread, but the operator sent the latest meaningful message afterward.',
+        nextHardeningTarget: 'none/read_only',
+      };
+    }
+    return {
+      state: 'operator_latest_no_open_client_reply',
+      interpretation:
+        'Operator sent the latest meaningful message and no unhandled actionable client theme is visible.',
+      nextHardeningTarget: 'none/read_only',
+    };
+  }
+  return {
+    state: 'insufficient_message_evidence',
+    interpretation:
+      'Thread has message evidence, but it does not meet a deterministic actionable state.',
+    nextHardeningTarget: 'inspect_message_decoding',
+  };
+}
+
 function buildClientReplyEvidence(args: {
   messages: ClientReplyThemeReviewMessageInput[];
   inbound: ClientReplyThemeReviewMessageInput;
@@ -445,6 +1115,15 @@ function buildClientReplyEvidence(args: {
   const outboundAfterInbound = outboundMessages.filter(
     (message) => normalizeText(message.date) > inboundDate,
   );
+  const rescheduleOffersAfterInbound = outboundAfterInbound.filter((message) =>
+    isOperatorRescheduleOffer(message.body),
+  );
+  const lastRescheduleOffer =
+    rescheduleOffersAfterInbound[rescheduleOffersAfterInbound.length - 1] || null;
+  const lastRescheduleOfferDate = normalizeText(lastRescheduleOffer?.date);
+  const clientRepliedAfterOperatorTimes =
+    Boolean(lastRescheduleOfferDate) &&
+    inboundMessages.some((message) => normalizeText(message.date) > lastRescheduleOfferDate);
   const lastInbound = inboundMessages[inboundMessages.length - 1] || args.inbound;
   const lastOutbound = outboundMessages[outboundMessages.length - 1] || null;
 
@@ -452,10 +1131,12 @@ function buildClientReplyEvidence(args: {
     themeBucket: classifyPendingClientThemeBucket(args.inbound.body, args.theme, args.taskTitle),
     lastMeaningfulInbound: lastInbound ? toMessageEvidence(lastInbound) : null,
     lastMeaningfulOutbound: lastOutbound ? toMessageEvidence(lastOutbound) : null,
+    lastOperatorRescheduleOffer: lastRescheduleOffer
+      ? toMessageEvidence(lastRescheduleOffer)
+      : null,
     operatorRepliedAfterInbound: outboundAfterInbound.length > 0,
-    operatorReplyProposedTimes: outboundAfterInbound.some((message) =>
-      isOperatorRescheduleOffer(message.body),
-    ),
+    operatorReplyProposedTimes: rescheduleOffersAfterInbound.length > 0,
+    clientRepliedAfterOperatorTimes,
     clientOptedOut: isClientOptOut(args.inbound.body),
   };
 }

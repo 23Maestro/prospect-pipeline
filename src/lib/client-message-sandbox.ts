@@ -14,6 +14,10 @@ import {
   type ClientReplyThemeReviewMessageInput,
   type ClientReplyThemeReviewSnapshot,
 } from './client-message-reply-themes';
+import {
+  buildClientMessageThreadEvidenceReceipt,
+  type ClientMessageThreadEvidenceReceipt,
+} from './client-message-evidence-receipts';
 
 const DB_PATH = resolve(homedir(), 'Library/Messages/chat.db');
 
@@ -399,7 +403,10 @@ function buildClientInboxChatsFromDirectory(
     .slice(0, limit);
 }
 
-export async function loadClientInboxChats(searchText = '', limit = 50): Promise<ClientInboxChat[]> {
+export async function loadClientInboxChats(
+  searchText = '',
+  limit = 50,
+): Promise<ClientInboxChat[]> {
   const rawData = await executeSQL<SQLChat>(DB_PATH, CLIENT_INBOX_CHATS_SQL);
   const clientDirectory = await loadClientDirectory(rawData || []);
   return buildClientInboxChatsFromDirectory(
@@ -451,19 +458,51 @@ export async function buildClientReplyThemeReviewSnapshotForChats(
   });
 }
 
+export function buildClientInboxThreadEvidenceReceipt(
+  chat: ClientInboxChat,
+  messages: ClientThreadMessage[],
+  generatedAt?: string,
+): ClientMessageThreadEvidenceReceipt {
+  return buildClientMessageThreadEvidenceReceipt({
+    generatedAt,
+    chat: {
+      guid: chat.guid,
+      serviceName: chat.service_name,
+      isGroup: chat.is_group,
+      participantCount: chat.participant_count,
+      matchedPhones: chat.matchedPhones,
+      clientMatch: {
+        source: chat.clientMatch.source,
+        segment: chat.clientMatch.segment,
+        contactId: chat.clientMatch.contactId,
+        athleteMainId: chat.clientMatch.athleteMainId,
+        currentTaskId: chat.clientMatch.currentTaskId,
+        currentTaskTitle: chat.clientMatch.currentTaskTitle,
+        crmStage: chat.clientMatch.crmStage,
+        taskStatus: chat.clientMatch.taskStatus,
+        ambiguity: chat.clientMatch.ambiguity,
+        associatedClientsCount: chat.clientMatch.associatedClients?.length || 0,
+      },
+    },
+    messages: messages.map((message) => ({
+      guid: message.guid,
+      date: message.date,
+      isFromMe: message.is_from_me,
+      body: message.body,
+      bodySource: message.body ? 'attributedBody' : 'empty',
+    })),
+  });
+}
+
 export function useClientInboxChats(searchText = '') {
   const {
     data: rawData,
     isLoading: isLoadingChats,
     permissionView,
     ...rest
-  } = useSQL<SQLChat>(
-    DB_PATH,
-    CLIENT_INBOX_CHATS_SQL,
-    {
-      permissionPriming: 'This is required to read your Messages chats.',
-    },
-  );
+  } = useSQL<SQLChat>(DB_PATH, CLIENT_INBOX_CHATS_SQL, {
+    permissionPriming: 'This is required to read your Messages chats.',
+  });
 
   const {
     data: clientDirectory,

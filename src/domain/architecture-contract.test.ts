@@ -162,6 +162,22 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
   assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
 });
 
+test('Pending Clients exposes shared 10x evidence receipts for reply-theme next steps', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+
+  assert.match(headScoutSchedules, /PendingClientEvidenceDetail/);
+  assert.match(headScoutSchedules, /title="Open Evidence Visual"/);
+  assert.match(headScoutSchedules, /value="reschedule"/);
+  assert.match(headScoutSchedules, /value="no_show"/);
+  assert.match(headScoutSchedules, /value="payments"/);
+  assert.match(headScoutSchedules, /value="review_follow_ups"/);
+  assert.match(headScoutSchedules, /buildPendingClientThreadEvidenceReceipt/);
+  assert.match(headScoutSchedules, /buildClientReplyThemeRunReceipt\(match\)/);
+  assert.match(headScoutSchedules, /buildClientMessageActionProposal\(\{/);
+  assert.match(headScoutSchedules, /buildClientMessageActionProposalVisualUrl\(\{/);
+  assert.match(headScoutSchedules, /await open\(/);
+});
+
 test('Scouting Command post-call helper wraps Raycast post-call writer paths', () => {
   const source = readRepoFile('src/lib/scout-prep-post-call-update.ts');
   const contract = readRepoFile('docs/architecture/scouting-command-raycast-mutation-contract.md');
@@ -498,7 +514,8 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
     'set_meeting_confirmation_cache.meeting_starts_at',
     'pending_client_watchlist.event_start',
     'call_log.booked_event_starts_at',
-    'A post-meeting watcher may update appointment `post_meeting_result` and `status_reason`; it may not update `status` or `starts_at`',
+    "it may not update the watched row's `status` or `starts_at`",
+    'it may upsert that replacement event as a new active `appointments` row',
     '`reschedule_pending` is a post-meeting outcome/Pending Clients state',
     'The hourly cron must not run front-facing current-pipeline business writers',
     'Do not let scheduled jobs own normal Scout Prep lifecycle',

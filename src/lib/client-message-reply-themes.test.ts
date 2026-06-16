@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS,
+  CLIENT_REPLY_LATEST_CLIENT_SIGNAL_DEFINITIONS,
   MISSED_CLIENT_REPLY_FLAGS,
+  buildClientReplyThreadDiagnostics,
+  buildClientReplyThemeRunReceipt,
   buildClientReplyThemeReviewSnapshot,
   buildClientReplyThemeThreadMarkdown,
   classifyClientMessageTheme,
@@ -13,6 +17,7 @@ import {
   clientReplyThemeReviewToneLabel,
   clientReplyThemeReviewToneTagColor,
   findPendingClientReplyThemeState,
+  interpretClientReplyThreadDiagnostics,
   isOperatorRescheduleOffer,
   readCachedClientReplyThemeReviewSnapshot,
   writeCachedClientReplyThemeReviewSnapshot,
@@ -194,6 +199,412 @@ test('reschedule reply evidence distinguishes generic reply from proposed times'
     snapshot.rows[0].replyEvidence?.lastMeaningfulOutbound?.body,
     'No problem, I will check with Coach.',
   );
+});
+
+test('builds pii-safe thread diagnostics for unmatched pending-client audit cases', () => {
+  const diagnostics = buildClientReplyThreadDiagnostics({
+    taskTitle: 'Meeting Result - No Show',
+    messages: [
+      message({
+        guid: 'out-options',
+        isFromMe: true,
+        date: '2026-06-13T10:00:00.000Z',
+        body: 'Please reply with the best fit. 1 reschedule, 2 timing is bad, 3 no longer interested.',
+      }),
+      message({
+        guid: 'in-thanks',
+        isFromMe: false,
+        date: '2026-06-13T10:05:00.000Z',
+        body: 'Thanks, I need to reschedule',
+      }),
+      message({
+        guid: 'out-times',
+        isFromMe: true,
+        date: '2026-06-13T10:10:00.000Z',
+        body: 'Here are two new times to reschedule: 1 - Mon 3PM ET, 2 - Tue 4PM ET',
+      }),
+      message({
+        guid: 'empty',
+        isFromMe: false,
+        date: '2026-06-13T10:15:00.000Z',
+        body: '',
+      }),
+    ],
+  });
+
+  assert.deepEqual(diagnostics, {
+    version: 1,
+    observationIds: [
+      'messages_present',
+      'empty_body_present',
+      'latest_message_from_operator',
+      'known_inbound_theme_detected',
+      'outbound_template_context_detected',
+      'operator_reschedule_offer_detected',
+      'post_meeting_recovery_context',
+    ],
+    totalMessages: 4,
+    inboundCount: 1,
+    outboundCount: 2,
+    emptyBodyCount: 1,
+    latestDirection: 'operator',
+    lastInboundAt: '2026-06-13T10:05:00.000Z',
+    lastOutboundAt: '2026-06-13T10:10:00.000Z',
+    clientRepliedAfterLastOutbound: false,
+    outboundTemplateContexts: ['confirmation'],
+    inboundThemes: ['reschedule_request'],
+    outboundRescheduleOfferCount: 1,
+    taskSuggestsPostMeetingRecovery: true,
+    latestClientReplySignals: [],
+    nonSubstantiveMessageCount: 0,
+    reactionOnlyCount: 0,
+  });
+  assert.equal(JSON.stringify(diagnostics).includes('Thanks, I need to reschedule'), false);
+  assert.equal(JSON.stringify(diagnostics).includes('Mon 3PM'), false);
+  assert.deepEqual(interpretClientReplyThreadDiagnostics(diagnostics), {
+    state: 'theme_present_but_operator_latest',
+    interpretation:
+      'A known client theme exists in the thread, but the operator sent the latest meaningful message afterward.',
+    nextHardeningTarget: 'none/read_only',
+  });
+  assert.deepEqual(
+    interpretClientReplyThreadDiagnostics({
+      ...diagnostics,
+      observationIds: [
+        'messages_present',
+        'empty_body_present',
+        'latest_message_from_client',
+        'client_replied_after_last_outbound',
+        'no_known_inbound_theme',
+        'outbound_template_context_detected',
+        'operator_reschedule_offer_detected',
+        'post_meeting_recovery_context',
+      ],
+      latestDirection: 'client',
+      inboundThemes: [],
+      clientRepliedAfterLastOutbound: true,
+    }),
+    {
+      state: 'client_latest_unparsed_reply',
+      interpretation:
+        'Client sent the latest meaningful message, but deterministic reply-theme parsing found no known actionable theme.',
+      nextHardeningTarget: 'expand_reply_theme_patterns',
+    },
+  );
+
+  assert.deepEqual(
+    interpretClientReplyThreadDiagnostics({
+      ...diagnostics,
+      observationIds: [
+        'messages_present',
+        'latest_message_from_client',
+        'client_replied_after_last_outbound',
+        'no_known_inbound_theme',
+        'no_outbound_template_context',
+        'post_meeting_recovery_context',
+      ],
+      latestDirection: 'client',
+      inboundThemes: [],
+      outboundTemplateContexts: [],
+      clientRepliedAfterLastOutbound: true,
+      latestClientReplySignals: ['contains_thanks'],
+    }),
+    {
+      state: 'client_latest_unparsed_weak_reply',
+      interpretation:
+        'Client sent the latest message, but only weak or context-free signals were detected; this is not enough to expand automation patterns.',
+      nextHardeningTarget: 'none/read_only',
+    },
+  );
+
+  assert.deepEqual(
+    interpretClientReplyThreadDiagnostics({
+      ...diagnostics,
+      observationIds: [
+        'messages_present',
+        'latest_message_from_client',
+        'client_replied_after_last_outbound',
+        'no_known_inbound_theme',
+        'outbound_template_context_detected',
+        'post_meeting_recovery_context',
+      ],
+      latestDirection: 'client',
+      inboundThemes: [],
+      outboundTemplateContexts: ['confirmation'],
+      clientRepliedAfterLastOutbound: true,
+      latestClientReplySignals: [
+        'contains_call_word',
+        'contains_schedule_word',
+        'contains_time_word',
+      ],
+    }),
+    {
+      state: 'client_latest_unparsed_scheduling_reply',
+      interpretation:
+        'Client sent the latest message with scheduling-like signals in a post-meeting recovery thread, but no deterministic reply theme matched.',
+      nextHardeningTarget: 'manual_source_review',
+    },
+  );
+
+  const unparsedClientLatest = buildClientReplyThreadDiagnostics({
+    taskTitle: 'Meeting Result - No Show',
+    messages: [
+      message({
+        guid: 'operator',
+        isFromMe: true,
+        date: '2026-06-13T10:00:00.000Z',
+        body: 'Prospect ID Zoom meeting tomorrow at 5 PM.',
+      }),
+      message({
+        guid: 'client-latest',
+        isFromMe: false,
+        date: '2026-06-13T10:05:00.000Z',
+        body: 'Okay afternoon works?',
+      }),
+    ],
+  });
+
+  assert.deepEqual(unparsedClientLatest.observationIds, [
+    'messages_present',
+    'latest_message_from_client',
+    'client_replied_after_last_outbound',
+    'no_known_inbound_theme',
+    'outbound_template_context_detected',
+    'post_meeting_recovery_context',
+  ]);
+  assert.deepEqual(unparsedClientLatest.latestClientReplySignals, [
+    'short_reply',
+    'contains_question',
+    'contains_affirmation',
+    'contains_schedule_word',
+    'contains_time_word',
+  ]);
+  assert.equal(JSON.stringify(unparsedClientLatest).includes('Okay afternoon'), false);
+
+  const reactionOnlyLatest = buildClientReplyThreadDiagnostics({
+    taskTitle: 'Meeting Result - Res. Pending',
+    messages: [
+      message({
+        guid: 'confirmation',
+        isFromMe: true,
+        date: '2026-06-10T13:47:47.000Z',
+        body: 'Prospect ID Zoom Meeting tonight at 7:00 PM CT. He will call your cell at 7:00 with the Zoom code.',
+      }),
+      message({
+        guid: 'contact-card',
+        isFromMe: true,
+        date: '2026-06-10T13:48:00.000Z',
+        body: '￼',
+      }),
+      message({
+        guid: 'tapback',
+        isFromMe: false,
+        date: '2026-06-10T13:48:19.000Z',
+        body: 'Liked “Prospect ID Zoom Meeting tonight at 7:00 PM CT. He will call your cell at 7:00 with the Zoom code.”',
+      }),
+    ],
+  });
+
+  assert.deepEqual(reactionOnlyLatest.observationIds, [
+    'messages_present',
+    'non_substantive_message_present',
+    'client_reaction_only_present',
+    'latest_message_from_operator',
+    'no_known_inbound_theme',
+    'outbound_template_context_detected',
+    'post_meeting_recovery_context',
+  ]);
+  assert.equal(reactionOnlyLatest.inboundCount, 0);
+  assert.equal(reactionOnlyLatest.outboundCount, 1);
+  assert.equal(reactionOnlyLatest.nonSubstantiveMessageCount, 2);
+  assert.equal(reactionOnlyLatest.reactionOnlyCount, 1);
+  assert.equal(reactionOnlyLatest.clientRepliedAfterLastOutbound, false);
+  assert.deepEqual(reactionOnlyLatest.latestClientReplySignals, []);
+  assert.deepEqual(interpretClientReplyThreadDiagnostics(reactionOnlyLatest), {
+    state: 'operator_latest_no_open_client_reply',
+    interpretation:
+      'Operator sent the latest meaningful message and no unhandled actionable client theme is visible.',
+    nextHardeningTarget: 'none/read_only',
+  });
+});
+
+test('defines evidence observation and latest-client signal semantics', () => {
+  assert.deepEqual(
+    Object.keys(CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS).sort(),
+    [
+      'client_reaction_only_present',
+      'client_replied_after_last_outbound',
+      'empty_body_present',
+      'known_inbound_theme_detected',
+      'latest_message_from_client',
+      'latest_message_from_operator',
+      'messages_present',
+      'no_known_inbound_theme',
+      'no_outbound_template_context',
+      'non_substantive_message_present',
+      'operator_reschedule_offer_detected',
+      'outbound_template_context_detected',
+      'post_meeting_recovery_context',
+    ],
+  );
+  assert.equal(
+    CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS.operator_reschedule_offer_detected.proves,
+    'A decoded operator message matched reschedule-option language.',
+  );
+  assert.equal(
+    CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS.operator_reschedule_offer_detected.doesNotProve,
+    'It does not prove a calendar event or reminder was created.',
+  );
+  assert.equal(
+    CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS.no_known_inbound_theme.parserImpact,
+    'Use latestClientReplySignals to decide whether to expand reply patterns.',
+  );
+  assert.equal(
+    CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS.client_reaction_only_present.doesNotProve,
+    'It does not prove acceptance, rejection, or reschedule intent.',
+  );
+  assert.equal(
+    CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS.non_substantive_message_present.parserImpact,
+    'Exclude from latest-direction and theme decisions while keeping it visible for SQL diagnostics.',
+  );
+  assert.deepEqual(Object.keys(CLIENT_REPLY_LATEST_CLIENT_SIGNAL_DEFINITIONS).sort(), [
+    'contains_affirmation',
+    'contains_call_word',
+    'contains_day_word',
+    'contains_negative',
+    'contains_numeric_choice',
+    'contains_question',
+    'contains_schedule_word',
+    'contains_thanks',
+    'contains_time_word',
+    'short_reply',
+  ]);
+  assert.equal(
+    CLIENT_REPLY_LATEST_CLIENT_SIGNAL_DEFINITIONS.contains_thanks.parserImpact,
+    'Usually weak evidence unless paired with schedule or call language.',
+  );
+  assert.equal(
+    CLIENT_REPLY_LATEST_CLIENT_SIGNAL_DEFINITIONS.contains_time_word.parserImpact,
+    'Candidate for scheduling parser expansion when paired with call or schedule words.',
+  );
+});
+
+test('builds pii-minimized run receipt from client reply evidence', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-13T12:00:00.000Z',
+    chats: [
+      chat({
+        guid: 'chat-rsp',
+        displayName: 'Parent',
+        athleteName: 'Avery Jones',
+        contactId: 'contact-1',
+        athleteMainId: '9001',
+        taskTitle: 'Reschedule Pending',
+        matchedPhones: ['6155551212'],
+      }),
+    ],
+    messagesByChatGuid: {
+      'chat-rsp': [
+        message({
+          guid: 'out-1',
+          isFromMe: true,
+          date: '2026-06-13T10:00:00.000Z',
+          body: 'Please reply with the best fit. 1 reschedule, 2 bad timing, 3 no longer interested.',
+        }),
+        message({
+          guid: 'in-1',
+          isFromMe: false,
+          date: '2026-06-13T10:05:00.000Z',
+          body: '1',
+        }),
+        message({
+          guid: 'out-2',
+          isFromMe: true,
+          date: '2026-06-13T10:10:00.000Z',
+          body: 'No problem, I will check with Coach.',
+        }),
+      ],
+    },
+  });
+
+  const receipt = buildClientReplyThemeRunReceipt(snapshot.rows[0], {
+    generatedAt: '2026-06-13T12:01:00.000Z',
+  });
+
+  assert.deepEqual(receipt, {
+    version: 1,
+    flow: '10x_communications',
+    step: 'classify-client-reply',
+    generatedAt: '2026-06-13T12:01:00.000Z',
+    mutationResult: 'none/read_only',
+    sourceSurfaces: ['local_messages_sql', 'athlete_contact_cache', 'client-message-reply-themes'],
+    ids: {
+      chatGuid: 'chat-rsp',
+      messageGuid: 'in-1',
+      contactId: 'contact-1',
+      athleteMainId: '9001',
+      matchedPhonesCount: 1,
+    },
+    direction: {
+      lastInboundGuid: 'in-1',
+      lastOutboundGuid: 'out-2',
+      operatorRepliedAfterInbound: true,
+      operatorReplyProposedTimes: false,
+    },
+    classifier: {
+      theme: 'reschedule_request',
+      templateContext: 'confirmation',
+      themeBucket: 'RSP',
+      clientOptedOut: false,
+    },
+    operatorAction: 'needs_reschedule_times',
+    evidenceMeaning: {
+      operatorAction: 'needs_reschedule_times',
+      interpretation:
+        'Client reply indicates post-meeting recovery or reschedule intent and no reschedule times have been sent after that reply.',
+      requiredEvidence: [
+        'theme=reschedule_request',
+        'themeBucket=RSP|No Show|Cancel',
+        'operatorReplyProposedTimes=false',
+      ],
+    },
+  });
+  assert.equal(JSON.stringify(receipt).includes('No problem, I will check with Coach.'), false);
+});
+
+test('run receipt can record approved mutation result without changing classifier meaning', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-13T12:00:00.000Z',
+    chats: [chat({ taskTitle: 'Call Attempt 1' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'outreach',
+          body: 'Would later today or tomorrow work for a quick 10-minute call?',
+          date: '2026-06-13T10:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'client-reply',
+          body: 'Tomorrow works after school',
+          date: '2026-06-13T10:05:00.000Z',
+        }),
+      ],
+    },
+  });
+
+  const receipt = buildClientReplyThemeRunReceipt(snapshot.rows[0], {
+    mutationResult: 'approved',
+    sourceSurfaces: ['local_messages_sql', 'athlete_contact_cache', 'apple_reminders'],
+  });
+
+  assert.equal(receipt.operatorAction, 'needs_first_contact_reply');
+  assert.equal(receipt.mutationResult, 'approved');
+  assert.deepEqual(receipt.sourceSurfaces, [
+    'local_messages_sql',
+    'athlete_contact_cache',
+    'apple_reminders',
+  ]);
 });
 
 test('classifies pending client theme buckets from reply text and task context', () => {
@@ -562,6 +973,53 @@ test('pending client reply theme state requires true reschedule offer language',
       'Here are two new times to reschedule: 1 - Thu 3PM ET, 2 - Fri 4PM ET',
     ),
     true,
+  );
+});
+
+test('pending client reply theme state detects client reply after proposed times', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-05-27T17:00:00.000Z',
+    chats: [chat({ athleteMainId: '456', taskTitle: 'Meeting Result - Res. Pending' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'confirmation',
+          body: 'Coach Ryan has Avery down for the meeting today at 5:00 PM.',
+          date: '2026-05-27T14:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'actionable',
+          body: 'Can we reschedule?',
+          date: '2026-05-27T15:00:00.000Z',
+        }),
+        message({
+          guid: 'times',
+          body: 'Here are two new times to reschedule: 1 - Thu 3PM ET, 2 - Fri 4PM ET',
+          date: '2026-05-27T16:00:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'client-choice',
+          body: 'Friday works',
+          date: '2026-05-27T16:10:00.000Z',
+        }),
+      ],
+    },
+  });
+
+  const state = findPendingClientReplyThemeState(
+    { athlete_main_id: '456', athlete_name: 'Avery Jones' },
+    snapshot,
+  );
+
+  assert.equal(state?.status, 'client_replied_after_times');
+  assert.equal(state?.row.replyEvidence?.operatorReplyProposedTimes, true);
+  assert.equal(state?.row.replyEvidence?.clientRepliedAfterOperatorTimes, true);
+  assert.equal(state?.row.replyEvidence?.lastOperatorRescheduleOffer?.guid, 'times');
+  assert.equal(
+    buildClientReplyThemeRunReceipt(state!.row).operatorAction,
+    'review_reschedule_reply',
   );
 });
 
