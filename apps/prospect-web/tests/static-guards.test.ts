@@ -655,6 +655,8 @@ test('prospect mobile set meetings uses confirmation cache messages', () => {
   assert.match(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
   assert.match(appText, /window\.__PROSPECT_SUPABASE__/);
   assert.match(appText, /\/rest\/v1\/set_meeting_confirmation_cache/);
+  assert.match(appText, /isMissingServerSupabaseCredentials/);
+  assert.match(appText, /fetchSetMeetingsFromSupabase\(state\.week\)/);
   assert.doesNotMatch(appText, /\/rest\/v1\/reminders/);
   assert.match(appText, /supabase_confirmation_cache/);
   assert.match(appText, /event\.confirmation_1_message/);

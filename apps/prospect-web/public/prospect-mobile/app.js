@@ -175,11 +175,32 @@ async function loadRoute(options = {}) {
     setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
   } catch (error) {
     if (!isActiveRoute(renderContext)) return;
+    if (routeKey === '/set-meetings' && isMissingServerSupabaseCredentials(error)) {
+      try {
+        const payload = await fetchSetMeetingsFromSupabase(state.week);
+        if (!isActiveRoute(renderContext)) return;
+        setCachedRoutePayload(cacheKey, payload);
+        const renderedCount = await route.render(payload, renderContext);
+        if (!isActiveRoute(renderContext)) return;
+        const count = typeof renderedCount === 'number' ? renderedCount : payload.count ?? payload.events?.length ?? 0;
+        setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
+        return;
+      } catch (fallbackError) {
+        if (!isActiveRoute(renderContext)) return;
+        content.innerHTML = `<div class="error-state">${escapeHtml(fallbackError.message || String(fallbackError))}</div>`;
+        setStatus('Could not refresh');
+        return;
+      }
+    }
     content.innerHTML = `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`;
     setStatus('Could not refresh');
   } finally {
     if (isActiveRoute(renderContext)) setLoading(false);
   }
+}
+
+function isMissingServerSupabaseCredentials(error) {
+  return /missing server supabase credentials/i.test(String(error?.message || error || ''));
 }
 
 function buildRouteCacheKey(routeKey, week) {
