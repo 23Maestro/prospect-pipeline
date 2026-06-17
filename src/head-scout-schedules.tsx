@@ -308,6 +308,7 @@ export type HeadScoutBookingsListProps = {
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['y', 'u', 'h', 'j', 'n'];
 const SCOUT_GRID_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5', '6'];
 const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
+  { title: 'Copy David Card', scoutName: 'David Foley' },
   { title: 'Copy James Card', scoutName: 'James Holcomb' },
   { title: 'Copy Jeffrey Card', scoutName: 'Jeffrey Stein' },
   { title: 'Copy Logan Card', scoutName: 'Logan Lord' },

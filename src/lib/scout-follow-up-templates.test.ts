@@ -7,6 +7,7 @@ import {
   buildConfirmationMessage,
   buildFollowUpRaycastKey,
   buildMinimalFollowUpQueueRecord,
+  getVoicemailFollowUpVariantLabel,
   getReminderTimeLabel,
   isPastTextTodayCutoff,
   resolveConfirmationFollowUpVariant,
@@ -172,18 +173,16 @@ test('buildVoicemailFollowUpMessage renders no show triage copy', () => {
     variant: 'no_show',
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden Reed',
+    previousHeadScoutName: 'Ryan Lietz',
     sport: 'Football',
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(
-    message,
-    /^Hi Jamie, looks like we missed you for Aiden Reed’s meeting with our Head Scout\./,
-  );
-  assert.match(message, /Reply with the best fit:/);
-  assert.match(message, /1 - still interested, need to reschedule/);
-  assert.match(message, /2 - interested, timing is bad/);
-  assert.match(message, /3 - no longer interested/);
+  assert.match(message, /^Hi Jamie, we missed you at Aiden’s meeting with Coach Ryan Lietz\./);
+  assert.match(message, /If you still want a recruiting game plan, reply:/);
+  assert.match(message, /1\. Still interested, reschedule\./);
+  assert.match(message, /2\. Interested, bad timing\./);
+  assert.match(message, /3\. No longer interested\./);
   assert.doesNotMatch(message, /No worries, things come up/);
   assert.doesNotMatch(message, /Would tomorrow or Monday work better\?/);
   assert.doesNotMatch(message, /calendar link/);
@@ -275,18 +274,23 @@ test('buildVoicemailFollowUpMessage uses no show triage for student athletes', (
     recipientType: 'student_athlete',
     greeting: 'Hi Aiden,',
     athleteName: 'Aiden Reed',
+    previousHeadScoutName: 'Ryan Lietz',
     sport: 'Football',
   });
 
-  assert.match(
-    message,
-    /^Hi Aiden, looks like we missed you for your meeting with our Head Scout\./,
-  );
-  assert.match(message, /Reply with the best fit:/);
-  assert.match(message, /1 - still interested, need to reschedule/);
-  assert.match(message, /2 - interested, timing is bad/);
-  assert.match(message, /3 - no longer interested/);
+  assert.match(message, /^Hi Aiden, we missed you at your meeting with Coach Ryan Lietz\./);
+  assert.match(message, /If you still want a recruiting game plan, reply:/);
+  assert.match(message, /1\. Still interested, reschedule\./);
+  assert.match(message, /2\. Interested, bad timing\./);
+  assert.match(message, /3\. No longer interested\./);
   assert.doesNotMatch(message, /have one of your parents call or text me back/);
+});
+
+test('getVoicemailFollowUpVariantLabel renders prefixed operator labels', () => {
+  assert.equal(getVoicemailFollowUpVariantLabel('no_show'), 'NS - Intent Check');
+  assert.equal(getVoicemailFollowUpVariantLabel('reschedule_1'), 'RSP - Offer Slots');
+  assert.equal(getVoicemailFollowUpVariantLabel('reschedule_2'), 'RSP - Final Time Check');
+  assert.equal(getVoicemailFollowUpVariantLabel('call_attempt_2'), 'CA2 - Second Call');
 });
 
 test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {

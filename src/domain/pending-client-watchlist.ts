@@ -222,6 +222,7 @@ export type PendingClientTemplateTone =
 export type PendingClientCommunicationPlan = {
   lane: PendingClientCentralFilter;
   action: PendingClientCommunicationAction;
+  stageLabel: 'Stage 1' | 'Stage 2' | 'Final check' | 'Terminal';
   templateTone: PendingClientTemplateTone;
   templateKey: string;
   evidenceFacts: string[];
@@ -407,6 +408,14 @@ function pendingClientCycleBand(recoveryCycleCount: number): 'first' | 'repeat' 
   return 'first';
 }
 
+function pendingClientCycleStageLabel(
+  band: ReturnType<typeof pendingClientCycleBand>,
+): PendingClientCommunicationPlan['stageLabel'] {
+  if (band === 'final') return 'Final check';
+  if (band === 'repeat') return 'Stage 2';
+  return 'Stage 1';
+}
+
 function actionForCentralQueue(
   queue: PendingClientCentralQueueClassification,
 ): PendingClientCommunicationAction {
@@ -448,10 +457,12 @@ export function buildPendingClientCommunicationPlan(args: {
   salesStage?: string | null;
 }): PendingClientCommunicationPlan {
   const lifecycle = resolveSalesLifecycle(args.salesStage);
+  const band = pendingClientCycleBand(args.appointmentHistory.recoveryCycleCount);
   if (lifecycle.shouldArchiveFromWorkingViews) {
     return {
       lane: args.queue.filter,
       action: 'purge_terminal',
+      stageLabel: 'Terminal',
       templateTone: 'review_context',
       templateKey: `${args.queue.filter}.terminal.purge`,
       evidenceFacts: [
@@ -491,12 +502,13 @@ export function buildPendingClientCommunicationPlan(args: {
     nextSteps.push('Ask for a direct yes/no intent check with new slots.');
   }
   if (templateTone === 'final_time_check') {
-    nextSteps.push('Make the final time-protection check before resolving or purging.');
+    nextSteps.push('Make the final time-protection check before any resolve/purge action that needs operator approval.');
   }
 
   return {
     lane: args.queue.filter,
     action,
+    stageLabel: pendingClientCycleStageLabel(band),
     templateTone,
     templateKey: templateKeyForPlan({
       queue: args.queue,
@@ -507,7 +519,7 @@ export function buildPendingClientCommunicationPlan(args: {
     evidenceFacts: facts,
     nextSteps,
     resolutionRule:
-      'Resolve when a new confirmed appointment, terminal sales stage, payment resolution, or explicit client opt-out changes the source truth.',
+      'Cycle count selects the reply valve; removal is not automatic. Resolve when a new confirmed appointment, terminal sales stage, payment resolution, explicit client opt-out, or operator-approved close-out changes the source truth.',
   };
 }
 

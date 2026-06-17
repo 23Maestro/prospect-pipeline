@@ -1,6 +1,9 @@
 import { Tool, Toast, showToast } from '@raycast/api';
 import { searchLogger } from '../lib/logger';
 import {
+  filterUncheckedDuplicateProfileTasks,
+  loadDuplicateProfileCheckLog,
+  recordDuplicateProfileCheckResult,
   runDuplicateProfileResolutionForTask,
   summarizeDuplicateProfileResolutionToast,
 } from '../lib/scout-duplicate-profiles';
@@ -97,12 +100,15 @@ async function runBatchDuplicateChecks(input: Input): Promise<string> {
   });
 
   const taskBuckets = await fetchScoutPortalTaskBuckets(['todayPastDue'] as const);
-  const tasks = buildTodayPastDueDuplicateCheckBatchTasks({
+  const checkedLog = await loadDuplicateProfileCheckLog();
+  const candidateTasks = buildTodayPastDueDuplicateCheckBatchTasks({
     taskBuckets: {
       todayPastDue: [...taskBuckets.todayPastDue].reverse(),
     },
-    limit,
+    limit: Math.max(limit, taskBuckets.todayPastDue.length),
   });
+  const uncheckedTasks = filterUncheckedDuplicateProfileTasks(candidateTasks, checkedLog);
+  const tasks = uncheckedTasks.slice(0, limit);
 
   const notifications: Array<{
     title: 'No duplicate' | 'Review duplicate' | 'Repeat marked' | 'Check failed';
@@ -140,6 +146,11 @@ async function runBatchDuplicateChecks(input: Input): Promise<string> {
         review += 1;
         reviewResults.push({ athleteName: task.athlete_name, reason: summary.message });
       }
+      await recordDuplicateProfileCheckResult({
+        task,
+        result,
+        summary,
+      });
       notifications.push({
         title: summary.title,
         message: summary.message,
@@ -176,6 +187,7 @@ async function runBatchDuplicateChecks(input: Input): Promise<string> {
 
   logInfo('DUPLICATE_TOOL_BATCH', 'execute', 'success', {
     limit,
+    skippedPreviouslyChecked: candidateTasks.length - uncheckedTasks.length,
     checked,
     marked,
     noDuplicate,

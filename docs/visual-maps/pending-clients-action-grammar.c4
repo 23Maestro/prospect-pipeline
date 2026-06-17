@@ -1,0 +1,194 @@
+model {
+  pendingClientsGrammar = bucket 'Pending Clients Outcome Review' {
+    pendingClientsUi = browser {
+      title 'Pending Clients Review'
+      description """
+      Operator surface for Enrollments & Outcomes. The list filters are RSP, No Show, Payments, and Review Follow Ups. The row shows the selected client, the visible action, and the evidence needed before any human-approved mutation.
+      """
+    }
+
+    appointmentHistoryEvidence = storage {
+      title 'Appointment History'
+      description """
+      Counts scheduled meetings, reschedule cycles, no-shows, cancels, first meeting date, latest meeting date, and latest outcome. This selects Stage 1, Stage 2, or Final Check. The count does not auto-purge a client.
+      """
+    }
+
+    messageEvidence = document {
+      title 'Message Evidence'
+      description """
+      Summarizes whether the operator reached out after the latest outcome, whether the client replied after the latest operator message, dormant days, and message state. This decides wait, reply, or review; it does not create source truth.
+      """
+    }
+
+    salesStageGate = storage {
+      title 'Sales Stage Gate'
+      description """
+      Reads the current sales-stage meaning. Terminal stages can propose remove-from-active-review. No-show, reschedule-pending, cancel, and follow-up stages stay in operator review until a new confirmed appointment, opt-out, payment resolution, terminal stage, or operator-approved close-out changes source truth.
+      """
+    }
+
+    actionGrammar = component {
+      title 'Action Grammar'
+      description """
+      Converts evidence into a plain operator lane:
+      - Offer reschedule
+      - Waiting on client
+      - Review reply
+      - Bad timing
+      - Payment review
+      - Terminal close-out
+
+      Uses stageLabel, templateTone, and templateKey only as explanation. These fields do not mutate lifecycle by themselves.
+      """
+    }
+
+    stageValve = queue {
+      title 'Stage Valve'
+      description """
+      Stage 1: first no-show or reschedule cycle. Use simple recovery.
+      Stage 2: second cycle. Use direct intent check.
+      Final Check: repeated cycles. Protect time and require operator approval before close-out.
+      Terminal: sales-stage truth already says the client is done.
+      """
+    }
+
+    noShowTemplates = document {
+      title 'NS Templates'
+      description """
+      Stage 1 intent check:
+      Hi [Parent], we missed you at [Athlete]’s meeting with Coach [Scout].
+      If you still want a recruiting game plan, reply:
+      1. Still interested, reschedule.
+      2. Interested, bad timing.
+      3. No longer interested.
+
+      Stage 2 direct check:
+      Hi [Parent], I saw interest, but we still need a time.
+      Reply 1 or 2 for the slots, or 3 to close this out for now.
+
+      Final check:
+      Hi [Parent], last check before I close this out.
+      If [Athlete] still wants a recruiting game plan, pick a slot today.
+      """
+    }
+
+    cancelTemplates = document {
+      title 'CAN Templates'
+      description """
+      Cancel check-in:
+      Hi [Parent], I saw the meeting was canceled.
+      Should I leave this closed, or is there a better time to revisit [Athlete]’s recruiting plan?
+
+      CAN does not use numbered reply options. Treat it as a timing/close-out check, then wait for operator review before any lifecycle change.
+      """
+    }
+
+    rspLane = queue {
+      title 'RSP Lane'
+      description """
+      Reschedule-pending lane. Actions: Offer reschedule, Waiting on client, Review reply. Templates use RSP labels and require slot/preflight checks before any reschedule mutation.
+      """
+    }
+
+    noShowCancelLane = queue {
+      title 'No Show / Cancel Lane'
+      description """
+      No-show and cancel recovery lane. Actions: NS Intent Check, CAN Check-In, Bad timing, Review reply. NS can use numbered intent choices; CAN does not need numbers and should read as cancel timing or close-out review. Uses the stage valve so repeated cycles change copy tone, not lifecycle truth.
+      """
+    }
+
+    paymentsReviewLane = queue {
+      title 'Payments / Review Lane'
+      description """
+      Payment evidence, scout update, missing note, and review-follow-up lane. This lane asks for operator review and does not use reschedule/no-show templates unless the source outcome also supports that recovery lane.
+      """
+    }
+
+    tenXProposalHandoff = document {
+      title '10x Proposal Handoff'
+      description """
+      Natural-language proposal labels:
+      - Offer reschedule
+      - Waiting on client
+      - Review reply
+      - Review opt-out
+      - Needs review
+      - Terminal close-out
+
+      Mutating actions remain human-in-the-loop and must pass preflight checks.
+      """
+    }
+  }
+
+  pendingClientsGrammar.appointmentHistoryEvidence -> pendingClientsGrammar.actionGrammar 'summarize'
+  pendingClientsGrammar.messageEvidence -> pendingClientsGrammar.actionGrammar 'summarize'
+  pendingClientsGrammar.salesStageGate -> pendingClientsGrammar.actionGrammar 'gate'
+  pendingClientsGrammar.pendingClientsUi -> pendingClientsGrammar.actionGrammar 'classify'
+  pendingClientsGrammar.actionGrammar -> pendingClientsGrammar.stageValve 'tone'
+  pendingClientsGrammar.stageValve -> pendingClientsGrammar.noShowTemplates
+  pendingClientsGrammar.stageValve -> pendingClientsGrammar.cancelTemplates
+  pendingClientsGrammar.actionGrammar -> pendingClientsGrammar.rspLane
+  pendingClientsGrammar.actionGrammar -> pendingClientsGrammar.noShowCancelLane
+  pendingClientsGrammar.actionGrammar -> pendingClientsGrammar.paymentsReviewLane
+  pendingClientsGrammar.actionGrammar -> pendingClientsGrammar.tenXProposalHandoff 'propose'
+  pendingClientsGrammar.stageValve -> pendingClientsGrammar.tenXProposalHandoff 'template'
+  pendingClientsGrammar.tenXProposalHandoff -> pendingClientsGrammar.pendingClientsUi 'review'
+}
+
+views {
+  view pending_clients_action_grammar {
+    title 'Pending Clients Outcome Review'
+    description """
+    Enrollments & Outcomes map for the Pending Clients valve. Use it to explain which evidence drives RSP, No Show, Payments, and Review Follow Ups; which stage valve applies; and which operator template should be used. Cycle count chooses copy tone only. Purge/close-out requires terminal source truth or explicit operator approval.
+    """
+    include pendingClientsGrammar.*
+
+    style * {
+      color muted
+    }
+    style pendingClientsGrammar {
+      shape bucket
+      color muted
+    }
+    style pendingClientsGrammar.pendingClientsUi {
+      shape browser
+      color muted
+    }
+    style pendingClientsGrammar.appointmentHistoryEvidence {
+      shape storage
+      color blue
+    }
+    style pendingClientsGrammar.messageEvidence {
+      shape document
+      color blue
+    }
+    style pendingClientsGrammar.salesStageGate {
+      shape storage
+      color green
+    }
+    style pendingClientsGrammar.actionGrammar {
+      color red
+      border dashed
+    }
+    style pendingClientsGrammar.stageValve,
+      pendingClientsGrammar.rspLane,
+      pendingClientsGrammar.noShowCancelLane,
+      pendingClientsGrammar.paymentsReviewLane {
+      shape queue
+      color amber
+    }
+    style pendingClientsGrammar.noShowTemplates {
+      shape document
+      color secondary
+    }
+    style pendingClientsGrammar.cancelTemplates {
+      shape document
+      color secondary
+    }
+    style pendingClientsGrammar.tenXProposalHandoff {
+      shape document
+      color secondary
+    }
+  }
+}

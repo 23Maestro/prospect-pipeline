@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#111418" />
+    <title>Supabase Status</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #111418;
+        --panel: #181c21;
+        --panel-2: #20252b;
+        --line: #303842;
+        --text: #f3f5f7;
+        --muted: #a7b0ba;
+        --blue: #2f80ed;
+        --green: #2f9d55;
+        --amber: #c9822b;
+        --red: #c84d3a;
+        --purple: #7864f4;
+        --slate: #68717d;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        letter-spacing: 0;
+      }
+
+      main {
+        width: min(720px, 100%);
+        margin: 0 auto;
+        padding: max(18px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
+      }
+
+      header {
+        display: grid;
+        gap: 7px;
+        padding: 4px 2px 16px;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        font-size: clamp(30px, 9vw, 44px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      h2 {
+        font-size: 13px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      h3 {
+        font-size: 14px;
+        line-height: 1.2;
+      }
+
+      .eyebrow {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .rule,
+      .meaning,
+      footer {
+        color: var(--muted);
+        font-size: 13px;
+        line-height: 1.45;
+      }
+
+      section {
+        display: grid;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      .panel {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        padding: 12px;
+      }
+
+      .stack {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 10px;
+      }
+
+      .status-card,
+      .row,
+      .node,
+      .lane {
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        background: var(--panel-2);
+      }
+
+      .status-card {
+        display: grid;
+        gap: 7px;
+        min-height: 96px;
+        padding: 10px;
+        border-top-width: 4px;
+      }
+
+      .status-card strong {
+        font-size: 12px;
+        line-height: 1.25;
+      }
+
+      .status-card span {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .row {
+        display: grid;
+        grid-template-columns: minmax(134px, 0.42fr) minmax(0, 1fr);
+        gap: 10px;
+        align-items: center;
+        min-height: 46px;
+        padding: 8px;
+      }
+
+      .token {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        min-width: 0;
+        color: var(--text);
+        font-size: 12px;
+        font-weight: 800;
+      }
+
+      .dot {
+        width: 13px;
+        height: 13px;
+        flex: 0 0 auto;
+        border-radius: 999px;
+      }
+
+      .shape {
+        display: inline-grid;
+        place-items: center;
+        width: 30px;
+        height: 24px;
+        flex: 0 0 auto;
+        border: 2px solid var(--slate);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 900;
+      }
+
+      .shape.storage {
+        border-radius: 50% / 22%;
+      }
+
+      .shape.queue {
+        border-style: dashed;
+      }
+
+      .shape.document {
+        border-radius: 3px;
+        border-bottom-left-radius: 45%;
+      }
+
+      .shape.rectangle {
+        border-radius: 3px;
+      }
+
+      .shape.browser {
+        border-radius: 5px 5px 3px 3px;
+        border-top-width: 6px;
+      }
+
+      .shape.bucket {
+        border-radius: 6px;
+        background: rgba(104, 113, 125, 0.18);
+      }
+
+      .blue {
+        background: var(--blue);
+      }
+
+      .green {
+        background: var(--green);
+      }
+
+      .amber {
+        background: var(--amber);
+      }
+
+      .red {
+        background: var(--red);
+      }
+
+      .purple {
+        background: var(--purple);
+      }
+
+      .slate {
+        background: var(--slate);
+      }
+
+      .card-blue {
+        border-top-color: var(--blue);
+      }
+
+      .card-green {
+        border-top-color: var(--green);
+      }
+
+      .card-amber {
+        border-top-color: var(--amber);
+      }
+
+      .card-purple {
+        border-top-color: var(--purple);
+      }
+
+      .source-row {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
+        gap: 6px;
+        margin-top: 10px;
+      }
+
+      .node {
+        display: grid;
+        gap: 6px;
+        align-content: start;
+        min-height: 96px;
+        padding: 8px;
+      }
+
+      .node strong {
+        font-size: 11px;
+        line-height: 1.2;
+        overflow-wrap: anywhere;
+      }
+
+      .node span {
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.25;
+      }
+
+      .lane {
+        display: grid;
+        gap: 6px;
+        padding: 9px;
+        border-left-width: 4px;
+      }
+
+      .lane strong {
+        font-size: 13px;
+      }
+
+      .lane-blue {
+        border-left-color: var(--blue);
+      }
+
+      .lane-green {
+        border-left-color: var(--green);
+      }
+
+      .lane-amber {
+        border-left-color: var(--amber);
+      }
+
+      .lane-red {
+        border-left-color: var(--red);
+      }
+
+      footer {
+        margin-top: 14px;
+      }
+
+      @media (max-width: 520px) {
+        .status-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .source-row {
+          grid-template-columns: 1fr;
+        }
+
+        .row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <p class="eyebrow">Visual Alignment / Source Of Truth</p>
+        <h1>Supabase Status</h1>
+        <p class="rule">
+          Current status map for the refactor contract: one durable truth lane, active hardening,
+          and retired drift surfaces.
+        </p>
+      </header>
+
+      <section class="panel">
+        <h2>Project Status</h2>
+        <div class="status-grid">
+          <div class="status-card card-green">
+            <strong>23M-42 cleanup done</strong>
+            <span>Large Supabase cleanup is complete. Treat old chunk/projection cleanup as historical.</span>
+          </div>
+          <div class="status-card card-blue">
+            <strong>23M-50 hardening active</strong>
+            <span>Living umbrella for keeping commands pointed at the canonical tables.</span>
+          </div>
+          <div class="status-card card-purple">
+            <strong>10x applies contract</strong>
+            <span>Communication proposals read evidence first, then create reviewed action candidates.</span>
+          </div>
+          <div class="status-card card-amber">
+            <strong>Docs/generated refs need review</strong>
+            <span>Only update stale references when they confuse current behavior or tests.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Source Of Truth Lane</h2>
+        <div class="source-row" aria-label="Source system to operator outcome">
+          <div class="node">
+            <span class="token"><span class="shape browser"></span>Source</span>
+            <strong>Laravel CRM</strong>
+            <span>Sales stage and appointment source system.</span>
+          </div>
+          <div class="node">
+            <span class="token"><span class="shape rectangle"></span>Adapter</span>
+            <strong>Domain sync</strong>
+            <span>Normalize source events before durable writes.</span>
+          </div>
+          <div class="node">
+            <span class="token"><span class="shape storage"></span>Durable</span>
+            <strong>lifecycle_events</strong>
+            <span>Sales-stage and lifecycle history.</span>
+          </div>
+          <div class="node">
+            <span class="token"><span class="shape storage"></span>Durable</span>
+            <strong>appointments</strong>
+            <span>Meeting time, outcome, and reschedule chain.</span>
+          </div>
+          <div class="node">
+            <span class="token"><span class="shape browser"></span>Outcome</span>
+            <strong>Raycast queues</strong>
+            <span>Pending Clients and 10x read current truth.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Durable Surfaces</h2>
+        <div class="stack">
+          <div class="row">
+            <span class="token"><span class="dot green"></span>lifecycle_events</span>
+            <span class="meaning">Canonical sales-stage and lifecycle event history.</span>
+          </div>
+          <div class="row">
+            <span class="token"><span class="dot green"></span>appointments</span>
+            <span class="meaning">Canonical meeting detail, start time, post-meeting result, and reschedule facts.</span>
+          </div>
+          <div class="row">
+            <span class="token"><span class="dot green"></span>call_log</span>
+            <span class="meaning">Canonical reporting facts for call attempts, meetings set, outcomes, and payments.</span>
+          </div>
+          <div class="row">
+            <span class="token"><span class="dot blue"></span>confirmation cache</span>
+            <span class="meaning">Message support only. It does not own lifecycle or appointment truth.</span>
+          </div>
+          <div class="row">
+            <span class="token"><span class="dot amber"></span>watchlist</span>
+            <span class="meaning">Review/tombstone support only. It must not become the queue gate.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Active Hardening</h2>
+        <div class="stack">
+          <div class="lane lane-blue">
+            <strong>Pending Clients</strong>
+            <p class="meaning">Read appointment outcomes directly. Event start time is reschedule-slot context, not queue priority.</p>
+          </div>
+          <div class="lane lane-blue">
+            <strong>10x Communications</strong>
+            <p class="meaning">Read message/contact evidence, summarize literal history, then propose reviewed communication actions.</p>
+          </div>
+          <div class="lane lane-amber">
+            <strong>Generated and old plan references</strong>
+            <p class="meaning">Keep them historical unless they mislead a current command, test, or operator surface.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Retired Drift</h2>
+        <div class="stack">
+          <div class="lane lane-red">
+            <strong>Do not rebuild stale projections</strong>
+            <p class="meaning">athlete_pipeline_state, active_athlete_meeting_truth, athlete_lifecycle_current, athlete_lifecycle_timeline.</p>
+          </div>
+          <div class="lane lane-red">
+            <strong>Do not reintroduce old event tables</strong>
+            <p class="meaning">meeting_events, call_activity_events, call_tracker_* reporting views, weekly_operator_funnel_metrics.</p>
+          </div>
+          <div class="lane lane-red">
+            <strong>Do not make support caches authoritative</strong>
+            <p class="meaning">Messages, reminders, confirmation cache, and watchlist can support decisions, not own lifecycle truth.</p>
+          </div>
+        </div>
+      </section>
+
+      <footer>
+        Current rule: commands surface work, domains own meaning, Supabase stores durable truth, and
+        source-system adapters handle Laravel/API facts.
+      </footer>
+    </main>
+  </body>
+</html>

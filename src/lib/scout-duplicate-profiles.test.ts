@@ -2,11 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ScoutPortalTask } from '../features/scout-prep/types.js';
 import {
+  filterUncheckedDuplicateProfileTasks,
   buildRepeatProfileDescription,
+  buildDuplicateProfileCheckKey,
   classifyDuplicateProfileEnvelope,
   getDuplicateIdentityEvidence,
   getDuplicateSearchRowClearReason,
   isCallAttempt1PortalTask,
+  recordDuplicateProfileCheckResult,
   normalizeDuplicateAthleteName,
   normalizeDuplicateAthleteNameForLegacySearch,
   runDuplicateProfileResolutionForTask,
@@ -73,6 +76,16 @@ function buildEnvelope(overrides: any = {}) {
   };
 }
 
+function createMemoryStorage() {
+  let value: string | undefined;
+  return {
+    read: async () => value,
+    write: async (nextValue: string) => {
+      value = nextValue;
+    },
+  };
+}
+
 test('splitAthleteName preserves first and last name segments', () => {
   assert.deepEqual(splitAthleteName('Wylie Robinson'), {
     firstName: 'Wylie',
@@ -82,6 +95,64 @@ test('splitAthleteName preserves first and last name segments', () => {
     firstName: 'Mary',
     lastName: 'Kate Smith',
   });
+});
+
+test('recordDuplicateProfileCheckResult stores checked task without full athlete name', async () => {
+  const storage = createMemoryStorage();
+  const task = buildTask({ athlete_name: 'Logged Athlete', task_id: 'checked-task' });
+
+  const entry = await recordDuplicateProfileCheckResult({
+    task,
+    result: {
+      searchTerm: 'Logged Athlete',
+      matchCount: 1,
+      completed: [],
+      cleared: [],
+      skipped: [],
+    },
+    summary: {
+      status: 'success',
+      title: 'No duplicate',
+      message: 'Logged Athlete',
+    },
+    storage,
+  });
+
+  assert.equal(entry.key, 'task:checked-task');
+  assert.equal(entry.outcome, 'no_duplicate');
+  assert.equal(JSON.stringify(entry).includes('Logged Athlete'), false);
+});
+
+test('filterUncheckedDuplicateProfileTasks skips previously checked rows and keeps next candidates', async () => {
+  const storage = createMemoryStorage();
+  const checkedTask = buildTask({ task_id: 'checked-task', athlete_id: '1489567' });
+  const nextTask = buildTask({ task_id: 'next-task', athlete_id: '1489568' });
+
+  await recordDuplicateProfileCheckResult({
+    task: checkedTask,
+    result: {
+      searchTerm: 'Wylie Robinson',
+      matchCount: 0,
+      completed: [],
+      cleared: [],
+      skipped: [],
+    },
+    summary: {
+      status: 'success',
+      title: 'No duplicate',
+      message: 'Wylie Robinson',
+    },
+    storage,
+  });
+
+  const raw = await storage.read();
+  const entries = JSON.parse(raw || '[]');
+
+  assert.equal(buildDuplicateProfileCheckKey(checkedTask), 'task:checked-task');
+  assert.deepEqual(
+    filterUncheckedDuplicateProfileTasks([checkedTask, nextTask], entries).map((task) => task.task_id),
+    ['next-task'],
+  );
 });
 
 test('normalizeDuplicateAthleteName cleans apostrophe mojibake and variants', () => {

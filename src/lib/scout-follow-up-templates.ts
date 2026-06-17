@@ -52,6 +52,29 @@ function firstName(value?: string | null): string {
   );
 }
 
+export function getVoicemailFollowUpVariantLabel(variant: VoicemailFollowUpVariant): string {
+  switch (variant) {
+    case 'call_attempt_1':
+      return 'CA1 - First Call';
+    case 'call_attempt_2':
+      return 'CA2 - Second Call';
+    case 'call_attempt_3':
+      return 'CA3 - Final Call';
+    case 'propose_times':
+      return 'RSP - Propose Times';
+    case 'reschedule_1':
+      return 'RSP - Offer Slots';
+    case 'reschedule_2':
+      return 'RSP - Final Time Check';
+    case 'no_show':
+      return 'NS - Intent Check';
+    case 'send_cal_link':
+      return 'OUT - Send Calendar Link';
+    case 'parent_contact_intro':
+      return 'OUT - Parent Intro';
+  }
+}
+
 function getSenderIntroName(senderName?: string | null): string {
   const normalized = String(senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
   return normalizeText(normalized) === normalizeText(DEFAULT_FOLLOW_UP_SENDER_NAME)
@@ -285,7 +308,10 @@ export function buildVoicemailFollowUpMessage(args: {
   const previousHeadScoutName =
     String(args.previousHeadScoutName || '')
       .trim()
-      .replace(/^coach\s+/i, '') || 'the scout';
+      .replace(/^coach\s+/i, '');
+  const previousCoachLabel = previousHeadScoutName
+    ? `Coach ${previousHeadScoutName}`
+    : 'our Head Scout';
   const rescheduleSlots = (args.rescheduleSlots || [])
     .map((slot) => String(slot || '').trim())
     .filter(Boolean)
@@ -311,7 +337,7 @@ export function buildVoicemailFollowUpMessage(args: {
           ]
         : args.variant === 'propose_times'
           ? [
-              `Hi ${firstName(args.greeting.replace(/^hi\s+/i, '').replace(/,$/, '')) || 'there'}, here are a couple slots we can hold for ${athleteFirstName} with Coach ${previousHeadScoutName}:`,
+              `Hi ${firstName(args.greeting.replace(/^hi\s+/i, '').replace(/,$/, '')) || 'there'}, here are a couple slots we can hold for ${athleteFirstName} with ${previousCoachLabel}:`,
               '',
               `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
               `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,
@@ -327,7 +353,7 @@ export function buildVoicemailFollowUpMessage(args: {
               ]
             : args.variant === 'reschedule_1'
               ? [
-                  `Coach ${previousHeadScoutName} has me checking what works best to reschedule ${athleteFirstName}:`,
+                  `${previousCoachLabel} has me checking what works best to reschedule ${athleteFirstName}:`,
                   '',
                   `1 - ${rescheduleSlots[0] || '[Slot 1]'}`,
                   `2 - ${rescheduleSlots[1] || '[Slot 2]'}`,
@@ -336,13 +362,13 @@ export function buildVoicemailFollowUpMessage(args: {
                 ]
               : recipientType === 'student_athlete' && args.variant === 'no_show'
                 ? [
-                    `${greeting} looks like we missed you for your meeting with our Head Scout.`,
+                    `${greeting} we missed you at your meeting with ${previousCoachLabel}.`,
                     '',
-                    'Reply with the best fit:',
+                    'If you still want a recruiting game plan, reply:',
                     '',
-                    '1 - still interested, need to reschedule',
-                    '2 - interested, timing is bad',
-                    '3 - no longer interested',
+                    '1. Still interested, reschedule.',
+                    '2. Interested, bad timing.',
+                    '3. No longer interested.',
                   ]
                 : recipientType === 'student_athlete' && args.variant === 'call_attempt_3'
                   ? [
@@ -364,13 +390,13 @@ export function buildVoicemailFollowUpMessage(args: {
                         ]
                       : args.variant === 'no_show'
                         ? [
-                            `${greeting} looks like we missed you for ${args.athleteName.trim() || 'your athlete'}’s meeting with our Head Scout.`,
+                            `${greeting} we missed you at ${firstName(args.athleteName) || 'your athlete'}’s meeting with ${previousCoachLabel}.`,
                             '',
-                            'Reply with the best fit:',
+                            'If you still want a recruiting game plan, reply:',
                             '',
-                            '1 - still interested, need to reschedule',
-                            '2 - interested, timing is bad',
-                            '3 - no longer interested',
+                            '1. Still interested, reschedule.',
+                            '2. Interested, bad timing.',
+                            '3. No longer interested.',
                           ]
                         : args.variant === 'call_attempt_3'
                           ? [

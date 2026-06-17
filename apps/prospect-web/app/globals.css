@@ -351,10 +351,10 @@ a {
 .visual-bucket {
   position: relative;
   min-height: 82px;
-  display: flex;
+  display: grid;
+  grid-template-columns: 4px minmax(0, 1fr) 30px;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  gap: 18px;
   border: 1px solid var(--geist-line);
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(32, 37, 43, 0.96), rgba(17, 20, 24, 0.96));
@@ -371,8 +371,8 @@ a {
 .visual-bucket::before {
   content: "";
   width: 4px;
+  height: 100%;
   align-self: stretch;
-  flex: 0 0 auto;
   border-radius: 999px;
   background: #68717d;
 }
@@ -385,6 +385,11 @@ a {
 .visual-bucket strong,
 .visual-bucket small {
   display: block;
+}
+
+.visual-bucket > span:not(.visual-count) {
+  min-width: 0;
+  justify-self: start;
 }
 
 .visual-bucket strong {
@@ -403,7 +408,7 @@ a {
 .visual-count {
   width: 30px;
   height: 30px;
-  flex: 0 0 auto;
+  justify-self: end;
   display: grid;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.2);

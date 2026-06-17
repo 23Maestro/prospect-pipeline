@@ -93,6 +93,12 @@ const buckets: Bucket[] = [
     summary: 'CRM sales stage, lifecycle writes, active state, and reporting facts.',
     visuals: [
       {
+        title: 'Supabase Status Source-of-Truth',
+        href: '/visual-maps/supabase-status.html',
+        status: 'Current',
+        note: 'Mobile status map for completed cleanup, active hardening, and retired drift.',
+      },
+      {
         title: 'Sales-stage source-of-truth lane',
         status: 'Pending',
         note: 'Map lifecycleSalesStage, lifecycle_events, and forbidden stale projections.',
@@ -105,6 +111,12 @@ const buckets: Bucket[] = [
     tone: 'purple',
     summary: 'Close won/lost, no-show, follow-up results, pending-client review, and post-meeting outcomes.',
     visuals: [
+      {
+        title: 'Pending Clients Outcome Review',
+        href: '/visual-maps/pending-clients-action-grammar.html',
+        status: 'Current',
+        note: 'LikeC4 map for filters, stage valves, contingency templates, and 10x handoff.',
+      },
       {
         title: 'Pending Clients outcome review',
         status: 'Pending',

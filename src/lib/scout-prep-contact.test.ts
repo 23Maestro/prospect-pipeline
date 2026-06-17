@@ -484,6 +484,7 @@ test('buildVoicemailFollowUpBody: duplicate parent and athlete phone uses studen
         sport: 'Football',
         city: 'Los Angeles',
         state: 'CA',
+        head_scout: 'Ryan Lietz',
       },
       contactInfo: {
         contactId: '123',
@@ -587,6 +588,7 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
       },
       resolved: {
         sport: 'Football',
+        head_scout: 'Ryan Lietz',
         city: 'Los Angeles',
         state: 'CA',
       },
@@ -629,6 +631,7 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
       },
       resolved: {
         sport: 'Football',
+        head_scout: 'Ryan Lietz',
         city: 'Los Angeles',
         state: 'CA',
       },
@@ -889,6 +892,7 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
       },
       resolved: {
         sport: 'Football',
+        head_scout: 'Ryan Lietz',
         city: 'Los Angeles',
         state: 'CA',
       },
@@ -915,14 +919,11 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
     new Date('2026-04-24T13:00:00Z'),
   );
 
-  assert.match(
-    body,
-    /^Hi Jamie, looks like we missed you for Aiden’s meeting with our Head Scout\./,
-  );
-  assert.match(body, /Reply with the best fit:/);
-  assert.match(body, /1 - still interested, need to reschedule/);
-  assert.match(body, /2 - interested, timing is bad/);
-  assert.match(body, /3 - no longer interested/);
+  assert.match(body, /^Hi Jamie, we missed you at Aiden’s meeting with Coach Ryan Lietz\./);
+  assert.match(body, /If you still want a recruiting game plan, reply:/);
+  assert.match(body, /1\. Still interested, reschedule\./);
+  assert.match(body, /2\. Interested, bad timing\./);
+  assert.match(body, /3\. No longer interested\./);
   assert.doesNotMatch(body, /^Hi Ms\./);
 });
 

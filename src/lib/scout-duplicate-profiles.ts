@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { apiFetch } from './fastapi-client';
 import { fetchContactInfo, type ContactInfo } from './npid-mcp-adapter';
 import { searchLogger } from './logger';
@@ -10,6 +12,8 @@ const FEATURE = 'scout-duplicate-profiles';
 const REPEAT_PROFILE_MARKER = 'Repeat Profile';
 const REPEAT_TASK_TITLE = 'REPEAT';
 const REPEAT_TASK_DESCRIPTION = '';
+const DUPLICATE_PROFILE_CHECK_LOG_FILE = '/Users/singleton23/raycast_logs/scout-duplicate-profile-checks.json';
+const DUPLICATE_PROFILE_CHECK_LOG_LIMIT = 500;
 
 const APOSTROPHE_VARIANT_PATTERN = /(?:\u00e2\u20ac[\u2122\u02dc]|\u201a\u00c4[\u00f4\u00f2]|\u2019|\u2018|\u02bc|\u00b4|`)/g;
 
@@ -153,6 +157,29 @@ type DuplicateProfileResolutionDeps = {
   }) => Promise<{ success?: boolean; task_id?: string | null; message?: string | null }>;
 };
 
+type StorageLike = {
+  read: () => Promise<string | undefined>;
+  write: (value: string) => Promise<void>;
+};
+
+export type DuplicateProfileCheckOutcome = 'no_duplicate' | 'repeat_marked' | 'needs_review' | 'check_failed';
+
+export type DuplicateProfileCheckLogEntry = {
+  key: string;
+  checkedAt: string;
+  outcome: DuplicateProfileCheckOutcome;
+  title: DuplicateProfileToastSummary['title'] | 'Check failed';
+  taskId: string | null;
+  athleteId: string | null;
+  athleteMainId: string | null;
+  taskTitle: string | null;
+  matchCount: number | null;
+  completedCount: number;
+  clearedCount: number;
+  skippedCount: number;
+  error?: string;
+};
+
 function logInfo(event: string, step: string, context?: Record<string, unknown>) {
   searchLogger.info(event, {
     event,
@@ -161,6 +188,119 @@ function logInfo(event: string, step: string, context?: Record<string, unknown>)
     feature: FEATURE,
     context: context || {},
   });
+}
+
+function normalizeDuplicateCheckKeyPart(value: string | null | undefined): string {
+  return String(value || '').trim();
+}
+
+export function buildDuplicateProfileCheckKey(task: ScoutPortalTask): string {
+  const taskId = normalizeDuplicateCheckKeyPart(task.task_id);
+  if (taskId) return `task:${taskId}`;
+
+  const athleteId = normalizeDuplicateCheckKeyPart(task.athlete_id || task.contact_id);
+  const athleteMainId = normalizeDuplicateCheckKeyPart(task.athlete_main_id);
+  const taskTitle = normalizeDuplicateCheckKeyPart(task.title).toLowerCase();
+  const dueDate = normalizeDuplicateCheckKeyPart(task.due_date);
+  return ['profile', athleteId, athleteMainId, taskTitle, dueDate].join(':');
+}
+
+function parseDuplicateProfileCheckLog(raw: string | undefined): DuplicateProfileCheckLogEntry[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((entry): entry is DuplicateProfileCheckLogEntry => {
+      return Boolean(entry && typeof entry === 'object' && typeof (entry as { key?: unknown }).key === 'string');
+    });
+  } catch {
+    return [];
+  }
+}
+
+export async function loadDuplicateProfileCheckLog(
+  storage?: StorageLike,
+): Promise<DuplicateProfileCheckLogEntry[]> {
+  const raw = storage
+    ? await storage.read()
+    : fs.existsSync(DUPLICATE_PROFILE_CHECK_LOG_FILE)
+      ? await fs.promises.readFile(DUPLICATE_PROFILE_CHECK_LOG_FILE, 'utf8')
+      : undefined;
+  return parseDuplicateProfileCheckLog(raw);
+}
+
+async function saveDuplicateProfileCheckLog(
+  entries: DuplicateProfileCheckLogEntry[],
+  storage?: StorageLike,
+): Promise<void> {
+  const payload = JSON.stringify(entries.slice(0, DUPLICATE_PROFILE_CHECK_LOG_LIMIT), null, 2);
+  if (storage) {
+    await storage.write(payload);
+    return;
+  }
+  await fs.promises.mkdir(path.dirname(DUPLICATE_PROFILE_CHECK_LOG_FILE), { recursive: true });
+  await fs.promises.writeFile(DUPLICATE_PROFILE_CHECK_LOG_FILE, `${payload}\n`, 'utf8');
+}
+
+export function isDuplicateProfileTaskAlreadyChecked(
+  task: ScoutPortalTask,
+  entries: DuplicateProfileCheckLogEntry[],
+): boolean {
+  const key = buildDuplicateProfileCheckKey(task);
+  return entries.some((entry) => entry.key === key && entry.outcome !== 'check_failed');
+}
+
+export function filterUncheckedDuplicateProfileTasks(
+  tasks: ScoutPortalTask[],
+  entries: DuplicateProfileCheckLogEntry[],
+): ScoutPortalTask[] {
+  return tasks.filter((task) => !isDuplicateProfileTaskAlreadyChecked(task, entries));
+}
+
+function resolveDuplicateProfileOutcome(summary: DuplicateProfileToastSummary): DuplicateProfileCheckOutcome {
+  switch (summary.title) {
+    case 'Repeat marked':
+      return 'repeat_marked';
+    case 'Review duplicate':
+      return 'needs_review';
+    case 'No duplicate':
+    default:
+      return 'no_duplicate';
+  }
+}
+
+export async function recordDuplicateProfileCheckResult(args: {
+  task: ScoutPortalTask;
+  result: DuplicateProfileResolutionResult;
+  summary: DuplicateProfileToastSummary;
+  storage?: StorageLike;
+}): Promise<DuplicateProfileCheckLogEntry> {
+  const entry: DuplicateProfileCheckLogEntry = {
+    key: buildDuplicateProfileCheckKey(args.task),
+    checkedAt: new Date().toISOString(),
+    outcome: resolveDuplicateProfileOutcome(args.summary),
+    title: args.summary.title,
+    taskId: normalizeDuplicateCheckKeyPart(args.task.task_id) || null,
+    athleteId: normalizeDuplicateCheckKeyPart(args.task.athlete_id || args.task.contact_id) || null,
+    athleteMainId: normalizeDuplicateCheckKeyPart(args.task.athlete_main_id) || null,
+    taskTitle: normalizeDuplicateCheckKeyPart(args.task.title) || null,
+    matchCount: args.result.matchCount,
+    completedCount: args.result.completed.length,
+    clearedCount: args.result.cleared.length,
+    skippedCount: args.result.skipped.length,
+  };
+  const existing = await loadDuplicateProfileCheckLog(args.storage);
+  await saveDuplicateProfileCheckLog(
+    [entry, ...existing.filter((candidate) => candidate.key !== entry.key)],
+    args.storage,
+  );
+  logInfo('SCOUT_DUPLICATE_PROFILE_CHECK_LOG', 'record-success', {
+    key: entry.key,
+    outcome: entry.outcome,
+    taskId: entry.taskId,
+    athleteId: entry.athleteId,
+  });
+  return entry;
 }
 
 function logFailure(event: string, step: string, error: string, context?: Record<string, unknown>) {

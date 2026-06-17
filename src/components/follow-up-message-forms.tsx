@@ -4,6 +4,7 @@ import type {
   ConfirmationFollowUpVariant,
   VoicemailFollowUpVariant,
 } from '../lib/scout-follow-up-templates';
+import { getVoicemailFollowUpVariantLabel } from '../lib/scout-follow-up-templates';
 
 type VoicemailRecipient = {
   id: string;
@@ -130,15 +131,39 @@ export function VoicemailFollowUpMessageForm(props: {
         value={selectedVariant}
         onChange={(value) => setSelectedVariant(value as VoicemailFollowUpVariant)}
       >
-        <Form.Dropdown.Item value="call_attempt_1" title="Attempt 1" />
-        <Form.Dropdown.Item value="call_attempt_2" title="Attempt 2" />
-        <Form.Dropdown.Item value="call_attempt_3" title="Attempt 3" />
-        <Form.Dropdown.Item value="propose_times" title="Propose Times" />
-        <Form.Dropdown.Item value="reschedule_1" title="Reschedule 1" />
-        <Form.Dropdown.Item value="reschedule_2" title="Reschedule 2" />
-        <Form.Dropdown.Item value="no_show" title="No Show" />
-        <Form.Dropdown.Item value="send_cal_link" title="Send Cal Link" />
-        <Form.Dropdown.Item value="parent_contact_intro" title="Parent Intro" />
+        <Form.Dropdown.Item
+          value="call_attempt_1"
+          title={getVoicemailFollowUpVariantLabel('call_attempt_1')}
+        />
+        <Form.Dropdown.Item
+          value="call_attempt_2"
+          title={getVoicemailFollowUpVariantLabel('call_attempt_2')}
+        />
+        <Form.Dropdown.Item
+          value="call_attempt_3"
+          title={getVoicemailFollowUpVariantLabel('call_attempt_3')}
+        />
+        <Form.Dropdown.Item
+          value="propose_times"
+          title={getVoicemailFollowUpVariantLabel('propose_times')}
+        />
+        <Form.Dropdown.Item
+          value="reschedule_1"
+          title={getVoicemailFollowUpVariantLabel('reschedule_1')}
+        />
+        <Form.Dropdown.Item
+          value="reschedule_2"
+          title={getVoicemailFollowUpVariantLabel('reschedule_2')}
+        />
+        <Form.Dropdown.Item value="no_show" title={getVoicemailFollowUpVariantLabel('no_show')} />
+        <Form.Dropdown.Item
+          value="send_cal_link"
+          title={getVoicemailFollowUpVariantLabel('send_cal_link')}
+        />
+        <Form.Dropdown.Item
+          value="parent_contact_intro"
+          title={getVoicemailFollowUpVariantLabel('parent_contact_intro')}
+        />
       </Form.Dropdown>
       {isRescheduleVariant && props.previousMeetingText ? (
         <Form.Description title="Previous Meeting" text={props.previousMeetingText} />

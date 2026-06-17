@@ -27,6 +27,12 @@ npm run visual-maps:webcomponent
 
 The first map is `client-messages-review.c4`, focused on Client Messages review follow-ups and the 10x Communications evidence receipt.
 
+For Pending Clients outcome maps, keep node titles natural-language and put the working
+details in LikeC4 `description` fields so the Properties panel explains the current
+filter, stage valve, contingency template, and operator approval rule. Avoid raw code
+labels such as `offer_reschedule_slots` in visible titles unless the node is explicitly
+documenting an API payload.
+
 ## Portable Links
 
 Run `npm run visual-maps:webcomponent` before deploying Prospect Web when the LikeC4 source changes.
@@ -34,6 +40,8 @@ Run `npm run visual-maps:webcomponent` before deploying Prospect Web when the Li
 After deployment, use these links from mobile, iPad, or Notion embeds:
 
 - `https://prospect-web.vercel.app/visual-maps/`
+- `https://prospect-web.vercel.app/visual-maps/supabase-status.html`
+- `https://prospect-web.vercel.app/visual-maps/pending-clients-action-grammar.html`
 - `https://prospect-web.vercel.app/visual-maps/client-messages-decision-receipt.html`
 - `https://prospect-web.vercel.app/visual-maps/client-messages-review-flow.html`
 

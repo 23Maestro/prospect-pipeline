@@ -690,6 +690,7 @@ test('pending client communication plan escalates repeated RSP cycles without ne
 
   assert.equal(plan.lane, 'reschedule');
   assert.equal(plan.action, 'offer_slots');
+  assert.equal(plan.stageLabel, 'Final check');
   assert.equal(plan.templateTone, 'final_time_check');
   assert.equal(plan.templateKey, 'reschedule.final.needs_operator_outreach.offer_slots');
   assert.deepEqual(plan.evidenceFacts, [
@@ -700,6 +701,64 @@ test('pending client communication plan escalates repeated RSP cycles without ne
     'Message state: needs_operator_outreach',
   ]);
   assert.ok(plan.nextSteps.some((step) => /final time-protection check/i.test(step)));
+  assert.ok(plan.nextSteps.some((step) => /operator approval/i.test(step)));
+  assert.match(plan.resolutionRule, /not automatic/i);
+  assert.notEqual(plan.action, 'purge_terminal');
+});
+
+test('pending client communication plan labels first and second cycle valves', () => {
+  const firstCycle = summarizePendingClientAppointmentHistory([
+    {
+      appointmentId: '600001',
+      startsAt: '2026-06-02T01:00:00.000Z',
+      updatedAt: '2026-06-02T02:00:00.000Z',
+      postMeetingResult: 'no_show',
+    },
+  ]);
+  const secondCycle = summarizePendingClientAppointmentHistory([
+    {
+      appointmentId: '600001',
+      startsAt: '2026-06-02T01:00:00.000Z',
+      updatedAt: '2026-06-02T02:00:00.000Z',
+      postMeetingResult: 'no_show',
+    },
+    {
+      appointmentId: '600002',
+      startsAt: '2026-06-07T01:00:00.000Z',
+      updatedAt: '2026-06-07T02:00:00.000Z',
+      postMeetingResult: 'reschedule_pending',
+    },
+  ]);
+  const queue = {
+    filter: 'no_show',
+    label: 'No Show',
+    actionLabel: 'Needs Reply',
+    priority: 10,
+  } as const;
+
+  const firstPlan = buildPendingClientCommunicationPlan({
+    queue,
+    appointmentHistory: firstCycle,
+    messageThread: summarizePendingClientMessageThread({
+      latestOutcomeAt: firstCycle.latestOutcomeAt,
+      replyEvidence: null,
+    }),
+    salesStage: 'Meeting Result - No Show',
+  });
+  const secondPlan = buildPendingClientCommunicationPlan({
+    queue,
+    appointmentHistory: secondCycle,
+    messageThread: summarizePendingClientMessageThread({
+      latestOutcomeAt: secondCycle.latestOutcomeAt,
+      replyEvidence: null,
+    }),
+    salesStage: 'Meeting Result - Res. Pending',
+  });
+
+  assert.equal(firstPlan.stageLabel, 'Stage 1');
+  assert.equal(firstPlan.templateTone, 'simple_recovery');
+  assert.equal(secondPlan.stageLabel, 'Stage 2');
+  assert.equal(secondPlan.templateTone, 'direct_intent_check');
 });
 
 test('pending client communication plan purges terminal sales stages', () => {

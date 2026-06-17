@@ -224,6 +224,10 @@ export function buildVoicemailFollowUpBody(
             ? `${dayGreeting} ${athleteFirstName},`
             : `${dayGreeting} ${greetingName},`;
   const recipientType = recipient?.id === 'studentAthlete' ? 'student_athlete' : 'parent';
+  const contextHeadScoutName =
+    String(context.resolved.head_scout || '')
+      .trim()
+      .replace(/^coach\s+/i, '') || null;
 
   return buildVoicemailFollowUpMessage({
     variant: selectedVariant,
@@ -234,7 +238,7 @@ export function buildVoicemailFollowUpBody(
     gradYear,
     athleteGender,
     signOffTitle,
-    previousHeadScoutName: rescheduleContext?.previousHeadScoutName,
+    previousHeadScoutName: rescheduleContext?.previousHeadScoutName || contextHeadScoutName,
     rescheduleSlots: rescheduleContext?.slots,
     rescheduleWeekLabel: rescheduleContext?.weekLabel,
     now,
