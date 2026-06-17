@@ -176,6 +176,9 @@ test('Pending Clients exposes shared 10x evidence receipts for reply-theme next 
   assert.match(headScoutSchedules, /buildClientMessageActionProposal\(\{/);
   assert.match(headScoutSchedules, /buildClientMessageActionProposalVisualUrl\(\{/);
   assert.match(headScoutSchedules, /await open\(/);
+  assert.match(headScoutSchedules, /pendingClientEvidenceCrmStage/);
+  assert.match(headScoutSchedules, /Meeting Result - Res\. Pending/);
+  assert.doesNotMatch(headScoutSchedules, /crmStage:\s*null/);
 });
 
 test('Scouting Command post-call helper wraps Raycast post-call writer paths', () => {

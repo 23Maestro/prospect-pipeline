@@ -630,6 +630,97 @@ a {
   gap: 12px;
 }
 
+.tenx-flow {
+  width: min(1180px, 100%);
+  margin: 0 auto 12px;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.tenx-flow-item {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14px;
+  align-items: center;
+  gap: 6px;
+}
+
+.tenx-flow-item:last-child {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.tenx-flow-node {
+  min-height: 104px;
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  padding: 11px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+}
+
+.tenx-flow-node span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.tenx-flow-node strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #111827;
+  font-size: 14px;
+  line-height: 1.2;
+}
+
+.tenx-flow-node p {
+  margin: 0;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.tenx-flow-node-source {
+  border-color: rgba(14, 165, 233, 0.24);
+}
+
+.tenx-flow-node-meaning {
+  border-color: rgba(124, 58, 237, 0.24);
+}
+
+.tenx-flow-node-decision {
+  border-color: rgba(37, 99, 235, 0.32);
+}
+
+.tenx-flow-node-gate {
+  border-color: rgba(217, 119, 6, 0.32);
+}
+
+.tenx-flow-node-target {
+  border-color: rgba(22, 163, 74, 0.3);
+}
+
+.tenx-flow-arrow {
+  width: 14px;
+  height: 2px;
+  background: rgba(71, 85, 105, 0.34);
+  position: relative;
+}
+
+.tenx-flow-arrow::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -1px;
+  border-left: 6px solid rgba(71, 85, 105, 0.42);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+}
+
 .tenx-panel {
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 8px;
@@ -749,5 +840,29 @@ a {
   .tenx-grid,
   .tenx-facts {
     grid-template-columns: 1fr;
+  }
+
+  .tenx-flow {
+    grid-template-columns: 1fr;
+  }
+
+  .tenx-flow-item {
+    grid-template-columns: 1fr;
+  }
+
+  .tenx-flow-arrow {
+    width: 2px;
+    height: 14px;
+    justify-self: center;
+  }
+
+  .tenx-flow-arrow::after {
+    top: auto;
+    right: -4px;
+    bottom: -1px;
+    border-top: 6px solid rgba(71, 85, 105, 0.42);
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 0;
   }
 }

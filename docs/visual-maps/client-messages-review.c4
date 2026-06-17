@@ -1,0 +1,86 @@
+specification {
+  element operator
+  element command
+  element domain
+  element adapter
+  element datastore
+  element webview
+  element action
+}
+
+model {
+  sc = operator 'Scouting Coordinator'
+
+  prospectPipeline = command 'Prospect Pipeline Raycast' {
+    clientMessages = command 'Client Messages'
+    scoutPrep = command 'Scout Prep'
+  }
+
+  clientCommunication = domain 'Client Communication' {
+    threadEvidence = domain 'Thread Evidence Receipt'
+    replyClassifier = domain 'Reply Meaning Classifier'
+    actionProposal = domain 'Action Proposal'
+    visualPayload = domain 'Evidence Bundle'
+  }
+
+  sourceAdapters = adapter 'Source Adapters' {
+    messagesSql = adapter 'Messages SQL'
+    contactCache = datastore 'Athlete Contact Cache'
+    reminders = adapter 'Apple Reminders'
+    calendar = adapter 'Apple Calendar'
+  }
+
+  prospectWeb = webview 'Prospect Web' {
+    visualReceipt = webview '10x Communications Evidence'
+  }
+
+  mutations = action 'Proposed Mutations' {
+    clientMessageSend = action 'Client Message Send'
+    reminderCreate = action 'Apple Reminder'
+    calendarCreate = action 'Apple Calendar Appt'
+  }
+
+  sc -> clientMessages 'Reviews follow-up candidates'
+  clientMessages -> messagesSql 'Reads decoded thread messages'
+  clientMessages -> contactCache 'Admits thread by matched client phone'
+  messagesSql -> threadEvidence 'Provides direction, counts, latest sender'
+  contactCache -> threadEvidence 'Provides athlete/contact context'
+  threadEvidence -> replyClassifier 'Supplies evidence'
+  replyClassifier -> actionProposal 'Determines operator action'
+  actionProposal -> visualPayload 'Combines proposal and evidence receipts'
+  visualPayload -> visualReceipt 'Opens encoded browser view'
+  visualReceipt -> sc 'Shows decision path'
+  actionProposal -> clientMessageSend 'Proposes when approval required'
+  actionProposal -> reminderCreate 'Proposes follow-up reminder'
+  actionProposal -> calendarCreate 'Proposes calendar preflight'
+  clientMessageSend -> scoutPrep 'May complete related task after send'
+}
+
+views {
+  view client_messages_review_flow {
+    title 'Client Messages Review Follow-Up Flow'
+    include sc
+    include prospectPipeline.clientMessages
+    include prospectPipeline.scoutPrep
+    include clientCommunication.*
+    include sourceAdapters.*
+    include prospectWeb.visualReceipt
+    include mutations.*
+  }
+
+  view client_messages_decision_receipt {
+    title '10x Communications Decision Receipt'
+    include sourceAdapters.messagesSql
+    include sourceAdapters.contactCache
+    include clientCommunication.threadEvidence
+    include clientCommunication.replyClassifier
+    include clientCommunication.actionProposal
+    include clientCommunication.visualPayload
+    include prospectWeb.visualReceipt
+    include mutations.*
+    style clientCommunication.actionProposal {
+    	border dashed
+      color red
+    }
+  }
+}

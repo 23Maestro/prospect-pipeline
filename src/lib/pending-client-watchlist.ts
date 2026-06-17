@@ -68,6 +68,7 @@ const PENDING_CLIENT_APPOINTMENT_OUTCOMES = [
   'no_show',
   'canceled',
 ] as const;
+const PENDING_CLIENT_APPOINTMENT_FETCH_LIMIT = PENDING_CLIENT_LIST_LIMIT * 4;
 const PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY = PENDING_CLIENT_APPOINTMENT_OUTCOMES.map(
   quotePostgrestInValue,
 ).join(',');
@@ -183,10 +184,14 @@ function hasNewerActiveReplacementAppointment(
   if (!athleteKey) return false;
   const startsAt = Date.parse(String(row.starts_at || '').trim());
   if (!Number.isFinite(startsAt)) return false;
+  const rowUpdatedAt = Date.parse(String(row.updated_at || '').trim());
   return (activeRowsByAthleteKey.get(athleteKey) || []).some((candidate) => {
     if (String(candidate.id || '').trim() === String(row.id || '').trim()) return false;
     const candidateStartsAt = Date.parse(String(candidate.starts_at || '').trim());
-    return Number.isFinite(candidateStartsAt) && candidateStartsAt > startsAt;
+    if (!Number.isFinite(candidateStartsAt) || candidateStartsAt <= startsAt) return false;
+    const candidateUpdatedAt = Date.parse(String(candidate.updated_at || '').trim());
+    if (!Number.isFinite(rowUpdatedAt) || !Number.isFinite(candidateUpdatedAt)) return true;
+    return candidateUpdatedAt >= rowUpdatedAt;
   });
 }
 
@@ -314,10 +319,8 @@ function athleteDedupeKey(row: PendingClientWatchlistDisplayRow): string {
   ].join(':');
 }
 
-function pendingClientRowTime(row: PendingClientWatchlistDisplayRow): number {
-  const parsed = Date.parse(
-    String(row.appointment_starts_at || row.event_start || row.last_seen_at || '').trim(),
-  );
+export function pendingClientQueueTime(row: PendingClientWatchlistDisplayRow): number {
+  const parsed = Date.parse(String(row.last_seen_at || '').trim());
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
@@ -336,7 +339,7 @@ function comparePendingClientRows(
 ): number {
   const titleRankDiff = pendingClientTitleRank(left) - pendingClientTitleRank(right);
   if (titleRankDiff !== 0) return titleRankDiff;
-  return pendingClientRowTime(left) - pendingClientRowTime(right);
+  return pendingClientQueueTime(left) - pendingClientQueueTime(right);
 }
 
 function dedupePendingClientRows(
@@ -358,7 +361,7 @@ function dedupePendingClientRows(
   }
 
   return [...byAthlete.values(), ...unkeyed].sort(
-    (left, right) => pendingClientRowTime(right) - pendingClientRowTime(left),
+    (left, right) => pendingClientQueueTime(right) - pendingClientQueueTime(left),
   );
 }
 
@@ -404,9 +407,9 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     [
       'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,meeting_timezone,meeting_timezone_label,post_meeting_result,source_payload,updated_at',
       `or=(post_meeting_result.in.(${PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY}),status.in.(${PENDING_CLIENT_APPOINTMENT_OUTCOME_QUERY}))`,
-      `starts_at=gte.${encodeURIComponent(watchStart.toISOString())}`,
-      'order=starts_at.desc',
-      `limit=${PENDING_CLIENT_LIST_LIMIT * 2}`,
+      `updated_at=gte.${encodeURIComponent(watchStart.toISOString())}`,
+      'order=updated_at.desc',
+      `limit=${PENDING_CLIENT_APPOINTMENT_FETCH_LIMIT}`,
     ].join('&'),
   );
   const athleteKeys = Array.from(
@@ -417,7 +420,7 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
         config,
         'appointments',
         [
-          'select=id,athlete_key,starts_at,status,post_meeting_result',
+          'select=id,athlete_key,starts_at,status,post_meeting_result,updated_at',
           `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
           `status=in.(${ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY})`,
           'order=starts_at.asc',
@@ -474,6 +477,17 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     actionableAppointmentRows,
     athleteNamesByKey,
   );
+  const paymentWatchlistRows = await readRows<PendingClientWatchlistRow>(
+    config,
+    'pending_client_watchlist',
+    [
+      'select=source_event_id,athlete_id,athlete_main_id,athlete_name,head_scout,head_scout_key,calendar_owner_id,detected_by_operator,detected_by_operator_key,owner_context,resolved_by_operator,resolved_by_operator_key,event_title,event_start,event_end,description,matched_signals,action_tag,ai_verdict,status,first_seen_at,last_seen_at,expires_at,resolved_at',
+      'status=eq.watching',
+      'action_tag=eq.Payment Watch',
+      'order=last_seen_at.desc',
+      `limit=${PENDING_CLIENT_LIST_LIMIT}`,
+    ].join('&'),
+  ).catch(() => []);
   const appointmentSourceIds = appointmentRowsForDisplay.map((row) => row.source_event_id);
   const resolvedRows = appointmentSourceIds.length
     ? await readRows<Pick<PendingClientWatchlistRow, 'source_event_id' | 'status'>>(
@@ -501,7 +515,7 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       `limit=${PENDING_CLIENT_LIST_LIMIT * 10}`,
     ].join('&'),
   ).catch(() => []);
-  const unresolvedRows = appointmentRowsForDisplay.filter(
+  const unresolvedRows = [...appointmentRowsForDisplay, ...paymentWatchlistRows].filter(
     (row) =>
       !resolvedSourceIds.has(String(row.source_event_id || '').trim()) &&
       !isPendingClientResolvedByFutureConfirmation(row, confirmationRows, now),

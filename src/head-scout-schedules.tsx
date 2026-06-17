@@ -50,6 +50,7 @@ import {
 import {
   loadPendingClientWatchlist,
   markPendingClientResolved,
+  pendingClientQueueTime,
   type PendingClientWatchlistLoadResult,
 } from './lib/pending-client-watchlist';
 import { addAthleteNote } from './lib/npid-mcp-adapter';
@@ -846,6 +847,7 @@ const PENDING_CLIENT_FILTERS: readonly {
   { value: 'payments', title: 'Payments' },
   { value: 'review_follow_ups', title: 'Review Follow Ups' },
 ];
+const PENDING_CLIENT_NON_PAYMENT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 function pendingClientCentralTagColor(
   filter: PendingClientCentralFilter,
@@ -862,6 +864,22 @@ function pendingClientCentralTagColor(
 
 function pendingClientFilterTitle(filter: PendingClientCentralFilter | 'all'): string {
   return PENDING_CLIENT_FILTERS.find((item) => item.value === filter)?.title || 'All';
+}
+
+function pendingClientCentralTagLabel(
+  queue: ReturnType<typeof classifyPendingClientCentralQueue>,
+): string {
+  return queue.actionLabel;
+}
+
+function isPendingClientInsideVisibleWindow(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+  queue: ReturnType<typeof classifyPendingClientCentralQueue>,
+  now = Date.now(),
+): boolean {
+  if (queue.filter === 'payments') return true;
+  const lastSeenAt = pendingClientQueueTime(row);
+  return lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_NON_PAYMENT_WINDOW_MS;
 }
 
 function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
@@ -1061,10 +1079,31 @@ function findPendingClientChat(
   );
 }
 
+function pendingClientEvidenceCrmStage(
+  row?: PendingClientWatchlistLoadResult['rows'][number] | null,
+): string {
+  const text = [
+    row?.action_tag,
+    row?.event_title,
+    row?.description,
+    ...(row?.matched_signals || []),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+  if (/\bno[_\s-]?show\b/.test(text)) return 'Meeting Result - No Show';
+  if (/\b(?:cancel|canceled|cancelled)\b/.test(text)) return 'Meeting Result - Canceled';
+  if (/\b(?:reschedule_pending|reschedule pending|rsp)\b/.test(text)) {
+    return 'Meeting Result - Res. Pending';
+  }
+  return 'Actual Meeting - Follow Up';
+}
+
 function buildPendingClientThreadEvidenceReceipt(
   replyState: PendingClientReplyThemeState,
   messages: ClientThreadMessage[],
   chat?: ClientInboxChat | null,
+  pendingClient?: PendingClientWatchlistLoadResult['rows'][number] | null,
 ) {
   if (chat) {
     return buildClientInboxThreadEvidenceReceipt(chat, messages);
@@ -1085,7 +1124,7 @@ function buildPendingClientThreadEvidenceReceipt(
         athleteMainId: row.athleteMainId,
         currentTaskId: null,
         currentTaskTitle: row.taskTitle,
-        crmStage: null,
+        crmStage: pendingClientEvidenceCrmStage(pendingClient),
         taskStatus: row.taskTitle,
         ambiguity: 'none',
         associatedClientsCount: row.matchedPhones.length ? 1 : 0,
@@ -1104,9 +1143,11 @@ function buildPendingClientThreadEvidenceReceipt(
 function PendingClientEvidenceDetail({
   chat,
   replyState,
+  pendingClient,
 }: {
   chat?: ClientInboxChat | null;
   replyState: PendingClientReplyThemeState;
+  pendingClient?: PendingClientWatchlistLoadResult['rows'][number] | null;
 }) {
   const match = replyState.row;
   const title = clientReplyThemeReviewDisplayName(match);
@@ -1115,7 +1156,7 @@ function PendingClientEvidenceDetail({
     isLoading,
     revalidate,
   } = usePromise(getClientThreadMessages, [match.chatGuid, title]);
-  const threadReceipt = buildPendingClientThreadEvidenceReceipt(replyState, data, chat);
+  const threadReceipt = buildPendingClientThreadEvidenceReceipt(replyState, data, chat, pendingClient);
   const classifierReceipt = buildClientReplyThemeRunReceipt(match);
   const proposal = buildClientMessageActionProposal({
     threadReceipt,
@@ -1167,11 +1208,17 @@ function PendingClientEvidenceDetail({
 async function openPendingClientEvidenceVisual(args: {
   chat?: ClientInboxChat | null;
   replyState: PendingClientReplyThemeState;
+  pendingClient?: PendingClientWatchlistLoadResult['rows'][number] | null;
 }) {
   const match = args.replyState.row;
   const title = clientReplyThemeReviewDisplayName(match);
   const messages = await getClientThreadMessages(match.chatGuid, title);
-  const threadReceipt = buildPendingClientThreadEvidenceReceipt(args.replyState, messages, args.chat);
+  const threadReceipt = buildPendingClientThreadEvidenceReceipt(
+    args.replyState,
+    messages,
+    args.chat,
+    args.pendingClient,
+  );
   const classifierReceipt = buildClientReplyThemeRunReceipt(match);
   const proposal = buildClientMessageActionProposal({
     threadReceipt,
@@ -1445,17 +1492,27 @@ function PendingClientsWatchlist() {
       });
       return { row, replyState, queue };
     })
+    .filter((item) => isPendingClientInsideVisibleWindow(item.row, item.queue))
     .filter((item) => selectedFilter === 'all' || item.queue.filter === selectedFilter)
-    .sort((left, right) => left.queue.priority - right.queue.priority);
+    .sort(
+      (left, right) =>
+        pendingClientQueueTime(right.row) - pendingClientQueueTime(left.row) ||
+        left.queue.priority - right.queue.priority,
+    );
   const allRows = result?.rows || [];
-  const allCounts = allRows.reduce<Record<PendingClientCentralFilter, number>>(
-    (acc, row) => {
+  const visibleRows = allRows
+    .map((row) => {
       const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
       const queue = classifyPendingClientCentralQueue({
         row,
         replyEvidence: replyState?.row.replyEvidence,
       });
-      acc[queue.filter] += 1;
+      return { row, queue };
+    })
+    .filter((item) => isPendingClientInsideVisibleWindow(item.row, item.queue));
+  const allCounts = visibleRows.reduce<Record<PendingClientCentralFilter, number>>(
+    (acc, row) => {
+      acc[row.queue.filter] += 1;
       return acc;
     },
     { reschedule: 0, no_show: 0, payments: 0, review_follow_ups: 0 },
@@ -1473,7 +1530,7 @@ function PendingClientsWatchlist() {
           value={selectedFilter}
           onChange={(value) => setSelectedFilter(value as PendingClientCentralFilter | 'all')}
         >
-          <List.Dropdown.Item title={`All (${allRows.length})`} value="all" />
+          <List.Dropdown.Item title={`All (${visibleRows.length})`} value="all" />
           <List.Dropdown.Item title={`RSP (${allCounts.reschedule})`} value="reschedule" />
           <List.Dropdown.Item title={`No Show (${allCounts.no_show})`} value="no_show" />
           <List.Dropdown.Item title={`Payments (${allCounts.payments})`} value="payments" />
@@ -1499,7 +1556,7 @@ function PendingClientsWatchlist() {
             const athleteName =
               row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
             const displayTag = {
-              label: queue.filter === 'payments' ? queue.label : `${queue.label} · ${queue.actionLabel}`,
+              label: pendingClientCentralTagLabel(queue),
               color: pendingClientCentralTagColor(queue.filter, queue.actionLabel),
             };
             const isPaymentReminder = queue.filter === 'payments';
@@ -1537,6 +1594,7 @@ function PendingClientsWatchlist() {
                                 await openPendingClientEvidenceVisual({
                                   chat: matchedChat,
                                   replyState,
+                                  pendingClient: row,
                                 });
                               } catch (error) {
                                 await showToast({

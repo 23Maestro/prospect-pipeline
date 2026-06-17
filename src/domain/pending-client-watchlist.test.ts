@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import {
   buildPendingClientOwnerSnapshot,
   buildPendingClientEvidenceDescription,
+  buildPendingClientCommunicationPlan,
   buildPendingClientResolvedPatch,
   buildPendingClientWatchlistRow,
   buildPendingClientScanWindow,
@@ -24,6 +25,9 @@ import {
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
   selectLatestPendingClientNote,
+  shouldResolvePendingClientForLifecycle,
+  summarizePendingClientAppointmentHistory,
+  summarizePendingClientMessageThread,
   type PendingClientCentralQueueClassification,
   type PendingClientOperatorQueueReplyEvidence,
   type PendingClientWatchlistRow,
@@ -524,14 +528,12 @@ test('pending client central queue collapses review work to four router lanes', 
   ];
 
   const allowedRowTags = new Set([
-    'RSP · Offer Slots',
-    'RSP · Awaiting Client',
-    'RSP · Review Reply',
-    'No Show · Offer Slots',
-    'No Show · Awaiting Client',
-    'No Show · Bad Timing',
-    'Review Follow Ups · Needs Reply',
-    'Review Follow Ups · Review',
+    'Offer Slots',
+    'Awaiting Client',
+    'Review Reply',
+    'Bad Timing',
+    'Needs Reply',
+    'Review',
     'Payments',
   ]);
 
@@ -540,11 +542,194 @@ test('pending client central queue collapses review work to four router lanes', 
       row: testCase.row,
       replyEvidence: testCase.replyEvidence,
     });
-    const rowTag = actual.filter === 'payments' ? actual.label : `${actual.label} · ${actual.actionLabel}`;
+    const rowTag = actual.actionLabel;
 
     assert.deepEqual(actual, testCase.expected, testCase.name);
     assert.ok(allowedRowTags.has(rowTag), testCase.name);
   }
+});
+
+test('reschedule-pending appointment outcome routes directly to RSP offer slots', () => {
+  const row = buildPendingClientWatchlistRow({
+    event: {
+      event_id: 'appointment:613349',
+      title: 'Joziah Zenobia - Reschedule Pending',
+      assigned_owner: 'David Foley',
+      start: '2026-06-17T01:00:00.000Z',
+    },
+    description: 'Pending client review from appointment outcome: reschedule_pending.',
+    matchedSignals: ['reschedule_pending'],
+    actionTag: 'Operator Input',
+    aiVerdict: 'pending_client',
+    athleteId: '1499361',
+    athleteMainId: '954093',
+    athleteName: 'Joziah Zenobia',
+    now: new Date('2026-06-16T22:09:40.206Z'),
+  });
+
+  assert.equal(row.athlete_name, 'Joziah Zenobia');
+  assert.equal(row.status, 'watching');
+  assert.equal(row.last_seen_at, '2026-06-16T22:09:40.206Z');
+  assert.deepEqual(
+    classifyPendingClientCentralQueue({
+      row,
+      replyEvidence: null,
+    }),
+    {
+      filter: 'reschedule',
+      label: 'RSP',
+      actionLabel: 'Offer Slots',
+      priority: 10,
+    },
+  );
+});
+
+test('pending client appointment history summarizes literal schedule and outcome cycles', () => {
+  const summary = summarizePendingClientAppointmentHistory([
+    {
+      appointmentId: '600001',
+      startsAt: '2026-06-02T01:00:00.000Z',
+      updatedAt: '2026-06-02T22:00:00.000Z',
+      status: 'scheduled',
+    },
+    {
+      appointmentId: '600002',
+      startsAt: '2026-06-07T01:00:00.000Z',
+      updatedAt: '2026-06-07T02:10:00.000Z',
+      postMeetingResult: 'no_show',
+    },
+    {
+      appointmentId: '600003',
+      startsAt: '2026-06-11T01:00:00.000Z',
+      updatedAt: '2026-06-11T22:17:56.556Z',
+      postMeetingResult: 'rescheduled',
+    },
+    {
+      appointmentId: '600004',
+      startsAt: '2026-06-16T01:00:00.000Z',
+      updatedAt: '2026-06-16T22:09:40.206Z',
+      postMeetingResult: 'reschedule_pending',
+    },
+  ]);
+
+  assert.deepEqual(summary, {
+    scheduledCount: 4,
+    rescheduleCount: 2,
+    noShowCount: 1,
+    canceledCount: 0,
+    recoveryCycleCount: 3,
+    originalMeetingAt: '2026-06-02T01:00:00.000Z',
+    latestMeetingAt: '2026-06-16T01:00:00.000Z',
+    latestOutcomeAt: '2026-06-16T22:09:40.206Z',
+    latestOutcome: 'reschedule_pending',
+  });
+});
+
+test('pending client message summary answers whether operator reached out after outcome', () => {
+  const summary = summarizePendingClientMessageThread({
+    latestOutcomeAt: '2026-06-16T22:09:40.206Z',
+    now: new Date('2026-06-19T22:09:40.206Z'),
+    replyEvidence: {
+      themeBucket: 'RSP',
+      lastMeaningfulOutbound: {
+        body: 'Would tonight or tomorrow work?',
+        date: '2026-06-17T15:00:00.000Z',
+      },
+      operatorReplyProposedTimes: true,
+      operatorRepliedAfterInbound: true,
+    },
+  });
+
+  assert.deepEqual(summary, {
+    operatorReachedOutAfterLatestOutcome: true,
+    clientRepliedAfterLatestOperator: false,
+    dormantDaysSinceOperatorMessage: 2,
+    lastOperatorMessageAt: '2026-06-17T15:00:00.000Z',
+    lastClientMessageAt: null,
+    state: 'awaiting_client',
+  });
+});
+
+test('pending client communication plan escalates repeated RSP cycles without new tags', () => {
+  const appointmentHistory = summarizePendingClientAppointmentHistory([
+    {
+      appointmentId: '600001',
+      startsAt: '2026-06-02T01:00:00.000Z',
+      updatedAt: '2026-06-02T02:00:00.000Z',
+      postMeetingResult: 'no_show',
+    },
+    {
+      appointmentId: '600002',
+      startsAt: '2026-06-07T01:00:00.000Z',
+      updatedAt: '2026-06-07T02:00:00.000Z',
+      postMeetingResult: 'reschedule_pending',
+    },
+    {
+      appointmentId: '600003',
+      startsAt: '2026-06-11T01:00:00.000Z',
+      updatedAt: '2026-06-11T02:00:00.000Z',
+      postMeetingResult: 'reschedule_pending',
+    },
+  ]);
+  const messageThread = summarizePendingClientMessageThread({
+    latestOutcomeAt: appointmentHistory.latestOutcomeAt,
+    now: new Date('2026-06-12T12:00:00.000Z'),
+    replyEvidence: null,
+  });
+  const plan = buildPendingClientCommunicationPlan({
+    queue: {
+      filter: 'reschedule',
+      label: 'RSP',
+      actionLabel: 'Offer Slots',
+      priority: 10,
+    },
+    appointmentHistory,
+    messageThread,
+    salesStage: 'Meeting Result - Res. Pending',
+  });
+
+  assert.equal(plan.lane, 'reschedule');
+  assert.equal(plan.action, 'offer_slots');
+  assert.equal(plan.templateTone, 'final_time_check');
+  assert.equal(plan.templateKey, 'reschedule.final.needs_operator_outreach.offer_slots');
+  assert.deepEqual(plan.evidenceFacts, [
+    'Scheduled: 3',
+    'Reschedules: 2',
+    'No-shows: 1',
+    'Cancels: 0',
+    'Message state: needs_operator_outreach',
+  ]);
+  assert.ok(plan.nextSteps.some((step) => /final time-protection check/i.test(step)));
+});
+
+test('pending client communication plan purges terminal sales stages', () => {
+  const appointmentHistory = summarizePendingClientAppointmentHistory([
+    {
+      appointmentId: '613349',
+      startsAt: '2026-06-17T01:00:00.000Z',
+      updatedAt: '2026-06-16T22:09:40.206Z',
+      postMeetingResult: 'reschedule_pending',
+    },
+  ]);
+  const messageThread = summarizePendingClientMessageThread({
+    latestOutcomeAt: appointmentHistory.latestOutcomeAt,
+    replyEvidence: null,
+  });
+  const plan = buildPendingClientCommunicationPlan({
+    queue: {
+      filter: 'reschedule',
+      label: 'RSP',
+      actionLabel: 'Offer Slots',
+      priority: 10,
+    },
+    appointmentHistory,
+    messageThread,
+    salesStage: 'Spoke to - Not Interested',
+  });
+
+  assert.equal(plan.action, 'purge_terminal');
+  assert.equal(plan.templateKey, 'reschedule.terminal.purge');
+  assert.deepEqual(plan.nextSteps, ['Remove from active Pending Clients and Client Messages tracking.']);
 });
 
 test('pending client payment watch does not require appointment truth backing', () => {
@@ -650,9 +835,10 @@ test('pending client Raycast loader reads appointment outcomes plus support tomb
   assert.match(source, /no_show/);
   assert.match(source, /pending_client_watchlist/);
   assert.match(source, /status=in\.\("resolved","expired"\)/);
+  assert.match(source, /status=eq\.watching/);
+  assert.match(source, /action_tag=eq\.Payment Watch/);
   assert.match(source, /resolveBookedMeetingDetailsForForm/);
   assert.match(source, /meeting_timezone/);
-  assert.doesNotMatch(source, /status=eq\.watching/);
   assert.doesNotMatch(source, /expires_at=gte/);
   assert.doesNotMatch(source, /active_athlete_meeting_truth/);
   assert.doesNotMatch(source, /readCurrentPipelineRows/);
@@ -673,6 +859,8 @@ test('pending client Raycast loader suppresses stale RSP after newer active repl
   assert.match(source, /status=in\.\(\$\{ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY\}\)/);
   assert.match(source, /groupActiveReplacementAppointmentsByAthleteKey/);
   assert.match(source, /const actionableAppointmentRows = appointmentRows\.filter/);
+  assert.match(source, /candidateUpdatedAt >= rowUpdatedAt/);
+  assert.match(source, /select=id,athlete_key,starts_at,status,post_meeting_result,updated_at/);
   assert.match(
     source,
     /!hasNewerActiveReplacementAppointment\(row, activeReplacementsByAthleteKey\)/,
@@ -685,6 +873,29 @@ test('pending client Raycast loader collapses duplicate active rows per athlete'
   assert.match(source, /function dedupePendingClientRows/);
   assert.match(source, /athleteDedupeKey/);
   assert.match(source, /dedupePendingClientRows\(/);
+});
+
+test('pending client queue order uses last seen date only', () => {
+  const loaderSource = fs.readFileSync('src/lib/pending-client-watchlist.ts', 'utf8');
+  const uiSource = fs.readFileSync('src/head-scout-schedules.tsx', 'utf8');
+
+  assert.match(loaderSource, /export function pendingClientQueueTime/);
+  assert.match(loaderSource, /Date\.parse\(String\(row\.last_seen_at \|\| ''\)\.trim\(\)\)/);
+  assert.doesNotMatch(loaderSource, /appointment_starts_at \|\| row\.event_start/);
+  assert.match(loaderSource, /updated_at=gte/);
+  assert.match(loaderSource, /order=updated_at\.desc/);
+  assert.doesNotMatch(loaderSource, /starts_at=gte/);
+  assert.doesNotMatch(loaderSource, /order=starts_at\.desc/);
+  assert.match(uiSource, /pendingClientQueueTime\(right\.row\) - pendingClientQueueTime\(left\.row\)/);
+});
+
+test('pending client visible filters use a 30 day last-seen gate except payments', () => {
+  const source = fs.readFileSync('src/head-scout-schedules.tsx', 'utf8');
+  assert.match(source, /PENDING_CLIENT_NON_PAYMENT_WINDOW_MS = 30 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(source, /if \(queue\.filter === 'payments'\) return true/);
+  assert.match(source, /const lastSeenAt = pendingClientQueueTime\(row\)/);
+  assert.match(source, /lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_NON_PAYMENT_WINDOW_MS/);
+  assert.match(source, /isPendingClientInsideVisibleWindow\(item\.row, item\.queue\)/);
 });
 
 test('pending client review title accepts FU and follow-up event-list titles', () => {
@@ -727,6 +938,21 @@ test('pending client lifecycle starts from CRM stage and uses event notes as rea
       reviewDescription: '',
     }).eligible,
     true,
+  );
+  assert.equal(
+    shouldResolvePendingClientForLifecycle({
+      crmStage: 'Spoke to - Not Interested',
+      bookedEventTitle: '(RSP) Jr Samuels Football 2029 IA',
+    }),
+    true,
+  );
+  assert.equal(
+    classifyPendingClientLifecycle({
+      crmStage: 'Spoke to - Not Interested',
+      reviewEventTitle: '(RSP) Jr Samuels Football 2029 IA',
+      reviewDescription: 'Previously needed slots.',
+    }).eligible,
+    false,
   );
 });
 
@@ -860,7 +1086,7 @@ test('pending client loader avoids live source adapters for the review list', ()
   assert.match(source, /post_meeting_result\.in\./);
   assert.match(source, /status\.in\./);
   assert.match(source, /pending_client_watchlist/);
-  assert.doesNotMatch(source, /status=eq\.watching/);
+  assert.match(source, /action_tag=eq\.Payment Watch/);
   assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
   assert.doesNotMatch(source, /athlete_pipeline_state/);
 });

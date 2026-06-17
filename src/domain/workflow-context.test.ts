@@ -114,3 +114,24 @@ test('canceled sales stage owns post-meeting result projection', () => {
   assert.equal(context.meeting_title_base, 'Josiah Meza Football 2028 FL');
   assert.equal(context.meeting_title_prefix, '(CAN)');
 });
+
+test('not interested sales stage clears stale pending-client appointment outcome', () => {
+  const context = resolveWorkflowContext({
+    athleteId: '1499361',
+    athleteMainId: '954093',
+    athleteName: 'Jr Samuels',
+    sport: 'Football',
+    gradYear: '2029',
+    state: 'IA',
+    salesStage: 'Spoke to - Not Interested',
+    appointmentId: '613349',
+    appointmentStatus: 'scheduled',
+    postMeetingResult: 'reschedule_pending',
+    meetingTitle: '(RSP) Jr Samuels Football 2029 IA',
+  });
+
+  assert.equal(context.sales_stage, 'inactive');
+  assert.equal(context.task_status, 'inactive');
+  assert.equal(context.appointment_status, null);
+  assert.equal(context.post_meeting_result, null);
+});

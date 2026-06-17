@@ -1,8 +1,9 @@
-import { normalizeCrmSalesStage } from '../lib/sales-lifecycle';
+import { normalizeCrmSalesStage, resolveSalesLifecycle } from '../lib/sales-lifecycle';
 import {
   appointmentStatusForTitleOrStage,
   parseAppointmentTitleOutcome,
   postMeetingResultForTitleOrStage,
+  taskStatusForStage,
   taskStatusForTitleOrStage,
 } from './supabase-lifecycle-translator';
 
@@ -163,12 +164,18 @@ export function resolveWorkflowContext(input: WorkflowContextInput): WorkflowCon
   const salesStage = clean(input.salesStage);
   const currentTitle = isFabricatedMeetingTitle(input.meetingTitle) ? null : clean(input.meetingTitle);
   const parsedTitle = parseAppointmentTitleOutcome(currentTitle);
-  const projectedTaskStatus = taskStatusForTitleOrStage(currentTitle, salesStage, input.taskStatus);
-  const projectedAppointmentStatus =
-    cleanAppointmentStatus(input.appointmentStatus) ||
-    appointmentStatusForTitleOrStage(salesStage, currentTitle);
-  const projectedPostMeetingResult =
-    postMeetingResultForTitleOrStage(salesStage, currentTitle) || clean(input.postMeetingResult);
+  const salesStageLifecycle = resolveSalesLifecycle(salesStage);
+  const projectedTaskStatus = salesStageLifecycle.shouldArchiveFromWorkingViews
+    ? taskStatusForStage(salesStage, input.taskStatus)
+    : taskStatusForTitleOrStage(currentTitle, salesStage, input.taskStatus);
+  const projectedAppointmentStatus = salesStageLifecycle.shouldArchiveFromWorkingViews
+    ? null
+    : cleanAppointmentStatus(input.appointmentStatus) ||
+      appointmentStatusForTitleOrStage(salesStage, currentTitle);
+  const salesStagePostMeetingResult = postMeetingResultForTitleOrStage(salesStage, null);
+  const projectedPostMeetingResult = salesStageLifecycle.shouldArchiveFromWorkingViews
+    ? salesStagePostMeetingResult
+    : postMeetingResultForTitleOrStage(salesStage, currentTitle) || clean(input.postMeetingResult);
 
   return {
     workflow_id: buildWorkflowId({ athleteId, athleteMainId, appointmentId }),

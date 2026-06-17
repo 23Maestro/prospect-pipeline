@@ -108,6 +108,30 @@ function ChipList({ values }: { values?: string[] }) {
   );
 }
 
+type FlowStep = {
+  eyebrow: string;
+  title: string;
+  detail: string;
+  state?: 'source' | 'meaning' | 'decision' | 'gate' | 'target';
+};
+
+function FlowStrip({ steps }: { steps: FlowStep[] }) {
+  return (
+    <section className="tenx-flow" aria-label="Evidence decision flow">
+      {steps.map((step, index) => (
+        <div className="tenx-flow-item" key={`${step.eyebrow}:${step.title}`}>
+          <article className={`tenx-flow-node tenx-flow-node-${step.state || 'source'}`}>
+            <span>{step.eyebrow}</span>
+            <strong>{step.title}</strong>
+            <p>{step.detail}</p>
+          </article>
+          {index < steps.length - 1 ? <div className="tenx-flow-arrow" aria-hidden="true" /> : null}
+        </div>
+      ))}
+    </section>
+  );
+}
+
 export default function TenXCommunicationsEvidencePage() {
   const [bundle, setBundle] = useState<EvidenceBundle | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -128,6 +152,59 @@ export default function TenXCommunicationsEvidencePage() {
     if (proposal.action === 'send_first_contact_reply') return 'Reply to first contact';
     return titleCase(proposal.action);
   }, [proposal]);
+  const flowSteps = useMemo<FlowStep[]>(() => {
+    const admittedBy = titleCase(sql?.admission?.admittedBy);
+    const ambiguity = titleCase(sql?.admission?.ambiguity);
+    const decodedBodies = sql?.thread?.decodedAttributedBodyCount ?? 0;
+    const totalMessages = sql?.thread?.totalMessages ?? 0;
+    const theme = titleCase(reply?.classifier?.theme);
+    const templateContext = titleCase(reply?.classifier?.templateContext);
+    const approval = proposal?.humanApprovalRequired ? 'Approval required' : 'Read only';
+    const targetCount = proposal?.suggestedMutationTargets?.length || 0;
+    return [
+      {
+        eyebrow: 'Admission',
+        title: admittedBy,
+        detail:
+          ambiguity === 'None'
+            ? `${sql?.admission?.matchedPhonesCount || 0} matched phones, no ambiguity`
+            : `${sql?.admission?.matchedPhonesCount || 0} matched phones, ${ambiguity}`,
+        state: 'source',
+      },
+      {
+        eyebrow: 'Messages SQL',
+        title: `${decodedBodies}/${totalMessages} decoded`,
+        detail: `${sql?.thread?.inboundCount || 0} inbound, ${sql?.thread?.outboundCount || 0} outbound`,
+        state: 'source',
+      },
+      {
+        eyebrow: 'Reply meaning',
+        title: theme,
+        detail: `${templateContext} -> ${titleCase(reply?.operatorAction)}`,
+        state: 'meaning',
+      },
+      {
+        eyebrow: 'Decision',
+        title: outcome,
+        detail: `${titleCase(proposal?.reason)} (${titleCase(proposal?.confidence)})`,
+        state: 'decision',
+      },
+      {
+        eyebrow: 'Gate',
+        title: approval,
+        detail: `${proposal?.requiredPreflightChecks?.length || 0} preflight checks`,
+        state: 'gate',
+      },
+      {
+        eyebrow: 'Targets',
+        title: targetCount ? `${targetCount} proposed` : 'None',
+        detail: targetCount
+          ? (proposal?.suggestedMutationTargets || []).map(titleCase).join(', ')
+          : 'No write target proposed',
+        state: 'target',
+      },
+    ];
+  }, [outcome, proposal, reply, sql]);
 
   if (loaded && !bundle) {
     return (
@@ -152,6 +229,8 @@ export default function TenXCommunicationsEvidencePage() {
           <strong>{proposal?.mutationResult === 'proposed' ? 'Approval Required' : 'Read Only'}</strong>
         </div>
       </header>
+
+      <FlowStrip steps={flowSteps} />
 
       <section className="tenx-grid">
         <article className="tenx-panel tenx-panel-primary">

@@ -7,7 +7,7 @@ import {
 import { resolveSalesLifecycle } from '../lib/sales-lifecycle';
 
 export const PENDING_CLIENT_WATCH_WINDOW_DAYS = 14;
-export const PENDING_CLIENT_LIST_LIMIT = 20;
+export const PENDING_CLIENT_LIST_LIMIT = 100;
 
 export type PendingClientAIVerdict = 'pending_client';
 export type PendingClientWatchlistStatus = 'watching' | 'resolved' | 'expired';
@@ -129,11 +129,12 @@ export type PendingClientOperatorQueueLabel =
 
 export type PendingClientOperatorQueueReplyEvidence = {
   themeBucket?: string | null;
-  lastMeaningfulInbound?: { body?: string | null } | null;
+  lastMeaningfulInbound?: { body?: string | null; date?: string | null } | null;
   operatorRepliedAfterInbound?: boolean | null;
   operatorReplyProposedTimes?: boolean | null;
   clientRepliedAfterOperatorTimes?: boolean | null;
   clientOptedOut?: boolean | null;
+  lastMeaningfulOutbound?: { body?: string | null; date?: string | null } | null;
 };
 
 export type PendingClientOperatorQueueClassification = {
@@ -155,6 +156,77 @@ export type PendingClientCentralQueueClassification = {
     | 'Bad Timing'
     | 'Payments';
   priority: number;
+};
+
+export type PendingClientAppointmentHistoryOutcome =
+  | 'scheduled'
+  | 'reschedule_pending'
+  | 'rescheduled'
+  | 'no_show'
+  | 'canceled'
+  | 'follow_up'
+  | 'closed_won'
+  | 'closed_lost'
+  | 'unknown';
+
+export type PendingClientAppointmentHistoryEntry = {
+  appointmentId?: string | number | null;
+  startsAt?: string | null;
+  updatedAt?: string | null;
+  status?: string | null;
+  postMeetingResult?: string | null;
+};
+
+export type PendingClientAppointmentHistorySummary = {
+  scheduledCount: number;
+  rescheduleCount: number;
+  noShowCount: number;
+  canceledCount: number;
+  recoveryCycleCount: number;
+  originalMeetingAt: string | null;
+  latestMeetingAt: string | null;
+  latestOutcomeAt: string | null;
+  latestOutcome: PendingClientAppointmentHistoryOutcome;
+};
+
+export type PendingClientMessageThreadSummary = {
+  operatorReachedOutAfterLatestOutcome: boolean;
+  clientRepliedAfterLatestOperator: boolean;
+  dormantDaysSinceOperatorMessage: number | null;
+  lastOperatorMessageAt: string | null;
+  lastClientMessageAt: string | null;
+  state:
+    | 'needs_operator_outreach'
+    | 'awaiting_client'
+    | 'client_replied'
+    | 'client_opted_out'
+    | 'unknown';
+};
+
+export type PendingClientCommunicationAction =
+  | 'offer_slots'
+  | 'await_client'
+  | 'review_reply'
+  | 'needs_reply'
+  | 'collect_payment'
+  | 'review'
+  | 'purge_terminal';
+
+export type PendingClientTemplateTone =
+  | 'simple_recovery'
+  | 'direct_intent_check'
+  | 'final_time_check'
+  | 'payment_clarity'
+  | 'review_context';
+
+export type PendingClientCommunicationPlan = {
+  lane: PendingClientCentralFilter;
+  action: PendingClientCommunicationAction;
+  templateTone: PendingClientTemplateTone;
+  templateKey: string;
+  evidenceFacts: string[];
+  nextSteps: string[];
+  resolutionRule: string;
 };
 
 function sourceEventAppointmentId(value?: string | null): string | null {
@@ -207,6 +279,236 @@ export function realPendingClientAthleteName(value?: string | number | null): st
 function parseDateMs(value?: string | null): number {
   const parsed = Date.parse(normalizeText(value));
   return Number.isNaN(parsed) ? Number.NaN : parsed;
+}
+
+function normalizeAppointmentHistoryOutcome(
+  value?: string | number | null,
+): PendingClientAppointmentHistoryOutcome {
+  const normalized = normalizeText(value).toLowerCase();
+  if (normalized === 'scheduled' || normalized === 'confirmation_queued' || normalized === 'confirmation_sent') {
+    return 'scheduled';
+  }
+  if (normalized === 'reschedule_pending') return 'reschedule_pending';
+  if (normalized === 'rescheduled') return 'rescheduled';
+  if (normalized === 'no_show') return 'no_show';
+  if (normalized === 'canceled' || normalized === 'cancelled') return 'canceled';
+  if (normalized === 'follow_up') return 'follow_up';
+  if (normalized === 'closed_won') return 'closed_won';
+  if (normalized === 'closed_lost') return 'closed_lost';
+  return 'unknown';
+}
+
+function appointmentHistoryOutcome(
+  row: PendingClientAppointmentHistoryEntry,
+): PendingClientAppointmentHistoryOutcome {
+  const postMeetingResult = normalizeAppointmentHistoryOutcome(row.postMeetingResult);
+  if (postMeetingResult !== 'unknown') return postMeetingResult;
+  return normalizeAppointmentHistoryOutcome(row.status);
+}
+
+function isoOrNull(value?: string | null): string | null {
+  const parsed = parseDateMs(value);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
+}
+
+function daysBetween(laterMs: number, earlierMs: number): number {
+  return Math.max(0, Math.floor((laterMs - earlierMs) / (24 * 60 * 60 * 1000)));
+}
+
+export function summarizePendingClientAppointmentHistory(
+  rows: PendingClientAppointmentHistoryEntry[],
+): PendingClientAppointmentHistorySummary {
+  const datedStarts = rows
+    .map((row) => ({ row, startsAt: parseDateMs(row.startsAt) }))
+    .filter((entry) => Number.isFinite(entry.startsAt))
+    .sort((left, right) => left.startsAt - right.startsAt);
+  const datedOutcomes = rows
+    .map((row) => ({ row, updatedAt: parseDateMs(row.updatedAt || row.startsAt) }))
+    .filter((entry) => Number.isFinite(entry.updatedAt))
+    .sort((left, right) => left.updatedAt - right.updatedAt);
+
+  let rescheduleCount = 0;
+  let noShowCount = 0;
+  let canceledCount = 0;
+
+  for (const row of rows) {
+    const outcome = appointmentHistoryOutcome(row);
+    if (outcome === 'reschedule_pending' || outcome === 'rescheduled') rescheduleCount += 1;
+    if (outcome === 'no_show') noShowCount += 1;
+    if (outcome === 'canceled') canceledCount += 1;
+  }
+
+  const latestOutcomeRow = datedOutcomes[datedOutcomes.length - 1]?.row || null;
+
+  return {
+    scheduledCount: datedStarts.length,
+    rescheduleCount,
+    noShowCount,
+    canceledCount,
+    recoveryCycleCount: rescheduleCount + noShowCount + canceledCount,
+    originalMeetingAt: isoOrNull(datedStarts[0]?.row.startsAt),
+    latestMeetingAt: isoOrNull(datedStarts[datedStarts.length - 1]?.row.startsAt),
+    latestOutcomeAt: isoOrNull(latestOutcomeRow?.updatedAt || latestOutcomeRow?.startsAt),
+    latestOutcome: latestOutcomeRow ? appointmentHistoryOutcome(latestOutcomeRow) : 'unknown',
+  };
+}
+
+export function summarizePendingClientMessageThread(
+  args: {
+    replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+    latestOutcomeAt?: string | null;
+    now?: Date;
+  },
+): PendingClientMessageThreadSummary {
+  const evidence = args.replyEvidence;
+  const nowMs = (args.now || new Date()).getTime();
+  const latestOutcomeMs = parseDateMs(args.latestOutcomeAt);
+  const lastOutboundAt = isoOrNull(evidence?.lastMeaningfulOutbound?.date);
+  const lastInboundAt = isoOrNull(evidence?.lastMeaningfulInbound?.date);
+  const lastOutboundMs = parseDateMs(lastOutboundAt);
+  const lastInboundMs = parseDateMs(lastInboundAt);
+  const operatorReachedOutAfterLatestOutcome =
+    Number.isFinite(latestOutcomeMs) &&
+    Number.isFinite(lastOutboundMs) &&
+    lastOutboundMs >= latestOutcomeMs;
+  const clientRepliedAfterLatestOperator =
+    Number.isFinite(lastInboundMs) &&
+    Number.isFinite(lastOutboundMs) &&
+    lastInboundMs > lastOutboundMs;
+  const dormantDaysSinceOperatorMessage =
+    Number.isFinite(lastOutboundMs) && !clientRepliedAfterLatestOperator
+      ? daysBetween(nowMs, lastOutboundMs)
+      : null;
+
+  let state: PendingClientMessageThreadSummary['state'] = 'unknown';
+  if (isNoInterestReply(evidence)) {
+    state = 'client_opted_out';
+  } else if (clientRepliedAfterLatestOperator || Boolean(evidence?.clientRepliedAfterOperatorTimes)) {
+    state = 'client_replied';
+  } else if (operatorReachedOutAfterLatestOutcome || Boolean(evidence?.operatorReplyProposedTimes)) {
+    state = 'awaiting_client';
+  } else if (Number.isFinite(latestOutcomeMs)) {
+    state = 'needs_operator_outreach';
+  }
+
+  return {
+    operatorReachedOutAfterLatestOutcome,
+    clientRepliedAfterLatestOperator,
+    dormantDaysSinceOperatorMessage,
+    lastOperatorMessageAt: lastOutboundAt,
+    lastClientMessageAt: lastInboundAt,
+    state,
+  };
+}
+
+function pendingClientCycleBand(recoveryCycleCount: number): 'first' | 'repeat' | 'final' {
+  if (recoveryCycleCount >= 3) return 'final';
+  if (recoveryCycleCount === 2) return 'repeat';
+  return 'first';
+}
+
+function actionForCentralQueue(
+  queue: PendingClientCentralQueueClassification,
+): PendingClientCommunicationAction {
+  if (queue.actionLabel === 'Offer Slots') return 'offer_slots';
+  if (queue.actionLabel === 'Awaiting Client') return 'await_client';
+  if (queue.actionLabel === 'Review Reply') return 'review_reply';
+  if (queue.actionLabel === 'Needs Reply') return 'needs_reply';
+  if (queue.actionLabel === 'Payments') return 'collect_payment';
+  return 'review';
+}
+
+function toneForPlan(args: {
+  queue: PendingClientCentralQueueClassification;
+  appointmentHistory: PendingClientAppointmentHistorySummary;
+}): PendingClientTemplateTone {
+  if (args.queue.filter === 'payments') return 'payment_clarity';
+  if (args.queue.filter === 'review_follow_ups') return 'review_context';
+  const band = pendingClientCycleBand(args.appointmentHistory.recoveryCycleCount);
+  if (band === 'final') return 'final_time_check';
+  if (band === 'repeat') return 'direct_intent_check';
+  return 'simple_recovery';
+}
+
+function templateKeyForPlan(args: {
+  queue: PendingClientCentralQueueClassification;
+  action: PendingClientCommunicationAction;
+  appointmentHistory: PendingClientAppointmentHistorySummary;
+  messageThread: PendingClientMessageThreadSummary;
+}): string {
+  const lane = args.queue.filter;
+  const band = pendingClientCycleBand(args.appointmentHistory.recoveryCycleCount);
+  return [lane, band, args.messageThread.state, args.action].join('.');
+}
+
+export function buildPendingClientCommunicationPlan(args: {
+  queue: PendingClientCentralQueueClassification;
+  appointmentHistory: PendingClientAppointmentHistorySummary;
+  messageThread: PendingClientMessageThreadSummary;
+  salesStage?: string | null;
+}): PendingClientCommunicationPlan {
+  const lifecycle = resolveSalesLifecycle(args.salesStage);
+  if (lifecycle.shouldArchiveFromWorkingViews) {
+    return {
+      lane: args.queue.filter,
+      action: 'purge_terminal',
+      templateTone: 'review_context',
+      templateKey: `${args.queue.filter}.terminal.purge`,
+      evidenceFacts: [
+        `Sales stage: ${lifecycle.normalizedStage}`,
+        `Latest outcome: ${args.appointmentHistory.latestOutcome}`,
+      ],
+      nextSteps: ['Remove from active Pending Clients and Client Messages tracking.'],
+      resolutionRule: 'Terminal sales stage wins unless a later source-system stage reopens the client.',
+    };
+  }
+
+  const action = actionForCentralQueue(args.queue);
+  const templateTone = toneForPlan({
+    queue: args.queue,
+    appointmentHistory: args.appointmentHistory,
+  });
+  const facts = [
+    `Scheduled: ${args.appointmentHistory.scheduledCount}`,
+    `Reschedules: ${args.appointmentHistory.rescheduleCount}`,
+    `No-shows: ${args.appointmentHistory.noShowCount}`,
+    `Cancels: ${args.appointmentHistory.canceledCount}`,
+    `Message state: ${args.messageThread.state}`,
+  ];
+  const nextSteps: string[] = [];
+  if (action === 'offer_slots') {
+    nextSteps.push('Send a concise value reminder and offer ranked slots near the prior meeting time.');
+  } else if (action === 'await_client') {
+    nextSteps.push('Wait for the client response unless dormant threshold is exceeded.');
+  } else if (action === 'review_reply') {
+    nextSteps.push('Use the client reply to confirm a slot or close the loop.');
+  } else if (action === 'collect_payment') {
+    nextSteps.push('Confirm package/payment intent and route payment evidence without changing meeting truth.');
+  } else {
+    nextSteps.push('Review the latest scout note/event and choose the next operator action.');
+  }
+  if (templateTone === 'direct_intent_check') {
+    nextSteps.push('Ask for a direct yes/no intent check with new slots.');
+  }
+  if (templateTone === 'final_time_check') {
+    nextSteps.push('Make the final time-protection check before resolving or purging.');
+  }
+
+  return {
+    lane: args.queue.filter,
+    action,
+    templateTone,
+    templateKey: templateKeyForPlan({
+      queue: args.queue,
+      action,
+      appointmentHistory: args.appointmentHistory,
+      messageThread: args.messageThread,
+    }),
+    evidenceFacts: facts,
+    nextSteps,
+    resolutionRule:
+      'Resolve when a new confirmed appointment, terminal sales stage, payment resolution, or explicit client opt-out changes the source truth.',
+  };
 }
 
 function getPayloadOperatorKey(row: SetMeetingConfirmationCacheRowInput): string {
