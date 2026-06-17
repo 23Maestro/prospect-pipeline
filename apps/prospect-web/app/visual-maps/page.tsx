@@ -21,6 +21,20 @@ type Bucket = {
 
 const buckets: Bucket[] = [
   {
+    title: 'Visual Grammar',
+    label: 'Map rules',
+    tone: 'slate',
+    summary: 'Portable color, shape, and layout rules for simple visual debugging maps.',
+    visuals: [
+      {
+        title: 'Mobile Visual Grammar Card',
+        href: '/visual-maps/visual-grammar.html',
+        status: 'Current',
+        note: 'Scriptable-friendly static HTML reminder for colors, shapes, and layouts.',
+      },
+    ],
+  },
+  {
     title: 'Meetings',
     label: 'Meeting truth',
     tone: 'green',

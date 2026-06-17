@@ -112,7 +112,7 @@ type FlowStep = {
   eyebrow: string;
   title: string;
   detail: string;
-  state?: 'operator' | 'truth' | 'proposal' | 'stop';
+  state?: 'evidence' | 'verified' | 'automation' | 'review' | 'mutation' | 'risk';
 };
 
 function FlowStrip({ steps }: { steps: FlowStep[] }) {
@@ -169,31 +169,31 @@ export default function TenXCommunicationsEvidencePage() {
           ambiguity === 'None'
             ? `${sql?.admission?.matchedPhonesCount || 0} matched phones, no ambiguity`
             : `${sql?.admission?.matchedPhonesCount || 0} matched phones, ${ambiguity}`,
-        state: ambiguity === 'None' ? 'truth' : 'stop',
+        state: ambiguity === 'None' ? 'evidence' : 'risk',
       },
       {
         eyebrow: 'Messages SQL',
         title: `${decodedBodies}/${totalMessages} decoded`,
         detail: `${sql?.thread?.inboundCount || 0} inbound, ${sql?.thread?.outboundCount || 0} outbound`,
-        state: decodedBodies ? 'truth' : 'stop',
+        state: decodedBodies ? 'evidence' : 'risk',
       },
       {
         eyebrow: 'Reply meaning',
         title: theme,
         detail: `${templateContext} -> ${titleCase(reply?.operatorAction)}`,
-        state: 'proposal',
+        state: 'automation',
       },
       {
-        eyebrow: 'Decision',
+        eyebrow: 'Human review',
         title: outcome,
         detail: `${titleCase(proposal?.reason)} (${titleCase(proposal?.confidence)})`,
-        state: 'operator',
+        state: 'review',
       },
       {
         eyebrow: 'Gate',
         title: approval,
         detail: `${proposal?.requiredPreflightChecks?.length || 0} preflight checks`,
-        state: 'proposal',
+        state: proposal?.humanApprovalRequired ? 'review' : 'verified',
       },
       {
         eyebrow: 'Targets',
@@ -201,7 +201,7 @@ export default function TenXCommunicationsEvidencePage() {
         detail: targetCount
           ? (proposal?.suggestedMutationTargets || []).map(titleCase).join(', ')
           : 'No write target proposed',
-        state: targetCount ? 'proposal' : 'truth',
+        state: targetCount ? 'mutation' : 'verified',
       },
     ];
   }, [outcome, proposal, reply, sql]);

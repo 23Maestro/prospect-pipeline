@@ -1,59 +1,61 @@
 specification {
-  element operator
-  element command
-  element domain
+  element person
+  element browser
+  element bucket
+  element component
   element adapter
-  element datastore
-  element webview
+  element storage
+  element document
+  element queue
   element action
 }
 
 model {
-  sc = operator 'Scouting Coordinator'
+  sc = person 'Scouting Coordinator'
 
-  prospectPipeline = command 'Prospect Pipeline Raycast' {
-    clientMessages = command 'Client Messages'
-    scoutPrep = command 'Scout Prep'
+  prospectPipeline = browser 'Prospect Pipeline Raycast' {
+    clientMessages = browser 'Client Messages'
+    scoutPrep = browser 'Scout Prep'
   }
 
-  clientCommunication = domain 'Client Communication' {
-    threadEvidence = domain 'Thread Evidence Receipt'
-    replyClassifier = domain 'Reply Meaning Classifier'
-    actionProposal = domain 'Action Proposal'
-    visualPayload = domain 'Evidence Bundle'
+  clientCommunication = bucket 'Client Communication' {
+    threadEvidence = document 'Thread Evidence Receipt'
+    replyClassifier = component 'Reply Meaning Classifier'
+    actionProposal = component 'Human Review Required'
+    visualPayload = document 'Evidence Bundle'
   }
 
-  sourceAdapters = adapter 'Source Adapters' {
-    messagesSql = adapter 'Messages SQL'
-    contactCache = datastore 'Athlete Contact Cache'
+  sourceAdapters = bucket 'Source Adapters' {
+    messagesSql = storage 'Messages SQL'
+    contactCache = storage 'Athlete Contact Cache'
     reminders = adapter 'Apple Reminders'
     calendar = adapter 'Apple Calendar'
   }
 
-  prospectWeb = webview 'Prospect Web' {
-    visualReceipt = webview '10x Communications Evidence'
+  prospectWeb = browser 'Prospect Web' {
+    visualReceipt = document '10x Communications Evidence'
   }
 
-  mutations = action 'Proposed Mutations' {
+  mutations = queue 'Proposed Mutations' {
     clientMessageSend = action 'Client Message Send'
     reminderCreate = action 'Apple Reminder'
     calendarCreate = action 'Apple Calendar Appt'
   }
 
-  sc -> clientMessages 'Reviews follow-up candidates'
-  clientMessages -> messagesSql 'Reads decoded thread messages'
-  clientMessages -> contactCache 'Admits thread by matched client phone'
-  messagesSql -> threadEvidence 'Provides direction, counts, latest sender'
-  contactCache -> threadEvidence 'Provides athlete/contact context'
-  threadEvidence -> replyClassifier 'Supplies evidence'
-  replyClassifier -> actionProposal 'Determines operator action'
-  actionProposal -> visualPayload 'Combines proposal and evidence receipts'
-  visualPayload -> visualReceipt 'Opens encoded browser view'
-  visualReceipt -> sc 'Shows decision path'
-  actionProposal -> clientMessageSend 'Proposes when approval required'
-  actionProposal -> reminderCreate 'Proposes follow-up reminder'
-  actionProposal -> calendarCreate 'Proposes calendar preflight'
-  clientMessageSend -> scoutPrep 'May complete related task after send'
+  sc -> clientMessages
+  clientMessages -> messagesSql
+  clientMessages -> contactCache
+  messagesSql -> threadEvidence
+  contactCache -> threadEvidence
+  threadEvidence -> replyClassifier
+  replyClassifier -> actionProposal 'requires approval'
+  actionProposal -> visualPayload
+  visualPayload -> visualReceipt
+  visualReceipt -> sc
+  actionProposal -> clientMessageSend
+  actionProposal -> reminderCreate
+  actionProposal -> calendarCreate
+  clientMessageSend -> scoutPrep
 }
 
 views {
@@ -66,6 +68,48 @@ views {
     include sourceAdapters.*
     include prospectWeb.visualReceipt
     include mutations.*
+
+    style * {
+      color muted
+    }
+    style sc {
+      shape person
+      color amber
+    }
+    style prospectPipeline, prospectPipeline.clientMessages, prospectPipeline.scoutPrep, prospectWeb {
+      shape browser
+      color muted
+    }
+    style sourceAdapters, clientCommunication {
+      shape bucket
+      color muted
+    }
+    style sourceAdapters.messagesSql, sourceAdapters.contactCache {
+      shape storage
+      color blue
+    }
+    style clientCommunication.threadEvidence, clientCommunication.visualPayload {
+      shape document
+      color blue
+    }
+    style prospectWeb.visualReceipt {
+      shape document
+      color green
+    }
+    style clientCommunication.replyClassifier {
+      color secondary
+    }
+    style clientCommunication.actionProposal {
+      color amber
+      border dashed
+    }
+    style mutations {
+      shape queue
+      color muted
+    }
+    style mutations.clientMessageSend, mutations.reminderCreate, mutations.calendarCreate {
+      color red
+    }
   }
 
   view client_messages_decision_receipt {
@@ -78,8 +122,38 @@ views {
     include clientCommunication.visualPayload
     include prospectWeb.visualReceipt
     include mutations.*
+
+    style * {
+      color muted
+    }
+    style sourceAdapters, clientCommunication {
+      shape bucket
+      color muted
+    }
+    style sourceAdapters.messagesSql, sourceAdapters.contactCache {
+      shape storage
+      color blue
+    }
+    style clientCommunication.threadEvidence, clientCommunication.visualPayload {
+      shape document
+      color blue
+    }
+    style prospectWeb.visualReceipt {
+      shape document
+      color green
+    }
+    style clientCommunication.replyClassifier {
+      color secondary
+    }
     style clientCommunication.actionProposal {
-    	border dashed
+      color amber
+      border dashed
+    }
+    style mutations {
+      shape queue
+      color muted
+    }
+    style mutations.clientMessageSend, mutations.reminderCreate, mutations.calendarCreate {
       color red
     }
   }
