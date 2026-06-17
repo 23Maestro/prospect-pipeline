@@ -3,9 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import type { ScoutPortalTask, ScoutPrepContext } from '../features/scout-prep/types';
 import {
+  buildManualAdditionalAthleteContactCacheRow,
   buildAthleteContactCacheKey,
   buildAthleteContactCacheSyncPlan,
+  formatNormalizedContactCachePhone,
   type AthleteContactCacheSyncPlan,
+  type ManualAdditionalAthleteContactArgs,
 } from '../domain/athlete-contact-cache';
 import {
   hasAthleteContactCacheRows,
@@ -45,6 +48,13 @@ export type AthleteContactCacheClientMatch = {
   timezoneLabel: string | null;
 };
 
+export type ManualAdditionalAthleteContact = {
+  name: string;
+  relationshipLabel: string;
+  phone: string;
+  normalizedPhone: string;
+};
+
 type AthleteContactCacheReadRow = {
   athlete_key?: string | null;
   athlete_id?: string | null;
@@ -57,6 +67,8 @@ type AthleteContactCacheReadRow = {
   normalized_phone?: string | null;
   timezone?: string | null;
   timezone_label?: string | null;
+  source?: string | null;
+  payload_json?: Record<string, unknown> | null;
 };
 
 type AthleteLifecycleReadRow = {
@@ -415,6 +427,64 @@ export async function syncAthleteContactCacheFromScoutPrepContext(args: {
 
   await upsertAthleteContactCacheRows(config, plan.rows);
   return { enabled: true, action: plan.action, count: plan.rows.length };
+}
+
+export async function upsertManualAdditionalAthleteContactCacheRow(
+  args: ManualAdditionalAthleteContactArgs,
+): Promise<{ enabled: boolean; count: number; normalizedPhone: string | null }> {
+  const row = buildManualAdditionalAthleteContactCacheRow(args);
+  if (!row) {
+    throw new Error('No phone');
+  }
+
+  const config = await getSupabaseConfig('athlete_contact_cache');
+  if (!config) {
+    return { enabled: false, count: 0, normalizedPhone: row.normalized_phone };
+  }
+
+  await upsertAthleteContactCacheRows(config, [row]);
+  return { enabled: true, count: 1, normalizedPhone: row.normalized_phone };
+}
+
+export async function listManualAdditionalAthleteContacts(
+  context: ScoutPrepContext,
+): Promise<ManualAdditionalAthleteContact[]> {
+  const athleteId = String(context.resolved.athlete_id || context.task.contact_id || '').trim();
+  const athleteMainId = String(
+    context.resolved.athlete_main_id || context.task.athlete_main_id || '',
+  ).trim();
+  if (!athleteId || !athleteMainId) return [];
+
+  const config = await getSupabaseConfig('athlete_contact_cache');
+  if (!config) return [];
+
+  const athleteKey = buildAthleteContactCacheKey(athleteId, athleteMainId);
+  const rows = await readRows<AthleteContactCacheReadRow>(
+    config,
+    'athlete_contact_cache',
+    [
+      'select=contact_name,relationship_label,phone,normalized_phone,source,payload_json,last_seen_at',
+      `athlete_key=eq.${encodeURIComponent(athleteKey)}`,
+      'cache_status=eq.active',
+      'source=eq.scout_prep_manual_contact',
+      'order=last_seen_at.desc',
+    ].join('&'),
+  );
+
+  const uniqueByPhone = new Map<string, ManualAdditionalAthleteContact>();
+  for (const row of rows) {
+    const normalizedPhone = String(row.normalized_phone || '').trim();
+    const name = String(row.contact_name || '').trim();
+    if (!normalizedPhone || !name || uniqueByPhone.has(normalizedPhone)) continue;
+    uniqueByPhone.set(normalizedPhone, {
+      name,
+      relationshipLabel: 'Parent 2',
+      phone: formatNormalizedContactCachePhone(normalizedPhone) || String(row.phone || '').trim(),
+      normalizedPhone,
+    });
+  }
+
+  return Array.from(uniqueByPhone.values());
 }
 
 export async function hasAthleteContactCacheForTask(

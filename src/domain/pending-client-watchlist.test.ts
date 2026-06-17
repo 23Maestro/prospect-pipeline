@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import {
   buildPendingClientOwnerSnapshot,
   buildPendingClientEvidenceDescription,
+  buildPendingClientChecklistMarkdown,
   buildPendingClientCommunicationPlan,
   buildPendingClientResolvedPatch,
   buildPendingClientWatchlistRow,
@@ -14,6 +15,7 @@ import {
   classifyPendingClientCentralQueue,
   classifyPendingClientLifecycle,
   classifyPendingClientOperatorQueue,
+  extractPendingClientEvidenceNote,
   filterReadySetMeetingConfirmationGroups,
   filterPendingClientCandidateEvents,
   findPendingClientSignals,
@@ -22,6 +24,7 @@ import {
   isPendingClientResolvedByFutureConfirmation,
   isPendingClientReviewEventTitle,
   normalizePendingClientAIVerdict,
+  parsePendingClientEvidenceNote,
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
   selectLatestPendingClientNote,
@@ -120,6 +123,30 @@ test('pending client watch note rejects meeting descriptions and keeps real foll
   assert.equal(hasPendingClientWatchNote('   \n  '), false);
   assert.equal(hasPendingClientWatchNote('Date\nCreated By\nTitle\nDescription'), false);
   assert.equal(hasPendingClientWatchNote('Date Created By Title Description'), false);
+  assert.equal(
+    extractPendingClientEvidenceNote(
+      [
+        'Pending client review from appointment outcome: reschedule_pending.',
+        '',
+        'Event List: https://www.maxpreps.com/ia/orange-city/moc-floyd-valley-dutchmen/football/',
+        '',
+        'Notes Tab: called into work',
+        '',
+        'Notes Tab: called into work',
+      ].join('\n'),
+    ),
+    'called into work',
+  );
+  assert.equal(
+    extractPendingClientEvidenceNote(
+      [
+        'Event List: Follow up with dad next week.',
+        '',
+        'Notes Tab: Father and son wanted to think it over.',
+      ].join('\n'),
+    ),
+    'Father and son wanted to think it over.',
+  );
 });
 
 test('pending client rows reject athlete-key text as display name', () => {
@@ -650,6 +677,175 @@ test('pending client message summary answers whether operator reached out after 
   });
 });
 
+test('pending client checklist checks real note and outbound reschedule evidence once', () => {
+  const row = pendingClientRow({
+    description: [
+      'Pending client review from appointment outcome: reschedule_pending.',
+      '',
+      'Notes Tab: called into work',
+      '',
+      'Notes Tab: called into work',
+    ].join('\n'),
+    last_seen_at: '2026-06-16T22:09:40.206Z',
+  });
+  const markdown = buildPendingClientChecklistMarkdown({
+    row,
+    replyEvidence: {
+      themeBucket: 'RSP',
+      operatorReplyProposedTimes: true,
+      operatorRepliedAfterInbound: true,
+      lastMeaningfulOutbound: {
+        body: 'No worries. Would tonight or tomorrow work?',
+        date: '2026-06-17T15:00:00.000Z',
+      },
+    },
+    now: new Date('2026-06-19T15:00:00.000Z'),
+  });
+
+  assert.equal(
+    markdown,
+    [
+      '## Next Action',
+      '',
+      '- [x] Add note',
+      '- [x] Offer slots',
+      '- [ ] Follow up',
+      '',
+      '## Note',
+      '',
+      '```',
+      'called into work',
+      '```',
+    ].join('\n'),
+  );
+  assert.equal(markdown.match(/Add note/g)?.length, 1);
+  assert.doesNotMatch(markdown, /themeBucket|operatorReplyProposedTimes|reschedule_pending|_/);
+});
+
+test('pending client checklist waits for note and reschedule outreach when evidence is missing', () => {
+  const row = pendingClientRow({
+    description: 'Pending client review from appointment outcome: reschedule_pending.',
+    last_seen_at: '2026-06-16T22:09:40.206Z',
+  });
+
+  assert.equal(
+    buildPendingClientChecklistMarkdown({
+      row,
+      replyEvidence: null,
+      now: new Date('2026-06-17T15:00:00.000Z'),
+    }),
+    [
+      '## Next Action',
+      '',
+      '- [ ] Add note',
+      '- [ ] Offer slots',
+    ].join('\n'),
+  );
+});
+
+test('pending client checklist marks offered slots and waits for reply right after outbound times', () => {
+  const row = pendingClientRow({
+    description: 'Notes Tab: Gage has practice',
+    last_seen_at: '2026-06-17T17:34:00.000Z',
+  });
+
+  assert.equal(
+    buildPendingClientChecklistMarkdown({
+      row,
+      replyEvidence: {
+        themeBucket: 'RSP',
+        operatorReplyProposedTimes: true,
+        clientRepliedAfterOperatorTimes: false,
+        lastMeaningfulOutbound: {
+          body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
+          date: '2026-06-17T19:05:00.000Z',
+        },
+      },
+      now: new Date('2026-06-17T19:10:00.000Z'),
+    }),
+    [
+      '## Next Action',
+      '',
+      '- [x] Add note',
+      '- [x] Offer slots',
+      '- [ ] Wait for reply',
+      '',
+      '## Note',
+      '',
+      '```',
+      'Gage has practice',
+      '```',
+    ].join('\n'),
+  );
+});
+
+test('pending client checklist asks for reply review when client responds after sent times', () => {
+  const row = pendingClientRow({
+    description: 'Notes Tab: called into work',
+    last_seen_at: '2026-06-16T22:09:40.206Z',
+  });
+
+  assert.equal(
+    buildPendingClientChecklistMarkdown({
+      row,
+      replyEvidence: {
+        themeBucket: 'RSP',
+        operatorReplyProposedTimes: true,
+        clientRepliedAfterOperatorTimes: true,
+        lastMeaningfulOutbound: {
+          body: 'No worries. Would tonight or tomorrow work?',
+          date: '2026-06-17T15:00:00.000Z',
+        },
+        lastMeaningfulInbound: {
+          body: 'Tomorrow works better.',
+          date: '2026-06-17T16:00:00.000Z',
+        },
+      },
+      now: new Date('2026-06-17T17:00:00.000Z'),
+    }),
+    [
+      '## Next Action',
+      '',
+      '- [x] Add note',
+      '- [x] Offer slots',
+      '- [ ] Review reply',
+      '',
+      '## Note',
+      '',
+      '```',
+      'called into work',
+      '```',
+    ].join('\n'),
+  );
+});
+
+test('pending client note evidence renders timestamp and description without title noise', () => {
+  const rawNote =
+    "Follow Up - Darius Nicholson Men's Basketball 2022 TX 04/21/26 07:50 PM Father and son wanted to think it over - Elite discount and price details.";
+  const parsed = parsePendingClientEvidenceNote(rawNote);
+
+  assert.equal(parsed?.timestampLabel, 'Tuesday, April 21st at 7:50 PM');
+  assert.equal(
+    parsed?.description,
+    'Father and son wanted to think it over - Elite discount and price details.',
+  );
+
+  const row = pendingClientRow({
+    description: `Lifecycle: meeting_follow_up\n\nNotes Tab: ${rawNote}`,
+  });
+  const markdown = buildPendingClientChecklistMarkdown({ row });
+
+  assert.match(markdown, /## Note/);
+  assert.match(markdown, /Tuesday, April 21st at 7:50 PM/);
+  assert.match(
+    markdown,
+    /```\nFather and son wanted to think it over - Elite discount and price details\.\n```/,
+  );
+  assert.doesNotMatch(markdown, /Follow Up - Darius/);
+  assert.doesNotMatch(markdown, /Text:/);
+  assert.doesNotMatch(markdown, /Client:/);
+});
+
 test('pending client communication plan escalates repeated RSP cycles without new tags', () => {
   const appointmentHistory = summarizePendingClientAppointmentHistory([
     {
@@ -898,6 +1094,9 @@ test('pending client Raycast loader reads appointment outcomes plus support tomb
   assert.match(source, /action_tag=eq\.Payment Watch/);
   assert.match(source, /resolveBookedMeetingDetailsForForm/);
   assert.match(source, /meeting_timezone/);
+  assert.match(source, /buildPendingClientEvidenceDescription/);
+  assert.match(source, /pending_client_operator_note/);
+  assert.match(source, /pending_client_scout_note/);
   assert.doesNotMatch(source, /expires_at=gte/);
   assert.doesNotMatch(source, /active_athlete_meeting_truth/);
   assert.doesNotMatch(source, /readCurrentPipelineRows/);

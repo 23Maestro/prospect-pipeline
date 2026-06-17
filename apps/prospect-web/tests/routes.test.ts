@@ -785,13 +785,22 @@ test('/api/set-meeting-confirmation-prefix forwards admin modal prefixes to Fast
   });
 });
 
-test('/api/post-meeting-outcome writes prefix, stage, scout note, and operator note', async () => {
+test('/api/post-meeting-outcome writes prefix, stage, appointment outcome, scout note, and operator note', async () => {
   process.env.FASTAPI_BASE_URL = 'https://tailnet.example';
   process.env.PROSPECT_API_TOKEN = 'secret';
+  process.env.SUPABASE_URL = 'https://supabase.example';
+  process.env.SUPABASE_SECRET_KEY = 'service-role';
+  process.env.SUPABASE_SCHEMA = 'public';
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
     const requestUrl = String(url);
+    if (requestUrl.includes('/rest/v1/appointments?select=source_payload')) {
+      return Response.json([{ source_payload: { meeting_title_current: 'Jamiya Turner' } }]);
+    }
+    if (requestUrl.includes('/rest/v1/appointments?')) {
+      return Response.json({ success: true });
+    }
     if (requestUrl.includes('/calendar/booked-meeting/details?')) {
       return Response.json({
         success: true,
@@ -846,6 +855,8 @@ test('/api/post-meeting-outcome writes prefix, stage, scout note, and operator n
       '/calendar/booked-meeting/details?event_id=628106&event_date=2026-05-16',
       '/calendar/booked-meeting/title',
       '/sales/stage',
+      'https://supabase.example/rest/v1/appointments?select=source_payload&id=eq.628106&limit=1',
+      'https://supabase.example/rest/v1/appointments?id=eq.628106',
       '/notes/add',
       '/notes/add',
     ],
@@ -855,13 +866,25 @@ test('/api/post-meeting-outcome writes prefix, stage, scout note, and operator n
     athlete_main_id: '953',
     stage: 'Meeting Result - Res. Pending',
   });
-  assert.deepEqual(JSON.parse(String(calls[3].init?.body)), {
+  assert.equal(calls[4].init?.method, 'PATCH');
+  const appointmentPatchBody = JSON.parse(String(calls[4].init?.body));
+  assert.equal(appointmentPatchBody.post_meeting_result, 'reschedule_pending');
+  assert.equal(appointmentPatchBody.status_reason, 'sales_stage_reschedule_pending');
+  assert.match(appointmentPatchBody.updated_at, /^\d{4}-/);
+  assert.deepEqual(appointmentPatchBody.source_payload, {
+    meeting_title_current: 'Jamiya Turner',
+    pending_client_scout_note: 'Head Scout notes from booked meeting',
+    pending_client_operator_note_title: 'Reschedule Pending Reason',
+    pending_client_operator_note: 'Mom asked to reschedule after work.',
+    post_meeting_outcome_source: 'prospect_web_post_meeting_outcome',
+  });
+  assert.deepEqual(JSON.parse(String(calls[5].init?.body)), {
     athlete_id: '149',
     athlete_main_id: '953',
     title: 'RSP And Scout Notes',
     description: 'Head Scout notes from booked meeting',
   });
-  assert.deepEqual(JSON.parse(String(calls[4].init?.body)), {
+  assert.deepEqual(JSON.parse(String(calls[6].init?.body)), {
     athlete_id: '149',
     athlete_main_id: '953',
     title: 'Reschedule Pending Reason',

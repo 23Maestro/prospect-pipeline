@@ -782,7 +782,7 @@ function isSubstantiveMessageBody(text?: string | null): boolean {
 }
 
 function isPostMeetingRecoveryContext(value?: string | null): boolean {
-  return /\breschedule\s+pending\b|\bpending\s+reschedule\b|\bres\.\s*pending\b|\bno\s*show\b|\bcancel(?:ed|led|ation)?\b/i.test(
+  return /\breschedule\s+pending\b|\bpending\s+reschedule\b|\bres\.\s*pending\b|\brsp\b|\bno\s*show\b|\bcancel(?:ed|led|ation)?\b/i.test(
     normalizeText(value),
   );
 }
@@ -1141,6 +1141,39 @@ function buildClientReplyEvidence(args: {
   };
 }
 
+function buildOutboundRescheduleOfferEvidence(args: {
+  messages: ClientReplyThemeReviewMessageInput[];
+  offer: ClientReplyThemeReviewMessageInput;
+  taskTitle?: string | null;
+}): ClientReplyEvidence {
+  const meaningful = args.messages.filter((message) => normalizeText(message.body));
+  const inboundMessages = meaningful.filter((message) => !message.isFromMe);
+  const outboundMessages = meaningful.filter((message) => message.isFromMe);
+  const offerDate = normalizeText(args.offer.date);
+  return {
+    themeBucket: classifyPendingClientThemeBucket(
+      args.offer.body,
+      'reschedule_request',
+      args.taskTitle,
+    ),
+    lastMeaningfulInbound: inboundMessages.length
+      ? toMessageEvidence(inboundMessages[inboundMessages.length - 1])
+      : null,
+    lastMeaningfulOutbound: outboundMessages.length
+      ? toMessageEvidence(outboundMessages[outboundMessages.length - 1])
+      : toMessageEvidence(args.offer),
+    lastOperatorRescheduleOffer: toMessageEvidence(args.offer),
+    operatorRepliedAfterInbound: Boolean(
+      inboundMessages.some((message) => normalizeText(message.date) < offerDate),
+    ),
+    operatorReplyProposedTimes: true,
+    clientRepliedAfterOperatorTimes: Boolean(
+      offerDate && inboundMessages.some((message) => normalizeText(message.date) > offerDate),
+    ),
+    clientOptedOut: false,
+  };
+}
+
 function flagMatchesTemplateContext(
   theme: ClientMessageTheme,
   templateContext: ClientMessageTemplateContext | null,
@@ -1244,6 +1277,55 @@ export function buildClientReplyThemeReviewSnapshot(args: {
           reason: latestTemplateContext ? 'wrong_template_context' : 'no_template_context',
         });
       }
+    }
+
+    const outboundRescheduleOffers = messages.filter(
+      (message) => message.isFromMe && isOperatorRescheduleOffer(message.body),
+    );
+    const latestOutboundRescheduleOffer =
+      outboundRescheduleOffers[outboundRescheduleOffers.length - 1] || null;
+    const latestOfferDate = normalizeText(latestOutboundRescheduleOffer?.date);
+    const clientRepliedAfterLatestOffer = Boolean(
+      latestOfferDate &&
+        messages.some(
+          (message) => !message.isFromMe && normalizeText(message.date) > latestOfferDate,
+        ),
+    );
+    const alreadyHasOfferRow = rows.some(
+      (row) => row.chatGuid === chat.guid && row.replyEvidence?.operatorReplyProposedTimes,
+    );
+    if (
+      latestOutboundRescheduleOffer &&
+      isPostMeetingRecoveryContext(chat.taskTitle) &&
+      !clientRepliedAfterLatestOffer &&
+      !alreadyHasOfferRow
+    ) {
+      rows.push({
+        id: `${chat.guid}:${latestOutboundRescheduleOffer.guid}:outbound_reschedule_offer`,
+        chatGuid: chat.guid,
+        messageGuid: latestOutboundRescheduleOffer.guid,
+        theme: 'reschedule_request',
+        templateContext: 'confirmation',
+        messageBody: normalizeText(latestOutboundRescheduleOffer.body),
+        messageDate: latestOfferDate || null,
+        senderName: normalizeText(latestOutboundRescheduleOffer.senderName) || null,
+        sender: normalizeText(latestOutboundRescheduleOffer.sender) || null,
+        displayName: normalizeText(chat.displayName),
+        athleteName: normalizeText(chat.athleteName) || null,
+        contactId: normalizeText(chat.contactId) || null,
+        athleteMainId: normalizeText(chat.athleteMainId) || null,
+        timezone: normalizeText(chat.timezone) || null,
+        timezoneLabel: normalizeText(chat.timezoneLabel) || null,
+        taskTitle: normalizeText(chat.taskTitle) || null,
+        matchedPhones: chat.matchedPhones || [],
+        operatorRepliedAfter: true,
+        operatorRescheduleOfferAfter: true,
+        replyEvidence: buildOutboundRescheduleOfferEvidence({
+          messages,
+          offer: latestOutboundRescheduleOffer,
+          taskTitle: chat.taskTitle,
+        }),
+      });
     }
   }
 

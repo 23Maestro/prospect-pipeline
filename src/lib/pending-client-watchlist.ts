@@ -2,6 +2,7 @@ import { getPreferenceValues } from '@raycast/api';
 import fs from 'fs';
 import path from 'path';
 import {
+  buildPendingClientEvidenceDescription,
   buildPendingClientWatchlistRow,
   buildPendingClientResolvedPatch,
   cleanPendingClientAthleteName,
@@ -262,7 +263,7 @@ function appointmentWatchlistSourceId(row: AppointmentPendingClientRow): string 
   return `appointment:${String(row.id || row.source_event_id || '').trim()}`;
 }
 
-function buildPendingClientRowsFromAppointments(
+export function buildPendingClientRowsFromAppointments(
   appointments: AppointmentPendingClientRow[],
   athleteNamesByKey: Map<string, string>,
 ): PendingClientWatchlistDisplayRow[] {
@@ -279,6 +280,13 @@ function buildPendingClientRowsFromAppointments(
       payloadText(payload, 'meeting_title_current') ||
       payloadText(payload, 'meeting_title_base') ||
       `${athleteName || 'Pending Client'} - ${pendingClientOutcomeLabel(outcome)}`;
+    const operatorNote = payloadText(payload, 'pending_client_operator_note');
+    const scoutNote = payloadText(payload, 'pending_client_scout_note');
+    const description = buildPendingClientEvidenceDescription({
+      notesTabEntry: operatorNote ? { description: operatorNote } : null,
+      reviewEvent: scoutNote ? { description: scoutNote } : null,
+      missingMessage: `Pending client review from appointment outcome: ${outcome}.`,
+    });
 
     const row = buildPendingClientWatchlistRow({
       event: {
@@ -288,7 +296,7 @@ function buildPendingClientRowsFromAppointments(
         start: startsAt,
         end: null,
       },
-      description: `Pending client review from appointment outcome: ${outcome}.`,
+      description,
       matchedSignals: [outcome],
       actionTag: 'Operator Input',
       aiVerdict: 'pending_client',

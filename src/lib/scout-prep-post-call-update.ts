@@ -15,6 +15,7 @@ import { completeScoutPrepTaskAfterVoicemail } from './scout-prep-task-completio
 import { hydrateMeetingSetTemplateForForm } from './scout-prep-contact';
 import { recordMeetingSet } from './supabase-lifecycle';
 import { syncMeetingSetConfirmationCacheFromScoutPrep } from './set-meeting-confirmation-cache-sync';
+import { listManualAdditionalAthleteContacts } from './athlete-contact-cache';
 
 const FEATURE = 'scout-prep-post-call-update';
 
@@ -322,6 +323,7 @@ export async function submitScoutPrepPostCallUpdate(
         athleteMainId,
         athleteName,
         context,
+        manualAdditionalContacts: await listManualAdditionalAthleteContacts(context),
         meetingSet: {
           openEventId: meetingSetInput.openEventId,
           startsAt: meetingSetInput.startsAt,

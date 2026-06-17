@@ -51,6 +51,17 @@ type BuildPlanArgs = {
   seenAt?: string;
 };
 
+export type ManualAdditionalAthleteContactArgs = {
+  context: ScoutPrepContext;
+  contactName: string;
+  relationshipLabel: string;
+  phone: string;
+  email?: string | null;
+  note?: string | null;
+  source?: string;
+  seenAt?: string;
+};
+
 const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
 function clean(value?: string | null): string {
   return String(value || '').trim();
@@ -76,6 +87,68 @@ export function normalizeContactCachePhone(raw?: string | null): string | null {
   if (digits.length === 10) return digits;
   if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
   return null;
+}
+
+export function formatNormalizedContactCachePhone(normalizedPhone?: string | null): string {
+  const digits = String(normalizedPhone || '').replace(/\D/g, '');
+  if (digits.length !== 10) return '';
+  return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+export function buildManualAdditionalAthleteContactCacheRow(
+  args: ManualAdditionalAthleteContactArgs,
+): AthleteContactCacheRow | null {
+  const athleteId = clean(args.context.resolved.athlete_id || args.context.task.contact_id);
+  const athleteMainId = clean(
+    args.context.resolved.athlete_main_id || args.context.task.athlete_main_id,
+  );
+  const athleteName = clean(
+    args.context.contactInfo.studentAthlete.name || args.context.task.athlete_name,
+  );
+  const contactName = clean(args.contactName);
+  const normalizedPhone = normalizeContactCachePhone(args.phone);
+  if (!athleteId || !athleteMainId || !athleteName || !contactName || !normalizedPhone) {
+    return null;
+  }
+
+  const contactId = clean(args.context.contactInfo.contactId || args.context.task.contact_id);
+  const seenAt = args.seenAt || new Date().toISOString();
+  const manualRelationshipLabel = clean(args.relationshipLabel) || 'Contact';
+  const source = clean(args.source) || 'scout_prep_manual_contact';
+
+  return {
+    athlete_key: buildAthleteContactCacheKey(athleteId, athleteMainId),
+    athlete_id: athleteId,
+    athlete_main_id: athleteMainId,
+    athlete_name: athleteName,
+    contact_id: contactId || null,
+    contact_name: contactName,
+    relationship_label: 'Parent 2',
+    phone: formatNormalizedContactCachePhone(normalizedPhone),
+    normalized_phone: normalizedPhone,
+    admin_url: buildAthleteAdminUrl(contactId || athleteId, athleteMainId),
+    task_url: clean(args.context.task.athlete_task_url) || null,
+    timezone: clean(args.context.resolved.timezone) || null,
+    timezone_label: clean(args.context.resolved.timezone_label) || null,
+    source,
+    cache_status: 'active',
+    inactive_reason: null,
+    inactive_at: null,
+    last_seen_at: seenAt,
+    payload_json: {
+      role: 'manual_additional_contact',
+      relationship_label: 'Parent 2',
+      manual_relationship_label: manualRelationshipLabel,
+      email: clean(args.email) || null,
+      note: clean(args.note) || null,
+      provenance: 'operator_added_from_scout_prep_contact_info',
+      city: clean(args.context.resolved.city) || null,
+      state: clean(args.context.resolved.state) || null,
+      task_id: clean(args.context.task.task_id) || null,
+      task_title: clean(args.context.task.title) || null,
+    },
+    updated_at: seenAt,
+  };
 }
 
 export function buildAthleteContactCacheSyncPlan(

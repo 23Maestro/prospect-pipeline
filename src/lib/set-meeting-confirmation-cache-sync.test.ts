@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ScoutPrepContext } from '../features/scout-prep/types';
-import { buildMeetingSetConfirmationCacheRowsFromScoutPrep } from './set-meeting-confirmation-cache-sync';
+import {
+  buildManualContactConfirmationCacheReplacementRows,
+  buildMeetingSetConfirmationCacheRowsFromScoutPrep,
+} from './set-meeting-confirmation-cache-sync';
 
 function buildContext(): ScoutPrepContext {
   return {
@@ -79,6 +82,105 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep caches both confirmation
   ]);
   assert.match(rows[0].message_body, /Prospect ID Zoom Meeting/);
   assert.equal(rows[1].message_body, 'Please reply YES you can attend.');
+});
+
+test('buildMeetingSetConfirmationCacheRowsFromScoutPrep uses manual parent2 for confirmation recipient', () => {
+  const rows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    context: buildContext(),
+    manualAdditionalContacts: [
+      {
+        name: 'Sarah Samuels',
+        relationshipLabel: 'Parent 2',
+        phone: '712-261-1974',
+      },
+    ],
+    meetingSet: {
+      openEventId: 'event-1',
+      startsAt: '2026-05-15T19:00:00-04:00',
+      meetingTimezone: 'EST',
+      meetingLength: '01:30',
+      headScout: 'Ryan Lietz',
+    },
+    generatedAt: '2026-05-14T18:00:00.000Z',
+  });
+
+  assert.equal(rows[0].recipient_name, 'Sarah Samuels');
+  assert.equal(rows[0].recipient_phone, '712-261-1974');
+  assert.deepEqual(rows[0].payload_json.recipient_contacts, [
+    {
+      label: 'Parent 1',
+      name: 'Tiffany Jones',
+      phone: '615-555-1212',
+    },
+    {
+      label: 'Student Athlete',
+      name: 'Avery Jones',
+      phone: '615-555-3000',
+    },
+    {
+      label: 'Parent 2',
+      name: 'Sarah Samuels',
+      phone: '712-261-1974',
+    },
+  ]);
+});
+
+test('buildManualContactConfirmationCacheReplacementRows rewrites cached confirmation rows for manual parent2', () => {
+  const existingRows = buildMeetingSetConfirmationCacheRowsFromScoutPrep({
+    athleteId: '1489000',
+    athleteMainId: '951000',
+    athleteName: 'Avery Jones',
+    context: buildContext(),
+    meetingSet: {
+      openEventId: 'event-1',
+      startsAt: '2026-05-15T19:00:00-04:00',
+      meetingTimezone: 'EST',
+      meetingLength: '01:30',
+      headScout: 'Ryan Lietz',
+    },
+    generatedAt: '2026-05-14T18:00:00.000Z',
+  });
+
+  const rows = buildManualContactConfirmationCacheReplacementRows(
+    existingRows,
+    {
+      name: 'Sarah Samuels',
+      relationshipLabel: 'Parent 2',
+      phone: '‚Ä™+1 (712) 261-1974‚Ä¨',
+    },
+    '2026-06-17T16:00:00.000Z',
+  );
+
+  assert.equal(rows.length, 2);
+  assert.equal(
+    rows[0].dedupe_key,
+    'set_meeting_confirmation:event-1:confirmation_1:712-261-1974',
+  );
+  assert.equal(rows[0].recipient_name, 'Sarah Samuels');
+  assert.equal(rows[0].recipient_phone, '712-261-1974');
+  assert.equal(rows[0].payload_json?.recipient_name, 'Sarah Samuels');
+  assert.equal(rows[0].payload_json?.recipient_phone, '712-261-1974');
+  assert.deepEqual(rows[0].payload_json?.recipient_contacts, [
+    {
+      label: 'Parent 1',
+      name: 'Tiffany Jones',
+      phone: '615-555-1212',
+    },
+    {
+      label: 'Student Athlete',
+      name: 'Avery Jones',
+      phone: '615-555-3000',
+    },
+    {
+      label: 'Parent 2',
+      name: 'Sarah Samuels',
+      phone: '712-261-1974',
+    },
+  ]);
+  assert.equal(rows[0].updated_at, '2026-06-17T16:00:00.000Z');
 });
 
 test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when required mobile cache fields are missing', () => {

@@ -6,11 +6,13 @@ import {
 import {
   getMeetingReminderRecipient,
   getProspectContactShortcutCandidates,
+  normalizePhoneForMessages,
 } from '../domain/scout-contact-selection';
 import { getGreetingForLocalTime } from '../domain/outreach-time-wording';
 import { buildSetMeetingConfirmationCacheRows } from '../domain/set-meeting-confirmation-cache';
 import {
   deleteRows,
+  readRows,
   upsertSetMeetingConfirmationCacheRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
@@ -31,7 +33,47 @@ export type MeetingSetConfirmationCacheInput = {
     headScout?: string | null;
   };
   meetingSetResult?: Partial<MeetingSetSubmitResponse> | null;
+  manualAdditionalContacts?: Array<{
+    name: string;
+    relationshipLabel: string;
+    phone: string;
+  }>;
   generatedAt?: string;
+};
+
+type ManualConfirmationContact = {
+  name: string;
+  relationshipLabel: string;
+  phone: string;
+};
+
+export type SetMeetingConfirmationCacheSupportRow = {
+  id?: string | null;
+  appointment_id?: string | null;
+  kind?: string | null;
+  send_at?: string | null;
+  sent_at?: string | null;
+  status?: string | null;
+  dedupe_key?: string | null;
+  athlete_key?: string | null;
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  athlete_name?: string | null;
+  recipient_name?: string | null;
+  recipient_phone?: string | null;
+  head_scout_name?: string | null;
+  meeting_starts_at?: string | null;
+  meeting_duration_minutes?: number | null;
+  meeting_ends_at?: string | null;
+  meeting_timezone?: string | null;
+  message_body?: string | null;
+  admin_url?: string | null;
+  task_url?: string | null;
+  source?: string | null;
+  generated_at?: string | null;
+  payload_json?: Record<string, unknown> | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 const LEGACY_TIMEZONE_TO_IANA: Record<string, string> = {
@@ -215,6 +257,80 @@ function parseRequiredMeetingLengthMinutes(value?: string | null): number {
   return total;
 }
 
+function normalizeRecipientContacts(
+  existing: unknown,
+): Array<{ label: string; name: string; phone: string }> {
+  if (!Array.isArray(existing)) return [];
+  return existing
+    .map((contact) => {
+      const item = contact && typeof contact === 'object' ? (contact as Record<string, unknown>) : {};
+      return {
+        label: clean(String(item.label || item.relationship || '')),
+        name: clean(String(item.name || '')),
+        phone: clean(String(item.phone || '')),
+      };
+    })
+    .filter((contact) => contact.name && normalizePhoneForMessages(contact.phone));
+}
+
+function mergeManualConfirmationContactOptions(
+  row: SetMeetingConfirmationCacheSupportRow,
+  contact: ManualConfirmationContact,
+  normalizedPhone: string,
+) {
+  const contacts = normalizeRecipientContacts(row.payload_json?.recipient_contacts);
+  const existingIndex = contacts.findIndex(
+    (candidate) => normalizePhoneForMessages(candidate.phone) === normalizedPhone,
+  );
+  const manualContact = {
+    label: 'Parent 2',
+    name: clean(contact.name),
+    phone: normalizedPhone,
+  };
+  if (existingIndex >= 0) {
+    contacts[existingIndex] = manualContact;
+  } else {
+    contacts.push(manualContact);
+  }
+  return contacts;
+}
+
+export function buildManualContactConfirmationCacheReplacementRows(
+  rows: SetMeetingConfirmationCacheSupportRow[],
+  contact: ManualConfirmationContact,
+  generatedAt = new Date().toISOString(),
+): SetMeetingConfirmationCacheSupportRow[] {
+  const recipientName = clean(contact.name);
+  const recipientPhone = normalizePhoneForMessages(contact.phone);
+  if (!recipientName || !recipientPhone) {
+    return [];
+  }
+
+  return rows
+    .map((row) => {
+      const appointmentId = clean(row.appointment_id);
+      const kind = clean(row.kind);
+      if (!appointmentId || !kind) return null;
+      const dedupeKey = `set_meeting_confirmation:${appointmentId}:${kind}:${recipientPhone}`;
+      return {
+        ...row,
+        id: dedupeKey,
+        dedupe_key: dedupeKey,
+        recipient_name: recipientName,
+        recipient_phone: recipientPhone,
+        payload_json: {
+          ...(row.payload_json || {}),
+          recipient_name: recipientName,
+          recipient_phone: recipientPhone,
+          recipient_contacts: mergeManualConfirmationContactOptions(row, contact, recipientPhone),
+          updated_from_contact_cache: true,
+        },
+        updated_at: generatedAt,
+      };
+    })
+    .filter((row): row is SetMeetingConfirmationCacheSupportRow => Boolean(row));
+}
+
 export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
   args: MeetingSetConfirmationCacheInput,
 ) {
@@ -229,7 +345,19 @@ export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
   const meetingDate = meetingStartsAt
     ? parseMeetingDateInTimezone(meetingStartsAt, ianaTimeZone)
     : null;
-  const reminderRecipient = getMeetingReminderRecipient(args.context);
+  const manualConfirmationContact = args.context.contactInfo.parent2
+    ? null
+    : args.manualAdditionalContacts?.[0] || null;
+  const manualConfirmationPhone = normalizePhoneForMessages(manualConfirmationContact?.phone);
+  const reminderRecipient =
+    manualConfirmationContact && manualConfirmationPhone
+      ? {
+          phones: [manualConfirmationPhone],
+          recipientNames: [manualConfirmationContact.name].filter((value): value is string =>
+            Boolean(clean(value)),
+          ),
+        }
+      : getMeetingReminderRecipient(args.context);
   const recipientPhone = reminderRecipient?.phones[0] || '';
   const recipientName = reminderRecipient?.recipientNames[0] || '';
   const recipientContacts = getProspectContactShortcutCandidates(args.context).map((contact) => ({
@@ -237,6 +365,19 @@ export function buildMeetingSetConfirmationCacheRowsFromScoutPrep(
     name: contact.name,
     phone: contact.phone,
   }));
+  if (
+    manualConfirmationContact &&
+    manualConfirmationPhone &&
+    !recipientContacts.some(
+      (contact) => normalizePhoneForMessages(contact.phone) === manualConfirmationPhone,
+    )
+  ) {
+    recipientContacts.push({
+      label: 'Parent 2',
+      name: manualConfirmationContact.name,
+      phone: manualConfirmationPhone,
+    });
+  }
   const headScoutName =
     clean(args.meetingSet.headScout) ||
     clean(args.meetingSet.bookedMeetingAssignedOwner) ||
@@ -322,4 +463,59 @@ export async function syncMeetingSetConfirmationCacheFromScoutPrep(
   );
   await upsertSetMeetingConfirmationCacheRows(config, rows);
   return { enabled: true, count: rows.length };
+}
+
+export async function syncManualAdditionalContactToSetMeetingConfirmationCache(
+  args: {
+    context: ScoutPrepContext;
+    contact: ManualConfirmationContact;
+    generatedAt?: string;
+  },
+  config: SupabasePersistenceConfig | null = getSetMeetingConfirmationSupabaseConfig(),
+): Promise<{ enabled: boolean; count: number }> {
+  if (!config) {
+    return { enabled: false, count: 0 };
+  }
+
+  const athleteId = clean(args.context.resolved.athlete_id || args.context.task.contact_id);
+  const athleteMainId = clean(
+    args.context.resolved.athlete_main_id || args.context.task.athlete_main_id,
+  );
+  if (!athleteId || !athleteMainId) {
+    return { enabled: true, count: 0 };
+  }
+
+  const athleteKey = `${athleteId}:${athleteMainId}`;
+  const rows = await readRows<SetMeetingConfirmationCacheSupportRow>(
+    config,
+    'set_meeting_confirmation_cache',
+    [
+      'select=id,appointment_id,kind,send_at,sent_at,status,dedupe_key,athlete_key,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_duration_minutes,meeting_ends_at,meeting_timezone,message_body,admin_url,task_url,source,generated_at,payload_json,created_at,updated_at',
+      `athlete_key=eq.${encodeURIComponent(athleteKey)}`,
+      'status=eq.cached',
+      'source=eq.set_meetings_confirmation',
+      'kind=in.(confirmation_1,confirmation_2)',
+    ].join('&'),
+  );
+  if (!rows.length) {
+    return { enabled: true, count: 0 };
+  }
+
+  const replacementRows = buildManualContactConfirmationCacheReplacementRows(
+    rows,
+    args.contact,
+    args.generatedAt,
+  );
+  if (!replacementRows.length) {
+    return { enabled: true, count: 0 };
+  }
+
+  const appointmentIds = Array.from(
+    new Set(replacementRows.map((row) => clean(row.appointment_id)).filter(Boolean)),
+  );
+  for (const appointmentId of appointmentIds) {
+    await deleteRows(config, 'set_meeting_confirmation_cache', 'appointment_id', appointmentId);
+  }
+  await upsertSetMeetingConfirmationCacheRows(config, replacementRows);
+  return { enabled: true, count: replacementRows.length };
 }

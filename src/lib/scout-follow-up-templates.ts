@@ -55,11 +55,11 @@ function firstName(value?: string | null): string {
 export function getVoicemailFollowUpVariantLabel(variant: VoicemailFollowUpVariant): string {
   switch (variant) {
     case 'call_attempt_1':
-      return 'CA1 - First Call';
+      return 'Call Attempt 1';
     case 'call_attempt_2':
-      return 'CA2 - Second Call';
+      return 'Call Attempt 2';
     case 'call_attempt_3':
-      return 'CA3 - Final Call';
+      return 'Call Attempt 3';
     case 'propose_times':
       return 'RSP - Propose Times';
     case 'reschedule_1':
@@ -67,11 +67,11 @@ export function getVoicemailFollowUpVariantLabel(variant: VoicemailFollowUpVaria
     case 'reschedule_2':
       return 'RSP - Final Time Check';
     case 'no_show':
-      return 'NS - Intent Check';
+      return 'Call Now';
     case 'send_cal_link':
-      return 'OUT - Send Calendar Link';
+      return 'Send Calendar Link';
     case 'parent_contact_intro':
-      return 'OUT - Parent Intro';
+      return 'Parent Intro';
   }
 }
 

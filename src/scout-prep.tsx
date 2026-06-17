@@ -195,9 +195,15 @@ import {
 } from './lib/parent-response-request-writer';
 import {
   hasAthleteContactCacheForTask,
+  listManualAdditionalAthleteContacts,
   syncAthleteContactCacheFromScoutPrepContext,
+  upsertManualAdditionalAthleteContactCacheRow,
+  type ManualAdditionalAthleteContact,
 } from './lib/athlete-contact-cache';
-import { syncMeetingSetConfirmationCacheFromScoutPrep } from './lib/set-meeting-confirmation-cache-sync';
+import {
+  syncManualAdditionalContactToSetMeetingConfirmationCache,
+  syncMeetingSetConfirmationCacheFromScoutPrep,
+} from './lib/set-meeting-confirmation-cache-sync';
 import {
   sendClientMessage,
   sendVerifiedClientMessage,
@@ -1199,37 +1205,97 @@ function buildScoutPrepPlayerIdUrl(task: ScoutPortalTask, athleteId?: string | n
   return `${DASHBOARD_BASE_URL}/athlete/profile/${encodeURIComponent(resolvedAthleteId)}`;
 }
 
-function buildScoutPrepContactMarkdown(context: ScoutPrepContext | null): string {
+function formatContactInfoPhone(raw?: string | null): string {
+  const normalized = normalizePhoneForMessages(raw);
+  if (!normalized) {
+    return String(raw || '').trim() || 'N/A';
+  }
+  const digits = normalized.replace(/\D/g, '');
+  return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+}
+
+function buildScoutPrepContactMarkdown(
+  context: ScoutPrepContext | null,
+  manualContacts: ManualAdditionalAthleteContact[] = [],
+): string {
   if (!context) {
     return '# Loading...';
   }
 
   const { contactInfo } = context;
   const lines = ['# Contact Information', ''];
+  const manualParent2 = contactInfo.parent2 ? null : manualContacts[0] || null;
 
   if (contactInfo.parent1) {
     lines.push(
       `## 📲 ${contactInfo.parent1.name} (${contactInfo.parent1.relationship})`,
-      `Phone: ${contactInfo.parent1.phone || 'N/A'}`,
+      `Phone: ${formatContactInfoPhone(contactInfo.parent1.phone)}`,
       '',
     );
   }
 
   lines.push(
     `## ☎️ ${contactInfo.studentAthlete.name || context.task.athlete_name}`,
-    `Phone: ${contactInfo.studentAthlete.phone || 'N/A'}`,
+    `Phone: ${formatContactInfoPhone(contactInfo.studentAthlete.phone)}`,
     '',
   );
 
   if (contactInfo.parent2) {
     lines.push(
       `## 📳 ${contactInfo.parent2.name} (${contactInfo.parent2.relationship})`,
-      `Phone: ${contactInfo.parent2.phone || 'N/A'}`,
+      `Phone: ${formatContactInfoPhone(contactInfo.parent2.phone)}`,
+      '',
+    );
+  } else if (manualParent2) {
+    lines.push(
+      `## 📳 ${manualParent2.name} (${manualParent2.relationshipLabel})`,
+      `Phone: ${formatContactInfoPhone(manualParent2.phone)}`,
       '',
     );
   }
 
   return lines.join('\n');
+}
+
+function applyManualParent2ToScoutPrepContext(
+  context: ScoutPrepContext,
+  manualContacts: ManualAdditionalAthleteContact[] = [],
+): ScoutPrepContext {
+  if (context.contactInfo.parent2) {
+    return context;
+  }
+  const manualParent2 = manualContacts[0] || null;
+  if (!manualParent2) {
+    return context;
+  }
+  return {
+    ...context,
+    contactInfo: {
+      ...context.contactInfo,
+      parent2: {
+        name: manualParent2.name,
+        relationship: manualParent2.relationshipLabel,
+        email: null,
+        phone: manualParent2.phone,
+      },
+    },
+  };
+}
+
+async function loadScoutPrepContextWithManualParent2(
+  context: ScoutPrepContext,
+): Promise<ScoutPrepContext> {
+  if (context.contactInfo.parent2) {
+    return context;
+  }
+  try {
+    return applyManualParent2ToScoutPrepContext(
+      context,
+      await listManualAdditionalAthleteContacts(context),
+    );
+  } catch {
+    return context;
+  }
 }
 
 type ProspectContactCreateResult = {
@@ -1353,6 +1419,18 @@ async function createProspectContactsBatch(
   };
 }
 
+async function createProspectContact(
+  candidate: ProspectContactShortcutCandidate,
+  adminUrl: string,
+  contactNote: string,
+  options?: { overwriteName?: boolean },
+): Promise<ProspectContactCreateResult | null> {
+  const summary = await createProspectContactsBatch([candidate], adminUrl, contactNote, {
+    overwriteNames: options?.overwriteName,
+  });
+  return summary.results[0] || null;
+}
+
 async function openMessagesDraftForRecipients(phones: string[], body: string): Promise<'url'> {
   const uniquePhones = Array.from(
     new Set(
@@ -1370,6 +1448,116 @@ async function openMessagesDraftForRecipients(phones: string[], body: string): P
   return 'url';
 }
 
+type ManualAdditionalContactFormValues = {
+  name?: string;
+  relationship?: string;
+  phone?: string;
+};
+
+function ManualAdditionalContactForm({
+  context,
+  onSaved,
+}: {
+  context: ScoutPrepContext;
+  onSaved: () => Promise<void>;
+}) {
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function handleSubmit(values: ManualAdditionalContactFormValues) {
+    const name = String(values.name || '').trim();
+    const relationship = String(values.relationship || '').trim() || 'Contact';
+    const phone = String(values.phone || '').trim();
+    const normalizedPhone = normalizePhoneForMessages(phone);
+
+    if (!name) {
+      await showToast({ style: Toast.Style.Failure, title: 'Add Contact' });
+      return;
+    }
+
+    if (!normalizedPhone) {
+      await showToast({ style: Toast.Style.Failure, title: 'No phone' });
+      return;
+    }
+
+    setIsSaving(true);
+    const toast = await showLoadingToast('Save Contact', name);
+    try {
+      const cacheResult = await upsertManualAdditionalAthleteContactCacheRow({
+        context,
+        contactName: name,
+        relationshipLabel: relationship,
+        phone: normalizedPhone,
+      });
+      if (!cacheResult.enabled) {
+        throw new Error('Contact cache unavailable');
+      }
+
+      const confirmationCacheResult = await syncManualAdditionalContactToSetMeetingConfirmationCache({
+        context,
+        contact: {
+          name,
+          relationshipLabel: 'Parent 2',
+          phone: normalizedPhone,
+        },
+      });
+      if (!confirmationCacheResult.enabled) {
+        throw new Error('Confirmation cache unavailable');
+      }
+
+      try {
+        await createProspectContact(
+          {
+            id: 'parent2',
+            label: relationship,
+            name,
+            phone: normalizedPhone,
+          },
+          buildScoutPrepAdminUrl(
+            context.task,
+            context.resolved.athlete_main_id || context.task.athlete_main_id,
+          ),
+          '',
+          { overwriteName: true },
+        );
+      } catch (error) {
+        const failureToast = resolveProspectContactCreateFailureToast(error);
+        if (!failureToast.duplicateLike) {
+          toast.message = 'Contact app failed';
+        }
+      }
+
+      toast.style = Toast.Style.Success;
+      toast.title = 'Saved';
+      if (!toast.message) {
+        toast.message = relationship;
+      }
+      await onSaved();
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Add Contact';
+      toast.message = error instanceof Error ? error.message : 'Unknown error';
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <Form
+      navigationTitle={`Add Contact • ${context.task.athlete_name}`}
+      isLoading={isSaving}
+      actions={
+        <ActionPanel>
+          <Action.SubmitForm title="Save Contact" onSubmit={handleSubmit} />
+        </ActionPanel>
+      }
+    >
+      <Form.TextField id="name" title="Name" />
+      <Form.TextField id="relationship" title="Relationship" />
+      <Form.TextField id="phone" title="Phone" />
+    </Form>
+  );
+}
+
 function ScoutPrepContactDetail({
   task,
   initialContext,
@@ -1378,8 +1566,17 @@ function ScoutPrepContactDetail({
   initialContext?: ScoutPrepContext | null;
 }) {
   const [context, setContext] = useState<ScoutPrepContext | null>(initialContext || null);
+  const [manualContacts, setManualContacts] = useState<ManualAdditionalAthleteContact[]>([]);
   const [isLoading, setIsLoading] = useState(!initialContext);
   const [isCreatingContact, setIsCreatingContact] = useState(false);
+
+  async function loadManualContacts(nextContext: ScoutPrepContext) {
+    try {
+      setManualContacts(await listManualAdditionalAthleteContacts(nextContext));
+    } catch {
+      setManualContacts([]);
+    }
+  }
 
   async function loadContactInfo(options?: { showToast?: boolean }) {
     const refreshToast = options?.showToast
@@ -1389,6 +1586,7 @@ function ScoutPrepContactDetail({
     try {
       const loadedContext = await loadScoutPrepContext(task);
       setContext(loadedContext);
+      await loadManualContacts(loadedContext);
       refreshToast?.hide();
     } catch (error) {
       if (refreshToast) {
@@ -1410,6 +1608,8 @@ function ScoutPrepContactDetail({
   useEffect(() => {
     if (!initialContext) {
       void loadContactInfo();
+    } else {
+      void loadManualContacts(initialContext);
     }
   }, [task.contact_id]);
 
@@ -1510,6 +1710,7 @@ function ScoutPrepContactDetail({
   }
 
   const contactInfo = context?.contactInfo;
+  const manualParent2 = contactInfo?.parent2 ? null : manualContacts[0] || null;
   const contactCandidates = context
     ? getProspectContactShortcutCandidates(context).sort(
         (left, right) =>
@@ -1531,7 +1732,7 @@ function ScoutPrepContactDetail({
   return (
     <Detail
       navigationTitle={`Contact Info • ${task.athlete_name}`}
-      markdown={buildScoutPrepContactMarkdown(context)}
+      markdown={buildScoutPrepContactMarkdown(context, manualContacts)}
       isLoading={isLoading || isCreatingContact}
       actions={
         <ActionPanel>
@@ -1568,15 +1769,20 @@ function ScoutPrepContactDetail({
               />
             ) : null}
           </ActionPanel.Section>
-          {contactInfo?.parent2 ? (
-            <ActionPanel.Section title={`Parent 2 (${contactInfo.parent2.relationship})`}>
-              {contactInfo.parent2.phone ? (
+          {contactInfo?.parent2 || manualParent2 ? (
+            <ActionPanel.Section
+              title={`Parent 2 (${contactInfo?.parent2?.relationship || manualParent2?.relationshipLabel || 'Contact'})`}
+            >
+              {contactInfo?.parent2?.phone || manualParent2?.phone ? (
                 <Action
                   title="Copy Parent 2 Phone"
                   icon="📳"
                   shortcut={{ modifiers: ['cmd'], key: 's' }}
                   onAction={() =>
-                    void copyToClipboardWithToast(contactInfo.parent2.phone || '', 'P2')
+                    void copyToClipboardWithToast(
+                      contactInfo?.parent2?.phone || manualParent2?.phone || '',
+                      'P2',
+                    )
                   }
                 />
               ) : null}
@@ -1591,6 +1797,18 @@ function ScoutPrepContactDetail({
             </ActionPanel.Section>
           ) : null}
           <ActionPanel.Section>
+            {context ? (
+              <Action.Push
+                title="Add Contact"
+                icon="👤"
+                target={
+                  <ManualAdditionalContactForm
+                    context={context}
+                    onSaved={() => loadManualContacts(context)}
+                  />
+                }
+              />
+            ) : null}
             {contactCandidates.length ? (
               <Action
                 title="Create All Contacts"
@@ -2341,12 +2559,37 @@ export function VoicemailFollowUpRecipientForm({
   closeAfterCompleteViews?: number;
 }) {
   const { push, pop } = useNavigation();
-  const recipients = getVoicemailFollowUpRecipients(context);
+  const [manualContacts, setManualContacts] = useState<ManualAdditionalAthleteContact[]>([]);
+  const messageContext = useMemo(
+    () => applyManualParent2ToScoutPrepContext(context, manualContacts),
+    [context, manualContacts],
+  );
+  const recipients = getVoicemailFollowUpRecipients(messageContext);
   const defaultVariant = resolveVoicemailFollowUpVariant({
     currentTask: currentTask || task.title || null,
   });
   const [previousMeetingText, setPreviousMeetingText] = useState<string | null>(null);
   const [isLoadingPreviousMeeting, setIsLoadingPreviousMeeting] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    if (context.contactInfo.parent2) {
+      setManualContacts([]);
+      return () => {
+        active = false;
+      };
+    }
+    void listManualAdditionalAthleteContacts(context)
+      .then((contacts) => {
+        if (active) setManualContacts(contacts);
+      })
+      .catch(() => {
+        if (active) setManualContacts([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, [context]);
 
   useEffect(() => {
     let active = true;
@@ -2426,7 +2669,7 @@ export function VoicemailFollowUpRecipientForm({
 
     if (selectedVariant === 'parent_contact_intro') {
       const body = buildVoicemailFollowUpBody(
-        context,
+        messageContext,
         undefined,
         selectedVariant,
         null,
@@ -2450,12 +2693,14 @@ export function VoicemailFollowUpRecipientForm({
     }
 
     const selectedParent =
-      recipient?.id === 'parent2' ? context.contactInfo.parent2 : context.contactInfo.parent1;
+      recipient?.id === 'parent2'
+        ? messageContext.contactInfo.parent2
+        : messageContext.contactInfo.parent1;
     if (usesHeadScoutSlotPicker(selectedVariant) && selectedRescheduleSlots.length < 2) {
       push(
         <RescheduleSlotSelectionList
           task={task}
-          context={context}
+          context={messageContext}
           requirePreviousMeeting={isRescheduleVoicemailVariant(selectedVariant)}
           onSlotsSelected={(slots) => openMessagesForRecipient(recipient, selectedVariant, slots)}
         />,
@@ -2474,12 +2719,12 @@ export function VoicemailFollowUpRecipientForm({
           }).catch(() => null)
         : null;
     const athleteGender = await resolveAthleteGenderWithRayAI({
-      athleteName: context.contactInfo.studentAthlete.name || task.athlete_name,
-      sport: context.resolved.sport,
+      athleteName: messageContext.contactInfo.studentAthlete.name || task.athlete_name,
+      sport: messageContext.resolved.sport,
     }).catch(() => null);
 
     const body = buildVoicemailFollowUpBody(
-      context,
+      messageContext,
       recipient?.id,
       selectedVariant,
       null,
@@ -2491,7 +2736,7 @@ export function VoicemailFollowUpRecipientForm({
         ? {
             previousHeadScoutName:
               selectedRescheduleSlots[0]?.scoutName ||
-              String(context.resolved.head_scout || '').trim() ||
+              String(messageContext.resolved.head_scout || '').trim() ||
               null,
             slots: selectedRescheduleSlots.map((slot) => slot.messageLabel),
             weekLabel: selectedRescheduleSlots[0]?.weekLabel || null,
@@ -4184,6 +4429,7 @@ export function PostCallUpdateForm({
             athleteMainId,
             athleteName: syncContext.contactInfo.studentAthlete.name || task.athlete_name,
             context: syncContext,
+            manualAdditionalContacts: await listManualAdditionalAthleteContacts(syncContext),
             meetingSet: {
               openEventId: meetingSetInput.openEventId,
               startsAt: meetingSetInput.startsAt,
@@ -4526,11 +4772,25 @@ function ScoutPrepDetail({
     }, 0);
   }
 
-  function renderScoutPrepContext(activeContext: ScoutPrepContext) {
+  async function resolveManualParent2NameForDisplay(
+    activeContext: ScoutPrepContext,
+  ): Promise<string | undefined> {
+    if (activeContext.contactInfo.parent2?.name) {
+      return undefined;
+    }
+    try {
+      return (await listManualAdditionalAthleteContacts(activeContext))[0]?.name || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async function renderScoutPrepContext(activeContext: ScoutPrepContext) {
+    const manualParent2Name = await resolveManualParent2NameForDisplay(activeContext);
     const values = buildScoutPrepValues({
       athleteName: activeContext.contactInfo.studentAthlete.name || task.athlete_name,
       parent1Name: activeContext.contactInfo.parent1?.name || undefined,
-      parent2Name: activeContext.contactInfo.parent2?.name || undefined,
+      parent2Name: activeContext.contactInfo.parent2?.name || manualParent2Name,
       gradYear: task.grad_year,
       sport: activeContext.resolved.sport || undefined,
     });
@@ -4551,7 +4811,7 @@ function ScoutPrepDetail({
     const toast = await showLoadingToast('Refreshing', task.athlete_name);
     try {
       const refreshedContext = await loadLiveScoutPrepContextForDetail();
-      renderScoutPrepContext(refreshedContext);
+      await renderScoutPrepContext(refreshedContext);
       setIsLoading(false);
       queueContactCacheSync(refreshedContext, null, 'scout_prep_manual_refresh');
       toast.style = Toast.Style.Success;
@@ -4701,7 +4961,8 @@ function ScoutPrepDetail({
     }
 
     const toast = await showLoadingToast('Outreach', 'Loading contacts');
-    const recipients = getVoicemailFollowUpRecipients(activeContext);
+    const messageContext = await loadScoutPrepContextWithManualParent2(activeContext);
+    const recipients = getVoicemailFollowUpRecipients(messageContext);
     if (!recipients.length) {
       toast.style = Toast.Style.Failure;
       toast.title = 'No usable number';
@@ -4713,7 +4974,7 @@ function ScoutPrepDetail({
     push(
       <VoicemailFollowUpRecipientForm
         task={task}
-        context={activeContext}
+        context={messageContext}
         currentTask={task.title || null}
         onComplete={onReturnToRootList}
         closeAfterCompleteViews={2}
@@ -4726,7 +4987,7 @@ function ScoutPrepDetail({
     try {
       const activeContext = await loadLiveScoutPrepContextForDetail();
       setContext(activeContext);
-      renderScoutPrepContext(activeContext);
+      await renderScoutPrepContext(activeContext);
       const created = await createParentRescheduleResponseLink({
         task,
         context: activeContext,
@@ -5049,7 +5310,7 @@ function ScoutPrepDetail({
           return;
         }
 
-        renderScoutPrepContext(renderContext);
+        await renderScoutPrepContext(renderContext);
         setIsLoading(false);
         if (source === 'live') {
           queueContactCacheSync(renderContext, null, 'scout_prep_detail_load');
@@ -5355,7 +5616,8 @@ function ScoutPrepTaskItem({
     }
 
     const toast = await showLoadingToast('Outreach', 'Loading contacts');
-    const recipients = getVoicemailFollowUpRecipients(context);
+    const messageContext = await loadScoutPrepContextWithManualParent2(context);
+    const recipients = getVoicemailFollowUpRecipients(messageContext);
     if (!recipients.length) {
       toast.style = Toast.Style.Failure;
       toast.title = 'No usable number';
@@ -5366,7 +5628,7 @@ function ScoutPrepTaskItem({
     push(
       <VoicemailFollowUpRecipientForm
         task={task}
-        context={context}
+        context={messageContext}
         currentTask={task.title || null}
         onComplete={onReturnToRootList}
         closeAfterCompleteViews={1}

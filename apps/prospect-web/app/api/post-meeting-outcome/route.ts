@@ -1,14 +1,18 @@
-import { getFastApiBaseUrl, getFastApiToken, getMissingFastApiEnvMessage } from '../../../lib/env';
+import { getFastApiBaseUrl, getFastApiToken, getMissingFastApiEnvMessage, getServerEnv } from '../../../lib/env';
 import { jsonResponse, methodNotAllowed, upstreamUnavailable } from '../../../lib/response-shapes';
 
 const OUTCOME_BY_PREFIX = {
   '(RSP)': {
     stage: 'Meeting Result - Res. Pending',
+    postMeetingResult: 'reschedule_pending',
+    statusReason: 'sales_stage_reschedule_pending',
     scoutNoteTitle: 'RSP And Scout Notes',
     operatorNoteTitle: 'Reschedule Pending Reason',
   },
   '(CAN)': {
     stage: 'Meeting Result - Canceled',
+    postMeetingResult: 'canceled',
+    statusReason: 'sales_stage_canceled',
     scoutNoteTitle: 'CAN And Scout Notes',
     operatorNoteTitle: 'Canceled Meeting Reason',
   },
@@ -67,6 +71,92 @@ async function addAthleteNote(args: {
       description: args.description,
     }),
   });
+}
+
+function getSupabaseRestConfig() {
+  const url = getServerEnv('SUPABASE_URL') || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = getServerEnv('SUPABASE_SECRET_KEY') || getServerEnv('SUPABASE_SERVICE_ROLE_KEY');
+  const schema = getServerEnv('SUPABASE_SCHEMA') || 'public';
+  if (!url || !key) {
+    throw new Error('Missing server Supabase credentials');
+  }
+  return { url: url.replace(/\/+$/, ''), key, schema };
+}
+
+function supabaseHeaders(config: ReturnType<typeof getSupabaseRestConfig>, prefer = 'return=minimal') {
+  return {
+    'content-type': 'application/json',
+    apikey: config.key,
+    authorization: `Bearer ${config.key}`,
+    prefer,
+    'accept-profile': config.schema,
+    'content-profile': config.schema,
+  };
+}
+
+async function readAppointmentSourcePayload(eventId: string): Promise<Record<string, unknown>> {
+  const config = getSupabaseRestConfig();
+  const params = new URLSearchParams({
+    select: 'source_payload',
+    id: `eq.${eventId}`,
+    limit: '1',
+  });
+  const response = await fetch(`${config.url}/rest/v1/appointments?${params.toString()}`, {
+    headers: supabaseHeaders(config),
+  });
+  const payload = await response.json().catch(async () => ({
+    error: await response.text().catch(() => ''),
+  }));
+  if (!response.ok) {
+    throw new Error(
+      asText((payload as Record<string, unknown>).error) || `Supabase appointments read HTTP ${response.status}`,
+    );
+  }
+  const row = Array.isArray(payload) ? (payload[0] as Record<string, unknown> | undefined) : null;
+  const sourcePayload = row?.source_payload;
+  return sourcePayload && typeof sourcePayload === 'object' && !Array.isArray(sourcePayload)
+    ? (sourcePayload as Record<string, unknown>)
+    : {};
+}
+
+async function patchAppointmentPostMeetingOutcome(args: {
+  eventId: string;
+  postMeetingResult: string;
+  statusReason: string;
+  scoutDescription: string;
+  operatorNoteTitle: string;
+  operatorNoteDescription: string;
+}) {
+  const config = getSupabaseRestConfig();
+  const sourcePayload = await readAppointmentSourcePayload(args.eventId);
+  const response = await fetch(
+    `${config.url}/rest/v1/appointments?${new URLSearchParams({ id: `eq.${args.eventId}` }).toString()}`,
+    {
+      method: 'PATCH',
+      headers: supabaseHeaders(config),
+      body: JSON.stringify({
+        post_meeting_result: args.postMeetingResult,
+        status_reason: args.statusReason,
+        updated_at: new Date().toISOString(),
+        source_payload: {
+          ...sourcePayload,
+          pending_client_scout_note: args.scoutDescription,
+          pending_client_operator_note_title: args.operatorNoteTitle,
+          pending_client_operator_note: args.operatorNoteDescription,
+          post_meeting_outcome_source: 'prospect_web_post_meeting_outcome',
+        },
+      }),
+    },
+  );
+  if (!response.ok) {
+    const text = await response.text().catch(() => '');
+    throw new Error(text || `Supabase appointments patch HTTP ${response.status}`);
+  }
+  return {
+    appointment_id: args.eventId,
+    post_meeting_result: args.postMeetingResult,
+    status_reason: args.statusReason,
+  };
 }
 
 export async function POST(request: Request) {
@@ -138,6 +228,15 @@ export async function POST(request: Request) {
       }),
     });
 
+    const appointmentOutcomeResult = await patchAppointmentPostMeetingOutcome({
+      eventId,
+      postMeetingResult: outcome.postMeetingResult,
+      statusReason: outcome.statusReason,
+      scoutDescription,
+      operatorNoteTitle: operatorNoteTitle || outcome.operatorNoteTitle,
+      operatorNoteDescription,
+    });
+
     const scoutNoteResult = await addAthleteNote({
       athleteId,
       athleteMainId,
@@ -157,6 +256,7 @@ export async function POST(request: Request) {
       stage: outcome.stage,
       title_result: titleResult,
       stage_result: stageResult,
+      appointment_outcome_result: appointmentOutcomeResult,
       scout_note_result: scoutNoteResult,
       operator_note_result: operatorNoteResult,
     });

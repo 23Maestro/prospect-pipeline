@@ -2,10 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   appointmentEndIso,
+  athleteIdentityFromAppointment,
   athleteNameFromMeetingTitle,
   buildReplacementAppointmentRow,
   buildWatcherFailureEmail,
   buildAthleteName,
+  hydrateWatcherAppointmentFromSupabaseContext,
   isWatchCandidate,
   parseLiveEventTimeAsEastern,
   resolveWatcherDecision,
@@ -75,6 +77,66 @@ test('ended meeting watcher admits only active unresolved appointments inside th
     ),
     false,
   );
+});
+
+test('ended meeting watcher derives required identity from athlete key before filtering', () => {
+  const appointment = {
+    id: 'appt-key-only',
+    athlete_key: '1500104:954824',
+    status: 'scheduled',
+    starts_at: '2026-06-15T16:00:00.000Z',
+    post_meeting_result: null,
+  };
+
+  assert.deepEqual(athleteIdentityFromAppointment(appointment), {
+    athleteId: '1500104',
+    athleteMainId: '954824',
+    athleteKey: '1500104:954824',
+  });
+  assert.equal(isWatchCandidate(appointment, NOW, 7), true);
+});
+
+test('ended meeting watcher hydrates missing appointment support from same-key Supabase context', () => {
+  const hydrated = hydrateWatcherAppointmentFromSupabaseContext(
+    {
+      id: '673777',
+      athlete_key: '1500104:954824',
+      status: 'scheduled',
+      starts_at: '2026-06-15T16:00:00.000Z',
+      post_meeting_result: null,
+      source_payload: { meeting_name: 'Gage Henry Football 2027 OH' },
+    },
+    {
+      appointmentRows: [
+        {
+          id: '673777',
+          athlete_key: '1500104:954824',
+          athlete_id: '1500104',
+          athlete_main_id: '954824',
+          head_scout: 'Nasir Adderley',
+          source_event_id: '673777',
+          operator_owner: 'Jerami Singleton',
+          operator_owner_key: 'jerami_singleton',
+          meeting_timezone: 'America/New_York',
+          meeting_timezone_label: 'ET',
+          original_appointment_id: '660000',
+          reschedule_sequence: 1,
+          source_payload: { athlete_name: 'Gage Henry', source_event_id: '673777' },
+        },
+      ],
+    },
+  );
+
+  assert.equal(hydrated.athlete_id, '1500104');
+  assert.equal(hydrated.athlete_main_id, '954824');
+  assert.equal(hydrated.head_scout, 'Nasir Adderley');
+  assert.equal(hydrated.source_event_id, '673777');
+  assert.equal(hydrated.operator_owner_key, 'jerami_singleton');
+  assert.equal(hydrated.meeting_timezone, 'America/New_York');
+  assert.equal(hydrated.original_appointment_id, '660000');
+  assert.equal(hydrated.reschedule_sequence, 1);
+  assert.equal(hydrated.source_payload.athlete_name, 'Gage Henry');
+  assert.equal(hydrated.source_payload.meeting_name, 'Gage Henry Football 2027 OH');
 });
 
 test('ended meeting watcher treats Meeting Set as waiting, not a stored outcome', () => {

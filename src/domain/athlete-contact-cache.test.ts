@@ -4,6 +4,7 @@ import test from 'node:test';
 import type { ScoutPrepContext } from '../features/scout-prep/types';
 import {
   type AthleteContactCacheSyncPlan,
+  buildManualAdditionalAthleteContactCacheRow,
   buildAthleteContactCacheSyncPlan,
   normalizeContactCachePhone,
 } from './athlete-contact-cache';
@@ -89,6 +90,76 @@ test('buildAthleteContactCacheSyncPlan builds active rows from Scout Prep contac
   assert.equal(plan.rows[0].cache_status, 'active');
   assert.equal(plan.rows[0].timezone, 'America/Chicago');
   assert.equal(plan.rows[0].timezone_label, 'CST');
+});
+
+test('buildManualAdditionalAthleteContactCacheRow builds an active support row for redirected parent phones', () => {
+  const row = buildManualAdditionalAthleteContactCacheRow({
+    context: buildContext(),
+    contactName: 'Sarah Samuels',
+    relationshipLabel: 'Mother redirected to dad',
+    phone: '+1 (407) 555-0123',
+    email: 'sarah@example.com',
+    note: 'Mom redirected operator to dad as the best contact.',
+    seenAt: '2026-06-17T15:00:00.000Z',
+  });
+
+  assert.ok(row);
+  assert.equal(row.athlete_key, '1489000:951000');
+  assert.equal(row.athlete_id, '1489000');
+  assert.equal(row.athlete_main_id, '951000');
+  assert.equal(row.athlete_name, 'Avery Jones');
+  assert.equal(row.contact_id, '1489000');
+  assert.equal(row.contact_name, 'Sarah Samuels');
+  assert.equal(row.relationship_label, 'Parent 2');
+  assert.equal(row.phone, '407-555-0123');
+  assert.equal(row.normalized_phone, '4075550123');
+  assert.equal(row.admin_url, 'https://dashboard.nationalpid.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
+  assert.equal(row.task_url, 'https://dashboard.nationalpid.com/admin/tasks/1');
+  assert.equal(row.timezone, 'America/Chicago');
+  assert.equal(row.timezone_label, 'CST');
+  assert.equal(row.source, 'scout_prep_manual_contact');
+  assert.equal(row.cache_status, 'active');
+  assert.equal(row.payload_json.role, 'manual_additional_contact');
+  assert.equal(row.payload_json.relationship_label, 'Parent 2');
+  assert.equal(row.payload_json.manual_relationship_label, 'Mother redirected to dad');
+  assert.equal(row.payload_json.email, 'sarah@example.com');
+  assert.equal(row.payload_json.note, 'Mom redirected operator to dad as the best contact.');
+  assert.equal(row.payload_json.provenance, 'operator_added_from_scout_prep_contact_info');
+});
+
+test('buildManualAdditionalAthleteContactCacheRow strips paste corruption from phone display', () => {
+  const row = buildManualAdditionalAthleteContactCacheRow({
+    context: buildContext(),
+    contactName: 'Sarah Samuels',
+    relationshipLabel: 'Mom',
+    phone: '‚Ä™+1 (712) 261-1974‚Ä¨',
+    seenAt: '2026-06-17T15:00:00.000Z',
+  });
+
+  assert.ok(row);
+  assert.equal(row.phone, '712-261-1974');
+  assert.equal(row.normalized_phone, '7122611974');
+});
+
+test('buildManualAdditionalAthleteContactCacheRow rejects missing names and invalid phones', () => {
+  assert.equal(
+    buildManualAdditionalAthleteContactCacheRow({
+      context: buildContext(),
+      contactName: 'Sarah Samuels',
+      relationshipLabel: 'Mother',
+      phone: 'No phone',
+    }),
+    null,
+  );
+  assert.equal(
+    buildManualAdditionalAthleteContactCacheRow({
+      context: buildContext(),
+      contactName: '',
+      relationshipLabel: 'Mother',
+      phone: '407-555-0123',
+    }),
+    null,
+  );
 });
 
 test('active contact cache rows require resolved timezone going forward', () => {

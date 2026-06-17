@@ -286,11 +286,15 @@ test('buildVoicemailFollowUpMessage uses no show triage for student athletes', (
   assert.doesNotMatch(message, /have one of your parents call or text me back/);
 });
 
-test('getVoicemailFollowUpVariantLabel renders prefixed operator labels', () => {
-  assert.equal(getVoicemailFollowUpVariantLabel('no_show'), 'NS - Intent Check');
+test('getVoicemailFollowUpVariantLabel keeps only vetted RSP labels prefixed', () => {
+  assert.equal(getVoicemailFollowUpVariantLabel('call_attempt_1'), 'Call Attempt 1');
+  assert.equal(getVoicemailFollowUpVariantLabel('call_attempt_2'), 'Call Attempt 2');
+  assert.equal(getVoicemailFollowUpVariantLabel('call_attempt_3'), 'Call Attempt 3');
+  assert.equal(getVoicemailFollowUpVariantLabel('no_show'), 'Call Now');
+  assert.equal(getVoicemailFollowUpVariantLabel('send_cal_link'), 'Send Calendar Link');
+  assert.equal(getVoicemailFollowUpVariantLabel('parent_contact_intro'), 'Parent Intro');
   assert.equal(getVoicemailFollowUpVariantLabel('reschedule_1'), 'RSP - Offer Slots');
   assert.equal(getVoicemailFollowUpVariantLabel('reschedule_2'), 'RSP - Final Time Check');
-  assert.equal(getVoicemailFollowUpVariantLabel('call_attempt_2'), 'CA2 - Second Call');
 });
 
 test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {

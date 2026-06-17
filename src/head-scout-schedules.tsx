@@ -71,6 +71,7 @@ import { buildSetMeetingsCommandContext } from './domain/scout-prep-command-pipe
 import { postCallStageForAppointmentTitlePrefix } from './domain/sales-stage-contract';
 import { getActiveOperator } from './domain/owners';
 import {
+  buildPendingClientChecklistMarkdown,
   classifyPendingClientCentralQueue,
   type PendingClientCentralFilter,
 } from './domain/pending-client-watchlist';
@@ -752,68 +753,9 @@ function getPendingClientMeetingLabel(
   return formatPendingClientMeetingDate(start, row.meeting_timezone, row.meeting_timezone_label);
 }
 
-function formatPendingClientActionNote(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-): string {
-  if (isPendingClientCanceled(row)) return 'Canceled meeting.';
-  if (row.action_tag === 'Payment Watch') return 'Scout note needed.';
-  if (row.action_tag === 'Operator Input') return 'Operator note needed.';
-  if (row.action_tag === 'Missing Notes') return 'Note needed.';
-  return 'Scout update.';
-}
-
 function isPendingClientCanceled(row: PendingClientWatchlistLoadResult['rows'][number]): boolean {
   const haystack = `${row.event_title || ''}\n${row.description || ''}`;
   return /\bMeeting Result - Canceled\b|\bcancel(?:ed|led)?\b|\(CAN\)/i.test(haystack);
-}
-
-function hasPendingClientCancelTitleEvidence(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-): boolean {
-  return /\(CAN\)/i.test(`${row.event_title || ''}\n${row.description || ''}`);
-}
-
-function buildPendingClientNextSteps(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-  hasNote: boolean,
-): string {
-  if (row.action_tag === 'Payment Watch') return '- [ ] Review payment/joining note';
-  if (isPendingClientCanceled(row)) {
-    const steps = [];
-    if (hasPendingClientCancelTitleEvidence(row) && !extractPendingClientSalesStage(row)) {
-      steps.push('- [ ] Update sales stage');
-    }
-    if (!hasNote) {
-      steps.push('- [ ] Add operator note');
-    }
-    steps.push('- [ ] Send follow-up');
-    return steps.join('\n');
-  }
-  if (row.action_tag === 'Operator Input') {
-    if (hasNote) return '- [ ] Reach out to reschedule';
-    return '- [ ] Add operator note\n- [ ] Reach out to reschedule';
-  }
-  if (row.action_tag === 'Missing Notes') {
-    return '- [ ] Add operator note\n- [ ] Reach out with next step';
-  }
-  return '- [ ] Reach out with next step';
-}
-
-function normalizePendingClientNoteFallback(value: string): string | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  if (/^No usable Notes tab or post-meeting event-list entry found/i.test(trimmed)) return null;
-  if (/^CRM lifecycle identifies .+ event-list note is not populated yet\./i.test(trimmed)) {
-    return null;
-  }
-  if (/^CRM lifecycle and post-meeting .* identify a pending client\./i.test(trimmed)) {
-    return null;
-  }
-  if (/^Title evidence:\s*\(CAN\)/i.test(trimmed)) return null;
-  if (/^Title evidence:\s*\(RSP\)/i.test(trimmed))
-    return null;
-  if (/^Title evidence:\s*\(FU\)/i.test(trimmed)) return 'Marked follow-up by event prefix.';
-  return trimmed;
 }
 
 function buildPendingClientAdminUrl(
@@ -867,6 +809,34 @@ function pendingClientFilterTitle(filter: PendingClientCentralFilter | 'all'): s
   return PENDING_CLIENT_FILTERS.find((item) => item.value === filter)?.title || 'All';
 }
 
+function mergeClientReplyThemeReviewSnapshots(
+  current: ClientReplyThemeReviewSnapshot | null,
+  refreshed: ClientReplyThemeReviewSnapshot,
+): ClientReplyThemeReviewSnapshot {
+  if (!current) return refreshed;
+  const refreshedGuids = new Set([
+    ...refreshed.rows.map((entry) => entry.chatGuid),
+    ...refreshed.nearMisses.map((entry) => entry.chatGuid),
+    ...refreshed.ignoredHandled.map((entry) => entry.chatGuid),
+  ]);
+  return {
+    ...current,
+    generatedAt: refreshed.generatedAt,
+    rows: [
+      ...current.rows.filter((entry) => !refreshedGuids.has(entry.chatGuid)),
+      ...refreshed.rows,
+    ],
+    nearMisses: [
+      ...current.nearMisses.filter((entry) => !refreshedGuids.has(entry.chatGuid)),
+      ...refreshed.nearMisses,
+    ],
+    ignoredHandled: [
+      ...current.ignoredHandled.filter((entry) => !refreshedGuids.has(entry.chatGuid)),
+      ...refreshed.ignoredHandled,
+    ],
+  };
+}
+
 function pendingClientCentralTagLabel(
   queue: ReturnType<typeof classifyPendingClientCentralQueue>,
 ): string {
@@ -897,68 +867,6 @@ function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][numb
   }
 }
 
-function isPendingClientGeneratedHeading(value: string): boolean {
-  return (
-    /^Sales Stage:/i.test(value) ||
-    /^Lifecycle:/i.test(value) ||
-    /^Pending Tag:/i.test(value) ||
-    /^Notes Tab:\s*missing$/i.test(value) ||
-    /^Notes Tab:\s*\d{1,2}\/\d{1,2}\/\d{2,4}/i.test(value) ||
-    /^Scout Note:/i.test(value)
-  );
-}
-
-function isPendingClientEventTitle(value: string): boolean {
-  return (
-    /^Event List:\s*(?:Follow Up\s+-|\(FU\)|\(RSP\)|\(CAN\)|Booked Meeting)/i.test(value) ||
-    /^Event List:\s*[^.?!]{1,90}\s+\d{4}\s+[A-Z]{2}$/i.test(value)
-  );
-}
-
-function isPendingClientMeetingDescription(value: string): boolean {
-  return (
-    /https?:\/\/(?:www\.)?maxpreps\.com/i.test(value) ||
-    /\bMain Number:/i.test(value) ||
-    /\bBackup Number:/i.test(value) ||
-    /\bSpoke To:/i.test(value) ||
-    /\bAbout The Athlete:/i.test(value) ||
-    /\bOther Parent:/i.test(value)
-  );
-}
-
-function cleanPendingClientNoteBody(value: string): string | null {
-  const trimmed = value.trim();
-  if (
-    !trimmed ||
-    isPendingClientGeneratedHeading(trimmed) ||
-    isPendingClientMeetingDescription(trimmed) ||
-    /^Payment Watch:\s*pending payment evidence remains active/i.test(trimmed)
-  ) {
-    return null;
-  }
-  return normalizePendingClientNoteFallback(trimmed);
-}
-
-function extractPendingClientScoutNote(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-): string | null {
-  const lines = String(row.description || '')
-    .split(/\n{2,}/)
-    .map((block) => {
-      const trimmed = block.trim();
-      if (/^Notes Tab:/i.test(trimmed)) {
-        return cleanPendingClientNoteBody(trimmed.replace(/^Notes Tab:\s*/i, ''));
-      }
-      if (/^Event List:/i.test(trimmed)) {
-        if (isPendingClientEventTitle(trimmed)) return null;
-        return cleanPendingClientNoteBody(trimmed.replace(/^Event List:\s*/i, ''));
-      }
-      return null;
-    })
-    .filter(Boolean) as string[];
-  return lines.join('\n\n') || null;
-}
-
 function extractPendingClientSalesStage(
   row: PendingClientWatchlistLoadResult['rows'][number],
 ): string | null {
@@ -966,44 +874,14 @@ function extractPendingClientSalesStage(
   return match?.[1]?.trim() || null;
 }
 
-function extractPendingClientNote(row: PendingClientWatchlistLoadResult['rows'][number]): string {
-  const scoutNote = extractPendingClientScoutNote(row);
-  const body = scoutNote || formatPendingClientActionNote(row);
-  return [body, '', buildPendingClientNextSteps(row, Boolean(scoutNote))].join('\n');
-}
-
-function compactPendingClientThreadEvidence(value?: string | null): string {
-  const compacted = String(value || '').replace(/\s+/g, ' ').trim();
-  if (!compacted) return '';
-  return compacted.length > 180 ? `${compacted.slice(0, 177)}...` : compacted;
-}
-
-function buildPendingClientThreadEvidenceMarkdown(
+function buildPendingClientActionMarkdown(
+  row: PendingClientWatchlistLoadResult['rows'][number],
   replyState?: PendingClientReplyThemeState | null,
-): string | null {
-  const evidence = replyState?.row.replyEvidence;
-  if (!evidence) return null;
-  const inbound = compactPendingClientThreadEvidence(evidence.lastMeaningfulInbound?.body);
-  const outbound = compactPendingClientThreadEvidence(evidence.lastMeaningfulOutbound?.body);
-  const replyStatus = evidence.clientOptedOut
-    ? 'client opted out'
-    : evidence.clientRepliedAfterOperatorTimes
-      ? 'client replied after proposed times'
-      : evidence.operatorReplyProposedTimes
-        ? 'proposed times'
-        : evidence.operatorRepliedAfterInbound
-          ? 'replied without times'
-          : 'no reply after inbound';
-  return [
-    '## Thread Evidence',
-    '',
-    `- Theme: ${evidence.themeBucket}`,
-    inbound ? `- Last inbound: ${inbound}` : null,
-    outbound ? `- Last outbound: ${outbound}` : null,
-    `- Reply status: ${replyStatus}`,
-  ]
-    .filter(Boolean)
-    .join('\n');
+): string {
+  return buildPendingClientChecklistMarkdown({
+    row,
+    replyEvidence: replyState?.row.replyEvidence,
+  });
 }
 
 function buildPendingClientDetailMarkdown(
@@ -1013,7 +891,6 @@ function buildPendingClientDetailMarkdown(
   const salesStage = extractPendingClientSalesStage(row);
   const scout = row.head_scout || 'Unresolved';
   const meeting = getPendingClientMeetingLabel(row);
-  const threadEvidence = buildPendingClientThreadEvidenceMarkdown(replyState);
   return [
     '# Note',
     '',
@@ -1023,9 +900,7 @@ function buildPendingClientDetailMarkdown(
     '',
     salesStage ? `**Sales Stage:** ${salesStage}` : null,
     '',
-    extractPendingClientNote(row),
-    threadEvidence ? '' : null,
-    threadEvidence,
+    buildPendingClientActionMarkdown(row, replyState),
   ]
     .filter((line) => line !== null)
     .join('\n');
@@ -1238,9 +1113,11 @@ async function openPendingClientEvidenceVisual(args: {
 function PendingClientMessageThread({
   chat,
   replyState,
+  onRefreshEvidence,
 }: {
   chat?: ClientInboxChat | null;
   replyState?: PendingClientReplyThemeState | null;
+  onRefreshEvidence?: () => Promise<void>;
 }) {
   const match = replyState?.row || null;
   const chatGuid = match?.chatGuid || chat?.guid || '';
@@ -1263,9 +1140,12 @@ function PendingClientMessageThread({
       actions={
         <ActionPanel>
           <Action
-            title="Refresh Thread"
+            title="Refresh Thread and Evidence"
             icon={Icon.ArrowClockwise}
-            onAction={() => void revalidate()}
+            onAction={() => {
+              void revalidate();
+              void onRefreshEvidence?.();
+            }}
           />
         </ActionPanel>
       }
@@ -1426,6 +1306,7 @@ function PendingClientsWatchlist() {
   const [selectedFilter, setSelectedFilter] = useState<PendingClientCentralFilter | 'all'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
+  const [refreshingMessageEvidenceId, setRefreshingMessageEvidenceId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
@@ -1484,6 +1365,43 @@ function PendingClientsWatchlist() {
     }
   }
 
+  async function handleRefreshPendingClientRowEvidence(
+    row: PendingClientWatchlistLoadResult['rows'][number],
+  ) {
+    const athleteName =
+      row.athlete_name || cleanPendingClientTitle(row.event_title) || '';
+    const searchText = athleteName || String(row.athlete_main_id || row.athlete_id || '').trim();
+    setRefreshingMessageEvidenceId(row.source_event_id);
+    const toast = await showLoadingToast('Refreshing', 'Client messages');
+    try {
+      const [loaded, chats] = await Promise.all([
+        loadPendingClientWatchlist(),
+        loadClientInboxChats(searchText, 10),
+      ]);
+      const snapshot = await buildClientReplyThemeReviewSnapshotForChats(chats);
+      const mergedSnapshot = mergeClientReplyThemeReviewSnapshots(replyThemeSnapshot, snapshot);
+      await writeCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage, mergedSnapshot);
+      setResult(loaded);
+      setMessageChats((current) => {
+        const byGuid = new Map(current.map((chat) => [chat.guid, chat]));
+        for (const chat of chats) byGuid.set(chat.guid, chat);
+        return Array.from(byGuid.values());
+      });
+      setReplyThemeSnapshot(mergedSnapshot);
+      toast.style = Toast.Style.Success;
+      toast.title = 'Refreshed';
+      toast.message = athleteName || 'Client messages';
+    } catch (error) {
+      toast.style = Toast.Style.Failure;
+      toast.title = 'Refresh failed';
+      toast.message = error instanceof Error ? error.message : String(error);
+    } finally {
+      setRefreshingMessageEvidenceId((current) =>
+        current === row.source_event_id ? null : current,
+      );
+    }
+  }
+
   const rowModels = (result?.rows || [])
     .map((row) => {
       const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
@@ -1521,7 +1439,7 @@ function PendingClientsWatchlist() {
 
   return (
     <List
-      isLoading={isLoading || Boolean(resolvingId)}
+      isLoading={isLoading || Boolean(resolvingId) || Boolean(refreshingMessageEvidenceId)}
       isShowingDetail
       navigationTitle="Pending Clients"
       searchBarPlaceholder="Search pending"
@@ -1612,7 +1530,11 @@ function PendingClientsWatchlist() {
                           icon="💬"
                           shortcut={{ modifiers: ['cmd'], key: 'm' }}
                           target={
-                            <PendingClientMessageThread chat={matchedChat} replyState={replyState} />
+                            <PendingClientMessageThread
+                              chat={matchedChat}
+                              replyState={replyState}
+                              onRefreshEvidence={() => handleRefreshPendingClientRowEvidence(row)}
+                            />
                           }
                         />
                       </ActionPanel.Section>
@@ -1646,8 +1568,18 @@ function PendingClientsWatchlist() {
                         <Action
                           title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
                           icon="✅"
-                          shortcut={{ modifiers: ['cmd'], key: 'x' }}
+                          shortcut={{ modifiers: ['ctrl'], key: 'x' }}
                           onAction={() => void handleMarkResolved(row.source_event_id)}
+                        />
+                        <Action
+                          title={
+                            refreshingMessageEvidenceId === row.source_event_id
+                              ? 'Refreshing Messages…'
+                              : 'Refresh Messages'
+                          }
+                          icon={Icon.ArrowClockwise}
+                          shortcut={{ modifiers: ['cmd'], key: 'r' }}
+                          onAction={() => void handleRefreshPendingClientRowEvidence(row)}
                         />
                       </ActionPanel.Section>
                     ) : null}

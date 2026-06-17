@@ -121,6 +121,21 @@ export function athleteNameFromMeetingTitle(title) {
   return realName(match?.[1]) || null;
 }
 
+export function athleteIdentityFromAppointment(appointment) {
+  const key =
+    normalizeText(appointment?.athlete_key) ||
+    normalizeText(appointment?.source_payload?.athlete_key);
+  const keyMatch = key.match(/^(\d+):(\d+)$/);
+  const athleteId = normalizeText(appointment?.athlete_id) || normalizeText(keyMatch?.[1]);
+  const athleteMainId =
+    normalizeText(appointment?.athlete_main_id) || normalizeText(keyMatch?.[2]);
+  return {
+    athleteId,
+    athleteMainId,
+    athleteKey: athleteId && athleteMainId ? buildAthleteKey(athleteId, athleteMainId) : key,
+  };
+}
+
 async function readRowsSafe(table, query) {
   return readRows(SUPABASE_CONFIG, table, query).catch(() => []);
 }
@@ -129,7 +144,7 @@ export async function readSupabaseAthleteContext(athleteKey) {
   const key = normalizeText(athleteKey);
   if (!key) return {};
   const encodedKey = encodeURIComponent(key);
-  const [athleteRows, contactRows, confirmationRows, callLogRows] = await Promise.all([
+  const [athleteRows, contactRows, confirmationRows, callLogRows, appointmentRows] = await Promise.all([
     readRowsSafe('athletes', `select=athlete_name&athlete_key=eq.${encodedKey}&limit=1`),
     readRowsSafe(
       'athlete_contact_cache',
@@ -143,6 +158,15 @@ export async function readSupabaseAthleteContext(athleteKey) {
       'call_log',
       `select=athlete_name&athlete_key=eq.${encodedKey}&order=updated_at.desc&limit=5`,
     ),
+    readRowsSafe(
+      'appointments',
+      [
+        'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner,operator_owner_key,meeting_timezone,meeting_timezone_label,previous_appointment_id,original_appointment_id,reschedule_sequence,source_payload',
+        `athlete_key=eq.${encodedKey}`,
+        'order=starts_at.desc',
+        'limit=10',
+      ].join('&'),
+    ),
   ]);
 
   return {
@@ -151,6 +175,65 @@ export async function readSupabaseAthleteContext(athleteKey) {
     confirmationCacheAthleteName:
       confirmationRows.find((row) => realName(row?.athlete_name))?.athlete_name || null,
     callLogAthleteName: callLogRows.find((row) => realName(row?.athlete_name))?.athlete_name || null,
+    appointmentRows,
+  };
+}
+
+export function hydrateWatcherAppointmentFromSupabaseContext(appointment, supabaseContext = {}) {
+  const identity = athleteIdentityFromAppointment(appointment);
+  const sameKeyAppointments = Array.isArray(supabaseContext?.appointmentRows)
+    ? supabaseContext.appointmentRows
+    : [];
+  const sameAppointment =
+    sameKeyAppointments.find((row) => normalizeText(row?.id) === normalizeText(appointment?.id)) ||
+    {};
+  const sourcePayload =
+    appointment?.source_payload && typeof appointment.source_payload === 'object'
+      ? appointment.source_payload
+      : {};
+  const sameAppointmentPayload =
+    sameAppointment?.source_payload && typeof sameAppointment.source_payload === 'object'
+      ? sameAppointment.source_payload
+      : {};
+
+  return {
+    ...appointment,
+    athlete_key: identity.athleteKey || normalizeText(sameAppointment?.athlete_key) || null,
+    athlete_id: identity.athleteId || normalizeText(sameAppointment?.athlete_id) || null,
+    athlete_main_id:
+      identity.athleteMainId || normalizeText(sameAppointment?.athlete_main_id) || null,
+    head_scout: normalizeText(appointment?.head_scout) || normalizeText(sameAppointment?.head_scout) || null,
+    source_event_id:
+      normalizeText(appointment?.source_event_id) || normalizeText(sameAppointment?.source_event_id) || null,
+    operator_owner:
+      normalizeText(appointment?.operator_owner) || normalizeText(sameAppointment?.operator_owner) || null,
+    operator_owner_key:
+      normalizeText(appointment?.operator_owner_key) ||
+      normalizeText(sameAppointment?.operator_owner_key) ||
+      null,
+    meeting_timezone:
+      normalizeText(appointment?.meeting_timezone) ||
+      normalizeText(sameAppointment?.meeting_timezone) ||
+      null,
+    meeting_timezone_label:
+      normalizeText(appointment?.meeting_timezone_label) ||
+      normalizeText(sameAppointment?.meeting_timezone_label) ||
+      null,
+    previous_appointment_id:
+      normalizeText(appointment?.previous_appointment_id) ||
+      normalizeText(sameAppointment?.previous_appointment_id) ||
+      null,
+    original_appointment_id:
+      normalizeText(appointment?.original_appointment_id) ||
+      normalizeText(sameAppointment?.original_appointment_id) ||
+      null,
+    reschedule_sequence:
+      appointment?.reschedule_sequence ?? sameAppointment?.reschedule_sequence ?? null,
+    source_payload: {
+      ...sameAppointmentPayload,
+      ...sourcePayload,
+      athlete_key: identity.athleteKey || sourcePayload.athlete_key || sameAppointmentPayload.athlete_key || null,
+    },
   };
 }
 
@@ -293,7 +376,8 @@ export function appointmentEndIso(appointment, fallbackMinutes = 60) {
 export function isWatchCandidate(appointment, now = new Date(), windowDays = WINDOW_DAYS) {
   if (!ACTIVE_APPOINTMENT_STATUSES.includes(String(appointment?.status || '').trim())) return false;
   if (normalizeText(appointment?.post_meeting_result)) return false;
-  if (!normalizeText(appointment?.athlete_id) || !normalizeText(appointment?.athlete_main_id)) return false;
+  const identity = athleteIdentityFromAppointment(appointment);
+  if (!identity.athleteId || !identity.athleteMainId) return false;
   const endIso = appointmentEndIso(appointment);
   if (!endIso) return false;
   const endMs = new Date(endIso).getTime();
@@ -408,7 +492,7 @@ async function readCandidateAppointments(args) {
       SUPABASE_CONFIG,
       'appointments',
       [
-        'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner,operator_owner_key,meeting_timezone,meeting_timezone_label,post_meeting_result,source_payload',
+        'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner,operator_owner_key,meeting_timezone,meeting_timezone_label,post_meeting_result,previous_appointment_id,original_appointment_id,reschedule_sequence,source_payload',
         `id=eq.${encodeURIComponent(args.appointmentId)}`,
         'limit=1',
       ].join('&'),
@@ -421,7 +505,7 @@ async function readCandidateAppointments(args) {
     SUPABASE_CONFIG,
     'appointments',
     [
-      'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner,operator_owner_key,meeting_timezone,meeting_timezone_label,post_meeting_result,source_payload',
+      'select=id,athlete_key,athlete_id,athlete_main_id,head_scout,starts_at,status,source_event_id,operator_owner,operator_owner_key,meeting_timezone,meeting_timezone_label,post_meeting_result,previous_appointment_id,original_appointment_id,reschedule_sequence,source_payload',
       `starts_at=gte.${encodeURIComponent(windowStart)}`,
       `starts_at=lte.${encodeURIComponent(now.toISOString())}`,
       `status=in.(${ACTIVE_APPOINTMENT_STATUSES.map(quotePostgrestInValue).join(',')})`,
@@ -574,15 +658,16 @@ async function sendWatcherFailureEmail(summary) {
 }
 
 async function processAppointment(appointment, args) {
-  const athleteId = normalizeText(appointment.athlete_id);
-  const athleteMainId = normalizeText(appointment.athlete_main_id);
-  const athleteKey = buildAthleteKey(athleteId, athleteMainId);
+  const initialIdentity = athleteIdentityFromAppointment(appointment);
+  const initialSupabaseContext = await readSupabaseAthleteContext(initialIdentity.athleteKey);
+  appointment = hydrateWatcherAppointmentFromSupabaseContext(appointment, initialSupabaseContext);
+  const { athleteId, athleteMainId, athleteKey } = athleteIdentityFromAppointment(appointment);
   const [selectedStage, liveEvent, tasks, profile, supabaseContext] = await Promise.all([
     fetchSelectedSalesStage(athleteId),
     fetchLiveEvent(appointment),
     fetchTasks(athleteId, athleteMainId),
     apiFetch(`/athlete/${encodeURIComponent(athleteId)}/resolve?force_refresh=true`).catch(() => ({})),
-    readSupabaseAthleteContext(athleteKey),
+    initialSupabaseContext,
   ]);
   const decision = resolveWatcherDecision({ appointment, selectedStage, liveEvent });
   const athleteName = buildAthleteName(appointment, profile, liveEvent, supabaseContext);

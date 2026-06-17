@@ -230,6 +230,13 @@ export type PendingClientCommunicationPlan = {
   resolutionRule: string;
 };
 
+export type PendingClientChecklistInput = {
+  row: PendingClientWatchlistRow;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  now?: Date;
+  dormantFollowUpDays?: number;
+};
+
 function sourceEventAppointmentId(value?: string | null): string | null {
   const source = normalizeText(value);
   if (!source) return null;
@@ -521,6 +528,153 @@ export function buildPendingClientCommunicationPlan(args: {
     resolutionRule:
       'Cycle count selects the reply valve; removal is not automatic. Resolve when a new confirmed appointment, terminal sales stage, payment resolution, explicit client opt-out, or operator-approved close-out changes the source truth.',
   };
+}
+
+function prefixedPendingClientEvidenceBodies(
+  description: string | null | undefined,
+  prefix: 'Notes Tab' | 'Event List',
+): string[] {
+  const seen = new Set<string>();
+  const bodies: string[] = [];
+  for (const block of normalizeText(description).split(/\n{2,}/)) {
+    const trimmed = block.trim();
+    const match = trimmed.match(/^([^:]+):\s*([\s\S]+)$/i);
+    if (!match) continue;
+    if (normalizeComparableText(match[1]).toLowerCase() !== prefix.toLowerCase()) continue;
+    const body = normalizeComparableText(match[2]);
+    if (!body || !hasPendingClientWatchNote(body) || seen.has(body.toLowerCase())) continue;
+    seen.add(body.toLowerCase());
+    bodies.push(body);
+  }
+  return bodies;
+}
+
+export function extractPendingClientEvidenceNote(description?: string | null): string | null {
+  const notesTabBodies = prefixedPendingClientEvidenceBodies(description, 'Notes Tab');
+  if (notesTabBodies.length) return notesTabBodies.join('\n\n');
+  return prefixedPendingClientEvidenceBodies(description, 'Event List').join('\n\n') || null;
+}
+
+function hasPendingClientOperatorNoteEvidence(row: PendingClientWatchlistRow): boolean {
+  if (extractPendingClientEvidenceNote(row.description)) return true;
+  if (row.action_tag === 'Operator Input' || row.action_tag === 'Missing Notes') return false;
+  return hasPendingClientWatchNote(row.description);
+}
+
+function ordinalDay(day: number): string {
+  const suffix =
+    day % 100 >= 11 && day % 100 <= 13
+      ? 'th'
+      : day % 10 === 1
+        ? 'st'
+        : day % 10 === 2
+          ? 'nd'
+          : day % 10 === 3
+            ? 'rd'
+            : 'th';
+  return `${day}${suffix}`;
+}
+
+function formatPendingClientNoteTimestamp(match: RegExpMatchArray): string {
+  const month = Number.parseInt(match[1] || '', 10);
+  const day = Number.parseInt(match[2] || '', 10);
+  const rawYear = Number.parseInt(match[3] || '', 10);
+  const hour = Number.parseInt(match[4] || '', 10);
+  const minute = Number.parseInt(match[5] || '', 10);
+  const meridiem = String(match[6] || '').toUpperCase();
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+  const date = new Date(year, month - 1, day, hour, minute);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return '';
+  }
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date);
+  const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(date);
+  return `${weekday}, ${monthName} ${ordinalDay(day)} at ${hour}:${String(minute).padStart(
+    2,
+    '0',
+  )} ${meridiem}`;
+}
+
+export function parsePendingClientEvidenceNote(note?: string | null): {
+  timestampLabel: string | null;
+  description: string;
+} | null {
+  const text = normalizeComparableText(note);
+  if (!text) return null;
+  const timestampMatch = text.match(
+    /(\d{1,2})\/(\d{1,2})\/(\d{2,4})\s+(\d{1,2}):(\d{2})\s*([AP]M)\b/i,
+  );
+  if (!timestampMatch || timestampMatch.index === undefined) {
+    return { timestampLabel: null, description: text };
+  }
+  const description = normalizeComparableText(
+    text.slice(timestampMatch.index + timestampMatch[0].length),
+  );
+  return {
+    timestampLabel: formatPendingClientNoteTimestamp(timestampMatch) || null,
+    description: description || text,
+  };
+}
+
+function fencedNoteBlock(value: string): string {
+  return value.replace(/```/g, "'''");
+}
+
+export function buildPendingClientChecklistMarkdown({
+  row,
+  replyEvidence,
+  now,
+  dormantFollowUpDays = 2,
+}: PendingClientChecklistInput): string {
+  const hasNote = hasPendingClientOperatorNoteEvidence(row);
+  const note = parsePendingClientEvidenceNote(extractPendingClientEvidenceNote(row.description));
+  const messageThread = summarizePendingClientMessageThread({
+    replyEvidence,
+    latestOutcomeAt: row.last_seen_at || row.event_end || row.event_start,
+    now,
+  });
+  const textSent = messageThread.operatorReachedOutAfterLatestOutcome;
+  const actionLines = [`- [${hasNote ? 'x' : ' '}] Add note`];
+
+  if (row.action_tag === 'Payment Watch') {
+    actionLines.push('- [ ] Review payment');
+  } else if (textSent) {
+    actionLines.push('- [x] Offer slots');
+    if (messageThread.state === 'client_replied' || messageThread.state === 'client_opted_out') {
+      actionLines.push('- [ ] Review reply');
+    } else if ((messageThread.dormantDaysSinceOperatorMessage || 0) >= dormantFollowUpDays) {
+      actionLines.push('- [ ] Follow up');
+    } else {
+      actionLines.push('- [ ] Wait for reply');
+    }
+  } else {
+    actionLines.push('- [ ] Offer slots');
+  }
+
+  const lines = [
+    '## Next Action',
+    '',
+    ...actionLines,
+  ];
+
+  if (note?.description) {
+    lines.push(
+      '',
+      '## Note',
+      '',
+      ...(note.timestampLabel ? [note.timestampLabel, ''] : []),
+      '```',
+      fencedNoteBlock(note.description),
+      '```',
+    );
+  }
+
+  return lines.join('\n');
 }
 
 function getPayloadOperatorKey(row: SetMeetingConfirmationCacheRowInput): string {

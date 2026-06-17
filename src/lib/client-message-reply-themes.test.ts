@@ -976,6 +976,40 @@ test('pending client reply theme state requires true reschedule offer language',
   );
 });
 
+test('pending client reply theme state uses outbound-only reschedule offer as awaiting client', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-17T19:10:00.000Z',
+    chats: [
+      chat({
+        displayName: 'Joe Henry',
+        athleteName: 'Gage Henry',
+        athleteMainId: '954321',
+        taskTitle: 'Meeting Result - Res. Pending',
+      }),
+    ],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'gage-times',
+          body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
+          date: '2026-06-17T19:05:00.000Z',
+          isFromMe: true,
+        }),
+      ],
+    },
+  });
+  const state = findPendingClientReplyThemeState(
+    { athlete_main_id: '954321', athlete_name: 'Gage Henry' },
+    snapshot,
+  );
+
+  assert.equal(snapshot.rows.length, 1);
+  assert.equal(state?.status, 'awaiting_reschedule');
+  assert.equal(state?.row.replyEvidence?.operatorReplyProposedTimes, true);
+  assert.equal(state?.row.replyEvidence?.clientRepliedAfterOperatorTimes, false);
+  assert.equal(state?.row.replyEvidence?.lastMeaningfulOutbound?.guid, 'gage-times');
+});
+
 test('pending client reply theme state detects client reply after proposed times', () => {
   const snapshot = buildClientReplyThemeReviewSnapshot({
     generatedAt: '2026-05-27T17:00:00.000Z',
