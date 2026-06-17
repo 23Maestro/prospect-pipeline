@@ -47,6 +47,16 @@ export type ClientMessageAuditDiagnosticMeaningCounts = Record<
 export type ClientMessageAuditObservationCounts = Record<string, number>;
 export type ClientMessageAuditSignalCounts = Record<string, number>;
 
+export type ClientMessageAuditDecoderCoverage = {
+  totalMessages: number;
+  attributedBodiesPresent: number;
+  attributedBodiesDecoded: number;
+  textFallbackCount: number;
+  emptyCount: number;
+  emptyReasonCounts: Record<string, number>;
+  undecodedAttributedBodyWithoutText: number;
+};
+
 export type ClientMessageAuditManualReviewTarget = {
   appointmentIdHash: string | null;
   athleteKeyHash: string | null;
@@ -69,6 +79,7 @@ export type ClientMessageAuditVerificationGate = {
     | 'action_proposals_human_in_loop'
     | 'manual_review_targets'
     | 'non_substantive_messages_accounted'
+    | 'message_body_decoder_coverage'
     | 'weak_unparsed_replies_do_not_trigger_actions';
   status: ClientMessageAuditGateStatus;
   observed: unknown;
@@ -109,6 +120,7 @@ export function buildClientMessageAuditVerificationSummary(args: {
   diagnosticMeaningCounts: ClientMessageAuditDiagnosticMeaningCounts;
   unmatchedObservationCounts: ClientMessageAuditObservationCounts;
   clientLatestUnparsedSignalCounts: ClientMessageAuditSignalCounts;
+  decoderCoverage?: ClientMessageAuditDecoderCoverage;
 }): ClientMessageAuditVerificationSummary {
   const mutatingActions = args.pendingActions.filter(
     (action) => (action.suggestedMutationTargets || []).length > 0,
@@ -187,6 +199,15 @@ export function buildClientMessageAuditVerificationSummary(args: {
       required: 'reaction-only rows are counted inside non-substantive message evidence',
       meaning:
         'Tapbacks and attachment placeholders are diagnostic SQL evidence, not client-reply action evidence.',
+    },
+    {
+      id: 'message_body_decoder_coverage',
+      status: args.decoderCoverage?.undecodedAttributedBodyWithoutText ? 'fail' : 'pass',
+      observed: args.decoderCoverage || null,
+      required:
+        '0 sampled rows with attributedBody present, no decoded attributed body, and no text fallback',
+      meaning:
+        'Every sampled message row is either decoded to text or explicitly classified as known non-text diagnostic evidence.',
     },
     {
       id: 'weak_unparsed_replies_do_not_trigger_actions',

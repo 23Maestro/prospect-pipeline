@@ -18,6 +18,11 @@ import {
   buildClientMessageThreadEvidenceReceipt,
   type ClientMessageThreadEvidenceReceipt,
 } from './client-message-evidence-receipts';
+import {
+  decodeClientMessageBody,
+  decodeHexString,
+  type ClientMessageBodySource,
+} from './client-message-body-decoder';
 
 const DB_PATH = resolve(homedir(), 'Library/Messages/chat.db');
 
@@ -111,6 +116,14 @@ type SQLMessage = {
   date: string;
   date_read: string | null;
   body: string;
+  text: string | null;
+  body_source?: ClientMessageBodySource;
+  empty_reason?: string;
+  decoded_attributed_body?: boolean;
+  cache_has_attachments?: number | boolean | null;
+  has_message_summary?: number | boolean | null;
+  has_payload_data?: number | boolean | null;
+  associated_message_type?: number | string | null;
   service: 'iMessage' | 'SMS';
   is_audio_message: boolean;
   is_from_me: boolean;
@@ -489,7 +502,7 @@ export function buildClientInboxThreadEvidenceReceipt(
       date: message.date,
       isFromMe: message.is_from_me,
       body: message.body,
-      bodySource: message.body ? 'attributedBody' : 'empty',
+      bodySource: message.body_source || (message.body ? 'attributedBody' : 'empty'),
     })),
   });
 }
@@ -528,40 +541,6 @@ export function useClientInboxChats(searchText = '') {
   };
 }
 
-export function decodeHexString(hexString: string): string {
-  const START_PATTERN: number[] = [0x01, 0x2b];
-  const END_PATTERN: number[] = [0x86, 0x84];
-  const bytes = hexString.match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [];
-
-  let startIndex = -1;
-  for (let i = 0; i < bytes.length - 1; i++) {
-    if (bytes[i] === START_PATTERN[0] && bytes[i + 1] === START_PATTERN[1]) {
-      startIndex = i + 2;
-      break;
-    }
-  }
-  if (startIndex === -1) return '';
-
-  let endIndex = -1;
-  for (let i = startIndex; i < bytes.length - 1; i++) {
-    if (bytes[i] === END_PATTERN[0] && bytes[i + 1] === END_PATTERN[1]) {
-      endIndex = i;
-      break;
-    }
-  }
-  if (endIndex === -1) return '';
-
-  const relevantBytes = bytes.slice(startIndex, endIndex);
-  let result: string;
-  try {
-    result = new TextDecoder().decode(new Uint8Array(relevantBytes));
-  } catch {
-    result = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(relevantBytes));
-  }
-
-  return result.charCodeAt(0) < 128 ? result.slice(1) : result.slice(3);
-}
-
 export async function getClientThreadMessages(
   chatGuid: string,
   senderName: string,
@@ -593,6 +572,11 @@ export async function getClientThreadMessages(
       END as group_name,
       message.service,
       hex(message.attributedBody) as body,
+      message.text as text,
+      message.cache_has_attachments,
+      CASE WHEN message.message_summary_info IS NOT NULL AND length(message.message_summary_info) > 0 THEN 1 ELSE 0 END as has_message_summary,
+      CASE WHEN message.payload_data IS NOT NULL AND length(message.payload_data) > 0 THEN 1 ELSE 0 END as has_payload_data,
+      message.associated_message_type,
       CASE WHEN COUNT(DISTINCT handle.id) > 1 THEN 1 ELSE 0 END as is_group,
       CASE
         WHEN COUNT(DISTINCT handle.id) > 1 THEN GROUP_CONCAT(DISTINCT handle.id)
@@ -608,24 +592,29 @@ export async function getClientThreadMessages(
       LEFT JOIN handle ON chat_handle_join.handle_id = handle."ROWID"
       LEFT JOIN message_attachment_join ON message."ROWID" = message_attachment_join.message_id
       LEFT JOIN attachment ON message_attachment_join.attachment_id = attachment."ROWID"
-    WHERE message.attributedBody IS NOT NULL
-      AND chat.guid = '${chatGuid.replace(/'/g, "''")}'
+    WHERE chat.guid = '${chatGuid.replace(/'/g, "''")}'
     GROUP BY message.guid
     ORDER BY date DESC
     LIMIT 100
     `,
   );
 
-  const messages = (rawData || []).map((message) => ({
-    ...message,
-    body: decodeHexString(message.body),
-    sender: message.chat_identifier,
-    senderName: message.is_from_me ? 'Me' : senderName,
-    is_from_me: Boolean(message.is_from_me),
-    is_audio_message: Boolean(message.is_audio_message),
-    is_sent: Boolean(message.is_sent),
-    is_read: message.is_sent ? true : Boolean(message.is_read),
-  }));
+  const messages = (rawData || []).map((message) => {
+    const decoded = decodeClientMessageBody(message);
+    return {
+      ...message,
+      body: decoded.body,
+      body_source: decoded.bodySource,
+      empty_reason: decoded.emptyReason,
+      decoded_attributed_body: decoded.decodedAttributedBody,
+      sender: message.chat_identifier,
+      senderName: message.is_from_me ? 'Me' : senderName,
+      is_from_me: Boolean(message.is_from_me),
+      is_audio_message: Boolean(message.is_audio_message),
+      is_sent: Boolean(message.is_sent),
+      is_read: message.is_sent ? true : Boolean(message.is_read),
+    };
+  });
 
   const terms = String(searchText || '')
     .toLowerCase()

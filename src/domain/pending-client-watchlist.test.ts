@@ -15,6 +15,7 @@ import {
   classifyPendingClientCentralQueue,
   classifyPendingClientLifecycle,
   classifyPendingClientOperatorQueue,
+  derivePendingClientActiveFollowUpState,
   extractPendingClientEvidenceNote,
   filterReadySetMeetingConfirmationGroups,
   filterPendingClientCandidateEvents,
@@ -492,6 +493,7 @@ test('pending client central queue collapses review work to four router lanes', 
     name: string;
     row: PendingClientWatchlistRow;
     replyEvidence: PendingClientOperatorQueueReplyEvidence | null;
+    now?: Date;
     expected: PendingClientCentralQueueClassification;
   }[] = [
     {
@@ -503,8 +505,24 @@ test('pending client central queue collapses review work to four router lanes', 
     {
       name: 'RSP · Awaiting Client',
       row: baseRow,
-      replyEvidence: { themeBucket: 'RSP', operatorReplyProposedTimes: true },
+      replyEvidence: {
+        themeBucket: 'RSP',
+        operatorReplyProposedTimes: true,
+        lastMeaningfulOutbound: { date: '2026-06-17T15:05:00' },
+      },
+      now: new Date('2026-06-17T15:10:00'),
       expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Awaiting Client', priority: 20 },
+    },
+    {
+      name: 'RSP · Try Again',
+      row: baseRow,
+      replyEvidence: {
+        themeBucket: 'RSP',
+        operatorReplyProposedTimes: true,
+        lastMeaningfulOutbound: { date: '2026-06-17T15:05:00' },
+      },
+      now: new Date('2026-06-19T15:06:00'),
+      expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Try Again', priority: 15 },
     },
     {
       name: 'RSP · Review Reply',
@@ -521,7 +539,12 @@ test('pending client central queue collapses review work to four router lanes', 
     {
       name: 'No Show · Awaiting Client',
       row: { ...baseRow, event_title: 'No Show' },
-      replyEvidence: { themeBucket: 'No Show', operatorReplyProposedTimes: true },
+      replyEvidence: {
+        themeBucket: 'No Show',
+        operatorReplyProposedTimes: true,
+        lastMeaningfulOutbound: { date: '2026-06-17T15:05:00' },
+      },
+      now: new Date('2026-06-17T15:10:00'),
       expected: { filter: 'no_show', label: 'No Show', actionLabel: 'Awaiting Client', priority: 20 },
     },
     {
@@ -558,6 +581,7 @@ test('pending client central queue collapses review work to four router lanes', 
     'Offer Slots',
     'Awaiting Client',
     'Review Reply',
+    'Try Again',
     'Bad Timing',
     'Needs Reply',
     'Review',
@@ -568,6 +592,7 @@ test('pending client central queue collapses review work to four router lanes', 
     const actual = classifyPendingClientCentralQueue({
       row: testCase.row,
       replyEvidence: testCase.replyEvidence,
+      now: testCase.now,
     });
     const rowTag = actual.actionLabel;
 
@@ -705,13 +730,13 @@ test('pending client checklist checks real note and outbound reschedule evidence
   assert.equal(
     markdown,
     [
-      '## Next Action',
+      '### Next Action',
       '',
       '- [x] Add note',
       '- [x] Offer slots',
-      '- [ ] Follow up',
+      '- [ ] Try again - waited until Friday, June 19th at 11:00 AM',
       '',
-      '## Note',
+      '### Note',
       '',
       '```',
       'called into work',
@@ -735,7 +760,7 @@ test('pending client checklist waits for note and reschedule outreach when evide
       now: new Date('2026-06-17T15:00:00.000Z'),
     }),
     [
-      '## Next Action',
+      '### Next Action',
       '',
       '- [ ] Add note',
       '- [ ] Offer slots',
@@ -758,19 +783,19 @@ test('pending client checklist marks offered slots and waits for reply right aft
         clientRepliedAfterOperatorTimes: false,
         lastMeaningfulOutbound: {
           body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
-          date: '2026-06-17T19:05:00.000Z',
+          date: '2026-06-17T15:05:00',
         },
       },
-      now: new Date('2026-06-17T19:10:00.000Z'),
+      now: new Date('2026-06-17T15:10:00'),
     }),
     [
-      '## Next Action',
+      '### Next Action',
       '',
       '- [x] Add note',
       '- [x] Offer slots',
-      '- [ ] Wait for reply',
+      '- [ ] Wait for reply until Friday, June 19th at 3:05 PM',
       '',
-      '## Note',
+      '### Note',
       '',
       '```',
       'Gage has practice',
@@ -804,19 +829,81 @@ test('pending client checklist asks for reply review when client responds after 
       now: new Date('2026-06-17T17:00:00.000Z'),
     }),
     [
-      '## Next Action',
+      '### Next Action',
       '',
       '- [x] Add note',
       '- [x] Offer slots',
       '- [ ] Review reply',
       '',
-      '## Note',
+      '### Note',
       '',
       '```',
       'called into work',
       '```',
     ].join('\n'),
   );
+});
+
+test('pending client active follow-up state marks outbound offer as awaiting client', () => {
+  const row = pendingClientRow({
+    last_seen_at: '2026-06-17T17:34:00.000Z',
+    description: 'Notes Tab: 06/17/26 01:34 PM Gage has practice',
+  });
+  const replyEvidence: PendingClientOperatorQueueReplyEvidence = {
+    operatorReplyProposedTimes: true,
+    clientRepliedAfterOperatorTimes: false,
+    lastMeaningfulOutbound: {
+      body: 'Coach has me checking what works best to reschedule Gage: 1 - Thursday at 7PM ET 2 - Monday at 7PM ET',
+      date: '2026-06-17T19:05:00.000Z',
+    },
+  };
+  const state = derivePendingClientActiveFollowUpState({
+    row,
+    filter: 'reschedule',
+    replyEvidence,
+    now: new Date('2026-06-18T12:00:00.000Z'),
+  });
+  const queue = classifyPendingClientCentralQueue({ row, replyEvidence });
+  const markdown = buildPendingClientChecklistMarkdown({
+    row,
+    replyEvidence,
+    centralQueue: queue,
+    now: new Date('2026-06-18T12:00:00.000Z'),
+  });
+
+  assert.equal(state.actionLabel, 'Awaiting Client');
+  assert.equal(queue.actionLabel, 'Awaiting Client');
+  assert.match(markdown, /- \[x\] Offer slots/);
+  assert.match(markdown, /- \[ \] Wait for reply until/);
+});
+
+test('pending client active follow-up state moves awaiting client to try again after deadline', () => {
+  const row = pendingClientRow({
+    last_seen_at: '2026-06-17T17:34:00.000Z',
+    description: 'Notes Tab: 06/17/26 01:34 PM Gage has practice',
+  });
+  const replyEvidence: PendingClientOperatorQueueReplyEvidence = {
+    operatorReplyProposedTimes: true,
+    clientRepliedAfterOperatorTimes: false,
+    lastMeaningfulOutbound: {
+      body: 'Coach has me checking what works best to reschedule Gage: 1 - Thursday at 7PM ET 2 - Monday at 7PM ET',
+      date: '2026-06-17T19:05:00.000Z',
+    },
+  };
+  const now = new Date('2026-06-19T19:06:00.000Z');
+  const state = derivePendingClientActiveFollowUpState({
+    row,
+    filter: 'reschedule',
+    replyEvidence,
+    now,
+  });
+  const queue = classifyPendingClientCentralQueue({ row, replyEvidence, now });
+  const markdown = buildPendingClientChecklistMarkdown({ row, replyEvidence, centralQueue: queue, now });
+
+  assert.equal(state.actionLabel, 'Try Again');
+  assert.equal(queue.actionLabel, 'Try Again');
+  assert.match(markdown, /- \[x\] Offer slots/);
+  assert.match(markdown, /- \[ \] Try again - waited until/);
 });
 
 test('pending client note evidence renders timestamp and description without title noise', () => {
@@ -835,7 +922,7 @@ test('pending client note evidence renders timestamp and description without tit
   });
   const markdown = buildPendingClientChecklistMarkdown({ row });
 
-  assert.match(markdown, /## Note/);
+  assert.match(markdown, /### Note/);
   assert.match(markdown, /Tuesday, April 21st at 7:50 PM/);
   assert.match(
     markdown,
@@ -1147,12 +1234,14 @@ test('pending client queue order uses last seen date only', () => {
   assert.match(uiSource, /pendingClientQueueTime\(right\.row\) - pendingClientQueueTime\(left\.row\)/);
 });
 
-test('pending client visible filters use a 30 day last-seen gate except payments', () => {
+test('pending client visible filters use a 14 day gate for RSP and no-show only', () => {
   const source = fs.readFileSync('src/head-scout-schedules.tsx', 'utf8');
-  assert.match(source, /PENDING_CLIENT_NON_PAYMENT_WINDOW_MS = 30 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(source, /PENDING_CLIENT_RECOVERY_WINDOW_MS = 14 \* 24 \* 60 \* 60 \* 1000/);
   assert.match(source, /if \(queue\.filter === 'payments'\) return true/);
+  assert.match(source, /if \(queue\.filter === 'review_follow_ups'\) return true/);
+  assert.match(source, /if \(queue\.filter !== 'reschedule' && queue\.filter !== 'no_show'\) return true/);
   assert.match(source, /const lastSeenAt = pendingClientQueueTime\(row\)/);
-  assert.match(source, /lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_NON_PAYMENT_WINDOW_MS/);
+  assert.match(source, /lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_RECOVERY_WINDOW_MS/);
   assert.match(source, /isPendingClientInsideVisibleWindow\(item\.row, item\.queue\)/);
 });
 

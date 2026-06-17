@@ -53,6 +53,7 @@ function verificationArgs(overrides: {
   diagnosticMeaningCounts?: Parameters<typeof buildClientMessageAuditVerificationSummary>[0]['diagnosticMeaningCounts'];
   unmatchedObservationCounts?: Parameters<typeof buildClientMessageAuditVerificationSummary>[0]['unmatchedObservationCounts'];
   clientLatestUnparsedSignalCounts?: Parameters<typeof buildClientMessageAuditVerificationSummary>[0]['clientLatestUnparsedSignalCounts'];
+  decoderCoverage?: Parameters<typeof buildClientMessageAuditVerificationSummary>[0]['decoderCoverage'];
   counts?: ClientMessageAuditCounts;
 } = {}): Parameters<typeof buildClientMessageAuditVerificationSummary>[0] {
   return {
@@ -101,6 +102,15 @@ function verificationArgs(overrides: {
       },
     clientLatestUnparsedSignalCounts:
       overrides.clientLatestUnparsedSignalCounts || { contains_thanks: 1 },
+    decoderCoverage: overrides.decoderCoverage || {
+      totalMessages: 100,
+      attributedBodiesPresent: 96,
+      attributedBodiesDecoded: 96,
+      textFallbackCount: 2,
+      emptyCount: 2,
+      emptyReasonCounts: { attachment: 1, summary: 1 },
+      undecodedAttributedBodyWithoutText: 0,
+    },
   };
 }
 
@@ -147,7 +157,7 @@ test('passes verification when live evidence and human-in-loop action gates are 
   const summary = buildClientMessageAuditVerificationSummary(verificationArgs());
 
   assert.equal(summary.status, 'pass');
-  assert.equal(summary.gates.length, 7);
+  assert.equal(summary.gates.length, 8);
   assert.deepEqual(
     summary.gates.map((gate) => [gate.id, gate.status]),
     [
@@ -157,6 +167,7 @@ test('passes verification when live evidence and human-in-loop action gates are 
       ['action_proposals_human_in_loop', 'pass'],
       ['manual_review_targets', 'pass'],
       ['non_substantive_messages_accounted', 'pass'],
+      ['message_body_decoder_coverage', 'pass'],
       ['weak_unparsed_replies_do_not_trigger_actions', 'pass'],
     ],
   );
@@ -241,5 +252,27 @@ test('review status is used when weak unparsed replies carry stronger scheduling
     summary.gates.find((gate) => gate.id === 'weak_unparsed_replies_do_not_trigger_actions')
       ?.status,
     'review',
+  );
+});
+
+test('fails when sampled attributed body evidence cannot be decoded or text-fallbacked', () => {
+  const summary = buildClientMessageAuditVerificationSummary(
+    verificationArgs({
+      decoderCoverage: {
+        totalMessages: 12,
+        attributedBodiesPresent: 10,
+        attributedBodiesDecoded: 9,
+        textFallbackCount: 0,
+        emptyCount: 3,
+        emptyReasonCounts: { no_body_fields: 2, attachment: 1 },
+        undecodedAttributedBodyWithoutText: 1,
+      },
+    }),
+  );
+
+  assert.equal(summary.status, 'fail');
+  assert.equal(
+    summary.gates.find((gate) => gate.id === 'message_body_decoder_coverage')?.status,
+    'fail',
   );
 });

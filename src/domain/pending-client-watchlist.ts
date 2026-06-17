@@ -151,6 +151,7 @@ export type PendingClientCentralQueueClassification = {
     | 'Offer Slots'
     | 'Awaiting Client'
     | 'Review Reply'
+    | 'Try Again'
     | 'Needs Reply'
     | 'Review'
     | 'Bad Timing'
@@ -206,6 +207,7 @@ export type PendingClientMessageThreadSummary = {
 export type PendingClientCommunicationAction =
   | 'offer_slots'
   | 'await_client'
+  | 'try_again'
   | 'review_reply'
   | 'needs_reply'
   | 'collect_payment'
@@ -230,11 +232,27 @@ export type PendingClientCommunicationPlan = {
   resolutionRule: string;
 };
 
+export type PendingClientActiveFollowUpState = {
+  filter: PendingClientCentralFilter;
+  actionLabel: PendingClientCentralQueueClassification['actionLabel'];
+  checklistAction:
+    | 'add_note'
+    | 'offer_slots'
+    | 'await_client'
+    | 'try_again'
+    | 'review_reply'
+    | 'review_payment'
+    | 'review_context';
+  deadlineLabel: string | null;
+};
+
 export type PendingClientChecklistInput = {
   row: PendingClientWatchlistRow;
   replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  centralQueue?: PendingClientCentralQueueClassification | null;
   now?: Date;
   dormantFollowUpDays?: number;
+  retryAfterHours?: number;
 };
 
 function sourceEventAppointmentId(value?: string | null): string | null {
@@ -321,6 +339,118 @@ function isoOrNull(value?: string | null): string | null {
 
 function daysBetween(laterMs: number, earlierMs: number): number {
   return Math.max(0, Math.floor((laterMs - earlierMs) / (24 * 60 * 60 * 1000)));
+}
+
+const PENDING_CLIENT_REPLY_RETRY_AFTER_HOURS = 48;
+
+function pendingClientOutboundMs(
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
+): number {
+  return parseDateMs(replyEvidence?.lastMeaningfulOutbound?.date);
+}
+
+function pendingClientReplyDeadlineMs(
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
+  retryAfterHours = PENDING_CLIENT_REPLY_RETRY_AFTER_HOURS,
+): number {
+  const outboundMs = pendingClientOutboundMs(replyEvidence);
+  return Number.isFinite(outboundMs)
+    ? outboundMs + retryAfterHours * 60 * 60 * 1000
+    : Number.NaN;
+}
+
+export function pendingClientReplyDeadlineLabel(args: {
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  retryAfterHours?: number;
+}): string {
+  return formatPendingClientNaturalTimestamp(
+    pendingClientReplyDeadlineMs(args.replyEvidence, args.retryAfterHours),
+  );
+}
+
+export function isPendingClientReplyRetryDue(args: {
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  now?: Date;
+  retryAfterHours?: number;
+}): boolean {
+  if (!args.replyEvidence?.operatorReplyProposedTimes) return false;
+  if (args.replyEvidence.clientRepliedAfterOperatorTimes) return false;
+  const deadlineMs = pendingClientReplyDeadlineMs(args.replyEvidence, args.retryAfterHours);
+  return Number.isFinite(deadlineMs) && (args.now || new Date()).getTime() >= deadlineMs;
+}
+
+function pendingClientRecoveryActionLabel(args: {
+  filter: PendingClientCentralFilter;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  now?: Date;
+  retryAfterHours?: number;
+}): PendingClientCentralQueueClassification['actionLabel'] {
+  if (args.replyEvidence?.clientRepliedAfterOperatorTimes) return 'Review Reply';
+  if (
+    isPendingClientReplyRetryDue({
+      replyEvidence: args.replyEvidence,
+      now: args.now,
+      retryAfterHours: args.retryAfterHours,
+    })
+  ) {
+    return 'Try Again';
+  }
+  if (args.replyEvidence?.operatorReplyProposedTimes) return 'Awaiting Client';
+  return args.filter === 'reschedule' || args.filter === 'no_show' ? 'Offer Slots' : 'Needs Reply';
+}
+
+export function derivePendingClientActiveFollowUpState(args: {
+  row: PendingClientWatchlistRow;
+  filter: PendingClientCentralFilter;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  now?: Date;
+  retryAfterHours?: number;
+}): PendingClientActiveFollowUpState {
+  const filter = args.filter;
+  const deadlineLabel =
+    pendingClientReplyDeadlineLabel({
+      replyEvidence: args.replyEvidence,
+      retryAfterHours: args.retryAfterHours,
+    }) || null;
+
+  if (filter === 'payments') {
+    return {
+      filter,
+      actionLabel: 'Payments',
+      checklistAction: 'review_payment',
+      deadlineLabel: null,
+    };
+  }
+  if (filter === 'review_follow_ups') {
+    return {
+      filter,
+      actionLabel: 'Review',
+      checklistAction: 'review_context',
+      deadlineLabel: null,
+    };
+  }
+
+  const actionLabel = pendingClientRecoveryActionLabel({
+    filter,
+    replyEvidence: args.replyEvidence,
+    now: args.now,
+    retryAfterHours: args.retryAfterHours,
+  });
+  if (actionLabel === 'Review Reply') {
+    return { filter, actionLabel, checklistAction: 'review_reply', deadlineLabel };
+  }
+  if (actionLabel === 'Try Again') {
+    return { filter, actionLabel, checklistAction: 'try_again', deadlineLabel };
+  }
+  if (actionLabel === 'Awaiting Client') {
+    return { filter, actionLabel, checklistAction: 'await_client', deadlineLabel };
+  }
+  return {
+    filter,
+    actionLabel,
+    checklistAction: 'offer_slots',
+    deadlineLabel: null,
+  };
 }
 
 export function summarizePendingClientAppointmentHistory(
@@ -428,6 +558,7 @@ function actionForCentralQueue(
 ): PendingClientCommunicationAction {
   if (queue.actionLabel === 'Offer Slots') return 'offer_slots';
   if (queue.actionLabel === 'Awaiting Client') return 'await_client';
+  if (queue.actionLabel === 'Try Again') return 'try_again';
   if (queue.actionLabel === 'Review Reply') return 'review_reply';
   if (queue.actionLabel === 'Needs Reply') return 'needs_reply';
   if (queue.actionLabel === 'Payments') return 'collect_payment';
@@ -498,6 +629,8 @@ export function buildPendingClientCommunicationPlan(args: {
     nextSteps.push('Send a concise value reminder and offer ranked slots near the prior meeting time.');
   } else if (action === 'await_client') {
     nextSteps.push('Wait for the client response unless dormant threshold is exceeded.');
+  } else if (action === 'try_again') {
+    nextSteps.push('Send the direct retry check: I sent times over, are we good to pick one or are we done?');
   } else if (action === 'review_reply') {
     nextSteps.push('Use the client reply to confirm a slot or close the loop.');
   } else if (action === 'collect_payment') {
@@ -575,6 +708,19 @@ function ordinalDay(day: number): string {
   return `${day}${suffix}`;
 }
 
+function formatPendingClientNaturalTimestamp(valueMs: number): string {
+  if (!Number.isFinite(valueMs)) return '';
+  const date = new Date(valueMs);
+  const weekday = new Intl.DateTimeFormat('en-US', { weekday: 'long' }).format(date);
+  const monthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(date);
+  const hour = date.getHours();
+  const hour12 = hour % 12 || 12;
+  const meridiem = hour >= 12 ? 'PM' : 'AM';
+  return `${weekday}, ${monthName} ${ordinalDay(date.getDate())} at ${hour12}:${String(
+    date.getMinutes(),
+  ).padStart(2, '0')} ${meridiem}`;
+}
+
 function formatPendingClientNoteTimestamp(match: RegExpMatchArray): string {
   const month = Number.parseInt(match[1] || '', 10);
   const day = Number.parseInt(match[2] || '', 10);
@@ -628,8 +774,10 @@ function fencedNoteBlock(value: string): string {
 export function buildPendingClientChecklistMarkdown({
   row,
   replyEvidence,
+  centralQueue,
   now,
   dormantFollowUpDays = 2,
+  retryAfterHours = PENDING_CLIENT_REPLY_RETRY_AFTER_HOURS,
 }: PendingClientChecklistInput): string {
   const hasNote = hasPendingClientOperatorNoteEvidence(row);
   const note = parsePendingClientEvidenceNote(extractPendingClientEvidenceNote(row.description));
@@ -638,26 +786,55 @@ export function buildPendingClientChecklistMarkdown({
     latestOutcomeAt: row.last_seen_at || row.event_end || row.event_start,
     now,
   });
-  const textSent = messageThread.operatorReachedOutAfterLatestOutcome;
+  const textSent =
+    messageThread.operatorReachedOutAfterLatestOutcome ||
+    Boolean(replyEvidence?.operatorReplyProposedTimes);
+  const activeState = derivePendingClientActiveFollowUpState({
+    row,
+    filter:
+      centralQueue?.filter ||
+      classifyPendingClientCentralQueue({ row, replyEvidence, now, retryAfterHours }).filter,
+    replyEvidence,
+    now,
+    retryAfterHours,
+  });
   const actionLines = [`- [${hasNote ? 'x' : ' '}] Add note`];
 
   if (row.action_tag === 'Payment Watch') {
     actionLines.push('- [ ] Review payment');
   } else if (textSent) {
     actionLines.push('- [x] Offer slots');
-    if (messageThread.state === 'client_replied' || messageThread.state === 'client_opted_out') {
+    if (
+      activeState.checklistAction === 'review_reply' ||
+      messageThread.state === 'client_replied' ||
+      messageThread.state === 'client_opted_out'
+    ) {
       actionLines.push('- [ ] Review reply');
+    } else if (activeState.checklistAction === 'try_again') {
+      actionLines.push(
+        activeState.deadlineLabel
+          ? `- [ ] Try again - waited until ${activeState.deadlineLabel}`
+          : '- [ ] Try again',
+      );
     } else if ((messageThread.dormantDaysSinceOperatorMessage || 0) >= dormantFollowUpDays) {
-      actionLines.push('- [ ] Follow up');
+      actionLines.push(
+        activeState.deadlineLabel
+          ? `- [ ] Try again - waited until ${activeState.deadlineLabel}`
+          : '- [ ] Try again',
+      );
     } else {
-      actionLines.push('- [ ] Wait for reply');
+      actionLines.push(
+        activeState.deadlineLabel
+          ? `- [ ] Wait for reply until ${activeState.deadlineLabel}`
+          : '- [ ] Wait for reply',
+      );
     }
   } else {
     actionLines.push('- [ ] Offer slots');
   }
 
   const lines = [
-    '## Next Action',
+    '### Next Action',
     '',
     ...actionLines,
   ];
@@ -665,7 +842,7 @@ export function buildPendingClientChecklistMarkdown({
   if (note?.description) {
     lines.push(
       '',
-      '## Note',
+      '### Note',
       '',
       ...(note.timestampLabel ? [note.timestampLabel, ''] : []),
       '```',
@@ -1172,10 +1349,11 @@ function pendingClientRowText(row: PendingClientWatchlistRow): string {
 export function classifyPendingClientCentralQueue(args: {
   row: PendingClientWatchlistRow;
   replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  now?: Date;
+  retryAfterHours?: number;
 }): PendingClientCentralQueueClassification {
   const rowText = pendingClientRowText(args.row);
   const themeBucket = normalizeText(args.replyEvidence?.themeBucket);
-  const proposedTimes = Boolean(args.replyEvidence?.operatorReplyProposedTimes);
   const clientRepliedAfterTimes = Boolean(args.replyEvidence?.clientRepliedAfterOperatorTimes);
   const needsReply = !args.replyEvidence?.operatorRepliedAfterInbound || clientRepliedAfterTimes;
 
@@ -1205,11 +1383,22 @@ export function classifyPendingClientCentralQueue(args: {
       };
     }
 
+    const actionLabel = pendingClientRecoveryActionLabel({
+      filter: 'no_show',
+      replyEvidence: args.replyEvidence,
+      now: args.now,
+      retryAfterHours: args.retryAfterHours,
+    });
     return {
       filter: 'no_show',
       label: 'No Show',
-      actionLabel: proposedTimes ? 'Awaiting Client' : 'Offer Slots',
-      priority: proposedTimes ? 20 : 10,
+      actionLabel,
+      priority:
+        actionLabel === 'Try Again'
+          ? 15
+          : actionLabel === 'Awaiting Client' || actionLabel === 'Review Reply'
+            ? 20
+            : 10,
     };
   }
 
@@ -1226,15 +1415,22 @@ export function classifyPendingClientCentralQueue(args: {
     themeBucket === 'RSP' ||
     /\b(?:reschedule|rsp|cancel|canceled|cancelled)\b|\((?:rsp|can)\)/i.test(rowText)
   ) {
+    const actionLabel = pendingClientRecoveryActionLabel({
+      filter: 'reschedule',
+      replyEvidence: args.replyEvidence,
+      now: args.now,
+      retryAfterHours: args.retryAfterHours,
+    });
     return {
       filter: 'reschedule',
       label: 'RSP',
-      actionLabel: clientRepliedAfterTimes
-        ? 'Review Reply'
-        : proposedTimes
-          ? 'Awaiting Client'
-          : 'Offer Slots',
-      priority: proposedTimes ? 20 : 10,
+      actionLabel,
+      priority:
+        actionLabel === 'Try Again'
+          ? 15
+          : actionLabel === 'Awaiting Client' || actionLabel === 'Review Reply'
+            ? 20
+            : 10,
     };
   }
 

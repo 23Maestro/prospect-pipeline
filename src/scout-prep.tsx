@@ -137,7 +137,6 @@ import {
   getScoutPrepBatchGradYearOptions,
   getScoutPrepBatchTaskTitleOptions,
   isScoutPrepBatchTaskEligible,
-  isScoutPrepConfirmationCleanupDue,
   normalizeScoutPrepBatchTaskId,
   resolveBatchVoicemailRecipient,
   runScoutPrepBatchRow,
@@ -6888,13 +6887,12 @@ function formatBatchMeetingStartLabel(meetingStart: Date): string {
 
 function resolveConfirmationCleanupPlanFromTask(
   task: ScoutPortalTask,
-  now = new Date(),
-): { action: 'complete' | 'move'; label: string; dueAt: Date } | null {
+): { action: 'move'; label: string; dueAt: Date } | null {
   const dueAt = buildDefaultTaskDate(task.due_date);
   if (!dueAt) return null;
   const label = formatBatchMeetingStartLabel(dueAt);
   return {
-    action: isScoutPrepConfirmationCleanupDue({ taskDueAt: dueAt, now }) ? 'complete' : 'move',
+    action: 'move',
     label,
     dueAt,
   };
@@ -6902,9 +6900,8 @@ function resolveConfirmationCleanupPlanFromTask(
 
 function applyConfirmationCleanupPlanToRow(
   row: ScoutPrepBatchRow,
-  now = new Date(),
 ): ScoutPrepBatchRow {
-  const plan = resolveConfirmationCleanupPlanFromTask(row.task, now);
+  const plan = resolveConfirmationCleanupPlanFromTask(row.task);
   if (!plan) {
     return {
       ...row,
@@ -6920,7 +6917,7 @@ function applyConfirmationCleanupPlanToRow(
   return {
     ...row,
     status: 'pending',
-    message: plan.action === 'complete' ? 'Awaiting Completed' : 'Awaiting Moved',
+    message: 'Awaiting Moved',
     review: {
       ...(row.review || {}),
       cleanupAction: plan.action,
@@ -6948,39 +6945,22 @@ async function runScoutPrepConfirmationCleanupBatchRow(args: {
       throw new Error('Missing task due date');
     }
 
-    if (plan.action === 'move') {
-      const confirmationTask = resolveConfirmationTaskForMorningAction(args.row.task, args.context);
-      if (!confirmationTask) {
-        throw new Error('No confirmation task');
-      }
-      const nextDueAt = await updateConfirmationTaskToMeetingMorning({
-        task: args.row.task,
-        activeContext: args.context,
-        confirmationTask,
-      });
-      return {
-        ...args.row,
-        status: 'sent',
-        message: `Moved to ${formatDateForLegacyInput(nextDueAt)} 09:00`,
-        review: {
-          ...(args.row.review || {}),
-          cleanupAction: 'move',
-          cleanupLabel: plan.label,
-        },
-      };
+    const confirmationTask = resolveConfirmationTaskForMorningAction(args.row.task, args.context);
+    if (!confirmationTask) {
+      throw new Error('No confirmation task');
     }
-
-    const completedTask = await completeScoutPrepTaskDirectly({
+    const nextDueAt = await updateConfirmationTaskToMeetingMorning({
       task: args.row.task,
-      context: args.context,
+      activeContext: args.context,
+      confirmationTask,
     });
     return {
       ...args.row,
       status: 'sent',
-      message: getTaskDisplayTitle(completedTask),
+      message: `Moved to ${formatDateForLegacyInput(nextDueAt)} 09:00`,
       review: {
         ...(args.row.review || {}),
-        cleanupAction: 'complete',
+        cleanupAction: 'move',
         cleanupLabel: plan.label,
       },
     };
@@ -7345,9 +7325,8 @@ function ScoutPrepBatchPreflightList({
         excludedTaskIds: operation.kind === 'confirmation_cleanup' ? [] : failedTaskIds,
         limit: operation.kind === 'confirmation_cleanup' ? tasks.length : SCOUT_PREP_BATCH_LIMIT,
       });
-      const reviewStartedAt = new Date();
       return operation.kind === 'confirmation_cleanup'
-        ? rows.map((row) => applyConfirmationCleanupPlanToRow(row, reviewStartedAt))
+        ? rows.map((row) => applyConfirmationCleanupPlanToRow(row))
         : rows;
     },
     [operation, selectedGradYear, selectedTaskTitle, failedTaskIds, tasks],

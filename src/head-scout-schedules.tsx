@@ -73,6 +73,7 @@ import { getActiveOperator } from './domain/owners';
 import {
   buildPendingClientChecklistMarkdown,
   classifyPendingClientCentralQueue,
+  pendingClientReplyDeadlineLabel,
   type PendingClientCentralFilter,
 } from './domain/pending-client-watchlist';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
@@ -83,6 +84,7 @@ import {
 } from './lib/scout-follow-up-templates';
 import { buildMessagesComposeUrlForRecipients } from './lib/scout-prep-contact';
 import {
+  completeScoutPrepTaskAfterVoicemail,
   fetchScoutPortalTasks,
   loadScoutPrepContext,
 } from './lib/scout-prep';
@@ -277,6 +279,61 @@ type PendingClientMessageEvidence = {
   snapshot: ClientReplyThemeReviewSnapshot | null;
 };
 
+const PENDING_CLIENT_LOCAL_NOTES_STORAGE_KEY = 'pending-client-local-notes-v1';
+
+type PendingClientLocalNotes = Record<string, string>;
+
+function appendPendingClientLocalNote(
+  row: PendingClientWatchlistRow,
+  noteDescription?: string | null,
+): PendingClientWatchlistRow {
+  const note = String(noteDescription || '').trim();
+  if (!note || String(row.description || '').includes(note)) return row;
+  return {
+    ...row,
+    description: [row.description, `Notes Tab: ${note}`].filter(Boolean).join('\n\n'),
+  };
+}
+
+function applyPendingClientLocalNotes(
+  result: PendingClientWatchlistLoadResult,
+  localNotes: PendingClientLocalNotes,
+): PendingClientWatchlistLoadResult {
+  return {
+    ...result,
+    rows: result.rows.map((row) =>
+      appendPendingClientLocalNote(row, localNotes[row.source_event_id]),
+    ),
+  };
+}
+
+async function readPendingClientLocalNotes(): Promise<PendingClientLocalNotes> {
+  const raw = await LocalStorage.getItem<string>(PENDING_CLIENT_LOCAL_NOTES_STORAGE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([key, value]) => [String(key), String(value || '').trim()])
+        .filter(([, value]) => Boolean(value)),
+    );
+  } catch {
+    return {};
+  }
+}
+
+async function writePendingClientLocalNote(sourceEventId: string, noteDescription: string) {
+  const key = String(sourceEventId || '').trim();
+  const note = String(noteDescription || '').trim();
+  if (!key || !note) return;
+  const current = await readPendingClientLocalNotes();
+  await LocalStorage.setItem(
+    PENDING_CLIENT_LOCAL_NOTES_STORAGE_KEY,
+    JSON.stringify({ ...current, [key]: note }),
+  );
+}
+
 async function loadPendingClientMessageEvidence(): Promise<PendingClientMessageEvidence> {
   try {
     const chats = await loadClientInboxChats('', 100);
@@ -384,6 +441,38 @@ function buildCandidateTask(candidate: HeadScoutFollowUpCandidate): ScoutPortalT
     athlete_admin_url: candidate.adminUrl,
     athlete_task_url: candidate.taskUrl,
   };
+}
+
+function isHarmlessConfirmationTaskCompletionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /already\s+complete|already\s+completed|no\s+incomplete\s+task|task\s+not\s+found|missing\s+task/i.test(
+    message,
+  );
+}
+
+async function completeExactConfirmationTaskAfterCachedSend(
+  candidate: HeadScoutFollowUpCandidate,
+): Promise<string | null> {
+  const taskId = String(candidate.taskId || '').trim();
+  if (!taskId) return null;
+
+  try {
+    const result = await completeScoutPrepTaskAfterVoicemail({
+      athleteId: candidate.athleteId,
+      athleteMainId: candidate.athleteMainId,
+      athleteName: candidate.athleteName,
+      contactTask: candidate.athleteId,
+      taskId: candidate.taskId,
+      taskTitle: candidate.currentTask,
+      description: candidate.currentTask,
+    });
+    return result.task_id ? `Task #${result.task_id}` : 'Task completed';
+  } catch (error) {
+    if (isHarmlessConfirmationTaskCompletionError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 function buildPendingClientTask(row: PendingClientWatchlistRow): ScoutPortalTask {
@@ -692,6 +781,29 @@ async function hydrateWeeklyCandidatesFromAthleteMeetings(
   );
 }
 
+function ordinalPendingClientDay(day: number): string {
+  const suffix =
+    day % 100 >= 11 && day % 100 <= 13
+      ? 'th'
+      : day % 10 === 1
+        ? 'st'
+        : day % 10 === 2
+          ? 'nd'
+          : day % 10 === 3
+            ? 'rd'
+            : 'th';
+  return `${day}${suffix}`;
+}
+
+function broadPendingClientTimezoneLabel(value?: string | null): string {
+  const label = String(value || '').trim().toUpperCase();
+  if (label === 'EST' || label === 'EDT') return 'ET';
+  if (label === 'CST' || label === 'CDT') return 'CT';
+  if (label === 'MST' || label === 'MDT') return 'MT';
+  if (label === 'PST' || label === 'PDT') return 'PT';
+  return label;
+}
+
 function formatPendingClientMeetingDate(
   value?: string | null,
   timeZone?: string | null,
@@ -705,35 +817,39 @@ function formatPendingClientMeetingDate(
     String(timeZone || timezoneLabel || 'America/New_York').trim(),
   );
   const resolvedLabel =
-    resolveLegacyTimezoneLabelFromIana(timezoneLabel) ||
-    resolveLegacyTimezoneLabelFromIana(resolvedTimeZone) ||
-    String(timezoneLabel || '').trim();
+    broadPendingClientTimezoneLabel(
+      resolveLegacyTimezoneLabelFromIana(timezoneLabel) ||
+        resolveLegacyTimezoneLabelFromIana(resolvedTimeZone) ||
+        String(timezoneLabel || '').trim(),
+    );
   let formatted = '';
   try {
-    formatted = new Intl.DateTimeFormat('en-US', {
+    const parts = new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
-      month: 'short',
+      month: 'long',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
+      hour12: true,
       timeZone: resolvedTimeZone,
-      timeZoneName: 'short',
-    }).format(parsed);
+    }).formatToParts(parsed);
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((entry) => entry.type === type)?.value || '';
+    const minute = part('minute');
+    const clock = `${part('hour')}${minute === '00' ? '' : `:${minute}`}${part('dayPeriod')}`;
+    formatted = `${part('weekday')}, ${part('month')} ${ordinalPendingClientDay(Number(part('day')))} at ${clock}`;
   } catch {
     formatted = new Intl.DateTimeFormat('en-US', {
       weekday: 'short',
-      month: 'short',
+      month: 'long',
       day: 'numeric',
       hour: 'numeric',
       minute: '2-digit',
       timeZone: 'America/New_York',
-      timeZoneName: 'short',
     }).format(parsed);
   }
 
-  return resolvedLabel
-    ? formatted.replace(/\b(?:EST|EDT|CST|CDT|MST|MDT|PST|PDT)\b$/, resolvedLabel)
-    : formatted;
+  return resolvedLabel ? `${formatted} ${resolvedLabel}` : formatted;
 }
 
 function getPendingClientMeetingStart(
@@ -790,13 +906,14 @@ const PENDING_CLIENT_FILTERS: readonly {
   { value: 'payments', title: 'Payments' },
   { value: 'review_follow_ups', title: 'Review Follow Ups' },
 ];
-const PENDING_CLIENT_NON_PAYMENT_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+const PENDING_CLIENT_RECOVERY_WINDOW_MS = 14 * 24 * 60 * 60 * 1000;
 
 function pendingClientCentralTagColor(
   filter: PendingClientCentralFilter,
   actionLabel: ReturnType<typeof classifyPendingClientCentralQueue>['actionLabel'],
 ): Color {
   if (actionLabel === 'Awaiting Client') return Color.SecondaryText;
+  if (actionLabel === 'Try Again') return Color.Orange;
   if (actionLabel === 'Bad Timing') return Color.Orange;
   if (actionLabel === 'Review') return Color.Orange;
   if (filter === 'payments') return Color.Green;
@@ -849,8 +966,10 @@ function isPendingClientInsideVisibleWindow(
   now = Date.now(),
 ): boolean {
   if (queue.filter === 'payments') return true;
+  if (queue.filter === 'review_follow_ups') return true;
+  if (queue.filter !== 'reschedule' && queue.filter !== 'no_show') return true;
   const lastSeenAt = pendingClientQueueTime(row);
-  return lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_NON_PAYMENT_WINDOW_MS;
+  return lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_RECOVERY_WINDOW_MS;
 }
 
 function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][number]): string {
@@ -867,54 +986,54 @@ function getPendingClientIcon(row: PendingClientWatchlistLoadResult['rows'][numb
   }
 }
 
-function extractPendingClientSalesStage(
-  row: PendingClientWatchlistLoadResult['rows'][number],
-): string | null {
-  const match = String(row.description || '').match(/^Sales Stage:\s*(.+)$/im);
-  return match?.[1]?.trim() || null;
-}
-
 function buildPendingClientActionMarkdown(
   row: PendingClientWatchlistLoadResult['rows'][number],
+  queue: ReturnType<typeof classifyPendingClientCentralQueue>,
   replyState?: PendingClientReplyThemeState | null,
 ): string {
   return buildPendingClientChecklistMarkdown({
     row,
     replyEvidence: replyState?.row.replyEvidence,
+    centralQueue: queue,
   });
 }
 
 function buildPendingClientDetailMarkdown(
   row: PendingClientWatchlistLoadResult['rows'][number],
+  queue: ReturnType<typeof classifyPendingClientCentralQueue>,
   replyState?: PendingClientReplyThemeState | null,
 ): string {
-  const salesStage = extractPendingClientSalesStage(row);
   const scout = row.head_scout || 'Unresolved';
   const meeting = getPendingClientMeetingLabel(row);
   return [
-    '# Note',
+    `# HS: ${scout} - ${meeting}`,
     '',
-    `### ${scout}`,
+    `### ${meeting}`,
     '',
-    `**Meeting:** ${meeting}`,
-    '',
-    salesStage ? `**Sales Stage:** ${salesStage}` : null,
-    '',
-    buildPendingClientActionMarkdown(row, replyState),
+    buildPendingClientActionMarkdown(row, queue, replyState),
   ]
     .filter((line) => line !== null)
     .join('\n');
 }
 
-function buildPendingClientDetailMetadata(row: PendingClientWatchlistLoadResult['rows'][number]) {
+function buildPendingClientDetailMetadata(
+  row: PendingClientWatchlistLoadResult['rows'][number],
+  queue: ReturnType<typeof classifyPendingClientCentralQueue>,
+  replyState?: PendingClientReplyThemeState | null,
+) {
   const eventDate = getPendingClientMeetingLabel(row);
   const athleteName =
     row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+  const deadline =
+    queue.actionLabel === 'Awaiting Client' || queue.actionLabel === 'Try Again'
+      ? pendingClientReplyDeadlineLabel({ replyEvidence: replyState?.row.replyEvidence })
+      : '';
 
   return (
     <List.Item.Detail.Metadata>
       <List.Item.Detail.Metadata.Label title="Athlete" text={athleteName} />
       <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
+      {deadline ? <List.Item.Detail.Metadata.Label title="Deadline" text={deadline} /> : null}
     </List.Item.Detail.Metadata>
   );
 }
@@ -1011,7 +1130,7 @@ function buildPendingClientThreadEvidenceReceipt(
       date: message.date,
       isFromMe: message.is_from_me,
       body: message.body,
-      bodySource: message.body ? 'attributedBody' : 'empty',
+      bodySource: message.body_source || (message.body ? 'attributedBody' : 'empty'),
     })),
   });
 }
@@ -1158,7 +1277,7 @@ function PendingClientOperatorNoteForm({
   onSaved,
 }: {
   row: PendingClientWatchlistLoadResult['rows'][number];
-  onSaved: () => void;
+  onSaved: (noteDescription: string) => void | Promise<void>;
 }) {
   const { pop } = useNavigation();
   const athleteName =
@@ -1197,7 +1316,7 @@ function PendingClientOperatorNoteForm({
       });
       toast.style = Toast.Style.Success;
       toast.title = 'Added';
-      onSaved();
+      await onSaved(description);
       pop();
     } catch (error) {
       toast.style = Toast.Style.Failure;
@@ -1319,8 +1438,9 @@ function PendingClientsWatchlist() {
           loadPendingClientWatchlist(),
           loadPendingClientMessageEvidence(),
         ]);
+        const localNotes = await readPendingClientLocalNotes();
         if (!cancelled) {
-          setResult(loaded);
+          setResult(applyPendingClientLocalNotes(loaded, localNotes));
           setReplyThemeSnapshot(messageEvidence.snapshot);
           setMessageChats(messageEvidence.chats);
         }
@@ -1378,10 +1498,11 @@ function PendingClientsWatchlist() {
         loadPendingClientWatchlist(),
         loadClientInboxChats(searchText, 10),
       ]);
+      const localNotes = await readPendingClientLocalNotes();
       const snapshot = await buildClientReplyThemeReviewSnapshotForChats(chats);
       const mergedSnapshot = mergeClientReplyThemeReviewSnapshots(replyThemeSnapshot, snapshot);
       await writeCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage, mergedSnapshot);
-      setResult(loaded);
+      setResult(applyPendingClientLocalNotes(loaded, localNotes));
       setMessageChats((current) => {
         const byGuid = new Map(current.map((chat) => [chat.guid, chat]));
         for (const chat of chats) byGuid.set(chat.guid, chat);
@@ -1495,8 +1616,8 @@ function PendingClientsWatchlist() {
                 ]}
                 detail={
                   <List.Item.Detail
-                    markdown={buildPendingClientDetailMarkdown(row, replyState)}
-                    metadata={buildPendingClientDetailMetadata(row)}
+                    markdown={buildPendingClientDetailMarkdown(row, queue, replyState)}
+                    metadata={buildPendingClientDetailMetadata(row, queue, replyState)}
                   />
                 }
                 actions={
@@ -1561,7 +1682,22 @@ function PendingClientsWatchlist() {
                           target={
                             <PendingClientOperatorNoteForm
                               row={row}
-                              onSaved={() => setRefreshTick((current) => current + 1)}
+                              onSaved={async (noteDescription) => {
+                                await writePendingClientLocalNote(row.source_event_id, noteDescription);
+                                setResult((current) =>
+                                  current
+                                    ? {
+                                        ...current,
+                                        rows: current.rows.map((candidate) =>
+                                          candidate.source_event_id === row.source_event_id
+                                            ? appendPendingClientLocalNote(candidate, noteDescription)
+                                            : candidate,
+                                        ),
+                                      }
+                                    : current,
+                                );
+                                setRefreshTick((current) => current + 1);
+                              }}
                             />
                           }
                         />
@@ -1817,6 +1953,11 @@ export function HeadScoutBookingsList({
         composeMode = 'clipboard-fallback';
       }
 
+      let taskCompletionMessage: string | null = null;
+      if (variant === 'confirmation_2') {
+        taskCompletionMessage = await completeExactConfirmationTaskAfterCachedSend(candidate);
+      }
+
       let contactCardCopied = false;
       if (options?.openContactCard && composeMode === 'draft') {
         await setTimeout(1200);
@@ -1829,7 +1970,9 @@ export function HeadScoutBookingsList({
       toast.style = Toast.Style.Success;
       toast.title = 'Ready';
       toast.message =
-        composeMode === 'clipboard-fallback'
+        taskCompletionMessage
+          ? taskCompletionMessage
+          : composeMode === 'clipboard-fallback'
           ? 'Template copied'
           : contactCardCopied
             ? 'Draft + copied card'

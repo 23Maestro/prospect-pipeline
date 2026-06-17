@@ -373,6 +373,47 @@ test('Set Meetings confirmation send path reads confirmation cache before rebuil
   assert.match(confirmationFlow, /buildMessagesComposeUrlForRecipients\(cached\.phones, cached\.message\)/);
 });
 
+test('Set Meetings Confirmation 2 completes only the exact linked confirmation task after cached send', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+  const sendConfirmationStart = headScoutSchedules.indexOf('async function sendConfirmationText');
+  const confirmationFlow = headScoutSchedules.slice(
+    sendConfirmationStart,
+    headScoutSchedules.indexOf('function buildConfirmationTextForm', sendConfirmationStart),
+  );
+  const completionHelperStart = headScoutSchedules.indexOf(
+    'async function completeExactConfirmationTaskAfterCachedSend',
+  );
+  const completionHelper = headScoutSchedules.slice(
+    completionHelperStart,
+    headScoutSchedules.indexOf('function buildPendingClientTask', completionHelperStart),
+  );
+
+  assert.match(confirmationFlow, /readCachedSetMeetingConfirmation/);
+  assert.match(confirmationFlow, /if \(variant === 'confirmation_2'\)/);
+  assert.match(confirmationFlow, /completeExactConfirmationTaskAfterCachedSend\(candidate\)/);
+  assert.match(completionHelper, /completeScoutPrepTaskAfterVoicemail\(\{/);
+  assert.match(completionHelper, /taskId:\s*candidate\.taskId/);
+  assert.match(completionHelper, /taskTitle:\s*candidate\.currentTask/);
+  assert.doesNotMatch(confirmationFlow, /fetchScoutPortalTasks/);
+  assert.doesNotMatch(confirmationFlow, /findNewestIncompleteConfirmationTask/);
+  assert.doesNotMatch(completionHelper, /fetchScoutPortalTasks/);
+  assert.doesNotMatch(completionHelper, /findNewestIncompleteConfirmationTask/);
+});
+
+test('Confirmation cleanup batch moves old incomplete confirmation tasks instead of completing them', () => {
+  const scoutPrep = readRepoFile('src/scout-prep.tsx');
+  const cleanupStart = scoutPrep.indexOf('async function runScoutPrepConfirmationCleanupBatchRow');
+  const cleanupFlow = scoutPrep.slice(
+    cleanupStart,
+    scoutPrep.indexOf('type ScoutPrepBatchAttemptRecord', cleanupStart),
+  );
+
+  assert.match(cleanupFlow, /updateConfirmationTaskToMeetingMorning\(\{/);
+  assert.match(cleanupFlow, /cleanupAction:\s*'move'/);
+  assert.doesNotMatch(cleanupFlow, /completeScoutPrepTaskDirectly\(\{/);
+  assert.doesNotMatch(cleanupFlow, /cleanupAction:\s*'complete'/);
+});
+
 test('Scout Prep contact context resolves timezone from athlete city and state', () => {
   const scoutPrepContext = readRepoFile('src/lib/scout-prep.tsx');
   const timezoneStart = scoutPrepContext.indexOf('const resolvedCity =');

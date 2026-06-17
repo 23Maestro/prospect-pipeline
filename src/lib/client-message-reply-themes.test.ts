@@ -1057,6 +1057,37 @@ test('pending client reply theme state detects client reply after proposed times
   );
 });
 
+test('pending client outbound offer comparison handles mixed timezone offsets', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-17T19:10:00.000Z',
+    chats: [
+      chat({
+        displayName: 'Joe Henry',
+        athleteName: 'Gage Henry',
+        athleteMainId: '954321',
+        taskTitle: 'Meeting Result - Res. Pending',
+      }),
+    ],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'gage-times',
+          body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
+          date: '2026-06-17T19:05:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'client-after-times',
+          body: 'Thanks',
+          date: '2026-06-17T15:06:00-04:00',
+        }),
+      ],
+    },
+  });
+
+  assert.equal(snapshot.rows.length, 0);
+});
+
 test('does not flag actionable wording without the matching outbound template context', () => {
   const snapshot = buildClientReplyThemeReviewSnapshot({
     generatedAt: '2026-05-27T17:00:00.000Z',

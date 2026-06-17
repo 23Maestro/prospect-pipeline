@@ -326,6 +326,23 @@ export function buildScoutPrepBatchPreflightRows(args: {
   });
 }
 
+function isNonBlockingVoicemailSendFailure(operation: ScoutPrepBatchOperation): boolean {
+  return (
+    operation.id === 'call_attempt_2_voicemail' ||
+    operation.id === 'call_attempt_3_voicemail'
+  );
+}
+
+function buildManualSmsNeededMessage(args: {
+  recipient: VoicemailFollowUpRecipient;
+  message: string;
+  error: unknown;
+}): string {
+  const phone = args.recipient.phones[0] || 'recipient';
+  const errorMessage = args.error instanceof Error ? args.error.message : String(args.error);
+  return [`Manual SMS needed for ${phone}: ${errorMessage}`, '', args.message].join('\n');
+}
+
 export async function runScoutPrepBatchRow(args: {
   row: ScoutPrepBatchRow;
   context: ScoutPrepContext;
@@ -355,13 +372,25 @@ export async function runScoutPrepBatchRow(args: {
 
   try {
     const message = await args.buildMessage(recipientResolution.recipient, args.context);
-    await args.sendMessage(recipientResolution.recipient, message);
+    let nonBlockingSendFailureMessage: string | null = null;
+    try {
+      await args.sendMessage(recipientResolution.recipient, message);
+    } catch (sendError) {
+      if (!isNonBlockingVoicemailSendFailure(args.row.operation)) {
+        throw sendError;
+      }
+      nonBlockingSendFailureMessage = buildManualSmsNeededMessage({
+        recipient: recipientResolution.recipient,
+        message,
+        error: sendError,
+      });
+    }
     await args.persistMessageSent();
     return {
       ...args.row,
       status: 'sent',
       recipient: recipientResolution.recipient,
-      message: recipientResolution.message || 'Sent',
+      message: nonBlockingSendFailureMessage || recipientResolution.message || 'Sent',
     };
   } catch (error) {
     return {

@@ -386,7 +386,7 @@ test('batch grad year options sort youngest classes first', () => {
   );
 });
 
-test('batch row sends message before persistence and never persists after send failure', async () => {
+test('batch row persists voicemail follow-up after non-blocking send failure', async () => {
   const calls: string[] = [];
   const context = buildContext();
   const row = buildScoutPrepBatchPreflightRows({
@@ -415,7 +415,7 @@ test('batch row sends message before persistence and never persists after send f
   assert.deepEqual(calls, ['send', 'persist']);
 
   calls.length = 0;
-  const failed = await runScoutPrepBatchRow({
+  const sentWithManualSmsNeeded = await runScoutPrepBatchRow({
     row,
     context,
     resolveRecipient: () => ({
@@ -432,8 +432,59 @@ test('batch row sends message before persistence and never persists after send f
     },
   });
 
-  assert.equal(failed.status, 'failed');
-  assert.deepEqual(calls, ['send']);
+  assert.equal(sentWithManualSmsNeeded.status, 'sent');
+  assert.match(sentWithManualSmsNeeded.message || '', /Manual SMS needed/);
+  assert.deepEqual(calls, ['send', 'persist']);
+});
+
+test('batch row blocks persistence when rendering or persistence fails', async () => {
+  const context = buildContext();
+  const row = buildScoutPrepBatchPreflightRows({
+    operation: SCOUT_PREP_BATCH_OPERATIONS.callAttempt2Voicemail,
+    tasks: [{ task_id: '1', title: 'Call Attempt 2', athlete_name: 'Eligible', completion_date: '' }],
+    limit: 10,
+  })[0];
+  const recipient = {
+    id: 'parent1' as const,
+    label: 'Parent 1',
+    name: 'Jamie Smith',
+    phones: ['651-555-1212'],
+  };
+  let persisted = false;
+
+  const renderFailed = await runScoutPrepBatchRow({
+    row,
+    context,
+    resolveRecipient: () => ({ status: 'eligible', recipient }),
+    buildMessage: () => {
+      throw new Error('render failed');
+    },
+    sendMessage: async () => {
+      throw new Error('should not send');
+    },
+    persistMessageSent: async () => {
+      persisted = true;
+    },
+  });
+
+  assert.equal(renderFailed.status, 'failed');
+  assert.equal(persisted, false);
+
+  const persistFailed = await runScoutPrepBatchRow({
+    row,
+    context,
+    resolveRecipient: () => ({ status: 'eligible', recipient }),
+    buildMessage: () => 'Message body',
+    sendMessage: async () => {},
+    persistMessageSent: async () => {
+      persisted = true;
+      throw new Error('Laravel persistence failed');
+    },
+  });
+
+  assert.equal(persistFailed.status, 'failed');
+  assert.equal(persisted, true);
+  assert.match(persistFailed.message || '', /Laravel persistence failed/);
 });
 
 test('batch row waits for async message rendering before sending', async () => {

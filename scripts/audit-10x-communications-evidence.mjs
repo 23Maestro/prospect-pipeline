@@ -24,6 +24,7 @@ import {
   buildClientMessageAuditVerificationSummary,
 } from '../src/lib/client-message-audit-verification.ts';
 import { buildStudentAthleteMessageResolutions } from '../src/lib/student-athlete-message-resolver.ts';
+import { decodeClientMessageBody } from '../src/lib/client-message-body-decoder.ts';
 
 const REPO_ROOT = path.resolve(new URL('..', import.meta.url).pathname);
 const DB_PATH = path.join(os.homedir(), 'Library/Messages/chat.db');
@@ -111,36 +112,6 @@ function sqliteJson(sql) {
     maxBuffer: 1024 * 1024 * 20,
   }).trim();
   return output ? JSON.parse(output) : [];
-}
-
-function decodeHexString(hexString) {
-  const bytes = String(hexString || '').match(/.{1,2}/g)?.map((byte) => parseInt(byte, 16)) || [];
-  const startPattern = [0x01, 0x2b];
-  const endPattern = [0x86, 0x84];
-  let startIndex = -1;
-  for (let index = 0; index < bytes.length - 1; index += 1) {
-    if (bytes[index] === startPattern[0] && bytes[index + 1] === startPattern[1]) {
-      startIndex = index + 2;
-      break;
-    }
-  }
-  if (startIndex === -1) return '';
-  let endIndex = -1;
-  for (let index = startIndex; index < bytes.length - 1; index += 1) {
-    if (bytes[index] === endPattern[0] && bytes[index + 1] === endPattern[1]) {
-      endIndex = index;
-      break;
-    }
-  }
-  if (endIndex === -1) return '';
-  const relevantBytes = bytes.slice(startIndex, endIndex);
-  let result;
-  try {
-    result = new TextDecoder().decode(new Uint8Array(relevantBytes));
-  } catch {
-    result = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(relevantBytes));
-  }
-  return result.charCodeAt(0) < 128 ? result.slice(1) : result.slice(3);
 }
 
 function payloadObject(value) {
@@ -350,6 +321,10 @@ function readThreadMessages(chatGuid) {
       chat.chat_identifier,
       message.text,
       hex(message.attributedBody) as attributed_body_hex,
+      message.cache_has_attachments,
+      CASE WHEN message.message_summary_info IS NOT NULL AND length(message.message_summary_info) > 0 THEN 1 ELSE 0 END as has_message_summary,
+      CASE WHEN message.payload_data IS NOT NULL AND length(message.payload_data) > 0 THEN 1 ELSE 0 END as has_payload_data,
+      message.associated_message_type,
       message.service
     FROM message
       JOIN chat_message_join ON message."ROWID" = chat_message_join.message_id
@@ -358,19 +333,54 @@ function readThreadMessages(chatGuid) {
     ORDER BY date DESC
     LIMIT 100;
   `).map((message) => {
-    const attributedBody = decodeHexString(message.attributed_body_hex);
-    const textBody = String(message.text || '').trim();
-    const body = attributedBody || textBody;
+    const decoded = decodeClientMessageBody({
+      body: message.attributed_body_hex,
+      text: message.text,
+      cache_has_attachments: message.cache_has_attachments,
+      has_message_summary: message.has_message_summary,
+      has_payload_data: message.has_payload_data,
+      associated_message_type: message.associated_message_type,
+    });
     return {
       guid: String(message.guid || ''),
       date: String(message.date || ''),
       isFromMe: Boolean(message.is_from_me),
-      body,
-      bodySource: attributedBody ? 'attributedBody' : textBody ? 'text' : 'empty',
+      body: decoded.body,
+      bodySource: decoded.bodySource,
+      emptyReason: decoded.emptyReason,
+      decodedAttributedBody: decoded.decodedAttributedBody,
+      attributedBodyPresent: Boolean(message.attributed_body_hex),
       senderName: message.is_from_me ? 'Me' : 'Client',
       sender: String(message.chat_identifier || ''),
     };
   });
+}
+
+function buildDecoderCoverage(messagesByChatGuid) {
+  const coverage = {
+    totalMessages: 0,
+    attributedBodiesPresent: 0,
+    attributedBodiesDecoded: 0,
+    textFallbackCount: 0,
+    emptyCount: 0,
+    emptyReasonCounts: {},
+    undecodedAttributedBodyWithoutText: 0,
+  };
+  for (const messages of Object.values(messagesByChatGuid)) {
+    for (const message of messages || []) {
+      coverage.totalMessages += 1;
+      if (message.attributedBodyPresent) coverage.attributedBodiesPresent += 1;
+      if (message.decodedAttributedBody) coverage.attributedBodiesDecoded += 1;
+      if (message.bodySource === 'text') coverage.textFallbackCount += 1;
+      if (message.bodySource === 'empty') {
+        coverage.emptyCount += 1;
+        const reason = message.emptyReason || 'no_body_fields';
+        coverage.emptyReasonCounts[reason] = (coverage.emptyReasonCounts[reason] || 0) + 1;
+        if (message.attributedBodyPresent) coverage.undecodedAttributedBodyWithoutText += 1;
+      }
+    }
+  }
+  return coverage;
 }
 
 function resolutionToMatch(resolution) {
@@ -481,9 +491,14 @@ async function main() {
         senderName: message.senderName,
         sender: message.sender,
         isFromMe: message.isFromMe,
+        bodySource: message.bodySource,
+        emptyReason: message.emptyReason,
+        decodedAttributedBody: message.decodedAttributedBody,
+        attributedBodyPresent: message.attributedBodyPresent,
       })),
     ]),
   );
+  const decoderCoverage = buildDecoderCoverage(messagesByChatGuid);
   const snapshot = buildClientReplyThemeReviewSnapshot({
     generatedAt,
     chats: sampleChats.map((chat) => ({
@@ -531,6 +546,10 @@ async function main() {
         senderName: message.senderName,
         sender: message.sender,
         isFromMe: message.isFromMe,
+        bodySource: message.bodySource,
+        emptyReason: message.emptyReason,
+        decodedAttributedBody: message.decodedAttributedBody,
+        attributedBodyPresent: message.attributedBodyPresent,
       }));
     const diagnostics = buildClientReplyThreadDiagnostics({
       messages,
@@ -633,6 +652,11 @@ async function main() {
   const clientLatestUnparsedSignalCounts = countClientLatestUnparsedSignals(pendingMatches);
   const manualReviewTargets = buildManualReviewTargets(pendingMatches);
   const pendingActions = buildClientMessageAuditPendingActions(pendingMatches);
+  const activeFollowUpActionCounts = pendingActions.reduce((acc, action) => {
+    const key = action.action || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
   const report = {
     version: 1,
     flow: '10x_communications',
@@ -643,8 +667,10 @@ async function main() {
     diagnosticMeaningCounts,
     unmatchedObservationCounts,
     clientLatestUnparsedSignalCounts,
+    decoderCoverage,
     manualReviewTargets,
     pendingActions,
+    activeFollowUpActionCounts,
     verificationSummary: buildClientMessageAuditVerificationSummary({
       counts,
       pendingActions,
@@ -652,6 +678,7 @@ async function main() {
       diagnosticMeaningCounts,
       unmatchedObservationCounts,
       clientLatestUnparsedSignalCounts,
+      decoderCoverage,
     }),
     evidenceGlossary: {
       observations: CLIENT_REPLY_EVIDENCE_OBSERVATION_DEFINITIONS,
@@ -667,7 +694,9 @@ async function main() {
     diagnosticMeaningCounts: report.diagnosticMeaningCounts,
     unmatchedObservationCounts: report.unmatchedObservationCounts,
     clientLatestUnparsedSignalCounts: report.clientLatestUnparsedSignalCounts,
+    decoderCoverage: report.decoderCoverage,
     manualReviewTargets: report.manualReviewTargets,
+    activeFollowUpActionCounts: report.activeFollowUpActionCounts,
     verificationSummary: report.verificationSummary,
     pendingActions: report.pendingActions,
   }, null, 2));

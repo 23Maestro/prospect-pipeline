@@ -719,7 +719,7 @@ export function buildClientReplyThemeThreadMarkdown(args: {
 }): string {
   const lines = [`# ${markdownEscape(args.clientName) || 'Client Thread'}`];
   const messages = [...args.messages].sort((left, right) =>
-    normalizeText(left.date).localeCompare(normalizeText(right.date)),
+    compareMessageDates(left.date, right.date),
   );
   for (const message of messages) {
     const body = normalizeText(message.body);
@@ -762,6 +762,26 @@ const RESCHEDULE_OFFER_PATTERNS: readonly RegExp[] = [
 
 function normalizeText(value?: string | null): string {
   return String(value || '').trim();
+}
+
+function messageDateMs(value?: string | null): number {
+  const parsed = Date.parse(normalizeText(value));
+  return Number.isNaN(parsed) ? Number.NaN : parsed;
+}
+
+function compareMessageDates(left?: string | null, right?: string | null): number {
+  const leftMs = messageDateMs(left);
+  const rightMs = messageDateMs(right);
+  if (Number.isFinite(leftMs) && Number.isFinite(rightMs)) return leftMs - rightMs;
+  return normalizeText(left).localeCompare(normalizeText(right));
+}
+
+function messageDateIsAfter(left?: string | null, right?: string | null): boolean {
+  return compareMessageDates(left, right) > 0;
+}
+
+function messageDateIsBefore(left?: string | null, right?: string | null): boolean {
+  return compareMessageDates(left, right) < 0;
 }
 
 function isReactionOnlyMessage(text?: string | null): boolean {
@@ -837,9 +857,7 @@ export function classifyClientMessageTheme(text?: string | null): ClientMessageT
 function sortMessagesOldestFirst(
   messages: ClientReplyThemeReviewMessageInput[],
 ): ClientReplyThemeReviewMessageInput[] {
-  return [...messages].sort((left, right) =>
-    normalizeText(left.date).localeCompare(normalizeText(right.date)),
-  );
+  return [...messages].sort((left, right) => compareMessageDates(left.date, right.date));
 }
 
 function toMessageEvidence(
@@ -985,7 +1003,7 @@ export function buildClientReplyThreadDiagnostics(args: {
   const clientRepliedAfterLastOutbound =
     Boolean(normalizeText(lastInbound?.date)) &&
     (!normalizeText(lastOutbound?.date) ||
-      normalizeText(lastInbound?.date) > normalizeText(lastOutbound?.date));
+      messageDateIsAfter(lastInbound?.date, lastOutbound?.date));
   const outboundRescheduleOfferCount = outboundMessages.filter((message) =>
     isOperatorRescheduleOffer(message.body),
   ).length;
@@ -1113,7 +1131,7 @@ function buildClientReplyEvidence(args: {
   const inboundMessages = meaningful.filter((message) => !message.isFromMe);
   const outboundMessages = meaningful.filter((message) => message.isFromMe);
   const outboundAfterInbound = outboundMessages.filter(
-    (message) => normalizeText(message.date) > inboundDate,
+    (message) => messageDateIsAfter(message.date, inboundDate),
   );
   const rescheduleOffersAfterInbound = outboundAfterInbound.filter((message) =>
     isOperatorRescheduleOffer(message.body),
@@ -1123,7 +1141,7 @@ function buildClientReplyEvidence(args: {
   const lastRescheduleOfferDate = normalizeText(lastRescheduleOffer?.date);
   const clientRepliedAfterOperatorTimes =
     Boolean(lastRescheduleOfferDate) &&
-    inboundMessages.some((message) => normalizeText(message.date) > lastRescheduleOfferDate);
+    inboundMessages.some((message) => messageDateIsAfter(message.date, lastRescheduleOfferDate));
   const lastInbound = inboundMessages[inboundMessages.length - 1] || args.inbound;
   const lastOutbound = outboundMessages[outboundMessages.length - 1] || null;
 
@@ -1164,11 +1182,11 @@ function buildOutboundRescheduleOfferEvidence(args: {
       : toMessageEvidence(args.offer),
     lastOperatorRescheduleOffer: toMessageEvidence(args.offer),
     operatorRepliedAfterInbound: Boolean(
-      inboundMessages.some((message) => normalizeText(message.date) < offerDate),
+      inboundMessages.some((message) => messageDateIsBefore(message.date, offerDate)),
     ),
     operatorReplyProposedTimes: true,
     clientRepliedAfterOperatorTimes: Boolean(
-      offerDate && inboundMessages.some((message) => normalizeText(message.date) > offerDate),
+      offerDate && inboundMessages.some((message) => messageDateIsAfter(message.date, offerDate)),
     ),
     clientOptedOut: false,
   };
@@ -1222,13 +1240,13 @@ export function buildClientReplyThemeReviewSnapshot(args: {
       const operatorRepliedAfter = messages.some(
         (candidate) =>
           candidate.isFromMe &&
-          normalizeText(candidate.date) > messageDate &&
+          messageDateIsAfter(candidate.date, messageDate) &&
           normalizeText(candidate.body),
       );
       const operatorRescheduleOfferAfter = messages.some(
         (candidate) =>
           candidate.isFromMe &&
-          normalizeText(candidate.date) > messageDate &&
+          messageDateIsAfter(candidate.date, messageDate) &&
           isOperatorRescheduleOffer(candidate.body),
       );
       const keepPendingRescheduleVisible =
@@ -1288,7 +1306,7 @@ export function buildClientReplyThemeReviewSnapshot(args: {
     const clientRepliedAfterLatestOffer = Boolean(
       latestOfferDate &&
         messages.some(
-          (message) => !message.isFromMe && normalizeText(message.date) > latestOfferDate,
+          (message) => !message.isFromMe && messageDateIsAfter(message.date, latestOfferDate),
         ),
     );
     const alreadyHasOfferRow = rows.some(
