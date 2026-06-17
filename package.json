@@ -304,6 +304,7 @@
     "lint": "ray lint",
     "visual-maps": "likec4 start docs/visual-maps",
     "visual-maps:build": "likec4 build docs/visual-maps --output docs/visual-maps/dist",
+    "visual-maps:webcomponent": "likec4 gen webcomponent docs/visual-maps --outfile apps/prospect-web/public/visual-maps/likec4-views.js",
     "visual-maps:validate": "likec4 validate docs/visual-maps",
     "test": "node scripts/honest-test-report.mjs",
     "test:honest-report": "node scripts/honest-test-report.mjs",

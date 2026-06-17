@@ -22,6 +22,19 @@ Commands:
 npm run visual-maps
 npm run visual-maps:validate
 npm run visual-maps:build
+npm run visual-maps:webcomponent
 ```
 
 The first map is `client-messages-review.c4`, focused on Client Messages review follow-ups and the 10x Communications evidence receipt.
+
+## Portable Links
+
+Run `npm run visual-maps:webcomponent` before deploying Prospect Web when the LikeC4 source changes.
+
+After deployment, use these links from mobile, iPad, or Notion embeds:
+
+- `https://prospect-web.vercel.app/visual-maps/`
+- `https://prospect-web.vercel.app/visual-maps/client-messages-decision-receipt.html`
+- `https://prospect-web.vercel.app/visual-maps/client-messages-review-flow.html`
+
+For a Notion API embed block, use the page URL as the external embed URL. Keep the source of truth in this folder; do not edit generated `likec4-views.js` by hand.

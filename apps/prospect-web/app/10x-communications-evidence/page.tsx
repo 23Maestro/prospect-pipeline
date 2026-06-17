@@ -112,7 +112,7 @@ type FlowStep = {
   eyebrow: string;
   title: string;
   detail: string;
-  state?: 'source' | 'meaning' | 'decision' | 'gate' | 'target';
+  state?: 'operator' | 'truth' | 'proposal' | 'stop';
 };
 
 function FlowStrip({ steps }: { steps: FlowStep[] }) {
@@ -120,7 +120,7 @@ function FlowStrip({ steps }: { steps: FlowStep[] }) {
     <section className="tenx-flow" aria-label="Evidence decision flow">
       {steps.map((step, index) => (
         <div className="tenx-flow-item" key={`${step.eyebrow}:${step.title}`}>
-          <article className={`tenx-flow-node tenx-flow-node-${step.state || 'source'}`}>
+          <article className={`tenx-flow-node tenx-flow-node-${step.state || 'truth'}`}>
             <span>{step.eyebrow}</span>
             <strong>{step.title}</strong>
             <p>{step.detail}</p>
@@ -169,31 +169,31 @@ export default function TenXCommunicationsEvidencePage() {
           ambiguity === 'None'
             ? `${sql?.admission?.matchedPhonesCount || 0} matched phones, no ambiguity`
             : `${sql?.admission?.matchedPhonesCount || 0} matched phones, ${ambiguity}`,
-        state: 'source',
+        state: ambiguity === 'None' ? 'truth' : 'stop',
       },
       {
         eyebrow: 'Messages SQL',
         title: `${decodedBodies}/${totalMessages} decoded`,
         detail: `${sql?.thread?.inboundCount || 0} inbound, ${sql?.thread?.outboundCount || 0} outbound`,
-        state: 'source',
+        state: decodedBodies ? 'truth' : 'stop',
       },
       {
         eyebrow: 'Reply meaning',
         title: theme,
         detail: `${templateContext} -> ${titleCase(reply?.operatorAction)}`,
-        state: 'meaning',
+        state: 'proposal',
       },
       {
         eyebrow: 'Decision',
         title: outcome,
         detail: `${titleCase(proposal?.reason)} (${titleCase(proposal?.confidence)})`,
-        state: 'decision',
+        state: 'operator',
       },
       {
         eyebrow: 'Gate',
         title: approval,
         detail: `${proposal?.requiredPreflightChecks?.length || 0} preflight checks`,
-        state: 'gate',
+        state: 'proposal',
       },
       {
         eyebrow: 'Targets',
@@ -201,7 +201,7 @@ export default function TenXCommunicationsEvidencePage() {
         detail: targetCount
           ? (proposal?.suggestedMutationTargets || []).map(titleCase).join(', ')
           : 'No write target proposed',
-        state: 'target',
+        state: targetCount ? 'proposal' : 'truth',
       },
     ];
   }, [outcome, proposal, reply, sql]);

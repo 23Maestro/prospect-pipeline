@@ -16,6 +16,11 @@ const surfaces = [
     title: 'SC: Meetings',
     tone: 'meetings',
   },
+  {
+    href: '/visual-maps',
+    title: 'SC: Visual Maps',
+    tone: 'visuals',
+  },
 ];
 
 export default function HomePage() {

@@ -77,6 +77,13 @@ dist
 # Gatsby files
 .cache/
 public
+!apps/
+!apps/prospect-web/
+!apps/prospect-web/public
+!apps/prospect-web/public/
+apps/prospect-web/public/*
+!apps/prospect-web/public/visual-maps/
+!apps/prospect-web/public/visual-maps/**
 
 # Storybook build outputs
 .out
@@ -170,6 +177,13 @@ dist
 # Gatsby files
 .cache/
 public
+!apps/
+!apps/prospect-web/
+!apps/prospect-web/public
+!apps/prospect-web/public/
+apps/prospect-web/public/*
+!apps/prospect-web/public/visual-maps/
+!apps/prospect-web/public/visual-maps/**
 
 # Storybook build outputs
 .out
