@@ -1384,6 +1384,49 @@ function pendingClientRowText(row: PendingClientWatchlistRow): string {
     .toLowerCase();
 }
 
+function pendingClientRawRowText(row: PendingClientWatchlistRow): string {
+  return [
+    row.event_title,
+    row.description,
+    row.matched_signals?.join(' '),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function inferPendingClientNormalizedStage(row: PendingClientWatchlistRow): string {
+  const rawText = pendingClientRawRowText(row);
+  if (/\bno[_\s-]?show\b|\(ns\)/i.test(rawText)) return 'no_show';
+  if (/\b(?:cancel|canceled|cancelled)\b|\(can\)/i.test(rawText)) return 'canceled';
+  if (/\b(?:reschedule|reschedule_pending|reschedule pending|rsp)\b|\(rsp\)/i.test(rawText)) {
+    return 'reschedule_pending';
+  }
+  if (
+    row.action_tag === 'Payment Watch' ||
+    /\bfollow\s*up\b|\(fu\)|actual meeting/i.test(rawText)
+  ) {
+    return 'meeting_follow_up';
+  }
+  return '';
+}
+
+export function normalizePendingClientDisplayRowTag(
+  row: PendingClientWatchlistRow,
+): PendingClientWatchlistRow {
+  const matchedSignals = findPendingClientSignals([row.description, row.event_title].join('\n'));
+  const actionTag = classifyPendingClientActionTag({
+    normalizedStage: inferPendingClientNormalizedStage(row),
+    description: row.description,
+    matchedSignals,
+  });
+  return {
+    ...row,
+    matched_signals: matchedSignals.length ? matchedSignals : row.matched_signals || [],
+    action_tag: actionTag,
+  };
+}
+
 function pendingClientSourceLane(row: PendingClientWatchlistRow): PendingClientCentralFilter | null {
   const rowText = pendingClientRowText(row);
   if (row.action_tag === 'Payment Watch') return 'payments';

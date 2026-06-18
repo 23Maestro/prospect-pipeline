@@ -9,6 +9,7 @@ import {
   cleanPendingClientAthleteName,
   findPendingClientSignals,
   isPendingClientResolvedByFutureConfirmation,
+  normalizePendingClientDisplayRowTag,
   realPendingClientAthleteName,
   PENDING_CLIENT_LIST_LIMIT,
   type SetMeetingConfirmationCacheRowInput,
@@ -498,17 +499,25 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     actionableAppointmentRows,
     athleteNamesByKey,
   );
-  const paymentWatchlistRows = await readRows<PendingClientWatchlistRow>(
-    config,
-    'pending_client_watchlist',
-    [
-      'select=source_event_id,athlete_id,athlete_main_id,athlete_name,head_scout,head_scout_key,calendar_owner_id,detected_by_operator,detected_by_operator_key,owner_context,resolved_by_operator,resolved_by_operator_key,event_title,event_start,event_end,description,matched_signals,action_tag,ai_verdict,status,first_seen_at,last_seen_at,expires_at,resolved_at',
-      'status=eq.watching',
-      'action_tag=eq.Payment Watch',
-      'order=last_seen_at.desc',
-      `limit=${PENDING_CLIENT_LIST_LIMIT}`,
-    ].join('&'),
-  ).catch(() => []);
+  const supportWatchlistRows = (
+    await readRows<PendingClientWatchlistRow>(
+      config,
+      'pending_client_watchlist',
+      [
+        'select=source_event_id,athlete_id,athlete_main_id,athlete_name,head_scout,head_scout_key,calendar_owner_id,detected_by_operator,detected_by_operator_key,owner_context,resolved_by_operator,resolved_by_operator_key,event_title,event_start,event_end,description,matched_signals,action_tag,ai_verdict,status,first_seen_at,last_seen_at,expires_at,resolved_at',
+        'status=eq.watching',
+        'order=last_seen_at.desc',
+        `limit=${PENDING_CLIENT_LIST_LIMIT}`,
+      ].join('&'),
+    ).catch(() => [])
+  ).map(normalizePendingClientDisplayRowTag);
+  const paymentWatchlistRows = supportWatchlistRows.filter(
+    (row) => row.action_tag === 'Payment Watch',
+  );
+  const reviewWatchlistRows = supportWatchlistRows.filter(
+    (row) => row.action_tag === 'Scout Update',
+  );
+  const supportWatchlistDisplayRows = [...paymentWatchlistRows, ...reviewWatchlistRows];
   const appointmentSourceIds = appointmentRowsForDisplay.map((row) => row.source_event_id);
   const resolvedRows = appointmentSourceIds.length
     ? await readRows<Pick<PendingClientWatchlistRow, 'source_event_id' | 'status'>>(
@@ -536,7 +545,7 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       `limit=${PENDING_CLIENT_LIST_LIMIT * 10}`,
     ].join('&'),
   ).catch(() => []);
-  const unresolvedRows = [...appointmentRowsForDisplay, ...paymentWatchlistRows].filter(
+  const unresolvedRows = [...appointmentRowsForDisplay, ...supportWatchlistDisplayRows].filter(
     (row) =>
       !resolvedSourceIds.has(String(row.source_event_id || '').trim()) &&
       !isPendingClientResolvedByFutureConfirmation(row, confirmationRows, now),

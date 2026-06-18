@@ -1091,6 +1091,25 @@ function pendingClientEvidenceCrmStage(
   return 'Actual Meeting - Follow Up';
 }
 
+function pendingClientSourceLifecycleForDisplay(args: {
+  row: PendingClientWatchlistLoadResult['rows'][number];
+  replyState?: PendingClientReplyThemeState | null;
+  matchedChat?: ClientInboxChat | null;
+}) {
+  return {
+    crmStage: args.matchedChat?.clientMatch.crmStage || pendingClientEvidenceCrmStage(args.row),
+    taskTitle:
+      args.matchedChat?.clientMatch.currentTaskTitle ||
+      args.replyState?.row.taskTitle ||
+      args.matchedChat?.clientMatch.taskStatus ||
+      args.row.action_tag,
+    taskStatus:
+      args.matchedChat?.clientMatch.taskStatus ||
+      args.replyState?.row.taskTitle ||
+      args.row.action_tag,
+  };
+}
+
 function buildPendingClientThreadEvidenceReceipt(
   replyState: PendingClientReplyThemeState,
   messages: ClientThreadMessage[],
@@ -1538,11 +1557,7 @@ function PendingClientsWatchlist() {
       const laneState = derivePendingClientLaneState({
         row,
         replyEvidence: replyState?.row.replyEvidence,
-        sourceLifecycle: {
-          crmStage: matchedChat?.clientMatch.crmStage,
-          taskTitle: matchedChat?.clientMatch.currentTaskTitle,
-          taskStatus: matchedChat?.clientMatch.taskStatus,
-        },
+        sourceLifecycle: pendingClientSourceLifecycleForDisplay({ row, replyState, matchedChat }),
       });
       return { row, replyState, matchedChat, queue: laneState.queue, visible: laneState.visible };
     })
@@ -1562,11 +1577,7 @@ function PendingClientsWatchlist() {
       const laneState = derivePendingClientLaneState({
         row,
         replyEvidence: replyState?.row.replyEvidence,
-        sourceLifecycle: {
-          crmStage: matchedChat?.clientMatch.crmStage,
-          taskTitle: matchedChat?.clientMatch.currentTaskTitle,
-          taskStatus: matchedChat?.clientMatch.taskStatus,
-        },
+        sourceLifecycle: pendingClientSourceLifecycleForDisplay({ row, replyState, matchedChat }),
       });
       return { row, queue: laneState.queue, visible: laneState.visible };
     })
