@@ -12,12 +12,11 @@ reviews:
   enable_prompt_for_ai_agents: true
   auto_review:
     enabled: true
-    drafts: false
+    drafts: true
     auto_incremental_review: true
     auto_pause_after_reviewed_commits: 5
     ignore_title_keywords:
       - "wip"
-      - "draft"
   path_filters:
     - "!**/node_modules/**"
     - "!**/.next/**"
