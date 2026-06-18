@@ -2,10 +2,12 @@ import { getPreferenceValues } from '@raycast/api';
 import fs from 'fs';
 import path from 'path';
 import {
+  classifyPendingClientActionTag,
   buildPendingClientEvidenceDescription,
   buildPendingClientWatchlistRow,
   buildPendingClientResolvedPatch,
   cleanPendingClientAthleteName,
+  findPendingClientSignals,
   isPendingClientResolvedByFutureConfirmation,
   realPendingClientAthleteName,
   PENDING_CLIENT_LIST_LIMIT,
@@ -18,6 +20,11 @@ import {
   upsertPendingClientWatchlistRows,
   type SupabasePersistenceConfig,
 } from '../domain/supabase-persistence';
+import {
+  buildLightweightScoutPrepContextForMessages,
+  type ScoutPrepMessageContactCacheRow,
+} from '../domain/scout-message-context';
+import type { ScoutPortalTask, ScoutPrepContext } from '../features/scout-prep/types';
 import { resolveBookedMeetingDetailsForForm } from './booked-meeting-details-resolver';
 
 type Preferences = {
@@ -287,6 +294,12 @@ export function buildPendingClientRowsFromAppointments(
       reviewEvent: scoutNote ? { description: scoutNote } : null,
       missingMessage: `Pending client review from appointment outcome: ${outcome}.`,
     });
+    const matchedSignals = findPendingClientSignals(description);
+    const actionTag = classifyPendingClientActionTag({
+      normalizedStage: outcome === 'follow_up' ? 'meeting_follow_up' : outcome,
+      description,
+      matchedSignals,
+    });
 
     const row = buildPendingClientWatchlistRow({
       event: {
@@ -297,8 +310,8 @@ export function buildPendingClientRowsFromAppointments(
         end: null,
       },
       description,
-      matchedSignals: [outcome],
-      actionTag: 'Operator Input',
+      matchedSignals,
+      actionTag,
       aiVerdict: 'pending_client',
       athleteId: appointment.athlete_id,
       athleteMainId: appointment.athlete_main_id,
@@ -589,4 +602,49 @@ export async function markPendingClientResolved(
       expires_at: row.expires_at || new Date().toISOString(),
     },
   ]);
+}
+
+export async function loadPendingClientMessageContext(args: {
+  row: PendingClientWatchlistRow;
+  task: ScoutPortalTask;
+}): Promise<ScoutPrepContext> {
+  const config = getSupabaseConfig();
+  if (!config) {
+    throw new Error('Missing Supabase URL or key');
+  }
+  const athleteId = String(args.row.athlete_id || args.task.athlete_id || '').trim();
+  const athleteMainId = String(args.row.athlete_main_id || args.task.athlete_main_id || '').trim();
+  if (!athleteId || !athleteMainId) {
+    throw new Error('Missing athlete IDs for Pending Client follow-up.');
+  }
+
+  const athleteKey = `${athleteId}:${athleteMainId}`;
+  const contactRows = await readRows<ScoutPrepMessageContactCacheRow>(
+    config,
+    'athlete_contact_cache',
+    [
+      'select=athlete_key,athlete_id,athlete_main_id,athlete_name,contact_id,contact_name,relationship_label,phone,timezone,timezone_label,payload_json',
+      `athlete_key=eq.${encodeURIComponent(athleteKey)}`,
+      'cache_status=eq.active',
+      'order=updated_at.desc',
+    ].join('&'),
+  );
+
+  if (!contactRows.length) {
+    throw new Error('No active contact cache rows for Pending Client follow-up.');
+  }
+
+  return buildLightweightScoutPrepContextForMessages({
+    task: {
+      ...args.task,
+      contact_id: args.task.contact_id,
+      athlete_id: athleteId,
+      athlete_main_id: athleteMainId,
+      athlete_name:
+        args.task.athlete_name ||
+        contactRows.find((row) => String(row.athlete_name || '').trim())?.athlete_name?.trim() ||
+        'Pending Client',
+    },
+    contactRows,
+  });
 }

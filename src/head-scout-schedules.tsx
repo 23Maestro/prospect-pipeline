@@ -48,6 +48,7 @@ import {
   type HeadScoutSlotsResponse,
 } from './lib/head-scout-schedules';
 import {
+  loadPendingClientMessageContext,
   loadPendingClientWatchlist,
   markPendingClientResolved,
   pendingClientQueueTime,
@@ -73,7 +74,7 @@ import { getActiveOperator } from './domain/owners';
 import {
   buildPendingClientChecklistMarkdown,
   classifyPendingClientCentralQueue,
-  pendingClientReplyDeadlineLabel,
+  derivePendingClientLaneState,
   type PendingClientCentralFilter,
 } from './domain/pending-client-watchlist';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
@@ -86,7 +87,6 @@ import { buildMessagesComposeUrlForRecipients } from './lib/scout-prep-contact';
 import {
   completeScoutPrepTaskAfterVoicemail,
   fetchScoutPortalTasks,
-  loadScoutPrepContext,
 } from './lib/scout-prep';
 import {
   resolveIanaTimeZoneFromLegacyLabel,
@@ -1006,7 +1006,7 @@ function buildPendingClientDetailMarkdown(
   const scout = row.head_scout || 'Unresolved';
   const meeting = getPendingClientMeetingLabel(row);
   return [
-    `# HS: ${scout} - ${meeting}`,
+    `# HS: ${scout}`,
     '',
     `### ${meeting}`,
     '',
@@ -1024,16 +1024,13 @@ function buildPendingClientDetailMetadata(
   const eventDate = getPendingClientMeetingLabel(row);
   const athleteName =
     row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
-  const deadline =
-    queue.actionLabel === 'Awaiting Client' || queue.actionLabel === 'Try Again'
-      ? pendingClientReplyDeadlineLabel({ replyEvidence: replyState?.row.replyEvidence })
-      : '';
+  void queue;
+  void replyState;
 
   return (
     <List.Item.Detail.Metadata>
       <List.Item.Detail.Metadata.Label title="Athlete" text={athleteName} />
       <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
-      {deadline ? <List.Item.Detail.Metadata.Label title="Deadline" text={deadline} /> : null}
     </List.Item.Detail.Metadata>
   );
 }
@@ -1368,7 +1365,7 @@ function PendingClientRescheduleFollowUp({
         if (!task.athlete_id || !task.athlete_main_id) {
           throw new Error('Missing athlete IDs for Pending Client reschedule follow-up.');
         }
-        const loaded = await loadScoutPrepContext(task);
+        const loaded = await loadPendingClientMessageContext({ row, task });
         if (active) {
           setContext(loaded);
         }
@@ -1468,15 +1465,26 @@ function PendingClientsWatchlist() {
     };
   }, [refreshTick]);
 
-  async function handleMarkResolved(sourceEventId: string) {
+  async function handleMarkResolved(row: PendingClientWatchlistLoadResult['rows'][number]) {
+    const sourceEventId = row.source_event_id;
+    const previousResult = result;
     setResolvingId(sourceEventId);
+    setResult((current) =>
+      current
+        ? {
+            ...current,
+            rows: current.rows.filter((candidate) => candidate.source_event_id !== sourceEventId),
+          }
+        : current,
+    );
     const toast = await showLoadingToast('Resolving', 'Pending Client');
     try {
-      await markPendingClientResolved(sourceEventId);
+      await markPendingClientResolved(row);
       toast.style = Toast.Style.Success;
       toast.title = 'Removed';
       setRefreshTick((current) => current + 1);
     } catch (error) {
+      setResult(previousResult);
       toast.style = Toast.Style.Failure;
       toast.title = 'Resolve failed';
       toast.message = error instanceof Error ? error.message : String(error);
@@ -1526,12 +1534,19 @@ function PendingClientsWatchlist() {
   const rowModels = (result?.rows || [])
     .map((row) => {
       const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
-      const queue = classifyPendingClientCentralQueue({
+      const matchedChat = findPendingClientChat(row, messageChats);
+      const laneState = derivePendingClientLaneState({
         row,
         replyEvidence: replyState?.row.replyEvidence,
+        sourceLifecycle: {
+          crmStage: matchedChat?.clientMatch.crmStage,
+          taskTitle: matchedChat?.clientMatch.currentTaskTitle,
+          taskStatus: matchedChat?.clientMatch.taskStatus,
+        },
       });
-      return { row, replyState, queue };
+      return { row, replyState, matchedChat, queue: laneState.queue, visible: laneState.visible };
     })
+    .filter((item) => item.visible)
     .filter((item) => isPendingClientInsideVisibleWindow(item.row, item.queue))
     .filter((item) => selectedFilter === 'all' || item.queue.filter === selectedFilter)
     .sort(
@@ -1543,12 +1558,19 @@ function PendingClientsWatchlist() {
   const visibleRows = allRows
     .map((row) => {
       const replyState = findPendingClientReplyThemeState(row, replyThemeSnapshot);
-      const queue = classifyPendingClientCentralQueue({
+      const matchedChat = findPendingClientChat(row, messageChats);
+      const laneState = derivePendingClientLaneState({
         row,
         replyEvidence: replyState?.row.replyEvidence,
+        sourceLifecycle: {
+          crmStage: matchedChat?.clientMatch.crmStage,
+          taskTitle: matchedChat?.clientMatch.currentTaskTitle,
+          taskStatus: matchedChat?.clientMatch.taskStatus,
+        },
       });
-      return { row, queue };
+      return { row, queue: laneState.queue, visible: laneState.visible };
     })
+    .filter((item) => item.visible)
     .filter((item) => isPendingClientInsideVisibleWindow(item.row, item.queue));
   const allCounts = visibleRows.reduce<Record<PendingClientCentralFilter, number>>(
     (acc, row) => {
@@ -1586,10 +1608,9 @@ function PendingClientsWatchlist() {
           title={pendingClientFilterTitle(selectedFilter)}
           subtitle={`${rowModels.length}${result ? `/${result.scannedCount}` : ''}`}
         >
-          {rowModels.map(({ row, replyState, queue }) => {
+          {rowModels.map(({ row, replyState, matchedChat, queue }) => {
             const signals = row.matched_signals || [];
             const actionTag = row.action_tag || 'Missing Notes';
-            const matchedChat = findPendingClientChat(row, messageChats);
             const taskUrl = buildPendingClientTaskUrl(row);
             const adminUrl = buildPendingClientAdminUrl(row);
             const launchAdminUrl = taskUrl || adminUrl;
@@ -1705,7 +1726,7 @@ function PendingClientsWatchlist() {
                           title={resolvingId === row.source_event_id ? 'Removing…' : 'Remove'}
                           icon="✅"
                           shortcut={{ modifiers: ['ctrl'], key: 'x' }}
-                          onAction={() => void handleMarkResolved(row.source_event_id)}
+                          onAction={() => void handleMarkResolved(row)}
                         />
                         <Action
                           title={

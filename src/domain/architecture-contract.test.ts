@@ -151,7 +151,8 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
   assert.match(headScoutSchedules, /function buildPendingClientTask/);
   assert.match(headScoutSchedules, /title:\s*'Reschedule Pending'/);
   assert.match(headScoutSchedules, /function PendingClientRescheduleFollowUp/);
-  assert.match(headScoutSchedules, /await loadScoutPrepContext\(task\)/);
+  assert.match(headScoutSchedules, /await loadPendingClientMessageContext\(\{ row, task \}\)/);
+  assert.doesNotMatch(headScoutSchedules, /await loadScoutPrepContext\(task\)/);
   assert.match(
     headScoutSchedules,
     /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/,
@@ -160,6 +161,20 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
   assert.doesNotMatch(scoutPrep, /mode: 'raycast-ui'/);
   assert.match(headScoutSchedules, /title="Send"/);
   assert.match(headScoutSchedules, /shortcut=\{\{ modifiers: \['cmd', 'shift'\], key: 'r' \}\}/);
+});
+
+test('Pending Clients remove uses optimistic UI removal and durable full-row tombstone', () => {
+  const headScoutSchedules = readRepoFile('src/head-scout-schedules.tsx');
+
+  assert.match(
+    headScoutSchedules,
+    /async function handleMarkResolved\(row: PendingClientWatchlistLoadResult\['rows'\]\[number\]\)/,
+  );
+  assert.match(headScoutSchedules, /rows: current\.rows\.filter\(/);
+  assert.match(headScoutSchedules, /candidate\.source_event_id !== sourceEventId/);
+  assert.match(headScoutSchedules, /await markPendingClientResolved\(row\)/);
+  assert.doesNotMatch(headScoutSchedules, /await markPendingClientResolved\(sourceEventId\)/);
+  assert.match(headScoutSchedules, /onAction=\{\(\) => void handleMarkResolved\(row\)\}/);
 });
 
 test('Pending Clients exposes shared 10x evidence receipts for reply-theme next steps', () => {

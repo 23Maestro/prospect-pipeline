@@ -106,7 +106,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
     sport: 'Soccer',
     signOffTitle: 'Soccer Scouting Coordinator',
     closingLine: 'Enjoy the rest of your week.',
-    now: new Date('2026-04-23T23:29:00Z'),
+    now: new Date('2026-04-23T22:59:00Z'),
   });
 
   assert.match(
@@ -130,7 +130,7 @@ test('buildVoicemailFollowUpMessage uses female pronouns for softball templates'
     greeting: 'Good afternoon Ms. Torres,',
     athleteName: 'Ava',
     sport: 'Softball',
-    now: new Date('2026-04-23T23:29:00Z'),
+    now: new Date('2026-04-23T22:59:00Z'),
   });
 
   assert.match(
@@ -141,8 +141,8 @@ test('buildVoicemailFollowUpMessage uses female pronouns for softball templates'
 });
 
 test('isPastTextTodayCutoff identifies the eastern evening cutoff', () => {
-  assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T23:29:00Z')), false);
-  assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T23:30:00Z')), true);
+  assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T22:59:00Z')), false);
+  assert.equal(isPastTextTodayCutoff(new Date('2026-04-23T23:00:00Z')), true);
 });
 
 test('buildVoicemailFollowUpMessage renders attempt 2 calendar permission copy', () => {
@@ -151,7 +151,7 @@ test('buildVoicemailFollowUpMessage renders attempt 2 calendar permission copy',
     greeting: 'Good evening Mr. Brown,',
     athleteName: 'Grayson Brown',
     sport: 'Football',
-    now: new Date('2026-04-23T23:30:00Z'),
+    now: new Date('2026-04-23T22:59:00Z'),
   });
 
   assert.match(
@@ -353,6 +353,7 @@ test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
     athleteName: 'Kapri',
     senderName: 'Jerami Singleton',
     sport: 'Basketball',
+    now: new Date('2026-04-23T22:59:00Z'),
   });
 
   assert.equal(
@@ -365,6 +366,41 @@ test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
       'Would today or tomorrow work for a quick call?',
     ].join('\n'),
   );
+});
+
+test('buildVoicemailFollowUpMessage moves client outreach timing after 7 PM eastern', () => {
+  const attempt1 = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_1',
+    greeting: 'Good evening Ms. Messerle,',
+    athleteName: 'Wylie',
+    sport: 'Soccer',
+    now: new Date('2026-04-23T23:00:00Z'),
+  });
+  const attempt2 = buildVoicemailFollowUpMessage({
+    variant: 'call_attempt_2',
+    greeting: 'Good evening Ms. Messerle,',
+    athleteName: 'Wylie',
+    sport: 'Soccer',
+    now: new Date('2026-04-23T23:00:00Z'),
+  });
+  const parentIntro = buildVoicemailFollowUpMessage({
+    variant: 'parent_contact_intro',
+    greeting: 'Hi [ParentFirst],',
+    athleteName: 'Kapri',
+    senderName: 'Jerami Singleton',
+    sport: 'Basketball',
+    now: new Date('2026-04-23T23:00:00Z'),
+  });
+
+  assert.match(attempt1, /Would tomorrow or later this week be better\?/);
+  assert.doesNotMatch(attempt1, /Would later today or tomorrow work/);
+  assert.match(
+    attempt2,
+    /Would a calendar link be easier, or should I try you tomorrow or later this week\?/,
+  );
+  assert.doesNotMatch(attempt2, /later today/);
+  assert.match(parentIntro, /Would tomorrow or later this week be better\?/);
+  assert.doesNotMatch(parentIntro, /Would today or tomorrow work/);
 });
 
 test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', () => {

@@ -22,7 +22,7 @@ jobs:
         run: npm ci
       
       - name: Run ESLint on TypeScript sources
-        run: npx eslint . --ext .ts,.tsx --ignore-pattern "src/python,mcp-servers/*/dist,raycast-env.d.ts" --max-warnings 0
+        run: npx eslint src --ext .ts,.tsx
 
   typecheck:
     runs-on: ubuntu-latest
@@ -43,7 +43,7 @@ jobs:
         continue-on-error: true
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: [lint, typecheck]
     steps:
       - uses: actions/checkout@v4

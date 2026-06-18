@@ -160,7 +160,6 @@ test('resolves booked meeting rows that only have eventlist labels', async () =>
     date_time_label: 'Mon 06/01/26 06:00 PM',
     description: 'Eventlist-only description',
   });
-  let requestedDetailsEventId = '';
 
   const result = await resolveBookedMeetingDetailsForForm(
     {
