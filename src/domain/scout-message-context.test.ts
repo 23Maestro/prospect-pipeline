@@ -9,6 +9,7 @@ import {
 } from './scout-contact-selection';
 import {
   buildConfirmationMessageContext,
+  buildLightweightScoutPrepContextForMessages,
   buildVoicemailFollowUpMessageContext,
 } from './scout-message-context';
 
@@ -112,4 +113,52 @@ test('phone normalization and voicemail context keep current message-safe shape'
   assert.equal(context.athleteName, 'Bryson Smith');
   assert.equal(context.sport, 'Football');
   assert.equal(context.recipients.length, 4);
+});
+
+test('lightweight pending-client message context uses contact cache without notes or tasks', () => {
+  const context = buildLightweightScoutPrepContextForMessages({
+    task: {
+      contact_id: '1499593',
+      athlete_id: '1499593',
+      athlete_main_id: '954323',
+      athlete_name: 'Gage Henry',
+      title: 'Reschedule Pending',
+      sport: 'Football',
+    },
+    contactRows: [
+      {
+        athlete_key: '1499593:954323',
+        athlete_id: '1499593',
+        athlete_main_id: '954323',
+        athlete_name: 'Gage Henry',
+        contact_id: '1499593',
+        contact_name: 'Joe Henry',
+        relationship_label: 'Parent 1',
+        phone: '740-505-4284',
+        timezone: 'America/New_York',
+        timezone_label: 'EST',
+        payload_json: { role: 'parent1' },
+      },
+      {
+        athlete_key: '1499593:954323',
+        athlete_id: '1499593',
+        athlete_main_id: '954323',
+        athlete_name: 'Gage Henry',
+        contact_id: '1499593',
+        contact_name: 'Gage Henry',
+        relationship_label: 'Student Athlete',
+        phone: '740-505-0632',
+        timezone: 'America/New_York',
+        timezone_label: 'EST',
+        payload_json: { role: 'studentAthlete' },
+      },
+    ],
+  });
+
+  assert.equal(context.contactInfo.parent1?.name, 'Joe Henry');
+  assert.equal(context.contactInfo.studentAthlete.name, 'Gage Henry');
+  assert.equal(context.resolved.timezone, 'America/New_York');
+  assert.equal(context.notes.length, 0);
+  assert.equal(context.tasks.length, 0);
+  assert.equal(getVoicemailFollowUpRecipients(context).length, 3);
 });

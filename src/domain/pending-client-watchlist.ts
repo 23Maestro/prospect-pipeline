@@ -159,6 +159,14 @@ export type PendingClientCentralQueueClassification = {
   priority: number;
 };
 
+export type PendingClientLaneState = {
+  queue: PendingClientCentralQueueClassification;
+  activeFollowUp: PendingClientActiveFollowUpState;
+  messageEvidenceApplies: boolean;
+  paymentLocked: boolean;
+  visible: boolean;
+};
+
 export type PendingClientAppointmentHistoryOutcome =
   | 'scheduled'
   | 'reschedule_pending'
@@ -253,6 +261,12 @@ export type PendingClientChecklistInput = {
   now?: Date;
   dormantFollowUpDays?: number;
   retryAfterHours?: number;
+};
+
+export type PendingClientSourceLifecycleInput = {
+  crmStage?: string | null;
+  taskTitle?: string | null;
+  taskStatus?: string | null;
 };
 
 function sourceEventAppointmentId(value?: string | null): string | null {
@@ -789,20 +803,41 @@ export function buildPendingClientChecklistMarkdown({
   const textSent =
     messageThread.operatorReachedOutAfterLatestOutcome ||
     Boolean(replyEvidence?.operatorReplyProposedTimes);
-  const activeState = derivePendingClientActiveFollowUpState({
+  const laneState = derivePendingClientLaneState({
     row,
-    filter:
-      centralQueue?.filter ||
-      classifyPendingClientCentralQueue({ row, replyEvidence, now, retryAfterHours }).filter,
     replyEvidence,
     now,
     retryAfterHours,
   });
+  const activeState =
+    centralQueue && centralQueue.filter !== laneState.queue.filter
+      ? derivePendingClientActiveFollowUpState({
+          row,
+          filter: centralQueue.filter,
+          replyEvidence,
+          now,
+          retryAfterHours,
+        })
+      : laneState.activeFollowUp;
+
+  if (activeState.filter === 'payments') {
+    const lines: string[] = [];
+    if (note?.description) {
+      lines.push(
+        '### Note',
+        '',
+        ...(note.timestampLabel ? [note.timestampLabel, ''] : []),
+        '```',
+        fencedNoteBlock(note.description),
+        '```',
+      );
+    }
+    return lines.join('\n');
+  }
+
   const actionLines = [`- [${hasNote ? 'x' : ' '}] Add note`];
 
-  if (row.action_tag === 'Payment Watch') {
-    actionLines.push('- [ ] Review payment');
-  } else if (textSent) {
+  if (textSent) {
     actionLines.push('- [x] Offer slots');
     if (
       activeState.checklistAction === 'review_reply' ||
@@ -1248,7 +1283,10 @@ export function classifyPendingClientActionTag(args: {
   if (!hasEvidence) {
     return 'Missing Notes';
   }
-  if (normalizedStage === 'meeting_follow_up' && (args.matchedSignals || []).length > 0) {
+  if (
+    (normalizedStage === 'meeting_follow_up' || normalizedStage === 'follow_up') &&
+    (args.matchedSignals || []).length > 0
+  ) {
     return 'Payment Watch';
   }
   return 'Scout Update';
@@ -1346,22 +1384,87 @@ function pendingClientRowText(row: PendingClientWatchlistRow): string {
     .toLowerCase();
 }
 
+function pendingClientSourceLane(row: PendingClientWatchlistRow): PendingClientCentralFilter | null {
+  const rowText = pendingClientRowText(row);
+  if (row.action_tag === 'Payment Watch') return 'payments';
+  if (/\bno show\b|\(ns\)/i.test(rowText)) return 'no_show';
+  if (/\b(?:reschedule|rsp|cancel|canceled|cancelled)\b|\((?:rsp|can)\)/i.test(rowText)) {
+    return 'reschedule';
+  }
+  if (row.action_tag === 'Operator Input') return 'reschedule';
+  if (/\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard|\$\s*\d+)/i.test(rowText)) {
+    return 'payments';
+  }
+  if (row.action_tag === 'Scout Update') return 'review_follow_ups';
+  return null;
+}
+
+function pendingClientReviewQueue(): PendingClientCentralQueueClassification {
+  return {
+    filter: 'review_follow_ups',
+    label: 'Review Follow Ups',
+    actionLabel: 'Review',
+    priority: 30,
+  };
+}
+
+function normalizedSourceLifecycleText(
+  sourceLifecycle?: PendingClientSourceLifecycleInput | null,
+): string {
+  return [
+    sourceLifecycle?.crmStage,
+    sourceLifecycle?.taskTitle,
+    sourceLifecycle?.taskStatus,
+  ]
+    .map((value) =>
+      normalizeComparableText(value)
+        .toLowerCase()
+        .replace(/\s*[-–—]\s*/g, ' ')
+        .replace(/[.,:]+/g, ' '),
+    )
+    .filter(Boolean)
+    .join(' ');
+}
+
+export function isPendingClientReviewFollowUpSourceStage(
+  sourceLifecycle?: PendingClientSourceLifecycleInput | null,
+): boolean {
+  const text = normalizedSourceLifecycleText(sourceLifecycle);
+  if (!text) return false;
+  if (
+    /\b(?:left voice mail 1|left voicemail 1|left voice mail 2|left voicemail 2|never spoke to|spoke to athlete not parent|athlete not parent|spoke to i need to follow up|spoke to need to follow up|spoke to follow up)\b/i.test(
+      text,
+    )
+  ) {
+    return true;
+  }
+  const lifecycle = resolveSalesLifecycle(sourceLifecycle?.crmStage || sourceLifecycle?.taskStatus);
+  return lifecycle.normalizedStage === 'call_attempt';
+}
+
+function isPendingClientReviewFollowUpActionable(args: {
+  sourceLifecycle?: PendingClientSourceLifecycleInput | null;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+}): boolean {
+  return (
+    isPendingClientReviewFollowUpSourceStage(args.sourceLifecycle) &&
+    normalizeText(args.replyEvidence?.themeBucket) === 'Call Attempt' &&
+    Boolean(args.replyEvidence?.lastMeaningfulInbound?.body) &&
+    !args.replyEvidence?.operatorRepliedAfterInbound
+  );
+}
+
 export function classifyPendingClientCentralQueue(args: {
   row: PendingClientWatchlistRow;
   replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  sourceLifecycle?: PendingClientSourceLifecycleInput | null;
   now?: Date;
   retryAfterHours?: number;
 }): PendingClientCentralQueueClassification {
-  const rowText = pendingClientRowText(args.row);
+  const sourceLane = pendingClientSourceLane(args.row);
   const themeBucket = normalizeText(args.replyEvidence?.themeBucket);
-  const clientRepliedAfterTimes = Boolean(args.replyEvidence?.clientRepliedAfterOperatorTimes);
-  const needsReply = !args.replyEvidence?.operatorRepliedAfterInbound || clientRepliedAfterTimes;
 
-  if (
-    args.row.action_tag === 'Payment Watch' ||
-    themeBucket === 'Payment' ||
-    /\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard|\$\s*\d+)/i.test(rowText)
-  ) {
+  if (sourceLane === 'payments') {
     return {
       filter: 'payments',
       label: 'Payments',
@@ -1370,10 +1473,7 @@ export function classifyPendingClientCentralQueue(args: {
     };
   }
 
-  if (
-    themeBucket === 'No Show' ||
-    /\bno show\b/i.test(rowText)
-  ) {
+  if (sourceLane === 'no_show' || (!sourceLane && themeBucket === 'No Show')) {
     if (isTimingBadReply(args.replyEvidence)) {
       return {
         filter: 'no_show',
@@ -1402,18 +1502,9 @@ export function classifyPendingClientCentralQueue(args: {
     };
   }
 
-  if (themeBucket === 'Call Attempt') {
-    return {
-      filter: 'review_follow_ups',
-      label: 'Review Follow Ups',
-      actionLabel: needsReply ? 'Needs Reply' : 'Review',
-      priority: 30,
-    };
-  }
-
   if (
-    themeBucket === 'RSP' ||
-    /\b(?:reschedule|rsp|cancel|canceled|cancelled)\b|\((?:rsp|can)\)/i.test(rowText)
+    sourceLane === 'reschedule' ||
+    (!sourceLane && (themeBucket === 'RSP' || themeBucket === 'Cancel'))
   ) {
     const actionLabel = pendingClientRecoveryActionLabel({
       filter: 'reschedule',
@@ -1434,11 +1525,50 @@ export function classifyPendingClientCentralQueue(args: {
     };
   }
 
+  if (
+    sourceLane === 'review_follow_ups' &&
+    isPendingClientReviewFollowUpActionable({
+      sourceLifecycle: args.sourceLifecycle,
+      replyEvidence: args.replyEvidence,
+    })
+  ) {
+    return {
+      filter: 'review_follow_ups',
+      label: 'Review Follow Ups',
+      actionLabel: 'Needs Reply',
+      priority: 30,
+    };
+  }
+
+  return pendingClientReviewQueue();
+}
+
+export function derivePendingClientLaneState(args: {
+  row: PendingClientWatchlistRow;
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  sourceLifecycle?: PendingClientSourceLifecycleInput | null;
+  now?: Date;
+  retryAfterHours?: number;
+}): PendingClientLaneState {
+  const queue = classifyPendingClientCentralQueue(args);
+  const activeFollowUp = derivePendingClientActiveFollowUpState({
+    row: args.row,
+    filter: queue.filter,
+    replyEvidence: args.replyEvidence,
+    now: args.now,
+    retryAfterHours: args.retryAfterHours,
+  });
   return {
-    filter: 'review_follow_ups',
-    label: 'Review Follow Ups',
-    actionLabel: needsReply ? 'Needs Reply' : 'Review',
-    priority: 30,
+    queue,
+    activeFollowUp,
+    messageEvidenceApplies: queue.filter === 'reschedule' || queue.filter === 'no_show',
+    paymentLocked: queue.filter === 'payments',
+    visible:
+      queue.filter !== 'review_follow_ups' ||
+      isPendingClientReviewFollowUpActionable({
+        sourceLifecycle: args.sourceLifecycle,
+        replyEvidence: args.replyEvidence,
+      }),
   };
 }
 

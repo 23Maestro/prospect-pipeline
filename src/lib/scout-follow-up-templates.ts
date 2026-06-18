@@ -198,8 +198,28 @@ function getEasternTimeParts(date: Date): { hour: number; minute: number } {
 }
 
 export function isPastTextTodayCutoff(now: Date): boolean {
-  const { hour, minute } = getEasternTimeParts(now);
-  return hour > 19 || (hour === 19 && minute >= 30);
+  const { hour } = getEasternTimeParts(now);
+  return hour >= 19;
+}
+
+function buildClientOutreachTimeQuestion(
+  now: Date,
+  style: 'quick-call' | 'ten-minute-call' | 'calendar-link',
+): string {
+  if (isPastTextTodayCutoff(now)) {
+    if (style === 'calendar-link') {
+      return 'Would a calendar link be easier, or should I try you tomorrow or later this week?';
+    }
+    return 'Would tomorrow or later this week be better?';
+  }
+
+  if (style === 'calendar-link') {
+    return 'Would a calendar link be easier, or should I try you later today?';
+  }
+
+  return style === 'quick-call'
+    ? 'Would today or tomorrow work for a quick call?'
+    : 'Would later today or tomorrow work for a quick 10-minute call?';
 }
 
 export function buildFollowUpTitle(messageType: FollowUpMessageType, athleteName: string): string {
@@ -299,6 +319,7 @@ export function buildVoicemailFollowUpMessage(args: {
   rescheduleWeekLabel?: string | null;
   now?: Date;
 }): string {
+  const now = args.now || new Date();
   const greeting = String(args.greeting || '').trim() || 'Good morning there,';
   const senderName = String(args.senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
   const senderIntroName = getSenderIntroName(senderName);
@@ -317,6 +338,9 @@ export function buildVoicemailFollowUpMessage(args: {
     .filter(Boolean)
     .slice(0, 2);
   const rescheduleWeekLabel = String(args.rescheduleWeekLabel || '').trim() || 'this week';
+  const quickCallQuestion = buildClientOutreachTimeQuestion(now, 'quick-call');
+  const tenMinuteCallQuestion = buildClientOutreachTimeQuestion(now, 'ten-minute-call');
+  const calendarLinkQuestion = buildClientOutreachTimeQuestion(now, 'calendar-link');
 
   const lines =
     args.variant === 'send_cal_link'
@@ -333,7 +357,7 @@ export function buildVoicemailFollowUpMessage(args: {
             '',
             `${athleteFirstName}’s recruiting info came through.`,
             '',
-            'Would today or tomorrow work for a quick call?',
+            quickCallQuestion,
           ]
         : args.variant === 'propose_times'
           ? [
@@ -412,12 +436,12 @@ export function buildVoicemailFollowUpMessage(args: {
                             ? [
                                 `${greeting} quick follow-up on ${athleteFirstName}’s ${scoutLabel} profile.`,
                                 '',
-                                'Would a calendar link be easier, or should I try you later today?',
+                                calendarLinkQuestion,
                               ]
                             : [
                                 `${greeting} this is ${senderIntroName} with Prospect ID. ${athleteFirstName}’s ${scoutLabel} profile came through and I had a few quick questions about college goals.`,
                                 '',
-                                'Would later today or tomorrow work for a quick 10-minute call?',
+                                tenMinuteCallQuestion,
                               ];
 
   return lines.join('\n');

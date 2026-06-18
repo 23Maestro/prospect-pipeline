@@ -881,6 +881,41 @@ test('buildVoicemailFollowUpBody: parent contact intro uses student athlete name
   );
 });
 
+test('buildVoicemailFollowUpBody: parent contact intro avoids today after 7 PM eastern', () => {
+  const body = buildVoicemailFollowUpBody(
+    buildContext({
+      task: {
+        contact_id: '123',
+        athlete_main_id: '456',
+        athlete_name: 'Kapri Johnson',
+      },
+      resolved: {
+        sport: 'Basketball',
+        city: 'Orlando',
+        state: 'FL',
+      },
+      contactInfo: {
+        contactId: '123',
+        studentAthlete: {
+          name: 'Kapri Johnson',
+          email: null,
+          phone: '(407) 555-0000',
+        },
+        parent1: null,
+        parent2: null,
+      },
+    }),
+    undefined,
+    'parent_contact_intro',
+    null,
+    null,
+    new Date('2026-04-17T23:00:00Z'),
+  );
+
+  assert.match(body, /Would tomorrow or later this week be better\?/);
+  assert.doesNotMatch(body, /Would today or tomorrow work/);
+});
+
 test('buildVoicemailFollowUpBody: no show uses first name only', () => {
   const body = buildVoicemailFollowUpBody(
     buildContext({
