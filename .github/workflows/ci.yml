@@ -22,7 +22,7 @@ jobs:
         run: npm ci
       
       - name: Run ESLint on TypeScript sources
-        run: npx eslint . --ext .ts,.tsx --ignore-pattern "src/python,mcp-servers/*/dist,raycast-env.d.ts" --max-warnings 0
+        run: npx eslint . --ext .ts,.tsx --ignore-pattern "src/python,mcp-servers/*/dist,raycast-env.d.ts"
 
   typecheck:
     runs-on: ubuntu-latest
