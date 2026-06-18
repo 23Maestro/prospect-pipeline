@@ -1392,7 +1392,7 @@ function pendingClientSourceLane(row: PendingClientWatchlistRow): PendingClientC
     return 'reschedule';
   }
   if (row.action_tag === 'Operator Input') return 'reschedule';
-  if (/\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard|\$\s*\d+)/i.test(rowText)) {
+  if (/\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard)\b|\$\s*\d+/i.test(rowText)) {
     return 'payments';
   }
   if (row.action_tag === 'Scout Update') return 'review_follow_ups';

@@ -612,9 +612,7 @@ export async function loadPendingClientMessageContext(args: {
   if (!config) {
     throw new Error('Missing Supabase URL or key');
   }
-  const athleteId = String(
-    args.row.athlete_id || args.task.athlete_id || args.task.contact_id || '',
-  ).trim();
+  const athleteId = String(args.row.athlete_id || args.task.athlete_id || '').trim();
   const athleteMainId = String(args.row.athlete_main_id || args.task.athlete_main_id || '').trim();
   if (!athleteId || !athleteMainId) {
     throw new Error('Missing athlete IDs for Pending Client follow-up.');
@@ -639,12 +637,12 @@ export async function loadPendingClientMessageContext(args: {
   return buildLightweightScoutPrepContextForMessages({
     task: {
       ...args.task,
-      contact_id: athleteId,
+      contact_id: args.task.contact_id,
       athlete_id: athleteId,
       athlete_main_id: athleteMainId,
       athlete_name:
         args.task.athlete_name ||
-        contactRows.find((row) => String(row.athlete_name || '').trim())?.athlete_name ||
+        contactRows.find((row) => String(row.athlete_name || '').trim())?.athlete_name?.trim() ||
         'Pending Client',
     },
     contactRows,

@@ -110,6 +110,8 @@ export function buildLightweightScoutPrepContextForMessages(args: {
       role === 'manual_additional_contact'
     );
   });
+  // If only one parent-like row is available, promote it into parent1 so downstream
+  // recipient selection has a primary parent slot.
   const parent1 =
     parentRows.find((row) => ['parent1', 'parent_1'].includes(contactRole(row))) ||
     parentRows[0] ||
