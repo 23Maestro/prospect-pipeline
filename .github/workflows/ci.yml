@@ -43,7 +43,7 @@ jobs:
         continue-on-error: true
 
   build:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: [lint, typecheck]
     steps:
       - uses: actions/checkout@v4
