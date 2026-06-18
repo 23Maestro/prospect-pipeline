@@ -802,6 +802,40 @@ test('does not flag when operator already replied after the actionable client re
   assert.equal(snapshot.ignoredHandled[0].theme, 'outreach_callback');
 });
 
+test('keeps outreach callback visible when later operator message is only a tapback', () => {
+  const snapshot = buildClientReplyThemeReviewSnapshot({
+    generatedAt: '2026-06-18T17:00:00.000Z',
+    chats: [chat({ taskTitle: 'Call Attempt 2' })],
+    messagesByChatGuid: {
+      'chat-1': [
+        message({
+          guid: 'attempt',
+          body: 'Good evening Ms. Burton, this is Coach Singleton with Prospect ID. Elijah’s basketball profile came through and I had a few quick questions about college goals. Would tomorrow or later this week be better?',
+          date: '2026-06-18T00:03:00.000Z',
+          isFromMe: true,
+        }),
+        message({
+          guid: 'actionable',
+          body: 'Tomorrow works',
+          date: '2026-06-18T00:08:00.000Z',
+        }),
+        message({
+          guid: 'tapback',
+          body: 'Loved "Tomorrow works"',
+          date: '2026-06-18T00:09:00.000Z',
+          isFromMe: true,
+        }),
+      ],
+    },
+  });
+
+  assert.equal(snapshot.rows.length, 1);
+  assert.equal(snapshot.ignoredHandled.length, 0);
+  assert.equal(snapshot.rows[0].theme, 'outreach_callback');
+  assert.equal(snapshot.rows[0].replyEvidence?.themeBucket, 'Call Attempt');
+  assert.equal(snapshot.rows[0].replyEvidence?.operatorRepliedAfterInbound, false);
+});
+
 test('keeps reschedule visible when task context is still pending reschedule despite later reply', () => {
   const snapshot = buildClientReplyThemeReviewSnapshot({
     generatedAt: '2026-05-27T17:00:00.000Z',

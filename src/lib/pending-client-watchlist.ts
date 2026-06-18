@@ -4,14 +4,17 @@ import path from 'path';
 import {
   classifyPendingClientActionTag,
   buildPendingClientEvidenceDescription,
+  buildPendingClientReviewFollowUpRowsFromSource,
   buildPendingClientWatchlistRow,
   buildPendingClientResolvedPatch,
   cleanPendingClientAthleteName,
   findPendingClientSignals,
+  isPendingClientReviewFollowUpSourceStage,
   isPendingClientResolvedByFutureConfirmation,
   normalizePendingClientDisplayRowTag,
   realPendingClientAthleteName,
   PENDING_CLIENT_LIST_LIMIT,
+  type PendingClientReviewFollowUpSourceInput,
   type SetMeetingConfirmationCacheRowInput,
   type PendingClientWatchlistRow,
 } from '../domain/pending-client-watchlist';
@@ -69,6 +72,25 @@ type AthleteNameRow = {
   athlete_name?: string | null;
 };
 
+type ReviewFollowUpLifecycleRow = {
+  athlete_key?: string | null;
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  crm_stage?: string | null;
+  task_status?: string | null;
+  payload_json?: Record<string, unknown> | null;
+  created_at?: string | null;
+};
+
+type ReviewFollowUpContactRow = {
+  athlete_key?: string | null;
+  athlete_id?: string | null;
+  athlete_main_id?: string | null;
+  athlete_name?: string | null;
+  cache_status?: string | null;
+  last_seen_at?: string | null;
+};
+
 const DEFAULT_SCHEMA = 'public';
 const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
 const PENDING_CLIENT_APPOINTMENT_OUTCOMES = [
@@ -91,6 +113,7 @@ const ACTIVE_REPLACEMENT_APPOINTMENT_STATUS_QUERY = ACTIVE_REPLACEMENT_APPOINTME
   quotePostgrestInValue,
 ).join(',');
 const ACTIVE_REPLACEMENT_POST_MEETING_RESULTS = new Set(['', 'rescheduled']);
+const PENDING_CLIENT_REVIEW_LIFECYCLE_FETCH_LIMIT = PENDING_CLIENT_LIST_LIMIT * 5;
 
 function readEnvFile(filePath: string): Record<string, string> {
   try {
@@ -236,6 +259,126 @@ function payloadText(payload: Record<string, unknown>, key: string): string | nu
   const value = payload[key];
   const text = String(value || '').trim();
   return text || null;
+}
+
+function latestReviewLifecycleRows(
+  rows: ReviewFollowUpLifecycleRow[],
+): ReviewFollowUpLifecycleRow[] {
+  const latestByAthleteKey = new Map<string, ReviewFollowUpLifecycleRow>();
+  for (const row of rows) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || latestByAthleteKey.has(athleteKey)) continue;
+    latestByAthleteKey.set(athleteKey, row);
+  }
+  return Array.from(latestByAthleteKey.values()).filter((row) => {
+    const payload = row.payload_json && typeof row.payload_json === 'object' ? row.payload_json : {};
+    return isPendingClientReviewFollowUpSourceStage({
+      crmStage: row.crm_stage,
+      taskStatus: row.task_status,
+      taskTitle:
+        payloadText(payload, 'current_task_title') ||
+        payloadText(payload, 'task_title') ||
+        payloadText(payload, 'selected_task_title'),
+    });
+  });
+}
+
+function sourceInputFromLifecycleRow(args: {
+  lifecycle: ReviewFollowUpLifecycleRow;
+  contact?: ReviewFollowUpContactRow | null;
+  athleteName?: string | null;
+}): PendingClientReviewFollowUpSourceInput {
+  const payload =
+    args.lifecycle.payload_json && typeof args.lifecycle.payload_json === 'object'
+      ? args.lifecycle.payload_json
+      : {};
+  return {
+    athleteKey: args.lifecycle.athlete_key,
+    athleteId: args.lifecycle.athlete_id || args.contact?.athlete_id,
+    athleteMainId: args.lifecycle.athlete_main_id || args.contact?.athlete_main_id,
+    athleteName: args.athleteName || args.contact?.athlete_name,
+    headScout:
+      payloadText(payload, 'head_scout') ||
+      payloadText(payload, 'head_scout_name') ||
+      payloadText(payload, 'scouting_coordinator'),
+    crmStage: args.lifecycle.crm_stage,
+    taskStatus: args.lifecycle.task_status,
+    taskTitle:
+      payloadText(payload, 'current_task_title') ||
+      payloadText(payload, 'task_title') ||
+      payloadText(payload, 'selected_task_title') ||
+      args.lifecycle.task_status,
+    updatedAt: args.lifecycle.created_at || args.contact?.last_seen_at,
+  };
+}
+
+async function loadReviewFollowUpRowsFromCurrentLifecycle(args: {
+  config: SupabasePersistenceConfig;
+  now: Date;
+}): Promise<PendingClientWatchlistDisplayRow[]> {
+  const lifecycleRows = latestReviewLifecycleRows(
+    await readRows<ReviewFollowUpLifecycleRow>(
+      args.config,
+      'lifecycle_events',
+      [
+        'select=athlete_key,athlete_id,athlete_main_id,crm_stage,task_status,payload_json,created_at',
+        'order=created_at.desc',
+        `limit=${PENDING_CLIENT_REVIEW_LIFECYCLE_FETCH_LIMIT}`,
+      ].join('&'),
+    ).catch(() => []),
+  );
+  const athleteKeys = Array.from(
+    new Set(lifecycleRows.map((row) => String(row.athlete_key || '').trim()).filter(Boolean)),
+  );
+  if (!athleteKeys.length) return [];
+
+  const [contactRows, athleteRows] = await Promise.all([
+    readRows<ReviewFollowUpContactRow>(
+      args.config,
+      'athlete_contact_cache',
+      [
+        'select=athlete_key,athlete_id,athlete_main_id,athlete_name,cache_status,last_seen_at',
+        `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+        'cache_status=eq.active',
+        'order=last_seen_at.desc',
+      ].join('&'),
+    ).catch(() => []),
+    readRows<AthleteNameRow>(
+      args.config,
+      'athletes',
+      [
+        'select=athlete_key,athlete_name',
+        `athlete_key=in.(${athleteKeys.map(quotePostgrestInValue).join(',')})`,
+      ].join('&'),
+    ).catch(() => []),
+  ]);
+  const contactsByKey = new Map<string, ReviewFollowUpContactRow>();
+  for (const row of contactRows) {
+    const athleteKey = String(row.athlete_key || '').trim();
+    if (!athleteKey || contactsByKey.has(athleteKey)) continue;
+    contactsByKey.set(athleteKey, row);
+  }
+  const athleteNamesByKey = new Map(
+    athleteRows
+      .map((row) => [
+        String(row.athlete_key || '').trim(),
+        realPendingClientAthleteName(row.athlete_name) || '',
+      ])
+      .filter(([key, name]) => key && name) as Array<[string, string]>,
+  );
+
+  return buildPendingClientReviewFollowUpRowsFromSource(
+    lifecycleRows.map((lifecycle) => {
+      const athleteKey = String(lifecycle.athlete_key || '').trim();
+      const contact = contactsByKey.get(athleteKey) || null;
+      return sourceInputFromLifecycleRow({
+        lifecycle,
+        contact,
+        athleteName: athleteNamesByKey.get(athleteKey) || contact?.athlete_name || null,
+      });
+    }),
+    args.now,
+  );
 }
 
 function resolveDisplayAthleteName(
@@ -499,6 +642,10 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     actionableAppointmentRows,
     athleteNamesByKey,
   );
+  const reviewFollowUpRowsForDisplay = await loadReviewFollowUpRowsFromCurrentLifecycle({
+    config,
+    now,
+  });
   const supportWatchlistRows = (
     await readRows<PendingClientWatchlistRow>(
       config,
@@ -518,14 +665,17 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
     (row) => row.action_tag === 'Scout Update',
   );
   const supportWatchlistDisplayRows = [...paymentWatchlistRows, ...reviewWatchlistRows];
-  const appointmentSourceIds = appointmentRowsForDisplay.map((row) => row.source_event_id);
-  const resolvedRows = appointmentSourceIds.length
+  const sourceIdsWithTombstones = [
+    ...appointmentRowsForDisplay,
+    ...reviewFollowUpRowsForDisplay,
+  ].map((row) => row.source_event_id);
+  const resolvedRows = sourceIdsWithTombstones.length
     ? await readRows<Pick<PendingClientWatchlistRow, 'source_event_id' | 'status'>>(
         config,
         'pending_client_watchlist',
         [
           'select=source_event_id,status',
-          `source_event_id=in.(${appointmentSourceIds.map(quotePostgrestInValue).join(',')})`,
+          `source_event_id=in.(${sourceIdsWithTombstones.map(quotePostgrestInValue).join(',')})`,
           'status=in.("resolved","expired")',
         ].join('&'),
       ).catch(() => [])
@@ -545,7 +695,11 @@ export async function loadPendingClientWatchlist(): Promise<PendingClientWatchli
       `limit=${PENDING_CLIENT_LIST_LIMIT * 10}`,
     ].join('&'),
   ).catch(() => []);
-  const unresolvedRows = [...appointmentRowsForDisplay, ...supportWatchlistDisplayRows].filter(
+  const unresolvedRows = [
+    ...appointmentRowsForDisplay,
+    ...supportWatchlistDisplayRows,
+    ...reviewFollowUpRowsForDisplay,
+  ].filter(
     (row) =>
       !resolvedSourceIds.has(String(row.source_event_id || '').trim()) &&
       !isPendingClientResolvedByFutureConfirmation(row, confirmationRows, now),

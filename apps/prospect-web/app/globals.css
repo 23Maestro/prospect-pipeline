@@ -607,10 +607,10 @@ a {
   .home-grid {
     width: min(100%, calc(100vw - 28px));
     grid-template-columns: 1fr;
-    gap: 120px;
+    gap: 56px;
     align-items: start;
     align-content: start;
-    padding: 78px 0 36px;
+    padding: 42px 0 28px;
   }
 
   .home-copy h1 {

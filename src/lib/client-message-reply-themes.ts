@@ -1127,7 +1127,7 @@ function buildClientReplyEvidence(args: {
   taskTitle?: string | null;
 }): ClientReplyEvidence {
   const inboundDate = normalizeText(args.inbound.date);
-  const meaningful = args.messages.filter((message) => normalizeText(message.body));
+  const meaningful = args.messages.filter((message) => isSubstantiveMessageBody(message.body));
   const inboundMessages = meaningful.filter((message) => !message.isFromMe);
   const outboundMessages = meaningful.filter((message) => message.isFromMe);
   const outboundAfterInbound = outboundMessages.filter(
@@ -1164,7 +1164,7 @@ function buildOutboundRescheduleOfferEvidence(args: {
   offer: ClientReplyThemeReviewMessageInput;
   taskTitle?: string | null;
 }): ClientReplyEvidence {
-  const meaningful = args.messages.filter((message) => normalizeText(message.body));
+  const meaningful = args.messages.filter((message) => isSubstantiveMessageBody(message.body));
   const inboundMessages = meaningful.filter((message) => !message.isFromMe);
   const outboundMessages = meaningful.filter((message) => message.isFromMe);
   const offerDate = normalizeText(args.offer.date);
@@ -1241,7 +1241,7 @@ export function buildClientReplyThemeReviewSnapshot(args: {
         (candidate) =>
           candidate.isFromMe &&
           messageDateIsAfter(candidate.date, messageDate) &&
-          normalizeText(candidate.body),
+          isSubstantiveMessageBody(candidate.body),
       );
       const operatorRescheduleOfferAfter = messages.some(
         (candidate) =>

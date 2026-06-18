@@ -1,4 +1,5 @@
 import type { AthleteContactCacheClientMatch } from './athlete-contact-cache';
+import { isPendingClientReviewFollowUpSourceStage } from '../domain/pending-client-watchlist';
 
 export type StudentAthleteMessageAssociatedContact = {
   role: string;
@@ -65,12 +66,16 @@ function relationshipRole(row: AthleteContactCacheClientMatch): string {
 
 function associatedContactsForAthlete(
   rows: AthleteContactCacheClientMatch[],
-  ambiguousPhones: Set<string>,
+  phoneResolutionByPhone: Map<string, string | null>,
 ): StudentAthleteMessageAssociatedContact[] {
   return Array.from(
     new Map(
       rows
-        .filter((row) => !ambiguousPhones.has(row.normalizedPhone))
+        .filter((row) => {
+          if (!phoneResolutionByPhone.has(row.normalizedPhone)) return true;
+          const resolvedAthleteKey = phoneResolutionByPhone.get(row.normalizedPhone);
+          return Boolean(resolvedAthleteKey && resolvedAthleteKey === row.athleteKey);
+        })
         .map((row) => [
           `${relationshipRole(row)}:${row.normalizedPhone}`,
           {
@@ -84,34 +89,58 @@ function associatedContactsForAthlete(
   );
 }
 
+function isReviewFollowUpCacheMatch(row: AthleteContactCacheClientMatch): boolean {
+  return isPendingClientReviewFollowUpSourceStage({
+    crmStage: row.crmStage,
+    taskStatus: row.taskStatus,
+    taskTitle: row.currentTaskTitle,
+  });
+}
+
+function buildPhoneResolutionByPhone(
+  rows: AthleteContactCacheClientMatch[],
+): Map<string, string | null> {
+  const rowsByPhone = new Map<string, AthleteContactCacheClientMatch[]>();
+  for (const row of rows) {
+    rowsByPhone.set(row.normalizedPhone, [...(rowsByPhone.get(row.normalizedPhone) || []), row]);
+  }
+
+  const result = new Map<string, string | null>();
+  for (const [phone, phoneRows] of rowsByPhone.entries()) {
+    const athleteKeys = new Set(phoneRows.map((row) => row.athleteKey));
+    if (athleteKeys.size <= 1) {
+      result.set(phone, phoneRows[0]?.athleteKey || null);
+      continue;
+    }
+
+    const qualifyingKeys = new Set(
+      phoneRows.filter(isReviewFollowUpCacheMatch).map((row) => row.athleteKey),
+    );
+    result.set(phone, qualifyingKeys.size === 1 ? Array.from(qualifyingKeys)[0] : null);
+  }
+  return result;
+}
+
 export function buildStudentAthleteMessageResolutions(
   rows: AthleteContactCacheClientMatch[],
 ): StudentAthleteMessageResolution[] {
   const rowsByAthleteKey = new Map<string, AthleteContactCacheClientMatch[]>();
-  const athleteKeysByPhone = new Map<string, Set<string>>();
 
   for (const row of rows) {
     rowsByAthleteKey.set(row.athleteKey, [...(rowsByAthleteKey.get(row.athleteKey) || []), row]);
-    athleteKeysByPhone.set(
-      row.normalizedPhone,
-      new Set([...(athleteKeysByPhone.get(row.normalizedPhone) || []), row.athleteKey]),
-    );
   }
 
-  const ambiguousPhones = new Set(
-    Array.from(athleteKeysByPhone.entries())
-      .filter(([, athleteKeys]) => athleteKeys.size > 1)
-      .map(([normalizedPhone]) => normalizedPhone),
-  );
+  const phoneResolutionByPhone = buildPhoneResolutionByPhone(rows);
 
   return rows.flatMap((row) => {
-    if (ambiguousPhones.has(row.normalizedPhone)) {
+    const resolvedAthleteKey = phoneResolutionByPhone.get(row.normalizedPhone);
+    if (!resolvedAthleteKey || resolvedAthleteKey !== row.athleteKey) {
       return [];
     }
 
     const associatedContacts = associatedContactsForAthlete(
       rowsByAthleteKey.get(row.athleteKey) || [row],
-      ambiguousPhones,
+      phoneResolutionByPhone,
     );
     return [{
       normalizedPhone: row.normalizedPhone,

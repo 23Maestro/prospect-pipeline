@@ -30,7 +30,6 @@ const WINDOW_DAYS = Number.parseInt(process.env.WINDOW_DAYS || '7', 10) || 7;
 const LIMIT = Number.parseInt(process.env.LIMIT || '50', 10) || 50;
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 const LOCK_DIR = process.env.ENDED_MEETING_WATCH_LOCK_DIR || '/tmp/prospect-pipeline-ended-meeting-watch.lock';
-const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
 
 const POST_MEETING_PENDING_RESULTS = new Set(['follow_up', 'reschedule_pending', 'no_show', 'canceled']);
 let repoEnvCache = null;
@@ -394,7 +393,6 @@ export function selectedStageFromPayload(payload) {
 
 export function resolveWatcherDecision(args) {
   const selectedStage = normalizeText(args.selectedStage);
-  const liveEventTitle = normalizeText(args.liveEvent?.title);
   const normalizedStage = normalizeCrmSalesStage(selectedStage);
   if (normalizedStage === 'meeting_set') {
     return { action: 'still_waiting', selectedStage, postMeetingResult: null, taskStatus: 'confirmation_call' };

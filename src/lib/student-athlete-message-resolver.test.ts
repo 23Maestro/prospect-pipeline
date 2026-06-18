@@ -67,6 +67,40 @@ test('message resolver omits phones linked to multiple athletes', () => {
   assert.deepEqual(resolutions, []);
 });
 
+test('message resolver admits duplicate phone when one athlete has review follow-up lifecycle', () => {
+  const resolutions = buildStudentAthleteMessageResolutions([
+    cacheRow({
+      athleteKey: '1500173:954893',
+      athleteId: '1500173',
+      athleteMainId: '954893',
+      athleteName: 'Elijah Burton Jr',
+      contactName: 'Latoysha Burton',
+      relationshipLabel: 'Parent 1',
+      normalizedPhone: '4045871211',
+      crmStage: null,
+      taskStatus: null,
+      currentTaskTitle: null,
+    }),
+    cacheRow({
+      athleteKey: '1500171:954891',
+      athleteId: '1500171',
+      athleteMainId: '954891',
+      athleteName: 'Elijah Burton Jr',
+      contactName: 'Latoysha Burton',
+      relationshipLabel: 'Parent 1',
+      normalizedPhone: '4045871211',
+      crmStage: 'Left Voice Mail 1',
+      taskStatus: 'call_attempt_1',
+      currentTaskTitle: 'Call Attempt 1',
+    }),
+  ]);
+
+  assert.equal(resolutions.length, 1);
+  assert.equal(resolutions[0].athleteKey, '1500171:954891');
+  assert.equal(resolutions[0].crmStage, 'Left Voice Mail 1');
+  assert.equal(resolutions[0].currentTaskTitle, 'Call Attempt 1');
+});
+
 test('message resolver removes ambiguous family phones from associated contacts', () => {
   const resolutions = buildStudentAthleteMessageResolutions([
     cacheRow({

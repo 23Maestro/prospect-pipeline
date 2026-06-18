@@ -53,7 +53,7 @@ export default function ProspectMeetingsPage() {
       <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#070816" />
       <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f8fbff" />
       <link rel="icon" href="/prospect-id-shield.svg" />
-      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260615-status-contrast" />
+      <link rel="stylesheet" href="/prospect-meetings/styles.css?v=20260618-outcome-filters" />
       <main className="shell">
         <header className="topbar">
           <div className="brand-row">
@@ -96,7 +96,10 @@ export default function ProspectMeetingsPage() {
         <section className="panel table-panel">
           <div className="panel-head">
             <h2>Meetings</h2>
-            <span id="rowCount">0 rows</span>
+            <div className="meeting-panel-actions">
+              <div className="filters" id="meetingFilters" aria-label="Meeting status filters" />
+              <span id="rowCount">0 rows</span>
+            </div>
           </div>
           <div className="table-wrap">
             <table>
@@ -114,7 +117,7 @@ export default function ProspectMeetingsPage() {
           </div>
         </section>
       </main>
-      <Script src="/prospect-meetings/app.js?v=20260603-enrollment-tracker" strategy="afterInteractive" />
+      <Script src="/prospect-meetings/app.js?v=20260618-outcome-filters" strategy="afterInteractive" />
     </>
   );
 }

@@ -21,13 +21,6 @@ function clean(value) {
   return trimmed || null;
 }
 
-function normalizeIsoValue(value) {
-  const trimmed = clean(value);
-  if (!trimmed) return null;
-  const parsed = new Date(trimmed);
-  return Number.isNaN(parsed.getTime()) ? trimmed : parsed.toISOString();
-}
-
 const IANA_TO_LABEL = {
   'America/New_York': 'EST',
   'America/Detroit': 'EST',

@@ -143,7 +143,11 @@ export type PendingClientOperatorQueueClassification = {
   priority: number;
 };
 
-export type PendingClientCentralFilter = 'reschedule' | 'no_show' | 'payments' | 'review_follow_ups';
+export type PendingClientCentralFilter =
+  | 'reschedule'
+  | 'no_show'
+  | 'payments'
+  | 'review_follow_ups';
 
 export type PendingClientCentralQueueClassification = {
   filter: PendingClientCentralFilter;
@@ -270,10 +274,20 @@ export type PendingClientSourceLifecycleInput = {
   taskStatus?: string | null;
 };
 
+export type PendingClientReviewFollowUpSourceInput = PendingClientSourceLifecycleInput & {
+  athleteKey?: string | null;
+  athleteId?: string | null;
+  athleteMainId?: string | null;
+  athleteName?: string | null;
+  headScout?: string | null;
+  updatedAt?: string | null;
+};
+
 function sourceEventAppointmentId(value?: string | null): string | null {
   const source = normalizeText(value);
   if (!source) return null;
-  if (source.startsWith('appointment:')) return normalizeText(source.slice('appointment:'.length)) || null;
+  if (source.startsWith('appointment:'))
+    return normalizeText(source.slice('appointment:'.length)) || null;
   const tail = source.split(':').pop() || '';
   return /^\d+$/.test(tail) ? tail : null;
 }
@@ -326,7 +340,11 @@ function normalizeAppointmentHistoryOutcome(
   value?: string | number | null,
 ): PendingClientAppointmentHistoryOutcome {
   const normalized = normalizeText(value).toLowerCase();
-  if (normalized === 'scheduled' || normalized === 'confirmation_queued' || normalized === 'confirmation_sent') {
+  if (
+    normalized === 'scheduled' ||
+    normalized === 'confirmation_queued' ||
+    normalized === 'confirmation_sent'
+  ) {
     return 'scheduled';
   }
   if (normalized === 'reschedule_pending') return 'reschedule_pending';
@@ -369,9 +387,7 @@ function pendingClientReplyDeadlineMs(
   retryAfterHours = PENDING_CLIENT_REPLY_RETRY_AFTER_HOURS,
 ): number {
   const outboundMs = pendingClientOutboundMs(replyEvidence);
-  return Number.isFinite(outboundMs)
-    ? outboundMs + retryAfterHours * 60 * 60 * 1000
-    : Number.NaN;
+  return Number.isFinite(outboundMs) ? outboundMs + retryAfterHours * 60 * 60 * 1000 : Number.NaN;
 }
 
 export function pendingClientReplyDeadlineLabel(args: {
@@ -437,6 +453,21 @@ export function derivePendingClientActiveFollowUpState(args: {
     };
   }
   if (filter === 'review_follow_ups') {
+    const actionLabel = pendingClientRecoveryActionLabel({
+      filter,
+      replyEvidence: args.replyEvidence,
+      now: args.now,
+      retryAfterHours: args.retryAfterHours,
+    });
+    if (actionLabel === 'Review Reply') {
+      return { filter, actionLabel, checklistAction: 'review_reply', deadlineLabel };
+    }
+    if (actionLabel === 'Try Again') {
+      return { filter, actionLabel, checklistAction: 'try_again', deadlineLabel };
+    }
+    if (actionLabel === 'Awaiting Client') {
+      return { filter, actionLabel, checklistAction: 'await_client', deadlineLabel };
+    }
     return {
       filter,
       actionLabel: 'Review',
@@ -506,13 +537,11 @@ export function summarizePendingClientAppointmentHistory(
   };
 }
 
-export function summarizePendingClientMessageThread(
-  args: {
-    replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
-    latestOutcomeAt?: string | null;
-    now?: Date;
-  },
-): PendingClientMessageThreadSummary {
+export function summarizePendingClientMessageThread(args: {
+  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null;
+  latestOutcomeAt?: string | null;
+  now?: Date;
+}): PendingClientMessageThreadSummary {
   const evidence = args.replyEvidence;
   const nowMs = (args.now || new Date()).getTime();
   const latestOutcomeMs = parseDateMs(args.latestOutcomeAt);
@@ -536,9 +565,15 @@ export function summarizePendingClientMessageThread(
   let state: PendingClientMessageThreadSummary['state'] = 'unknown';
   if (isNoInterestReply(evidence)) {
     state = 'client_opted_out';
-  } else if (clientRepliedAfterLatestOperator || Boolean(evidence?.clientRepliedAfterOperatorTimes)) {
+  } else if (
+    clientRepliedAfterLatestOperator ||
+    Boolean(evidence?.clientRepliedAfterOperatorTimes)
+  ) {
     state = 'client_replied';
-  } else if (operatorReachedOutAfterLatestOutcome || Boolean(evidence?.operatorReplyProposedTimes)) {
+  } else if (
+    operatorReachedOutAfterLatestOutcome ||
+    Boolean(evidence?.operatorReplyProposedTimes)
+  ) {
     state = 'awaiting_client';
   } else if (Number.isFinite(latestOutcomeMs)) {
     state = 'needs_operator_outreach';
@@ -623,7 +658,8 @@ export function buildPendingClientCommunicationPlan(args: {
         `Latest outcome: ${args.appointmentHistory.latestOutcome}`,
       ],
       nextSteps: ['Remove from active Pending Clients and Client Messages tracking.'],
-      resolutionRule: 'Terminal sales stage wins unless a later source-system stage reopens the client.',
+      resolutionRule:
+        'Terminal sales stage wins unless a later source-system stage reopens the client.',
     };
   }
 
@@ -641,15 +677,21 @@ export function buildPendingClientCommunicationPlan(args: {
   ];
   const nextSteps: string[] = [];
   if (action === 'offer_slots') {
-    nextSteps.push('Send a concise value reminder and offer ranked slots near the prior meeting time.');
+    nextSteps.push(
+      'Send a concise value reminder and offer ranked slots near the prior meeting time.',
+    );
   } else if (action === 'await_client') {
     nextSteps.push('Wait for the client response unless dormant threshold is exceeded.');
   } else if (action === 'try_again') {
-    nextSteps.push('Send the direct retry check: I sent times over, are we good to pick one or are we done?');
+    nextSteps.push(
+      'Send the direct retry check: I sent times over, are we good to pick one or are we done?',
+    );
   } else if (action === 'review_reply') {
     nextSteps.push('Use the client reply to confirm a slot or close the loop.');
   } else if (action === 'collect_payment') {
-    nextSteps.push('Confirm package/payment intent and route payment evidence without changing meeting truth.');
+    nextSteps.push(
+      'Confirm package/payment intent and route payment evidence without changing meeting truth.',
+    );
   } else {
     nextSteps.push('Review the latest scout note/event and choose the next operator action.');
   }
@@ -657,7 +699,9 @@ export function buildPendingClientCommunicationPlan(args: {
     nextSteps.push('Ask for a direct yes/no intent check with new slots.');
   }
   if (templateTone === 'final_time_check') {
-    nextSteps.push('Make the final time-protection check before any resolve/purge action that needs operator approval.');
+    nextSteps.push(
+      'Make the final time-protection check before any resolve/purge action that needs operator approval.',
+    );
   }
 
   return {
@@ -869,11 +913,7 @@ export function buildPendingClientChecklistMarkdown({
     actionLines.push('- [ ] Offer slots');
   }
 
-  const lines = [
-    '### Next Action',
-    '',
-    ...actionLines,
-  ];
+  const lines = ['### Next Action', '', ...actionLines];
 
   if (note?.description) {
     lines.push(
@@ -954,10 +994,14 @@ export function isPendingClientResolvedByFutureConfirmation(
     const kinds = new Set(group.map((confirmation) => normalizeText(confirmation.kind)));
     if (!kinds.has('confirmation_1') || !kinds.has('confirmation_2')) continue;
     const startsAtMs = Math.min(
-      ...group.map((confirmation) => parseDateMs(confirmation.meeting_starts_at)).filter(Number.isFinite),
+      ...group
+        .map((confirmation) => parseDateMs(confirmation.meeting_starts_at))
+        .filter(Number.isFinite),
     );
     const endsAtMs = Math.max(
-      ...group.map((confirmation) => parseDateMs(confirmation.meeting_ends_at)).filter(Number.isFinite),
+      ...group
+        .map((confirmation) => parseDateMs(confirmation.meeting_ends_at))
+        .filter(Number.isFinite),
     );
     if (!Number.isFinite(startsAtMs) || !Number.isFinite(endsAtMs)) continue;
     if (Number.isFinite(pendingEventEndMs) && startsAtMs <= pendingEventEndMs) continue;
@@ -1313,11 +1357,12 @@ function isNoInterestReply(
   );
 }
 
-function isTimingBadReply(
-  replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
-): boolean {
+function isTimingBadReply(replyEvidence?: PendingClientOperatorQueueReplyEvidence | null): boolean {
   const body = pendingClientReplyBody(replyEvidence);
-  return /^(?:2|two)$/.test(body) || /\b(bad\s+timing|timing\s+is\s+bad|not\s+(?:a\s+)?good\s+time)\b/i.test(body);
+  return (
+    /^(?:2|two)$/.test(body) ||
+    /\b(bad\s+timing|timing\s+is\s+bad|not\s+(?:a\s+)?good\s+time)\b/i.test(body)
+  );
 }
 
 export function classifyPendingClientOperatorQueue(args: {
@@ -1374,23 +1419,14 @@ export function classifyPendingClientOperatorQueue(args: {
 }
 
 function pendingClientRowText(row: PendingClientWatchlistRow): string {
-  return [
-    row.action_tag,
-    row.event_title,
-    row.description,
-    row.matched_signals?.join(' '),
-  ]
+  return [row.action_tag, row.event_title, row.description, row.matched_signals?.join(' ')]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
 }
 
 function pendingClientRawRowText(row: PendingClientWatchlistRow): string {
-  return [
-    row.event_title,
-    row.description,
-    row.matched_signals?.join(' '),
-  ]
+  return [row.event_title, row.description, row.matched_signals?.join(' ')]
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
@@ -1476,7 +1512,9 @@ export function buildPendingClientSourceLifecycleInput(args: {
   };
 }
 
-function pendingClientSourceLane(row: PendingClientWatchlistRow): PendingClientCentralFilter | null {
+function pendingClientSourceLane(
+  row: PendingClientWatchlistRow,
+): PendingClientCentralFilter | null {
   const rowText = pendingClientRowText(row);
   if (row.action_tag === 'Payment Watch') return 'payments';
   if (/\bno show\b|\(ns\)/i.test(rowText)) return 'no_show';
@@ -1484,7 +1522,11 @@ function pendingClientSourceLane(row: PendingClientWatchlistRow): PendingClientC
     return 'reschedule';
   }
   if (row.action_tag === 'Operator Input') return 'reschedule';
-  if (/\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard)\b|\$\s*\d+/i.test(rowText)) {
+  if (
+    /\b(pay|payment|invoice|package|elite|icon|premium|legend|coming aboard)\b|\$\s*\d+/i.test(
+      rowText,
+    )
+  ) {
     return 'payments';
   }
   if (row.action_tag === 'Scout Update') return 'review_follow_ups';
@@ -1503,11 +1545,7 @@ function pendingClientReviewQueue(): PendingClientCentralQueueClassification {
 function normalizedSourceLifecycleText(
   sourceLifecycle?: PendingClientSourceLifecycleInput | null,
 ): string {
-  return [
-    sourceLifecycle?.crmStage,
-    sourceLifecycle?.taskTitle,
-    sourceLifecycle?.taskStatus,
-  ]
+  return [sourceLifecycle?.crmStage, sourceLifecycle?.taskTitle, sourceLifecycle?.taskStatus]
     .map((value) =>
       normalizeComparableText(value)
         .toLowerCase()
@@ -1523,8 +1561,16 @@ export function isPendingClientReviewFollowUpSourceStage(
 ): boolean {
   const text = normalizedSourceLifecycleText(sourceLifecycle);
   if (!text) return false;
+  const crmStageText = normalizeComparableText(sourceLifecycle?.crmStage).toLowerCase();
   if (
-    /\b(?:left voice mail 1|left voicemail 1|left voice mail 2|left voicemail 2|never spoke to|spoke to athlete not parent|athlete not parent|spoke to i need to follow up|spoke to need to follow up|spoke to follow up)\b/i.test(
+    /\b(?:never spoke to|spoke to not interested|not interested|spoke to too young|too young)\b/i.test(
+      crmStageText,
+    )
+  ) {
+    return false;
+  }
+  if (
+    /\b(?:left voice mail 1|left voicemail 1|left voice mail 2|left voicemail 2|spoke to athlete not parent|athlete not parent|spoke to i need to follow up|spoke to need to follow up|spoke to follow up)\b/i.test(
       text,
     )
   ) {
@@ -1632,6 +1678,27 @@ export function classifyPendingClientCentralQueue(args: {
     };
   }
 
+  if (sourceLane === 'review_follow_ups') {
+    const actionLabel = pendingClientRecoveryActionLabel({
+      filter: 'review_follow_ups',
+      replyEvidence: args.replyEvidence,
+      now: args.now,
+      retryAfterHours: args.retryAfterHours,
+    });
+    return {
+      filter: 'review_follow_ups',
+      label: 'Review Follow Ups',
+      actionLabel:
+        actionLabel === 'Offer Slots' || actionLabel === 'Needs Reply' ? 'Review' : actionLabel,
+      priority:
+        actionLabel === 'Try Again'
+          ? 25
+          : actionLabel === 'Awaiting Client' || actionLabel === 'Review Reply'
+            ? 20
+            : 30,
+    };
+  }
+
   return pendingClientReviewQueue();
 }
 
@@ -1643,6 +1710,12 @@ export function derivePendingClientLaneState(args: {
   retryAfterHours?: number;
 }): PendingClientLaneState {
   const queue = classifyPendingClientCentralQueue(args);
+  const sourceLane = pendingClientSourceLane(args.row);
+  const reviewFollowUpSourceStage = isPendingClientReviewFollowUpSourceStage(args.sourceLifecycle);
+  const reviewFollowUpActionable = isPendingClientReviewFollowUpActionable({
+    sourceLifecycle: args.sourceLifecycle,
+    replyEvidence: args.replyEvidence,
+  });
   const activeFollowUp = derivePendingClientActiveFollowUpState({
     row: args.row,
     filter: queue.filter,
@@ -1657,10 +1730,8 @@ export function derivePendingClientLaneState(args: {
     paymentLocked: queue.filter === 'payments',
     visible:
       queue.filter !== 'review_follow_ups' ||
-      isPendingClientReviewFollowUpActionable({
-        sourceLifecycle: args.sourceLifecycle,
-        replyEvidence: args.replyEvidence,
-      }),
+      (sourceLane === 'review_follow_ups' && reviewFollowUpSourceStage) ||
+      reviewFollowUpActionable,
   };
 }
 
@@ -1679,8 +1750,9 @@ export function cleanPendingClientAthleteName(title?: string | null): string {
   if (isPendingClientAthleteKeyText(cleaned)) return '';
   const sportMatch = cleaned.match(SPORT_BOUNDARY_PATTERN);
   return (
-    realPendingClientAthleteName(sportMatch ? cleaned.slice(0, sportMatch.index).trim() : cleaned) ||
-    ''
+    realPendingClientAthleteName(
+      sportMatch ? cleaned.slice(0, sportMatch.index).trim() : cleaned,
+    ) || ''
   ).replace(/\s+/g, ' ');
 }
 
@@ -1769,4 +1841,59 @@ export function buildPendingClientWatchlistRow(args: {
     expires_at: pendingClientExpiresAt(eventStart),
     resolved_at: null,
   };
+}
+
+export function buildPendingClientReviewFollowUpRowsFromSource(
+  rows: PendingClientReviewFollowUpSourceInput[],
+  now = new Date(),
+): PendingClientWatchlistRow[] {
+  const latestByAthleteKey = new Map<string, PendingClientReviewFollowUpSourceInput>();
+  for (const row of rows) {
+    const athleteKey = normalizeText(row.athleteKey);
+    if (!athleteKey) continue;
+    if (!isPendingClientReviewFollowUpSourceStage(row)) continue;
+    const existing = latestByAthleteKey.get(athleteKey);
+    if (!existing || parseDateMs(row.updatedAt) >= parseDateMs(existing.updatedAt)) {
+      latestByAthleteKey.set(athleteKey, row);
+    }
+  }
+
+  return Array.from(latestByAthleteKey.values()).flatMap((row) => {
+    const athleteKey = normalizeText(row.athleteKey);
+    const athleteName = realPendingClientAthleteName(row.athleteName);
+    const athleteId = normalizeText(row.athleteId);
+    const athleteMainId = normalizeText(row.athleteMainId);
+    if (!athleteKey || !athleteName || !athleteId || !athleteMainId) return [];
+
+    const stage = normalizeComparableText(row.crmStage || row.taskStatus);
+    const taskTitle = normalizeComparableText(row.taskTitle || row.taskStatus || row.crmStage);
+    const seenAt = isoOrNull(row.updatedAt) || now.toISOString();
+    const description = [
+      `Current source stage: ${stage || 'Review Follow Up'}.`,
+      taskTitle ? `Current task: ${taskTitle}.` : null,
+      'First-contact follow-up stage admitted from active lifecycle/contact-cache truth.',
+    ]
+      .filter(Boolean)
+      .join('\n');
+
+    return [
+      buildPendingClientWatchlistRow({
+        event: {
+          event_id: `contact-cache-review:${athleteKey}`,
+          title: `${athleteName} - Review Follow Up`,
+          assigned_owner: row.headScout,
+          start: seenAt,
+          end: null,
+        },
+        description,
+        matchedSignals: [],
+        actionTag: 'Scout Update',
+        aiVerdict: 'pending_client',
+        athleteId,
+        athleteMainId,
+        athleteName,
+        now,
+      }),
+    ];
+  });
 }

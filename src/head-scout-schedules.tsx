@@ -77,6 +77,7 @@ import {
   classifyPendingClientCentralQueue,
   derivePendingClientLaneState,
   pendingClientEvidenceCrmStage,
+  type PendingClientCentralQueueClassification,
   type PendingClientCentralFilter,
 } from './domain/pending-client-watchlist';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
@@ -84,20 +85,15 @@ import { syncCallScriptToggleToNotion } from './lib/notion-call-scripts';
 import {
   resolveConfirmationFollowUpVariant,
   type ConfirmationFollowUpVariant,
+  type VoicemailFollowUpVariant,
 } from './lib/scout-follow-up-templates';
 import { buildMessagesComposeUrlForRecipients } from './lib/scout-prep-contact';
-import {
-  completeScoutPrepTaskAfterVoicemail,
-  fetchScoutPortalTasks,
-} from './lib/scout-prep';
+import { completeScoutPrepTaskAfterVoicemail, fetchScoutPortalTasks } from './lib/scout-prep';
 import {
   resolveIanaTimeZoneFromLegacyLabel,
   resolveLegacyTimezoneLabelFromIana,
 } from './domain/outreach-time-wording';
-import {
-  readRows,
-  type SupabasePersistenceConfig,
-} from './domain/supabase-persistence';
+import { readRows, type SupabasePersistenceConfig } from './domain/supabase-persistence';
 import type { ScoutPortalTask, ScoutPrepContext } from './features/scout-prep/types';
 import {
   getCachedSetMeetings,
@@ -142,7 +138,10 @@ function readEnvFile(filePath: string): Record<string, string> {
       const separator = trimmed.indexOf('=');
       if (separator <= 0) continue;
       const key = trimmed.slice(0, separator).trim();
-      const value = trimmed.slice(separator + 1).trim().replace(/^['"]|['"]$/g, '');
+      const value = trimmed
+        .slice(separator + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       if (key) values[key] = value;
     }
     return values;
@@ -482,6 +481,16 @@ function buildPendingClientTask(row: PendingClientWatchlistRow): ScoutPortalTask
   const athleteMainId = String(row.athlete_main_id || '').trim();
   const athleteName =
     row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
+  const rowText = `${row.action_tag || ''} ${row.event_title || ''} ${row.description || ''}`;
+  const taskTitle = /\bno[_\s-]?show\b|\(ns\)/i.test(rowText)
+    ? 'No Show Follow-Up'
+    : /(?:\breschedule\b|\brsp\b|\bcancel\b|\bcanceled\b|\bcancelled\b|\(can\)|\(rsp\))/i.test(
+          rowText,
+        )
+      ? 'Reschedule Pending'
+      : row.action_tag === 'Scout Update'
+        ? 'Pending Client Follow-Up'
+        : 'Pending Client Follow-Up';
 
   return {
     contact_id: athleteId,
@@ -490,19 +499,21 @@ function buildPendingClientTask(row: PendingClientWatchlistRow): ScoutPortalTask
     athlete_name: athleteName,
     due_date: row.event_start || null,
     task_id: row.source_event_id,
-    title: 'Reschedule Pending',
+    title: taskTitle,
     description: row.description || row.event_title,
   };
 }
 
-function shouldShowPendingClientRescheduleAction(row: PendingClientWatchlistRow): boolean {
-  const haystack = `${row.action_tag || ''} ${row.event_title || ''} ${row.description || ''}`;
-  return (
-    row.action_tag === 'Operator Input' ||
-    /(?:\breschedule\b|\brsp\b|\bcancel\b|\bcanceled\b|\bcancelled\b|\(can\)|\(rsp\))/i.test(
-      haystack,
-    )
-  );
+function pendingClientDefaultVoicemailVariant(
+  queue: PendingClientCentralQueueClassification,
+): VoicemailFollowUpVariant {
+  if (queue.filter === 'reschedule') {
+    return queue.actionLabel === 'Try Again' || queue.actionLabel === 'Review Reply'
+      ? 'reschedule_2'
+      : 'reschedule_1';
+  }
+  if (queue.filter === 'no_show') return 'no_show';
+  return 'call_attempt_1';
 }
 
 function getBookedMeetingEventDate(meeting?: BookedMeetingEvent | null): string {
@@ -520,12 +531,15 @@ const SET_MEETING_TIME_TAG_COLORS = [
 ];
 
 function setMeetingTimeTagColorFor(value?: string | null): Color {
-  const normalized = String(value || '').trim().toUpperCase();
+  const normalized = String(value || '')
+    .trim()
+    .toUpperCase();
   const hourMatch = normalized.match(/\b(\d{1,2})(?::\d{2})?\s*(AM|PM)\b/);
   if (!hourMatch) return Color.SecondaryText;
   const hour = Number.parseInt(hourMatch[1], 10);
   const period = hourMatch[2];
-  const hour24 = period === 'PM' && hour < 12 ? hour + 12 : period === 'AM' && hour === 12 ? 0 : hour;
+  const hour24 =
+    period === 'PM' && hour < 12 ? hour + 12 : period === 'AM' && hour === 12 ? 0 : hour;
   return SET_MEETING_TIME_TAG_COLORS[hour24 % SET_MEETING_TIME_TAG_COLORS.length];
 }
 
@@ -553,7 +567,9 @@ function formatSetMeetingAccessoryParts(candidate: HeadScoutFollowUpCandidate): 
     };
   }
 
-  const label = String(candidate.currentMeetingLabel || candidate.bookedMeeting?.date_time_label || '')
+  const label = String(
+    candidate.currentMeetingLabel || candidate.bookedMeeting?.date_time_label || '',
+  )
     .replace(/^Current:\s*/, '')
     .trim();
   const match = label.match(/^([A-Za-z]{3},?\s+\d{1,2}\/\d{1,2}\/\d{2})\s+(.+?)(?:\s+-\s+.+)?$/);
@@ -798,7 +814,9 @@ function ordinalPendingClientDay(day: number): string {
 }
 
 function broadPendingClientTimezoneLabel(value?: string | null): string {
-  const label = String(value || '').trim().toUpperCase();
+  const label = String(value || '')
+    .trim()
+    .toUpperCase();
   if (label === 'EST' || label === 'EDT') return 'ET';
   if (label === 'CST' || label === 'CDT') return 'CT';
   if (label === 'MST' || label === 'MDT') return 'MT';
@@ -818,12 +836,11 @@ function formatPendingClientMeetingDate(
   const resolvedTimeZone = resolveIanaTimeZoneFromLegacyLabel(
     String(timeZone || timezoneLabel || 'America/New_York').trim(),
   );
-  const resolvedLabel =
-    broadPendingClientTimezoneLabel(
-      resolveLegacyTimezoneLabelFromIana(timezoneLabel) ||
-        resolveLegacyTimezoneLabelFromIana(resolvedTimeZone) ||
-        String(timezoneLabel || '').trim(),
-    );
+  const resolvedLabel = broadPendingClientTimezoneLabel(
+    resolveLegacyTimezoneLabelFromIana(timezoneLabel) ||
+      resolveLegacyTimezoneLabelFromIana(resolvedTimeZone) ||
+      String(timezoneLabel || '').trim(),
+  );
   let formatted = '';
   try {
     const parts = new Intl.DateTimeFormat('en-US', {
@@ -1051,13 +1068,17 @@ function findPendingClientChat(
 ): ClientInboxChat | null {
   const athleteMainId = String(row.athlete_main_id || '').trim();
   if (athleteMainId) {
-    const match = chats.find((chat) => String(chat.clientMatch.athleteMainId || '').trim() === athleteMainId);
+    const match = chats.find(
+      (chat) => String(chat.clientMatch.athleteMainId || '').trim() === athleteMainId,
+    );
     if (match) return match;
   }
 
   const athleteId = String(row.athlete_id || '').trim();
   if (athleteId) {
-    const match = chats.find((chat) => String(chat.clientMatch.contactId || '').trim() === athleteId);
+    const match = chats.find(
+      (chat) => String(chat.clientMatch.contactId || '').trim() === athleteId,
+    );
     if (match) return match;
   }
 
@@ -1068,7 +1089,9 @@ function findPendingClientChat(
       [chat.clientMatch.athleteName, chat.displayName]
         .map(pendingClientMatchKey)
         .filter(Boolean)
-        .some((candidate) => candidate === name || candidate.includes(name) || name.includes(candidate)),
+        .some(
+          (candidate) => candidate === name || candidate.includes(name) || name.includes(candidate),
+        ),
     ) || null
   );
 }
@@ -1130,7 +1153,12 @@ function PendingClientEvidenceDetail({
     isLoading,
     revalidate,
   } = usePromise(getClientThreadMessages, [match.chatGuid, title]);
-  const threadReceipt = buildPendingClientThreadEvidenceReceipt(replyState, data, chat, pendingClient);
+  const threadReceipt = buildPendingClientThreadEvidenceReceipt(
+    replyState,
+    data,
+    chat,
+    pendingClient,
+  );
   const classifierReceipt = buildClientReplyThemeRunReceipt(match);
   const proposal = buildClientMessageActionProposal({
     threadReceipt,
@@ -1219,11 +1247,10 @@ function PendingClientMessageThread({
 }) {
   const match = replyState?.row || null;
   const chatGuid = match?.chatGuid || chat?.guid || '';
-  const title = match ? clientReplyThemeReviewDisplayName(match) : chat?.displayName || 'Client Thread';
-  const { data, isLoading, revalidate } = usePromise(getClientThreadMessages, [
-    chatGuid,
-    title,
-  ]);
+  const title = match
+    ? clientReplyThemeReviewDisplayName(match)
+    : chat?.displayName || 'Client Thread';
+  const { data, isLoading, revalidate } = usePromise(getClientThreadMessages, [chatGuid, title]);
 
   return (
     <Detail
@@ -1326,9 +1353,11 @@ function PendingClientOperatorNoteForm({
 
 function PendingClientRescheduleFollowUp({
   row,
+  queue,
   onComplete,
 }: {
   row: PendingClientWatchlistRow;
+  queue: PendingClientCentralQueueClassification;
   onComplete: () => void;
 }) {
   const [context, setContext] = useState<ScoutPrepContext | null>(null);
@@ -1369,7 +1398,8 @@ function PendingClientRescheduleFollowUp({
       <VoicemailFollowUpRecipientForm
         task={task}
         context={context}
-        currentTask="Reschedule Pending"
+        currentTask={task.title}
+        defaultVariantOverride={pendingClientDefaultVoicemailVariant(queue)}
         closeAfterCompleteViews={2}
         onComplete={onComplete}
       />
@@ -1404,7 +1434,9 @@ function PendingClientsWatchlist() {
   const [selectedFilter, setSelectedFilter] = useState<PendingClientCentralFilter | 'all'>('all');
   const [isLoading, setIsLoading] = useState(true);
   const [resolvingId, setResolvingId] = useState<string | null>(null);
-  const [refreshingMessageEvidenceId, setRefreshingMessageEvidenceId] = useState<string | null>(null);
+  const [refreshingMessageEvidenceId, setRefreshingMessageEvidenceId] = useState<string | null>(
+    null,
+  );
   const [refreshTick, setRefreshTick] = useState(0);
 
   useEffect(() => {
@@ -1478,8 +1510,7 @@ function PendingClientsWatchlist() {
   async function handleRefreshPendingClientRowEvidence(
     row: PendingClientWatchlistLoadResult['rows'][number],
   ) {
-    const athleteName =
-      row.athlete_name || cleanPendingClientTitle(row.event_title) || '';
+    const athleteName = row.athlete_name || cleanPendingClientTitle(row.event_title) || '';
     const searchText = athleteName || String(row.athlete_main_id || row.athlete_id || '').trim();
     setRefreshingMessageEvidenceId(row.source_event_id);
     const toast = await showLoadingToast('Refreshing', 'Client messages');
@@ -1491,7 +1522,10 @@ function PendingClientsWatchlist() {
       const localNotes = await readPendingClientLocalNotes();
       const snapshot = await buildClientReplyThemeReviewSnapshotForChats(chats);
       const mergedSnapshot = mergeClientReplyThemeReviewSnapshots(replyThemeSnapshot, snapshot);
-      await writeCachedClientReplyThemeReviewSnapshot(clientReplyThemeReviewStorage, mergedSnapshot);
+      await writeCachedClientReplyThemeReviewSnapshot(
+        clientReplyThemeReviewStorage,
+        mergedSnapshot,
+      );
       setResult(applyPendingClientLocalNotes(loaded, localNotes));
       setMessageChats((current) => {
         const byGuid = new Map(current.map((chat) => [chat.guid, chat]));
@@ -1669,19 +1703,18 @@ function PendingClientsWatchlist() {
                     ) : null}
                     {!isPaymentReminder ? (
                       <ActionPanel.Section title="Follow Up">
-                        {shouldShowPendingClientRescheduleAction(row) ? (
-                          <Action.Push
-                            title="Send"
-                            icon="💬"
-                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
-                            target={
-                              <PendingClientRescheduleFollowUp
-                                row={row}
-                                onComplete={() => setRefreshTick((current) => current + 1)}
-                              />
-                            }
-                          />
-                        ) : null}
+                        <Action.Push
+                          title="Send"
+                          icon="💬"
+                          shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                          target={
+                            <PendingClientRescheduleFollowUp
+                              row={row}
+                              queue={queue}
+                              onComplete={() => setRefreshTick((current) => current + 1)}
+                            />
+                          }
+                        />
                         <Action.Push
                           title="Note"
                           icon="✍️"
@@ -1690,14 +1723,20 @@ function PendingClientsWatchlist() {
                             <PendingClientOperatorNoteForm
                               row={row}
                               onSaved={async (noteDescription) => {
-                                await writePendingClientLocalNote(row.source_event_id, noteDescription);
+                                await writePendingClientLocalNote(
+                                  row.source_event_id,
+                                  noteDescription,
+                                );
                                 setResult((current) =>
                                   current
                                     ? {
                                         ...current,
                                         rows: current.rows.map((candidate) =>
                                           candidate.source_event_id === row.source_event_id
-                                            ? appendPendingClientLocalNote(candidate, noteDescription)
+                                            ? appendPendingClientLocalNote(
+                                                candidate,
+                                                noteDescription,
+                                              )
                                             : candidate,
                                         ),
                                       }
@@ -1976,10 +2015,9 @@ export function HeadScoutBookingsList({
       }
       toast.style = Toast.Style.Success;
       toast.title = 'Ready';
-      toast.message =
-        taskCompletionMessage
-          ? taskCompletionMessage
-          : composeMode === 'clipboard-fallback'
+      toast.message = taskCompletionMessage
+        ? taskCompletionMessage
+        : composeMode === 'clipboard-fallback'
           ? 'Template copied'
           : contactCardCopied
             ? 'Draft + copied card'

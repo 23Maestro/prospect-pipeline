@@ -9,6 +9,7 @@ import {
   buildPendingClientCommunicationPlan,
   buildPendingClientResolvedPatch,
   buildPendingClientSourceLifecycleInput,
+  buildPendingClientReviewFollowUpRowsFromSource,
   buildPendingClientWatchlistRow,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
@@ -174,7 +175,10 @@ test('pending client rows reject athlete-key text as display name', () => {
   });
 
   assert.equal(row.athlete_name, 'Daylen Johnson');
-  assert.equal(cleanPendingClientAthleteName('(CAN) Christan Hirniak Football 2027 IL'), 'Christan Hirniak');
+  assert.equal(
+    cleanPendingClientAthleteName('(CAN) Christan Hirniak Football 2027 IL'),
+    'Christan Hirniak',
+  );
   assert.equal(cleanPendingClientAthleteName('1499520:954251'), '');
 });
 
@@ -505,6 +509,7 @@ test('pending client central queue collapses review work to four router lanes', 
     name: string;
     row: PendingClientWatchlistRow;
     replyEvidence: PendingClientOperatorQueueReplyEvidence | null;
+    sourceLifecycle?: Parameters<typeof classifyPendingClientCentralQueue>[0]['sourceLifecycle'];
     now?: Date;
     expected: PendingClientCentralQueueClassification;
   }[] = [
@@ -523,7 +528,12 @@ test('pending client central queue collapses review work to four router lanes', 
         lastMeaningfulOutbound: { date: '2026-06-17T15:05:00' },
       },
       now: new Date('2026-06-17T15:10:00'),
-      expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Awaiting Client', priority: 20 },
+      expected: {
+        filter: 'reschedule',
+        label: 'RSP',
+        actionLabel: 'Awaiting Client',
+        priority: 20,
+      },
     },
     {
       name: 'RSP · Try Again',
@@ -539,7 +549,11 @@ test('pending client central queue collapses review work to four router lanes', 
     {
       name: 'RSP · Review Reply',
       row: baseRow,
-      replyEvidence: { themeBucket: 'RSP', operatorReplyProposedTimes: true, clientRepliedAfterOperatorTimes: true },
+      replyEvidence: {
+        themeBucket: 'RSP',
+        operatorReplyProposedTimes: true,
+        clientRepliedAfterOperatorTimes: true,
+      },
       expected: { filter: 'reschedule', label: 'RSP', actionLabel: 'Review Reply', priority: 20 },
     },
     {
@@ -557,7 +571,12 @@ test('pending client central queue collapses review work to four router lanes', 
         lastMeaningfulOutbound: { date: '2026-06-17T15:05:00' },
       },
       now: new Date('2026-06-17T15:10:00'),
-      expected: { filter: 'no_show', label: 'No Show', actionLabel: 'Awaiting Client', priority: 20 },
+      expected: {
+        filter: 'no_show',
+        label: 'No Show',
+        actionLabel: 'Awaiting Client',
+        priority: 20,
+      },
     },
     {
       name: 'No Show · Bad Timing',
@@ -570,15 +589,49 @@ test('pending client central queue collapses review work to four router lanes', 
       expected: { filter: 'no_show', label: 'No Show', actionLabel: 'Bad Timing', priority: 15 },
     },
     {
-      name: 'Review Follow Ups · Review',
+      name: 'Review Follow Ups · Needs Reply',
       row: {
         ...baseRow,
         event_title: 'Follow Up - Avery Jones Football 2027 TN',
         description: 'Call attempt 2. Parent said tomorrow works.',
         action_tag: 'Scout Update',
       },
-      replyEvidence: { themeBucket: 'Call Attempt', operatorRepliedAfterInbound: false },
-      expected: { filter: 'review_follow_ups', label: 'Review Follow Ups', actionLabel: 'Review', priority: 30 },
+      sourceLifecycle: {
+        crmStage: 'Left Voice Mail 2',
+        taskTitle: 'Call Attempt 2',
+        taskStatus: 'call_attempt_2',
+      },
+      replyEvidence: {
+        themeBucket: 'Call Attempt',
+        lastMeaningfulInbound: { body: 'Tomorrow works.', date: '2026-06-18T21:00:00.000Z' },
+        operatorRepliedAfterInbound: false,
+      },
+      expected: {
+        filter: 'review_follow_ups',
+        label: 'Review Follow Ups',
+        actionLabel: 'Needs Reply',
+        priority: 30,
+      },
+    },
+    {
+      name: 'Review Follow Ups · Review Reply',
+      row: {
+        ...baseRow,
+        event_title: 'Follow Up - Avery Jones Football 2027 TN',
+        description: 'Call attempt 2. Parent said tomorrow works.',
+        action_tag: 'Scout Update',
+      },
+      replyEvidence: {
+        themeBucket: 'RSP',
+        operatorReplyProposedTimes: true,
+        clientRepliedAfterOperatorTimes: true,
+      },
+      expected: {
+        filter: 'review_follow_ups',
+        label: 'Review Follow Ups',
+        actionLabel: 'Review Reply',
+        priority: 20,
+      },
     },
     {
       name: 'Review Follow Ups · Review',
@@ -589,7 +642,12 @@ test('pending client central queue collapses review work to four router lanes', 
         action_tag: 'Scout Update',
       },
       replyEvidence: { themeBucket: 'Call Attempt', operatorRepliedAfterInbound: true },
-      expected: { filter: 'review_follow_ups', label: 'Review Follow Ups', actionLabel: 'Review', priority: 30 },
+      expected: {
+        filter: 'review_follow_ups',
+        label: 'Review Follow Ups',
+        actionLabel: 'Review',
+        priority: 30,
+      },
     },
     {
       name: 'Payments',
@@ -637,6 +695,7 @@ test('pending client central queue collapses review work to four router lanes', 
     const actual = classifyPendingClientCentralQueue({
       row: testCase.row,
       replyEvidence: testCase.replyEvidence,
+      sourceLifecycle: testCase.sourceLifecycle,
       now: testCase.now,
     });
     const rowTag = actual.actionLabel;
@@ -699,9 +758,117 @@ test('pending client review follow ups require call follow-up sales stage and mi
   assert.equal(active.queue.actionLabel, 'Needs Reply');
   assert.equal(active.visible, true);
   assert.equal(handled.queue.actionLabel, 'Review');
-  assert.equal(handled.visible, false);
+  assert.equal(handled.visible, true);
   assert.equal(movedToMeetingSet.queue.actionLabel, 'Review');
   assert.equal(movedToMeetingSet.visible, false);
+});
+
+test('pending client review follow ups stay visible from current source stage without message evidence', () => {
+  const row = pendingClientRow({
+    event: {
+      event_id: 'pending-client:review-follow-up-source',
+      title: 'Follow Up - Avery Jones Football 2027 TN',
+      assigned_owner: 'Jerami Singleton',
+      start: '2026-06-13T10:00',
+      end: '2026-06-13T11:00',
+    },
+    description: 'Outreach callback after voicemail follow-up.',
+    actionTag: 'Scout Update',
+  });
+  const state = derivePendingClientLaneState({
+    row,
+    replyEvidence: null,
+    sourceLifecycle: {
+      crmStage: 'Left Voice Mail 2',
+      taskTitle: 'Call Attempt 2',
+      taskStatus: 'call_attempt_2',
+    },
+  });
+
+  assert.equal(state.queue.filter, 'review_follow_ups');
+  assert.equal(state.queue.actionLabel, 'Review');
+  assert.equal(state.visible, true);
+});
+
+test('pending client review follow ups admit current first-contact source stages', () => {
+  const rows = buildPendingClientReviewFollowUpRowsFromSource(
+    [
+      {
+        athleteKey: '1500173:954893',
+        athleteId: '1500173',
+        athleteMainId: '954893',
+        athleteName: 'Elijah Burton Jr',
+        crmStage: 'Left Voice Mail 1',
+        taskTitle: 'Call Attempt 2',
+        taskStatus: 'call_attempt_2',
+        updatedAt: '2026-06-18T00:03:31.771Z',
+      },
+    ],
+    new Date('2026-06-18T12:00:00.000Z'),
+  );
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].source_event_id, 'contact-cache-review:1500173:954893');
+  assert.equal(rows[0].action_tag, 'Scout Update');
+  assert.equal(rows[0].athlete_name, 'Elijah Burton Jr');
+
+  const state = derivePendingClientLaneState({
+    row: rows[0],
+    replyEvidence: null,
+    sourceLifecycle: {
+      crmStage: 'Left Voice Mail 1',
+      taskTitle: 'Call Attempt 2',
+      taskStatus: 'call_attempt_2',
+    },
+  });
+
+  assert.equal(state.visible, true);
+  assert.equal(state.queue.filter, 'review_follow_ups');
+  assert.equal(state.queue.actionLabel, 'Review');
+});
+
+test('pending client review follow ups reject non-follow-up current source stages', () => {
+  const rows = buildPendingClientReviewFollowUpRowsFromSource([
+    {
+      athleteKey: '1500173:954893',
+      athleteId: '1500173',
+      athleteMainId: '954893',
+      athleteName: 'Elijah Burton Jr',
+      crmStage: 'Meeting Set',
+      taskTitle: 'Confirmation Call',
+      taskStatus: 'confirmation_call',
+      updatedAt: '2026-06-18T00:03:31.771Z',
+    },
+  ]);
+
+  assert.equal(rows.length, 0);
+});
+
+test('pending client review follow ups reject purge-level first-contact stages', () => {
+  const rows = buildPendingClientReviewFollowUpRowsFromSource([
+    {
+      athleteKey: '1500173:954893',
+      athleteId: '1500173',
+      athleteMainId: '954893',
+      athleteName: 'Elijah Burton Jr',
+      crmStage: 'Never Spoke To',
+      taskTitle: 'Call Attempt 3',
+      taskStatus: 'call_attempt_3',
+      updatedAt: '2026-06-18T00:03:31.771Z',
+    },
+    {
+      athleteKey: '1500174:954894',
+      athleteId: '1500174',
+      athleteMainId: '954894',
+      athleteName: 'Mario Davis',
+      crmStage: 'Spoke to - Not Interested',
+      taskTitle: 'Call Attempt 2',
+      taskStatus: 'call_attempt_2',
+      updatedAt: '2026-06-18T00:03:31.771Z',
+    },
+  ]);
+
+  assert.equal(rows.length, 0);
 });
 
 test('pending client lane state keeps source stage ahead of message theme tags', () => {
@@ -1110,12 +1277,7 @@ test('pending client checklist waits for note and reschedule outreach when evide
       replyEvidence: null,
       now: new Date('2026-06-17T15:00:00.000Z'),
     }),
-    [
-      '### Next Action',
-      '',
-      '- [ ] Add note',
-      '- [ ] Offer slots',
-    ].join('\n'),
+    ['### Next Action', '', '- [ ] Add note', '- [ ] Offer slots'].join('\n'),
   );
 });
 
@@ -1249,7 +1411,12 @@ test('pending client active follow-up state moves awaiting client to try again a
     now,
   });
   const queue = classifyPendingClientCentralQueue({ row, replyEvidence, now });
-  const markdown = buildPendingClientChecklistMarkdown({ row, replyEvidence, centralQueue: queue, now });
+  const markdown = buildPendingClientChecklistMarkdown({
+    row,
+    replyEvidence,
+    centralQueue: queue,
+    now,
+  });
 
   assert.equal(state.actionLabel, 'Try Again');
   assert.equal(queue.actionLabel, 'Try Again');
@@ -1422,7 +1589,9 @@ test('pending client communication plan purges terminal sales stages', () => {
 
   assert.equal(plan.action, 'purge_terminal');
   assert.equal(plan.templateKey, 'reschedule.terminal.purge');
-  assert.deepEqual(plan.nextSteps, ['Remove from active Pending Clients and Client Messages tracking.']);
+  assert.deepEqual(plan.nextSteps, [
+    'Remove from active Pending Clients and Client Messages tracking.',
+  ]);
 });
 
 test('pending client payment watch does not require appointment truth backing', () => {
@@ -1556,7 +1725,10 @@ test('pending client remove path keeps full-row upsert for appointment-derived t
   const helper = source.slice(helperStart, helperEnd);
 
   assert.match(helper, /typeof rowOrSourceEventId === 'string'/);
-  assert.match(helper, /patchPendingClientWatchlistRow\(config, rowOrSourceEventId, resolvedPatch\)/);
+  assert.match(
+    helper,
+    /patchPendingClientWatchlistRow\(config, rowOrSourceEventId, resolvedPatch\)/,
+  );
   assert.match(helper, /const row = rowOrSourceEventId/);
   assert.match(helper, /upsertPendingClientWatchlistRows\(config/);
   assert.match(helper, /status: 'resolved'/);
@@ -1614,7 +1786,10 @@ test('pending client queue order uses last seen date only', () => {
   assert.match(loaderSource, /order=updated_at\.desc/);
   assert.doesNotMatch(loaderSource, /starts_at=gte/);
   assert.doesNotMatch(loaderSource, /order=starts_at\.desc/);
-  assert.match(uiSource, /pendingClientQueueTime\(right\.row\) - pendingClientQueueTime\(left\.row\)/);
+  assert.match(
+    uiSource,
+    /pendingClientQueueTime\(right\.row\) - pendingClientQueueTime\(left\.row\)/,
+  );
 });
 
 test('pending client visible filters use a 14 day gate for RSP and no-show only', () => {
@@ -1622,7 +1797,10 @@ test('pending client visible filters use a 14 day gate for RSP and no-show only'
   assert.match(source, /PENDING_CLIENT_RECOVERY_WINDOW_MS = 14 \* 24 \* 60 \* 60 \* 1000/);
   assert.match(source, /if \(queue\.filter === 'payments'\) return true/);
   assert.match(source, /if \(queue\.filter === 'review_follow_ups'\) return true/);
-  assert.match(source, /if \(queue\.filter !== 'reschedule' && queue\.filter !== 'no_show'\) return true/);
+  assert.match(
+    source,
+    /if \(queue\.filter !== 'reschedule' && queue\.filter !== 'no_show'\) return true/,
+  );
   assert.match(source, /const lastSeenAt = pendingClientQueueTime\(row\)/);
   assert.match(source, /lastSeenAt > 0 && now - lastSeenAt <= PENDING_CLIENT_RECOVERY_WINDOW_MS/);
   assert.match(source, /isPendingClientInsideVisibleWindow\(item\.row, item\.queue\)/);
