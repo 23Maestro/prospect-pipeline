@@ -20,6 +20,7 @@ export type AppointmentTitleParseResult = {
 
 const ENROLLMENT_PREFIX_PATTERN = /^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?[^)]*\)\s*/i;
 const RESCHEDULE_PENDING_PREFIX_PATTERN = /^\s*\(RSP\)(?:\*\d+)?\s*/i;
+const PARENT_DID_NOT_QUALIFY_PREFIX_PATTERN = /^\s*\(PAR\s*-\s*DNQ\)(?:\*\d+)?\s*/i;
 const CLOSE_LOST_PREFIX_PATTERN = /^\s*\(CL\)(?:\*\d+)?\s*/i;
 const FOLLOW_UP_PREFIX_PATTERN = /^\s*\(FU\)(?:\*\d+)?\s*/i;
 const CANCELED_PREFIX_PATTERN = /^\s*\(CAN\)(?:\*\d+)?\s*/i;
@@ -68,6 +69,15 @@ export function parseAppointmentTitleOutcome(title?: string | null): Appointment
       outcome: 'reschedule_pending',
       revenueCents: null,
       prefix: trimmedTitle.match(RESCHEDULE_PENDING_PREFIX_PATTERN)?.[0].trim() || '(RSP)',
+    };
+  }
+  if (PARENT_DID_NOT_QUALIFY_PREFIX_PATTERN.test(trimmedTitle)) {
+    return {
+      originalTitle: trimmedTitle,
+      cleanTitle: trimmedTitle.replace(PARENT_DID_NOT_QUALIFY_PREFIX_PATTERN, '').trim(),
+      outcome: 'terminal_close_lost',
+      revenueCents: null,
+      prefix: trimmedTitle.match(PARENT_DID_NOT_QUALIFY_PREFIX_PATTERN)?.[0].trim() || '(PAR - DNQ)',
     };
   }
   if (CLOSE_LOST_PREFIX_PATTERN.test(trimmedTitle)) {

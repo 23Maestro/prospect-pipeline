@@ -123,6 +123,11 @@ def context_text(reason, buckets=None, supabase=False):
         f"- Before editing, identify the Scouting Coordinator bucket: {bucket_line}.",
         f"- Read AGENTS.md and {MAP_DOC}.",
         "- Reuse the bucket-owned domain surface before creating helpers/scripts.",
+        "- Before editing SC-related files, identify whether the source data already has a mature shared owner.",
+        "- Ask: What source data is this code interpreting? Which bucket owns that meaning?",
+        "- Ask: Is there an existing parser/classifier/resolver/writer with tests and multiple consumers?",
+        "- Ask: Am I adding local business meaning that should import that mature helper instead?",
+        "- If a mature owner exists, use it. Do not add local regexes, string checks, tiny classifiers, or fallback helpers for the same meaning.",
         "- Commands are buttons. Domains own meaning. Supabase stores durable truth. Laravel/API calls are adapters.",
     ]
     if supabase:

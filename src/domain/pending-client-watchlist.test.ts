@@ -8,6 +8,7 @@ import {
   buildPendingClientChecklistMarkdown,
   buildPendingClientCommunicationPlan,
   buildPendingClientResolvedPatch,
+  buildPendingClientSourceLifecycleInput,
   buildPendingClientWatchlistRow,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
@@ -28,6 +29,7 @@ import {
   normalizePendingClientAIVerdict,
   normalizePendingClientDisplayRowTag,
   parsePendingClientEvidenceNote,
+  pendingClientEvidenceCrmStage,
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
   selectLatestPendingClientNote,
@@ -780,10 +782,25 @@ test('pending client display tag normalizer fixes stale support tags without mov
 
   const normalizedPayment = normalizePendingClientDisplayRowTag(stalePaymentRow);
   const normalizedRsp = normalizePendingClientDisplayRowTag(rspWithPaymentWords);
+  const storedSignalPayment = normalizePendingClientDisplayRowTag(
+    pendingClientRow({
+      event: {
+        event_id: 'pending-client:stored-signal-payment',
+        title: 'Follow Up - Stored Signal Football 2027 TX',
+        assigned_owner: 'Jerami Singleton',
+        start: '2026-06-17T19:00:00.000Z',
+      },
+      description: 'Notes Tab: Follow up with family.',
+      matchedSignals: ['payment'],
+      actionTag: 'Payment Watch',
+    }),
+  );
 
   assert.equal(normalizedPayment.action_tag, 'Payment Watch');
   assert.deepEqual(normalizedPayment.matched_signals, ['payment', 'package', 'elite']);
   assert.equal(normalizedRsp.action_tag, 'Operator Input');
+  assert.equal(storedSignalPayment.action_tag, 'Payment Watch');
+  assert.deepEqual(storedSignalPayment.matched_signals, ['payment']);
   assert.equal(
     classifyPendingClientCentralQueue({ row: normalizedRsp }).filter,
     'reschedule',
@@ -822,6 +839,84 @@ test('pending client source lifecycle fallback keeps review reply tags aligned w
   assert.equal(state.visible, true);
   assert.equal(state.queue.filter, 'review_follow_ups');
   assert.equal(state.queue.actionLabel, 'Needs Reply');
+});
+
+test('pending client source lifecycle input is derived in the domain', () => {
+  const row = pendingClientRow({
+    event: {
+      event_id: 'pending-client:lifecycle-source',
+      title: 'Follow Up - Avery Jones Football 2027 TN',
+      assigned_owner: 'Jerami Singleton',
+      start: '2026-06-17T19:00:00.000Z',
+    },
+    description: 'Notes Tab: Follow up with family.',
+    actionTag: 'Scout Update',
+  });
+
+  assert.deepEqual(
+    buildPendingClientSourceLifecycleInput({
+      row,
+      replyTaskTitle: 'Left Voice Mail 1',
+      matchedCrmStage: null,
+      matchedTaskTitle: null,
+      matchedTaskStatus: null,
+    }),
+    {
+      crmStage: 'Actual Meeting - Follow Up',
+      taskTitle: 'Left Voice Mail 1',
+      taskStatus: 'Left Voice Mail 1',
+    },
+  );
+
+  assert.deepEqual(
+    buildPendingClientSourceLifecycleInput({
+      row,
+      replyTaskTitle: 'Left Voice Mail 1',
+      matchedCrmStage: 'Meeting Result - Res. Pending',
+      matchedTaskTitle: 'Reschedule Pending',
+      matchedTaskStatus: 'reschedule_pending',
+    }),
+    {
+      crmStage: 'Meeting Result - Res. Pending',
+      taskTitle: 'Reschedule Pending',
+      taskStatus: 'reschedule_pending',
+    },
+  );
+});
+
+test('pending client evidence CRM stage reuses prefix-aware stage inference', () => {
+  const cases = [
+    {
+      title: '(RSP) Avery Jones Football 2027 TN',
+      expected: 'Meeting Result - Res. Pending',
+    },
+    {
+      title: '(NS) Avery Jones Football 2027 TN',
+      expected: 'Meeting Result - No Show',
+    },
+    {
+      title: '(CAN) Avery Jones Football 2027 TN',
+      expected: 'Meeting Result - Canceled',
+    },
+  ];
+
+  for (const item of cases) {
+    assert.equal(
+      pendingClientEvidenceCrmStage(
+        pendingClientRow({
+          event: {
+            event_id: `pending-client:${item.expected}`,
+            title: item.title,
+            assigned_owner: 'Jerami Singleton',
+            start: '2026-06-17T19:00:00.000Z',
+          },
+          description: 'Pending client review.',
+          actionTag: 'Operator Input',
+        }),
+      ),
+      item.expected,
+    );
+  }
 });
 
 test('pending client payment markdown renders note evidence without recovery checkboxes', () => {

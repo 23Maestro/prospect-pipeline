@@ -180,6 +180,16 @@ test('known outcome prefixes with accidental *number suffix keep their base mean
   });
 });
 
+test('(PAR - DNQ) title parses as close lost in the shared title parser', () => {
+  assert.deepEqual(parseAppointmentTitleOutcome('(PAR - DNQ) Sample Athlete Football 2027 TX'), {
+    originalTitle: '(PAR - DNQ) Sample Athlete Football 2027 TX',
+    cleanTitle: 'Sample Athlete Football 2027 TX',
+    outcome: 'terminal_close_lost',
+    revenueCents: null,
+    prefix: '(PAR - DNQ)',
+  });
+});
+
 test('unprefixed title parses as active without revenue', () => {
   assert.deepEqual(parseAppointmentTitleOutcome('Zyon Wicks Football 2027 TX'), {
     originalTitle: 'Zyon Wicks Football 2027 TX',
