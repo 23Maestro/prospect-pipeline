@@ -4,6 +4,7 @@ import {
   type ActiveOperatorContext,
   type OwnerKey,
 } from './owners';
+import { parseAppointmentTitleOutcome } from '../lib/head-scout-event-prefix';
 import { resolveSalesLifecycle } from '../lib/sales-lifecycle';
 
 export const PENDING_CLIENT_WATCH_WINDOW_DAYS = 14;
@@ -1382,6 +1383,97 @@ function pendingClientRowText(row: PendingClientWatchlistRow): string {
     .filter(Boolean)
     .join(' ')
     .toLowerCase();
+}
+
+function pendingClientRawRowText(row: PendingClientWatchlistRow): string {
+  return [
+    row.event_title,
+    row.description,
+    row.matched_signals?.join(' '),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+}
+
+function inferPendingClientNormalizedStage(row: PendingClientWatchlistRow): string {
+  switch (parseAppointmentTitleOutcome(row.event_title).outcome) {
+    case 'reschedule_pending':
+      return 'reschedule_pending';
+    case 'soft_archive_canceled':
+      return 'canceled';
+    case 'soft_archive_no_show':
+      return 'no_show';
+    case 'soft_archive_follow_up':
+      return 'meeting_follow_up';
+    default:
+      break;
+  }
+  const rawText = pendingClientRawRowText(row);
+  if (/\bno[_\s-]?show\b/i.test(rawText)) return 'no_show';
+  if (/\b(?:cancel|canceled|cancelled)\b/i.test(rawText)) return 'canceled';
+  if (/\b(?:reschedule|reschedule_pending|reschedule pending|rsp)\b/i.test(rawText)) {
+    return 'reschedule_pending';
+  }
+  if (
+    row.action_tag === 'Payment Watch' ||
+    /\bfollow\s*up\b|\(fu\)|actual meeting/i.test(rawText)
+  ) {
+    return 'meeting_follow_up';
+  }
+  return '';
+}
+
+export function normalizePendingClientDisplayRowTag(
+  row: PendingClientWatchlistRow,
+): PendingClientWatchlistRow {
+  const matchedSignals = findPendingClientSignals([row.description, row.event_title].join('\n'));
+  const resolvedSignals = matchedSignals.length ? matchedSignals : row.matched_signals || [];
+  const actionTag = classifyPendingClientActionTag({
+    normalizedStage: inferPendingClientNormalizedStage(row),
+    description: row.description,
+    matchedSignals: resolvedSignals,
+  });
+  return {
+    ...row,
+    matched_signals: resolvedSignals,
+    action_tag: actionTag,
+  };
+}
+
+export function pendingClientEvidenceCrmStage(row?: PendingClientWatchlistRow | null): string {
+  if (!row) return 'Actual Meeting - Follow Up';
+  switch (inferPendingClientNormalizedStage(row)) {
+    case 'no_show':
+      return 'Meeting Result - No Show';
+    case 'canceled':
+      return 'Meeting Result - Canceled';
+    case 'reschedule_pending':
+      return 'Meeting Result - Res. Pending';
+    default:
+      return 'Actual Meeting - Follow Up';
+  }
+}
+
+export function buildPendingClientSourceLifecycleInput(args: {
+  row: PendingClientWatchlistRow;
+  replyTaskTitle?: string | null;
+  matchedCrmStage?: string | null;
+  matchedTaskTitle?: string | null;
+  matchedTaskStatus?: string | null;
+}): PendingClientSourceLifecycleInput {
+  return {
+    crmStage: args.matchedCrmStage || pendingClientEvidenceCrmStage(args.row),
+    taskTitle:
+      args.matchedTaskTitle ||
+      args.replyTaskTitle ||
+      args.matchedTaskStatus ||
+      args.row.action_tag,
+    taskStatus:
+      args.matchedTaskStatus ||
+      args.replyTaskTitle ||
+      args.row.action_tag,
+  };
 }
 
 function pendingClientSourceLane(row: PendingClientWatchlistRow): PendingClientCentralFilter | null {

@@ -8,6 +8,7 @@ import {
   buildPendingClientChecklistMarkdown,
   buildPendingClientCommunicationPlan,
   buildPendingClientResolvedPatch,
+  buildPendingClientSourceLifecycleInput,
   buildPendingClientWatchlistRow,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
@@ -26,7 +27,9 @@ import {
   isPendingClientResolvedByFutureConfirmation,
   isPendingClientReviewEventTitle,
   normalizePendingClientAIVerdict,
+  normalizePendingClientDisplayRowTag,
   parsePendingClientEvidenceNote,
+  pendingClientEvidenceCrmStage,
   pendingClientExpiresAt,
   selectLatestPendingClientReviewEvent,
   selectLatestPendingClientNote,
@@ -753,6 +756,169 @@ test('pending client lane state keeps source stage ahead of message theme tags',
   assert.equal(paymentState.paymentLocked, true);
 });
 
+test('pending client display tag normalizer fixes stale support tags without moving RSP rows', () => {
+  const stalePaymentRow = pendingClientRow({
+    event: {
+      event_id: 'pending-client:stale-payment',
+      title: 'Follow Up - Jeremiah Cuyler Football 2027 TX',
+      assigned_owner: 'Jerami Singleton',
+      start: '2026-06-17T19:00:00.000Z',
+    },
+    description: 'Notes Tab: Father is taking over the Elite package payment.',
+    matchedSignals: [],
+    actionTag: 'Scout Update',
+  });
+  const rspWithPaymentWords = pendingClientRow({
+    event: {
+      event_id: 'appointment:rsp-payment-words',
+      title: '(RSP) Gage Henry Football 2027 OH',
+      assigned_owner: 'Nasir Adderley',
+      start: '2026-06-17T19:00:00.000Z',
+    },
+    description: 'Notes Tab: Parent mentioned payment but Gage needs to reschedule.',
+    matchedSignals: [],
+    actionTag: 'Scout Update',
+  });
+
+  const normalizedPayment = normalizePendingClientDisplayRowTag(stalePaymentRow);
+  const normalizedRsp = normalizePendingClientDisplayRowTag(rspWithPaymentWords);
+  const storedSignalPayment = normalizePendingClientDisplayRowTag(
+    pendingClientRow({
+      event: {
+        event_id: 'pending-client:stored-signal-payment',
+        title: 'Follow Up - Stored Signal Football 2027 TX',
+        assigned_owner: 'Jerami Singleton',
+        start: '2026-06-17T19:00:00.000Z',
+      },
+      description: 'Notes Tab: Follow up with family.',
+      matchedSignals: ['payment'],
+      actionTag: 'Payment Watch',
+    }),
+  );
+
+  assert.equal(normalizedPayment.action_tag, 'Payment Watch');
+  assert.deepEqual(normalizedPayment.matched_signals, ['payment', 'package', 'elite']);
+  assert.equal(normalizedRsp.action_tag, 'Operator Input');
+  assert.equal(storedSignalPayment.action_tag, 'Payment Watch');
+  assert.deepEqual(storedSignalPayment.matched_signals, ['payment']);
+  assert.equal(
+    classifyPendingClientCentralQueue({ row: normalizedRsp }).filter,
+    'reschedule',
+  );
+});
+
+test('pending client source lifecycle fallback keeps review reply tags aligned without loaded chat', () => {
+  const row = pendingClientRow({
+    event: {
+      event_id: 'pending-client:review-follow-up-no-chat',
+      title: 'Follow Up - Aundres Thomas Football 2027 TX',
+      assigned_owner: 'Jerami Singleton',
+      start: '2026-06-13T10:00',
+      end: '2026-06-13T11:00',
+    },
+    description: 'Outreach callback after voicemail follow-up.',
+    actionTag: 'Scout Update',
+  });
+  const state = derivePendingClientLaneState({
+    row,
+    replyEvidence: {
+      themeBucket: 'Call Attempt',
+      lastMeaningfulInbound: {
+        body: 'Tomorrow',
+        date: '2026-06-18T21:50:00.000Z',
+      },
+      operatorRepliedAfterInbound: false,
+    },
+    sourceLifecycle: {
+      crmStage: 'Actual Meeting - Follow Up',
+      taskTitle: 'Left Voice Mail 1',
+      taskStatus: 'Left Voice Mail 1',
+    },
+  });
+
+  assert.equal(state.visible, true);
+  assert.equal(state.queue.filter, 'review_follow_ups');
+  assert.equal(state.queue.actionLabel, 'Needs Reply');
+});
+
+test('pending client source lifecycle input is derived in the domain', () => {
+  const row = pendingClientRow({
+    event: {
+      event_id: 'pending-client:lifecycle-source',
+      title: 'Follow Up - Avery Jones Football 2027 TN',
+      assigned_owner: 'Jerami Singleton',
+      start: '2026-06-17T19:00:00.000Z',
+    },
+    description: 'Notes Tab: Follow up with family.',
+    actionTag: 'Scout Update',
+  });
+
+  assert.deepEqual(
+    buildPendingClientSourceLifecycleInput({
+      row,
+      replyTaskTitle: 'Left Voice Mail 1',
+      matchedCrmStage: null,
+      matchedTaskTitle: null,
+      matchedTaskStatus: null,
+    }),
+    {
+      crmStage: 'Actual Meeting - Follow Up',
+      taskTitle: 'Left Voice Mail 1',
+      taskStatus: 'Left Voice Mail 1',
+    },
+  );
+
+  assert.deepEqual(
+    buildPendingClientSourceLifecycleInput({
+      row,
+      replyTaskTitle: 'Left Voice Mail 1',
+      matchedCrmStage: 'Meeting Result - Res. Pending',
+      matchedTaskTitle: 'Reschedule Pending',
+      matchedTaskStatus: 'reschedule_pending',
+    }),
+    {
+      crmStage: 'Meeting Result - Res. Pending',
+      taskTitle: 'Reschedule Pending',
+      taskStatus: 'reschedule_pending',
+    },
+  );
+});
+
+test('pending client evidence CRM stage reuses prefix-aware stage inference', () => {
+  const cases = [
+    {
+      title: '(RSP) Avery Jones Football 2027 TN',
+      expected: 'Meeting Result - Res. Pending',
+    },
+    {
+      title: '(NS) Avery Jones Football 2027 TN',
+      expected: 'Meeting Result - No Show',
+    },
+    {
+      title: '(CAN) Avery Jones Football 2027 TN',
+      expected: 'Meeting Result - Canceled',
+    },
+  ];
+
+  for (const item of cases) {
+    assert.equal(
+      pendingClientEvidenceCrmStage(
+        pendingClientRow({
+          event: {
+            event_id: `pending-client:${item.expected}`,
+            title: item.title,
+            assigned_owner: 'Jerami Singleton',
+            start: '2026-06-17T19:00:00.000Z',
+          },
+          description: 'Pending client review.',
+          actionTag: 'Operator Input',
+        }),
+      ),
+      item.expected,
+    );
+  }
+});
+
 test('pending client payment markdown renders note evidence without recovery checkboxes', () => {
   const row = pendingClientRow({
     event: {
@@ -1363,7 +1529,8 @@ test('pending client Raycast loader reads appointment outcomes plus support tomb
   assert.match(source, /pending_client_watchlist/);
   assert.match(source, /status=in\.\("resolved","expired"\)/);
   assert.match(source, /status=eq\.watching/);
-  assert.match(source, /action_tag=eq\.Payment Watch/);
+  assert.match(source, /normalizePendingClientDisplayRowTag/);
+  assert.doesNotMatch(source, /action_tag=eq\.Payment Watch/);
   assert.match(source, /resolveBookedMeetingDetailsForForm/);
   assert.match(source, /meeting_timezone/);
   assert.match(source, /buildPendingClientEvidenceDescription/);
@@ -1658,7 +1825,9 @@ test('pending client loader avoids live source adapters for the review list', ()
   assert.match(source, /post_meeting_result\.in\./);
   assert.match(source, /status\.in\./);
   assert.match(source, /pending_client_watchlist/);
-  assert.match(source, /action_tag=eq\.Payment Watch/);
+  assert.match(source, /status=eq\.watching/);
+  assert.match(source, /normalizePendingClientDisplayRowTag/);
+  assert.doesNotMatch(source, /action_tag=eq\.Payment Watch/);
   assert.doesNotMatch(source, /fetchAthleteBookedMeetings/);
   assert.doesNotMatch(source, /athlete_pipeline_state/);
 });

@@ -1,3 +1,4 @@
+import { parseAppointmentTitleOutcome } from '../lib/head-scout-event-prefix';
 import type { VoicemailFollowUpVariant } from '../lib/scout-follow-up-templates';
 
 export const SPOKE_TO_FOLLOW_UP_LABEL = 'Spoke to - I Need To Follow Up';
@@ -138,10 +139,16 @@ export function classifyPostMeetingOutcomeStage(
 }
 
 export function postCallStageForAppointmentTitlePrefix(prefix?: string | null): string | null {
-  const normalized = String(prefix || '').trim().toUpperCase();
-  if (normalized === '(RSP)') return 'Meeting Result - Res. Pending';
-  if (normalized === '(CAN)') return 'Meeting Result - Canceled';
-  return null;
+  switch (parseAppointmentTitleOutcome(prefix).outcome) {
+    case 'reschedule_pending':
+      return 'Meeting Result - Res. Pending';
+    case 'soft_archive_canceled':
+      return 'Meeting Result - Canceled';
+    case 'soft_archive_no_show':
+      return 'Meeting Result - No Show';
+    default:
+      return null;
+  }
 }
 
 export function isConfirmedRescheduleSchedulingStage(stage: string): boolean {

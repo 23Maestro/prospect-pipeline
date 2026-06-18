@@ -2,26 +2,16 @@ import {
   normalizeCrmSalesStage,
   type NormalizedSalesStage,
 } from '../lib/sales-lifecycle';
+import {
+  parseAppointmentTitleOutcome,
+  type AppointmentTitleOutcome,
+  type AppointmentTitleParseResult,
+} from '../lib/head-scout-event-prefix';
 import type { ScoutTaskStatus } from './scout-task-classifier';
 
 export { normalizeCrmSalesStage };
-
-export type AppointmentTitleOutcome =
-  | 'active'
-  | 'terminal_enrollment'
-  | 'terminal_close_lost'
-  | 'reschedule_pending'
-  | 'soft_archive_follow_up'
-  | 'soft_archive_canceled'
-  | 'soft_archive_no_show';
-
-export type ParsedAppointmentTitleOutcome = {
-  originalTitle: string;
-  cleanTitle: string;
-  outcome: AppointmentTitleOutcome;
-  revenueCents: number | null;
-  prefix: string | null;
-};
+export { parseAppointmentTitleOutcome };
+export type ParsedAppointmentTitleOutcome = AppointmentTitleParseResult;
 
 export function normalizeLifecycleText(value?: string | null): string {
   return String(value || '')
@@ -34,55 +24,6 @@ export function normalizeLifecycleText(value?: string | null): string {
 
 export function lifecycleTextIncludesAny(haystack: string, needles: string[]): boolean {
   return needles.some((needle) => haystack.includes(needle));
-}
-
-export function parseAppointmentTitleOutcome(title?: string | null): ParsedAppointmentTitleOutcome {
-  const originalTitle = String(title || '').trim();
-  const active = {
-    originalTitle,
-    cleanTitle: originalTitle,
-    outcome: 'active' as const,
-    revenueCents: null,
-    prefix: null,
-  };
-  if (!originalTitle) return active;
-
-  const enrollmentMatch = originalTitle.match(
-    /^\s*\(ENR(?:\s+\$?([0-9]+(?:\.[0-9]{1,2})?))?[^)]*\)\s*/i,
-  );
-  if (enrollmentMatch) {
-    const revenue = enrollmentMatch[1] ? Number.parseFloat(enrollmentMatch[1]) : Number.NaN;
-    return {
-      originalTitle,
-      cleanTitle: originalTitle.replace(enrollmentMatch[0], '').trim(),
-      outcome: 'terminal_enrollment',
-      revenueCents: Number.isFinite(revenue) ? Math.round(revenue * 100) : null,
-      prefix: enrollmentMatch[0].trim(),
-    };
-  }
-
-  const prefixRules: Array<{ pattern: RegExp; outcome: AppointmentTitleOutcome }> = [
-    { pattern: /^\s*\(RSP\)(?:\*\d+)?\s*/i, outcome: 'reschedule_pending' },
-    { pattern: /^\s*\(PAR\s*-\s*DNQ\)(?:\*\d+)?\s*/i, outcome: 'terminal_close_lost' },
-    { pattern: /^\s*\(CL\)(?:\*\d+)?\s*/i, outcome: 'terminal_close_lost' },
-    { pattern: /^\s*\(FU\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_follow_up' },
-    { pattern: /^\s*\(CAN\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_canceled' },
-    { pattern: /^\s*\(NS\)(?:\*\d+)?\s*/i, outcome: 'soft_archive_no_show' },
-  ];
-
-  for (const rule of prefixRules) {
-    const match = originalTitle.match(rule.pattern);
-    if (!match) continue;
-    return {
-      originalTitle,
-      cleanTitle: originalTitle.replace(match[0], '').trim(),
-      outcome: rule.outcome,
-      revenueCents: null,
-      prefix: match[0].trim(),
-    };
-  }
-
-  return active;
 }
 
 export function taskStatusForStage(

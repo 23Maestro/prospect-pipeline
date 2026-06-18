@@ -84,7 +84,9 @@ test('post-call scheduling form is limited to Meeting Set and confirmed reschedu
 
 test('appointment title prefixes map to post-call outcome stages in the domain', () => {
   assert.equal(postCallStageForAppointmentTitlePrefix('(RSP)'), 'Meeting Result - Res. Pending');
+  assert.equal(postCallStageForAppointmentTitlePrefix('(RSP)*2'), 'Meeting Result - Res. Pending');
   assert.equal(postCallStageForAppointmentTitlePrefix('(CAN)'), 'Meeting Result - Canceled');
+  assert.equal(postCallStageForAppointmentTitlePrefix('(NS)'), 'Meeting Result - No Show');
   assert.equal(postCallStageForAppointmentTitlePrefix('(CF)'), null);
   assert.equal(postCallStageForAppointmentTitlePrefix(null), null);
 });

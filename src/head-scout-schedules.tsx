@@ -73,8 +73,10 @@ import { postCallStageForAppointmentTitlePrefix } from './domain/sales-stage-con
 import { getActiveOperator } from './domain/owners';
 import {
   buildPendingClientChecklistMarkdown,
+  buildPendingClientSourceLifecycleInput,
   classifyPendingClientCentralQueue,
   derivePendingClientLaneState,
+  pendingClientEvidenceCrmStage,
   type PendingClientCentralFilter,
 } from './domain/pending-client-watchlist';
 import { copyHeadScoutContactCardToClipboard } from './lib/head-scout-contact-cards';
@@ -1071,26 +1073,6 @@ function findPendingClientChat(
   );
 }
 
-function pendingClientEvidenceCrmStage(
-  row?: PendingClientWatchlistLoadResult['rows'][number] | null,
-): string {
-  const text = [
-    row?.action_tag,
-    row?.event_title,
-    row?.description,
-    ...(row?.matched_signals || []),
-  ]
-    .filter(Boolean)
-    .join(' ')
-    .toLowerCase();
-  if (/\bno[_\s-]?show\b/.test(text)) return 'Meeting Result - No Show';
-  if (/\b(?:cancel|canceled|cancelled)\b/.test(text)) return 'Meeting Result - Canceled';
-  if (/\b(?:reschedule_pending|reschedule pending|rsp)\b/.test(text)) {
-    return 'Meeting Result - Res. Pending';
-  }
-  return 'Actual Meeting - Follow Up';
-}
-
 function buildPendingClientThreadEvidenceReceipt(
   replyState: PendingClientReplyThemeState,
   messages: ClientThreadMessage[],
@@ -1538,11 +1520,13 @@ function PendingClientsWatchlist() {
       const laneState = derivePendingClientLaneState({
         row,
         replyEvidence: replyState?.row.replyEvidence,
-        sourceLifecycle: {
-          crmStage: matchedChat?.clientMatch.crmStage,
-          taskTitle: matchedChat?.clientMatch.currentTaskTitle,
-          taskStatus: matchedChat?.clientMatch.taskStatus,
-        },
+        sourceLifecycle: buildPendingClientSourceLifecycleInput({
+          row,
+          replyTaskTitle: replyState?.row.taskTitle,
+          matchedCrmStage: matchedChat?.clientMatch.crmStage,
+          matchedTaskTitle: matchedChat?.clientMatch.currentTaskTitle,
+          matchedTaskStatus: matchedChat?.clientMatch.taskStatus,
+        }),
       });
       return { row, replyState, matchedChat, queue: laneState.queue, visible: laneState.visible };
     })
@@ -1562,11 +1546,13 @@ function PendingClientsWatchlist() {
       const laneState = derivePendingClientLaneState({
         row,
         replyEvidence: replyState?.row.replyEvidence,
-        sourceLifecycle: {
-          crmStage: matchedChat?.clientMatch.crmStage,
-          taskTitle: matchedChat?.clientMatch.currentTaskTitle,
-          taskStatus: matchedChat?.clientMatch.taskStatus,
-        },
+        sourceLifecycle: buildPendingClientSourceLifecycleInput({
+          row,
+          replyTaskTitle: replyState?.row.taskTitle,
+          matchedCrmStage: matchedChat?.clientMatch.crmStage,
+          matchedTaskTitle: matchedChat?.clientMatch.currentTaskTitle,
+          matchedTaskStatus: matchedChat?.clientMatch.taskStatus,
+        }),
       });
       return { row, queue: laneState.queue, visible: laneState.visible };
     })

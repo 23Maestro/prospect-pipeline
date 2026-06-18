@@ -192,8 +192,13 @@ test('Pending Clients exposes shared 10x evidence receipts for reply-theme next 
   assert.match(headScoutSchedules, /buildClientMessageActionProposalVisualUrl\(\{/);
   assert.match(headScoutSchedules, /await open\(/);
   assert.match(headScoutSchedules, /pendingClientEvidenceCrmStage/);
-  assert.match(headScoutSchedules, /Meeting Result - Res\. Pending/);
+  assert.match(headScoutSchedules, /buildPendingClientSourceLifecycleInput/);
+  assert.doesNotMatch(headScoutSchedules, /function pendingClientSourceLifecycleForDisplay/);
   assert.doesNotMatch(headScoutSchedules, /crmStage:\s*null/);
+
+  const pendingClientDomain = readRepoFile('src/domain/pending-client-watchlist.ts');
+  assert.match(pendingClientDomain, /function buildPendingClientSourceLifecycleInput/);
+  assert.match(pendingClientDomain, /Meeting Result - Res\. Pending/);
 });
 
 test('Scouting Command post-call helper wraps Raycast post-call writer paths', () => {
@@ -588,6 +593,11 @@ test('Scout Prep Supabase source of truth keeps action-time writes separate from
     /Manual current-pipeline drift\/repair lane for Laravel task\/stage facts/,
   );
   assert.match(syncCurrentPipeline, /resolveWorkflowContext/);
+
+  const lifecycleTranslator = readRepoFile('src/domain/supabase-lifecycle-translator.ts');
+  assert.match(lifecycleTranslator, /from '..\/lib\/head-scout-event-prefix'/);
+  assert.doesNotMatch(lifecycleTranslator, /const prefixRules/);
+  assert.doesNotMatch(lifecycleTranslator, /\\\(RSP\\\)/);
 
   const packageJson = readRepoFile('package.json');
   assert.doesNotMatch(packageJson, /reconcile:current-sales-stages-supabase/);
