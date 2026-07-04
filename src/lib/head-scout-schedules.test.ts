@@ -69,7 +69,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: david?.meeting_for,
     },
     {
-      city: 'Example City',
+      city: 'Bradenton',
       state: 'FL',
       calendar_owner_id: 'calendar_owner_a',
       meeting_for: '200001',
@@ -97,7 +97,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: nasir?.meeting_for,
     },
     {
-      city: 'Example City',
+      city: 'Nashville',
       state: 'TN',
       calendar_owner_id: 'calendar_owner_h',
       meeting_for: '200008',
@@ -118,7 +118,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: james?.meeting_for,
     },
     {
-      city: 'Example City',
+      city: 'Charlotte',
       state: 'NC',
       calendar_owner_id: 'calendar_owner_e',
       meeting_for: '200005',
@@ -132,7 +132,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: logan?.meeting_for,
     },
     {
-      city: 'Example City',
+      city: 'Charleston',
       state: 'SC',
       calendar_owner_id: 'calendar_owner_f',
       meeting_for: '200006',
@@ -146,7 +146,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: kenton?.meeting_for,
     },
     {
-      city: 'Example City',
+      city: 'Richmond',
       state: 'VA',
       calendar_owner_id: 'calendar_owner_g',
       meeting_for: '200007',

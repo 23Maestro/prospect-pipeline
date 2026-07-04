@@ -121,7 +121,7 @@ export function getParentResponseRuntimeConfig(
   if (isDemoMode()) {
     return {
       tokenSecret: 'parent-response-token-secret',
-      publicBaseUrl: 'https://demo.prospect-pipeline.local',
+      publicBaseUrl: 'https://ops.prospect-pipeline.local',
     };
   }
   const repoEnv = readRepoEnv();

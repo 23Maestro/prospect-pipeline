@@ -1253,7 +1253,7 @@ class NPIDAPIClient:
             "notification_to_type_id": "1",
             "notification_to_id": player_id,
             "notification_from": template_data.get('sender_name', 'Video Team'),
-            "notification_from_email": template_data.get('sender_email', 'video-team@example.com'),
+            "notification_from_email": template_data.get('sender_email', 'video-team@prospectmail.test'),
             "notification_subject": template_data.get('templatesubject', ''),
             "notification_message": template_data.get('templatedescription', ''),
             "includemysign": "includemysign",

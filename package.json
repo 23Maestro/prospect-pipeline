@@ -278,7 +278,7 @@
       "title": "Follow-Up Sender Name",
       "description": "Used for the Call Attempt 2 text signoff when that trigger is wired.",
       "type": "textfield",
-      "placeholder": "Primary Operator",
+      "placeholder": "Jerami Singleton",
       "required": false
     },
     {

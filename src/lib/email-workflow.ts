@@ -5,9 +5,9 @@ import type {
   EmailTemplateOption,
 } from '../types/athlete-workflows';
 
-export const DEFAULT_OTHER_EMAIL = 'video-adjustments@example.com';
+export const DEFAULT_OTHER_EMAIL = 'video-adjustments@prospectmail.test';
 export const DEFAULT_SENDER_NAME = 'Prospect ID Video';
-export const DEFAULT_SENDER_EMAIL = 'video-team@example.com';
+export const DEFAULT_SENDER_EMAIL = 'video-team@prospectmail.test';
 export const DEFAULT_EDITING_DONE_TEMPLATE_ID = '172';
 
 export async function fetchEmailTemplates(athleteId: string): Promise<EmailTemplateOption[]> {

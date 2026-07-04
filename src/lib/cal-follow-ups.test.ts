@@ -18,13 +18,13 @@ test('buildCalFallbackEmail creates a stable email from phone or contact name', 
       phone: '615-555-1212',
       contactName: 'Tiffany Rawls',
     }),
-    'followup+6155551212@example.com',
+    'followup+6155551212@prospectmail.test',
   );
   assert.equal(
     buildCalFallbackEmail({
       contactName: 'Tiffany Rawls',
     }),
-    'followup+tiffany-rawls@example.com',
+    'followup+tiffany-rawls@prospectmail.test',
   );
 });
 
@@ -47,7 +47,7 @@ test('buildCalFollowUpBookingPayload forces exact-time Cal booking with metadata
   assert.equal(payload.start, '2026-05-05T20:30:00.000Z');
   assert.equal(payload.eventTypeId, 789);
   assert.equal(payload.attendee.name, 'Tiffany Rawls');
-  assert.equal(payload.attendee.email, 'followup+6155551212@example.com');
+  assert.equal(payload.attendee.email, 'followup+6155551212@prospectmail.test');
   assert.equal(payload.attendee.phoneNumber, '+16155551212');
   assert.equal(payload.attendee.timeZone, 'America/Chicago');
   assert.equal(payload.allowConflicts, true);

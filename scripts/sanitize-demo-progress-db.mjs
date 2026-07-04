@@ -18,6 +18,20 @@ const dryRun = args.has('--dry-run');
 
 const fakeStatuses = ['HUDL', 'Dropbox', 'Revisions', 'Not Approved', 'External Links'];
 const failureStatusPattern = /failed|failure|error|rejected|denied/i;
+const sampleAthletes = [
+  { name: 'Camden Ellis', school: 'Lakeview Prep', city: 'Bradenton', state: 'FL' },
+  { name: 'Malik Johnson', school: 'North Ridge High', city: 'Sarasota', state: 'FL' },
+  { name: 'Brady Torres', school: 'Summit Christian', city: 'Tampa', state: 'FL' },
+  { name: 'Noah Bennett', school: 'Riverbend Academy', city: 'Lakeland', state: 'FL' },
+  { name: 'Jalen Price', school: 'Coastal Tech', city: 'Fort Myers', state: 'FL' },
+  { name: 'Isaiah Brooks', school: 'Palm Valley High', city: 'Naples', state: 'FL' },
+  { name: 'Micah Reed', school: 'East Bay Prep', city: 'Orlando', state: 'FL' },
+  { name: 'Dylan Carter', school: 'Westlake Academy', city: 'Jacksonville', state: 'FL' },
+  { name: 'Kai Mitchell', school: 'Oak Harbor High', city: 'Clearwater', state: 'FL' },
+  { name: 'Evan Morales', school: 'Pinecrest Prep', city: 'St. Petersburg', state: 'FL' },
+  { name: 'Landon Cooper', school: 'Cypress Ridge', city: 'Gainesville', state: 'FL' },
+  { name: 'Tyson Ward', school: 'Harbor View High', city: 'Boca Raton', state: 'FL' },
+];
 
 function timestamp() {
   return new Date().toISOString().replace(/[:.]/g, '-');
@@ -27,21 +41,25 @@ function fakeOrdinal(index) {
   return String(index + 1).padStart(3, '0');
 }
 
+function sampleAthlete(index) {
+  return sampleAthletes[index % sampleAthletes.length];
+}
+
 function fakeAthleteName(index) {
-  return `Fake Athlete ${fakeOrdinal(index)}`;
+  return sampleAthlete(index).name;
 }
 
 function fakeParentName(index, parentIndex) {
-  return `Fake Parent ${fakeOrdinal(index)}-${parentIndex}`;
+  const lastName = sampleAthlete(index).name.split(/\s+/).pop() || 'Carter';
+  return `${parentIndex === 1 ? 'Dana' : 'Robin'} ${lastName}`;
 }
 
 function fakeEmail(prefix, index) {
-  return `${prefix}${fakeOrdinal(index)}@example.com`;
+  return `${prefix}${fakeOrdinal(index)}@recruitmail.test`;
 }
 
-function fakePhone(index, offset = 0) {
-  const suffix = String(1000 + index + offset).slice(-4);
-  return `555-010-${suffix}`;
+function fakePhone() {
+  return '5555555555';
 }
 
 function fakeStatus(row, index) {
@@ -96,6 +114,7 @@ function sanitizeVideoTasks(db) {
 
   rows.forEach((row, index) => {
     const nextStatus = fakeStatus(row, index);
+    const athlete = sampleAthlete(index);
     if (nextStatus !== String(row.video_progress_status || '').trim()) {
       failureStatuses += 1;
     }
@@ -106,17 +125,17 @@ function sanitizeVideoTasks(db) {
            high_school = $high_school,
            high_school_city = $high_school_city,
            high_school_state = $high_school_state,
-           assignedvideoeditor = COALESCE(NULLIF(assignedvideoeditor, ''), 'Primary Operator'),
+           assignedvideoeditor = COALESCE(NULLIF(assignedvideoeditor, ''), 'Jerami Singleton'),
            updated_at = COALESCE(updated_at, datetime('now')),
            cached_at = COALESCE(cached_at, datetime('now'))
        WHERE id = $id`,
       {
         $id: row.id,
-        $athletename: fakeAthleteName(index),
+        $athletename: athlete.name,
         $video_progress_status: nextStatus,
-        $high_school: `Fake Prep ${fakeOrdinal(index)}`,
-        $high_school_city: 'Example City',
-        $high_school_state: 'FL',
+        $high_school: athlete.school,
+        $high_school_city: athlete.city,
+        $high_school_state: athlete.state,
       },
     );
   });
@@ -148,13 +167,13 @@ function sanitizeContactInfo(db) {
       {
         $contact_id: row.contact_id,
         $student_name: fakeAthleteName(index),
-        $student_email: fakeEmail('fake.athlete', index),
+        $student_email: fakeEmail('athlete', index),
         $student_phone: fakePhone(index),
         $parent1_name: fakeParentName(index, 1),
-        $parent1_email: fakeEmail('fake.parent1.', index),
+        $parent1_email: fakeEmail('parent1.', index),
         $parent1_phone: fakePhone(index, 100),
         $parent2_name: fakeParentName(index, 2),
-        $parent2_email: fakeEmail('fake.parent2.', index),
+        $parent2_email: fakeEmail('parent2.', index),
         $parent2_phone: fakePhone(index, 200),
       },
     );

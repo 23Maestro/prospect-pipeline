@@ -31,15 +31,15 @@ test('demo api provides populated Scout Prep tasks with fake athletes', async ()
   const payload = await readJson(getDemoApiResponse('/scout/tasks'));
 
   assert.ok(payload.tasks.length >= 10);
-  assert.match(payload.tasks[0].athlete_name, /^Fake Athlete \d{3}$/);
-  assert.equal(payload.tasks[0].athlete_profile_url.includes('demo.prospect-pipeline.local'), true);
+  assert.equal(payload.tasks[0].athlete_name, 'Camden Ellis');
+  assert.equal(payload.tasks[0].athlete_profile_url.includes('ops.prospect-pipeline.local'), true);
 });
 
 test('demo api provides scout schedules and meeting slots', async () => {
   const payload = await readJson(getDemoApiResponse('/calendar/head-scout-slots'));
 
   assert.ok(payload.scouts.length >= 4);
-  assert.equal(payload.scouts[0].scout_name, 'Scout Riley');
+  assert.equal(payload.scouts[0].scout_name, 'Riley Parker');
   assert.ok(payload.scouts[0].slots.length > 0);
 });
 
@@ -55,5 +55,5 @@ test('demo Supabase rows provide confirmation-cache recipient data', () => {
 
   assert.ok(rows.length > 0);
   assert.equal(rows[0].recipient_phone, '5555555555');
-  assert.match(rows[0].recipient_name, /^Fake Parent \d{3}-1$/);
+  assert.equal(rows[0].recipient_name, 'Dana Ellis');
 });

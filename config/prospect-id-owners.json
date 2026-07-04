@@ -9,7 +9,12 @@
       "assignedToLegacyUserId": "100001",
       "meetingForLegacyUserId": null,
       "calendarOwnerId": null,
-      "roles": ["call_tracker_operator", "appointment_setter", "scouting_coordinator", "task_owner"],
+      "roles": [
+        "call_tracker_operator",
+        "appointment_setter",
+        "scouting_coordinator",
+        "task_owner"
+      ],
       "dashboardTrackingEligible": true
     },
     {
@@ -31,7 +36,7 @@
       "calendarOwnerId": "calendar_owner_a",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Bradenton",
       "state": "FL"
     },
     {
@@ -43,7 +48,7 @@
       "calendarOwnerId": "calendar_owner_b",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Dallas",
       "state": "TX"
     },
     {
@@ -55,7 +60,7 @@
       "calendarOwnerId": "calendar_owner_c",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Phoenix",
       "state": "AZ"
     },
     {
@@ -67,7 +72,7 @@
       "calendarOwnerId": "calendar_owner_d",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Atlanta",
       "state": "GA"
     },
     {
@@ -79,7 +84,7 @@
       "calendarOwnerId": "calendar_owner_e",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Charlotte",
       "state": "NC"
     },
     {
@@ -91,7 +96,7 @@
       "calendarOwnerId": "calendar_owner_f",
       "roles": ["head_scout", "calendar_owner", "appointment_setter", "task_owner"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Charleston",
       "state": "SC"
     },
     {
@@ -103,7 +108,7 @@
       "calendarOwnerId": "calendar_owner_g",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Richmond",
       "state": "VA"
     },
     {
@@ -115,7 +120,7 @@
       "calendarOwnerId": "calendar_owner_h",
       "roles": ["head_scout", "calendar_owner", "appointment_setter"],
       "dashboardTrackingEligible": false,
-      "city": "Example City",
+      "city": "Nashville",
       "state": "TN"
     }
   ]

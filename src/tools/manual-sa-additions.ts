@@ -29,7 +29,7 @@ type ProspectResult = {
 };
 
 const FEATURE = 'tool.manual-sa-additions';
-const ASSIGNED_EDITOR = 'Primary Operator';
+const ASSIGNED_EDITOR = 'Jerami Singleton';
 const MIN_GRAD_YEAR = 2026;
 
 function logInfo(

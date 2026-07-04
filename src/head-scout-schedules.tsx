@@ -368,13 +368,13 @@ export type HeadScoutBookingsListProps = {
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['y', 'u', 'h', 'j', 'n'];
 const SCOUT_GRID_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5', '6'];
 const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
-  { title: 'Copy Head Scout A Card', scoutName: 'Head Scout A' },
-  { title: 'Copy Head Scout B Card', scoutName: 'Head Scout B' },
-  { title: 'Copy Head Scout C Card', scoutName: 'Head Scout C' },
-  { title: 'Copy Head Scout D Card', scoutName: 'Head Scout D' },
-  { title: 'Copy Head Scout E Card', scoutName: 'Head Scout E' },
-  { title: 'Copy Head Scout F Card', scoutName: 'Head Scout F' },
-  { title: 'Copy Primary Operator Card', scoutName: 'Primary Operator' },
+  { title: 'Copy Riley Parker Card', scoutName: 'Head Scout A' },
+  { title: 'Copy Morgan Blake Card', scoutName: 'Head Scout B' },
+  { title: 'Copy Avery Collins Card', scoutName: 'Head Scout C' },
+  { title: 'Copy Jordan Hayes Card', scoutName: 'Head Scout D' },
+  { title: 'Copy Cameron Brooks Card', scoutName: 'Head Scout E' },
+  { title: 'Copy Taylor Reed Card', scoutName: 'Head Scout F' },
+  { title: 'Copy Jerami Singleton Card', scoutName: 'Primary Operator' },
 ] as const;
 
 async function showLoadingToast(title: string, message?: string) {

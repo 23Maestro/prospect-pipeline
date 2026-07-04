@@ -68,7 +68,7 @@ export function buildCalFallbackEmail(args: {
 }): string {
   const digits = clean(args.phone).replace(/\D/g, '');
   if (digits) {
-    return `followup+${digits}@example.com`;
+    return `followup+${digits}@prospectmail.test`;
   }
 
   const slug =
@@ -76,7 +76,7 @@ export function buildCalFallbackEmail(args: {
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '') || 'client';
-  return `followup+${slug}@example.com`;
+  return `followup+${slug}@prospectmail.test`;
 }
 
 function requireCalPreferences(): Required<Pick<CalPreferences, 'calApiKey'>> & CalPreferences {

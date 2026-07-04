@@ -1,8 +1,31 @@
 import { Response } from 'node-fetch';
 import type { RequestInit } from 'node-fetch';
 
-const FAKE_PHONE = '5555555555';
-const FAKE_SCOUTS = ['Scout Riley', 'Scout Morgan', 'Scout Avery', 'Scout Jordan'];
+const SAMPLE_PHONE = '5555555555';
+const SAMPLE_BASE_URL = 'https://ops.prospect-pipeline.local';
+const SAMPLE_OPERATOR = 'Jerami Singleton';
+const SAMPLE_SCOUTS = [
+  'Riley Parker',
+  'Morgan Blake',
+  'Avery Collins',
+  'Jordan Hayes',
+  'Cameron Brooks',
+  'Taylor Reed',
+];
+const SAMPLE_ATHLETES = [
+  { name: 'Camden Ellis', school: 'Lakeview Prep', city: 'Bradenton', state: 'FL' },
+  { name: 'Malik Johnson', school: 'North Ridge High', city: 'Sarasota', state: 'FL' },
+  { name: 'Brady Torres', school: 'Summit Christian', city: 'Tampa', state: 'FL' },
+  { name: 'Noah Bennett', school: 'Riverbend Academy', city: 'Lakeland', state: 'FL' },
+  { name: 'Jalen Price', school: 'Coastal Tech', city: 'Fort Myers', state: 'FL' },
+  { name: 'Isaiah Brooks', school: 'Palm Valley High', city: 'Naples', state: 'FL' },
+  { name: 'Micah Reed', school: 'East Bay Prep', city: 'Orlando', state: 'FL' },
+  { name: 'Dylan Carter', school: 'Westlake Academy', city: 'Jacksonville', state: 'FL' },
+  { name: 'Kai Mitchell', school: 'Oak Harbor High', city: 'Clearwater', state: 'FL' },
+  { name: 'Evan Morales', school: 'Pinecrest Prep', city: 'St. Petersburg', state: 'FL' },
+  { name: 'Landon Cooper', school: 'Cypress Ridge', city: 'Gainesville', state: 'FL' },
+  { name: 'Tyson Ward', school: 'Harbor View High', city: 'Boca Raton', state: 'FL' },
+];
 const SPORTS = ['Football', 'Basketball', 'Baseball', 'Softball'];
 const POSITIONS = ['WR', 'QB-D', 'CB', 'PG', 'RHP', 'SS', 'DE', 'OLB'];
 const STAGES = ['Meeting Set', 'Call Attempt 2', 'Call Attempt 3', 'Reschedule Pending'];
@@ -13,7 +36,7 @@ export function isDemoMode(): boolean {
 }
 
 export function demoPhone(): string {
-  return FAKE_PHONE;
+  return SAMPLE_PHONE;
 }
 
 function nowBase(): Date {
@@ -48,22 +71,29 @@ function pad(index: number): string {
   return String(index).padStart(3, '0');
 }
 
+function sampleAthleteProfile(index = 1) {
+  return SAMPLE_ATHLETES[(Math.max(1, index) - 1) % SAMPLE_ATHLETES.length];
+}
+
 export function fakeAthleteName(index = 1): string {
-  return `Fake Athlete ${pad(index)}`;
+  return sampleAthleteProfile(index).name;
 }
 
 function fakeParentName(index: number, parentIndex: 1 | 2): string {
-  return `Fake Parent ${pad(index)}-${parentIndex}`;
+  const lastName = sampleAthleteProfile(index).name.split(/\s+/).pop() || 'Carter';
+  return `${parentIndex === 1 ? 'Dana' : 'Robin'} ${lastName}`;
 }
 
 function fakeEmail(prefix: string, index: number): string {
-  return `${prefix}${pad(index)}@example.com`;
+  return `${prefix}${pad(index)}@recruitmail.test`;
 }
 
 function athleteIndexFromValue(value?: string | number | null): number {
   const digits = String(value || '').replace(/\D/g, '');
   if (!digits) return 1;
-  return (Number.parseInt(digits.slice(-3), 10) % 24) + 1;
+  const parsed = Number.parseInt(digits.slice(-3), 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 1;
+  return ((parsed - 1) % SAMPLE_ATHLETES.length) + 1;
 }
 
 function fakeTask(index: number) {
@@ -71,48 +101,50 @@ function fakeTask(index: number) {
   const athleteId = id(index);
   const athleteMainId = mainId(index);
   const sport = SPORTS[index % SPORTS.length];
+  const profile = sampleAthleteProfile(index);
   return {
     task_id: `task-${pad(index)}`,
     contact_id: athleteId,
     athlete_id: athleteId,
     athlete_main_id: athleteMainId,
-    athlete_name: fakeAthleteName(index),
+    athlete_name: profile.name,
     sport,
-    high_school: `Fake Prep ${pad(index)}`,
-    city: 'Bradenton',
-    state: 'FL',
+    high_school: profile.school,
+    city: profile.city,
+    state: profile.state,
     due_date: due.toISOString(),
     completion_date: null,
-    assigned_owner: 'Primary Operator',
+    assigned_owner: SAMPLE_OPERATOR,
     grad_year: String(2026 + (index % 5)),
     title: STAGES[index % STAGES.length],
-    description: `Call notes for ${fakeAthleteName(index)}. Parent asked for practical next steps and available meeting times.`,
-    athlete_admin_url: `https://demo.prospect-pipeline.local/admin/athletes?contactid=${athleteId}`,
-    athlete_profile_url: `https://demo.prospect-pipeline.local/athlete/profile/${athleteId}`,
-    athlete_task_url: `https://demo.prospect-pipeline.local/admin/tasks/${id(index, 700000)}`,
+    description: `Call notes for ${profile.name}. Parent asked for practical next steps and available meeting times.`,
+    athlete_admin_url: `${SAMPLE_BASE_URL}/admin/athletes?contactid=${athleteId}`,
+    athlete_profile_url: `${SAMPLE_BASE_URL}/athlete/profile/${athleteId}`,
+    athlete_task_url: `${SAMPLE_BASE_URL}/admin/tasks/${id(index, 700000)}`,
   };
 }
 
 function fakeVideoTask(index: number) {
   const due = addDays(nowBase(), index % 12);
+  const profile = sampleAthleteProfile(index);
   return {
     id: 500000 + index,
     athlete_id: Number(id(index)),
     athlete_main_id: mainId(index),
-    athletename: fakeAthleteName(index),
+    athletename: profile.name,
     video_progress_status: VIDEO_STATUSES[index % VIDEO_STATUSES.length],
     stage: index % 6 === 0 ? 'Awaiting Client' : index % 5 === 0 ? 'On Hold' : 'In Queue',
     sport_name: SPORTS[index % SPORTS.length],
     sport_alias: SPORTS[index % SPORTS.length].toLowerCase(),
     grad_year: 2026 + (index % 5),
     video_due_date: due.toISOString(),
-    assignedvideoeditor: 'Primary Operator',
+    assignedvideoeditor: SAMPLE_OPERATOR,
     primaryposition: POSITIONS[index % POSITIONS.length],
     secondaryposition: POSITIONS[(index + 2) % POSITIONS.length],
     thirdposition: 'NA',
-    high_school: `Fake Prep ${pad(index)}`,
-    high_school_city: 'Bradenton',
-    high_school_state: 'FL',
+    high_school: profile.school,
+    high_school_city: profile.city,
+    high_school_state: profile.state,
     updated_at: nowBase().toISOString(),
     cached_at: nowBase().toISOString(),
     source: 'server',
@@ -122,24 +154,25 @@ function fakeVideoTask(index: number) {
 }
 
 function fakeContactInfo(index: number) {
+  const profile = sampleAthleteProfile(index);
   return {
     contactId: id(index),
     studentAthlete: {
-      name: fakeAthleteName(index),
+      name: profile.name,
       email: fakeEmail('athlete', index),
-      phone: FAKE_PHONE,
+      phone: SAMPLE_PHONE,
     },
     parent1: {
       name: fakeParentName(index, 1),
       relationship: 'Parent 1',
       email: fakeEmail('parent1.', index),
-      phone: FAKE_PHONE,
+      phone: SAMPLE_PHONE,
     },
     parent2: {
       name: fakeParentName(index, 2),
       relationship: 'Parent 2',
       email: fakeEmail('parent2.', index),
-      phone: FAKE_PHONE,
+      phone: SAMPLE_PHONE,
     },
   };
 }
@@ -159,35 +192,36 @@ function fakeBookedEvent(index: number) {
   const startDay = addDays(nowBase(), index + 1);
   const start = localSlot(startDay, 18 + (index % 3), index % 2 ? 30 : 0);
   const end = localSlot(startDay, 19 + (index % 3), index % 2 ? 30 : 0);
-  const scout = FAKE_SCOUTS[index % FAKE_SCOUTS.length];
+  const scout = SAMPLE_SCOUTS[index % SAMPLE_SCOUTS.length];
   const athleteName = fakeAthleteName(index);
+  const profile = sampleAthleteProfile(index);
   return {
-    event_id: `fake-event-${pad(index)}`,
+    event_id: `event-${pad(index)}`,
     athlete_id: id(index),
     athlete_main_id: mainId(index),
     athlete_name: athleteName,
-    title: `${athleteName} Football ${2026 + (index % 5)} FL`,
+    title: `${athleteName} Football ${2026 + (index % 5)} ${profile.state}`,
     assigned_owner: scout,
     start,
     end,
     date_time_label: `${start.replace('T', ' ')} EST`,
-    description: `Meeting with ${athleteName}. Parent phone: ${FAKE_PHONE}.`,
+    description: `Meeting with ${athleteName}. Parent phone: ${SAMPLE_PHONE}.`,
   };
 }
 
 function fakeHeadScoutSlots() {
   const start = addDays(nowBase(), 1);
-  return FAKE_SCOUTS.map((scout, scoutIndex) => ({
+  return SAMPLE_SCOUTS.map((scout, scoutIndex) => ({
     scout_name: scout,
-    city: 'Bradenton',
+    city: sampleAthleteProfile(scoutIndex + 1).city,
     state: 'FL',
-    calendar_owner_id: `calendar_owner_${scoutIndex + 1}`,
-    meeting_for: `head_scout_${scoutIndex + 1}`,
+    calendar_owner_id: `calendar_owner_${100 + scoutIndex + 1}`,
+    meeting_for: `scout_${100 + scoutIndex + 1}`,
     slot_count: 3,
     slots: [0, 1, 2].map((slotIndex) => {
       const day = addDays(start, scoutIndex + slotIndex);
       return {
-        id: `fake-slot-${scoutIndex + 1}-${slotIndex + 1}`,
+        id: `slot-${scoutIndex + 1}-${slotIndex + 1}`,
         start: localSlot(day, 17 + slotIndex),
         end: localSlot(day, 18 + slotIndex),
         scout_name: scout,
@@ -209,15 +243,15 @@ function fakeConfirmationRows() {
       athlete_main_id: String(event.athlete_main_id),
       athlete_name: event.athlete_name,
       recipient_name: fakeParentName(index, 1),
-      recipient_phone: FAKE_PHONE,
+      recipient_phone: SAMPLE_PHONE,
       head_scout_name: event.assigned_owner,
       meeting_starts_at: new Date(event.start).toISOString(),
       meeting_duration_minutes: 60,
       meeting_ends_at: new Date(event.end).toISOString(),
       meeting_timezone: 'America/New_York',
       message_body: `Hi ${fakeParentName(index, 1)}, confirming ${event.athlete_name}'s meeting with ${event.assigned_owner}.`,
-      admin_url: `https://demo.prospect-pipeline.local/admin/athletes?contactid=${event.athlete_id}`,
-      task_url: `https://demo.prospect-pipeline.local/admin/tasks/${id(index, 700000)}`,
+      admin_url: `${SAMPLE_BASE_URL}/admin/athletes?contactid=${event.athlete_id}`,
+      task_url: `${SAMPLE_BASE_URL}/admin/tasks/${id(index, 700000)}`,
       source: 'raycast',
       generated_at: nowBase().toISOString(),
       created_at: nowBase().toISOString(),
@@ -303,19 +337,20 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
     });
   if (path.startsWith('/athlete/') && path.endsWith('/scout-prep-resolve')) {
     const index = athleteIndexFromValue(path);
+    const profile = sampleAthleteProfile(index);
     return jsonResponse({
       athlete_id: id(index),
       athlete_main_id: mainId(index),
-      name: fakeAthleteName(index),
+      name: profile.name,
       grad_year: String(2026 + (index % 5)),
-      high_school: `Fake Prep ${pad(index)}`,
-      city: 'Bradenton',
-      state: 'FL',
+      high_school: profile.school,
+      city: profile.city,
+      state: profile.state,
       positions: 'WR | CB',
       sport: 'Football',
       gpa: '3.7',
-      head_scout: FAKE_SCOUTS[index % FAKE_SCOUTS.length],
-      scouting_coordinator: 'Primary Operator',
+      head_scout: SAMPLE_SCOUTS[index % SAMPLE_SCOUTS.length],
+      scouting_coordinator: SAMPLE_OPERATOR,
     });
   }
   if (path.startsWith('/athlete/') && path.endsWith('/measurables')) {
@@ -325,15 +360,16 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
     return jsonResponse({ name: fakeAthleteName(athleteIndexFromValue(path)) });
   if (path.startsWith('/athlete/') && path.includes('/resolve')) {
     const index = athleteIndexFromValue(path);
+    const profile = sampleAthleteProfile(index);
     return jsonResponse({
       athlete_id: id(index),
       athlete_main_id: mainId(index),
-      name: fakeAthleteName(index),
+      name: profile.name,
       grad_year: String(2026 + (index % 5)),
       sport: 'Football',
-      high_school: `Fake Prep ${pad(index)}`,
-      city: 'Bradenton',
-      state: 'FL',
+      high_school: profile.school,
+      city: profile.city,
+      state: profile.state,
       positions: 'WR | CB',
       jersey_number: String(index + 1),
     });
@@ -342,23 +378,27 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
     return jsonResponse({
       success: true,
       count: 8,
-      results: Array.from({ length: 8 }, (_, i) => ({
-        athlete_id: id(i + 1),
-        athlete_main_id: mainId(i + 1),
-        name: fakeAthleteName(i + 1),
-        grad_year: String(2026 + (i % 5)),
-        sport: SPORTS[i % SPORTS.length],
-        state: 'FL',
-        city: 'Bradenton',
-        high_school: `Fake Prep ${pad(i + 1)}`,
-        email: fakeEmail('athlete', i + 1),
-        phone: FAKE_PHONE,
-        parent_name: fakeParentName(i + 1, 1),
-        parent_email: fakeEmail('parent1.', i + 1),
-        parent_phone: FAKE_PHONE,
-        positions: 'WR | CB',
-        source: 'recent',
-      })),
+      results: Array.from({ length: 8 }, (_, i) => {
+        const index = i + 1;
+        const profile = sampleAthleteProfile(index);
+        return {
+          athlete_id: id(index),
+          athlete_main_id: mainId(index),
+          name: profile.name,
+          grad_year: String(2026 + (i % 5)),
+          sport: SPORTS[i % SPORTS.length],
+          state: profile.state,
+          city: profile.city,
+          high_school: profile.school,
+          email: fakeEmail('athlete', index),
+          phone: SAMPLE_PHONE,
+          parent_name: fakeParentName(index, 1),
+          parent_email: fakeEmail('parent1.', index),
+          parent_phone: SAMPLE_PHONE,
+          positions: 'WR | CB',
+          source: 'recent',
+        };
+      }),
     });
   if (path.startsWith('/contacts/') && path.includes('/enriched'))
     return jsonResponse(fakeContactInfo(athleteIndexFromValue(path)));
@@ -368,7 +408,7 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
         {
           title: 'Call Prep',
           description: 'Parent wants clear next steps and available meeting times.',
-          created_by: 'Primary Operator',
+          created_by: SAMPLE_OPERATOR,
           created_at: nowBase().toISOString(),
         },
       ],
@@ -413,8 +453,8 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
       success: true,
       athlete_id: String(body.athlete_id || id(1)),
       athlete_main_id: String(body.athlete_main_id || mainId(1)),
-      assigned_to: String(body.assigned_to || FAKE_SCOUTS[0]),
-      open_event_id: String(body.open_event_id || 'fake-slot-1-1'),
+      assigned_to: String(body.assigned_to || SAMPLE_SCOUTS[0]),
+      open_event_id: String(body.open_event_id || 'slot-1-1'),
       meeting_name: String(body.meeting_name || `${fakeAthleteName(1)} Football 2027 FL`),
       template_id: String(body.template_id || '210'),
       status_code: 200,
@@ -465,15 +505,15 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
   if (path.startsWith('/calendar/booked-meeting/details'))
     return jsonResponse({
       success: true,
-      event_id: 'fake-event-001',
+      event_id: 'event-001',
       title: fakeBookedEvent(1).title,
       description: fakeBookedEvent(1).description,
-      form_data: { contact: FAKE_PHONE, template_id: '210' },
+      form_data: { contact: SAMPLE_PHONE, template_id: '210' },
     });
   if (path === '/calendar/booked-meeting/title')
     return jsonResponse({
       success: true,
-      event_id: String(body.event_id || 'fake-event-001'),
+      event_id: String(body.event_id || 'event-001'),
       prefix: String(body.prefix || 'CONF'),
       original_title: fakeBookedEvent(1).title,
       updated_title: `${String(body.prefix || 'CONF')} ${fakeBookedEvent(1).title}`,
@@ -482,7 +522,7 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
   if (path === '/calendar/booked-meeting/description')
     return jsonResponse({
       success: true,
-      event_id: String(body.event_id || 'fake-event-001'),
+      event_id: String(body.event_id || 'event-001'),
       original_description: fakeBookedEvent(1).description,
       updated_description: String(body.description || fakeBookedEvent(1).description),
       message: 'Saved',
@@ -549,8 +589,8 @@ export function getDemoApiResponse(endpoint: string, options?: RequestInit): Res
     });
   if (path === '/email/template-data')
     return jsonResponse({
-      sender_name: 'Primary Operator',
-      sender_email: 'operator@example.com',
+      sender_name: SAMPLE_OPERATOR,
+      sender_email: 'operator@prospectmail.test',
       subject: 'Your video update is ready',
       message: 'Hi, your video update is ready for review.',
     });
@@ -645,9 +685,9 @@ export function getDemoSupabaseRows<T = Record<string, unknown>>(table: string):
       athlete_main_id: mainId(i + 1),
       athlete_name: fakeAthleteName(i + 1),
       contact_name: fakeParentName(i + 1, 1),
-      contact_phone: FAKE_PHONE,
+      contact_phone: SAMPLE_PHONE,
       contact_role: 'parent1',
-      phone_lookup: FAKE_PHONE,
+      phone_lookup: SAMPLE_PHONE,
       lifecycle_active: true,
     })) as T[];
   if (table === 'athletes')

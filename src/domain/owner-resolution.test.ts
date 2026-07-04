@@ -57,7 +57,7 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(david?.assignedToLegacyUserId, '200001');
   assert.equal(david?.meetingForLegacyUserId, '200001');
   assert.equal(david?.calendarOwnerId, 'calendar_owner_a');
-  assert.equal(david?.city, 'Example City');
+  assert.equal(david?.city, 'Bradenton');
   assert.equal(david?.state, 'FL');
   assert.equal(david?.roles.includes('head_scout'), true);
 
@@ -65,7 +65,7 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(logan?.assignedToLegacyUserId, '200006');
   assert.equal(logan?.meetingForLegacyUserId, '200006');
   assert.equal(logan?.calendarOwnerId, 'calendar_owner_f');
-  assert.equal(logan?.city, 'Example City');
+  assert.equal(logan?.city, 'Charleston');
   assert.equal(logan?.state, 'SC');
   assert.equal(logan?.roles.includes('head_scout'), true);
 
@@ -74,7 +74,7 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(kenton?.assignedToLegacyUserId, '200007');
   assert.equal(kenton?.meetingForLegacyUserId, '200007');
   assert.equal(kenton?.calendarOwnerId, 'calendar_owner_g');
-  assert.equal(kenton?.city, 'Example City');
+  assert.equal(kenton?.city, 'Richmond');
   assert.equal(kenton?.state, 'VA');
   assert.equal(kenton?.roles.includes('head_scout'), true);
 
@@ -83,7 +83,7 @@ test('new Meeting Set owners resolve from live legacy ids', () => {
   assert.equal(nasir?.assignedToLegacyUserId, '200008');
   assert.equal(nasir?.meetingForLegacyUserId, '200008');
   assert.equal(nasir?.calendarOwnerId, 'calendar_owner_h');
-  assert.equal(nasir?.city, 'Example City');
+  assert.equal(nasir?.city, 'Nashville');
   assert.equal(nasir?.state, 'TN');
   assert.equal(nasir?.roles.includes('head_scout'), true);
 });
@@ -292,10 +292,10 @@ test('materialization status vocabulary stays binary', () => {
     }),
   ];
 
-  assert.deepEqual(
-    [...new Set(cases.map((result) => result.materializationStatus))].sort(),
-    ['not_operator_task', 'operator_task'],
-  );
+  assert.deepEqual([...new Set(cases.map((result) => result.materializationStatus))].sort(), [
+    'not_operator_task',
+    'operator_task',
+  ]);
 });
 
 test('scoutingCoordinator keeps Laravel meaning distinct from head scout', () => {
