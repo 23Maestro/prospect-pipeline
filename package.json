@@ -119,7 +119,7 @@
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.104.17",
+    "@raycast/api": "^1.104.20",
     "@raycast/utils": "^2.2.4",
     "cheerio": "^1.2.0",
     "city-timezones": "^1.3.4",
