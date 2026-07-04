@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ACTION="${1:-start}"
-PROJECT_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 API_PORT="${API_PORT:-8000}"
 FUNNEL_PORT="${FUNNEL_PORT:-443}"
 TAILSCALE_BIN="${TAILSCALE_BIN:-tailscale}"

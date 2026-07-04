@@ -6,7 +6,7 @@ Harden Raycast Scout Prep workflow identity handling so durable business identit
 
 ## Repo Context
 
-- Repo: `/Users/singleton23/Raycast/prospect-pipeline`.
+- Repo: `<REPO_ROOT>`.
 - Primary command surface: `src/scout-prep.tsx`.
 - Architecture map: `docs/architecture/scouting-coordinator-system-map.md`.
 - Supabase truth map: `docs/architecture/scout-prep-supabase-source-of-truth.md`.

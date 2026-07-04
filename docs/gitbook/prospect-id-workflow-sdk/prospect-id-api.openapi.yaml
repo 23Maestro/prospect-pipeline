@@ -10,7 +10,7 @@ info:
     video progress, and customer video requests without requiring a broad
     site rebuild.
 servers:
-  - url: https://dashboard.nationalpid.com
+  - url: https://legacy-dashboard.example.com
     description: Prospect ID website
 tags:
   - name: Workflow

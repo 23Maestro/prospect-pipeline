@@ -6,9 +6,9 @@ echo "🔧 HTTPie Session Setup for Prospect ID Dashboard"
 echo "=================================================="
 echo ""
 echo "📋 Step 1: Extract Cookies from Chrome"
-echo "1. Open Chrome and navigate to: https://dashboard.nationalpid.com"
+echo "1. Open Chrome and navigate to: https://legacy-dashboard.example.com"
 echo "2. Press Cmd+Option+I to open DevTools"
-echo "3. Go to Application tab → Cookies → dashboard.nationalpid.com"
+echo "3. Go to Application tab → Cookies → legacy-dashboard.example.com"
 echo "4. Find and copy these three cookie values:"
 echo ""
 echo "   - remember_82e5d2c56bdd0811318f0cf078b78bfc"
@@ -35,10 +35,10 @@ echo "🔨 Step 3: Creating HTTPie Session"
 echo ""
 
 # Create session directory
-mkdir -p ~/.config/httpie/sessions/dashboard.nationalpid.com
+mkdir -p ~/.config/httpie/sessions/legacy-dashboard.example.com
 
 # Create session file
-cat > ~/.config/httpie/sessions/dashboard.nationalpid.com/prospect-id.json << EOF
+cat > ~/.config/httpie/sessions/legacy-dashboard.example.com/prospect-id.json << EOF
 {
   "__meta__": {
     "about": "HTTPie session file",
@@ -78,7 +78,7 @@ cat > ~/.config/httpie/sessions/dashboard.nationalpid.com/prospect-id.json << EO
 EOF
 
 echo "✅ Session file created at:"
-echo "   ~/.config/httpie/sessions/dashboard.nationalpid.com/prospect-id.json"
+echo "   ~/.config/httpie/sessions/legacy-dashboard.example.com/prospect-id.json"
 echo ""
 echo "🧪 Step 4: Testing Session"
 echo ""
@@ -86,7 +86,7 @@ echo "Testing inbox endpoint..."
 
 # Test the session with inbox endpoint
 http --session=prospect-id --check-status --timeout=10 \
-  POST 'https://dashboard.nationalpid.com/videoteammsg/getvideomailthreads' \
+  POST 'https://legacy-dashboard.example.com/videoteammsg/getvideomailthreads' \
   thread_status=all \
   assigned_to= \
   search_keyword= \

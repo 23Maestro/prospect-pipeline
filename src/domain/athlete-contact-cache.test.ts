@@ -29,7 +29,7 @@ function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
       athlete_main_id: '951000',
       athlete_name: 'Avery Jones',
       title: 'Call Attempt 1',
-      athlete_task_url: 'https://dashboard.nationalpid.com/admin/tasks/1',
+      athlete_task_url: 'https://legacy-dashboard.example.com/admin/tasks/1',
     },
     resolved: {
       athlete_id: '1489000',
@@ -82,7 +82,7 @@ test('buildAthleteContactCacheSyncPlan builds active rows from Scout Prep contac
   assertUpsertPlan(plan);
   assert.equal(plan.athleteKey, '1489000:951000');
   assert.equal(plan.rows.length, 3);
-  assert.equal(plan.rows[0].admin_url, 'https://dashboard.nationalpid.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
+  assert.equal(plan.rows[0].admin_url, 'https://legacy-dashboard.example.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
   assert.deepEqual(
     plan.rows.map((row) => row.normalized_phone).sort(),
     ['6155551212', '6155553000', '6155559898'],
@@ -113,8 +113,8 @@ test('buildManualAdditionalAthleteContactCacheRow builds an active support row f
   assert.equal(row.relationship_label, 'Parent 2');
   assert.equal(row.phone, '407-555-0123');
   assert.equal(row.normalized_phone, '4075550123');
-  assert.equal(row.admin_url, 'https://dashboard.nationalpid.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
-  assert.equal(row.task_url, 'https://dashboard.nationalpid.com/admin/tasks/1');
+  assert.equal(row.admin_url, 'https://legacy-dashboard.example.com/admin/athletes?contactid=1489000&athlete_main_id=951000');
+  assert.equal(row.task_url, 'https://legacy-dashboard.example.com/admin/tasks/1');
   assert.equal(row.timezone, 'America/Chicago');
   assert.equal(row.timezone_label, 'CST');
   assert.equal(row.source, 'scout_prep_manual_contact');

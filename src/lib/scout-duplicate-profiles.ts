@@ -12,7 +12,10 @@ const FEATURE = 'scout-duplicate-profiles';
 const REPEAT_PROFILE_MARKER = 'Repeat Profile';
 const REPEAT_TASK_TITLE = 'REPEAT';
 const REPEAT_TASK_DESCRIPTION = '';
-const DUPLICATE_PROFILE_CHECK_LOG_FILE = '/Users/singleton23/raycast_logs/scout-duplicate-profile-checks.json';
+const DUPLICATE_PROFILE_CHECK_LOG_FILE = path.join(
+  process.env.RAYCAST_LOG_DIR || `${process.env.HOME || ''}/raycast_logs`,
+  'scout-duplicate-profile-checks.json',
+);
 const DUPLICATE_PROFILE_CHECK_LOG_LIMIT = 500;
 
 const APOSTROPHE_VARIANT_PATTERN = /(?:\u00e2\u20ac[\u2122\u02dc]|\u201a\u00c4[\u00f4\u00f2]|\u2019|\u2018|\u02bc|\u00b4|`)/g;

@@ -32,7 +32,7 @@ import { resolveCallTrackerOwnership } from './call-tracker-ownership.mjs';
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
-const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const TRACKED_OWNER_NAME = process.env.CALL_TRACKER_OWNER || 'Primary Operator';
 const LOCK_DIR = process.env.CURRENT_PIPELINE_SYNC_LOCK_DIR || '/tmp/prospect-pipeline-current-pipeline-sync.lock';
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const {

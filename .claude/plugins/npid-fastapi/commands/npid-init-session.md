@@ -44,7 +44,7 @@ def get_session(request: Request) -> NPIDSession:
 
 **Python Environment (MANDATORY):**
 
-- MUST use: `/Users/singleton23/Raycast/prospect-pipeline/venv/bin/python`
+- MUST use: `<REPO_ROOT>/venv/bin/python`
 - NEVER use: system Python
 
 **Legacy Quirks:**

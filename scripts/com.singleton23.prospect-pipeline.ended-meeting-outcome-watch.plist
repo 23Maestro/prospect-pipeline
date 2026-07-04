@@ -9,16 +9,16 @@
   <key>ProgramArguments</key>
   <array>
     <string>/bin/zsh</string>
-    <string>/Users/singleton23/Raycast/prospect-pipeline/scripts/run-ended-meeting-outcome-watch.sh</string>
+    <string><REPO_ROOT>/scripts/run-ended-meeting-outcome-watch.sh</string>
   </array>
 
   <key>WorkingDirectory</key>
-  <string>/Users/singleton23/Raycast/prospect-pipeline</string>
+  <string><REPO_ROOT></string>
 
   <key>EnvironmentVariables</key>
   <dict>
     <key>PATH</key>
-    <string>/Users/singleton23/.nvm/versions/node/v22.16.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <string><NODE_BIN_DIR>:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
     <key>TZ</key>
     <string>America/New_York</string>
     <key>API_BASE</key>
@@ -36,9 +36,9 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/singleton23/raycast_logs/ended-meeting-outcome-watch/launchd.out.log</string>
+  <string><LOCAL_LOG_DIR>/ended-meeting-outcome-watch/launchd.out.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/singleton23/raycast_logs/ended-meeting-outcome-watch/launchd.err.log</string>
+  <string><LOCAL_LOG_DIR>/ended-meeting-outcome-watch/launchd.err.log</string>
 </dict>
 </plist>

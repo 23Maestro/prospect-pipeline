@@ -59,7 +59,7 @@ Content-Type: application/json
   "athlete_main_id": "941787",
   "meeting_name": "Prospect ID Evaluation",
   "meeting_timezone": "America/New_York",
-  "assigned_to": "1408164",
+  "assigned_to": "100001",
   "open_event_id": "event_123",
   "task_description": "Meeting set from appointment-setting workflow.",
   "start_time": "2026-05-15 16:00:00",

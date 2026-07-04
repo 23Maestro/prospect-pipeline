@@ -3,9 +3,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { hashParentResponseToken } from '../domain/parent-response-request';
 import type { SupabasePersistenceConfig } from '../domain/supabase-persistence';
+import { isDemoMode } from './demo-mode';
 
 const DEFAULT_SCHEMA = 'public';
-const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const REPO_ROOT_FALLBACK = process.env.PROSPECT_PIPELINE_ROOT || process.cwd();
 const DEFAULT_PARENT_RESPONSE_TTL_HOURS = 48;
 
 export type ParentResponseRuntimePreferences = {
@@ -70,7 +71,10 @@ function readEnvFile(filePath: string): Record<string, string> {
       const eqIndex = trimmed.indexOf('=');
       if (eqIndex <= 0) return acc;
       const key = trimmed.slice(0, eqIndex).trim();
-      const value = trimmed.slice(eqIndex + 1).trim().replace(/^['"]|['"]$/g, '');
+      const value = trimmed
+        .slice(eqIndex + 1)
+        .trim()
+        .replace(/^['"]|['"]$/g, '');
       if (key) acc[key] = value;
       return acc;
     }, {});
@@ -114,6 +118,12 @@ function readRepoEnv(): Record<string, string> {
 export function getParentResponseRuntimeConfig(
   preferences: ParentResponseRuntimePreferences = {},
 ): ParentResponseRuntimeConfig {
+  if (isDemoMode()) {
+    return {
+      tokenSecret: 'parent-response-token-secret',
+      publicBaseUrl: 'https://demo.prospect-pipeline.local',
+    };
+  }
   const repoEnv = readRepoEnv();
   const tokenSecret = clean(
     process.env.PARENT_RESPONSE_TOKEN_SECRET ||
@@ -163,6 +173,14 @@ export async function createSignedParentResponseRequest(
   if (!proposedOptions.length) {
     throw new Error('Missing parent response proposed options');
   }
+  if (isDemoMode()) {
+    return {
+      requestId: `parent-response-${Date.now()}`,
+      token,
+      url: `${runtime.publicBaseUrl.replace(/\/+$/, '')}/parent-response/${token}`,
+      expiresAt,
+    };
+  }
 
   const row = {
     appointment_id: clean(input.appointmentId) || null,
@@ -206,7 +224,9 @@ export async function createSignedParentResponseRequest(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '');
-    throw new Error(text.slice(0, 300) || `parent_response_requests insert failed: ${response.status}`);
+    throw new Error(
+      text.slice(0, 300) || `parent_response_requests insert failed: ${response.status}`,
+    );
   }
 
   const payload = (await response.json()) as Array<{ id?: string | null }>;

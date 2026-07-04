@@ -16,7 +16,7 @@ This plugin provides:
 
 1. **Add as local marketplace:**
    ```bash
-   /plugin marketplace add /Users/singleton23/Raycast/prospect-pipeline/.claude/plugins/npid-fastapi
+   /plugin marketplace add <REPO_ROOT>/.claude/plugins/npid-fastapi
    ```
 
 2. **Install the plugin:**
@@ -443,7 +443,7 @@ MIT
 
 ## Author
 
-Jerami Singleton
+Primary Operator
 
 ## Support
 

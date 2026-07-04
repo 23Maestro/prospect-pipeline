@@ -38,7 +38,10 @@ export type ConfirmationTaskLike = {
   completion_date?: string | null;
 };
 
-const DEFAULT_QUEUE_PATH = '/Users/singleton23/raycast_logs/confirmation-task-watch.json';
+const DEFAULT_QUEUE_PATH = path.join(
+  process.env.RAYCAST_LOG_DIR || `${process.env.HOME || ''}/raycast_logs`,
+  'confirmation-task-watch.json',
+);
 const DEFAULT_TTL_MINUTES = 90;
 
 function normalizeText(value?: string | number | null): string {
@@ -197,4 +200,3 @@ export function upsertConfirmationTaskWatchItem(
   writeConfirmationTaskWatchQueue(queue, filePath);
   return item;
 }
-

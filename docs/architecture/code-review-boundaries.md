@@ -36,12 +36,12 @@ Do not rename these to prettier internal names at the adapter boundary.
 ## Owner Boundary
 `config/prospect-id-owners.json` is the shared owner source of truth.
 Flag hardcoded owner values outside config, tests, or intentional message copy:
-- `Jerami Singleton`
-- `1408164`
+- `Primary Operator`
+- `100001`
 - head scout calendar owner IDs
 - meeting_for IDs
 - assigned_to IDs
-Tim Risner is a known owner profile, not the active dashboard operator.
+Secondary Operator is a known owner profile, not the active dashboard operator.
 ## Supabase Boundary
 Supabase rows should carry proof.
 - `source_owner` and `owner_proof` are persistence compatibility outputs.

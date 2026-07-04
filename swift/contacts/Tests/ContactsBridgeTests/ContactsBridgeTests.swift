@@ -9,7 +9,7 @@ final class ContactsBridgeTests: XCTestCase {
 
     let plan = resolveExistingContactBackfillPlan(
       contact: contact,
-      url: "https://dashboard.nationalpid.com/athlete/123",
+      url: "https://legacy-dashboard.example.com/athlete/123",
       isPreferredGroupMember: false
     )
 
@@ -21,12 +21,12 @@ final class ContactsBridgeTests: XCTestCase {
   func testExistingContactBackfillPlanLeavesCompleteContactExisting() {
     let contact = CNMutableContact()
     contact.urlAddresses = [
-      CNLabeledValue(label: CNLabelHome, value: "https://dashboard.nationalpid.com/athlete/123" as NSString)
+      CNLabeledValue(label: CNLabelHome, value: "https://legacy-dashboard.example.com/athlete/123" as NSString)
     ]
 
     let plan = resolveExistingContactBackfillPlan(
       contact: contact,
-      url: "https://dashboard.nationalpid.com/athlete/123",
+      url: "https://legacy-dashboard.example.com/athlete/123",
       isPreferredGroupMember: true
     )
 
@@ -38,12 +38,12 @@ final class ContactsBridgeTests: XCTestCase {
   func testExistingContactBackfillPlanDoesNotUseNotesForStatus() {
     let contact = CNMutableContact()
     contact.urlAddresses = [
-      CNLabeledValue(label: CNLabelHome, value: "https://dashboard.nationalpid.com/athlete/123" as NSString)
+      CNLabeledValue(label: CNLabelHome, value: "https://legacy-dashboard.example.com/athlete/123" as NSString)
     ]
 
     let plan = resolveExistingContactBackfillPlan(
       contact: contact,
-      url: "https://dashboard.nationalpid.com/athlete/123",
+      url: "https://legacy-dashboard.example.com/athlete/123",
       isPreferredGroupMember: true
     )
 

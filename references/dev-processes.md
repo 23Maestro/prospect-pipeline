@@ -95,4 +95,4 @@ Primary reference:
 
 - [Overmind README](https://github.com/DarthSim/overmind)
 
-The repo helper in [`scripts/dev-processes.sh`](/Users/singleton23/Raycast/prospect-pipeline/scripts/dev-processes.sh) wraps the commands above so day-to-day restart/stop flow stays consistent.
+The repo helper in [`scripts/dev-processes.sh`](../scripts/dev-processes.sh) wraps the commands above so day-to-day restart/stop flow stays consistent.

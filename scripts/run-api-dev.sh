@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 API_DIR="${PROJECT_ROOT}/npid-api-layer"
 API_PORT="${API_PORT:-8000}"
 API_HOST="${API_HOST:-127.0.0.1}"

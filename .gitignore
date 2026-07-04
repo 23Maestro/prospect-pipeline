@@ -63,6 +63,21 @@ jspm_packages/
 .env.production
 .overmind.env
 
+# Local-only sensitive archive and captured production data
+.sensitive-archive/
+*.db
+*.sqlite
+*.sqlite3
+*.zip
+*.pkl
+*.vcf
+assets/contact-cards/
+supabase/.temp/
+.playwright-mcp/
+.playwright-cli/
+*postmortem*.md
+*performance*.md
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache
@@ -91,6 +106,7 @@ apps/prospect-web/public/*
 
 # Raycast Swift build cache
 swift/contacts/.raycast-swift-build/
+swift/contacts/.build/
 
 # Temporary folders
 .tmp/

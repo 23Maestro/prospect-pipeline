@@ -4,7 +4,7 @@ Interact with National PID Dashboard REST API for athlete and video team operati
 
 ## Context
 - **Client**: Prospect ID (Client 2)
-- **API Base**: https://dashboard.nationalpid.com
+- **API Base**: https://legacy-dashboard.example.com
 - **Session**: Cookie-based (400-day persistence)
 - **Client Location**: `mcp-servers/npid-native/npid_api_client.py`
 
@@ -22,7 +22,7 @@ client.login()  # Uses cached session if available
 ```python
 # Search for athletes in video workflow
 athletes = client.session.post(
-    'https://dashboard.nationalpid.com/videoteammsg/videoprogress',
+    'https://legacy-dashboard.example.com/videoteammsg/videoprogress',
     data={'_token': csrf_token, 'first_name': 'John', 'last_name': 'Doe'}
 ).json()
 ```
@@ -32,7 +32,7 @@ athletes = client.session.post(
 # Get available email templates for athlete
 athlete_id = '252287'
 resp = client.session.get(
-    f'https://dashboard.nationalpid.com/rulestemplates/template/videotemplates?id={athlete_id}'
+    f'https://legacy-dashboard.example.com/rulestemplates/template/videotemplates?id={athlete_id}'
 )
 ```
 
@@ -45,7 +45,7 @@ email_payload = {
     "notification_to_type_id": "1",
     "notification_to_id": athlete_id,
     "notification_from": "Video Team",
-    "notification_from_email": "videoteam@prospectid.com",
+    "notification_from_email": "video-team@example.com",
     "notification_subject": subject,
     "notification_message": message,
     "includemysign": "includemysign"
@@ -72,7 +72,7 @@ resp = client.session.post(
 - Use session caching to avoid re-authentication
 - Parse CSRF tokens from page HTML for POST requests
 - Handle athlete search by first_name + last_name (not full name)
-- Email sender should be `videoteam@prospectid.com`
+- Email sender should be `video-team@example.com`
 
 ## Session Management
 ```python

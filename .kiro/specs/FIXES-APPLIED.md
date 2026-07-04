@@ -111,7 +111,7 @@ can_assign = not is_assigned
 
 ### Build
 ```bash
-cd /Users/singleton23/Raycast/prospect-pipeline
+cd <REPO_ROOT>
 npm run build
 ```
 
@@ -218,7 +218,7 @@ Based on **actual HAR file analysis** (not the incorrect PDF), implemented a **h
 
 ```bash
 # Build
-cd /Users/singleton23/Raycast/prospect-pipeline
+cd <REPO_ROOT>
 npm run build
 
 # Test in Raycast

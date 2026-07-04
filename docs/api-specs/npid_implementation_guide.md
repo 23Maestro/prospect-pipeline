@@ -3,7 +3,7 @@
 ## ✅ 100% COMPLETE API SPECIFICATION
 
 **Status:** All endpoints confirmed with production data  
-**Session:** Safe - your 400-day videoteam@prospectid.com cookie untouched
+**Session:** Safe - your 400-day video-team@example.com cookie untouched
 
 ---
 
@@ -84,7 +84,7 @@ claude-code "Create api/client.py for NPID dashboard:
 - Extract CSRF token from meta tag or response
 - Add X-Requested-With header
 - Request/response logging
-Base URL: https://dashboard.nationalpid.com"
+Base URL: https://legacy-dashboard.example.com"
 
 # Step 2: Progress tracking
 claude-code "Create api/progress.py with STRING-based stage/status:

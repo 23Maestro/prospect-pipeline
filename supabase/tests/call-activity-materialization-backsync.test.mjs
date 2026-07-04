@@ -34,7 +34,7 @@ test('unable to leave vm stays dial only in the source contract', () => {
 });
 
 test('old Jerami-owned activity rows get operator materialization proof at the source', () => {
-  assert.match(sql, /cae\.source_owner = 'Jerami Singleton'/i);
+  assert.match(sql, /cae\.source_owner = 'Primary Operator'/i);
   assert.match(sql, /nullif\(cae\.owner_proof, ''\) is not null/i);
   assert.match(sql, /'materialization_status', 'operator_task'/i);
   assert.match(sql, /'task_assigned_owner', cae\.source_owner/i);

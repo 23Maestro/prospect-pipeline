@@ -21,7 +21,7 @@ payload = {
     'messageId': thread['id'],
     'contactId': athlete['contactId'],
     'athleteMainId': athlete['athleteMainId'],
-    'ownerId': '1408164',  # Jerami Singleton
+    'ownerId': '100001',  # Primary Operator
     'stage': 'In Queue',
     'status': 'New Request',
     'formToken': csrf_token
@@ -147,7 +147,7 @@ client.send_email_to_athlete(
 
 1. **Always use video progress search** - Athletes may not be in main player database
 2. **Search by first + last name** - Split full name for API calls
-3. **Sender is always Video Team** - Use `videoteam@prospectid.com`
+3. **Sender is always Video Team** - Use `video-team@example.com`
 4. **Limit inbox queries** - Max 15 threads to avoid performance issues
 5. **Mark tasks complete** - Update status after email sent
 6. **Handle parents separately** - Contact type detection is important
@@ -162,7 +162,7 @@ data = {
     'last_name': 'Doe'
 }
 athletes = session.post(
-    'https://dashboard.nationalpid.com/videoteammsg/videoprogress',
+    'https://legacy-dashboard.example.com/videoteammsg/videoprogress',
     data=data
 ).json()
 ```

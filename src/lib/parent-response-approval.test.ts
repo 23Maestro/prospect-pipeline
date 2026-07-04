@@ -8,7 +8,7 @@ const requestRow = {
   athlete_id: '149',
   athlete_main_id: '953',
   athlete_name: 'Jamiya Turner',
-  original_head_scout_name: 'Ryan Lietz',
+  original_head_scout_name: 'Head Scout D',
   original_meeting_timezone: 'America/New_York',
   request_status: 'selected',
   approval_status: 'pending',
@@ -22,13 +22,13 @@ const requestRow = {
       ends_at: '2026-06-15T19:00',
       timezone: 'America/New_York',
       open_event_id: 'open-1',
-      assigned_to: '1354049',
-      head_scout_name: 'Ryan Lietz',
+      assigned_to: '200004',
+      head_scout_name: 'Head Scout D',
     },
   ],
   approval_payload: {
     previous_appointment_id: 'previous-appointment',
-    previous_meeting_title: 'Ryan Lietz - Jamiya Turner',
+    previous_meeting_title: 'Head Scout D - Jamiya Turner',
     previous_meeting_text: 'Prior saved meeting details',
   },
 };
@@ -40,7 +40,7 @@ test('applyApprovedParentResponseReschedule preserves Raycast confirmed reschedu
       calls.push('submitRescheduleMeeting');
       assert.equal(payload.athlete_id, '149');
       assert.equal(payload.athlete_main_id, '953');
-      assert.equal(payload.assigned_to, '1354049');
+      assert.equal(payload.assigned_to, '200004');
       assert.equal(payload.open_event_id, 'open-1');
       assert.equal(payload.previous_event_id, 'previous-appointment');
       assert.equal(payload.keep_as_open_slot, 'yes');
@@ -48,7 +48,7 @@ test('applyApprovedParentResponseReschedule preserves Raycast confirmed reschedu
         success: true,
         athlete_id: '149',
         athlete_main_id: '953',
-        assigned_to: '1354049',
+        assigned_to: '200004',
         open_event_id: 'open-1',
         meeting_name: payload.meeting_name,
         template_id: '210',

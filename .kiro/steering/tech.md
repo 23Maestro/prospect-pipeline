@@ -95,7 +95,7 @@ const result = await callPythonServer<T>(
 ## External Services
 
 ### NPID (National Prospect ID)
-- **Base URL**: https://dashboard.nationalpid.com
+- **Base URL**: https://legacy-dashboard.example.com
 - **Authentication**: Cookie-based with 400-day remember token
 - **Session Management**: Automatic validation and re-login
 - **Endpoints Used**:
@@ -162,7 +162,7 @@ python npid_api_client.py search_video_progress '{"first_name": "John", "last_na
 ### Debugging
 ```bash
 # Check Python server directly
-python3 /Users/singleton23/Raycast/prospect-pipeline/src/python/npid_api_client.py \
+python3 <REPO_ROOT>/src/python/npid_api_client.py \
   search_video_progress '{"first_name": "John", "last_name": "Doe"}'
 ```
 
@@ -177,7 +177,7 @@ SUPABASE_ANON_KEY        # Supabase anonymous key
 
 ### Optional (Python environment)
 ```bash
-NPID_EMAIL               # NPID login email (default: jsingleton@prospectid.com)
+NPID_EMAIL               # NPID login email (default: operator@example.com)
 NPID_PASSWORD            # NPID login password
 ```
 
@@ -185,7 +185,7 @@ NPID_PASSWORD            # NPID login password
 
 **No ports required** - Raycast extensions run in-process
 - Python scripts executed via spawn (not a server)
-- NPID API: HTTPS (443) to dashboard.nationalpid.com
+- NPID API: HTTPS (443) to legacy-dashboard.example.com
 - Supabase: HTTPS (443) to Supabase endpoint
 - Notion API: HTTPS (443) to api.notion.com
 

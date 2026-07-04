@@ -19,7 +19,7 @@ import ExportClientMessageInboxCommand from './export-client-message-inbox';
 import ClientMessageInboxCommand from './client-message-inbox';
 import SupabaseLifecycleStatusCommand from './supabase-lifecycle-status';
 
-const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const DASHBOARD_BASE_URL = 'https://legacy-dashboard.example.com';
 
 type SyncCandidate = {
   key: string;

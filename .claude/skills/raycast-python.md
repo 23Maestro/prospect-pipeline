@@ -71,7 +71,7 @@ if __name__ == "__main__":
 ### ⚠️ Shebang Path Problem
 **Issue**: Hardcoded Python paths break portability
 ```python
-#!/Users/singleton23/.pyenv/shims/python3  # ❌ Bad - user-specific
+#!<USER_HOME>/.pyenv/shims/python3  # ❌ Bad - user-specific
 #!/usr/bin/env python3                     # ✅ Good - portable
 ```
 

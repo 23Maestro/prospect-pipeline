@@ -1,7 +1,7 @@
 ---
 title: Cache Swap → Raw Search Revert → Prospect Search Command
 date: 2026-01-27
-owner: Jerami Singleton / Codex
+owner: Primary Operator / Codex
 status: in-progress
 scope: cache-swap-first
 ---

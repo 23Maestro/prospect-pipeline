@@ -13,7 +13,7 @@ import {
   type ProspectResult,
 } from './lib/prospect-search';
 
-const ASSIGNED_EDITOR = 'Jerami Singleton';
+const ASSIGNED_EDITOR = 'Primary Operator';
 const STAGE_OPTIONS = ['In Queue', 'Awaiting Client', 'On Hold', 'Done'];
 const STATUS_OPTIONS = ['', 'HUDL', 'Dropbox', 'Revisions', 'Not Approved', 'External Links'];
 function formatLocation(result: ProspectResult): string {
@@ -106,7 +106,7 @@ function ProspectDetail({
           <Action.OpenInBrowser
             title="Open Prospect Profile"
             icon={Icon.Globe}
-            url={`https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`}
+            url={`https://legacy-dashboard.example.com/athlete/profile/${result.athlete_id}`}
           />
           <ReconnectProspectIdAction />
         </ActionPanel>
@@ -412,7 +412,7 @@ export default function ProspectSearch() {
                   <Action.OpenInBrowser
                     title="Open Prospect Profile"
                     icon={Icon.Globe}
-                    url={`https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`}
+                    url={`https://legacy-dashboard.example.com/athlete/profile/${result.athlete_id}`}
                   />
                   {result.email ? (
                     <Action.CopyToClipboard title="Copy Email" content={result.email} />

@@ -2,15 +2,15 @@
 -- A real Prospect ID event is not automatically an active-operator dashboard fact.
 --
 -- SQL proof cases covered by supabase/tests/call-tracker-active-operator-materialization-gate.test.mjs:
--- - Tim Risner meeting_set lifecycle rows do not appear in call_tracker_events.
--- - Tim Risner call_activity_events rows do not appear in call_tracker_events.
+-- - Secondary Operator meeting_set lifecycle rows do not appear in call_tracker_events.
+-- - Secondary Operator call_activity_events rows do not appear in call_tracker_events.
 -- - Jerami operator_task meeting_set rows do appear.
 -- - Jerami operator_task call_activity_events rows do appear.
 -- - legacy rows without proof are excluded unless they match explicit compatibility rules.
 
 create or replace view call_tracker_events as
 with active_operator as (
-  select 'Jerami Singleton'::text as active_operator_name
+  select 'Primary Operator'::text as active_operator_name
 ),
 classified as (
   select
@@ -276,7 +276,7 @@ select * from lifecycle_meeting_set_facts;
 
 create or replace view call_tracker_meeting_sets as
 with active_operator as (
-  select 'Jerami Singleton'::text as active_operator_name
+  select 'Primary Operator'::text as active_operator_name
 ),
 lifecycle_meeting_set_materialized as (
   select le.*

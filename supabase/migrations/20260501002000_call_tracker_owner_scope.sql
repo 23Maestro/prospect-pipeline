@@ -4,7 +4,7 @@ alter table call_events
 
 update call_events
 set
-  source_owner = coalesce(source_owner, 'Logan Lord'),
+  source_owner = coalesce(source_owner, 'Head Scout F'),
   is_tracked_owner = false
 where athlete_key = '1489782:951614'
   and appointment_id = '613317';

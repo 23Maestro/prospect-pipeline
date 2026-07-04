@@ -26,8 +26,8 @@ test('buildHeadScoutWeekWindow anchors to Monday in EST', () => {
 test('filterVisibleHeadScoutSlots hides past slots only in current week', () => {
   const now = new Date('2026-04-16T20:30:00Z');
   const slots: HeadScoutSlot[] = [
-    { id: '1', start: '2026-04-16T15:00', end: '2026-04-16T16:00', scout_name: 'Jeffrey Stein' },
-    { id: '2', start: '2026-04-16T17:00', end: '2026-04-16T18:00', scout_name: 'Jeffrey Stein' },
+    { id: '1', start: '2026-04-16T15:00', end: '2026-04-16T16:00', scout_name: 'Head Scout B' },
+    { id: '2', start: '2026-04-16T17:00', end: '2026-04-16T18:00', scout_name: 'Head Scout B' },
   ];
 
   assert.equal(getCurrentEasternSlotStamp(now), '2026-04-16T16:30');
@@ -52,14 +52,14 @@ test('booked meeting lookup window is wider than the due-date month', () => {
 });
 
 test('head scout order includes canonical calendar owner and meeting-for ids', () => {
-  const jeffrey = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Jeffrey Stein');
-  const luther = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Luther Winfield');
-  const david = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'David Foley');
-  const nasir = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Nasir Adderley');
-  const ryan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Ryan Lietz');
-  const james = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'James Holcomb');
-  const logan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Logan Lord');
-  const kenton = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Kenton Manis');
+  const jeffrey = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout B');
+  const luther = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout C');
+  const david = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout A');
+  const nasir = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout H');
+  const ryan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout D');
+  const james = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout E');
+  const logan = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout F');
+  const kenton = HEAD_SCOUT_ORDER.find((scout) => scout.scout_name === 'Head Scout G');
 
   assert.deepEqual(
     {
@@ -69,10 +69,10 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: david?.meeting_for,
     },
     {
-      city: 'Winona',
-      state: 'MN',
-      calendar_owner_id: 'GI4oO0m9knrHNq1',
-      meeting_for: '1418020',
+      city: 'Example City',
+      state: 'FL',
+      calendar_owner_id: 'calendar_owner_a',
+      meeting_for: '200001',
     },
   );
   assert.deepEqual(
@@ -80,14 +80,14 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: jeffrey?.calendar_owner_id,
       meeting_for: jeffrey?.meeting_for,
     },
-    { calendar_owner_id: 'OrJsV8nhBouEzKY', meeting_for: '1418529' },
+    { calendar_owner_id: 'calendar_owner_b', meeting_for: '200002' },
   );
   assert.deepEqual(
     {
       calendar_owner_id: luther?.calendar_owner_id,
       meeting_for: luther?.meeting_for,
     },
-    { calendar_owner_id: 'bMBrA26OElRUwPs', meeting_for: '370959' },
+    { calendar_owner_id: 'calendar_owner_c', meeting_for: '200003' },
   );
   assert.deepEqual(
     {
@@ -97,10 +97,10 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: nasir?.meeting_for,
     },
     {
-      city: 'Dallas',
-      state: 'TX',
-      calendar_owner_id: 'Ax8yvuUTdOzVHr7',
-      meeting_for: '1462295',
+      city: 'Example City',
+      state: 'TN',
+      calendar_owner_id: 'calendar_owner_h',
+      meeting_for: '200008',
     },
   );
   assert.deepEqual(
@@ -108,7 +108,7 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: ryan?.calendar_owner_id,
       meeting_for: ryan?.meeting_for,
     },
-    { calendar_owner_id: 'nhVvYOz8bAaL57c', meeting_for: '1354049' },
+    { calendar_owner_id: 'calendar_owner_d', meeting_for: '200004' },
   );
   assert.deepEqual(
     {
@@ -118,10 +118,10 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       meeting_for: james?.meeting_for,
     },
     {
-      city: 'Phoenix',
-      state: 'AZ',
-      calendar_owner_id: 'oDCcn1r7MGERdsb',
-      meeting_for: '56',
+      city: 'Example City',
+      state: 'NC',
+      calendar_owner_id: 'calendar_owner_e',
+      meeting_for: '200005',
     },
   );
   assert.deepEqual(
@@ -131,7 +131,12 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: logan?.calendar_owner_id,
       meeting_for: logan?.meeting_for,
     },
-    { city: 'Chandler', state: 'AZ', calendar_owner_id: 'd9UDl0bRSqQ1owt', meeting_for: '2254' },
+    {
+      city: 'Example City',
+      state: 'SC',
+      calendar_owner_id: 'calendar_owner_f',
+      meeting_for: '200006',
+    },
   );
   assert.deepEqual(
     {
@@ -140,7 +145,12 @@ test('head scout order includes canonical calendar owner and meeting-for ids', (
       calendar_owner_id: kenton?.calendar_owner_id,
       meeting_for: kenton?.meeting_for,
     },
-    { city: 'Prosper', state: 'TX', calendar_owner_id: 'A4H3xiZJdyrEh2X', meeting_for: '1486538' },
+    {
+      city: 'Example City',
+      state: 'VA',
+      calendar_owner_id: 'calendar_owner_g',
+      meeting_for: '200007',
+    },
   );
 });
 
@@ -170,15 +180,12 @@ test('formatHeadScoutNaturalSlotLabel renders natural client-timezone labels', (
 });
 
 test('formatHeadScoutNaturalSlotLabel resolves legacy EST with daylight saving time', () => {
-  assert.deepEqual(
-    formatHeadScoutNaturalSlotLabel('2026-05-27T17:00', '2026-05-27T18:00', 'EST'),
-    {
-      dateLabel: 'Wednesday, May 27',
-      timeLabel: '5PM ET',
-      messageLabel: 'Wednesday, May 27 at 5PM ET',
-      zoneLabel: 'ET',
-    },
-  );
+  assert.deepEqual(formatHeadScoutNaturalSlotLabel('2026-05-27T17:00', '2026-05-27T18:00', 'EST'), {
+    dateLabel: 'Wednesday, May 27',
+    timeLabel: '5PM ET',
+    messageLabel: 'Wednesday, May 27 at 5PM ET',
+    zoneLabel: 'ET',
+  });
 });
 
 test('formatHeadScoutSlotDate guards malformed slot values', () => {

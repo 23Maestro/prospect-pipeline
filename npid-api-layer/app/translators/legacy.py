@@ -44,30 +44,30 @@ class LegacyTranslator:
     SIGNATURE_HTML = (
         "<br><br><span>Kind Regards,</span><div><br></div><table style=\"width: 100%;font-size: 14px;\" "
         "width=\"100%\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\"><tbody><tr><td style=\"padding: "
-        "0cm; border: none !important;\" valign=\"top\"><span><b>Jerami Singleton</b></span><br>"
+        "0cm; border: none !important;\" valign=\"top\"><span><b>Primary Operator</b></span><br>"
         "<span style=\"color: #232a36;\"><em>Content Creator at Prospect ID</em></span><br>"
-        "<span style=\"color: #232a36;font-weight: bold;\">Phone</span>&nbsp;(407) 473-3637<br>"
-        "<span style=\"color: #232a36;font-weight: bold;\">Email</span>&nbsp;videoteam@prospectid.com<br>"
-        "<span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.prospectid.com<br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Phone</span>&nbsp;(555) 0100<br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Email</span>&nbsp;video-team@example.com<br>"
+        "<span style=\"color: #232a36;font-weight: bold;\">Web</span>&nbsp;www.example.com<br>"
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
         "href='https://www.facebook.com/NationalPID' target='_blank'><img "
-        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/facebook_sign.png' "
+        "src='https://legacy-dashboard.example.com/mandrillemail/signature_icons_v2/facebook_sign.png' "
         "alt='facebook' width='24' height='24' border='0'></a> "
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
         "href='https://twitter.com/@NationalPID' target='_blank'><img "
-        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/twitter_sign.png' "
+        "src='https://legacy-dashboard.example.com/mandrillemail/signature_icons_v2/twitter_sign.png' "
         "alt='twitter' width='24' height='24' border='0'></a> "
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
         "href='https://www.instagram.com/nationalprospect_id' target='_blank'><img "
-        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
+        "src='https://legacy-dashboard.example.com/mandrillemail/signature_icons_v2/instagram_sign.png' "
         "alt='instagram' width='24' height='24' border='0'></a> "
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
         "href='https://www.linkedin.com/company/prospect-id-28' target='_blank'><img "
-        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/linkedin_sign.png' "
+        "src='https://legacy-dashboard.example.com/mandrillemail/signature_icons_v2/linkedin_sign.png' "
         "alt='linkedin' width='24' height='24' border='0'></a> "
         "<a style='font-size: 0px; line-height: 0px; padding-right: 3px;' "
         "href='https://www.youtube.com/@Prospect_ID/videos' target='_blank'><img "
-        "src='https://dashboard.nationalpid.com/mandrillemail/signature_icons_v2/youtube_sign.png' "
+        "src='https://legacy-dashboard.example.com/mandrillemail/signature_icons_v2/youtube_sign.png' "
         "alt='youtube' width='24' height='24' border='0'></a></td></tr></tbody></table><br>"
     )
     HEAD_SCOUT_LOGIN_USER = get_head_scout_calendar_access_user_id()
@@ -1874,7 +1874,7 @@ class LegacyTranslator:
 
         # DEBUG: Save HTML to file for inspection
         import os
-        debug_file = '/Users/singleton23/raycast_logs/athleteinfo_response.html'
+        debug_file = os.path.join(os.getenv("RAYCAST_LOG_DIR", os.path.expanduser("~/raycast_logs")), "athleteinfo_response.html")
         try:
             with open(debug_file, 'w') as f:
                 f.write(html)
@@ -2165,10 +2165,10 @@ class LegacyTranslator:
         """
         Parse athlete_emailslist HTML table response.
 
-        Extracts emails from "Email To" column, filters out @prospectid.com,
+        Extracts emails from "Email To" column, filters out @internal.example.com,
         and returns unique emails only.
 
-        Returns: List of unique email strings (filtered, no @prospectid.com)
+        Returns: List of unique email strings (filtered, no @internal.example.com)
         """
         import logging
         from selectolax.parser import HTMLParser
@@ -2192,8 +2192,8 @@ class LegacyTranslator:
                     email_cell = cells[2]  # "Email To" is 3rd column
                     email = email_cell.text(strip=True)
 
-                    # Only filter @prospectid.com (explicit requirement)
-                    if '@prospectid.com' in email.lower():
+                    # Only filter internal sender domains.
+                    if '@internal.example.com' in email.lower():
                         filtered_count += 1
                         continue
 
@@ -2201,7 +2201,7 @@ class LegacyTranslator:
                         seen_emails.add(email)
                         emails.append(email)
                         logger.info(f"📧 DEBUG: Found email: {email}")
-            logger.info(f"📧 DEBUG: Parsed {len(emails)} unique emails, filtered {filtered_count} @prospectid.com emails")
+            logger.info(f"📧 DEBUG: Parsed {len(emails)} unique emails, filtered {filtered_count} internal-domain emails")
             return emails
 
         except Exception as e:
@@ -2651,9 +2651,9 @@ class LegacyTranslator:
             reply_probe = ' '.join(reply_body.split()).lower()
             template_markers = [
                 '[image: logo]',
-                'https://nationalpid.com',
-                'dashboard.nationalpid.com/auth/loginclick here',
-                'dashboard.nationalpid.com/click/',
+                'https://legacy-dashboard.example.com',
+                'legacy-dashboard.example.com/auth/loginclick here',
+                'legacy-dashboard.example.com/click/',
                 'so we know you received this message.',
                 'connect with us',
                 'national prospect id#yiv',
@@ -3095,7 +3095,7 @@ class LegacyTranslator:
                         if not is_attachment:
                             continue
 
-                        absolute_url = href if href.startswith('http') else f"https://dashboard.nationalpid.com{href}"
+                        absolute_url = href if href.startswith('http') else f"https://legacy-dashboard.example.com{href}"
                         if absolute_url in seen_urls:
                             continue
                         seen_urls.add(absolute_url)
@@ -3225,7 +3225,7 @@ class LegacyTranslator:
         message_id_value = message_id_input.get('value', '').strip() if message_id_input else ""
 
         # Default owner (Jerami)
-        jerami_id = '1408164'
+        jerami_id = '100001'
         default_owner = None
         if owners:
             default_owner = next((o for o in owners if o['value'] == jerami_id), None) or owners[0]
@@ -3273,7 +3273,7 @@ class LegacyTranslator:
             "contact_task": contact_id,
             "athlete_main_id": athlete_main_id,
             "messageid": message_id,
-            "videoscoutassignedto": payload.get('ownerId', '1408164'),
+            "videoscoutassignedto": payload.get('ownerId', '100001'),
             "contactfor": payload.get('contactFor', 'athlete'),
             "contact": payload.get('contact', ''),
             "video_progress_stage": stage,
@@ -4238,7 +4238,7 @@ class LegacyTranslator:
 
     @staticmethod
     def portal_tasks_to_legacy(
-        assigned_to: str = "1408164",
+        assigned_to: str = "100001",
         range_value: str = "todayPastDue",
         start: Optional[int] = None,
         length: Optional[int] = None,
@@ -4246,7 +4246,7 @@ class LegacyTranslator:
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Build request for the dashboard task list XHR.
-        GET /tasks/taskslist?range=todayPastDue&assignedto=1408164
+        GET /tasks/taskslist?range=todayPastDue&assignedto=100001
         """
         endpoint = "/tasks/taskslist"
         params: Dict[str, Any] = {
@@ -5088,7 +5088,7 @@ class LegacyTranslator:
         if assigned_to:
             updated["assignedto"] = assigned_to
         elif not str(updated.get("assignedto") or "").strip():
-            updated["assignedto"] = "1408164"
+            updated["assignedto"] = "100001"
 
         if not str(updated.get("existingtask") or "").strip():
             updated["existingtask"] = str(form_data.get("existingtask") or "").strip()

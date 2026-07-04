@@ -65,7 +65,7 @@ def get_session(request: Request) -> NPIDSession:
 @router.get("/tasks", response_model=ScoutPortalTasksResponse)
 async def get_scout_portal_tasks(
     request: Request,
-    assignedto: str = "1408164",
+    assignedto: str = "100001",
     range: str = "todayPastDue",
     start: int | None = None,
     length: int | None = None,
@@ -172,7 +172,7 @@ async def get_scout_portal_tasks(
 @router.get("/recent-profiles", response_model=ScoutRecentProfilesResponse)
 async def get_scout_recent_profiles(
     request: Request,
-    scout_id: str = "1408164",
+    scout_id: str = "100001",
 ):
     """
     Fetch recently viewed athlete profiles from the scout topviews widget.

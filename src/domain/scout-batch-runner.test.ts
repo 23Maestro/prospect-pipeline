@@ -28,7 +28,7 @@ function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
       athlete_id: '123',
       athlete_main_id: '456',
       sport: 'Football',
-      head_scout: 'Ryan Lietz',
+      head_scout: 'Head Scout D',
     },
     contactInfo: {
       contactId: '123',

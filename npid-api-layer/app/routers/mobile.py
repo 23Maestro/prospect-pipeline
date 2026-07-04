@@ -26,10 +26,10 @@ from app.translators.legacy import LegacyTranslator
 
 router = APIRouter(tags=["mobile"])
 HEAD_SCOUT_TIMEZONE = ZoneInfo("America/New_York")
-ACTIVE_OPERATOR_NAME = "Jerami Singleton"
-DASHBOARD_BASE_URL = "https://dashboard.nationalpid.com"
+ACTIVE_OPERATOR_NAME = "Primary Operator"
+DASHBOARD_BASE_URL = "https://legacy-dashboard.example.com"
 COACH_RISNER_SESSION_FILE = Path.home() / ".npid_sessions" / "coach_risner.pkl"
-COACH_RISNER_OPERATOR_NAME = "Tim Risner"
+COACH_RISNER_OPERATOR_NAME = "Secondary Operator"
 
 
 def require_mobile_token(authorization: Optional[str]) -> None:
@@ -311,7 +311,7 @@ async def fetch_scout_tasks(
     session: NPIDSession,
     translator: LegacyTranslator,
     range_value: str,
-    assigned_to: str = "1408164",
+    assigned_to: str = "100001",
 ) -> list[dict]:
     endpoint, params = translator.portal_tasks_to_legacy(
         assigned_to=assigned_to,

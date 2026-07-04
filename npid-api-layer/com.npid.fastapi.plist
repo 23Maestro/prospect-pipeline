@@ -7,11 +7,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/singleton23/Raycast/prospect-pipeline/scripts/run-overmind-launchagent.sh</string>
+        <string><REPO_ROOT>/scripts/run-overmind-launchagent.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/singleton23/Raycast/prospect-pipeline</string>
+    <string><REPO_ROOT></string>
 
     <key>RunAtLoad</key>
     <true/>

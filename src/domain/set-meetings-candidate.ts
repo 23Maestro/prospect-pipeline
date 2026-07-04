@@ -4,7 +4,7 @@ import type { HeadScoutFollowUpCandidate } from '../lib/head-scout-follow-ups';
 import { buildWeeklyOperatorMeetingSetCandidates, isActualSetMeetingTitle } from './booked-meeting-source';
 import { stripMoveThisTaskPrefix } from './scout-task-selection';
 
-const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const DASHBOARD_BASE_URL = 'https://legacy-dashboard.example.com';
 
 function buildAdminUrl(athleteId: string, athleteMainId: string): string {
   return `${DASHBOARD_BASE_URL}/admin/athletes?contactid=${encodeURIComponent(athleteId)}&athlete_main_id=${encodeURIComponent(athleteMainId)}`;

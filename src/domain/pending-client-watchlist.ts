@@ -112,7 +112,10 @@ export type PendingClientWatchlistRow = PendingClientOwnerSnapshot & {
   last_seen_at: string;
   expires_at: string;
   resolved_at?: string | null;
+  recovery_cycle_count?: number | null;
 };
+
+export type PendingClientTaskOnlySendMode = 'move_reply_wait' | 'complete_task';
 
 export type PendingClientOperatorQueueLabel =
   | 'Needs Times'
@@ -382,12 +385,42 @@ function pendingClientOutboundMs(
   return parseDateMs(replyEvidence?.lastMeaningfulOutbound?.date);
 }
 
+function formatPendingClientTaskDate(date: Date): string {
+  return [
+    String(date.getMonth() + 1).padStart(2, '0'),
+    String(date.getDate()).padStart(2, '0'),
+    date.getFullYear(),
+  ].join('/');
+}
+
+export function buildPendingClientReplyWaitTaskSchedule(args: {
+  from?: Date;
+  retryAfterHours?: number;
+} = {}): { dueDate: string; dueTime: string; dueAt: Date } {
+  const retryAfterDays = Math.max(
+    1,
+    Math.round((args.retryAfterHours || PENDING_CLIENT_REPLY_RETRY_AFTER_HOURS) / 24),
+  );
+  const dueAt = new Date(args.from || new Date());
+  dueAt.setDate(dueAt.getDate() + retryAfterDays);
+  dueAt.setHours(9, 0, 0, 0);
+  return {
+    dueDate: formatPendingClientTaskDate(dueAt),
+    dueTime: '09:00',
+    dueAt,
+  };
+}
+
 function pendingClientReplyDeadlineMs(
   replyEvidence?: PendingClientOperatorQueueReplyEvidence | null,
   retryAfterHours = PENDING_CLIENT_REPLY_RETRY_AFTER_HOURS,
 ): number {
   const outboundMs = pendingClientOutboundMs(replyEvidence);
-  return Number.isFinite(outboundMs) ? outboundMs + retryAfterHours * 60 * 60 * 1000 : Number.NaN;
+  if (!Number.isFinite(outboundMs)) return Number.NaN;
+  return buildPendingClientReplyWaitTaskSchedule({
+    from: new Date(outboundMs),
+    retryAfterHours,
+  }).dueAt.getTime();
 }
 
 export function pendingClientReplyDeadlineLabel(args: {
@@ -593,6 +626,14 @@ function pendingClientCycleBand(recoveryCycleCount: number): 'first' | 'repeat' 
   if (recoveryCycleCount >= 3) return 'final';
   if (recoveryCycleCount === 2) return 'repeat';
   return 'first';
+}
+
+export function pendingClientTaskOnlySendModeForCycle(
+  recoveryCycleCount?: number | null,
+): PendingClientTaskOnlySendMode {
+  return pendingClientCycleBand(Math.max(1, Number(recoveryCycleCount || 1))) === 'final'
+    ? 'complete_task'
+    : 'move_reply_wait';
 }
 
 function pendingClientCycleStageLabel(
@@ -864,6 +905,9 @@ export function buildPendingClientChecklistMarkdown({
           retryAfterHours,
         })
       : laneState.activeFollowUp;
+  const stageLabel = pendingClientCycleStageLabel(
+    pendingClientCycleBand(Math.max(1, Number(row.recovery_cycle_count || 1))),
+  );
 
   if (activeState.filter === 'payments') {
     const lines: string[] = [];
@@ -913,7 +957,7 @@ export function buildPendingClientChecklistMarkdown({
     actionLines.push('- [ ] Offer slots');
   }
 
-  const lines = ['### Next Action', '', ...actionLines];
+  const lines = [`### ${stageLabel}`, '', `**Action: ${activeState.actionLabel}**`, '', ...actionLines];
 
   if (note?.description) {
     lines.push(
@@ -1729,9 +1773,7 @@ export function derivePendingClientLaneState(args: {
     messageEvidenceApplies: queue.filter === 'reschedule' || queue.filter === 'no_show',
     paymentLocked: queue.filter === 'payments',
     visible:
-      queue.filter !== 'review_follow_ups' ||
-      (sourceLane === 'review_follow_ups' && reviewFollowUpSourceStage) ||
-      reviewFollowUpActionable,
+      queue.filter !== 'review_follow_ups' || reviewFollowUpActionable,
   };
 }
 

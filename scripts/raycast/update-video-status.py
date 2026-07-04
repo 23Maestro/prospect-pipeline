@@ -14,8 +14,8 @@
 
 # Documentation:
 # @raycast.description Search athlete and update video status
-# @raycast.author jerami_singleton
-# @raycast.authorURL https://raycast.com/jerami_singleton
+# @raycast.author Primary Operator
+# @raycast.authorURL https://raycast.com/primary-operator
 
 import sys
 import os

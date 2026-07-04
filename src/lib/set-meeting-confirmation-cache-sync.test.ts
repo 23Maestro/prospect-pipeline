@@ -12,12 +12,12 @@ function buildContext(): ScoutPrepContext {
       contact_id: '1489000',
       athlete_main_id: '951000',
       athlete_name: 'Avery Jones',
-      athlete_task_url: 'https://dashboard.nationalpid.com/admin/tasks/1',
+      athlete_task_url: 'https://legacy-dashboard.example.com/admin/tasks/1',
     },
     resolved: {
       athlete_id: '1489000',
       athlete_main_id: '951000',
-      head_scout: 'Ryan Lietz',
+      head_scout: 'Head Scout D',
       sport: 'Football',
     },
     contactInfo: {
@@ -51,7 +51,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep caches both confirmation
       startsAt: '2026-05-15T19:00:00-04:00',
       meetingTimezone: 'EST',
       meetingLength: '01:30',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     generatedAt: '2026-05-14T18:00:00.000Z',
   });
@@ -64,7 +64,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep caches both confirmation
   assert.equal(rows[0].meeting_ends_at, '2026-05-16T00:30:00.000Z');
   assert.equal(
     rows[0].admin_url,
-    'https://dashboard.nationalpid.com/admin/athletes?contactid=1489000&athlete_main_id=951000',
+    'https://legacy-dashboard.example.com/admin/athletes?contactid=1489000&athlete_main_id=951000',
   );
   assert.equal(rows[0].kind, 'confirmation_1');
   assert.equal(rows[1].kind, 'confirmation_2');
@@ -102,7 +102,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep uses manual parent2 for 
       startsAt: '2026-05-15T19:00:00-04:00',
       meetingTimezone: 'EST',
       meetingLength: '01:30',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     generatedAt: '2026-05-14T18:00:00.000Z',
   });
@@ -139,7 +139,7 @@ test('buildManualContactConfirmationCacheReplacementRows rewrites cached confirm
       startsAt: '2026-05-15T19:00:00-04:00',
       meetingTimezone: 'EST',
       meetingLength: '01:30',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     generatedAt: '2026-05-14T18:00:00.000Z',
   });
@@ -195,7 +195,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when required mobi
           startsAt: '2026-05-15T19:00:00-04:00',
           meetingTimezone: 'EST',
           meetingLength: '01:00',
-          headScout: 'Ryan Lietz',
+          headScout: 'Head Scout D',
         },
         generatedAt: '2026-05-14T18:00:00.000Z',
       }),
@@ -215,7 +215,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when meeting lengt
           openEventId: 'event-1',
           startsAt: '2026-05-15T19:00:00-04:00',
           meetingTimezone: 'EST',
-          headScout: 'Ryan Lietz',
+          headScout: 'Head Scout D',
         },
         generatedAt: '2026-05-14T18:00:00.000Z',
       }),
@@ -236,7 +236,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep fails when meeting lengt
           startsAt: '2026-05-15T19:00:00-04:00',
           meetingTimezone: 'EST',
           meetingLength: 'bad',
-          headScout: 'Ryan Lietz',
+          headScout: 'Head Scout D',
         },
         generatedAt: '2026-05-14T18:00:00.000Z',
       }),
@@ -255,7 +255,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekend cache mes
       startsAt: '2026-05-23T10:00:00',
       meetingTimezone: 'EST',
       meetingLength: '01:00',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     generatedAt: '2026-05-22T12:00:00.000Z',
   });
@@ -278,7 +278,7 @@ test('buildMeetingSetConfirmationCacheRowsFromScoutPrep writes weekday cache mes
       startsAt: '2026-05-25T18:00:00',
       meetingTimezone: 'CST',
       meetingLength: '01:00',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     generatedAt: '2026-05-22T12:00:00.000Z',
   });
@@ -298,7 +298,7 @@ test('central labels keep 7:00 PM CT and central wording for both confirmations'
       startsAt: '2026-05-25T19:00:00',
       meetingTimezone: 'Central',
       meetingLength: '01:00',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     generatedAt: '2026-05-22T12:00:00.000Z',
   });
@@ -318,7 +318,7 @@ test('selected booked slot start wins over stale Laravel task due date', () => {
       startsAt: '2026-05-28T23:00:00.000Z',
       meetingTimezone: 'America/Chicago',
       meetingLength: '01:00',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
     },
     meetingSetResult: {
       created_task: {

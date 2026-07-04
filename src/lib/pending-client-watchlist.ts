@@ -13,7 +13,9 @@ import {
   isPendingClientResolvedByFutureConfirmation,
   normalizePendingClientDisplayRowTag,
   realPendingClientAthleteName,
+  summarizePendingClientAppointmentHistory,
   PENDING_CLIENT_LIST_LIMIT,
+  type PendingClientAppointmentHistoryEntry,
   type PendingClientReviewFollowUpSourceInput,
   type SetMeetingConfirmationCacheRowInput,
   type PendingClientWatchlistRow,
@@ -92,7 +94,7 @@ type ReviewFollowUpContactRow = {
 };
 
 const DEFAULT_SCHEMA = 'public';
-const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const REPO_ROOT_FALLBACK = process.env.PROSPECT_PIPELINE_ROOT || process.cwd();
 const PENDING_CLIENT_APPOINTMENT_OUTCOMES = [
   'follow_up',
   'reschedule_pending',
@@ -418,6 +420,22 @@ export function buildPendingClientRowsFromAppointments(
   appointments: AppointmentPendingClientRow[],
   athleteNamesByKey: Map<string, string>,
 ): PendingClientWatchlistDisplayRow[] {
+  const historiesByAthleteKey = new Map<string, PendingClientAppointmentHistoryEntry[]>();
+  for (const appointment of appointments) {
+    const athleteKey = String(appointment.athlete_key || '').trim();
+    if (!athleteKey) continue;
+    historiesByAthleteKey.set(athleteKey, [
+      ...(historiesByAthleteKey.get(athleteKey) || []),
+      {
+        appointmentId: appointment.id || appointment.source_event_id,
+        startsAt: appointment.starts_at,
+        updatedAt: appointment.updated_at,
+        status: appointment.status,
+        postMeetingResult: appointment.post_meeting_result,
+      },
+    ]);
+  }
+
   return appointments.flatMap((appointment) => {
     const appointmentId = String(appointment.id || appointment.source_event_id || '').trim();
     const startsAt = String(appointment.starts_at || '').trim();
@@ -461,6 +479,17 @@ export function buildPendingClientRowsFromAppointments(
       athleteMainId: appointment.athlete_main_id,
       athleteName,
     });
+    const appointmentHistory = summarizePendingClientAppointmentHistory(
+      historiesByAthleteKey.get(athleteKey) || [
+        {
+          appointmentId,
+          startsAt,
+          updatedAt: appointment.updated_at,
+          status: appointment.status,
+          postMeetingResult: appointment.post_meeting_result,
+        },
+      ],
+    );
 
     return [
       {
@@ -469,6 +498,7 @@ export function buildPendingClientRowsFromAppointments(
         meeting_timezone: appointment.meeting_timezone || null,
         meeting_timezone_label: appointment.meeting_timezone_label || null,
         last_seen_at: appointment.updated_at || row.last_seen_at,
+        recovery_cycle_count: appointmentHistory.recoveryCycleCount,
       },
     ];
   });

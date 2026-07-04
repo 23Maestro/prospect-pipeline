@@ -19,7 +19,7 @@ Set up a Prospect Pipeline reschedule/no-show parent-response workflow with Verc
 ## Local Tooling State
 
 - `n8n@2.25.7` installed globally with npm.
-- n8n binary: `/Users/singleton23/.nvm/versions/node/v22.22.3/bin/n8n`.
+- n8n binary: `<NODE_BIN_DIR>/n8n`.
 - Node: `v22.22.3`.
 - Supabase CLI: `2.102.0`.
 - Vercel CLI is not currently on PATH.

@@ -95,7 +95,7 @@ set
     || case
       when coalesce(cae.payload_json->>'materialization_status', '') = ''
        and coalesce(cae.payload_json->'materialization_proof'->>'materialization_status', '') = ''
-       and cae.source_owner = 'Jerami Singleton'
+       and cae.source_owner = 'Primary Operator'
        and nullif(cae.owner_proof, '') is not null then
         jsonb_build_object(
           'materialization_status', 'operator_task',
@@ -136,7 +136,7 @@ where cae.id = contract.id
     or (
       coalesce(cae.payload_json->>'materialization_status', '') = ''
       and coalesce(cae.payload_json->'materialization_proof'->>'materialization_status', '') = ''
-      and cae.source_owner = 'Jerami Singleton'
+      and cae.source_owner = 'Primary Operator'
       and nullif(cae.owner_proof, '') is not null
     )
   );

@@ -11,12 +11,12 @@ import {
 
 test('weekly operator meeting-set candidates render booked meetings and enrich matching operator confirmation task', () => {
   const candidates = buildWeeklyOperatorMeetingSetCandidates({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     bookedMeetings: [
       {
         event_id: '613999',
         title: 'Bryce Hill Football 2026 PA',
-        assigned_owner: 'Ryan Lietz',
+        assigned_owner: 'Head Scout D',
         start: '2026-05-04T19:00:00-04:00',
         end: '2026-05-04T20:00:00-04:00',
         date_time_label: 'Mon 05/04/26 7:00 PM - 8:00 PM',
@@ -27,7 +27,7 @@ test('weekly operator meeting-set candidates render booked meetings and enrich m
         athlete_main_id: '952901',
         athlete_name: 'Other Athlete',
         title: 'Other Athlete Football 2026 PA',
-        assigned_owner: 'Ryan Lietz',
+        assigned_owner: 'Head Scout D',
         start: '2026-05-04T21:00:00-04:00',
         end: '2026-05-04T22:00:00-04:00',
       },
@@ -38,7 +38,7 @@ test('weekly operator meeting-set candidates render booked meetings and enrich m
         athlete_id: '1491000',
         athlete_main_id: '952900',
         athlete_name: 'Bryce Hill',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         title: 'Confirmation Call',
         description: 'Confirm the meeting set',
         due_date: '2026-05-01T15:00:00-04:00',
@@ -48,7 +48,7 @@ test('weekly operator meeting-set candidates render booked meetings and enrich m
         athlete_id: '1491001',
         athlete_main_id: '952901',
         athlete_name: 'Other Athlete',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
         title: 'Confirmation Call',
         description: 'Confirm the meeting set',
       },
@@ -58,9 +58,9 @@ test('weekly operator meeting-set candidates render booked meetings and enrich m
   assert.equal(candidates.length, 2);
   assert.equal(candidates[0].athleteKey, '1491000:952900');
   assert.equal(candidates[0].athleteName, 'Bryce Hill');
-  assert.equal(candidates[0].taskAssignedOwner, 'Jerami Singleton');
+  assert.equal(candidates[0].taskAssignedOwner, 'Primary Operator');
   assert.equal(candidates[0].bookedMeeting.eventId, '613999');
-  assert.equal(candidates[0].bookedMeeting.assignedOwner, 'Ryan Lietz');
+  assert.equal(candidates[0].bookedMeeting.assignedOwner, 'Head Scout D');
   assert.equal(candidates[0].evidence.source, 'weekly_booked_meetings_with_operator_confirmation_task');
   assert.equal(candidates[1].athleteName, 'Other Athlete');
   assert.equal(candidates[1].taskId, '');

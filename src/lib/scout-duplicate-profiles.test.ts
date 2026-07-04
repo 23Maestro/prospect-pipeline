@@ -751,7 +751,7 @@ test('runDuplicateProfileResolutionForTask updates and completes duplicate-side 
       {
         task_id: '2500',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         description: 'Call the family',
         completion_date: null,
       },
@@ -803,7 +803,7 @@ test('runDuplicateProfileResolutionForTask can start from later call attempt and
       {
         task_id: '2500',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         description: 'Call the family',
         completion_date: null,
       },
@@ -859,7 +859,7 @@ test('runDuplicateProfileResolutionForTask creates saved repeat task when duplic
   assert.deepEqual(result.skipped, []);
   assert.equal(createdTasks[0]?.taskTitle, 'REPEAT');
   assert.equal(createdTasks[0]?.description, '');
-  assert.equal(createdTasks[0]?.assignedTo, '1408164');
+  assert.equal(createdTasks[0]?.assignedTo, '100001');
   assert.equal(result.completed[0]?.taskId, '2600');
   assert.equal(result.completed[0]?.taskTitle, 'REPEAT');
 });
@@ -894,7 +894,7 @@ test('runDuplicateProfileResolutionForTask marks repeat without completing Tim-o
       {
         task_id: '2501',
         title: 'Call Attempt 1',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
         description: 'Call the family',
         completion_date: null,
       },
@@ -918,7 +918,7 @@ test('runDuplicateProfileResolutionForTask marks repeat without completing Tim-o
   assert.equal(updates.length, 0);
   assert.equal(completions.length, 0);
   assert.equal(createdTasks[0]?.taskTitle, 'REPEAT');
-  assert.equal(createdTasks[0]?.assignedTo, '1408164');
+  assert.equal(createdTasks[0]?.assignedTo, '100001');
   assert.equal(result.completed[0]?.taskId, '2600');
 });
 

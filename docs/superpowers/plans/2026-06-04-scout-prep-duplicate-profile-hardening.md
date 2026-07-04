@@ -18,14 +18,14 @@ Command-D in Scout Prep remains a UI button. Duplicate meaning belongs in `src/l
 - Scout Prep exposes `Duplicate Profile Check` on `cmd+d`.
 - The Raycast tool `deplicate-profiles` also calls `runDuplicateProfileResolutionForTask(...)`.
 - The current domain searches `/athlete/admin-duplicate-search`, filters exact-name matches, accepts any single secondary row match, then mutates the duplicate-side task.
-- The legacy script `/Users/singleton23/Documents/Development/Scripts/check-repeat-profiles.sh` manually adds a `REPEAT` task and marks it complete in Chrome.
+- The legacy script `<LOCAL_SCRIPTS_DIR>/check-repeat-profiles.sh` manually adds a `REPEAT` task and marks it complete in Chrome.
 - The repo domain already implements the legacy mutation through `/tasks/create-completed`, `updateScoutPrepTask(...)`, and `completeScoutPrepTaskAfterVoicemail(...)`.
 
 ## Logging Contract
 
 Use the `auto-logger` skill for this workflow.
 
-Logger: reuse `searchLogger` / `/Users/singleton23/raycast_logs/search.log`.
+Logger: reuse `searchLogger` / `<LOCAL_LOG_DIR>/search.log`.
 
 Every duplicate check should emit structured events with:
 

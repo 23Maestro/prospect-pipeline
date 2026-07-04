@@ -16,7 +16,7 @@ import { buildConfirmationMessage } from '../src/lib/scout-follow-up-templates.t
 import { resolveSupabaseCredentials } from './supabase-credentials.mjs';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
-const TRACKED_OPERATOR_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const TRACKED_OPERATOR_NAME = process.env.CALL_TRACKER_OWNER || 'Primary Operator';
 const LIMIT = Math.max(Number.parseInt(process.env.LIMIT || '11', 10) || 11, 1);
 const DRY_RUN = process.env.DRY_RUN === '1' || process.env.DRY_RUN === 'true';
 const EASTERN_TIME_ZONE = 'America/New_York';
@@ -215,13 +215,13 @@ function buildAthleteAdminUrl(athleteId, athleteMainId) {
   if (normalizedAthleteMainId) {
     params.set('athlete_main_id', normalizedAthleteMainId);
   }
-  return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
+  return `https://legacy-dashboard.example.com/admin/athletes?${params.toString()}`;
 }
 
 function buildTaskUrl(taskId) {
   const normalized = String(taskId || '').trim();
   return normalized
-    ? `https://dashboard.nationalpid.com/admin/tasks/${encodeURIComponent(normalized)}`
+    ? `https://legacy-dashboard.example.com/admin/tasks/${encodeURIComponent(normalized)}`
     : '';
 }
 

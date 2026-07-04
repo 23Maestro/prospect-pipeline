@@ -7,11 +7,11 @@
 
     <key>ProgramArguments</key>
     <array>
-        <string>/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/start-cloudflared.sh</string>
+        <string><REPO_ROOT>/npid-api-layer/start-cloudflared.sh</string>
     </array>
 
     <key>WorkingDirectory</key>
-    <string>/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer</string>
+    <string><REPO_ROOT>/npid-api-layer</string>
 
     <key>RunAtLoad</key>
     <true/>

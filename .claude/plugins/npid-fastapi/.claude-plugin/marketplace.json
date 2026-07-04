@@ -2,7 +2,7 @@
   "name": "npid-fastapi-dev",
   "description": "Development marketplace for NPID FastAPI plugin",
   "owner": {
-    "name": "Jerami Singleton"
+    "name": "Primary Operator"
   },
   "plugins": [
     {
@@ -11,7 +11,7 @@
       "version": "1.0.0",
       "source": "./",
       "author": {
-        "name": "Jerami Singleton"
+        "name": "Primary Operator"
       }
     }
   ]

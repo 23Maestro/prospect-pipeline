@@ -2,6 +2,7 @@ import { executePythonScript } from './python-executor';
 import { NPID_CLIENT_PATH } from './python-env';
 import { ensureServerRunning } from './api-bootstrap';
 import fetch, { RequestInit } from 'node-fetch';
+import { getDemoApiResponse } from './demo-mode';
 
 export const API_BASE = 'http://127.0.0.1:8000/api/v1';
 export const API_ROOT = 'http://127.0.0.1:8000';
@@ -77,12 +78,16 @@ export async function callPythonServer<T>(
  * Wrapper for fetch that ensures the API server is running before request
  */
 export async function apiFetch(endpoint: string, options?: RequestInit) {
+  const demoResponse = getDemoApiResponse(endpoint, options);
+  if (demoResponse) return demoResponse;
   await ensureServerRunning();
   const url = `${API_BASE}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   return fetch(url, options);
 }
 
 export async function apiRootFetch(endpoint: string, options?: RequestInit) {
+  const demoResponse = getDemoApiResponse(endpoint, options);
+  if (demoResponse) return demoResponse;
   await ensureServerRunning();
   const url = `${API_ROOT}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   return fetch(url, options);

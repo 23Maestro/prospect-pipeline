@@ -47,7 +47,7 @@ test('createSignedParentResponseRequest inserts intent row and returns signed pa
       athleteName: 'Jordan Athlete',
       recipientName: 'Taylor Parent',
       recipientPhone: '555-111-2222',
-      originalHeadScoutName: 'Ryan Lietz',
+      originalHeadScoutName: 'Head Scout D',
       originalMeetingStartsAt: '2026-06-12T15:00:00Z',
       originalMeetingTimezone: 'America/New_York',
       proposedOptions: [

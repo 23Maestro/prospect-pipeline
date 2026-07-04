@@ -10,6 +10,7 @@ import {
   buildPendingClientResolvedPatch,
   buildPendingClientSourceLifecycleInput,
   buildPendingClientReviewFollowUpRowsFromSource,
+  buildPendingClientReplyWaitTaskSchedule,
   buildPendingClientWatchlistRow,
   buildPendingClientScanWindow,
   cleanPendingClientAthleteName,
@@ -32,6 +33,7 @@ import {
   parsePendingClientEvidenceNote,
   pendingClientEvidenceCrmStage,
   pendingClientExpiresAt,
+  pendingClientTaskOnlySendModeForCycle,
   selectLatestPendingClientReviewEvent,
   selectLatestPendingClientNote,
   shouldResolvePendingClientForLifecycle,
@@ -48,7 +50,7 @@ test('pending client event filter keeps recent follow-up rows across all scouts'
     {
       event_id: '1',
       title: 'Follow Up - Arthur Uribe Football 2029 CA',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       start: '2026-05-02T08:30',
       end: '2026-05-02T09:00',
       date_time_label: 'Sat 05/02/26 8:30 AM',
@@ -56,7 +58,7 @@ test('pending client event filter keeps recent follow-up rows across all scouts'
     {
       event_id: '2',
       title: '(FU) Poppy Kingan Women’s Soccer 2028',
-      assigned_owner: 'Jeffrey Stein',
+      assigned_owner: 'Head Scout B',
       start: '2026-04-24T08:30',
       end: '2026-04-24T09:00',
       date_time_label: 'Fri 04/24/26 8:30 AM',
@@ -64,7 +66,7 @@ test('pending client event filter keeps recent follow-up rows across all scouts'
     {
       event_id: '3',
       title: '(ENR $99) Already Won Football 2028 TX',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       start: '2026-05-02T08:30',
       end: '2026-05-02T09:00',
       date_time_label: 'Sat 05/02/26 8:30 AM',
@@ -72,7 +74,7 @@ test('pending client event filter keeps recent follow-up rows across all scouts'
     {
       event_id: '4',
       title: 'Follow Up - Too Old Football 2028 TX',
-      assigned_owner: 'Luther Winfield',
+      assigned_owner: 'Head Scout C',
       start: '2026-04-20T08:30',
       end: '2026-04-20T09:00',
       date_time_label: 'Mon 04/20/26 8:30 AM',
@@ -80,7 +82,7 @@ test('pending client event filter keeps recent follow-up rows across all scouts'
     {
       event_id: '5',
       title: 'Follow Up - Future Football 2028 TX',
-      assigned_owner: 'James Holcomb',
+      assigned_owner: 'Head Scout E',
       start: '2026-05-07T08:30',
       end: '2026-05-07T09:00',
       date_time_label: 'Thu 05/07/26 8:30 AM',
@@ -160,7 +162,7 @@ test('pending client rows reject athlete-key text as display name', () => {
     event: {
       event_id: 'appointment:630246',
       title: '(RSP) Daylen Johnson Football 2029 CA',
-      assigned_owner: 'Kenton Manis',
+      assigned_owner: 'Head Scout G',
       start: '2026-06-14T20:00:00.000Z',
       end: '2026-06-14T21:00:00.000Z',
     },
@@ -192,24 +194,24 @@ test('pending client notes source chooses the latest real notes-tab entry', () =
     {
       title: '05/28/26 09:03 PM',
       description: 'Family will reach back out. Give them a few weeks.',
-      metadata: 'Luther Winfield | Meeting Rescheduled Pending',
+      metadata: 'Head Scout C | Meeting Rescheduled Pending',
     },
     {
       title: '05/29/26 09:03 PM',
       description: 'Need a few days on Elite package.',
-      metadata: 'Luther Winfield | Follow Up',
+      metadata: 'Head Scout C | Follow Up',
     },
   ]);
 
   assert.equal(note?.description, 'Need a few days on Elite package.');
-  assert.equal(note?.metadata, 'Luther Winfield | Follow Up');
+  assert.equal(note?.metadata, 'Head Scout C | Follow Up');
 });
 
 test('pending client review note chooses latest follow-up event after the meeting', () => {
   const meeting = {
     event_id: '612634',
     title: '(FU) Javiion Knight Football 2027 NJ',
-    assigned_owner: 'Luther Winfield',
+    assigned_owner: 'Head Scout C',
     start: '2026-05-12T20:00',
     end: '2026-05-12T21:00',
     date_time_label: 'Tue 05/12/26 8:00 PM',
@@ -220,7 +222,7 @@ test('pending client review note chooses latest follow-up event after the meetin
     {
       event_id: '628744',
       title: '(FU) Javiion Knight Football 2027 NJ',
-      assigned_owner: 'Luther Winfield',
+      assigned_owner: 'Head Scout C',
       start: '2026-05-16T19:00',
       end: '2026-05-16T19:30',
       date_time_label: 'Sat 05/16/26 7:00 PM',
@@ -229,7 +231,7 @@ test('pending client review note chooses latest follow-up event after the meetin
     {
       event_id: '628111',
       title: '(FU)*2 Javiion Knight Football 2027 NJ',
-      assigned_owner: 'Luther Winfield',
+      assigned_owner: 'Head Scout C',
       start: '2026-05-14T19:00',
       end: '2026-05-14T19:30',
       date_time_label: 'Thu 05/14/26 7:00 PM',
@@ -238,7 +240,7 @@ test('pending client review note chooses latest follow-up event after the meetin
     {
       event_id: '628745',
       title: '(FU) Blank Note Football 2027 NJ',
-      assigned_owner: 'Luther Winfield',
+      assigned_owner: 'Head Scout C',
       start: '2026-05-17T19:00',
       end: '2026-05-17T19:30',
       date_time_label: 'Sun 05/17/26 7:00 PM',
@@ -340,7 +342,7 @@ test('pending client watchlist row persists the helper action tag', () => {
     event: {
       event_id: 'pending-client:1',
       title: '(FU) Ryan Leeds Football 2027 TX',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       start: '2026-05-30T10:00',
       end: '2026-05-30T10:30',
     },
@@ -349,12 +351,12 @@ test('pending client watchlist row persists the helper action tag', () => {
     actionTag: 'Payment Watch',
     aiVerdict: 'pending_client',
     activeOperator: {
-      operatorKey: 'jerami_singleton',
-      personName: 'Jerami Singleton',
-      legacyUserId: '1408164',
-      taskAssignedOwnerName: 'Jerami Singleton',
+      operatorKey: 'operator_primary',
+      personName: 'Primary Operator',
+      legacyUserId: '100001',
+      taskAssignedOwnerName: 'Primary Operator',
       dashboardTrackingEnabled: true,
-      senderName: 'Jerami Singleton',
+      senderName: 'Primary Operator',
     },
   });
 
@@ -366,7 +368,7 @@ function pendingClientRow(overrides = {}) {
     event: {
       event_id: 'pending-client:queue',
       title: '(RSP) Avery Jones Football 2027 TN',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       start: '2026-06-13T10:00',
       end: '2026-06-13T11:00',
     },
@@ -491,7 +493,7 @@ test('pending client central queue collapses review work to four router lanes', 
     event: {
       event_id: 'appointment:630246',
       title: '(RSP) Daylen Johnson Football 2029 CA',
-      assigned_owner: 'Kenton Manis',
+      assigned_owner: 'Head Scout G',
       start: '2026-06-14T20:00:00.000Z',
       end: '2026-06-14T21:00:00.000Z',
     },
@@ -705,12 +707,12 @@ test('pending client central queue collapses review work to four router lanes', 
   }
 });
 
-test('pending client review follow ups require call follow-up sales stage and missed outreach reply', () => {
+test('pending client review follow ups require call follow-up sales stage and unhandled inbound reply', () => {
   const row = pendingClientRow({
     event: {
       event_id: 'pending-client:review-follow-up',
       title: 'Follow Up - Aundres Thomas Football 2027 TX',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       start: '2026-06-13T10:00',
       end: '2026-06-13T11:00',
     },
@@ -758,17 +760,17 @@ test('pending client review follow ups require call follow-up sales stage and mi
   assert.equal(active.queue.actionLabel, 'Needs Reply');
   assert.equal(active.visible, true);
   assert.equal(handled.queue.actionLabel, 'Review');
-  assert.equal(handled.visible, true);
+  assert.equal(handled.visible, false);
   assert.equal(movedToMeetingSet.queue.actionLabel, 'Review');
   assert.equal(movedToMeetingSet.visible, false);
 });
 
-test('pending client review follow ups stay visible from current source stage without message evidence', () => {
+test('pending client review follow ups stay hidden from current source stage without message evidence', () => {
   const row = pendingClientRow({
     event: {
       event_id: 'pending-client:review-follow-up-source',
       title: 'Follow Up - Avery Jones Football 2027 TN',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       start: '2026-06-13T10:00',
       end: '2026-06-13T11:00',
     },
@@ -787,7 +789,7 @@ test('pending client review follow ups stay visible from current source stage wi
 
   assert.equal(state.queue.filter, 'review_follow_ups');
   assert.equal(state.queue.actionLabel, 'Review');
-  assert.equal(state.visible, true);
+  assert.equal(state.visible, false);
 });
 
 test('pending client review follow ups admit current first-contact source stages', () => {
@@ -822,9 +824,26 @@ test('pending client review follow ups admit current first-contact source stages
     },
   });
 
-  assert.equal(state.visible, true);
+  assert.equal(state.visible, false);
   assert.equal(state.queue.filter, 'review_follow_ups');
   assert.equal(state.queue.actionLabel, 'Review');
+});
+
+test('pending client reply wait task schedule defaults to second morning at 9 AM', () => {
+  const schedule = buildPendingClientReplyWaitTaskSchedule({
+    from: new Date('2026-06-18T19:42:00-04:00'),
+  });
+
+  assert.equal(schedule.dueDate, '06/20/2026');
+  assert.equal(schedule.dueTime, '09:00');
+  assert.equal(schedule.dueAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }), '9:00 AM');
+});
+
+test('pending client task-only send mode moves first two cycles and completes final cycle', () => {
+  assert.equal(pendingClientTaskOnlySendModeForCycle(null), 'move_reply_wait');
+  assert.equal(pendingClientTaskOnlySendModeForCycle(1), 'move_reply_wait');
+  assert.equal(pendingClientTaskOnlySendModeForCycle(2), 'move_reply_wait');
+  assert.equal(pendingClientTaskOnlySendModeForCycle(3), 'complete_task');
 });
 
 test('pending client review follow ups reject non-follow-up current source stages', () => {
@@ -899,8 +918,8 @@ test('pending client lane state keeps source stage ahead of message theme tags',
   const paymentRow = pendingClientRow({
     event: {
       event_id: 'appointment:payment',
-      title: 'David Foley - Follow Up',
-      assigned_owner: 'Ryan Lietz',
+      title: 'Head Scout A - Follow Up',
+      assigned_owner: 'Head Scout D',
       start: '2026-06-17T19:00:00.000Z',
     },
     description: 'Notes Tab: Family asked for Elite package payment options.',
@@ -928,7 +947,7 @@ test('pending client display tag normalizer fixes stale support tags without mov
     event: {
       event_id: 'pending-client:stale-payment',
       title: 'Follow Up - Jeremiah Cuyler Football 2027 TX',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       start: '2026-06-17T19:00:00.000Z',
     },
     description: 'Notes Tab: Father is taking over the Elite package payment.',
@@ -939,7 +958,7 @@ test('pending client display tag normalizer fixes stale support tags without mov
     event: {
       event_id: 'appointment:rsp-payment-words',
       title: '(RSP) Gage Henry Football 2027 OH',
-      assigned_owner: 'Nasir Adderley',
+      assigned_owner: 'Head Scout H',
       start: '2026-06-17T19:00:00.000Z',
     },
     description: 'Notes Tab: Parent mentioned payment but Gage needs to reschedule.',
@@ -954,7 +973,7 @@ test('pending client display tag normalizer fixes stale support tags without mov
       event: {
         event_id: 'pending-client:stored-signal-payment',
         title: 'Follow Up - Stored Signal Football 2027 TX',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         start: '2026-06-17T19:00:00.000Z',
       },
       description: 'Notes Tab: Follow up with family.',
@@ -979,7 +998,7 @@ test('pending client source lifecycle fallback keeps review reply tags aligned w
     event: {
       event_id: 'pending-client:review-follow-up-no-chat',
       title: 'Follow Up - Aundres Thomas Football 2027 TX',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       start: '2026-06-13T10:00',
       end: '2026-06-13T11:00',
     },
@@ -1013,7 +1032,7 @@ test('pending client source lifecycle input is derived in the domain', () => {
     event: {
       event_id: 'pending-client:lifecycle-source',
       title: 'Follow Up - Avery Jones Football 2027 TN',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       start: '2026-06-17T19:00:00.000Z',
     },
     description: 'Notes Tab: Follow up with family.',
@@ -1074,7 +1093,7 @@ test('pending client evidence CRM stage reuses prefix-aware stage inference', ()
           event: {
             event_id: `pending-client:${item.expected}`,
             title: item.title,
-            assigned_owner: 'Jerami Singleton',
+            assigned_owner: 'Primary Operator',
             start: '2026-06-17T19:00:00.000Z',
           },
           description: 'Pending client review.',
@@ -1090,8 +1109,8 @@ test('pending client payment markdown renders note evidence without recovery che
   const row = pendingClientRow({
     event: {
       event_id: 'appointment:payment',
-      title: 'David Foley - Follow Up',
-      assigned_owner: 'Ryan Lietz',
+      title: 'Head Scout A - Follow Up',
+      assigned_owner: 'Head Scout D',
       start: '2026-06-17T19:00:00.000Z',
     },
     description: 'Notes Tab: Father and son wanted to take over Elite at the discount price.',
@@ -1124,7 +1143,7 @@ test('reschedule-pending appointment outcome routes directly to RSP offer slots'
     event: {
       event_id: 'appointment:613349',
       title: 'Joziah Zenobia - Reschedule Pending',
-      assigned_owner: 'David Foley',
+      assigned_owner: 'Head Scout A',
       start: '2026-06-17T01:00:00.000Z',
     },
     description: 'Pending client review from appointment outcome: reschedule_pending.',
@@ -1248,11 +1267,13 @@ test('pending client checklist checks real note and outbound reschedule evidence
   assert.equal(
     markdown,
     [
-      '### Next Action',
+      '### Stage 1',
+      '',
+      '**Action: Try Again**',
       '',
       '- [x] Add note',
       '- [x] Offer slots',
-      '- [ ] Try again - waited until Friday, June 19th at 11:00 AM',
+      '- [ ] Try again - waited until Friday, June 19th at 9:00 AM',
       '',
       '### Note',
       '',
@@ -1277,7 +1298,7 @@ test('pending client checklist waits for note and reschedule outreach when evide
       replyEvidence: null,
       now: new Date('2026-06-17T15:00:00.000Z'),
     }),
-    ['### Next Action', '', '- [ ] Add note', '- [ ] Offer slots'].join('\n'),
+    ['### Stage 1', '', '**Action: Offer Slots**', '', '- [ ] Add note', '- [ ] Offer slots'].join('\n'),
   );
 });
 
@@ -1295,18 +1316,20 @@ test('pending client checklist marks offered slots and waits for reply right aft
         operatorReplyProposedTimes: true,
         clientRepliedAfterOperatorTimes: false,
         lastMeaningfulOutbound: {
-          body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
+          body: 'Coach Head Scout H has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
           date: '2026-06-17T15:05:00',
         },
       },
       now: new Date('2026-06-17T15:10:00'),
     }),
     [
-      '### Next Action',
+      '### Stage 1',
+      '',
+      '**Action: Awaiting Client**',
       '',
       '- [x] Add note',
       '- [x] Offer slots',
-      '- [ ] Wait for reply until Friday, June 19th at 3:05 PM',
+      '- [ ] Wait for reply until Friday, June 19th at 9:00 AM',
       '',
       '### Note',
       '',
@@ -1342,7 +1365,9 @@ test('pending client checklist asks for reply review when client responds after 
       now: new Date('2026-06-17T17:00:00.000Z'),
     }),
     [
-      '### Next Action',
+      '### Stage 1',
+      '',
+      '**Action: Review Reply**',
       '',
       '- [x] Add note',
       '- [x] Offer slots',
@@ -1374,14 +1399,18 @@ test('pending client active follow-up state marks outbound offer as awaiting cli
     row,
     filter: 'reschedule',
     replyEvidence,
-    now: new Date('2026-06-18T12:00:00.000Z'),
+    now: new Date('2026-06-18T10:00:00.000Z'),
   });
-  const queue = classifyPendingClientCentralQueue({ row, replyEvidence });
+  const queue = classifyPendingClientCentralQueue({
+    row,
+    replyEvidence,
+    now: new Date('2026-06-18T10:00:00.000Z'),
+  });
   const markdown = buildPendingClientChecklistMarkdown({
     row,
     replyEvidence,
     centralQueue: queue,
-    now: new Date('2026-06-18T12:00:00.000Z'),
+    now: new Date('2026-06-18T10:00:00.000Z'),
   });
 
   assert.equal(state.actionLabel, 'Awaiting Client');
@@ -1599,7 +1628,7 @@ test('pending client payment watch does not require appointment truth backing', 
     event: {
       event_id: 'pending-client:arthur-payment-watch',
       title: 'Follow Up - Arthur Uribe Football 2029 CA',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       start: '2026-07-06T08:30',
       end: '2026-07-06T09:00',
     },
@@ -1626,35 +1655,35 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
       athlete_id: '1489000',
       athlete_main_id: '951000',
       athlete_name: 'Avery Jones',
-      head_scout_name: 'Ryan Lietz',
+      head_scout_name: 'Head Scout D',
       meeting_starts_at: '2026-05-15T19:00:00.000Z',
       meeting_ends_at: '2026-05-15T20:00:00.000Z',
       source: 'set_meetings_confirmation',
       kind: 'confirmation_1',
       status: 'cached',
       message_body: 'one',
-      payload_json: { active_operator_key: 'jerami_singleton' },
+      payload_json: { active_operator_key: 'operator_primary' },
     },
     {
       appointment_id: 'future-jerami',
       athlete_id: '1489001',
       athlete_main_id: '951001',
       athlete_name: 'Future Jones',
-      head_scout_name: 'Ryan Lietz',
+      head_scout_name: 'Head Scout D',
       meeting_starts_at: '2026-05-15T21:00:00.000Z',
       meeting_ends_at: '2026-05-15T22:00:00.000Z',
       source: 'set_meetings_confirmation',
       kind: 'confirmation_1',
       status: 'cached',
       message_body: 'one',
-      payload_json: { active_operator_key: 'jerami_singleton' },
+      payload_json: { active_operator_key: 'operator_primary' },
     },
     {
       appointment_id: 'past-other',
       athlete_id: '1489002',
       athlete_main_id: '951002',
       athlete_name: 'Other Jones',
-      head_scout_name: 'Ryan Lietz',
+      head_scout_name: 'Head Scout D',
       meeting_starts_at: '2026-05-15T19:00:00.000Z',
       meeting_ends_at: '2026-05-15T20:00:00.000Z',
       source: 'set_meetings_confirmation',
@@ -1668,7 +1697,7 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
       athlete_id: '1489003',
       athlete_main_id: '951003',
       athlete_name: 'Missing Operator',
-      head_scout_name: 'Ryan Lietz',
+      head_scout_name: 'Head Scout D',
       meeting_starts_at: '2026-05-15T19:00:00.000Z',
       meeting_ends_at: '2026-05-15T20:00:00.000Z',
       source: 'set_meetings_confirmation',
@@ -1682,7 +1711,7 @@ test('pending client source keeps only ready Jerami-owned set meeting cache grou
   assert.deepEqual(
     filterReadySetMeetingConfirmationGroups(rows, {
       now,
-      activeOperatorKey: 'jerami_singleton',
+      activeOperatorKey: 'operator_primary',
     }).map((row) => row.appointmentId),
     ['past-jerami'],
   );
@@ -1878,7 +1907,7 @@ test('pending client recovery row is suppressed by a newer confirmed meeting cac
     event: {
       event_id: 'pending-client:1498941:953710:628043',
       title: '(RSP) Diego Crespo Franco Baseball 2026 GA',
-      assigned_owner: 'James Holcomb',
+      assigned_owner: 'Head Scout E',
       start: '2026-05-31T20:00:00.000Z',
       end: '2026-05-31T21:00:00.000Z',
     },
@@ -1934,7 +1963,7 @@ test('pending client confirmation suppression does not hide payment follow-up ro
     event: {
       event_id: 'pending-client:payment-watch',
       title: '(FU) Diego Crespo Franco Baseball 2026 GA',
-      assigned_owner: 'James Holcomb',
+      assigned_owner: 'Head Scout E',
       start: '2026-05-31T20:00:00.000Z',
       end: '2026-05-31T21:00:00.000Z',
     },
@@ -2019,42 +2048,42 @@ test('pending client AI verdict accepts exactly pending_client', () => {
 
 test('pending client owner snapshot separates head scout and operator fields', () => {
   const snapshot = buildPendingClientOwnerSnapshot({
-    assignedOwner: 'Ryan Lietz',
+    assignedOwner: 'Head Scout D',
     activeOperator: {
-      operatorKey: 'jerami_singleton',
-      personName: 'Jerami Singleton',
-      legacyUserId: '1408164',
-      taskAssignedOwnerName: 'Jerami Singleton',
+      operatorKey: 'operator_primary',
+      personName: 'Primary Operator',
+      legacyUserId: '100001',
+      taskAssignedOwnerName: 'Primary Operator',
       dashboardTrackingEnabled: true,
-      senderName: 'Jerami Singleton',
+      senderName: 'Primary Operator',
     },
   });
 
-  assert.equal(snapshot.head_scout, 'Ryan Lietz');
-  assert.equal(snapshot.head_scout_key, 'ryan_lietz');
-  assert.equal(snapshot.calendar_owner_id, 'nhVvYOz8bAaL57c');
-  assert.equal(snapshot.detected_by_operator, 'Jerami Singleton');
-  assert.equal(snapshot.detected_by_operator_key, 'jerami_singleton');
-  assert.equal(snapshot.owner_context.active_operator_name, 'Jerami Singleton');
-  assert.equal(snapshot.owner_context.head_scout_name, 'Ryan Lietz');
+  assert.equal(snapshot.head_scout, 'Head Scout D');
+  assert.equal(snapshot.head_scout_key, 'head_scout_d');
+  assert.equal(snapshot.calendar_owner_id, 'calendar_owner_d');
+  assert.equal(snapshot.detected_by_operator, 'Primary Operator');
+  assert.equal(snapshot.detected_by_operator_key, 'operator_primary');
+  assert.equal(snapshot.owner_context.active_operator_name, 'Primary Operator');
+  assert.equal(snapshot.owner_context.head_scout_name, 'Head Scout D');
 });
 
 test('resolved patch stamps the current active operator without call tracker proof fields', () => {
   const patch = buildPendingClientResolvedPatch(
     {
-      operatorKey: 'jerami_singleton',
-      personName: 'Jerami Singleton',
-      legacyUserId: '1408164',
-      taskAssignedOwnerName: 'Jerami Singleton',
+      operatorKey: 'operator_primary',
+      personName: 'Primary Operator',
+      legacyUserId: '100001',
+      taskAssignedOwnerName: 'Primary Operator',
       dashboardTrackingEnabled: true,
-      senderName: 'Jerami Singleton',
+      senderName: 'Primary Operator',
     },
     new Date('2026-05-06T18:00:00Z'),
   );
 
   assert.equal(patch.status, 'resolved');
-  assert.equal(patch.resolved_by_operator, 'Jerami Singleton');
-  assert.equal(patch.resolved_by_operator_key, 'jerami_singleton');
+  assert.equal(patch.resolved_by_operator, 'Primary Operator');
+  assert.equal(patch.resolved_by_operator_key, 'operator_primary');
   assert.equal(patch.resolved_at, '2026-05-06T18:00:00.000Z');
   assert.equal(Object.prototype.hasOwnProperty.call(patch, 'owner_proof'), false);
   assert.equal(Object.prototype.hasOwnProperty.call(patch, 'materialization_status'), false);

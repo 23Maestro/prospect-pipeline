@@ -144,6 +144,10 @@ import {
   type ScoutPrepBatchRow,
 } from './domain/scout-batch-runner';
 import { buildScoutPrepCommandContext } from './domain/scout-prep-command-pipeline';
+import {
+  buildPendingClientReplyWaitTaskSchedule,
+  type PendingClientTaskOnlySendMode,
+} from './domain/pending-client-watchlist';
 import { selectParentRescheduleSlots } from './domain/parent-reschedule-slot-selection';
 import { apiLogger, searchLogger } from './lib/logger';
 import { resolveTimezone } from './lib/scout-prep-ai';
@@ -238,9 +242,9 @@ import {
 } from './lib/reschedule-recovery-context';
 
 const FEATURE = 'scout-prep';
-const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const DASHBOARD_BASE_URL = 'https://legacy-dashboard.example.com';
 const SCOUT_PREP_BATCH_LIMIT = 10;
-const RAYCAST_LOG_DIR = '/Users/singleton23/raycast_logs';
+const RAYCAST_LOG_DIR = process.env.RAYCAST_LOG_DIR || `${process.env.HOME || ''}/raycast_logs`;
 const SCOUT_PREP_SEARCH_LOG_FILE = `${RAYCAST_LOG_DIR}/search.log`;
 const SCOUT_PREP_BATCH_ATTEMPT_INDEX_FILE = `${RAYCAST_LOG_DIR}/scout-prep-batch-attempts.json`;
 const STATE_NAMES_BY_ABBREVIATION: Record<string, string> = {
@@ -1003,14 +1007,13 @@ async function completeSentTextTask(args: {
   context: ScoutPrepContext;
   task: ScoutPortalTask;
   variant: VoicemailFollowUpVariant;
-}): Promise<void> {
-  const matchedTask = resolveVoicemailLifecycleTaskForCompletion(args.context.tasks, args.variant);
-  const taskLabel = getVoicemailLifecycleTaskTitle(args.variant) || args.variant;
+  mode?: PendingClientTaskOnlySendMode;
+}): Promise<PendingClientTaskOnlySendMode> {
+  const { matchedTask, taskLabel } = resolveSentTextTaskForVariant(args.context, args.variant);
   if (!matchedTask?.task_id) {
     throw new Error(`Missing task list item for ${taskLabel}`);
   }
 
-  const mustHavePreviousMeeting = args.requirePreviousMeeting !== false;
   const athleteId = String(args.task.contact_id || args.context.task.contact_id || '').trim();
   const athleteMainId = String(
     args.context.resolved.athlete_main_id || args.task.athlete_main_id || '',
@@ -1019,17 +1022,45 @@ async function completeSentTextTask(args: {
     throw new Error('Missing athlete identifiers for sent-text completion');
   }
 
-  await completeScoutPrepTaskAfterVoicemail({
-    athleteId,
+  const schedule = buildPendingClientReplyWaitTaskSchedule();
+  const taskTitle = getTaskDisplayTitle(matchedTask);
+  if (args.mode === 'complete_task') {
+    await completeScoutPrepTaskAfterVoicemail({
+      athleteId,
+      athleteMainId,
+      athleteName: args.context.contactInfo.studentAthlete.name || args.task.athlete_name,
+      contactTask: athleteId,
+      taskId: matchedTask.task_id,
+      crmStage: getVoicemailLifecycleStageLabel(args.variant),
+      taskTitle,
+      assignedOwner: matchedTask.assigned_owner,
+      description: matchedTask.description || taskTitle,
+    });
+    return 'complete_task';
+  }
+
+  await updateScoutPrepTask({
+    taskId: matchedTask.task_id,
+    contactTask: athleteId,
     athleteMainId,
     athleteName: args.context.contactInfo.studentAthlete.name || args.task.athlete_name,
-    contactTask: args.task.contact_id,
-    taskId: matchedTask.task_id,
-    crmStage: getVoicemailLifecycleStageLabel(args.variant),
-    taskTitle: getTaskDisplayTitle(matchedTask),
+    taskTitle,
     assignedOwner: matchedTask.assigned_owner,
-    description: matchedTask.description || getTaskDisplayTitle(matchedTask),
+    description: matchedTask.description || taskTitle,
+    dueDate: schedule.dueDate,
+    dueTime: schedule.dueTime,
   });
+  return 'move_reply_wait';
+}
+
+function resolveSentTextTaskForVariant(
+  context: ScoutPrepContext,
+  variant: VoicemailFollowUpVariant,
+): { matchedTask: ScoutAthleteTask | null; taskLabel: string } {
+  return {
+    matchedTask: resolveVoicemailLifecycleTaskForCompletion(context.tasks, variant),
+    taskLabel: getVoicemailLifecycleTaskTitle(variant) || variant,
+  };
 }
 
 function SupabaseLifecycleStatusAction() {
@@ -2556,6 +2587,7 @@ export function VoicemailFollowUpRecipientForm({
   context,
   currentTask,
   defaultVariantOverride,
+  taskOnlySendMode = 'move_reply_wait',
   onComplete,
   closeAfterCompleteViews = 1,
 }: {
@@ -2563,6 +2595,7 @@ export function VoicemailFollowUpRecipientForm({
   context: ScoutPrepContext;
   currentTask?: string | null;
   defaultVariantOverride?: VoicemailFollowUpVariant | null;
+  taskOnlySendMode?: PendingClientTaskOnlySendMode;
   onComplete?: () => Promise<void> | void;
   closeAfterCompleteViews?: number;
 }) {
@@ -2772,12 +2805,14 @@ export function VoicemailFollowUpRecipientForm({
         mode,
         variant: selectedVariant,
       });
+      let taskOnlyResult: PendingClientTaskOnlySendMode | null = null;
       try {
         if (isTaskOnlyVoicemailVariant(selectedVariant)) {
-          await completeSentTextTask({
+          taskOnlyResult = await completeSentTextTask({
             context,
             task,
             variant: selectedVariant,
+            mode: taskOnlySendMode,
           });
         } else {
           await persistVoicemailFollowUpMessageSent({
@@ -2792,14 +2827,18 @@ export function VoicemailFollowUpRecipientForm({
         await showToast({
           style: Toast.Style.Failure,
           title: isTaskOnlyVoicemailVariant(selectedVariant)
-            ? 'Draft open, task not completed'
+            ? 'Draft open, task not updated'
             : 'Draft open, save failed',
           message: error instanceof Error ? error.message : String(error),
         });
         return;
       }
       await finishFollowUpFlow(
-        isTaskOnlyVoicemailVariant(selectedVariant) ? 'Completed' : 'Sent',
+        isTaskOnlyVoicemailVariant(selectedVariant)
+          ? taskOnlyResult === 'complete_task'
+            ? 'Completed'
+            : 'Updated'
+          : 'Sent',
         recipient.name,
         usesHeadScoutSlotPicker(selectedVariant) ? 1 : 0,
       );
@@ -6171,8 +6210,8 @@ function ProspectSearchListItem({
               result.url?.startsWith('http')
                 ? result.url
                 : result.url
-                  ? `https://dashboard.nationalpid.com${result.url}`
-                  : `https://dashboard.nationalpid.com/athlete/profile/${result.athlete_id}`
+                  ? `https://legacy-dashboard.example.com${result.url}`
+                  : `https://legacy-dashboard.example.com/athlete/profile/${result.athlete_id}`
             }
           />
           <Action

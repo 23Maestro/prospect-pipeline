@@ -74,7 +74,7 @@ test('workflow context treats title prefix as signal without blocking stale sale
 });
 
 test('workflow context never turns scout names into meeting titles', () => {
-  assert.equal(isFabricatedMeetingTitle('Post Meeting - Ryan Lietz'), true);
+  assert.equal(isFabricatedMeetingTitle('Post Meeting - Head Scout D'), true);
 
   const context = resolveWorkflowContext({
     athleteId: '1499010',
@@ -82,7 +82,7 @@ test('workflow context never turns scout names into meeting titles', () => {
     athleteName: 'Wenstan Penermon',
     salesStage: 'Rescheduled',
     appointmentId: '586604',
-    meetingTitle: 'Post Meeting - Ryan Lietz',
+    meetingTitle: 'Post Meeting - Head Scout D',
   });
 
   assert.equal(context.meeting_title_current, null);

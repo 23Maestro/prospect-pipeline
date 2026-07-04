@@ -15,12 +15,12 @@ The script scans every `.vcf` in that folder. The file names do not need to matc
 Cards visible in the current phone folder:
 
 ```text
-Logan Lord
-Jerami Singleton
-Jeffrey Stein
-James Holcomb
-Luther Winfield III
-Ryan Lietz
+Head Scout F
+Primary Operator
+Head Scout B
+Head Scout E
+Head Scout C
+Head Scout D
 ```
 
 ## Script

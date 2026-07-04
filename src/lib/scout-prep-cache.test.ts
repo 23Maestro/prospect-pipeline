@@ -107,7 +107,7 @@ function buildScoutPrepContext(task = buildScoutPrepTask()): ScoutPrepContext {
       state: task.state,
       positions: 'OLB',
       gpa: '3.4',
-      head_scout: 'Jerami Singleton',
+      head_scout: 'Primary Operator',
       scouting_coordinator: null,
       height: `6'1"`,
       weight: '205 lbs',
@@ -123,7 +123,7 @@ function buildScoutPrepContext(task = buildScoutPrepTask()): ScoutPrepContext {
       {
         task_id: 'task-123',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         due_date: '05/19/2026 09:00 AM',
         completion_date: null,
         description: 'Call Attempt 1',

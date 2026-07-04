@@ -55,7 +55,7 @@ test('buildCalFollowUpBookingPayload forces exact-time Cal booking with metadata
   assert.equal(payload.metadata.athleteName, 'Carlos Rawls');
   assert.equal(
     payload.metadata.dashboardUrl,
-    'https://dashboard.nationalpid.com/admin/athletes?contactid=123&athlete_main_id=456',
+    'https://legacy-dashboard.example.com/admin/athletes?contactid=123&athlete_main_id=456',
   );
 });
 

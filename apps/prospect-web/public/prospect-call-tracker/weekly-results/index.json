@@ -1,6 +1,40 @@
 {
-  "generatedAt": "2026-06-15T03:45:06.348Z",
+  "generatedAt": "2026-06-29T03:45:08.359Z",
   "weeks": [
+    {
+      "archivedAt": "2026-06-29T03:45:08.359Z",
+      "file": "2026-06-22_to_2026-06-26.json",
+      "startDate": "2026-06-22",
+      "endDate": "2026-06-26",
+      "label": "This Week, Jun 22 - Jun 28",
+      "dials": 0,
+      "contacts": 0,
+      "meetingsSet": 0,
+      "setRate": 0,
+      "allTimeAtArchive": {
+        "dials": 847,
+        "contacts": 166,
+        "meetingsSet": 78,
+        "setRate": 47
+      }
+    },
+    {
+      "archivedAt": "2026-06-22T03:45:08.552Z",
+      "file": "2026-06-15_to_2026-06-19.json",
+      "startDate": "2026-06-15",
+      "endDate": "2026-06-19",
+      "label": "This Week, Jun 15 - Jun 21",
+      "dials": 60,
+      "contacts": 14,
+      "meetingsSet": 13,
+      "setRate": 93,
+      "allTimeAtArchive": {
+        "dials": 847,
+        "contacts": 166,
+        "meetingsSet": 78,
+        "setRate": 47
+      }
+    },
     {
       "archivedAt": "2026-06-15T03:45:06.348Z",
       "file": "2026-06-08_to_2026-06-12.json",

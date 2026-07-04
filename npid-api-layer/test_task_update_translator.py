@@ -16,7 +16,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
 
     def test_portal_tasks_search_forwards_laravel_datatable_search(self):
         endpoint, params = LegacyTranslator.portal_tasks_to_legacy(
-            assigned_to="1408164",
+            assigned_to="100001",
             range_value="all",
             start=0,
             length=100,
@@ -25,7 +25,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
 
         self.assertEqual(endpoint, "/tasks/taskslist")
         self.assertEqual(params["range"], "all")
-        self.assertEqual(params["assignedto"], "1408164")
+        self.assertEqual(params["assignedto"], "100001")
         self.assertEqual(params["start"], 0)
         self.assertEqual(params["length"], 100)
         self.assertEqual(params["search[value]"], "Avery Jones")
@@ -105,7 +105,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
             "duetime": "10:00",
             "completedate": "05/25/2026",
             "completed_time": "10:30",
-            "assignedto": "1408164",
+            "assignedto": "100001",
             "taskcompleted": "1",
         }
 
@@ -125,7 +125,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
         self.assertEqual(updated["taskdescription"], "Dad was busy running errands.")
         self.assertEqual(updated["duedate"], "05/26/2026")
         self.assertEqual(updated["duetime"], "14:04")
-        self.assertEqual(updated["assignedto"], "1408164")
+        self.assertEqual(updated["assignedto"], "100001")
         self.assertEqual(updated["contact_task"], "1497543")
         self.assertEqual(updated["athlete_main_id"], "953625")
         self.assertEqual(updated["completedate"], "")
@@ -157,7 +157,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
             due_time="00:00",
             completed_date="05/13/2026",
             completed_time="13:40",
-            assigned_to="1408164",
+            assigned_to="100001",
         )
 
         self.assertEqual(updated["existingtask"], "628893")
@@ -169,7 +169,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
         self.assertEqual(updated["duetime"], "00:00")
         self.assertEqual(updated["completedate"], "05/13/2026")
         self.assertEqual(updated["completed_time"], "13:40")
-        self.assertEqual(updated["assignedto"], "1408164")
+        self.assertEqual(updated["assignedto"], "100001")
 
     def test_create_task_popup_uses_adminathlete_contract(self):
         endpoint, params = LegacyTranslator.task_create_popup_to_legacy(
@@ -194,7 +194,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
             <tr class="task697913">
               <td>Wed 06/03/26 10:06 AM</td>
               <td></td>
-              <td>Tim Risner</td>
+              <td>Secondary Operator</td>
               <td style="text-transform:capitalize;">Call Attempt 1</td>
               <td class="description_space">Call the family first time.</td>
             </tr>
@@ -206,7 +206,7 @@ class TaskUpdateTranslatorTests(unittest.TestCase):
 
         self.assertEqual(result["tasks"][0]["task_id"], "697913")
         self.assertEqual(result["tasks"][0]["title"], "Call Attempt 1")
-        self.assertEqual(result["tasks"][0]["assigned_owner"], "Tim Risner")
+        self.assertEqual(result["tasks"][0]["assigned_owner"], "Secondary Operator")
 
 
 if __name__ == "__main__":

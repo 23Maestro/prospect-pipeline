@@ -107,7 +107,7 @@ function buildAthleteAdminUrl(athleteId: string, athleteMainId?: string | null):
   if (normalizedAthleteMainId) {
     params.set('athlete_main_id', normalizedAthleteMainId);
   }
-  return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
+  return `https://legacy-dashboard.example.com/admin/athletes?${params.toString()}`;
 }
 
 export function getSetMeetingConfirmationSupabaseConfig(): SupabasePersistenceConfig | null {

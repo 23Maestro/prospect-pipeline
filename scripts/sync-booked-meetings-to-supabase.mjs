@@ -35,7 +35,7 @@ const {
   schema: SUPABASE_SCHEMA,
 } = resolveSupabaseCredentials();
 const RUN_ID = randomUUID();
-const TRACKED_OPERATOR_NAME = process.env.CALL_TRACKER_OWNER || 'Jerami Singleton';
+const TRACKED_OPERATOR_NAME = process.env.CALL_TRACKER_OWNER || 'Primary Operator';
 const SUPABASE_CONFIG = {
   url: SUPABASE_URL,
   key: SUPABASE_SERVICE_ROLE_KEY,

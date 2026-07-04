@@ -95,7 +95,7 @@ interface AdminAthleteTableResponse {
 }
 
 const CUTOFF_DAYS = 365;
-const ASSIGNED_EDITOR = 'Jerami Singleton';
+const ASSIGNED_EDITOR = 'Primary Operator';
 const ALLOWED_STAGES = new Set(['in queue', 'on hold', 'awaiting client', 'done']);
 const STAGE_PRIORITY: Record<string, number> = {
   'in queue': 1,
@@ -860,7 +860,7 @@ function getAdminSectionUrl(
   athleteId: number,
   section: 'contact' | 'payments' | 'emails' | 'campaigns',
 ): string {
-  const base = `https://dashboard.nationalpid.com/admin/athletes?contactid=${athleteId}`;
+  const base = `https://legacy-dashboard.example.com/admin/athletes?contactid=${athleteId}`;
   if (section === 'payments') {
     return `${base}#:~:text=Payments-,Campaigns,-Campaigns`;
   }
@@ -1352,19 +1352,19 @@ ${approvedDetail}
             />
             <Action.OpenInBrowser
               title="General Info"
-              url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${task.athlete_id}`}
+              url={`https://legacy-dashboard.example.com/admin/athletes?contactid=${task.athlete_id}`}
               icon="👤"
               shortcut={{ modifiers: ['shift', 'cmd'], key: 'o' }}
             />
             <Action.OpenInBrowser
               title="View PlayerID"
-              url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
+              url={`https://legacy-dashboard.example.com/athlete/profile/${task.athlete_id}`}
               icon="🌍"
               shortcut={{ modifiers: ['cmd'], key: 'o' }}
             />
             <Action.OpenInBrowser
               title="Task: Video Progress ID"
-              url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
+              url={`https://legacy-dashboard.example.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
               icon={Icon.Globe}
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
             />
@@ -1801,7 +1801,7 @@ function UpdateStatusForm({ task, onUpdate }: UpdateStatusFormProps) {
         allTasks.filter(
           (t) =>
             shouldIncludeTask(t) &&
-            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
+            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'External Links', 'Not Approved'].includes(
               t.video_progress_status,
             ),
         ),
@@ -1975,7 +1975,7 @@ function UpdateStageForm({ task, onUpdate }: UpdateStageFormProps) {
         allTasks.filter(
           (t) =>
             shouldIncludeTask(t) &&
-            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'Not Approved', 'External Links'].includes(
+            ['Revisions', 'Revise', 'HUDL', 'Dropbox', 'External Links', 'Not Approved'].includes(
               t.video_progress_status,
             ),
         ),
@@ -2339,7 +2339,7 @@ function AuthRecoveryDetail(props: {
           />
           <Action.OpenInBrowser
             title="Open Prospect ID Login"
-            url="https://dashboard.nationalpid.com/auth/login"
+            url="https://legacy-dashboard.example.com/auth/login"
             icon={Icon.Globe}
             shortcut={{ modifiers: ['cmd'], key: 'o' }}
           />
@@ -2636,7 +2636,7 @@ export default function VideoProgress() {
 
       await showToast({
         style: Toast.Style.Success,
-        title: 'Assigned to Jerami Singleton',
+        title: 'Assigned to Primary Operator',
         message: task.athletename,
       });
     } catch (error) {
@@ -2916,7 +2916,7 @@ export default function VideoProgress() {
                     target={<CraftReminderForm task={task} reminderType="dropbox-folder" />}
                   />
                   <Action
-                    title="Assign to Jerami Singleton (Cache)"
+                    title="Assign to Primary Operator (Cache)"
                     icon={Icon.Person}
                     onAction={() => assignTaskToMeFromCache(task)}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'a' }}
@@ -2940,13 +2940,13 @@ export default function VideoProgress() {
                   )}
                   <Action.OpenInBrowser
                     title="View PlayerID"
-                    url={`https://dashboard.nationalpid.com/athlete/profile/${task.athlete_id}`}
+                    url={`https://legacy-dashboard.example.com/athlete/profile/${task.athlete_id}`}
                     icon={Icon.Globe}
                     shortcut={{ modifiers: ['cmd'], key: 'o' }}
                   />
                   <Action.OpenInBrowser
                     title="Task: Video Progress ID"
-                    url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
+                    url={`https://legacy-dashboard.example.com/videoteammsg/videomailprogress?contactid=${task.athlete_id}`}
                     icon={Icon.Globe}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
                   />

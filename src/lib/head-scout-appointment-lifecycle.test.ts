@@ -16,7 +16,7 @@ import {
 const weekendMeeting = {
   event_id: 'old-weekend',
   title: 'Victor Williams Football 2027 FL',
-  assigned_owner: 'Ryan Lietz',
+  assigned_owner: 'Head Scout D',
   start: '2026-04-19T18:00',
   end: '2026-04-19T19:00',
   date_time_label: 'Sun 04/19/26 6:00 PM - 7:00 PM',
@@ -25,7 +25,7 @@ const weekendMeeting = {
 const thursdayMeeting = {
   event_id: 'new-thursday',
   title: 'Victor Williams Football 2027 FL',
-  assigned_owner: 'Ryan Lietz',
+  assigned_owner: 'Head Scout D',
   start: '2026-04-23T18:00',
   end: '2026-04-23T19:00',
   date_time_label: 'Thu 04/23/26 6:00 PM - 7:00 PM',
@@ -43,7 +43,7 @@ test('weekend appointment moved to Thursday resolves Thursday as canonical meeti
     athleteId: '1489227',
     athleteName: 'Victor Williams',
     crmSalesStage: 'Rescheduled',
-    assignedScout: 'Ryan Lietz',
+    assignedScout: 'Head Scout D',
     bookedMeetingTitle: buildBookedMeetingTitle({
       athleteName: 'Victor Williams',
       sport: 'Football',
@@ -65,7 +65,7 @@ test('crm rescheduled with current booked meeting stays active', () => {
   const result = resolveAppointmentLifecycle({
     athleteName: 'Victor Williams',
     crmSalesStage: 'Rescheduled',
-    assignedScout: 'Ryan Lietz',
+    assignedScout: 'Head Scout D',
     bookedMeetings: [weekendMeeting, thursdayMeeting],
     followUpTask: staleConfirmationTask,
     meetingTimezone: 'EST',
@@ -137,7 +137,7 @@ test('confirmation text uses resolved current meeting time, not stale task date'
   const result = resolveAppointmentLifecycle({
     athleteName: 'Victor Williams',
     crmSalesStage: 'Rescheduled',
-    assignedScout: 'Ryan Lietz',
+    assignedScout: 'Head Scout D',
     bookedMeetings: [weekendMeeting, thursdayMeeting],
     followUpTask: staleConfirmationTask,
     meetingTimezone: 'EST',

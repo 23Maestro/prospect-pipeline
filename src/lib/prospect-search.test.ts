@@ -15,6 +15,6 @@ test('normalizeProspectSearchTerm formats ten digit phone searches', () => {
 
 test('normalizeProspectSearchTerm leaves non-phone searches alone', () => {
   assert.equal(normalizeProspectSearchTerm(' Anita Riggins '), 'Anita Riggins');
-  assert.equal(normalizeProspectSearchTerm('ariggins61@gmail.com'), 'ariggins61@gmail.com');
+  assert.equal(normalizeProspectSearchTerm('prospect.com'), 'prospect.com');
   assert.equal(normalizeProspectSearchTerm('+44 20 7946 0958'), '+44 20 7946 0958');
 });

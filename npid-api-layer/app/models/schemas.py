@@ -260,7 +260,7 @@ class MaterializeTaskRequest(BaseModel):
     state: Optional[str] = None
     positions: Optional[str] = None
     jersey_number: Optional[str] = None
-    assigned_editor: str = Field(default="Jerami Singleton")
+    assigned_editor: str = Field(default="Primary Operator")
     stage: str = Field(default="In Queue")
     status: Optional[str] = Field(default="")
     source: Optional[str] = Field(default="raycast:global_prospect_ingest")
@@ -420,7 +420,7 @@ class TaskCreateCompletedRequest(BaseModel):
     due_time: str = "00:00"
     completed_date: str
     completed_time: str
-    assigned_to: str = Field(default="1408164")
+    assigned_to: str = Field(default="100001")
 
 
 class TaskCreateRequest(BaseModel):
@@ -431,7 +431,7 @@ class TaskCreateRequest(BaseModel):
     description: str = ""
     due_date: str
     due_time: str = "00:00"
-    assigned_to: str = Field(default="1408164")
+    assigned_to: str = Field(default="100001")
 
 
 class TaskCreateCompletedResponse(BaseModel):
@@ -447,7 +447,7 @@ class TaskCompleteRequest(BaseModel):
     contact_task: Optional[str] = None
     task_id: Optional[str] = None
     task_title: str = Field(default="Video Editing")
-    assigned_owner: str = Field(default="Jerami Singleton")
+    assigned_owner: str = Field(default="Primary Operator")
     description: str
     completed_date: str
     completed_time: str
@@ -472,7 +472,7 @@ class TaskCallAttempt3SentRequest(BaseModel):
     description: str = Field(
         default="Call the family third time. Then If you do not get a hold of them, code as 'Did Not Speak To'"
     )
-    assigned_to: Optional[str] = Field(default="1408164")
+    assigned_to: Optional[str] = Field(default="100001")
 
 
 class TaskCallAttempt3SentResponse(BaseModel):
@@ -492,7 +492,7 @@ class TaskFollowUpMessageSentRequest(BaseModel):
     stage: str
     task_title: str
     description: str
-    assigned_to: Optional[str] = Field(default="1408164")
+    assigned_to: Optional[str] = Field(default="100001")
 
 
 class TaskFollowUpMessageSentResponse(BaseModel):

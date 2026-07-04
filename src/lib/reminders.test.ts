@@ -43,7 +43,7 @@ test('buildReminderDraft includes admin url', () => {
   assert.equal(draft.body, 'SA:Carlos Rawls - 615-555-3434');
   assert.equal(
     draft.url,
-    'https://dashboard.nationalpid.com/admin/athletes?contactid=123&athlete_main_id=456',
+    'https://legacy-dashboard.example.com/admin/athletes?contactid=123&athlete_main_id=456',
   );
   assert.equal(draft.listName, 'Prospect ID');
   assert.equal(draft.remindAt?.toISOString(), remindAt.toISOString());
@@ -52,7 +52,7 @@ test('buildReminderDraft includes admin url', () => {
 test('buildReminderAdminUrl omits athlete_main_id when unavailable', () => {
   assert.equal(
     buildReminderAdminUrl('123', ''),
-    'https://dashboard.nationalpid.com/admin/athletes?contactid=123',
+    'https://legacy-dashboard.example.com/admin/athletes?contactid=123',
   );
 });
 

@@ -2,16 +2,18 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
-LOG_DIR="${RAYCAST_LOG_DIR:-/Users/singleton23/raycast_logs}/supabase-sync"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+LOG_DIR="${RAYCAST_LOG_DIR:-${HOME}/raycast_logs}/supabase-sync"
 LOCK_DIR="/tmp/prospect-pipeline-supabase-sync.lock"
 API_BASE="${API_BASE:-http://127.0.0.1:8000/api/v1}"
 API_OWNER_LABEL="com.npid.fastapi"
 
-export PATH="/Users/singleton23/.nvm/versions/node/v22.16.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+if [[ -n "${NODE_BIN_DIR:-}" ]]; then
+  export PATH="${NODE_BIN_DIR}:${PATH}"
+fi
 export TZ="${TZ:-America/New_York}"
 export API_BASE
-export CALL_TRACKER_OWNER="${CALL_TRACKER_OWNER:-Jerami Singleton}"
+export CALL_TRACKER_OWNER="${CALL_TRACKER_OWNER:-Primary Operator}"
 
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/sync-$(date +%Y-%m-%d).log"

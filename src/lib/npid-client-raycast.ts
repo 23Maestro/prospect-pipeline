@@ -4,7 +4,7 @@ import { calculateSeasonName } from './season-calculator';
 import fetch from 'node-fetch';
 
 export class NPIDClient {
-  private baseUrl: string = 'https://dashboard.nationalpid.com';
+  private baseUrl: string = 'https://legacy-dashboard.example.com';
 
   private async getFreshCSRFToken(): Promise<string> {
     const headers = getAuthHeaders();

@@ -71,7 +71,7 @@ test('reconciler applies cached note and due date through task update helper', a
       {
         task_id: '900',
         title: '(SC Move This Task) Spoke to - Need to Follow Up',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
         description: 'Move this task to the day you remember to follow up.',
       },
@@ -100,7 +100,7 @@ test('reconciler applies cached note and due date through task update helper', a
       description: 'Spoke to mom. She was working and asked for Friday follow-up.',
       dueDate: '06/19/2026',
       dueTime: '09:00',
-      assignedOwner: 'Jerami Singleton',
+      assignedOwner: 'Primary Operator',
     },
   ]);
 

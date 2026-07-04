@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Form, ActionPanel, Action, showToast, Toast, LaunchProps } from '@raycast/api';
 import { useForm, FormValidation } from '@raycast/utils';
 import * as fs from 'fs';
+import * as path from 'path';
 import {
   buildEditingDoneRecipientPayload,
   DEFAULT_SENDER_EMAIL,
@@ -18,7 +19,7 @@ import type {
   NPIDVideoProgressPlayer,
 } from '../../types/athlete-workflows';
 
-const LOG_FILE = '/Users/singleton23/raycast_logs/console.log';
+const LOG_FILE = path.join(process.env.RAYCAST_LOG_DIR || `${process.env.HOME || ''}/raycast_logs`, 'console.log');
 function log(...args: any[]) {
   const timestamp = new Date().toISOString();
   const message = `[${timestamp}] ${args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(' ')}`;

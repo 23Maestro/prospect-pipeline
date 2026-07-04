@@ -21,7 +21,7 @@ import { normalizeCrmSalesStage } from '../domain/supabase-lifecycle-translator'
 import { searchLogger } from './logger';
 
 const DEFAULT_SCHEMA = 'public';
-const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const REPO_ROOT_FALLBACK = process.env.PROSPECT_PIPELINE_ROOT || process.cwd();
 
 type Preferences = {
   supabaseUrl?: string;

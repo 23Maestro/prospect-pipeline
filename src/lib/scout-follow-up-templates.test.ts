@@ -111,7 +111,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
 
   assert.match(
     message,
-    /^Good afternoon Ms\. Messerle, this is Coach Singleton with Prospect ID\./,
+    /^Good afternoon Ms\. Messerle, this is Scouting Coordinator with Prospect ID\./,
   );
   assert.match(
     message,
@@ -121,7 +121,7 @@ test('buildVoicemailFollowUpMessage renders attempt 1 copy', () => {
   assert.match(message, /Would later today or tomorrow work for a quick 10-minute call\?/);
   assert.doesNotMatch(message, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(message, /Enjoy the rest of your week\./);
-  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(message, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage uses female pronouns for softball templates', () => {
@@ -165,7 +165,7 @@ test('buildVoicemailFollowUpMessage renders attempt 2 calendar permission copy',
   assert.doesNotMatch(message, /today or in the next few days/);
   assert.doesNotMatch(message, /trying to get a better feel/);
   assert.doesNotMatch(message, /learn his goals/);
-  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(message, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage renders no show triage copy', () => {
@@ -173,12 +173,12 @@ test('buildVoicemailFollowUpMessage renders no show triage copy', () => {
     variant: 'no_show',
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden Reed',
-    previousHeadScoutName: 'Ryan Lietz',
+    previousHeadScoutName: 'Head Scout D',
     sport: 'Football',
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(message, /^Hi Jamie, we missed you at Aiden’s meeting with Coach Ryan Lietz\./);
+  assert.match(message, /^Hi Jamie, we missed you at Aiden’s meeting with Coach Head Scout D\./);
   assert.match(message, /If you still want a recruiting game plan, reply:/);
   assert.match(message, /1\. Still interested, reschedule\./);
   assert.match(message, /2\. Interested, bad timing\./);
@@ -195,12 +195,12 @@ test('buildVoicemailFollowUpMessage renders reschedule slot copy', () => {
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden',
     sport: 'Football',
-    previousHeadScoutName: 'Ryan Lietz',
+    previousHeadScoutName: 'Head Scout D',
     rescheduleSlots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(message, /^Coach Ryan Lietz has me checking what works best to reschedule Aiden:/);
+  assert.match(message, /^Coach Head Scout D has me checking what works best to reschedule Aiden:/);
   assert.doesNotMatch(message, /Hi Jamie/);
   assert.doesNotMatch(message, /no worries/i);
   assert.match(message, /1 - Thu May 28 3 PM EST/);
@@ -214,13 +214,13 @@ test('buildVoicemailFollowUpMessage renders next-week reschedule slot copy', () 
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden',
     sport: 'Football',
-    previousHeadScoutName: 'Ryan Lietz',
+    previousHeadScoutName: 'Head Scout D',
     rescheduleSlots: ['Mon, Jun 1 6PM ET', 'Tue, Jun 2 6PM ET'],
     rescheduleWeekLabel: 'next week',
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
-  assert.match(message, /^Coach Ryan Lietz has me checking what works best to reschedule Aiden:/);
+  assert.match(message, /^Coach Head Scout D has me checking what works best to reschedule Aiden:/);
   assert.doesNotMatch(message, /Hi Jamie/);
   assert.doesNotMatch(message, /no worries/i);
   assert.match(message, /1 - Mon, Jun 1 6PM ET/);
@@ -234,14 +234,14 @@ test('buildVoicemailFollowUpMessage renders message-only proposed times copy', (
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden',
     sport: 'Football',
-    previousHeadScoutName: 'Ryan Lietz',
+    previousHeadScoutName: 'Head Scout D',
     rescheduleSlots: ['Thursday, May 28 at 3PM ET', 'Friday, May 29 at 4PM ET'],
     now: new Date('2026-04-24T13:00:00Z'),
   });
 
   assert.match(
     message,
-    /^Hi Jamie, here are a couple slots we can hold for Aiden with Coach Ryan Lietz:/,
+    /^Hi Jamie, here are a couple slots we can hold for Aiden with Coach Head Scout D:/,
   );
   assert.match(message, /1 - Thursday, May 28 at 3PM ET/);
   assert.match(message, /2 - Friday, May 29 at 4PM ET/);
@@ -255,7 +255,7 @@ test('buildVoicemailFollowUpMessage renders second reschedule two-slot copy', ()
     greeting: 'Hi Jamie,',
     athleteName: 'Aiden',
     sport: 'Football',
-    previousHeadScoutName: 'Ryan Lietz',
+    previousHeadScoutName: 'Head Scout D',
     rescheduleSlots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
     now: new Date('2026-04-24T13:00:00Z'),
   });
@@ -274,11 +274,11 @@ test('buildVoicemailFollowUpMessage uses no show triage for student athletes', (
     recipientType: 'student_athlete',
     greeting: 'Hi Aiden,',
     athleteName: 'Aiden Reed',
-    previousHeadScoutName: 'Ryan Lietz',
+    previousHeadScoutName: 'Head Scout D',
     sport: 'Football',
   });
 
-  assert.match(message, /^Hi Aiden, we missed you at your meeting with Coach Ryan Lietz\./);
+  assert.match(message, /^Hi Aiden, we missed you at your meeting with Coach Head Scout D\./);
   assert.match(message, /If you still want a recruiting game plan, reply:/);
   assert.match(message, /1\. Still interested, reschedule\./);
   assert.match(message, /2\. Interested, bad timing\./);
@@ -302,7 +302,7 @@ test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {
     variant: 'call_attempt_3',
     greeting: 'Good afternoon Ms. Bowden,',
     athleteName: 'Andrajhez',
-    senderName: 'Jerami Singleton',
+    senderName: 'Primary Operator',
     sport: 'Football',
     signOffTitle: 'Football Scouting Coordinator',
     closingLine: 'Enjoy the rest of your week.',
@@ -321,7 +321,7 @@ test('buildVoicemailFollowUpMessage renders attempt 3 triage copy', () => {
   assert.doesNotMatch(message, /I’ll close this out for now\./);
   assert.doesNotMatch(message, /just left (you )?a voicemail/i);
   assert.doesNotMatch(message, /Enjoy the rest of your week\./);
-  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(message, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage renders simple Cal link reply without signature', () => {
@@ -329,7 +329,7 @@ test('buildVoicemailFollowUpMessage renders simple Cal link reply without signat
     variant: 'send_cal_link',
     greeting: 'Good afternoon Ms. Bowden,',
     athleteName: 'Andrajhez',
-    senderName: 'Jerami Singleton',
+    senderName: 'Primary Operator',
     sport: 'Football',
   });
 
@@ -343,7 +343,7 @@ test('buildVoicemailFollowUpMessage renders simple Cal link reply without signat
       'Pick the time that works best.',
     ].join('\n'),
   );
-  assert.doesNotMatch(message, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(message, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
@@ -351,7 +351,7 @@ test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
     variant: 'parent_contact_intro',
     greeting: 'Hi [ParentFirst],',
     athleteName: 'Kapri',
-    senderName: 'Jerami Singleton',
+    senderName: 'Primary Operator',
     sport: 'Basketball',
     now: new Date('2026-04-23T22:59:00Z'),
   });
@@ -359,7 +359,7 @@ test('buildVoicemailFollowUpMessage renders parent contact intro copy', () => {
   assert.equal(
     message,
     [
-      'Hi [ParentFirst], this is Coach Singleton with Prospect ID.',
+      'Hi [ParentFirst], this is Scouting Coordinator with Prospect ID.',
       '',
       'Kapri’s recruiting info came through.',
       '',
@@ -387,7 +387,7 @@ test('buildVoicemailFollowUpMessage moves client outreach timing after 7 PM east
     variant: 'parent_contact_intro',
     greeting: 'Hi [ParentFirst],',
     athleteName: 'Kapri',
-    senderName: 'Jerami Singleton',
+    senderName: 'Primary Operator',
     sport: 'Basketball',
     now: new Date('2026-04-23T23:00:00Z'),
   });
@@ -427,7 +427,7 @@ test('buildVoicemailFollowUpMessage renders distinct student athlete attempts', 
   });
 
   assert.match(attempt1, /I received your info about playing college football/);
-  assert.match(attempt1, /^Good afternoon Joenny, this is Coach Singleton with Prospect ID\./);
+  assert.match(attempt1, /^Good afternoon Joenny, this is Scouting Coordinator with Prospect ID\./);
   assert.match(attempt1, /If this is still a real goal, have a parent call or text me back/);
   assert.match(attempt2, /quick follow-up on your college football profile/);
   assert.match(attempt2, /If you still want help with next steps, have a parent call or text me/);
@@ -466,7 +466,7 @@ test('buildConfirmationMessage fills coach and meeting time', () => {
   const dueAt = new Date('2026-04-26T19:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_1',
-    headScoutName: 'Ryan Lietz',
+    headScoutName: 'Head Scout D',
     dueAt,
     meetingTimezone: 'CST',
     recipientNames: ['Peter'],
@@ -476,7 +476,7 @@ test('buildConfirmationMessage fills coach and meeting time', () => {
   assert.equal(
     message,
     [
-      'Good morning Peter! Prospect ID Zoom Meeting tomorrow afternoon 4/26 at 2:00 PM CT with Coach Ryan Lietz.',
+      'Good morning Peter! Prospect ID Zoom Meeting tomorrow afternoon 4/26 at 2:00 PM CT with Coach Head Scout D.',
       '',
       'He’ll call your cell at 2:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
       '',
@@ -489,7 +489,7 @@ test('buildConfirmationMessage uses tonight when first confirmation is for curre
   const dueAt = new Date('2026-04-29T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_1',
-    headScoutName: 'Ryan Lietz',
+    headScoutName: 'Head Scout D',
     dueAt,
     meetingTimezone: 'EST',
     recipientNames: ['Terresita'],
@@ -499,7 +499,7 @@ test('buildConfirmationMessage uses tonight when first confirmation is for curre
   assert.equal(
     message,
     [
-      'Good morning Terresita! Prospect ID Zoom Meeting tonight 4/29 at 7:00 PM ET with Coach Ryan Lietz.',
+      'Good morning Terresita! Prospect ID Zoom Meeting tonight 4/29 at 7:00 PM ET with Coach Head Scout D.',
       '',
       'He’ll call your cell at 7:00 with the Zoom code. Be on a laptop or tablet so he can share his screen.',
       '',
@@ -513,7 +513,7 @@ test('buildConfirmationMessage uses tomorrow evening for next-day evening appoin
   const dueAt = new Date('2026-04-30T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_1',
-    headScoutName: 'Ryan Lietz',
+    headScoutName: 'Head Scout D',
     dueAt,
     meetingTimezone: 'EST',
     recipientNames: ['Terresita'],
@@ -522,7 +522,7 @@ test('buildConfirmationMessage uses tomorrow evening for next-day evening appoin
 
   assert.match(
     message,
-    /Prospect ID Zoom Meeting tomorrow evening 4\/30 at 7:00 PM ET with Coach Ryan Lietz\./,
+    /Prospect ID Zoom Meeting tomorrow evening 4\/30 at 7:00 PM ET with Coach Head Scout D\./,
   );
 });
 
@@ -530,7 +530,7 @@ test('buildConfirmationMessage renders short second confirmation copy', () => {
   const dueAt = new Date('2026-04-17T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_2',
-    headScoutName: 'Luther Winfield',
+    headScoutName: 'Head Scout C',
     dueAt,
     meetingTimezone: 'PST',
     now: new Date('2026-04-15T16:00:00.000Z'),
@@ -544,7 +544,7 @@ test('buildConfirmationMessage uses tomorrow for Friday confirmation 2 Saturday 
   const dueAt = new Date('2026-04-18T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_2',
-    headScoutName: 'Luther Winfield',
+    headScoutName: 'Head Scout C',
     dueAt,
     meetingTimezone: 'PST',
     now: new Date('2026-04-17T16:00:00.000Z'),
@@ -557,7 +557,7 @@ test('buildConfirmationMessage does not use tomorrow just because text is sent F
   const dueAt = new Date('2026-04-20T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_2',
-    headScoutName: 'Ryan Lietz',
+    headScoutName: 'Head Scout D',
     dueAt,
     meetingTimezone: 'CST',
     now: new Date('2026-04-17T16:00:00.000Z'),
@@ -571,7 +571,7 @@ test('buildConfirmationMessage uses tomorrow for Saturday confirmation 2 Sunday 
   const dueAt = new Date('2026-04-19T23:00:00.000Z');
   const message = buildConfirmationMessage({
     variant: 'confirmation_2',
-    headScoutName: 'Ryan Lietz',
+    headScoutName: 'Head Scout D',
     dueAt,
     meetingTimezone: 'CST',
     now: new Date('2026-04-18T16:00:00.000Z'),
@@ -584,7 +584,7 @@ test('confirmation 1 and confirmation 2 use the same relative phrase resolver', 
   const dueAt = new Date('2026-05-02T23:00:00.000Z');
   const now = new Date('2026-05-02T13:00:00.000Z');
   const baseArgs = {
-    headScoutName: 'Ryan Lietz',
+    headScoutName: 'Head Scout D',
     dueAt,
     meetingTimezone: 'EST',
     now,

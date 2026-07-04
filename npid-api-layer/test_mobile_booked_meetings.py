@@ -66,7 +66,7 @@ def test_completed_confirmation_task_can_still_provide_mobile_context():
         [
             {
                 "title": "Confirmation Call",
-                "assigned_owner": "Jerami Singleton",
+                "assigned_owner": "Primary Operator",
                 "completion_date": "Sat 05/02/26 10:01 AM",
                 "due_date": "Sat 05/02/26 09:00 AM",
                 "task_id": "626239",
@@ -89,7 +89,7 @@ def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_en
                 {
                     "event_id": "evt-ended",
                     "title": "(ACF) Matthew Lindsey Football 2027 NV",
-                    "assigned_owner": "Ryan Lietz",
+                    "assigned_owner": "Head Scout D",
                     "start": "2026-04-28T19:00:00-04:00",
                     "end": "2026-04-28T20:00:00-04:00",
                     "date_time_label": "Tue 04/28/26 7:00 PM - 8:00 PM",
@@ -97,7 +97,7 @@ def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_en
                 {
                     "event_id": "evt-other-owner",
                     "title": "(CF) Other Athlete Football 2027 NV",
-                    "assigned_owner": "Ryan Lietz",
+                    "assigned_owner": "Head Scout D",
                     "start": "2026-04-29T19:00:00-04:00",
                     "end": "2026-04-29T20:00:00-04:00",
                     "date_time_label": "Wed 04/29/26 7:00 PM - 8:00 PM",
@@ -105,7 +105,7 @@ def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_en
                 {
                     "event_id": "evt-follow-up",
                     "title": "(FU) Matthew Lindsey Football 2027 NV",
-                    "assigned_owner": "Ryan Lietz",
+                    "assigned_owner": "Head Scout D",
                     "start": "2026-04-30T19:00:00-04:00",
                     "end": "2026-04-30T20:00:00-04:00",
                     "date_time_label": "Thu 04/30/26 7:00 PM - 8:00 PM",
@@ -118,7 +118,7 @@ def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_en
                 "athlete_id": "1491000",
                 "athlete_main_id": "952900",
                 "athlete_name": "Matthew Lindsey",
-                "assigned_owner": "Jerami Singleton",
+                "assigned_owner": "Primary Operator",
                 "title": "Confirmation Call",
                 "description": "Confirm the meeting set",
                 "completion_date": "",
@@ -129,7 +129,7 @@ def test_mobile_set_meetings_response_uses_view_set_meetings_contract_without_en
                 "athlete_id": "1491001",
                 "athlete_main_id": "952901",
                 "athlete_name": "Other Athlete",
-                "assigned_owner": "Tim Risner",
+                "assigned_owner": "Secondary Operator",
                 "title": "Confirmation Call",
                 "description": "Confirm the meeting set",
                 "completion_date": "",

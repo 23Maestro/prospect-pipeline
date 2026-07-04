@@ -26,7 +26,7 @@ from app.routers.mobile import router as mobile_router
 from app.routers.call_tracker import router as call_tracker_router
 from app.routers.commissions import router as commissions_router
 
-LOG_DIR = Path(os.getenv("RAYCAST_LOG_DIR", "/Users/singleton23/raycast_logs"))
+LOG_DIR = Path(os.getenv("RAYCAST_LOG_DIR", str(Path.home() / "raycast_logs")))
 LOG_FILE = LOG_DIR / "npid-api-layer.log"
 
 try:
@@ -53,13 +53,13 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="NPID API Bridge", version="1.0")
 
-DEFAULT_ALLOWED_ORIGINS = "https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8888,http://127.0.0.1:8888"
+DEFAULT_ALLOWED_ORIGINS = "https://recruiting-api.example.com,http://localhost:3000,http://127.0.0.1:3000,http://localhost:8888,http://127.0.0.1:8888"
 
 
 def _parse_allowed_origins() -> list[str]:
     raw_value = os.getenv("ALLOWED_ORIGINS", DEFAULT_ALLOWED_ORIGINS)
     origins = [origin.strip() for origin in raw_value.split(",") if origin.strip()]
-    return origins or ["https://recruiting-api.prospectid.com"]
+    return origins or ["https://recruiting-api.example.com"]
 
 
 def _host_without_port(value: str | None) -> str:

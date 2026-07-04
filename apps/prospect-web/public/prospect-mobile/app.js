@@ -1445,7 +1445,7 @@ function groupRawProspectRows(rows) {
         title: row.name || `Athlete ${athleteId}`,
         subtitle: subtitle || row.parent_name || row.email || 'Prospect Search',
         adminUrl: buildAthleteAdminUrl(athleteId, athleteMainId),
-        profileUrl: row.url || `https://dashboard.nationalpid.com/athlete/profile/${encodeURIComponent(athleteId)}`,
+        profileUrl: row.url || `https://legacy-dashboard.example.com/athlete/profile/${encodeURIComponent(athleteId)}`,
         matchKind: 'raw',
         sourceLabel: 'Prospect',
         contacts,
@@ -1490,7 +1490,7 @@ function buildAthleteAdminUrl(athleteId, athleteMainId) {
   const params = new URLSearchParams({ contactid: id });
   const mainId = String(athleteMainId || '').trim();
   if (mainId) params.set('athlete_main_id', mainId);
-  return `https://dashboard.nationalpid.com/admin/athletes?${params.toString()}`;
+  return `https://legacy-dashboard.example.com/admin/athletes?${params.toString()}`;
 }
 
 function findSelectedContactGroup(results, selectedId) {

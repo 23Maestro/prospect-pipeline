@@ -10,7 +10,7 @@ with weekly_operator_meeting_sets as (
   where event_type = 'meeting_set'
     and coalesce(payload_json->>'materialization_status', '') <> 'operator_task'
     and coalesce(payload_json->'materialization_proof'->>'materialization_status', '') <> 'operator_task'
-    and payload_json->>'matched_weekly_task_assigned_owner' = 'Jerami Singleton'
+    and payload_json->>'matched_weekly_task_assigned_owner' = 'Primary Operator'
     and nullif(payload_json->>'matched_weekly_task_id', '') is not null
 ),
 legacy_local_meeting_sets as (
@@ -38,7 +38,7 @@ source_contract as (
   select
     id,
     'legacy_local_meeting_set_write'::text as proof_field,
-    'Jerami Singleton'::text as task_owner,
+    'Primary Operator'::text as task_owner,
     'legacy_local_meeting_set_write'::text as proof_kind
   from lifecycle_events
   where id in (select id from legacy_local_meeting_sets)
@@ -71,8 +71,8 @@ set payload_json =
     'owner_context',
     coalesce(le.payload_json->'owner_context', '{}'::jsonb)
     || jsonb_build_object(
-      'active_operator_key', 'jerami_singleton',
-      'active_operator_name', 'Jerami Singleton',
+      'active_operator_key', 'operator_primary',
+      'active_operator_name', 'Primary Operator',
       'task_assigned_owner', source_contract.task_owner,
       'resolved_owner_name', source_contract.task_owner,
       'resolved_owner_role', 'task_owner',

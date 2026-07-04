@@ -50,7 +50,7 @@ reviews:
         - Do not let any adapter layer redefine domain meaning.
         - Preserve Laravel field names exactly at adapter boundaries: assigned_owner, assigned_to, meeting_for, meetingfor, calendar_owner_id, head_scout, scouting_coordinator.
         - Preserve config/prospect-id-owners.json as the owner source of truth.
-        - Flag hardcoded "Jerami Singleton", "1408164", head scout IDs, calendar owner IDs, or meeting_for IDs outside config, tests, or intentional message copy.
+        - Flag hardcoded "Primary Operator", "100001", head scout IDs, calendar owner IDs, or meeting_for IDs outside config, tests, or intentional message copy.
         - Never materialize Tim/other-coordinator rows as Jerami-owned facts.
         - Never infer active-operator ownership from head_scout or calendar_owner alone.
         - Never count athlete_pipeline_state snapshots as dashboard facts.
@@ -74,9 +74,9 @@ reviews:
         This is the shared owner source of truth.
         Verify activeOperatorKey, owner profiles, legacy user IDs, calendar owner IDs, meeting_for IDs, roles, and dashboardTrackingEligible remain consistent.
         Flag changes that:
-        - make Tim Risner dashboardTrackingEligible
+        - make Secondary Operator dashboardTrackingEligible
         - confuse calendar access user with active operator
-        - remove Jerami Singleton as active operator without an explicit architecture update
+        - remove Primary Operator as active operator without an explicit architecture update
         - move owner identity into other files
     - path: "src/domain/**"
       instructions: |

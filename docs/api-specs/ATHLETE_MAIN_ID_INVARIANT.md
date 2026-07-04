@@ -388,6 +388,6 @@ if (seasons.status === 'ok') {
 ---
 
 **Verified:** 2025-11-15
-**Environment:** Production (dashboard.nationalpid.com)
+**Environment:** Production (legacy-dashboard.example.com)
 **Test Data:** Real athletes (Zuri Martinez, athlete_id: 1462444)
 **Status:** ✅ All fixes working in production

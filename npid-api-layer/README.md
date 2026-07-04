@@ -197,7 +197,7 @@ CORS origins are controlled by `ALLOWED_ORIGINS` (comma-separated).
 Default:
 
 ```
-https://recruiting-api.prospectid.com,http://localhost:3000,http://127.0.0.1:3000
+https://recruiting-api.example.com,http://localhost:3000,http://127.0.0.1:3000
 ```
 
 ## Cloudflare Tunnel

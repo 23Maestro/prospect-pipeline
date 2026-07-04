@@ -69,7 +69,7 @@ async def _run_sync_pipeline() -> dict[str, Any]:
             env={
                 **os.environ,
                 "API_BASE": os.getenv("API_BASE", "http://127.0.0.1:8000/api/v1"),
-                "CALL_TRACKER_OWNER": os.getenv("CALL_TRACKER_OWNER", "Jerami Singleton"),
+                "CALL_TRACKER_OWNER": os.getenv("CALL_TRACKER_OWNER", "Primary Operator"),
             },
         )
         stdout, stderr = await process.communicate()

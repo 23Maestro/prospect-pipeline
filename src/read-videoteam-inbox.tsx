@@ -356,7 +356,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
     const url = raw
       ? raw.startsWith('http')
         ? raw
-        : `https://dashboard.nationalpid.com${raw}`
+        : `https://legacy-dashboard.example.com${raw}`
       : fallbackUrl(resolvedContactId);
     const finalUrl = extraParams ? appendQueryParams(url, extraParams) : url;
     await open(finalUrl);
@@ -535,7 +535,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
                 openAthleteLink(
                   'notes',
                   (id) =>
-                    `https://dashboard.nationalpid.com/admin/athletes?contactid=${id}&notestab=1`,
+                    `https://legacy-dashboard.example.com/admin/athletes?contactid=${id}&notestab=1`,
                 )
               }
               shortcut={{ modifiers: ['cmd', 'shift'], key: 'n' }}
@@ -1008,7 +1008,7 @@ export default function InboxCheck() {
       const url = raw
         ? raw.startsWith('http')
           ? raw
-          : `https://dashboard.nationalpid.com${raw}`
+          : `https://legacy-dashboard.example.com${raw}`
         : fallbackUrl(context.contactId);
       const finalUrl = extraParams ? appendQueryParams(url, extraParams) : url;
       await open(finalUrl);
@@ -1347,7 +1347,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
                       await openThreadAthleteLink(
                         message,
                         'search',
-                        (id) => `https://dashboard.nationalpid.com/admin/athletes?contactid=${id}`,
+                        (id) => `https://legacy-dashboard.example.com/admin/athletes?contactid=${id}`,
                         firstName ? { firstname: firstName } : undefined,
                       );
                     }}
@@ -1360,7 +1360,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
                       openThreadAthleteLink(
                         message,
                         'profile',
-                        (id) => `https://dashboard.nationalpid.com/athlete/profile/${id}`,
+                        (id) => `https://legacy-dashboard.example.com/athlete/profile/${id}`,
                       )
                     }
                     shortcut={{ modifiers: ['cmd'], key: 'o' }}
@@ -1379,7 +1379,7 @@ Please limit the number of clips to a max of 35 and let me know when you have up
                         return;
                       }
                       await open(
-                        `https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${context.contactId}`,
+                        `https://legacy-dashboard.example.com/videoteammsg/videomailprogress?contactid=${context.contactId}`,
                       );
                     }}
                     shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}

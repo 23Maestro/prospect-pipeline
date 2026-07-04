@@ -851,19 +851,19 @@ export default function VideoUpdatesView(
               <Action.OpenInBrowser
                 title="View PlayerID"
                 icon={Icon.Star}
-                url={`https://dashboard.nationalpid.com/athlete/profile/${selectedPlayer.player_id}`}
+                url={`https://legacy-dashboard.example.com/athlete/profile/${selectedPlayer.player_id}`}
                 shortcut={{ modifiers: ['cmd'], key: 'o' }}
               />
               <Action.OpenInBrowser
                 title="General Info"
                 icon={Icon.Person}
-                url={`https://dashboard.nationalpid.com/admin/athletes?contactid=${selectedPlayer.player_id}`}
+                url={`https://legacy-dashboard.example.com/admin/athletes?contactid=${selectedPlayer.player_id}`}
                 shortcut={{ modifiers: ['cmd', 'shift'], key: 'o' }}
               />
               <Action.OpenInBrowser
                 title="Task: Video Progress ID"
                 icon={Icon.Globe}
-                url={`https://dashboard.nationalpid.com/videoteammsg/videomailprogress?contactid=${selectedPlayer.player_id}`}
+                url={`https://legacy-dashboard.example.com/videoteammsg/videomailprogress?contactid=${selectedPlayer.player_id}`}
                 shortcut={{ modifiers: ['cmd', 'shift'], key: 'p' }}
               />
             </ActionPanel.Section>

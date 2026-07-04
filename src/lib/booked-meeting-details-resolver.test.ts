@@ -19,7 +19,7 @@ function bookedMeeting(overrides: Partial<BookedMeetingEvent> = {}): BookedMeeti
   return {
     event_id: 'evt_1',
     title: 'Jonathan Van Roekel Football 2027 IA',
-    assigned_owner: 'James Holcomb',
+    assigned_owner: 'Head Scout E',
     start: '2026-05-22T20:00:00',
     end: '2026-05-22T21:00:00',
     date_time_label: 'Fri 05/22/26 08:00 PM',
@@ -80,7 +80,7 @@ test('popup form data hydrates previous meeting-set payload fields', async () =>
           form_data: {
             tasktitle: 'Existing Meeting Title',
             meetingtimezone: 'CST',
-            assignedto: '1418529',
+            assignedto: '200002',
             openeventid: '613999',
             starttime: '20:00',
             meetinglength: '01:30',
@@ -92,7 +92,7 @@ test('popup form data hydrates previous meeting-set payload fields', async () =>
 
   assert.equal(result?.meetingName, 'Existing Meeting Title');
   assert.equal(result?.meetingTimezone, 'CST');
-  assert.equal(result?.assignedTo, '1418529');
+  assert.equal(result?.assignedTo, '200002');
   assert.equal(result?.openEventId, '613999');
   assert.equal(result?.startTime, '20:00');
   assert.equal(result?.meetingLength, '01:30');
@@ -108,7 +108,7 @@ test('uses booked event start time when popup form start time is missing', async
         details({
           form_data: {
             tasktitle: 'Existing Meeting Title',
-            assignedto: '1418529',
+            assignedto: '200002',
             openeventid: '613999',
             meetinglength: '01:00',
           },
@@ -156,7 +156,7 @@ test('resolves booked meeting rows that only have eventlist labels', async () =>
     event_id: 'evt_label_only',
     start: '',
     end: '',
-    assigned_owner: 'Ryan Lietz',
+    assigned_owner: 'Head Scout D',
     date_time_label: 'Mon 06/01/26 06:00 PM',
     description: 'Eventlist-only description',
   });
@@ -172,7 +172,7 @@ test('resolves booked meeting rows that only have eventlist labels', async () =>
   );
 
   assert.equal(result?.bookedMeeting.event_id, 'evt_label_only');
-  assert.equal(result?.bookedMeeting.assigned_owner, 'Ryan Lietz');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Head Scout D');
   assert.equal(result?.description, 'Eventlist-only description');
 });
 
@@ -180,7 +180,7 @@ test('reschedule can hydrate the previous Events tab meeting when Scout Prep has
   const visibleEventsTabMeeting = bookedMeeting({
     event_id: '628744',
     title: '(ACF*2) Joziah Zenobia Football 2030 WI',
-    assigned_owner: 'David Foley',
+    assigned_owner: 'Head Scout A',
     start: '2026-06-11T21:00:00',
     end: '2026-06-11T22:00:00',
     description: 'Main Number: (262) 420-7303',
@@ -271,14 +271,14 @@ test('reschedule resolution reads appointment truth before Laravel booked meetin
         current_starts_at: '2026-05-28T21:00:00+00:00',
         current_meeting_timezone: 'America/Chicago',
         current_meeting_timezone_label: 'CST',
-        current_head_scout: 'Luther Winfield',
+        current_head_scout: 'Head Scout C',
         current_appointment_status: 'reschedule_pending',
       }),
     },
   );
 
   assert.equal(result?.bookedMeeting.event_id, '613339');
-  assert.equal(result?.bookedMeeting.assigned_owner, 'Luther Winfield');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Head Scout C');
   assert.equal(result?.bookedMeeting.start, '2026-05-28T17:00');
   assert.equal(result?.bookedMeeting.end, '2026-05-28T18:00');
   assert.equal(result?.meetingTimezone, 'America/Chicago');
@@ -305,14 +305,14 @@ test('latest appointment resolution returns terminal appointment context for out
         starts_at: '2026-05-31T16:00:00+00:00',
         meeting_timezone: 'America/New_York',
         meeting_timezone_label: 'EDT',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         status: 'no_show',
       }),
     },
   );
 
   assert.equal(result?.bookedMeeting.event_id, '588033');
-  assert.equal(result?.bookedMeeting.assigned_owner, 'Ryan Lietz');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Head Scout D');
   assert.equal(result?.bookedMeeting.start, '2026-05-31T12:00');
   assert.equal(result?.meetingTimezone, 'America/New_York');
   assert.equal(activeTruthCalled, false);
@@ -334,7 +334,7 @@ test('appointment id resolution reads the appointments domain row directly', asy
         starts_at: '2026-05-27T01:00:00+00:00',
         meeting_timezone: 'America/Chicago',
         meeting_timezone_label: 'CST',
-        head_scout: 'James Holcomb',
+        head_scout: 'Head Scout E',
         status: 'reschedule_pending',
       }),
       fetchAppointmentTruth: async () => {
@@ -345,7 +345,7 @@ test('appointment id resolution reads the appointments domain row directly', asy
   );
 
   assert.equal(result?.bookedMeeting.event_id, '628999');
-  assert.equal(result?.bookedMeeting.assigned_owner, 'James Holcomb');
+  assert.equal(result?.bookedMeeting.assigned_owner, 'Head Scout E');
   assert.equal(result?.bookedMeeting.start, '2026-05-26T21:00');
   assert.equal(result?.meetingTimezone, 'America/Chicago');
   assert.equal(activeTruthCalled, false);

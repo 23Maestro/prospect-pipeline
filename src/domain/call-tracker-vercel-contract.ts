@@ -106,7 +106,7 @@ export const CALL_TRACKER_VERCEL_CONTRACT = {
   ownershipContract: {
     plainEnglish:
       'A row can only be trusted for the dashboard when it carries active-operator materialization proof. Vercel should display these fields as proof, not recompute ownership.',
-    activeOperator: 'Jerami Singleton',
+    activeOperator: 'Primary Operator',
     requiredEventFields: [
       'materialization_status',
       'materialization_reason',

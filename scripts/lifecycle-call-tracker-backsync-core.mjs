@@ -1,4 +1,4 @@
-const ACTIVE_OPERATOR_NAME = 'Jerami Singleton';
+const ACTIVE_OPERATOR_NAME = 'Primary Operator';
 
 const ACTIVITY_BY_STAGE = new Map([
   ['left voice mail 1', { activitySubtype: 'call_attempt_1', activityKind: 'dial', trackerOutcome: 'voicemail', countsAsDial: true, countsAsContact: false }],

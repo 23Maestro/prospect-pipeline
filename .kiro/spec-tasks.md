@@ -11,8 +11,8 @@ ChatGPT extracted 6 confirmed JSON endpoints from HAR files that handle ALL oper
 ## PHASE 1: HTTPie Session Setup (5 minutes)
 
 ### 1.1 Extract Current Browser Cookies
-- [ ] Open Chrome DevTools on https://dashboard.nationalpid.com
-- [ ] Application tab → Cookies → dashboard.nationalpid.com
+- [ ] Open Chrome DevTools on https://legacy-dashboard.example.com
+- [ ] Application tab → Cookies → legacy-dashboard.example.com
 - [ ] Copy these cookies:
   - `remember_82e5d2c56bdd0811318f0cf078b78bfc` (1-year token)
   - `XSRF-TOKEN` (CSRF protection)
@@ -20,38 +20,38 @@ ChatGPT extracted 6 confirmed JSON endpoints from HAR files that handle ALL oper
 
 ### 1.2 Create HTTPie Session
 ```bash
-http --session=prospect-id --print=HhBb https://dashboard.nationalpid.com/admin/videomailbox \
+http --session=prospect-id --print=HhBb https://legacy-dashboard.example.com/admin/videomailbox \
   'Cookie:remember_82e5d2c56bdd0811318f0cf078b78bfc=<VALUE>; XSRF-TOKEN=<VALUE>; myapp_session=<VALUE>'
 ```
-- [ ] Verify session saved to: `~/.config/httpie/sessions/dashboard.nationalpid.com/prospect-id.json`
+- [ ] Verify session saved to: `~/.config/httpie/sessions/legacy-dashboard.example.com/prospect-id.json`
 
 ### 1.3 Test All 6 JSON Endpoints
 Run these commands and verify they return JSON (not HTML):
 
 ```bash
 # 1. Get inbox threads (returns all threads with assignment status)
-http --session=prospect-id --form POST https://dashboard.nationalpid.com/videoteammsg/getvideomailthreads \
+http --session=prospect-id --form POST https://legacy-dashboard.example.com/videoteammsg/getvideomailthreads \
   _token='<XSRF_TOKEN>' limit=50 type='inbox'
 
 # 2. Get student details (before assignment)
-http --session=prospect-id --form POST https://dashboard.nationalpid.com/videoteammsg/getstudentdetails \
+http --session=prospect-id --form POST https://legacy-dashboard.example.com/videoteammsg/getstudentdetails \
   _token='<XSRF_TOKEN>' contactid=1458435
 
 # 3. Assign thread
-http --session=prospect-id --form POST https://dashboard.nationalpid.com/videoteammsg/assignthread \
-  _token='<XSRF_TOKEN>' messageid=12489 videoscoutassignedto=1408164 \
+http --session=prospect-id --form POST https://legacy-dashboard.example.com/videoteammsg/assignthread \
+  _token='<XSRF_TOKEN>' messageid=12489 videoscoutassignedto=100001 \
   videoprogressstage='In Queue' videoprogressstatus='HUDL'
 
 # 4. Get thread messages
-http --session=prospect-id GET https://dashboard.nationalpid.com/videoteammsg/getthreadmessages \
+http --session=prospect-id GET https://legacy-dashboard.example.com/videoteammsg/getthreadmessages \
   messageid==12489 _token==<XSRF_TOKEN>
 
 # 5. Get video progress list
-http --session=prospect-id --form POST https://dashboard.nationalpid.com/videoteammsg/videoprogress \
+http --session=prospect-id --form POST https://legacy-dashboard.example.com/videoteammsg/videoprogress \
   _token='<XSRF_TOKEN>' limit=50
 
 # 6. Update video deliverable
-http --session=prospect-id --form POST https://dashboard.nationalpid.com/videoteammsg/videoupdate \
+http --session=prospect-id --form POST https://legacy-dashboard.example.com/videoteammsg/videoupdate \
   _token='<XSRF_TOKEN>' taskid=12345 stage='Done' status='HUDL'
 ```
 
@@ -64,7 +64,7 @@ http --session=prospect-id --form POST https://dashboard.nationalpid.com/videote
 ## PHASE 2: Replace Python Backend (30 minutes)
 
 ### 2.1 Delete All Selenium/Playwright Code
-File: `/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/npid_automator_complete.py`
+File: `<REPO_ROOT>/mcp-servers/npid-native/npid_automator_complete.py`
 
 - [ ] Remove all `from selenium` imports
 - [ ] Remove all Selenium WebDriver initialization code
@@ -83,12 +83,12 @@ import os
 class HTTPieClient:
     def __init__(self, session_name='prospect-id'):
         self.session = session_name
-        self.base_url = 'https://dashboard.nationalpid.com'
+        self.base_url = 'https://legacy-dashboard.example.com'
     
     def _get_csrf_token(self):
         """Extract XSRF-TOKEN from HTTPie session file"""
         session_path = os.path.expanduser(
-            f'~/.config/httpie/sessions/dashboard.nationalpid.com/{self.session}.json'
+            f'~/.config/httpie/sessions/legacy-dashboard.example.com/{self.session}.json'
         )
         with open(session_path) as f:
             data = json.load(f)
@@ -147,7 +147,7 @@ def assign_thread(message_id, contact_id, stage, status):
     """Replace Selenium form submission with REST API"""
     return client.post('/videoteammsg/assignthread',
                        messageid=message_id,
-                       videoscoutassignedto=1408164,  # Your user ID
+                       videoscoutassignedto=100001,  # Your user ID
                        videoprogressstage=stage,
                        videoprogressstatus=status)
 
@@ -176,7 +176,7 @@ def update_video_deliverable(task_id, stage, status):
 ### 2.4 Test Python Backend Directly
 
 ```bash
-cd /Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native
+cd <REPO_ROOT>/mcp-servers/npid-native
 python3 -c "
 from npid_automator_complete import get_inbox_threads
 threads = get_inbox_threads(10)
@@ -194,7 +194,7 @@ print(threads[0] if threads else 'No threads')
 ## PHASE 3: Update Raycast Commands (20 minutes)
 
 ### 3.1 Verify HTTP Server Still Works
-File: `/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/session_stream_server.py`
+File: `<REPO_ROOT>/mcp-servers/npid-native/session_stream_server.py`
 
 - [ ] HTTP server routes to new HTTPie-based functions
 - [ ] SSE streaming still works for inbox threads
@@ -204,7 +204,7 @@ File: `/Users/singleton23/Raycast/prospect-pipeline/mcp-servers/npid-native/sess
 
 ```bash
 # Rebuild extension
-cd /Users/singleton23/Raycast/prospect-pipeline
+cd <REPO_ROOT>
 npm run build
 ```
 

@@ -3,7 +3,8 @@
 set -euo pipefail
 
 API_BASE="${API_BASE:-http://127.0.0.1:8000}"
-PYTHON_BIN="/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/venv/bin/python"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+PYTHON_BIN="${PYTHON_BIN:-${WORKSPACE_ROOT}/npid-api-layer/venv/bin/python}"
 
 if [[ ! -x "$PYTHON_BIN" ]]; then
   echo "Missing Python interpreter: $PYTHON_BIN" >&2

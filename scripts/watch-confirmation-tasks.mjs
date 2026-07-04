@@ -10,7 +10,7 @@ import {
 } from '../src/lib/confirmation-task-watch.ts';
 
 const API_BASE = process.env.API_BASE || 'http://127.0.0.1:8000/api/v1';
-const DEFAULT_SCOUT = 'Jerami Singleton';
+const DEFAULT_SCOUT = 'Primary Operator';
 
 function parseList(value) {
   return String(value || '')

@@ -167,7 +167,7 @@ from npid_automator_complete import get_automator  # ❌ File deleted
 Sync video progress data between NPID dashboard and Notion database to keep both systems in sync.
 
 ## Endpoints
-- **NPID**: `https://dashboard.nationalpid.com/videoteammsg/videomailprogress`
+- **NPID**: `https://legacy-dashboard.example.com/videoteammsg/videomailprogress`
 - **Notion**: Database `19f4c8bd6c26805b9929dfa8eb290a86`
 
 ## Implementation Plan

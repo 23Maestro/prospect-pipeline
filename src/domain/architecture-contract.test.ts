@@ -91,9 +91,9 @@ test('active-operator fallbacks are sourced from owner config/domain in command 
 
   for (const path of checkedFiles) {
     const source = readRepoFile(path);
-    assert.doesNotMatch(source, /\|\|\s*['"]Jerami Singleton['"]/);
-    assert.doesNotMatch(source, /operatorName:\s*['"]Jerami Singleton['"]/);
-    assert.doesNotMatch(source, /assignedToLegacyUserId:\s*['"]1408164['"]/);
+    assert.doesNotMatch(source, /\|\|\s*['"]Primary Operator['"]/);
+    assert.doesNotMatch(source, /operatorName:\s*['"]Primary Operator['"]/);
+    assert.doesNotMatch(source, /assignedToLegacyUserId:\s*['"]100001['"]/);
   }
 });
 
@@ -149,13 +149,13 @@ test('Pending Clients reuses Scout Prep reschedule voicemail instead of adding a
     /import \{ PostCallUpdateForm, VoicemailFollowUpRecipientForm \} from '\.\/scout-prep'/,
   );
   assert.match(headScoutSchedules, /function buildPendingClientTask/);
-  assert.match(headScoutSchedules, /title:\s*'Reschedule Pending'/);
+  assert.match(headScoutSchedules, /const taskTitle =[\s\S]*\? 'Reschedule Pending'/);
   assert.match(headScoutSchedules, /function PendingClientRescheduleFollowUp/);
   assert.match(headScoutSchedules, /await loadPendingClientMessageContext\(\{ row, task \}\)/);
   assert.doesNotMatch(headScoutSchedules, /await loadScoutPrepContext\(task\)/);
   assert.match(
     headScoutSchedules,
-    /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/,
+    /<VoicemailFollowUpRecipientForm[\s\S]*currentTask=\{task\.title\}/,
   );
   assert.match(scoutPrep, /const mode = await openMessagesDraftForRecipients\(recipient\.phones, body\)/);
   assert.doesNotMatch(scoutPrep, /mode: 'raycast-ui'/);
@@ -287,7 +287,7 @@ test('Client Messages and Pending Clients use the shared reschedule recovery fou
   assert.match(clientMessages, /buildRescheduleRecoverySlotPlan\(\{/);
   assert.doesNotMatch(clientMessages, /function buildClientReviewRescheduleSlotOptions/);
   assert.doesNotMatch(clientMessages, /function resolveReviewClientTimezone/);
-  assert.match(headScoutSchedules, /<VoicemailFollowUpRecipientForm[\s\S]*currentTask="Reschedule Pending"/);
+  assert.match(headScoutSchedules, /<VoicemailFollowUpRecipientForm[\s\S]*currentTask=\{task\.title\}/);
   assert.match(scoutPrep, /buildRankedRescheduleSlotPlan\(\{/);
   assert.match(rescheduleRecovery, /export async function buildRescheduleRecoverySlotPlan/);
   assert.match(rescheduleRecovery, /previousMeetingSource: 'latest_appointment_truth'/);
@@ -552,7 +552,7 @@ test('Supabase reporting views materialize only domain facts or explicit compati
   assert.match(migration, /nullif\(cae\.owner_proof, ''\) is not null/);
   assert.doesNotMatch(
     migration,
-    /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\)/,
+    /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Primary Operator'\)/,
   );
 });
 

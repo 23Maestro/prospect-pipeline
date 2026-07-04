@@ -38,7 +38,7 @@ Use when:
 	•	You need to change how we talk to Laravel without touching Raycast
 
 Hard rules:
-	•	Raycast must never call dashboard.nationalpid.com directly.
+	•	Raycast must never call legacy-dashboard.example.com directly.
 Only call http://127.0.0.1:8000/api/v1/*.
 	•	All upstream Laravel calls from FastAPI must:
 	•	Use one legacy client module (session/translator), not ad-hoc requests calls scattered around

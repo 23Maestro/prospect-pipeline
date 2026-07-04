@@ -77,6 +77,7 @@ import {
   classifyPendingClientCentralQueue,
   derivePendingClientLaneState,
   pendingClientEvidenceCrmStage,
+  pendingClientTaskOnlySendModeForCycle,
   type PendingClientCentralQueueClassification,
   type PendingClientCentralFilter,
 } from './domain/pending-client-watchlist';
@@ -127,7 +128,7 @@ import {
 import { buildClientMessageThreadEvidenceReceipt } from './lib/client-message-evidence-receipts';
 import { getWeeklyScheduledAppointmentRows } from './lib/supabase-lifecycle';
 
-const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const REPO_ROOT_FALLBACK = process.env.PROSPECT_PIPELINE_ROOT || process.cwd();
 
 function readEnvFile(filePath: string): Record<string, string> {
   try {
@@ -367,13 +368,13 @@ export type HeadScoutBookingsListProps = {
 const APPOINTMENT_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['y', 'u', 'h', 'j', 'n'];
 const SCOUT_GRID_SHORTCUT_KEYS: readonly KeyEquivalent[] = ['1', '2', '3', '4', '5', '6'];
 const VIEW_SET_MEETINGS_CONTACT_CARD_ACTIONS = [
-  { title: 'Copy David Card', scoutName: 'David Foley' },
-  { title: 'Copy James Card', scoutName: 'James Holcomb' },
-  { title: 'Copy Jeffrey Card', scoutName: 'Jeffrey Stein' },
-  { title: 'Copy Logan Card', scoutName: 'Logan Lord' },
-  { title: 'Copy Ryan Card', scoutName: 'Ryan Lietz' },
-  { title: 'Copy Luther Card', scoutName: 'Luther Winfield' },
-  { title: 'Copy Jerami Card', scoutName: 'Jerami Singleton' },
+  { title: 'Copy Head Scout A Card', scoutName: 'Head Scout A' },
+  { title: 'Copy Head Scout B Card', scoutName: 'Head Scout B' },
+  { title: 'Copy Head Scout C Card', scoutName: 'Head Scout C' },
+  { title: 'Copy Head Scout D Card', scoutName: 'Head Scout D' },
+  { title: 'Copy Head Scout E Card', scoutName: 'Head Scout E' },
+  { title: 'Copy Head Scout F Card', scoutName: 'Head Scout F' },
+  { title: 'Copy Primary Operator Card', scoutName: 'Primary Operator' },
 ] as const;
 
 async function showLoadingToast(title: string, message?: string) {
@@ -391,21 +392,21 @@ async function showLoadingToast(title: string, message?: string) {
 
 function getHeadScoutCountColor(scoutName: string): string | Color {
   switch (scoutName) {
-    case 'David Foley':
+    case 'Head Scout A':
       return '#4B08A1';
-    case 'Jeffrey Stein':
+    case 'Head Scout B':
       return '#6E2242';
-    case 'Luther Winfield':
+    case 'Head Scout C':
       return '#C76E00';
-    case 'Ryan Lietz':
+    case 'Head Scout D':
       return '#1F9FA7';
-    case 'James Holcomb':
+    case 'Head Scout E':
       return '#070708';
-    case 'Logan Lord':
+    case 'Head Scout F':
       return '#600';
-    case 'Kenton Manis':
+    case 'Head Scout G':
       return '#05A915';
-    case 'Nasir Adderley':
+    case 'Head Scout H':
       return '#0080C6';
     default:
       return Color.SecondaryText;
@@ -899,7 +900,7 @@ function buildPendingClientAdminUrl(
   const athleteId = String(row.athlete_id || '').trim();
   const athleteMainId = String(row.athlete_main_id || '').trim();
   if (!athleteId) return null;
-  const url = new URL('https://dashboard.nationalpid.com/admin/athletes');
+  const url = new URL('https://legacy-dashboard.example.com/admin/athletes');
   url.searchParams.set('contactid', athleteId);
   if (athleteMainId) url.searchParams.set('athlete_main_id', athleteMainId);
   return url.toString();
@@ -1024,11 +1025,11 @@ function buildPendingClientDetailMarkdown(
 ): string {
   const scout = row.head_scout || 'Unresolved';
   const meeting = getPendingClientMeetingLabel(row);
+  const isReviewFollowUp = queue.filter === 'review_follow_ups';
   return [
     `# HS: ${scout}`,
     '',
-    `### ${meeting}`,
-    '',
+    ...(isReviewFollowUp ? [] : [`### ${meeting}`, '']),
     buildPendingClientActionMarkdown(row, queue, replyState),
   ]
     .filter((line) => line !== null)
@@ -1043,13 +1044,14 @@ function buildPendingClientDetailMetadata(
   const eventDate = getPendingClientMeetingLabel(row);
   const athleteName =
     row.athlete_name || cleanPendingClientTitle(row.event_title) || 'Pending Client';
-  void queue;
   void replyState;
 
   return (
     <List.Item.Detail.Metadata>
       <List.Item.Detail.Metadata.Label title="Athlete" text={athleteName} />
-      <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
+      {queue.filter !== 'review_follow_ups' ? (
+        <List.Item.Detail.Metadata.Label title="Meeting" text={eventDate} />
+      ) : null}
     </List.Item.Detail.Metadata>
   );
 }
@@ -1400,6 +1402,7 @@ function PendingClientRescheduleFollowUp({
         context={context}
         currentTask={task.title}
         defaultVariantOverride={pendingClientDefaultVoicemailVariant(queue)}
+        taskOnlySendMode={pendingClientTaskOnlySendModeForCycle(row.recovery_cycle_count)}
         closeAfterCompleteViews={2}
         onComplete={onComplete}
       />
@@ -1626,7 +1629,7 @@ function PendingClientsWatchlist() {
       {rowModels.length ? (
         <List.Section
           title={pendingClientFilterTitle(selectedFilter)}
-          subtitle={`${rowModels.length}${result ? `/${result.scannedCount}` : ''}`}
+          subtitle={String(rowModels.length)}
         >
           {rowModels.map(({ row, replyState, matchedChat, queue }) => {
             const signals = row.matched_signals || [];
@@ -1663,6 +1666,19 @@ function PendingClientsWatchlist() {
                 }
                 actions={
                   <ActionPanel>
+                    {!isPaymentReminder && queue.filter !== 'review_follow_ups' ? (
+                      <Action.Push
+                        title="Send"
+                        icon="💬"
+                        target={
+                          <PendingClientRescheduleFollowUp
+                            row={row}
+                            queue={queue}
+                            onComplete={() => setRefreshTick((current) => current + 1)}
+                          />
+                        }
+                      />
+                    ) : null}
                     {!isPaymentReminder && (replyState || matchedChat) ? (
                       <ActionPanel.Section title="Open">
                         {replyState ? (
@@ -1703,18 +1719,20 @@ function PendingClientsWatchlist() {
                     ) : null}
                     {!isPaymentReminder ? (
                       <ActionPanel.Section title="Follow Up">
-                        <Action.Push
-                          title="Send"
-                          icon="💬"
-                          shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
-                          target={
-                            <PendingClientRescheduleFollowUp
-                              row={row}
-                              queue={queue}
-                              onComplete={() => setRefreshTick((current) => current + 1)}
-                            />
-                          }
-                        />
+                        {queue.filter === 'review_follow_ups' ? (
+                          <Action.Push
+                            title="Send"
+                            icon="💬"
+                            shortcut={{ modifiers: ['cmd', 'shift'], key: 'r' }}
+                            target={
+                              <PendingClientRescheduleFollowUp
+                                row={row}
+                                queue={queue}
+                                onComplete={() => setRefreshTick((current) => current + 1)}
+                              />
+                            }
+                          />
+                        ) : null}
                         <Action.Push
                           title="Note"
                           icon="✍️"

@@ -15,7 +15,7 @@ test('call tracker meeting-set lifecycle rows require active-operator materializ
   assert.match(sql, /where le\.event_type = 'meeting_set'/i);
   assert.match(sql, /le\.payload_json->'materialization_proof'->>'materialization_status'\s*=\s*'operator_task'/i);
   assert.match(sql, /le\.payload_json->>'materialization_status'\s*=\s*'operator_task'/i);
-  assert.doesNotMatch(sql, /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Jerami Singleton'\) as source_owner/i);
+  assert.doesNotMatch(sql, /coalesce\(nullif\(le\.payload_json->>'operator_name', ''\), 'Primary Operator'\) as source_owner/i);
   assert.doesNotMatch(sql, /'matched_weekly_task_assigned_owner'::text as owner_proof/i);
 });
 
@@ -36,8 +36,8 @@ test('meeting set side view and owner context view use the same materialization 
 });
 
 test('migration documents Tim and Jerami proof cases in SQL fixtures', () => {
-  assert.match(sql, /Tim Risner meeting_set lifecycle rows do not appear/i);
-  assert.match(sql, /Tim Risner call_activity_events rows do not appear/i);
+  assert.match(sql, /Secondary Operator meeting_set lifecycle rows do not appear/i);
+  assert.match(sql, /Secondary Operator call_activity_events rows do not appear/i);
   assert.match(sql, /Jerami operator_task meeting_set rows do appear/i);
   assert.match(sql, /Jerami operator_task call_activity_events rows do appear/i);
   assert.match(sql, /legacy rows without proof are excluded/i);
@@ -87,7 +87,7 @@ async function createFixtureDatabase() {
 
     create view call_tracker_events as
     with active_operator as (
-      select 'Jerami Singleton' as active_operator_name
+      select 'Primary Operator' as active_operator_name
     ),
     activity_facts as (
       select
@@ -155,7 +155,7 @@ async function createFixtureDatabase() {
 
     create view call_tracker_meeting_sets as
     with active_operator as (
-      select 'Jerami Singleton' as active_operator_name
+      select 'Primary Operator' as active_operator_name
     ),
     lifecycle_meeting_set_materialized as (
       select le.*
@@ -242,30 +242,30 @@ test('SQL fixture materializes only active-operator meeting-set lifecycle rows',
   insertMeetingSet(db, 1, '100:200', {
     materialization_proof: {
       materialization_status: 'operator_task',
-      task_assigned_owner: 'Jerami Singleton',
+      task_assigned_owner: 'Primary Operator',
     },
     meeting_name: 'Jerami Operator Task',
   });
   insertMeetingSet(db, 2, '101:201', {
     materialization_proof: {
       materialization_status: 'not_operator_task',
-      task_assigned_owner: 'Tim Risner',
+      task_assigned_owner: 'Secondary Operator',
     },
     meeting_name: 'Tim Calendar Bleed',
   });
   insertMeetingSet(db, 3, '102:202', {
     materialization_status: 'not_operator_task',
-    task_assigned_owner: 'Ryan Lietz',
+    task_assigned_owner: 'Head Scout D',
     meeting_name: 'Ryan Calendar Bleed',
   });
   insertMeetingSet(db, 4, '103:203', {
     legacy_compatibility_proof: 'weekly_operator_task_assigned_owner',
-    task_assigned_owner: 'Jerami Singleton',
+    task_assigned_owner: 'Primary Operator',
     owner_proof: 'weekly_task.assigned_owner',
     meeting_name: 'Legacy Jerami Proven',
   });
   insertMeetingSet(db, 5, '104:204', {
-    task_assigned_owner: 'Jerami Singleton',
+    task_assigned_owner: 'Primary Operator',
     meeting_name: 'Legacy Jerami Unproven',
   });
 
@@ -287,7 +287,7 @@ test('SQL fixture respects call activity materialization status without Tim-spec
   const db = await createFixtureDatabase();
   insertCallActivity(db, 1, '200:300', {
     materialization_status: 'operator_task',
-    source_owner: 'Jerami Singleton',
+    source_owner: 'Primary Operator',
     owner_proof: 'task.assigned_owner',
   });
   insertCallActivity(db, 2, '201:301', {

@@ -31,7 +31,7 @@ if raw_message_html:
         if href and ('download' in href.lower() or any(ext in href.lower() for ext in ['.mp4', '.mov', '.avi', '.pdf', '.zip'])):
             attachments.append({
                 "fileName": filename,
-                "url": href if href.startswith('http') else f"https://dashboard.nationalpid.com{href}",
+                "url": href if href.startswith('http') else f"https://legacy-dashboard.example.com{href}",
                 "downloadable": True
             })
 
@@ -94,4 +94,4 @@ return {
 - **Email attachments** (this fix): Files athletes attach to inbox emails
 - **Video attachments** (`/video/attachments`): Videos uploaded via dashboard (separate endpoint)
 - Attachments only shown when present (no empty section)
-- URLs are absolute (`https://dashboard.nationalpid.com/...`)
+- URLs are absolute (`https://legacy-dashboard.example.com/...`)

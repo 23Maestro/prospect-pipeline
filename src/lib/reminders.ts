@@ -1,7 +1,7 @@
 import { runAppleScript } from '@raycast/utils';
 
 const REMINDER_LIST_NAME = 'Prospect ID';
-const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const DASHBOARD_BASE_URL = 'https://legacy-dashboard.example.com';
 
 export type ReminderMode = 'call' | 'text';
 

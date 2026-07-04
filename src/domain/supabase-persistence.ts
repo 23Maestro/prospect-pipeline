@@ -13,6 +13,7 @@ import {
   type MeetingOutcomeFactRow,
   type MeetingSetFactRow,
 } from './call-tracker-facts';
+import { getDemoSupabaseRows, isDemoMode } from '../lib/demo-mode';
 
 export type SupabasePersistenceConfig = {
   url: string;
@@ -54,7 +55,9 @@ async function preserveAppointmentTruthBeforeUpsert(
   rows: unknown[],
 ): Promise<unknown[]> {
   const rowRecords = rows.map(asRecord).filter(Boolean) as Record<string, unknown>[];
-  const ids = Array.from(new Set(rowRecords.map((row) => String(row.id || '').trim()).filter(Boolean)));
+  const ids = Array.from(
+    new Set(rowRecords.map((row) => String(row.id || '').trim()).filter(Boolean)),
+  );
   if (!ids.length) return rows;
 
   const quotedIds = ids.map((id) => `"${id.replace(/"/g, '\\"')}"`).join(',');
@@ -128,6 +131,12 @@ export async function supabaseRequest<T = unknown>(
   config: SupabasePersistenceConfig,
   args: RequestArgs,
 ): Promise<T> {
+  if (isDemoMode()) {
+    if ((args.method || 'POST') === 'GET') {
+      return getDemoSupabaseRows(args.table) as T;
+    }
+    return null as T;
+  }
   const params = new URLSearchParams();
   if (args.onConflict) params.set('on_conflict', args.onConflict);
   if (args.query) {
@@ -195,8 +204,17 @@ export function insertLifecycleEvents(config: SupabasePersistenceConfig, rows: u
   return writeRows(config, 'lifecycle_events', rows);
 }
 
-export async function insertMeetingSetEventsOnce(config: SupabasePersistenceConfig, rows: unknown[]) {
-  const lifecycleResult = await writeRows(config, 'lifecycle_events', rows, 'dedupe_key', 'ignore-duplicates');
+export async function insertMeetingSetEventsOnce(
+  config: SupabasePersistenceConfig,
+  rows: unknown[],
+) {
+  const lifecycleResult = await writeRows(
+    config,
+    'lifecycle_events',
+    rows,
+    'dedupe_key',
+    'ignore-duplicates',
+  );
   const dedupeKeys = Array.from(
     new Set(
       (rows as MeetingSetFactRow[])

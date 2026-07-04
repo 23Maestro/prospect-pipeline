@@ -57,7 +57,7 @@ export type ActiveAthleteMeetingTruthRow = {
 };
 
 const DEFAULT_SCHEMA = 'public';
-const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const REPO_ROOT_FALLBACK = process.env.PROSPECT_PIPELINE_ROOT || process.cwd();
 
 function clean(value?: string | null): string {
   return String(value || '').trim();

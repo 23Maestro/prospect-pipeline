@@ -11,7 +11,7 @@ def test_parse_email_content():
     sample_content = """
     <div>Thank you so much! Sharing the video helped me on able to getting that link!<br>
     Kind regards, Sophia Howard<br><br>
-    On Mon, Dec 22, 2025 at 5:33 PM Prospect ID Video &lt;videoteam@prospectid.com&gt; wrote:<br>
+    On Mon, Dec 22, 2025 at 5:33 PM Prospect ID Video &lt;video-team@example.com&gt; wrote:<br>
     No worries, I can send you a Dropbox folder shortly. Once your video finishes processing try clicki</div>
     """
     

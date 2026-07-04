@@ -56,7 +56,7 @@ comment on column call_activity_events.raw_task_status is
 
 create or replace view call_tracker_events as
 with active_operator as (
-  select 'Jerami Singleton'::text as active_operator_name
+  select 'Primary Operator'::text as active_operator_name
 ),
 classified as (
   select

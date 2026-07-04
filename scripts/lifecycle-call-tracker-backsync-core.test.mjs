@@ -18,7 +18,7 @@ function lifecycle(overrides = {}) {
     dedupe_key: overrides.dedupe_key || null,
     payload_json: {
       materialization_status: 'operator_task',
-      task_assigned_owner: 'Jerami Singleton',
+      task_assigned_owner: 'Primary Operator',
       owner_proof: 'payload.task_assigned_owner',
       ...(overrides.payload_json || {}),
     },
@@ -44,7 +44,7 @@ test('lifecycle activity uses due_at as occurrence time before lifecycle sync ti
     created_at: '2026-05-01T20:30:00.000Z',
     payload_json: {
       materialization_status: 'operator_task',
-      task_assigned_owner: 'Jerami Singleton',
+      task_assigned_owner: 'Primary Operator',
       owner_proof: 'payload.task_assigned_owner',
       due_at: '2026-04-29T14:15:00.000Z',
     },
@@ -60,7 +60,7 @@ test('lifecycle activity uses completion_date before due_at when present', () =>
     crm_stage: 'Spoke to - Not Interested',
     payload_json: {
       materialization_status: 'operator_task',
-      task_assigned_owner: 'Jerami Singleton',
+      task_assigned_owner: 'Primary Operator',
       owner_proof: 'payload.task_assigned_owner',
       due_at: '2026-04-29T14:15:00.000Z',
       completion_date: '2026-04-30T18:45:00.000Z',
@@ -103,7 +103,7 @@ test('lifecycle promotion preserves athlete name from payload or row snapshot', 
     crm_stage: 'Spoke to - Not Interested',
     payload_json: {
       materialization_status: 'operator_task',
-      task_assigned_owner: 'Jerami Singleton',
+      task_assigned_owner: 'Primary Operator',
       owner_proof: 'payload.task_assigned_owner',
       athlete_name: 'Payload Prospect',
     },
@@ -132,7 +132,7 @@ test('lifecycle row with Tim owner proof is excluded', () => {
     crm_stage: 'Spoke to - Not Interested',
     payload_json: {
       materialization_status: 'operator_task',
-      task_assigned_owner: 'Tim Risner',
+      task_assigned_owner: 'Secondary Operator',
       owner_proof: 'payload.task_assigned_owner',
     },
   }));
@@ -158,7 +158,7 @@ test('operator-owned pipeline snapshot with task id is eligible activity evidenc
     crm_stage: 'Left Voice Mail 2',
     payload_json: {
       task_id: '626001',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
     },
   }));
 
@@ -174,7 +174,7 @@ test('crm stage wins over stale task status when classifying lifecycle activity'
     task_status: 'call_attempt_3',
     payload_json: {
       task_id: '626382',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
     },
   }));
 

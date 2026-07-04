@@ -51,7 +51,7 @@ npx ray build
 
 ## Environment Notes
 
-- Commands assume the repo root is `/Users/singleton23/Raycast/prospect-pipeline`.
+- Commands assume the repo root is `<REPO_ROOT>`.
 - `npm test` is local deterministic proof only.
 - `npx ray build` validates Raycast extension compile/build only.
 - Live Laravel/Supabase verification requires a real athlete/reschedule run and was not part of this local proof.

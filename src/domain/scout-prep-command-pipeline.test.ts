@@ -19,7 +19,7 @@ function buildContext(): ScoutPrepContext {
     resolved: {
       athlete_main_id: '456',
       sport: 'Football',
-      head_scout: 'Ryan Lietz',
+      head_scout: 'Head Scout D',
     },
     contactInfo: {
       contactId: '123',
@@ -73,7 +73,7 @@ test('confirmation payload reuses command context facts instead of recomputing r
   assert.equal(payload.taskId, '9001');
   assert.equal(payload.currentTask, 'Confirmation Call');
   assert.deepEqual(payload.recipientPhones, ['651-555-1212']);
-  assert.equal(payload.headScoutName, 'Ryan Lietz');
+  assert.equal(payload.headScoutName, 'Head Scout D');
 });
 
 test('Set Meetings command context excludes non-operator meeting candidates', () => {
@@ -82,7 +82,7 @@ test('Set Meetings command context excludes non-operator meeting candidates', ()
       {
         event_id: 'evt-1',
         title: 'Avery Jones Football',
-        assigned_owner: 'Ryan Lietz',
+        assigned_owner: 'Head Scout D',
         start: '2026-05-01T23:00:00.000Z',
         end: '2026-05-02T00:00:00.000Z',
         date_time_label: 'Fri 05/01/26 7:00 PM',
@@ -90,7 +90,7 @@ test('Set Meetings command context excludes non-operator meeting candidates', ()
       {
         event_id: 'evt-2',
         title: 'Tim Prospect Football',
-        assigned_owner: 'Ryan Lietz',
+        assigned_owner: 'Head Scout D',
         start: '2026-05-01T23:00:00.000Z',
         end: '2026-05-02T00:00:00.000Z',
         date_time_label: 'Fri 05/01/26 7:00 PM',
@@ -104,7 +104,7 @@ test('Set Meetings command context excludes non-operator meeting candidates', ()
         athlete_name: 'Avery Jones',
         task_id: '9001',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
       },
       {
         contact_id: '789',
@@ -113,10 +113,10 @@ test('Set Meetings command context excludes non-operator meeting candidates', ()
         athlete_name: 'Tim Prospect',
         task_id: '9002',
         title: 'Confirmation Call',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
       },
     ],
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
   });
 
   assert.deepEqual(context.candidates.map((candidate) => candidate.athleteName), ['Avery Jones']);
@@ -145,7 +145,7 @@ test('Set Meetings command context collapses duplicate appointment identities be
         athleteName: 'Duplicate Athlete',
         taskId: '9001',
         currentTask: 'Confirmation Call',
-        adminUrl: 'https://dashboard.nationalpid.com/admin/contacts/1499052',
+        adminUrl: 'https://legacy-dashboard.example.com/admin/contacts/1499052',
         bookedMeeting: {
           event_id: '625661',
           title: 'Duplicate Athlete Football',

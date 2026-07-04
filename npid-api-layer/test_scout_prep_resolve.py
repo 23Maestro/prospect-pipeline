@@ -69,7 +69,7 @@ class ScoutPrepResolveTests(unittest.TestCase):
             <input name="GUARDIAN[1158530][last_name]" value="Harrison" />
             <input name="GUARDIAN[1158530][relationship]" value="Mom" />
             <input name="GUARDIAN[1158530][phone]" value="(903) 372-4551" />
-            <input name="GUARDIAN[1158530][email]" value="mrs.harrison1122@gmail.com" />
+            <input name="GUARDIAN[1158530][email]" value="parent.com" />
           </body>
         </html>
         """

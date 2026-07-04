@@ -26,7 +26,7 @@ test('Set Meetings candidate uses bookedMeeting.start as display and sorting sou
     bookedMeeting: {
       eventId: 'evt-1',
       title: 'Avery Jones Football',
-      assignedOwner: 'Ryan Lietz',
+      assignedOwner: 'Head Scout D',
       start: '2026-05-02T23:00:00.000Z',
       end: '2026-05-03T00:00:00.000Z',
       dateTimeLabel: 'Sat 05/02/26 7:00 PM',
@@ -120,12 +120,12 @@ test('Set Meetings row identity distinguishes repeat appointments for the same a
 
 test('weekly booked meeting candidates render meeting-set rows even while confirmation task is pending', () => {
   const candidates = buildSetMeetingCandidatesFromBookedMeetings({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     bookedMeetings: [
       {
         event_id: 'evt-jerami',
         title: 'Avery Jones Football',
-        assigned_owner: 'Ryan Lietz',
+        assigned_owner: 'Head Scout D',
         start: '2026-05-02T23:00:00.000Z',
         end: '2026-05-03T00:00:00.000Z',
         date_time_label: 'Sat 05/02/26 7:00 PM',
@@ -136,7 +136,7 @@ test('weekly booked meeting candidates render meeting-set rows even while confir
         athlete_main_id: '111',
         athlete_name: 'Tim Prospect',
         title: 'Tim Prospect Football',
-        assigned_owner: 'Ryan Lietz',
+        assigned_owner: 'Head Scout D',
         start: '2026-05-02T23:00:00.000Z',
         end: '2026-05-03T00:00:00.000Z',
         date_time_label: 'Sat 05/02/26 7:00 PM',
@@ -150,7 +150,7 @@ test('weekly booked meeting candidates render meeting-set rows even while confir
         athlete_name: 'Avery Jones',
         task_id: '9001',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
       },
       {
         contact_id: '789',
@@ -159,7 +159,7 @@ test('weekly booked meeting candidates render meeting-set rows even while confir
         athlete_name: 'Tim Prospect',
         task_id: '9002',
         title: 'Confirmation Call',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
       },
     ],
   });
@@ -175,7 +175,7 @@ test('weekly booked meeting candidates render meeting-set rows even while confir
 
 test('weekly appointments are Set Meetings render truth before confirmation task hydration', () => {
   const candidates = buildSetMeetingCandidatesFromAppointments({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     appointments: [
       {
         id: '587281',
@@ -183,7 +183,7 @@ test('weekly appointments are Set Meetings render truth before confirmation task
         athleteId: '1499428',
         athleteMainId: '954160',
         athleteName: 'Dorian Bentley',
-        headScout: 'Ryan Lietz',
+        headScout: 'Head Scout D',
         startsAt: '2026-06-04T23:00:00.000Z',
         meetingTitle: 'Dorian Bentley Football 2028 FL',
       },
@@ -195,12 +195,12 @@ test('weekly appointments are Set Meetings render truth before confirmation task
   assert.equal(candidates[0].athleteName, 'Dorian Bentley');
   assert.equal(candidates[0].taskId, '');
   assert.equal(candidates[0].bookedMeeting?.event_id, '587281');
-  assert.equal(candidates[0].headScoutName, 'Ryan Lietz');
+  assert.equal(candidates[0].headScoutName, 'Head Scout D');
 });
 
 test('live booked meeting fills missing reschedule appointment even after confirmation task is completed', () => {
   const appointmentCandidates = buildSetMeetingCandidatesFromAppointments({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     appointments: [
       {
         id: '673775',
@@ -208,7 +208,7 @@ test('live booked meeting fills missing reschedule appointment even after confir
         athleteId: '1499820',
         athleteMainId: '954548',
         athleteName: 'Niko Acors',
-        headScout: 'Nasir Adderley',
+        headScout: 'Head Scout H',
         startsAt: '2026-06-15T23:00:00.000Z',
         meetingTitle: 'Niko Acors Football 2028 VA',
         status: 'scheduled',
@@ -218,12 +218,12 @@ test('live booked meeting fills missing reschedule appointment even after confir
     tasks: [],
   });
   const bookedMeetingCandidates = buildSetMeetingCandidatesFromBookedMeetings({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     bookedMeetings: [
       {
         event_id: '695750',
         title: '(ACF)*2 Niko Acors Football 2028 VA',
-        assigned_owner: 'Nasir Adderley',
+        assigned_owner: 'Head Scout H',
         start: '2026-06-16T20:00',
         end: '2026-06-16T21:00',
         date_time_label: 'Tue 06/16/26 8:00 PM - 9:00 PM',
@@ -235,7 +235,7 @@ test('live booked meeting fills missing reschedule appointment even after confir
         athlete_id: '1499820',
         athlete_main_id: '954548',
         athlete_name: 'Niko Acors',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         title: 'Confirmation Call',
         description: 'Reschedule this task to the day you want to confirm the Meeting Set.',
         due_date: 'Mon 06/15/26 09:00 AM',
@@ -259,7 +259,7 @@ test('live booked meeting fills missing reschedule appointment even after confir
 
 test('weekly Set Meetings hides expired same-week appointment rows', () => {
   const candidates = buildSetMeetingCandidatesFromAppointments({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     appointments: [
       {
         id: '587281',
@@ -267,7 +267,7 @@ test('weekly Set Meetings hides expired same-week appointment rows', () => {
         athleteId: '1499428',
         athleteMainId: '954160',
         athleteName: 'Dorian Bentley',
-        headScout: 'Ryan Lietz',
+        headScout: 'Head Scout D',
         startsAt: '2026-06-04T23:00:00.000Z',
         endsAt: '2026-06-05T00:00:00.000Z',
         meetingTitle: 'Dorian Bentley Football 2028 FL',
@@ -279,7 +279,7 @@ test('weekly Set Meetings hides expired same-week appointment rows', () => {
         athleteId: '1499010',
         athleteMainId: '953777',
         athleteName: 'Wenstan Penermon',
-        headScout: 'Ryan Lietz',
+        headScout: 'Head Scout D',
         startsAt: '2026-06-07T20:00:00.000Z',
         endsAt: '2026-06-07T21:00:00.000Z',
         meetingTitle: 'Wenstan Penermon Football 2027 GA',
@@ -309,7 +309,7 @@ test('current appointment selection suppresses old rescheduled row when new appo
       athleteId: '1499010',
       athleteMainId: '953777',
       athleteName: 'Wenstan Penermon',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
       startsAt: '2026-06-03T22:00:00.000Z',
       meetingTitle: 'Wenstan Penermon Football 2027 GA',
       status: 'rescheduled',
@@ -323,7 +323,7 @@ test('current appointment selection suppresses old rescheduled row when new appo
       athleteId: '1499010',
       athleteMainId: '953777',
       athleteName: 'Wenstan Penermon',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
       startsAt: '2026-06-07T20:00:00.000Z',
       meetingTitle: 'Wenstan Penermon Football 2027 GA',
       status: 'scheduled',
@@ -405,7 +405,7 @@ test('current appointment selection keeps repeat appointments when old row is no
 
 test('weekly appointments render only the new active appointment after reschedule chain selection', () => {
   const candidates = buildSetMeetingCandidatesFromAppointments({
-    operatorName: 'Jerami Singleton',
+    operatorName: 'Primary Operator',
     appointments: [
       {
         id: '586604',
@@ -413,7 +413,7 @@ test('weekly appointments render only the new active appointment after reschedul
         athleteId: '1499010',
         athleteMainId: '953777',
         athleteName: 'Wenstan Penermon',
-        headScout: 'Ryan Lietz',
+        headScout: 'Head Scout D',
         startsAt: '2026-06-03T22:00:00.000Z',
         meetingTitle: 'Wenstan Penermon Football 2027 GA',
         status: 'rescheduled',
@@ -425,7 +425,7 @@ test('weekly appointments render only the new active appointment after reschedul
         athleteId: '1499010',
         athleteMainId: '953777',
         athleteName: 'Wenstan Penermon',
-        headScout: 'Ryan Lietz',
+        headScout: 'Head Scout D',
         startsAt: '2026-06-07T20:00:00.000Z',
         meetingTitle: 'Wenstan Penermon Football 2027 GA',
         status: 'scheduled',

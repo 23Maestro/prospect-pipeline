@@ -15,87 +15,87 @@ from app.domain.prospect_id_owners import (
 def test_shared_owner_config_loads_active_operator_and_tim_profile():
     config = get_owner_config()
     active_operator = get_active_operator()
-    tim = get_owner_by_key("tim_risner")
+    tim = get_owner_by_key("operator_secondary")
 
-    assert config["activeOperatorKey"] == "jerami_singleton"
+    assert config["activeOperatorKey"] == "operator_primary"
     assert config["headScoutCalendarAccessUserId"] == "avdhyXjQ8bFweEf"
-    assert active_operator["personName"] == "Jerami Singleton"
-    assert active_operator["assignedToLegacyUserId"] == "1408164"
-    assert tim["personName"] == "Tim Risner"
+    assert active_operator["personName"] == "Primary Operator"
+    assert active_operator["assignedToLegacyUserId"] == "100001"
+    assert tim["personName"] == "Secondary Operator"
     assert tim["dashboardTrackingEligible"] is False
 
 
 def test_head_scout_config_preserves_legacy_shape_and_order():
     assert get_head_scout_config_for_legacy() == [
         {
-            "scout_name": "David Foley",
+            "scout_name": "Head Scout A",
             "city": "Winona",
             "state": "MN",
-            "calendar_owner_id": "GI4oO0m9knrHNq1",
+            "calendar_owner_id": "calendar_owner_a",
             "meeting_for": "1418020",
         },
         {
-            "scout_name": "Jeffrey Stein",
+            "scout_name": "Head Scout B",
             "city": "Wexford",
             "state": "PA",
-            "calendar_owner_id": "OrJsV8nhBouEzKY",
-            "meeting_for": "1418529",
+            "calendar_owner_id": "calendar_owner_b",
+            "meeting_for": "200002",
         },
         {
-            "scout_name": "Luther Winfield",
+            "scout_name": "Head Scout C",
             "city": "Columbia",
             "state": "SC",
-            "calendar_owner_id": "bMBrA26OElRUwPs",
-            "meeting_for": "370959",
+            "calendar_owner_id": "calendar_owner_c",
+            "meeting_for": "200003",
         },
         {
-            "scout_name": "Nasir Adderley",
+            "scout_name": "Head Scout H",
             "city": "Dallas",
             "state": "TX",
-            "calendar_owner_id": "Ax8yvuUTdOzVHr7",
-            "meeting_for": "1462295",
+            "calendar_owner_id": "calendar_owner_h",
+            "meeting_for": "200008",
         },
         {
-            "scout_name": "Ryan Lietz",
+            "scout_name": "Head Scout D",
             "city": "Gilbert",
             "state": "AZ",
-            "calendar_owner_id": "nhVvYOz8bAaL57c",
-            "meeting_for": "1354049",
+            "calendar_owner_id": "calendar_owner_d",
+            "meeting_for": "200004",
         },
         {
-            "scout_name": "James Holcomb",
+            "scout_name": "Head Scout E",
             "city": "Phoenix",
             "state": "AZ",
-            "calendar_owner_id": "oDCcn1r7MGERdsb",
+            "calendar_owner_id": "calendar_owner_e",
             "meeting_for": "56",
         },
         {
-            "scout_name": "Logan Lord",
+            "scout_name": "Head Scout F",
             "city": "Chandler",
             "state": "AZ",
-            "calendar_owner_id": "d9UDl0bRSqQ1owt",
-            "meeting_for": "2254",
+            "calendar_owner_id": "calendar_owner_f",
+            "meeting_for": "200006",
         },
         {
-            "scout_name": "Kenton Manis",
+            "scout_name": "Head Scout G",
             "city": "Prosper",
             "state": "TX",
-            "calendar_owner_id": "A4H3xiZJdyrEh2X",
-            "meeting_for": "1486538",
+            "calendar_owner_id": "calendar_owner_g",
+            "meeting_for": "200007",
         },
     ]
 
 
 def test_head_scout_calendar_owner_ids_match_current_legacy_behavior():
     assert get_head_scout_calendar_owner_ids() == [
-        "GI4oO0m9knrHNq1",
-        "OrJsV8nhBouEzKY",
-        "bMBrA26OElRUwPs",
-        "Ax8yvuUTdOzVHr7",
-        "nhVvYOz8bAaL57c",
-        "oDCcn1r7MGERdsb",
-        "d9UDl0bRSqQ1owt",
-        "A4H3xiZJdyrEh2X",
+        "calendar_owner_a",
+        "calendar_owner_b",
+        "calendar_owner_c",
+        "calendar_owner_h",
+        "calendar_owner_d",
+        "calendar_owner_e",
+        "calendar_owner_f",
+        "calendar_owner_g",
     ]
 
 

@@ -16,11 +16,11 @@ const completeAppointment: AppointmentTruthRow = {
   source_event_id: '611014',
   meeting_timezone: 'America/Chicago',
   meeting_timezone_label: 'CST',
-  head_scout: 'Ryan Lietz',
+  head_scout: 'Head Scout D',
   original_appointment_id: '611014',
   reschedule_sequence: 0,
-  operator_owner: 'Jerami Singleton',
-  operator_owner_key: 'jerami_singleton',
+  operator_owner: 'Primary Operator',
+  operator_owner_key: 'operator_primary',
   appointment_role: 'initial_set',
   source_system: 'scout_prep_action',
   source_payload: { owner_proof: 'raycast_operator_context' },
@@ -38,7 +38,7 @@ test('support writes preserve existing durable appointment truth', () => {
   assert.equal(merged.meeting_timezone, 'America/Chicago');
   assert.equal(merged.starts_at, '2026-05-15T23:00:00.000Z');
   assert.equal(merged.original_appointment_id, '611014');
-  assert.equal(merged.operator_owner, 'Jerami Singleton');
+  assert.equal(merged.operator_owner, 'Primary Operator');
   assert.deepEqual(merged.source_payload, {
     owner_proof: 'raycast_operator_context',
     message_variant: 'confirmation_1',
@@ -50,7 +50,7 @@ test('active appointment truth rejects missing required business fields', () => 
     validateAppointmentTruthWrite({
       id: '611014',
       status: 'scheduled',
-      head_scout: 'Ryan Lietz',
+      head_scout: 'Head Scout D',
     }),
     ['starts_at', 'meeting_timezone', 'operator_owner', 'original_appointment_id'],
   );

@@ -9,7 +9,7 @@ import {
   getReminderTimeLabel as resolveReminderTimeLabel,
 } from '../domain/outreach-time-wording';
 
-export const DEFAULT_FOLLOW_UP_SENDER_NAME = 'Jerami Singleton';
+export const DEFAULT_FOLLOW_UP_SENDER_NAME = 'Primary Operator';
 export const CAL_BOOKING_URL = 'https://cal.com/jsingleton-prospectid/prospect-id-call';
 
 export type FollowUpMessageType = 'call_attempt_2' | 'confirmation';
@@ -78,7 +78,7 @@ export function getVoicemailFollowUpVariantLabel(variant: VoicemailFollowUpVaria
 function getSenderIntroName(senderName?: string | null): string {
   const normalized = String(senderName || '').trim() || DEFAULT_FOLLOW_UP_SENDER_NAME;
   return normalizeText(normalized) === normalizeText(DEFAULT_FOLLOW_UP_SENDER_NAME)
-    ? 'Coach Singleton'
+    ? 'Scouting Coordinator'
     : normalized;
 }
 

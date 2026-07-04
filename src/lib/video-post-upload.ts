@@ -80,7 +80,7 @@ async function completeVideoEditingTask({
       athlete_main_id: athleteMainId,
       task_id: taskId,
       task_title: 'Video Editing',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       description,
       completed_date: completedDate,
       completed_time: completedTime,
@@ -140,7 +140,7 @@ export async function fetchEligibleJeramiVideoEditingTask({
   }
 
   const jeramiMatches = videoEditingMatches.filter(
-    (task) => normalizeText(task.assigned_owner) === normalizeText('Jerami Singleton'),
+    (task) => normalizeText(task.assigned_owner) === normalizeText('Primary Operator'),
   );
   if (jeramiMatches.length === 0) {
     logEvent?.('VIDEO_UPDATES_TASK_COMPLETE', 'select-task', 'success', {

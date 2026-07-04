@@ -1084,7 +1084,7 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
         '### Greeting / Reason',
         '',
         blockQuote([
-          `Hey ${parent1First}, this is Coach Singleton, the ${coordinatorLabel} at Prospect ID.`,
+          `Hey ${parent1First}, this is Scouting Coordinator, the ${coordinatorLabel} at Prospect ID.`,
           `I’m glad we got connected about ${athleteFirst}.`,
           'Before I pull everything together, let me get a quick picture of where things stand.',
         ]),
@@ -1093,8 +1093,8 @@ function buildCallPathLines(values: ScoutPrepFormValues, context?: ScoutPrepCont
         '### Greeting / Reason',
         '',
         blockQuote([
-          `Hey, this is Coach Singleton. Is this ${parent1First}?`,
-          `Hey ${parent1First}. This is Coach Singleton, the ${coordinatorLabel} at Prospect ID.`,
+          `Hey, this is Scouting Coordinator. Is this ${parent1First}?`,
+          `Hey ${parent1First}. This is Scouting Coordinator, the ${coordinatorLabel} at Prospect ID.`,
           `I was reaching out. ${athleteFirst} sent us a recruiting application. Were you aware of this?`,
           'Let me give you a little bit of background.',
           `${subjectStart} sent us a recruiting application with height, weight, grades.`,

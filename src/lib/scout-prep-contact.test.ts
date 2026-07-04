@@ -484,7 +484,7 @@ test('buildVoicemailFollowUpBody: duplicate parent and athlete phone uses studen
         sport: 'Football',
         city: 'Los Angeles',
         state: 'CA',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
       },
       contactInfo: {
         contactId: '123',
@@ -509,7 +509,7 @@ test('buildVoicemailFollowUpBody: duplicate parent and athlete phone uses studen
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Jaylin, this is Coach Singleton with Prospect ID\./);
+  assert.match(body, /^Good afternoon Jaylin, this is Scouting Coordinator with Prospect ID\./);
   assert.match(body, /I received your info about playing college football\./);
   assert.match(body, /If this is still a real goal, have a parent call or text me back\./);
   assert.doesNotMatch(body, /football scouting coordinator\nProspect ID/);
@@ -538,7 +538,7 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
     new Date('2026-04-17T09:00:00Z'),
   );
   const url = buildMessagesComposeUrlForRecipients(['651-555-1212'], body);
-  assert.match(body, /^Good morning Ms\. Smith, this is Coach Singleton with Prospect ID\./);
+  assert.match(body, /^Good morning Ms\. Smith, this is Scouting Coordinator with Prospect ID\./);
   assert.match(
     body,
     /Bryson’s football profile came through and I had a few quick questions about college goals\./,
@@ -547,7 +547,7 @@ test('buildVoicemailFollowUpBody/buildMessagesComposeUrlForRecipients: builds fo
   assert.match(body, /Would later today or tomorrow work for a quick 10-minute call\?/);
   assert.doesNotMatch(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(body, /Enjoy the rest of your weekend\./);
-  assert.doesNotMatch(body, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(body, /Primary Operator\nProspect ID/);
   assert.match(url, /^sms:651-555-1212\?body=/);
   assert.match(url, /profile%20came%20through/);
 });
@@ -568,13 +568,13 @@ test('buildVoicemailFollowUpBody: group text still uses parent template without 
     new Date('2026-04-15T09:00:00Z'),
   );
 
-  assert.match(body, /^Good morning Ms\. Smith, this is Coach Singleton with Prospect ID\./);
+  assert.match(body, /^Good morning Ms\. Smith, this is Scouting Coordinator with Prospect ID\./);
   assert.match(body, /Bryson’s football profile came through/);
   assert.doesNotMatch(body, /I just left you a voicemail/);
   assert.match(body, /Would later today or tomorrow work for a quick 10-minute call\?/);
   assert.doesNotMatch(body, new RegExp(CAL_BOOKING_URL.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
   assert.doesNotMatch(body, /Enjoy the rest of your week\./);
-  assert.doesNotMatch(body, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(body, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => {
@@ -588,7 +588,7 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
       },
       resolved: {
         sport: 'Football',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         city: 'Los Angeles',
         state: 'CA',
       },
@@ -615,7 +615,7 @@ test('buildVoicemailFollowUpBody: uses athlete local afternoon greeting', () => 
     new Date('2026-04-17T19:28:00Z'),
   );
 
-  assert.match(body, /^Good afternoon Mr\. Bailey, this is Coach Singleton with Prospect ID\./);
+  assert.match(body, /^Good afternoon Mr\. Bailey, this is Scouting Coordinator with Prospect ID\./);
   assert.match(body, /Jaylin’s football profile came through/);
   assert.doesNotMatch(body, /I just left you a voicemail/);
 });
@@ -631,7 +631,7 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
       },
       resolved: {
         sport: 'Football',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         city: 'Los Angeles',
         state: 'CA',
       },
@@ -665,7 +665,7 @@ test('buildVoicemailFollowUpBody: uses attempt 2 copy when selected', () => {
   assert.doesNotMatch(body, /I just tried you again/);
   assert.doesNotMatch(body, /trying to get a better feel/);
   assert.doesNotMatch(body, /learn his goals/);
-  assert.doesNotMatch(body, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(body, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpBody: attempt 3 asks parent to triage interest', () => {
@@ -717,7 +717,7 @@ test('buildVoicemailFollowUpBody: attempt 3 asks parent to triage interest', () 
   assert.doesNotMatch(body, /I’ve tried a few times/);
   assert.doesNotMatch(body, /I’ll close this out for now\./);
   assert.doesNotMatch(body, /just left (you )?a voicemail/i);
-  assert.doesNotMatch(body, /Jerami Singleton\nProspect ID/);
+  assert.doesNotMatch(body, /Primary Operator\nProspect ID/);
 });
 
 test('buildVoicemailFollowUpBody: student athlete attempt 2 uses shorter action-oriented copy', () => {
@@ -872,7 +872,7 @@ test('buildVoicemailFollowUpBody: parent contact intro uses student athlete name
   assert.equal(
     body,
     [
-      'Hi [ParentFirst], this is Coach Singleton with Prospect ID.',
+      'Hi [ParentFirst], this is Scouting Coordinator with Prospect ID.',
       '',
       'Kapri’s recruiting info came through.',
       '',
@@ -927,7 +927,7 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
       },
       resolved: {
         sport: 'Football',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         city: 'Los Angeles',
         state: 'CA',
       },
@@ -954,7 +954,7 @@ test('buildVoicemailFollowUpBody: no show uses first name only', () => {
     new Date('2026-04-24T13:00:00Z'),
   );
 
-  assert.match(body, /^Hi Jamie, we missed you at Aiden’s meeting with Coach Ryan Lietz\./);
+  assert.match(body, /^Hi Jamie, we missed you at Aiden’s meeting with Coach Head Scout D\./);
   assert.match(body, /If you still want a recruiting game plan, reply:/);
   assert.match(body, /1\. Still interested, reschedule\./);
   assert.match(body, /2\. Interested, bad timing\./);
@@ -973,7 +973,7 @@ test('buildVoicemailFollowUpBody: reschedule includes previous head scout and se
       },
       resolved: {
         sport: 'Football',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
       },
       contactInfo: {
         contactId: '123',
@@ -999,13 +999,13 @@ test('buildVoicemailFollowUpBody: reschedule includes previous head scout and se
     null,
     null,
     {
-      previousHeadScoutName: 'Ryan Lietz',
+      previousHeadScoutName: 'Head Scout D',
       slots: ['Thu May 28 3 PM EST', 'Fri May 29 4 PM EST'],
       weekLabel: 'next week',
     },
   );
 
-  assert.match(body, /^Coach Ryan Lietz has me checking what works best to reschedule Aiden:/);
+  assert.match(body, /^Coach Head Scout D has me checking what works best to reschedule Aiden:/);
   assert.match(body, /1 - Thu May 28 3 PM EST/);
   assert.match(body, /2 - Fri May 29 4 PM EST/);
   assert.match(body, /Which one works best\?/);
@@ -1022,7 +1022,7 @@ test('buildVoicemailFollowUpBody: proposed times uses slots without reschedule l
       },
       resolved: {
         sport: 'Football',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
       },
       contactInfo: {
         contactId: '123',
@@ -1048,14 +1048,14 @@ test('buildVoicemailFollowUpBody: proposed times uses slots without reschedule l
     null,
     null,
     {
-      previousHeadScoutName: 'Ryan Lietz',
+      previousHeadScoutName: 'Head Scout D',
       slots: ['Thursday, May 28 at 3PM ET', 'Friday, May 29 at 4PM ET'],
     },
   );
 
   assert.match(
     body,
-    /^Hi Jamie, here are a couple slots we can hold for Aiden with Coach Ryan Lietz:/,
+    /^Hi Jamie, here are a couple slots we can hold for Aiden with Coach Head Scout D:/,
   );
   assert.match(body, /1 - Thursday, May 28 at 3PM ET/);
   assert.match(body, /2 - Friday, May 29 at 4PM ET/);
@@ -1122,12 +1122,12 @@ test('buildScoutPrepLeavingVoicemailBody: builds son voicemail with parent and a
     sport: 'Football',
   });
 
-  assert.match(body, /^Hi Jamie, this is Coach Singleton Football Scouting Coordinator with Prospect ID\./);
+  assert.match(body, /^Hi Jamie, this is Scouting Coordinator Football Scouting Coordinator with Prospect ID\./);
   assert.match(body, /I’m reaching out on Bryson’s college football profile\./);
   assert.doesNotMatch(body, /I called about/);
   assert.match(
     body,
-    /If playing at the next level is still a real goal, call or text me back at 407-473-3637\./,
+    /If playing at the next level is still a real goal, call or text me back at 555-0100\./,
   );
   assert.doesNotMatch(body, /came across my desk/);
   assert.doesNotMatch(body, /Again, this is Jerami with Prospect ID/);
@@ -1140,7 +1140,7 @@ test('buildScoutPrepLeavingVoicemailBody: uses the provided sport for non-footba
     sport: "Men's Basketball",
   });
 
-  assert.match(body, /^Hi Amy, this is Coach Singleton Basketball Scouting Coordinator with Prospect ID\./);
+  assert.match(body, /^Hi Amy, this is Scouting Coordinator Basketball Scouting Coordinator with Prospect ID\./);
   assert.match(body, /college basketball profile/);
   assert.doesNotMatch(body, /football/);
 });
@@ -1155,7 +1155,7 @@ test('buildScoutPrepLeavingVoicemailBody: uses daughter and her for softball ath
   assert.match(body, /Ava’s college softball profile/);
   assert.match(
     body,
-    /If playing at the next level is still a real goal, call or text me back at 407-473-3637\./,
+    /If playing at the next level is still a real goal, call or text me back at 555-0100\./,
   );
   assert.doesNotMatch(body, /your son/);
 });
@@ -1168,11 +1168,11 @@ test('buildScoutPrepLeavingVoicemailBody: uses shorter voicemail for post-first-
     currentTask: 'Scheduled Follow Up Call the family second time and leave follow-up voicemail.',
   });
 
-  assert.match(body, /^Hi Jamie, this is Coach Singleton with Prospect ID\./);
+  assert.match(body, /^Hi Jamie, this is Scouting Coordinator with Prospect ID\./);
   assert.match(body, /Checking back on Bryson’s college football profile\./);
   assert.match(
     body,
-    /If this is still worth a conversation, call or text me back at 407-473-3637\./,
+    /If this is still worth a conversation, call or text me back at 555-0100\./,
   );
   assert.doesNotMatch(body, /I had a few quick questions/);
   assert.doesNotMatch(body, /scheduling link/);
@@ -1187,11 +1187,11 @@ test('buildScoutPrepLeavingVoicemailBody: third attempt uses the same post-first
     currentTask: 'Call Attempt 3',
   });
 
-  assert.match(body, /^Hi Jamie, this is Coach Singleton with Prospect ID\./);
+  assert.match(body, /^Hi Jamie, this is Scouting Coordinator with Prospect ID\./);
   assert.match(body, /Checking back on Bryson’s college football profile\./);
   assert.match(
     body,
-    /If this is still worth a conversation, call or text me back at 407-473-3637\./,
+    /If this is still worth a conversation, call or text me back at 555-0100\./,
   );
   assert.doesNotMatch(body, /Last follow-up/);
   assert.doesNotMatch(body, /scheduling link/);
@@ -1227,10 +1227,10 @@ test('buildScoutPrepCard: uses short appointment-setting call path', () => {
     previousIndex = currentIndex;
   }
   assert.equal((card.match(/^### /gm) || []).length, 7);
-  assert.match(card, /> Hey, this is Coach Singleton\. Is this Jamie\?/);
+  assert.match(card, /> Hey, this is Scouting Coordinator\. Is this Jamie\?/);
   assert.match(
     card,
-    /> Hey Jamie\. This is Coach Singleton, the head football scouting coordinator at Prospect ID\./,
+    /> Hey Jamie\. This is Scouting Coordinator, the head football scouting coordinator at Prospect ID\./,
   );
   assert.match(
     card,
@@ -1510,7 +1510,7 @@ test('buildScoutPrepCard: scheduled calls skip cold-call permission checks', () 
   assert.match(card, /### Greeting \/ Reason/);
   assert.match(
     card,
-    /Hey Jamie, this is Coach Singleton, the head football scouting coordinator at Prospect ID\./,
+    /Hey Jamie, this is Scouting Coordinator, the head football scouting coordinator at Prospect ID\./,
   );
   assert.match(card, /I’m glad we got connected about Bryson/);
   assert.doesNotMatch(card, /Were you aware of this\?/);

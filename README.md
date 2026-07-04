@@ -1,22 +1,77 @@
 # Prospect Pipeline
 
-Prospect ID's Raycast extension for managing the video editing workflow through a local FastAPI bridge backed by the legacy NPID Laravel dashboard.
+Prospect Pipeline is a production-style workflow automation system for messy, multi-system business operations. It combines Raycast commands, a local FastAPI bridge, legacy Laravel dashboard workflows, Supabase reporting truth, Next/Vercel surfaces, audit scripts, and AI-assisted operator workflows into one documented operating surface.
+
+This repo is used as public proof for practical AI and workflow automation work. It shows how fragile manual processes can be turned into repeatable commands, source-of-truth contracts, validation tests, and review-before-mutation workflows without handing business decisions blindly to automation.
+
+## What This Demonstrates
+
+- Raycast command surfaces for daily operator workflows, including search, task handling, meeting support, client messaging, video workflow tools, and reporting utilities.
+- A local FastAPI bridge that adapts legacy Laravel dashboard behavior into a stable local API surface.
+- Supabase source-of-truth cleanup across appointments, lifecycle events, call logs, confirmation support, and related reporting tables.
+- Audit and parity scripts that compare expected workflow truth against source systems before cleanup or migration work.
+- Focused tests and architecture contracts that protect business meaning as commands evolve.
+- Prospect Web and Vercel surfaces for public-safe reporting, visual maps, and workflow support pages.
+- AI-assisted drafting, classification, and support workflows designed for operator review rather than blind automation.
 
 ## Architecture
 
 The supported runtime path is:
 
-`Raycast extension -> local FastAPI bridge -> legacy NPID Laravel dashboard`
+```text
+Raycast commands -> local FastAPI bridge -> legacy Laravel dashboard
+                              |
+                              v
+                  Supabase durable reporting truth
+                              |
+                              v
+               Prospect Web / Vercel support surfaces
+```
 
-The Raycast commands in `src/` call the local FastAPI service in `npid-api-layer/`, which translates requests into the legacy Laravel forms and responses the NPID dashboard still expects.
+The Raycast commands in `src/` call the local FastAPI service in `npid-api-layer/`. FastAPI translates local requests into the legacy dashboard forms and responses the source system expects. Supabase stores durable workflow facts where the repo has explicit mutation rights. Prospect Web reads approved reporting/support surfaces, but it does not own lifecycle meaning.
 
-## Prerequisites
+## Source-Of-Truth Boundaries
 
-- Raycast
-- Node.js 22
-- Python 3.11
-- A valid Prospect ID account
-- A working local Prospect ID session saved at `~/.npid_session.pkl`
+The repo is intentionally strict about ownership:
+
+- Commands are UI surfaces, not business truth.
+- Domain modules own workflow meaning.
+- Laravel/FastAPI calls are source-system adapters.
+- Supabase stores durable truth after the source-system action succeeds or after an explicit audit/repair workflow.
+- AI helpers draft, classify, summarize, and propose actions for review; they do not silently mutate source-of-truth state.
+
+Core examples:
+
+- `appointments` owns durable meeting timing, timezone, scout, event identity, reschedule chain, and post-meeting result facts.
+- `lifecycle_events` owns sales-stage lifecycle history through the canonical lifecycle writer.
+- `call_log` is the centralized reporting ledger for call activity, meeting-set facts, post-meeting outcomes, and enrollment/payment evidence.
+- `set_meeting_confirmation_cache` supports confirmation-message workflows; it is not lifecycle truth.
+- Contact cache surfaces support lookup and message admission; they do not own meeting truth.
+
+See [Scouting Coordinator System Map](docs/architecture/scouting-coordinator-system-map.md) and [Scout Prep Supabase Source Of Truth](docs/architecture/scout-prep-supabase-source-of-truth.md) for the full contract.
+
+## Main Surfaces
+
+- `src/` - Raycast commands, domain modules, command UI, and local workflow helpers.
+- `npid-api-layer/` - Local FastAPI bridge for legacy dashboard-backed workflows.
+- `scripts/` - Audit, repair, sync, verification, and reporting utilities.
+- `supabase/` - Schema and migration history for durable workflow/reporting tables.
+- `apps/prospect-web/` - Next/Vercel support surfaces.
+- `docs/architecture/` - Source-of-truth rules, system maps, workflow boundaries, and cleanup contracts.
+- `docs/visual-maps/` - Operator-facing visual maps for workflow alignment.
+
+## Representative Commands
+
+- `Scout Prep`
+- `Client Messages`
+- `Set Meetings`
+- `Scout Openings`
+- `Prospect Search`
+- `Assign Video Team Inbox`
+- `Read Video Team Inbox`
+- `Video Updates`
+- `Video Progress`
+- `Daily Call Blocks`
 
 ## Setup
 
@@ -63,51 +118,51 @@ npm run dev:stack:install
 npm run dev:stack
 ```
 
-This keeps the Raycast dev process and the FastAPI bridge under one supervisor so stale ports are much less likely to block local work. To restart only FastAPI after a router change:
+To restart only FastAPI after a router change:
 
 ```bash
 npm run dev:api:restart
 ```
 
-Fallback if Overmind is not installed:
+For the full command set, see [Development Processes](references/dev-processes.md).
+
+## Configuration
+
+This repo expects local credentials and sessions to stay out of public commits.
+
+- Local environment files such as `.env`, `.env.local`, and `.overmind.env` are ignored.
+- Dashboard-backed commands depend on a private local session file outside the repo.
+- Supabase, dashboard, Vercel, email, and notification credentials must be provided through local environment variables or platform-managed secrets.
+- Public artifacts should use role-based labels and synthetic examples instead of real client, athlete, parent, employee, or internal company details.
+
+## Proof And Verification
+
+Useful deterministic checks:
 
 ```bash
-npm run dev:all
+npm run test:domain
+npm test
+npm run build
+git diff --check
 ```
 
-For the full command set, see [`references/dev-processes.md`](/Users/singleton23/Raycast/prospect-pipeline/references/dev-processes.md).
+Use focused tests for narrow workflow changes. Use broad tests when touching shared Scout Prep, lifecycle, Supabase, reporting, appointment, or client-message behavior. Local tests prove deterministic repo behavior only; live dashboard, Supabase, Vercel, Raycast, and browser state require separate live readback.
 
-## Auth Model
+## Public-Safe Case Study Pointers
 
-This repo relies on a local saved session file at `~/.npid_session.pkl`.
+Strong public case-study surfaces:
 
-- The Python helpers in `src/python/` and the FastAPI bridge both reuse that local session
-- FastAPI acts as the stable local translation layer in front of the legacy Laravel dashboard
-- If the saved session expires or is missing, dashboard-backed commands will fail until the session is refreshed
+- [Scouting Coordinator System Map](docs/architecture/scouting-coordinator-system-map.md)
+- [Scout Prep Supabase Source Of Truth](docs/architecture/scout-prep-supabase-source-of-truth.md)
+- [Supabase Clean House Truth Map](docs/architecture/supabase-clean-house-truth-map.md)
+- [Scout Prep Domain Contract](docs/architecture/scout-prep-domain-contract.md)
+- [Prospect Web Hosting Adapter](docs/architecture/prospect-web-hosting-adapter.md)
+- [Legacy Assignment Debug Template](docs/api-specs/legacy-assignment-debug-template.md)
+- `scripts/audit-supabase-truth-map.mjs`
+- `scripts/audit-call-tracker-live-parity.mjs`
+- `scripts/audit-raycast-workflow-identity-contract.mjs`
+- `scripts/watch-ended-meeting-outcomes.mjs`
+- `src/domain/workflow-context.ts`
+- `src/lib/supabase-lifecycle.ts`
 
-## Main Commands
-
-- `Assign Video Team Inbox`
-- `Read Video Team Inbox`
-- `Email Student Athletes`
-- `Video Updates`
-- `Video Progress`
-- `Prospect Search`
-
-## Repository Layout
-
-```text
-prospect-pipeline/
-├── src/              # Raycast commands, UI, adapters, and local helpers
-├── npid-api-layer/   # Local FastAPI bridge for the legacy NPID backend
-├── src/python/       # Python auth/session and legacy client helpers
-├── docs/             # Active architecture and API notes
-├── scripts/          # Local helper scripts
-└── assets/           # Icons and static assets
-```
-
-## Useful Docs
-
-- [`npid-api-layer/README.md`](/Users/singleton23/Raycast/prospect-pipeline/npid-api-layer/README.md)
-- [`docs/architecture/README.md`](/Users/singleton23/Raycast/prospect-pipeline/docs/architecture/README.md)
-- [`docs/api-specs/npid_implementation_guide.md`](/Users/singleton23/Raycast/prospect-pipeline/docs/api-specs/npid_implementation_guide.md)
+Before using repo content in a public writeup, sanitize real names, contact details, private URLs, local session references, employment context, and production data snapshots.

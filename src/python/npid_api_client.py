@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from typing import Optional, Dict, List, Any
 
 
-LOG_DIR = Path("/Users/singleton23/raycast_logs")
+LOG_DIR = Path(os.getenv("RAYCAST_LOG_DIR", str(Path.home() / "raycast_logs")))
 LOG_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = LOG_DIR / "console.log"
 
@@ -30,10 +30,10 @@ logging.basicConfig(
 class NPIDAPIClient:
     def __init__(self):
         self.session = requests.Session()
-        self.base_url = "https://dashboard.nationalpid.com"
+        self.base_url = "https://legacy-dashboard.example.com"
         self.cookie_file = Path.home() / '.npid_session.pkl'
-        self.email = os.getenv('NPID_EMAIL', 'jsingleton@prospectid.com')
-        self.password = os.getenv('NPID_PASSWORD', 'YBh@Y8Us@1&qwd$')
+        self.email = os.getenv('NPID_EMAIL', '')
+        self.password = os.getenv('NPID_PASSWORD', '')
         self.authenticated = False
         self.csrf_token: Optional[str] = None
         self.csrf_token_cache: Dict[str, str] = {}
@@ -461,7 +461,7 @@ class NPIDAPIClient:
         athlete_main_id = athlete_input.get('value', '').strip() if athlete_input else ""
         message_id_input = soup.select_one('input[name="messageid"]')
         message_id_value = message_id_input.get('value', '').strip() if message_id_input else ""
-        jerami_id = '1408164'
+        jerami_id = '100001'
         default_owner = None
         if owners:
             default_owner = next((owner for owner in owners if owner['value'] == jerami_id), None)
@@ -1252,8 +1252,8 @@ class NPIDAPIClient:
             "notification_type_id": "1",
             "notification_to_type_id": "1",
             "notification_to_id": player_id,
-            "notification_from": template_data.get('sender_name', 'James Holcomb'),
-            "notification_from_email": template_data.get('sender_email', 'jholcomb@nationalpid.com'),
+            "notification_from": template_data.get('sender_name', 'Video Team'),
+            "notification_from_email": template_data.get('sender_email', 'video-team@example.com'),
             "notification_subject": template_data.get('templatesubject', ''),
             "notification_message": template_data.get('templatedescription', ''),
             "includemysign": "includemysign",
@@ -1517,7 +1517,7 @@ def main():
             result = client.get_email_templates(args.get('contact_id', ''))
             print(json.dumps(result))
         elif method == 'get_athletes_from_video_progress_page':
-            html_content = client.get_page_content("https://dashboard.nationalpid.com/videoteammsg/videomailprogress")
+            html_content = client.get_page_content("https://legacy-dashboard.example.com/videoteammsg/videomailprogress")
             athlete_names = client.get_athletes_from_video_progress_page(html_content)
             print(json.dumps(athlete_names))
         elif method == 'search_video_progress':

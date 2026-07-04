@@ -83,7 +83,7 @@ function AssignmentModal({
   onCancel,
 }: AssignmentModalProps) {
   const initialOwnerId = useMemo(
-    () => modalData.defaultOwner?.value ?? modalData.owners[0]?.value ?? '1408164',
+    () => modalData.defaultOwner?.value ?? modalData.owners[0]?.value ?? '100001',
     [modalData.defaultOwner, modalData.owners],
   );
 
@@ -555,7 +555,7 @@ export default function InboxCheck() {
       // EDGE CASE: Parent email with NO database match
       // Open browser for manual parent search
       if (contactPool.length === 0) {
-        const assignUrl = `https://dashboard.nationalpid.com/rulestemplates/template/assignemailtovideoteam?message_id=${message.id}`;
+        const assignUrl = `https://legacy-dashboard.example.com/rulestemplates/template/assignemailtovideoteam?message_id=${message.id}`;
 
         toast.style = Toast.Style.Failure;
         toast.title = 'No contacts found';
@@ -584,7 +584,7 @@ export default function InboxCheck() {
             });
 
             try {
-              const resolvedOwnerId = ownerId || '1408164';
+              const resolvedOwnerId = ownerId || '100001';
 
               const payload: AssignVideoTeamPayload = {
                 messageId: message.id,
@@ -613,7 +613,7 @@ export default function InboxCheck() {
 
               const ownerName =
                 modalData.owners.find((owner) => owner.value === resolvedOwnerId)?.label ??
-                'Jerami Singleton';
+                'Primary Operator';
 
               assigningToast.style = Toast.Style.Success;
               assigningToast.title = 'Assigned to Video Team';
@@ -705,7 +705,7 @@ export default function InboxCheck() {
                   />
                   <Action
                     title="Assign to Video Team"
-                    icon="/Users/singleton23/Raycast/prospect-pipeline/assets/add-video-task.png"
+                    icon="add-video-task.png"
                     onAction={() => handleAssignTask(message)}
                   />
                 </ActionPanel.Section>

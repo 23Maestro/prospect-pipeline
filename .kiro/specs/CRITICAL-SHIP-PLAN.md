@@ -203,7 +203,7 @@ Return to message list
 
 #### Step 2.1: Research NPID Reply Endpoint
 
-**Where**: NPID Dashboard (https://dashboard.nationalpid.com)
+**Where**: NPID Dashboard (https://legacy-dashboard.example.com)
 
 **How**:
 1. Open NPID Dashboard in browser

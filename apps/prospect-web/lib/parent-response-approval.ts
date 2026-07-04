@@ -200,8 +200,8 @@ function buildReschedulePayload(
 
 function getApprovalOperator() {
   return {
-    personName: String(process.env.PARENT_RESPONSE_OPERATOR_NAME || '').trim() || 'Jerami Singleton',
-    operatorKey: String(process.env.PARENT_RESPONSE_OPERATOR_KEY || '').trim() || 'jerami_singleton',
+    personName: String(process.env.PARENT_RESPONSE_OPERATOR_NAME || '').trim() || 'Primary Operator',
+    operatorKey: String(process.env.PARENT_RESPONSE_OPERATOR_KEY || '').trim() || 'operator_primary',
   };
 }
 

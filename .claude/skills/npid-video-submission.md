@@ -18,7 +18,7 @@ Location: Athlete media page (`/athlete/media/{athleteId}/{athleteMainId}`)
 
 ### Endpoint 2: Video Sortable (GET Form)
 ```
-GET https://dashboard.nationalpid.com/template/template/addvideoform
+GET https://legacy-dashboard.example.com/template/template/addvideoform
 ```
 
 **Query Parameters (DYNAMIC - no hardcoding):**
@@ -35,7 +35,7 @@ GET https://dashboard.nationalpid.com/template/template/addvideoform
 
 ### Endpoint 3: Video Seasons API (Dynamic Options)
 ```
-POST https://dashboard.nationalpid.com/API/scout-api/video-seasons-by-video-type
+POST https://legacy-dashboard.example.com/API/scout-api/video-seasons-by-video-type
 ```
 
 **Request Body (form-encoded, DYNAMIC):**
@@ -63,7 +63,7 @@ athlete_main_id={athleteMainId}
 
 ### Endpoint 4: Video Submission (POST)
 ```
-POST https://dashboard.nationalpid.com/athlete/update/careervideos/{athleteId}
+POST https://legacy-dashboard.example.com/athlete/update/careervideos/{athleteId}
 ```
 
 **Request Body (form-encoded, ALL DYNAMIC):**

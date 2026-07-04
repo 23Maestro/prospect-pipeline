@@ -48,7 +48,7 @@ test('appointment row carries durable appointment truth fields', () => {
     },
     {
       appointmentId: '611014',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
       startsAt: '2026-05-15T18:00:00-05:00',
       status: 'scheduled',
       sourceEventId: '611014',
@@ -57,8 +57,8 @@ test('appointment row carries durable appointment truth fields', () => {
       calendarTimezone: 'America/New_York',
       originalAppointmentId: '611014',
       rescheduleSequence: 0,
-      operatorOwner: 'Jerami Singleton',
-      operatorOwnerKey: 'jerami_singleton',
+      operatorOwner: 'Primary Operator',
+      operatorOwnerKey: 'operator_primary',
       appointmentRole: 'initial_set',
       statusReason: 'meeting_set_written',
       sourceSystem: 'scout_prep_action',
@@ -76,10 +76,10 @@ test('appointment row carries durable appointment truth fields', () => {
   assert.equal(row.original_appointment_id, '611014');
   assert.equal(row.previous_appointment_id, null);
   assert.equal(row.reschedule_sequence, 0);
-  assert.equal(row.operator_owner, 'Jerami Singleton');
-  assert.equal(row.operator_owner_key, 'jerami_singleton');
-  assert.equal(row.head_scout, 'Ryan Lietz');
-  assert.equal(row.head_scout_key, 'ryan_lietz');
+  assert.equal(row.operator_owner, 'Primary Operator');
+  assert.equal(row.operator_owner_key, 'operator_primary');
+  assert.equal(row.head_scout, 'Head Scout D');
+  assert.equal(row.head_scout_key, 'head_scout_d');
   assert.equal(row.appointment_role, 'initial_set');
   assert.equal(row.source_system, 'scout_prep_action');
 });
@@ -93,7 +93,7 @@ test('rescheduled appointment row carries previous and original appointment ids'
     },
     {
       appointmentId: '622222',
-      headScout: 'Luther Winfield',
+      headScout: 'Head Scout C',
       startsAt: '2026-05-20T18:00:00-05:00',
       status: 'rescheduled',
       sourceEventId: '622222',
@@ -110,7 +110,7 @@ test('rescheduled appointment row carries previous and original appointment ids'
   assert.equal(row.original_appointment_id, '611014');
   assert.equal(row.reschedule_sequence, 1);
   assert.equal(row.appointment_role, 'reschedule');
-  assert.equal(row.head_scout_key, 'luther_winfield');
+  assert.equal(row.head_scout_key, 'head_scout_c');
 });
 
 test('appointment truth merge preserves durable fields when support writes omit them', () => {
@@ -122,15 +122,15 @@ test('appointment truth merge preserves durable fields when support writes omit 
     },
     {
       appointmentId: '611014',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
       startsAt: '2026-05-15T18:00:00-05:00',
       status: 'scheduled',
       sourceEventId: '611014',
       meetingTimezone: 'America/Chicago',
       meetingTimezoneLabel: 'CST',
       originalAppointmentId: '611014',
-      operatorOwner: 'Jerami Singleton',
-      operatorOwnerKey: 'jerami_singleton',
+      operatorOwner: 'Primary Operator',
+      operatorOwnerKey: 'operator_primary',
       appointmentRole: 'initial_set',
       sourceSystem: 'scout_prep_action',
       sourcePayload: { owner_proof: 'raycast_operator_context' },
@@ -145,7 +145,7 @@ test('appointment truth merge preserves durable fields when support writes omit 
     },
     {
       appointmentId: '611014',
-      headScout: 'Ryan Lietz',
+      headScout: 'Head Scout D',
       status: 'confirmation_sent',
       sourceEventId: '611014',
       appointmentRole: 'confirmation',
@@ -163,8 +163,8 @@ test('appointment truth merge preserves durable fields when support writes omit 
   assert.equal(merged.meeting_timezone_label, 'CST');
   assert.equal(merged.starts_at, '2026-05-15T23:00:00.000Z');
   assert.equal(merged.original_appointment_id, '611014');
-  assert.equal(merged.operator_owner, 'Jerami Singleton');
-  assert.equal(merged.operator_owner_key, 'jerami_singleton');
+  assert.equal(merged.operator_owner, 'Primary Operator');
+  assert.equal(merged.operator_owner_key, 'operator_primary');
   assert.equal(merged.appointment_role, 'confirmation');
   assert.deepEqual(merged.source_payload, {
     owner_proof: 'raycast_operator_context',
@@ -308,7 +308,7 @@ test('lifecycle mutation event logs left voicemail as dial-only operator activit
     crmStage: 'Left Voice Mail 1',
     taskId: '9901',
     taskTitle: 'Call Attempt 1',
-    taskAssignedOwner: 'Jerami Singleton',
+    taskAssignedOwner: 'Primary Operator',
     completedAt: '2026-05-01T14:30:00.000Z',
   });
 
@@ -322,9 +322,9 @@ test('lifecycle mutation event logs left voicemail as dial-only operator activit
   assert.equal(event.payload.counts_as_contact, false);
   assert.equal(event.payload.completed_at, '2026-05-01T14:30:00.000Z');
   assert.equal(event.payload.occurred_at, '2026-05-01T14:30:00.000Z');
-  assert.equal(event.payload.operator_owner, 'Jerami Singleton');
-  assert.equal(event.payload.operator_owner_key, 'jerami_singleton');
-  assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
+  assert.equal(event.payload.operator_owner, 'Primary Operator');
+  assert.equal(event.payload.operator_owner_key, 'operator_primary');
+  assert.equal(event.payload.task_assigned_owner, 'Primary Operator');
   assert.equal(event.payload.owner_proof, 'task.assigned_owner');
   assert.equal(event.payload.materialization_status, 'operator_task');
 });
@@ -340,7 +340,7 @@ test('lifecycle mutation countable activity requires athlete name', () => {
         crmStage: 'Left Voice Mail 1',
         taskId: '9901',
         taskTitle: 'Call Attempt 1',
-        taskAssignedOwner: 'Jerami Singleton',
+        taskAssignedOwner: 'Primary Operator',
         completedAt: '2026-05-01T14:30:00.000Z',
       }),
     /requires athleteName/,
@@ -356,7 +356,7 @@ test('lifecycle mutation event keeps unable to leave voicemail dial-only', () =>
     crmStage: 'Called - Unable to Leave VM',
     taskId: '9902',
     taskTitle: 'Called - Unable to Leave VM',
-    taskAssignedOwner: 'Jerami Singleton',
+    taskAssignedOwner: 'Primary Operator',
     completedAt: '2026-05-01T15:30:00.000Z',
   });
 
@@ -375,7 +375,7 @@ test('lifecycle mutation event logs spoke to too young as dial and contact', () 
     crmStage: 'Spoke to - Too Young',
     taskId: '9903',
     taskTitle: 'Spoke to - Too Young',
-    taskAssignedOwner: 'Jerami Singleton',
+    taskAssignedOwner: 'Primary Operator',
     completedAt: '2026-05-01T16:30:00.000Z',
   });
 
@@ -394,7 +394,7 @@ test('meeting set lifecycle mutation derives owner proof from task assignment wh
     crmStage: 'Meeting Set',
     taskId: '9907',
     taskTitle: 'Confirmation Call',
-    taskAssignedOwner: 'Jerami Singleton',
+    taskAssignedOwner: 'Primary Operator',
     occurredAt: '2026-05-01T19:30:00.000Z',
     appointmentId: '613999',
   });
@@ -403,7 +403,7 @@ test('meeting set lifecycle mutation derives owner proof from task assignment wh
   assert.equal(event.payload.counts_as_dial, true);
   assert.equal(event.payload.counts_as_contact, true);
   assert.equal(event.payload.counts_as_meeting_set, true);
-  assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
+  assert.equal(event.payload.task_assigned_owner, 'Primary Operator');
   assert.equal(event.payload.owner_proof, 'task.assigned_owner');
   assert.equal((event.payload.owner_context as Record<string, unknown>).owner_proof, 'task.assigned_owner');
 });
@@ -416,7 +416,7 @@ test('meeting set lifecycle mutation does not require confirmation task id when 
     athleteName: 'Richard Hayes',
     crmStage: 'Meeting Set',
     taskTitle: 'Confirmation Call',
-    taskAssignedOwner: 'Jerami Singleton',
+    taskAssignedOwner: 'Primary Operator',
     occurredAt: '2026-05-15T22:50:59.000Z',
     appointmentId: '611014',
     payload: {
@@ -445,16 +445,16 @@ test('meeting set lifecycle mutation preserves existing owner proof mirrors whil
     crmStage: 'Meeting Set',
     taskId: '626651',
     taskTitle: 'Confirmation Call',
-    taskAssignedOwner: 'Jerami Singleton',
+    taskAssignedOwner: 'Primary Operator',
     occurredAt: '2026-05-04T19:00:00.000Z',
     appointmentId: '588339',
     payload: {
       owner_proof: 'raycast_operator_context',
-      booked_meeting_assigned_owner: 'Ryan Lietz',
+      booked_meeting_assigned_owner: 'Head Scout D',
       owner_context: {
-        booked_meeting_assigned_owner: 'Ryan Lietz',
-        resolved_owner_name: 'Ryan Lietz',
-        appointment_setter_legacy_user_id: '1354049',
+        booked_meeting_assigned_owner: 'Head Scout D',
+        resolved_owner_name: 'Head Scout D',
+        appointment_setter_legacy_user_id: '200004',
       },
       materialization_proof: {
         owner_proof: 'raycast_operator_context',
@@ -465,11 +465,11 @@ test('meeting set lifecycle mutation preserves existing owner proof mirrors whil
   const ownerContext = event.payload.owner_context as Record<string, unknown>;
   const materializationProof = event.payload.materialization_proof as Record<string, unknown>;
   assert.equal(event.payload.owner_proof, 'raycast_operator_context');
-  assert.equal(event.payload.task_assigned_owner, 'Jerami Singleton');
-  assert.equal(event.payload.booked_meeting_assigned_owner, 'Ryan Lietz');
-  assert.equal(ownerContext.booked_meeting_assigned_owner, 'Ryan Lietz');
-  assert.equal(ownerContext.resolved_owner_name, 'Ryan Lietz');
-  assert.equal(ownerContext.appointment_setter_legacy_user_id, '1354049');
+  assert.equal(event.payload.task_assigned_owner, 'Primary Operator');
+  assert.equal(event.payload.booked_meeting_assigned_owner, 'Head Scout D');
+  assert.equal(ownerContext.booked_meeting_assigned_owner, 'Head Scout D');
+  assert.equal(ownerContext.resolved_owner_name, 'Head Scout D');
+  assert.equal(ownerContext.appointment_setter_legacy_user_id, '200004');
   assert.equal(materializationProof.owner_proof, 'raycast_operator_context');
   assert.equal(materializationProof.materialization_status, 'operator_task');
 });
@@ -485,7 +485,7 @@ test('lifecycle mutation event rejects missing occurrence clock for countable ac
         crmStage: 'Left Voice Mail 1',
         taskId: '9904',
         taskTitle: 'Call Attempt 1',
-        taskAssignedOwner: 'Jerami Singleton',
+        taskAssignedOwner: 'Primary Operator',
       }),
     /requires completedAt, occurredAt, or dueAt/,
   );
@@ -501,7 +501,7 @@ test('lifecycle mutation event rejects missing raw CRM stage for countable activ
         athleteName: 'Avery Jones',
         taskId: '9904',
         taskTitle: 'Call Attempt 1',
-        taskAssignedOwner: 'Jerami Singleton',
+        taskAssignedOwner: 'Primary Operator',
         completedAt: '2026-05-01T17:30:00.000Z',
       }),
     /requires raw crmStage/,
@@ -534,7 +534,7 @@ test('lifecycle mutation event keeps Tim-owned call activity non-materialized an
     crmStage: 'Spoke to - Too Young',
     taskId: '9906',
     taskTitle: 'Spoke to - Too Young',
-    taskAssignedOwner: 'Tim Risner',
+    taskAssignedOwner: 'Secondary Operator',
     completedAt: '2026-05-01T18:30:00.000Z',
   });
 

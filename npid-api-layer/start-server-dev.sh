@@ -1,4 +1,5 @@
 #!/bin/bash
 
 set -euo pipefail
-exec /Users/singleton23/Raycast/prospect-pipeline/scripts/run-api-dev.sh
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "${SCRIPT_DIR}/../scripts/run-api-dev.sh"

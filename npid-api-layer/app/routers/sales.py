@@ -123,7 +123,7 @@ async def _send_template_email(
         template_id=template_id,
         notification_from=str(template_data.get("sender_name") or "Video Team"),
         notification_from_email=str(
-            template_data.get("sender_email") or "videoteam@prospectid.com"
+            template_data.get("sender_email") or "video-team@example.com"
         ),
         notification_subject=str(template_data.get("templatesubject") or ""),
         notification_message=str(template_data.get("templatedescription") or ""),

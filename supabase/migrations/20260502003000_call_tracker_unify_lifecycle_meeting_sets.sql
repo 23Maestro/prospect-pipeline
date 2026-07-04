@@ -217,7 +217,7 @@ lifecycle_meeting_set_facts as (
     le.created_at,
     le.dedupe_key,
     null::text as live_event_id,
-    coalesce(nullif(le.payload_json->>'operator_name', ''), 'Jerami Singleton') as source_owner,
+    coalesce(nullif(le.payload_json->>'operator_name', ''), 'Primary Operator') as source_owner,
     true as is_tracked_owner,
     le.created_at as event_at,
     'matched_weekly_task_assigned_owner'::text as owner_proof

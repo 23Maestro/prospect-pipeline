@@ -14,7 +14,7 @@ test('meeting-set materialization backsync updates source facts, not reporting f
 });
 
 test('weekly booked-meeting rows require matched active operator task proof before backsync', () => {
-  assert.match(sql, /payload_json->>'matched_weekly_task_assigned_owner'\s*=\s*'Jerami Singleton'/i);
+  assert.match(sql, /payload_json->>'matched_weekly_task_assigned_owner'\s*=\s*'Primary Operator'/i);
   assert.match(sql, /nullif\(payload_json->>'matched_weekly_task_id', ''\) is not null/i);
   assert.match(sql, /'payload\.matched_weekly_task_assigned_owner'::text as proof_field/i);
 });

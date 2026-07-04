@@ -1,7 +1,7 @@
 ---
 title: Command Surface Consolidation
 date: 2026-04-09
-owner: Jerami Singleton / Codex
+owner: Primary Operator / Codex
 status: in-progress
 scope: command-surface-consolidation
 ---

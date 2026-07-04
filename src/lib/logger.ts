@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
+import { homedir } from 'os';
 
-const LOG_DIR = '/Users/singleton23/raycast_logs';
+const LOG_DIR = process.env.RAYCAST_LOG_DIR || path.join(homedir(), 'raycast_logs');
 const LOG_FILE = path.join(LOG_DIR, 'console.log');
 const CRAFT_LOG_FILE = path.join(LOG_DIR, 'craft.log');
 const INBOX_LOG_FILE = path.join(LOG_DIR, 'inbox.log');

@@ -89,7 +89,7 @@ Python uses BeautifulSoup to find `<input name="_token">`, which means:
 
 1. **Verify page contains token**:
    ```bash
-   curl -H "Cookie: ..." https://dashboard.nationalpid.com/rulestemplates/template/videoteammessagelist \
+   curl -H "Cookie: ..." https://legacy-dashboard.example.com/rulestemplates/template/videoteammessagelist \
      | grep -E '(csrf-token|_token)'
    ```
 

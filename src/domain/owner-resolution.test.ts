@@ -10,22 +10,22 @@ import {
 } from './owners';
 import { resolveOwnerContext } from './owner-resolution';
 
-test('active operator defaults to Jerami workspace context', () => {
+test('active operator defaults to primary workspace context', () => {
   const operator = getActiveOperator();
 
-  assert.equal(PROSPECT_ID_OWNER_CONFIG.activeOperatorKey, 'jerami_singleton');
-  assert.equal(PROSPECT_ID_OWNER_CONFIG.headScoutCalendarAccessUserId, 'avdhyXjQ8bFweEf');
-  assert.equal(operator.operatorKey, 'jerami_singleton');
-  assert.equal(operator.personName, 'Jerami Singleton');
-  assert.equal(operator.legacyUserId, '1408164');
-  assert.equal(operator.taskAssignedOwnerName, 'Jerami Singleton');
-  assert.equal(getLegacyAssignedToFallback(), '1408164');
+  assert.equal(PROSPECT_ID_OWNER_CONFIG.activeOperatorKey, 'operator_primary');
+  assert.equal(PROSPECT_ID_OWNER_CONFIG.headScoutCalendarAccessUserId, 'calendar_access_user_demo');
+  assert.equal(operator.operatorKey, 'operator_primary');
+  assert.equal(operator.personName, 'Primary Operator');
+  assert.equal(operator.legacyUserId, '100001');
+  assert.equal(operator.taskAssignedOwnerName, 'Primary Operator');
+  assert.equal(getLegacyAssignedToFallback(), '100001');
 });
 
-test('Tim Risner is a known owner profile but not the active operator', () => {
-  const tim = resolveOwnerByName('Coach Risner');
+test('Secondary Operator is a known owner profile but not the active operator', () => {
+  const tim = resolveOwnerByName('Secondary Operator');
 
-  assert.equal(tim?.ownerKey, 'tim_risner');
+  assert.equal(tim?.ownerKey, 'operator_secondary');
   assert.equal(tim?.dashboardTrackingEligible, false);
   assert.equal(tim?.roles.includes('scouting_coordinator'), true);
   assert.equal(tim?.assignedToLegacyUserId, null);
@@ -35,56 +35,56 @@ test('head scout order keeps the visible calendar owners available', () => {
   assert.deepEqual(
     HEAD_SCOUT_ORDER.map((scout) => scout.scout_name),
     [
-      'David Foley',
-      'Jeffrey Stein',
-      'Luther Winfield',
-      'Nasir Adderley',
-      'Ryan Lietz',
-      'James Holcomb',
-      'Logan Lord',
-      'Kenton Manis',
+      'Head Scout A',
+      'Head Scout B',
+      'Head Scout C',
+      'Head Scout D',
+      'Head Scout E',
+      'Head Scout F',
+      'Head Scout G',
+      'Head Scout H',
     ],
   );
 });
 
 test('new Meeting Set owners resolve from live legacy ids', () => {
-  const david = resolveOwnerByName('David Foley');
-  const logan = resolveOwnerByName('Logan Lord');
-  const kenton = resolveOwnerByName('Kenton Manis');
-  const nasir = resolveOwnerByName('Nasir Adderly');
+  const david = resolveOwnerByName('Head Scout A');
+  const logan = resolveOwnerByName('Head Scout F');
+  const kenton = resolveOwnerByName('Head Scout G');
+  const nasir = resolveOwnerByName('Head Scout H');
 
-  assert.equal(david?.ownerKey, 'david_foley');
-  assert.equal(david?.assignedToLegacyUserId, '1418020');
-  assert.equal(david?.meetingForLegacyUserId, '1418020');
-  assert.equal(david?.calendarOwnerId, 'GI4oO0m9knrHNq1');
-  assert.equal(david?.city, 'Winona');
-  assert.equal(david?.state, 'MN');
+  assert.equal(david?.ownerKey, 'head_scout_a');
+  assert.equal(david?.assignedToLegacyUserId, '200001');
+  assert.equal(david?.meetingForLegacyUserId, '200001');
+  assert.equal(david?.calendarOwnerId, 'calendar_owner_a');
+  assert.equal(david?.city, 'Example City');
+  assert.equal(david?.state, 'FL');
   assert.equal(david?.roles.includes('head_scout'), true);
 
-  assert.equal(logan?.ownerKey, 'logan_lord');
-  assert.equal(logan?.assignedToLegacyUserId, '2254');
-  assert.equal(logan?.meetingForLegacyUserId, '2254');
-  assert.equal(logan?.calendarOwnerId, 'd9UDl0bRSqQ1owt');
-  assert.equal(logan?.city, 'Chandler');
-  assert.equal(logan?.state, 'AZ');
+  assert.equal(logan?.ownerKey, 'head_scout_f');
+  assert.equal(logan?.assignedToLegacyUserId, '200006');
+  assert.equal(logan?.meetingForLegacyUserId, '200006');
+  assert.equal(logan?.calendarOwnerId, 'calendar_owner_f');
+  assert.equal(logan?.city, 'Example City');
+  assert.equal(logan?.state, 'SC');
   assert.equal(logan?.roles.includes('head_scout'), true);
 
-  assert.equal(kenton?.ownerKey, 'kenton_manis');
-  assert.equal(kenton?.personName, 'Kenton Manis');
-  assert.equal(kenton?.assignedToLegacyUserId, '1486538');
-  assert.equal(kenton?.meetingForLegacyUserId, '1486538');
-  assert.equal(kenton?.calendarOwnerId, 'A4H3xiZJdyrEh2X');
-  assert.equal(kenton?.city, 'Prosper');
-  assert.equal(kenton?.state, 'TX');
+  assert.equal(kenton?.ownerKey, 'head_scout_g');
+  assert.equal(kenton?.personName, 'Head Scout G');
+  assert.equal(kenton?.assignedToLegacyUserId, '200007');
+  assert.equal(kenton?.meetingForLegacyUserId, '200007');
+  assert.equal(kenton?.calendarOwnerId, 'calendar_owner_g');
+  assert.equal(kenton?.city, 'Example City');
+  assert.equal(kenton?.state, 'VA');
   assert.equal(kenton?.roles.includes('head_scout'), true);
 
-  assert.equal(nasir?.ownerKey, 'nasir_adderley');
-  assert.equal(nasir?.personName, 'Nasir Adderley');
-  assert.equal(nasir?.assignedToLegacyUserId, '1462295');
-  assert.equal(nasir?.meetingForLegacyUserId, '1462295');
-  assert.equal(nasir?.calendarOwnerId, 'Ax8yvuUTdOzVHr7');
-  assert.equal(nasir?.city, 'Dallas');
-  assert.equal(nasir?.state, 'TX');
+  assert.equal(nasir?.ownerKey, 'head_scout_h');
+  assert.equal(nasir?.personName, 'Head Scout H');
+  assert.equal(nasir?.assignedToLegacyUserId, '200008');
+  assert.equal(nasir?.meetingForLegacyUserId, '200008');
+  assert.equal(nasir?.calendarOwnerId, 'calendar_owner_h');
+  assert.equal(nasir?.city, 'Example City');
+  assert.equal(nasir?.state, 'TN');
   assert.equal(nasir?.roles.includes('head_scout'), true);
 });
 
@@ -97,22 +97,22 @@ test('Jerami task assignment allows active-operator materialization even when bo
       {
         task_id: '900',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
     currentTaskId: '900',
     bookedMeeting: {
       event_id: '777',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       athlete_id: '123',
       athlete_main_id: '456',
     },
   });
 
-  assert.equal(result.taskAssignedOwner, 'Jerami Singleton');
-  assert.equal(result.bookedMeetingAssignedOwner, 'Ryan Lietz');
-  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.taskAssignedOwner, 'Primary Operator');
+  assert.equal(result.bookedMeetingAssignedOwner, 'Head Scout D');
+  assert.equal(result.resolvedOwnerName, 'Head Scout D');
   assert.equal(result.resolvedFromField, 'bookedMeeting.assigned_owner');
   assert.equal(result.materializationStatus, 'operator_task');
   assert.equal(result.materializationReason, 'task_assigned_owner_matches_active_operator');
@@ -129,27 +129,27 @@ test('Tim task assignment is recognized but blocked from active-operator materia
       {
         task_id: '901',
         title: 'Confirmation Call',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
         completion_date: '',
       },
     ],
     currentTaskId: '901',
     bookedMeeting: {
       event_id: '778',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       athlete_id: '123',
       athlete_main_id: '456',
     },
   });
 
-  assert.equal(result.taskOwner?.ownerKey, 'tim_risner');
-  assert.equal(result.taskAssignedOwner, 'Tim Risner');
-  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.taskOwner?.ownerKey, 'operator_secondary');
+  assert.equal(result.taskAssignedOwner, 'Secondary Operator');
+  assert.equal(result.resolvedOwnerName, 'Head Scout D');
   assert.equal(result.materializationStatus, 'not_operator_task');
   assert.equal(result.materializationReason, 'task_assigned_owner_is_other_owner');
   assert.equal(result.canMaterializeForActiveOperator, false);
   assert.equal(result.isTrackedOwner, false);
-  assert.match(result.reason || '', /Tim Risner/);
+  assert.match(result.reason || '', /Secondary Operator/);
 });
 
 test('missing task owner is a binary not-operator task with explicit reason', () => {
@@ -159,7 +159,7 @@ test('missing task owner is a binary not-operator task with explicit reason', ()
     athleteMainId: '456',
     bookedMeeting: {
       event_id: '779',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       athlete_id: '123',
       athlete_main_id: '456',
     },
@@ -177,17 +177,17 @@ test('Meeting Set submit keeps Jerami operator ownership from internal Raycast o
     athleteId: '123',
     athleteMainId: '456',
     submittedMeetingPayload: {
-      assigned_to: '1354049',
-      meeting_for: '1354049',
+      assigned_to: '200004',
+      meeting_for: '200004',
       open_event_id: '588339',
-      operator_owner: 'Jerami Singleton',
-      operator_owner_key: 'jerami_singleton',
-      operator_legacy_user_id: '1408164',
+      operator_owner: 'Primary Operator',
+      operator_owner_key: 'operator_primary',
+      operator_legacy_user_id: '100001',
     },
   });
 
-  assert.equal(result.taskAssignedOwner, 'Jerami Singleton');
-  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.taskAssignedOwner, 'Primary Operator');
+  assert.equal(result.resolvedOwnerName, 'Head Scout D');
   assert.equal(result.resolvedFromField, 'submittedMeetingPayload.assigned_to');
   assert.equal(result.ownerProof, 'submittedMeetingPayload.operator_owner');
   assert.equal(result.materializationStatus, 'operator_task');
@@ -201,14 +201,14 @@ test('Meeting Set submit without internal operator context does not infer Jerami
     athleteId: '123',
     athleteMainId: '456',
     submittedMeetingPayload: {
-      assigned_to: '1354049',
-      meeting_for: '1354049',
+      assigned_to: '200004',
+      meeting_for: '200004',
       open_event_id: '588339',
     },
   });
 
   assert.equal(result.taskAssignedOwner, null);
-  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.resolvedOwnerName, 'Head Scout D');
   assert.equal(result.materializationStatus, 'not_operator_task');
   assert.equal(result.materializationReason, 'missing_task_assigned_owner');
   assert.equal(result.canMaterializeForActiveOperator, false);
@@ -223,19 +223,19 @@ test('Meeting Set submit does not override an explicit non-Jerami task owner', (
       {
         task_id: '906',
         title: 'Call Attempt 1',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
       },
     ],
     selectedTaskId: '906',
     submittedMeetingPayload: {
-      assigned_to: '1354049',
-      meeting_for: '1354049',
+      assigned_to: '200004',
+      meeting_for: '200004',
       open_event_id: '588340',
     },
   });
 
-  assert.equal(result.taskAssignedOwner, 'Tim Risner');
-  assert.equal(result.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(result.taskAssignedOwner, 'Secondary Operator');
+  assert.equal(result.resolvedOwnerName, 'Head Scout D');
   assert.equal(result.materializationStatus, 'not_operator_task');
   assert.equal(result.materializationReason, 'task_assigned_owner_is_other_owner');
   assert.equal(result.canMaterializeForActiveOperator, false);
@@ -250,14 +250,14 @@ test('mismatched booked meeting identity blocks materialization with explicit re
       {
         task_id: '903',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
     currentTaskId: '903',
     bookedMeeting: {
       event_id: '780',
-      assigned_owner: 'Jerami Singleton',
+      assigned_owner: 'Primary Operator',
       athlete_id: '999',
       athlete_main_id: '456',
     },
@@ -275,14 +275,14 @@ test('materialization status vocabulary stays binary', () => {
       purpose: 'call_activity',
       athleteId: '123',
       athleteMainId: '456',
-      tasks: [{ task_id: '904', title: 'Call Attempt 1', assigned_owner: 'Jerami Singleton' }],
+      tasks: [{ task_id: '904', title: 'Call Attempt 1', assigned_owner: 'Primary Operator' }],
       currentTaskId: '904',
     }),
     resolveOwnerContext({
       purpose: 'call_activity',
       athleteId: '123',
       athleteMainId: '456',
-      tasks: [{ task_id: '905', title: 'Call Attempt 1', assigned_owner: 'Tim Risner' }],
+      tasks: [{ task_id: '905', title: 'Call Attempt 1', assigned_owner: 'Secondary Operator' }],
       currentTaskId: '905',
     }),
     resolveOwnerContext({
@@ -307,18 +307,18 @@ test('scoutingCoordinator keeps Laravel meaning distinct from head scout', () =>
       {
         task_id: '902',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
     resolvedProfile: {
-      head_scout: 'Ryan Lietz',
-      scouting_coordinator: 'Tim Risner',
+      head_scout: 'Head Scout D',
+      scouting_coordinator: 'Secondary Operator',
     },
   });
 
-  assert.equal(result.profileHeadScout, 'Ryan Lietz');
-  assert.equal(result.scoutingCoordinator, 'Tim Risner');
-  assert.equal(result.headScout?.ownerKey, 'ryan_lietz');
-  assert.equal(result.taskAssignedOwner, 'Jerami Singleton');
+  assert.equal(result.profileHeadScout, 'Head Scout D');
+  assert.equal(result.scoutingCoordinator, 'Secondary Operator');
+  assert.equal(result.headScout?.ownerKey, 'head_scout_d');
+  assert.equal(result.taskAssignedOwner, 'Primary Operator');
 });

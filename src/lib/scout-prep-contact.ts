@@ -265,20 +265,20 @@ export function buildScoutPrepLeavingVoicemailBody(args: {
 
   if (selectedVariant === 'call_attempt_2' || selectedVariant === 'call_attempt_3') {
     return [
-      `Hi ${parentFirstName}, this is Coach Singleton with Prospect ID.`,
+      `Hi ${parentFirstName}, this is Scouting Coordinator with Prospect ID.`,
       '',
       `Checking back on ${athleteFirstName}’s college ${sport} profile.`,
       '',
-      'If this is still worth a conversation, call or text me back at 407-473-3637.',
+      'If this is still worth a conversation, call or text me back at 555-0100.',
     ].join('\n');
   }
 
   return [
-    `Hi ${parentFirstName}, this is Coach Singleton ${coordinatorSport} Scouting Coordinator with Prospect ID.`,
+    `Hi ${parentFirstName}, this is Scouting Coordinator ${coordinatorSport} Scouting Coordinator with Prospect ID.`,
     '',
     `I’m reaching out on ${athleteFirstName}’s college ${sport} profile.`,
     '',
-    'If playing at the next level is still a real goal, call or text me back at 407-473-3637.',
+    'If playing at the next level is still a real goal, call or text me back at 555-0100.',
   ].join('\n');
 }
 

@@ -13,13 +13,13 @@ const source = readFileSync(new URL('./backfill-appointment-truth.mjs', import.m
 
 const owners = [
   {
-    ownerKey: 'jerami_singleton',
-    personName: 'Jerami Singleton',
+    ownerKey: 'operator_primary',
+    personName: 'Primary Operator',
     aliases: ['Jerami'],
   },
   {
-    ownerKey: 'ryan_lietz',
-    personName: 'Ryan Lietz',
+    ownerKey: 'head_scout_d',
+    personName: 'Head Scout D',
     aliases: ['Coach Ryan'],
   },
 ];
@@ -109,8 +109,8 @@ test('backfill can inherit timezone from a related appointment for same athlete'
 });
 
 test('owner lookup matches aliases and normalized names', () => {
-  assert.equal(resolveOwnerByName(owners, ' coach   ryan ')?.ownerKey, 'ryan_lietz');
-  assert.equal(resolveOwnerByName(owners, 'Jerami Singleton')?.ownerKey, 'jerami_singleton');
+  assert.equal(resolveOwnerByName(owners, ' coach   ryan ')?.ownerKey, 'head_scout_d');
+  assert.equal(resolveOwnerByName(owners, 'Primary Operator')?.ownerKey, 'operator_primary');
 });
 
 test('appointment role uses lifecycle event before appointment status', () => {
@@ -135,7 +135,7 @@ test('backfill patches timezone, owner, head scout key, and initial chain defaul
       {
         id: 'appt-1',
         athlete_key: 'athlete-1',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         starts_at: '2026-05-28T23:00:00.000Z',
         status: 'scheduled',
         meeting_timezone: null,
@@ -160,7 +160,7 @@ test('backfill patches timezone, owner, head scout key, and initial chain defaul
         created_at: '2026-05-28T20:00:00.000Z',
         payload_json: {
           appointment_id: 'appt-1',
-          owner_context: { active_operator_name: 'Jerami Singleton', active_operator_key: 'jerami_singleton' },
+          owner_context: { active_operator_name: 'Primary Operator', active_operator_key: 'operator_primary' },
         },
       },
     ],
@@ -182,9 +182,9 @@ test('backfill patches timezone, owner, head scout key, and initial chain defaul
     {
       meeting_timezone: 'America/Chicago',
       meeting_timezone_label: 'CST',
-      operator_owner: 'Jerami Singleton',
-      operator_owner_key: 'jerami_singleton',
-      head_scout_key: 'ryan_lietz',
+      operator_owner: 'Primary Operator',
+      operator_owner_key: 'operator_primary',
+      head_scout_key: 'head_scout_d',
       appointment_role: 'initial_set',
       original_appointment_id: 'appt-1',
       reschedule_sequence: 0,
@@ -199,7 +199,7 @@ test('reschedule chains use explicit previous appointment id when present', () =
       {
         id: 'appt-1',
         athlete_key: 'athlete-1',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         starts_at: '2026-05-01T20:00:00.000Z',
         status: 'scheduled',
         original_appointment_id: 'appt-1',
@@ -210,7 +210,7 @@ test('reschedule chains use explicit previous appointment id when present', () =
       {
         id: 'appt-2',
         athlete_key: 'athlete-1',
-        head_scout: 'Ryan Lietz',
+        head_scout: 'Head Scout D',
         starts_at: '2026-05-02T20:00:00.000Z',
         status: 'rescheduled',
         previous_appointment_id: null,

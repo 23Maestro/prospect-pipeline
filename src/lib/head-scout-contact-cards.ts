@@ -4,8 +4,10 @@ import { constants as fsConstants, type Dirent } from 'fs';
 
 const CONTACT_CARD_ROOTS = [
   `${environment.assetsPath}/contact-cards`,
-  '/Users/singleton23/Library/Messages/Attachments',
-  '/Users/singleton23/Library/Containers/com.apple.MobileSMS/Data/tmp/TemporaryItems/com.apple.MobileSMS/LinkedFiles',
+  ...(process.env.HEAD_SCOUT_CONTACT_CARD_ROOTS || '')
+    .split(':')
+    .map((root) => root.trim())
+    .filter(Boolean),
 ] as const;
 
 export type HeadScoutContactCard = {

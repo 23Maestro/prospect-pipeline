@@ -9,7 +9,7 @@
 - Researched current n8n setup.
 - Installed n8n locally via npm, no Docker.
 - Verified local n8n binary and version:
-  - `/Users/singleton23/.nvm/versions/node/v22.22.3/bin/n8n`
+  - `<NODE_BIN_DIR>/n8n`
   - `2.25.7`
 - Confirmed Supabase CLI is available:
   - `2.102.0`

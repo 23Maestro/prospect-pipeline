@@ -37,7 +37,7 @@ function lifecyclePayload(plan: ReturnType<typeof buildPostCallActionPlan>): Tes
   return (plan.supabaseLifecycleWrite?.args.payload || {}) as TestPayload;
 }
 
-test('Tim Risner tasks can update Laravel but do not materialize Jerami dashboard facts', () => {
+test('Secondary Operator tasks can update Laravel but do not materialize Jerami dashboard facts', () => {
   const plan = buildPostCallActionPlan({
     athleteId: '1489000',
     athleteMainId: '951000',
@@ -47,7 +47,7 @@ test('Tim Risner tasks can update Laravel but do not materialize Jerami dashboar
       {
         task_id: '9901',
         title: 'Scheduled Follow Up',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
         completion_date: '',
       },
     ],
@@ -56,7 +56,7 @@ test('Tim Risner tasks can update Laravel but do not materialize Jerami dashboar
   assert.equal(plan.laravelSalesStageUpdate?.stage, 'Spoke to - I Need To Follow Up');
   assert.equal(plan.laravelTaskCompletion?.crmStage, 'Spoke to - I Need To Follow Up');
   assert.equal(plan.laravelTaskCompletion?.taskId, '9901');
-  assert.equal(plan.ownerContext.taskAssignedOwner, 'Tim Risner');
+  assert.equal(plan.ownerContext.taskAssignedOwner, 'Secondary Operator');
   assert.equal(plan.ownerContext.materializationStatus, 'not_operator_task');
   assert.equal(plan.materializationStatus, 'not_operator_task');
   assert.equal(plan.supabaseFactWrite, null);
@@ -72,18 +72,18 @@ test('Meeting Set submit builds Supabase writes only when active-operator proof 
       {
         task_id: '9902',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
     meetingSet: meetingSetFixture({
       meetingName: 'Avery Jones Soccer 2027 PA',
       meetingTimezone: 'EST',
-      assignedToLegacyUserId: '1418529',
-      meetingForLegacyUserId: '1418529',
+      assignedToLegacyUserId: '200002',
+      meetingForLegacyUserId: '200002',
       openEventId: '613999',
-      calendarOwnerId: 'OrJsV8nhBouEzKY',
-      bookedMeetingAssignedOwner: 'Jeffrey Stein',
+      calendarOwnerId: 'calendar_owner_b',
+      bookedMeetingAssignedOwner: 'Head Scout B',
       taskDescription: 'Main Number:\nOther Details:',
       startTime: '19:00',
       startsAt: '2026-05-04T19:00:00-04:00',
@@ -109,11 +109,11 @@ test('Meeting Set submit builds Supabase writes only when active-operator proof 
   );
   assert.equal(
     operatorPayload.owner_context?.task_assigned_owner,
-    'Jerami Singleton',
+    'Primary Operator',
   );
   assert.equal(
     operatorPayload.materialization_proof?.task_assigned_owner,
-    'Jerami Singleton',
+    'Primary Operator',
   );
   assert.equal(
     operatorPayload.materialization_proof?.materialization_status,
@@ -134,18 +134,18 @@ test('Meeting Set submit builds Supabase writes only when active-operator proof 
       {
         task_id: '9903',
         title: 'Call Attempt 1',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
         completion_date: '',
       },
     ],
     meetingSet: meetingSetFixture({
       meetingName: 'Avery Jones Soccer 2027 PA',
       meetingTimezone: 'EST',
-      assignedToLegacyUserId: '1418529',
-      meetingForLegacyUserId: '1418529',
+      assignedToLegacyUserId: '200002',
+      meetingForLegacyUserId: '200002',
       openEventId: '614000',
-      calendarOwnerId: 'OrJsV8nhBouEzKY',
-      bookedMeetingAssignedOwner: 'Jeffrey Stein',
+      calendarOwnerId: 'calendar_owner_b',
+      bookedMeetingAssignedOwner: 'Head Scout B',
       taskDescription: 'Main Number:\nOther Details:',
       startTime: '19:00',
       startsAt: '2026-05-04T19:00:00-04:00',
@@ -172,11 +172,11 @@ test('Meeting Set submit keeps Laravel payload clean while Supabase carries Rayc
       athleteMainId: '952328',
       meetingName: 'Elia Imani Football 2029 TX',
       meetingTimezone: 'CST',
-      assignedToLegacyUserId: '1354049',
-      meetingForLegacyUserId: '1354049',
+      assignedToLegacyUserId: '200004',
+      meetingForLegacyUserId: '200004',
       openEventId: '588339',
-      calendarOwnerId: 'nhVvYOz8bAaL57c',
-      bookedMeetingAssignedOwner: 'Ryan Lietz',
+      calendarOwnerId: 'calendar_owner_d',
+      bookedMeetingAssignedOwner: 'Head Scout D',
       taskDescription: 'Main Number:\nOther Details:',
       startTime: '15:00',
       startsAt: '2026-05-04T15:00:00-04:00',
@@ -185,8 +185,8 @@ test('Meeting Set submit keeps Laravel payload clean while Supabase carries Rayc
   });
   const payload = lifecyclePayload(plan);
 
-  assert.equal(plan.ownerContext.taskAssignedOwner, 'Jerami Singleton');
-  assert.equal(plan.ownerContext.resolvedOwnerName, 'Ryan Lietz');
+  assert.equal(plan.ownerContext.taskAssignedOwner, 'Primary Operator');
+  assert.equal(plan.ownerContext.resolvedOwnerName, 'Head Scout D');
   assert.equal(plan.ownerContext.ownerProof, 'submittedMeetingPayload.operator_owner');
   assert.equal(plan.ownerContext.materializationStatus, 'operator_task');
   assert.equal(plan.ownerContext.materializationReason, 'meeting_set_submitted_by_active_operator');
@@ -197,54 +197,54 @@ test('Meeting Set submit keeps Laravel payload clean while Supabase carries Rayc
   assert.equal(plan.supabaseLifecycleWrite?.eventType, 'meeting_set');
   assert.equal(
     payload.owner_context?.task_assigned_owner,
-    'Jerami Singleton',
+    'Primary Operator',
   );
   assert.equal(
     payload.owner_context?.booked_meeting_assigned_owner,
-    'Ryan Lietz',
+    'Head Scout D',
   );
   assert.equal(
     payload.owner_context?.owner_proof,
     'raycast_operator_context',
   );
-  assert.equal(payload.operator_owner, 'Jerami Singleton');
-  assert.equal(payload.operator_owner_key, 'jerami_singleton');
+  assert.equal(payload.operator_owner, 'Primary Operator');
+  assert.equal(payload.operator_owner_key, 'operator_primary');
   assert.equal(
     payload.booked_meeting_assigned_owner,
-    'Ryan Lietz',
+    'Head Scout D',
   );
 });
 
 test('Meeting Set submit supports new head scouts through the same head scout fields', () => {
   const owners = [
     {
-      name: 'David Foley',
+      name: 'Head Scout A',
       id: '1418020',
-      calendarOwnerId: 'GI4oO0m9knrHNq1',
+      calendarOwnerId: 'calendar_owner_a',
       openEventId: '624181',
       startTime: '16:30',
       startsAt: '2026-05-11T16:30:00-04:00',
     },
     {
-      name: 'Logan Lord',
-      id: '2254',
-      calendarOwnerId: 'd9UDl0bRSqQ1owt',
+      name: 'Head Scout F',
+      id: '200006',
+      calendarOwnerId: 'calendar_owner_f',
       openEventId: '624180',
       startTime: '17:00',
       startsAt: '2026-05-11T17:00:00-04:00',
     },
     {
-      name: 'Kenton Manis',
-      id: '1486538',
-      calendarOwnerId: 'A4H3xiZJdyrEh2X',
+      name: 'Head Scout G',
+      id: '200007',
+      calendarOwnerId: 'calendar_owner_g',
       openEventId: '624048',
       startTime: '14:30',
       startsAt: '2026-05-17T14:30:00-04:00',
     },
     {
-      name: 'Nasir Adderley',
-      id: '1462295',
-      calendarOwnerId: 'Ax8yvuUTdOzVHr7',
+      name: 'Head Scout H',
+      id: '200008',
+      calendarOwnerId: 'calendar_owner_h',
       openEventId: '624049',
       startTime: '18:00',
       startsAt: '2026-05-17T18:00:00-04:00',

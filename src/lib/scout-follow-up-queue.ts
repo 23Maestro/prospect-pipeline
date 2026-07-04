@@ -106,7 +106,7 @@ function getPrefs(): Preferences {
 }
 
 function getFollowUpSenderName(): string {
-  return String(getPrefs().followUpSenderName || '').trim() || 'Jerami Singleton';
+  return String(getPrefs().followUpSenderName || '').trim() || 'Primary Operator';
 }
 
 function getNotionToken(): string {
@@ -519,7 +519,7 @@ export async function queueConfirmationFollowUp(args: {
     reason: prepared.resolvedAppointment.reason,
     messageVariant: args.reminderVariant || 'confirmation_1',
   });
-  const adminUrl = `https://dashboard.nationalpid.com/admin/athletes?contactid=${encodeURIComponent(args.athleteId.trim())}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`;
+  const adminUrl = `https://legacy-dashboard.example.com/admin/athletes?contactid=${encodeURIComponent(args.athleteId.trim())}&athlete_main_id=${encodeURIComponent(args.athleteMainId.trim())}`;
   await recordConfirmationQueued({
     athleteId: args.athleteId,
     athleteMainId: args.athleteMainId,

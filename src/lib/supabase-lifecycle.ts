@@ -25,10 +25,11 @@ import {
   mergeAppointmentTruthRow,
 } from '../domain/appointment-truth';
 import { resolveWorkflowContext } from '../domain/workflow-context';
+import { isDemoMode } from './demo-mode';
 
 const FEATURE = 'supabase-lifecycle';
 const DEFAULT_SCHEMA = 'public';
-const REPO_ROOT_FALLBACK = '/Users/singleton23/Raycast/prospect-pipeline';
+const REPO_ROOT_FALLBACK = process.env.PROSPECT_PIPELINE_ROOT || process.cwd();
 const API_BASE = 'http://127.0.0.1:8000/api/v1';
 
 type Preferences = {
@@ -452,6 +453,9 @@ function readRepoEnv(): Record<string, string> {
 }
 
 export function getSupabasePersistenceConfig(): SupabaseConfig | null {
+  if (isDemoMode()) {
+    return { url: 'https://supabase.example', key: 'demo-key', schema: DEFAULT_SCHEMA };
+  }
   const prefs = readRaycastPreferenceValues();
   const repoEnv = readRepoEnv();
   const url = String(process.env.SUPABASE_URL || repoEnv.SUPABASE_URL || prefs.supabaseUrl || '')
@@ -561,8 +565,7 @@ function resolveMutationOccurredAt(args: LifecycleMutationEventArgs): {
     normalizeIsoValue(args.completedAt) ||
     normalizeLegacyDateTime(args.completedDate, args.completedTime);
   const dueAt =
-    normalizeIsoValue(args.dueAt) ||
-    normalizeLegacyDateTime(args.dueDate, args.dueTime);
+    normalizeIsoValue(args.dueAt) || normalizeLegacyDateTime(args.dueDate, args.dueTime);
   const explicitOccurredAt = normalizeIsoValue(args.occurredAt);
   if (explicitOccurredAt) {
     return { occurredAt: explicitOccurredAt, completedAt, dueAt, source: 'input.occurred_at' };
@@ -576,7 +579,9 @@ function resolveMutationOccurredAt(args: LifecycleMutationEventArgs): {
   return { occurredAt: null, completedAt, dueAt, source: null };
 }
 
-export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): LifecycleMutationEvent {
+export function buildLifecycleMutationEvent(
+  args: LifecycleMutationEventArgs,
+): LifecycleMutationEvent {
   const actor: PipelineActor = {
     athleteId: normalizeValue(args.athleteId) || '',
     athleteMainId: normalizeValue(args.athleteMainId) || '',
@@ -589,7 +594,8 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
   const activitySubtype = resolveMutationActivitySubtype(args);
   const reporting = classifyCallTrackerReporting(activitySubtype);
   const isCountableActivity = reporting.countsAsDial || reporting.countsAsContact;
-  const isMeetingSetMutation = args.sourcePost === '/sales/meeting-set' && reporting.countsAsMeetingSet;
+  const isMeetingSetMutation =
+    args.sourcePost === '/sales/meeting-set' && reporting.countsAsMeetingSet;
   const taskId = normalizeValue(args.taskId);
   if (isCountableActivity && !isMeetingSetMutation && !taskId) {
     throw new Error('Lifecycle mutation countable activity requires taskId.');
@@ -598,7 +604,9 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
     throw new Error('Lifecycle mutation countable activity requires athleteName.');
   }
   if (isCountableActivity && !normalizeValue(args.taskAssignedOwner)) {
-    throw new Error('Lifecycle mutation countable activity requires taskAssignedOwner for owner proof.');
+    throw new Error(
+      'Lifecycle mutation countable activity requires taskAssignedOwner for owner proof.',
+    );
   }
   if (isCountableActivity && !normalizeValue(args.crmStage)) {
     throw new Error('Lifecycle mutation countable activity requires raw crmStage.');
@@ -606,23 +614,26 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
 
   const clock = resolveMutationOccurredAt(args);
   if (isCountableActivity && !clock.occurredAt) {
-    throw new Error('Lifecycle mutation countable activity requires completedAt, occurredAt, or dueAt.');
+    throw new Error(
+      'Lifecycle mutation countable activity requires completedAt, occurredAt, or dueAt.',
+    );
   }
 
   const ownerContext = resolveOwnerContext({
     purpose: reporting.countsAsMeetingSet ? 'meeting_set' : 'call_activity',
     athleteId: actor.athleteId,
     athleteMainId: actor.athleteMainId,
-    tasks: taskId || args.taskAssignedOwner
-      ? [
-          {
-            task_id: taskId,
-            title: normalizeValue(args.taskTitle),
-            description: normalizeValue(args.taskDescription),
-            assigned_owner: normalizeValue(args.taskAssignedOwner),
-          },
-        ]
-      : [],
+    tasks:
+      taskId || args.taskAssignedOwner
+        ? [
+            {
+              task_id: taskId,
+              title: normalizeValue(args.taskTitle),
+              description: normalizeValue(args.taskDescription),
+              assigned_owner: normalizeValue(args.taskAssignedOwner),
+            },
+          ]
+        : [],
     selectedTaskId: taskId || undefined,
   });
   const canCount = ownerContext.materializationStatus === 'operator_task';
@@ -668,7 +679,8 @@ export function buildLifecycleMutationEvent(args: LifecycleMutationEventArgs): L
     payload,
     state: {
       crmStage: normalizeValue(args.crmStage),
-      taskStatus: normalizeValue(args.taskStatus) || normalizeValue(args.taskTitle) || activitySubtype,
+      taskStatus:
+        normalizeValue(args.taskStatus) || normalizeValue(args.taskTitle) || activitySubtype,
       currentTaskId: taskId,
       currentTaskTitle: normalizeValue(args.taskTitle),
       currentAppointmentId: normalizeValue(args.appointmentId),
@@ -731,9 +743,10 @@ function buildCurrentLifecycleStateRow(args: {
   payload?: Record<string, unknown> | null;
   updatedAt?: string | null;
 }): CurrentLifecycleStateRow {
-  const payload = args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
-    ? args.payload
-    : {};
+  const payload =
+    args.payload && typeof args.payload === 'object' && !Array.isArray(args.payload)
+      ? args.payload
+      : {};
   return {
     athlete_key: args.athleteKey,
     athlete_id: args.athleteId,
@@ -916,9 +929,10 @@ async function fetchLiveSelectedSalesStage(athleteId: string): Promise<string | 
     return null;
   }
 
-  const payload = (await response.json().catch(() => null)) as
-    | { selected_label?: string | null; selected_value?: string | null }
-    | null;
+  const payload = (await response.json().catch(() => null)) as {
+    selected_label?: string | null;
+    selected_value?: string | null;
+  } | null;
   return normalizeValue(payload?.selected_label) || normalizeValue(payload?.selected_value);
 }
 
@@ -936,9 +950,9 @@ async function fetchLiveBookedEvent(args: {
     return null;
   }
 
-  const payload = (await response.json().catch(() => null)) as
-    | { events?: LiveBookedMeetingEvent[] | null }
-    | null;
+  const payload = (await response.json().catch(() => null)) as {
+    events?: LiveBookedMeetingEvent[] | null;
+  } | null;
   const events = Array.isArray(payload?.events) ? payload.events : [];
   return (
     events.find((event) => String(event.event_id || '').trim() === args.eventId.trim()) || null
@@ -979,21 +993,24 @@ export function resolveLifecycleRetentionDecision(args: {
     return {
       action: 'soft_archive',
       effectiveCrmStage,
-      reason: 'Booked event title is marked (FU), so keep history but remove it from active queues.',
+      reason:
+        'Booked event title is marked (FU), so keep history but remove it from active queues.',
     };
   }
   if (titleOutcome === 'soft_archive_canceled') {
     return {
       action: 'soft_archive',
       effectiveCrmStage,
-      reason: 'Booked event title is marked (CAN), so keep the athlete dormant but remove this canceled meeting from active queues.',
+      reason:
+        'Booked event title is marked (CAN), so keep the athlete dormant but remove this canceled meeting from active queues.',
     };
   }
   if (titleOutcome === 'soft_archive_no_show') {
     return {
       action: 'soft_archive',
       effectiveCrmStage,
-      reason: 'Booked event title is marked (NS), so keep the athlete active but remove this meeting from active queues.',
+      reason:
+        'Booked event title is marked (NS), so keep the athlete active but remove this meeting from active queues.',
     };
   }
 
@@ -1097,7 +1114,11 @@ async function purgeAthleteLifecycle(args: {
   config: SupabaseConfig;
   athleteKey: string;
 }): Promise<void> {
-  await deleteRows(args.config, 'athletes', `athlete_key=eq.${encodeURIComponent(args.athleteKey)}`);
+  await deleteRows(
+    args.config,
+    'athletes',
+    `athlete_key=eq.${encodeURIComponent(args.athleteKey)}`,
+  );
 }
 
 async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: boolean }> {
@@ -1142,7 +1163,6 @@ async function writeLifecycle(args: LifecycleWriteArgs): Promise<{ enabled: bool
     await request(config, 'lifecycle_events', {
       rows: [eventRow],
     });
-
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     logFailure('SUPABASE_LIFECYCLE_WRITE', 'request', message, {
@@ -1246,8 +1266,14 @@ export async function recordMeetingSet(args: MeetingSetWriteArgs): Promise<{ ena
   const existingPayload = args.payload || {};
   const meetingSetTaskOwner =
     normalizeValue(existingPayload.task_assigned_owner as string | undefined) ||
-    normalizeValue((existingPayload.owner_context as Record<string, unknown> | undefined)?.task_assigned_owner as string | undefined) ||
-    normalizeValue((existingPayload.materialization_proof as Record<string, unknown> | undefined)?.task_assigned_owner as string | undefined);
+    normalizeValue(
+      (existingPayload.owner_context as Record<string, unknown> | undefined)
+        ?.task_assigned_owner as string | undefined,
+    ) ||
+    normalizeValue(
+      (existingPayload.materialization_proof as Record<string, unknown> | undefined)
+        ?.task_assigned_owner as string | undefined,
+    );
   const mutationPayload = meetingSetTaskOwner
     ? buildLifecycleMutationEvent({
         sourcePost: '/sales/meeting-set',
@@ -1444,7 +1470,8 @@ export async function recordRescheduled(args: RescheduledWriteArgs): Promise<{ e
       previousAppointmentId,
       originalAppointmentId:
         payloadString(payload, 'original_appointment_id') || previousAppointmentId || appointmentId,
-      rescheduleSequence: payloadNumber(payload, 'reschedule_sequence') || (previousAppointmentId ? 1 : 0),
+      rescheduleSequence:
+        payloadNumber(payload, 'reschedule_sequence') || (previousAppointmentId ? 1 : 0),
       operatorOwner: payloadString(payload, 'operator_owner'),
       operatorOwnerKey: payloadString(payload, 'operator_owner_key'),
       appointmentRole: 'reschedule',
@@ -1497,22 +1524,25 @@ export async function getLifecycleHealthSnapshot(): Promise<LifecycleHealthSnaps
       config,
       'lifecycle_events',
       'select=event_type,crm_stage,task_status,athlete_id,athlete_main_id,created_at&order=created_at.desc&limit=15',
-    )
+    ),
   ]);
 
   const latestStateRowsByAthlete = new Map<string, CurrentLifecycleStateRow>();
   for (const row of stateEventRows) {
     const athleteKey = String(row.athlete_key || '').trim();
     if (!athleteKey || latestStateRowsByAthlete.has(athleteKey)) continue;
-    latestStateRowsByAthlete.set(athleteKey, buildCurrentLifecycleStateRow({
+    latestStateRowsByAthlete.set(
       athleteKey,
-      athleteId: String(row.athlete_id || '').trim(),
-      athleteMainId: String(row.athlete_main_id || '').trim(),
-      crmStage: row.crm_stage,
-      taskStatus: row.task_status,
-      payload: row.payload_json,
-      updatedAt: row.created_at,
-    }));
+      buildCurrentLifecycleStateRow({
+        athleteKey,
+        athleteId: String(row.athlete_id || '').trim(),
+        athleteMainId: String(row.athlete_main_id || '').trim(),
+        crmStage: row.crm_stage,
+        taskStatus: row.task_status,
+        payload: row.payload_json,
+        updatedAt: row.created_at,
+      }),
+    );
     if (latestStateRowsByAthlete.size >= 10) break;
   }
   const stateRows = Array.from(latestStateRowsByAthlete.values());
@@ -1561,11 +1591,12 @@ export async function getActiveMeetingFallbackRows(): Promise<ActiveMeetingFallb
       'athletes',
       'select=athlete_key,athlete_name&limit=500',
     ),
-    queryTable<{ id: string; starts_at: string | null; status: string | null; source_event_id: string | null }>(
-      config,
-      'appointments',
-      'select=id,starts_at,status,source_event_id&limit=500',
-    ),
+    queryTable<{
+      id: string;
+      starts_at: string | null;
+      status: string | null;
+      source_event_id: string | null;
+    }>(config, 'appointments', 'select=id,starts_at,status,source_event_id&limit=500'),
   ]);
 
   const athleteNamesByKey = new Map(
@@ -1731,7 +1762,10 @@ export async function getWeeklyScheduledAppointmentRows(args: {
       ).catch(() => [])
     : [];
   const athleteNamesByKey = new Map(
-    athleteRows.map((row) => [String(row.athlete_key || '').trim(), normalizeValue(row.athlete_name)]),
+    athleteRows.map((row) => [
+      String(row.athlete_key || '').trim(),
+      normalizeValue(row.athlete_name),
+    ]),
   );
 
   return appointmentRows

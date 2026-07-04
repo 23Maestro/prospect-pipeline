@@ -810,7 +810,7 @@ test('keeps outreach callback visible when later operator message is only a tapb
       'chat-1': [
         message({
           guid: 'attempt',
-          body: 'Good evening Ms. Burton, this is Coach Singleton with Prospect ID. Elijah’s basketball profile came through and I had a few quick questions about college goals. Would tomorrow or later this week be better?',
+          body: 'Good evening Ms. Burton, this is Scouting Coordinator with Prospect ID. Elijah’s basketball profile came through and I had a few quick questions about college goals. Would tomorrow or later this week be better?',
           date: '2026-06-18T00:03:00.000Z',
           isFromMe: true,
         }),
@@ -1025,7 +1025,7 @@ test('pending client reply theme state uses outbound-only reschedule offer as aw
       'chat-1': [
         message({
           guid: 'gage-times',
-          body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
+          body: 'Coach Head Scout H has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
           date: '2026-06-17T19:05:00.000Z',
           isFromMe: true,
         }),
@@ -1106,7 +1106,7 @@ test('pending client outbound offer comparison handles mixed timezone offsets', 
       'chat-1': [
         message({
           guid: 'gage-times',
-          body: 'Coach Nasir Adderley has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
+          body: 'Coach Head Scout H has me checking what works best to reschedule Gage: 1 - Thursday, June 18 at 7PM ET 2 - Monday, June 22 at 7PM ET Which one works best?',
           date: '2026-06-17T19:05:00.000Z',
           isFromMe: true,
         }),

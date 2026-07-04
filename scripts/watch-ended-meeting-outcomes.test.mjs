@@ -113,10 +113,10 @@ test('ended meeting watcher hydrates missing appointment support from same-key S
           athlete_key: '1500104:954824',
           athlete_id: '1500104',
           athlete_main_id: '954824',
-          head_scout: 'Nasir Adderley',
+          head_scout: 'Head Scout H',
           source_event_id: '673777',
-          operator_owner: 'Jerami Singleton',
-          operator_owner_key: 'jerami_singleton',
+          operator_owner: 'Primary Operator',
+          operator_owner_key: 'operator_primary',
           meeting_timezone: 'America/New_York',
           meeting_timezone_label: 'ET',
           original_appointment_id: '660000',
@@ -129,9 +129,9 @@ test('ended meeting watcher hydrates missing appointment support from same-key S
 
   assert.equal(hydrated.athlete_id, '1500104');
   assert.equal(hydrated.athlete_main_id, '954824');
-  assert.equal(hydrated.head_scout, 'Nasir Adderley');
+  assert.equal(hydrated.head_scout, 'Head Scout H');
   assert.equal(hydrated.source_event_id, '673777');
-  assert.equal(hydrated.operator_owner_key, 'jerami_singleton');
+  assert.equal(hydrated.operator_owner_key, 'operator_primary');
   assert.equal(hydrated.meeting_timezone, 'America/New_York');
   assert.equal(hydrated.original_appointment_id, '660000');
   assert.equal(hydrated.reschedule_sequence, 1);
@@ -228,9 +228,9 @@ test('rescheduled replacement live event builds active replacement appointment t
       id: '673775',
       athlete_id: '1499820',
       athlete_main_id: '954548',
-      head_scout: 'Nasir Adderley',
-      operator_owner: 'Jerami Singleton',
-      operator_owner_key: 'jerami_singleton',
+      head_scout: 'Head Scout H',
+      operator_owner: 'Primary Operator',
+      operator_owner_key: 'operator_primary',
       original_appointment_id: '673775',
       reschedule_sequence: 0,
       source_payload: {
@@ -240,7 +240,7 @@ test('rescheduled replacement live event builds active replacement appointment t
     liveEvent: {
       event_id: '695750',
       title: '(ACF)*2 Niko Acors Football 2028 VA',
-      assigned_owner: 'Nasir Adderley',
+      assigned_owner: 'Head Scout H',
       start: '2026-06-16T20:00',
       end: '2026-06-16T21:00',
     },

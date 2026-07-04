@@ -62,7 +62,7 @@ export type ManualAdditionalAthleteContactArgs = {
   seenAt?: string;
 };
 
-const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const DASHBOARD_BASE_URL = 'https://legacy-dashboard.example.com';
 function clean(value?: string | null): string {
   return String(value || '').trim();
 }

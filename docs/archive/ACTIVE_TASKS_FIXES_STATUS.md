@@ -79,7 +79,7 @@ async function fetchActiveTasks(): Promise<Task[]> {
 - `src/lib/notion-mcp-client.ts` (already deleted)
 
 ### MCP Config Changes
-**File:** `/Users/singleton23/.config/raycast/mcp-config.json`
+**File:** `<USER_HOME>/.config/raycast/mcp-config.json`
 
 The Notion MCP config I changed will NOT work for extension code. You can:
 - Keep it for Raycast AI features (doesn't hurt)

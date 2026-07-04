@@ -2,7 +2,7 @@
 
 ## ✅ ALL ENDPOINTS VERIFIED - Nov 6, 2025
 
-**Base URL:** `https://dashboard.nationalpid.com`
+**Base URL:** `https://legacy-dashboard.example.com`
 
 ---
 
@@ -36,7 +36,7 @@ _token={csrf_token}
 
 **Example Request:**
 ```
-_token=acjtI57IhypCE0qzsSbye1v58ayKbiq6hKFcy3fg
+_token=<CSRF_TOKEN>
 &video_msg_id=11147
 &video_progress_stage=On+Hold
 ```
@@ -68,7 +68,7 @@ _token={csrf_token}
 
 **Example Request:**
 ```
-_token=acjtI57IhypCE0qzsSbye1v58ayKbiq6hKFcy3fg
+_token=<CSRF_TOKEN>
 &video_msg_id=11147
 &video_progress_status=HUDL
 ```
@@ -124,7 +124,7 @@ video_id={video_id}
 **Example:**
 ```
 video_id=84960
-&_token=acjtI57IhypCE0qzsSbye1v58ayKbiq6hKFcy3fg
+&_token=<CSRF_TOKEN>
 &athlete_id=1448012
 ```
 
@@ -222,14 +222,14 @@ from urllib.parse import quote_plus
 
 class NPIDProgressAPI:
     """Video Progress System API for stage/status updates"""
-    
+
     STAGES = {
         "on_hold": "On Hold",
-        "awaiting_client": "Awaiting Client", 
+        "awaiting_client": "Awaiting Client",
         "in_queue": "In Queue",
         "done": "Done"
     }
-    
+
     STATUSES = {
         "revisions": "Revisions",
         "hudl": "HUDL",
@@ -237,43 +237,43 @@ class NPIDProgressAPI:
         "external_links": "External Links",
         "not_approved": "Not Approved"
     }
-    
+
     def update_stage(self, thread_id: str, stage: str) -> bool:
         """Update video stage using STRING value"""
         if stage not in self.STAGES:
             raise ValueError(f"Invalid stage: {stage}")
-        
+
         stage_value = self.STAGES[stage]
         payload = {
             "_token": self.csrf_token,
             "video_msg_id": thread_id,
             "video_progress_stage": stage_value
         }
-        
+
         response = self.session.post(
             f"{self.base_url}/tasks/videostage",
             data=payload
         )
         return response.status_code == 200
-    
+
     def update_status(self, thread_id: str, status: str) -> bool:
         """Update video status using STRING value"""
         if status not in self.STATUSES:
             raise ValueError(f"Invalid status: {status}")
-        
+
         status_value = self.STATUSES[status]
         payload = {
             "_token": self.csrf_token,
             "video_msg_id": thread_id,
             "video_progress_status": status_value
         }
-        
+
         response = self.session.post(
             f"{self.base_url}/tasks/videocompletemessage",
             data=payload
         )
         return response.status_code == 200
-    
+
     def unapprove_video(self, video_id: str, athlete_id: str) -> bool:
         """Remove old approved video before posting new one"""
         payload = {
@@ -281,7 +281,7 @@ class NPIDProgressAPI:
             "_token": self.csrf_token,
             "athlete_id": athlete_id
         }
-        
+
         response = self.session.post(
             f"{self.base_url}/career/unapprovevideo",
             data=payload
@@ -348,9 +348,9 @@ payload = {
 - `2025-11-04_video_progress-email_template_har.md` - Email templates
 - `2025-11-06__video_progress-status_stage_har.md` - Stage/status values ⭐ NEW
 
-**Date Captured:** November 4-6, 2025  
-**Environment:** Production dashboard.nationalpid.com  
-**Session:** videoteam@prospectid.com (400-day cookie preserved)
+**Date Captured:** November 4-6, 2025
+**Environment:** Production legacy-dashboard.example.com
+**Session:** video-team@example.com (400-day cookie preserved)
 
 ---
 

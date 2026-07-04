@@ -9,20 +9,20 @@
 const CARD_FOLDER = 'ProspectIDContactCards';
 
 const SCOUT_ALIASES = {
-  'james': 'James Holcomb',
-  'jamesholcomb': 'James Holcomb',
-  'jeffrey': 'Jeffrey Stein',
-  'jeffreystein': 'Jeffrey Stein',
-  'jerami': 'Jerami Singleton',
-  'jeramisingleton': 'Jerami Singleton',
-  'logan': 'Logan Lord',
-  'loganlord': 'Logan Lord',
-  'luther': 'Luther Winfield III',
-  'lutherwinfield': 'Luther Winfield III',
-  'lutherwinfieldiii': 'Luther Winfield III',
-  'me': 'Jerami Singleton',
-  'ryan': 'Ryan Lietz',
-  'ryanlietz': 'Ryan Lietz',
+  'james': 'Head Scout E',
+  'jamesholcomb': 'Head Scout E',
+  'jeffrey': 'Head Scout B',
+  'jeffreystein': 'Head Scout B',
+  'jerami': 'Primary Operator',
+  'jeramisingleton': 'Primary Operator',
+  'logan': 'Head Scout F',
+  'loganlord': 'Head Scout F',
+  'luther': 'Head Scout C',
+  'lutherwinfield': 'Head Scout C',
+  'lutherwinfieldiii': 'Head Scout C',
+  'me': 'Primary Operator',
+  'ryan': 'Head Scout D',
+  'ryanlietz': 'Head Scout D',
 };
 
 const params = args.queryParameters || {};

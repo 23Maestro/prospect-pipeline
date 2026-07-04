@@ -48,7 +48,7 @@ function requestRow(overrides: Record<string, unknown> = {}) {
         ends_at: '2026-06-15T19:00',
         timezone: 'America/New_York',
         open_event_id: 'open_1',
-        assigned_to: '1354049',
+        assigned_to: '200004',
         head_scout_name: 'Coach Ryan',
       },
     ],
@@ -447,7 +447,7 @@ test('/api/parent-response approve applies selected slot through reschedule path
         success: true,
         athlete_id: '149',
         athlete_main_id: '953',
-        assigned_to: '1354049',
+        assigned_to: '200004',
         open_event_id: 'open_1',
         meeting_name: 'Coach Ryan - Jamiya Turner',
         template_id: '210',
@@ -519,7 +519,7 @@ test('/api/parent-response approve applies selected slot through reschedule path
   const rescheduleBody = JSON.parse(String(calls[rescheduleIndex].init?.body));
   assert.equal(rescheduleBody.previous_event_id, 'appt_previous');
   assert.equal(rescheduleBody.open_event_id, 'open_1');
-  assert.equal(rescheduleBody.assigned_to, '1354049');
+  assert.equal(rescheduleBody.assigned_to, '200004');
   const stageBody = JSON.parse(String(calls[stageIndex].init?.body));
   assert.equal(stageBody.stage, 'Meeting Result - Rescheduled');
   const appliedBody = JSON.parse(String(calls[appliedIndex].init?.body));

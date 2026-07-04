@@ -5,7 +5,7 @@
   "description": "Student-athlete video editing workflow automation",
   "type": "module",
   "icon": "prospect-pipeline.png",
-  "author": "jerami_singleton",
+  "author": "operator_primary",
   "categories": [
     "Productivity",
     "Developer Tools"
@@ -278,7 +278,7 @@
       "title": "Follow-Up Sender Name",
       "description": "Used for the Call Attempt 2 text signoff when that trigger is wired.",
       "type": "textfield",
-      "placeholder": "Jerami Singleton",
+      "placeholder": "Primary Operator",
       "required": false
     },
     {
@@ -297,6 +297,7 @@
     }
   ],
   "scripts": {
+    "sanitize:demo-db": "node scripts/sanitize-demo-progress-db.mjs",
     "build": "ray build",
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",

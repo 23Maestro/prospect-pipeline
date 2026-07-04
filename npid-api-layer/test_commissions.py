@@ -17,19 +17,19 @@ class CommissionTranslatorTests(unittest.TestCase):
     def test_stripe_payroll_contract_uses_legacy_form_fields(self):
         endpoint, data = LegacyTranslator.stripe_commission_payroll_to_legacy(
             commperiod="2026-05-16~2026-05-31",
-            scout="Jerami Singleton",
+            scout="Primary Operator",
         )
 
         self.assertEqual(endpoint, "/admin/stripecommpayrolllist")
         self.assertEqual(data["commperiod"], "2026-05-16~2026-05-31")
-        self.assertEqual(data["scout"], "Jerami Singleton")
+        self.assertEqual(data["scout"], "Primary Operator")
 
     def test_commission_json_parser_normalizes_amounts_and_duplicates(self):
         raw = """
         [
-          {"athlete_id": 1490274, "athlete_main_id": 952103, "athletename": "Zyon Wicks", "head_scout_name": "Ryan Lietz", "afterdiscount": "99.00", "planprice": "169", "product": "Legend ID", "subscription_name": "12 Payments", "createddate": "04/30/2026 04:01 PM", "parent_bill_date": "05/08/2026", "status": "Pending"},
-          {"athlete_id": 1490274, "athlete_main_id": 952103, "athletename": "Zyon Wicks", "head_scout_name": "Ryan Lietz", "afterdiscount": "99.00", "planprice": "169", "product": "Legend ID", "subscription_name": "12 Payments", "createddate": "04/30/2026 04:00 PM", "parent_bill_date": "05/08/2026", "status": "Deleted"},
-          {"athlete_id": 1489625, "athlete_main_id": 951462, "athletename": "Marcus Garcia", "head_scout_name": "Luther Winfield", "afterdiscount": "99", "planprice": "99", "product": "Elite ID", "subscription_name": "12 Payments", "createddate": "05/01/2026 06:50 PM", "parent_bill_date": "05/01/2026", "status": "Paid"}
+          {"athlete_id": 1490274, "athlete_main_id": 952103, "athletename": "Zyon Wicks", "head_scout_name": "Head Scout D", "afterdiscount": "99.00", "planprice": "169", "product": "Legend ID", "subscription_name": "12 Payments", "createddate": "04/30/2026 04:01 PM", "parent_bill_date": "05/08/2026", "status": "Pending"},
+          {"athlete_id": 1490274, "athlete_main_id": 952103, "athletename": "Zyon Wicks", "head_scout_name": "Head Scout D", "afterdiscount": "99.00", "planprice": "169", "product": "Legend ID", "subscription_name": "12 Payments", "createddate": "04/30/2026 04:00 PM", "parent_bill_date": "05/08/2026", "status": "Deleted"},
+          {"athlete_id": 1489625, "athlete_main_id": 951462, "athletename": "Marcus Garcia", "head_scout_name": "Head Scout C", "afterdiscount": "99", "planprice": "99", "product": "Elite ID", "subscription_name": "12 Payments", "createddate": "05/01/2026 06:50 PM", "parent_bill_date": "05/01/2026", "status": "Paid"}
         ]
         """
 
@@ -56,7 +56,7 @@ class CommissionTranslatorTests(unittest.TestCase):
         raw = """
         <table>
           <thead><tr><th>Athlete</th><th>Scout</th><th>Amount</th><th>Date</th></tr></thead>
-          <tbody><tr><td>Marcus Garcia</td><td>Luther Winfield</td><td>$199</td><td>2026-05-03</td></tr></tbody>
+          <tbody><tr><td>Marcus Garcia</td><td>Head Scout C</td><td>$199</td><td>2026-05-03</td></tr></tbody>
         </table>
         """
 

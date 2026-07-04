@@ -25,7 +25,7 @@ function buildContext(overrides?: Partial<ScoutPrepContext>): ScoutPrepContext {
       sport: 'Football',
       city: 'South St. Paul',
       state: 'MN',
-      head_scout: 'Ryan Lietz',
+      head_scout: 'Head Scout D',
     },
     contactInfo: {
       contactId: '123',

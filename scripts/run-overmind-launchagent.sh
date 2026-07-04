@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 PROCFILE_PATH="${PROJECT_ROOT}/Procfile.dev"
 SOCKET_PATH="${PROJECT_ROOT}/.overmind.sock"
 API_PORT="${API_PORT:-8000}"

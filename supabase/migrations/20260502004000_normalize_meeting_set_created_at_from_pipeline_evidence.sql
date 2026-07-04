@@ -8,7 +8,7 @@
 -- Historical reason for this migration:
 --   older cron runs wrote pipeline_task_backfill_current rows that already proved
 --   crm_stage = Meeting Set, task_status = confirmation_call, current_meeting present,
---   current_appointment_id present, and assigned_owner = Jerami Singleton.
+--   current_appointment_id present, and assigned_owner = Primary Operator.
 --   Some newer canonical meeting_set rows were inserted later by booked-meeting sync,
 --   so their created_at reflected sync time instead of the first observed transition time.
 

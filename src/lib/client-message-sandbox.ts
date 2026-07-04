@@ -1,8 +1,9 @@
 import { homedir } from 'os';
 import { resolve } from 'path';
 
-import { Color, Icon, Image } from '@raycast/api';
+import { Color, Icon, Image, open } from '@raycast/api';
 import { executeSQL, runAppleScript, usePromise, useSQL } from '@raycast/utils';
+import { demoPhone, isDemoMode } from './demo-mode';
 
 import {
   resolveStudentAthleteMessagesForPhones,
@@ -743,6 +744,11 @@ export async function sendClientMessage(args: {
   text: string;
   serviceName: 'iMessage' | 'SMS';
 }): Promise<string> {
+  if (isDemoMode()) {
+    const params = new URLSearchParams({ body: args.text });
+    await open(`sms:${demoPhone()}?${params.toString()}`);
+    return 'Success';
+  }
   const wasMessagesRunning = await isMessagesAppRunning();
   const script = `
     tell application "Messages"
@@ -771,6 +777,10 @@ export async function sendVerifiedClientMessage(args: {
   text: string;
   serviceName: 'iMessage' | 'SMS';
 }): Promise<ClientMessageSendVerification> {
+  if (isDemoMode()) {
+    await sendClientMessage(args);
+    return { ok: true, rowId: 0, messageError: 0 };
+  }
   const sentAfterMs = Date.now();
   const result = await sendClientMessage(args);
   if (result !== 'Success') {

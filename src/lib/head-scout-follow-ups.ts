@@ -32,7 +32,7 @@ import { getActiveMeetingFallbackRows, type ActiveMeetingFallbackRow } from './s
 import { resolveAppointmentTitleOutcome } from './head-scout-event-prefix';
 import { fetchAthleteBookedMeetings, type BookedMeetingEvent } from './head-scout-schedules';
 
-const DASHBOARD_BASE_URL = 'https://dashboard.nationalpid.com';
+const DASHBOARD_BASE_URL = 'https://legacy-dashboard.example.com';
 const ACTIVE_TASK_RANGES = [
   'todayPastDue',
   'today',

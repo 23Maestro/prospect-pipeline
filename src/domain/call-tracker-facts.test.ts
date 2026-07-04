@@ -20,7 +20,7 @@ test('call activity facts preserve compatibility fields and explicit operator co
       {
         task_id: '900',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
@@ -53,9 +53,9 @@ test('call activity facts preserve compatibility fields and explicit operator co
   assert.equal(row.payload_json.counts_as_meeting_set, false);
   assert.equal(row.payload_json.counts_as_post_meeting_outcome, false);
   assert.equal(row.payload_json.tracker_outcome, 'voicemail');
-  assert.equal(row.source_owner, 'Jerami Singleton');
+  assert.equal(row.source_owner, 'Primary Operator');
   assert.equal(row.owner_proof, 'task.assigned_owner');
-  assert.equal(row.payload_json.active_operator_key, 'jerami_singleton');
+  assert.equal(row.payload_json.active_operator_key, 'operator_primary');
   assert.equal(row.payload_json.materialization_status, 'operator_task');
   assert.equal(row.payload_json.materialization_reason, 'task_assigned_owner_matches_active_operator');
 });
@@ -69,7 +69,7 @@ test('contact activity facts count as both dial and contact', () => {
       {
         task_id: '901',
         title: 'Spoke to - I Need To Follow Up',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
@@ -112,7 +112,7 @@ test('unable to leave voicemail activity facts remain dial-only', () => {
       {
         task_id: '902',
         title: 'Called - Unable to Leave VM',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
@@ -149,7 +149,7 @@ test('call activity facts reject missing occurrence clocks', () => {
       {
         task_id: '903',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
@@ -182,7 +182,7 @@ test('call activity facts reject missing athlete names', () => {
       {
         task_id: '904',
         title: 'Call Attempt 1',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
@@ -216,14 +216,14 @@ test('meeting outcome facts can carry a non-operator event owner but block Tim-o
       {
         task_id: '901',
         title: 'Confirmation Call',
-        assigned_owner: 'Tim Risner',
+        assigned_owner: 'Secondary Operator',
         completion_date: '',
       },
     ],
     currentTaskId: '901',
     bookedMeeting: {
       event_id: '777',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       athlete_id: '123',
       athlete_main_id: '456',
     },
@@ -245,10 +245,10 @@ test('meeting outcome facts can carry a non-operator event owner but block Tim-o
     ownerContext,
   });
 
-  assert.equal(row.source_owner, 'Ryan Lietz');
+  assert.equal(row.source_owner, 'Head Scout D');
   assert.equal(row.owner_proof, 'bookedMeeting.assigned_owner');
   assert.equal(row.is_tracked_owner, false);
-  assert.equal(row.payload_json.task_assigned_owner, 'Tim Risner');
+  assert.equal(row.payload_json.task_assigned_owner, 'Secondary Operator');
   assert.equal(row.payload_json.materialization_status, 'not_operator_task');
   assert.equal(row.payload_json.materialization_reason, 'task_assigned_owner_is_other_owner');
 });
@@ -262,14 +262,14 @@ test('meeting outcome facts are post-meeting outcomes, not call activity or meet
       {
         task_id: '902',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
         completion_date: '',
       },
     ],
     currentTaskId: '902',
     bookedMeeting: {
       event_id: '778',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       athlete_id: '123',
       athlete_main_id: '456',
     },
@@ -306,13 +306,13 @@ test('meeting outcome call_log rows keep meeting event time separate from detect
       {
         task_id: '902',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
       },
     ],
     currentTaskId: '902',
     bookedMeeting: {
       event_id: '778',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       athlete_id: '123',
       athlete_main_id: '456',
     },
@@ -352,13 +352,13 @@ test('post-meeting outcomes dedupe across stage title and commission evidence fo
       {
         task_id: '625214',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
       },
     ],
     currentTaskId: '625214',
     bookedMeeting: {
       event_id: '613323',
-      assigned_owner: 'Luther Winfield',
+      assigned_owner: 'Head Scout C',
       athlete_id: '1489625',
       athlete_main_id: '951462',
     },
@@ -411,13 +411,13 @@ test('enrollment payment facts use payment-level dedupe without counting as anot
       {
         task_id: '626669',
         title: 'Confirmation Call',
-        assigned_owner: 'Jerami Singleton',
+        assigned_owner: 'Primary Operator',
       },
     ],
     currentTaskId: '626669',
     bookedMeeting: {
       event_id: '587226',
-      assigned_owner: 'Ryan Lietz',
+      assigned_owner: 'Head Scout D',
       athlete_id: '1490299',
       athlete_main_id: '952128',
     },
@@ -466,8 +466,8 @@ test('meeting set facts are keyed by the canonical booked meeting event id', () 
       appointment_id: '613999',
       meeting_name: 'Bryce Hill Football 2026 PA',
       starts_at: '2026-05-04T19:00:00-04:00',
-      task_assigned_owner: 'Jerami Singleton',
-      booked_meeting_assigned_owner: 'Ryan Lietz',
+      task_assigned_owner: 'Primary Operator',
+      booked_meeting_assigned_owner: 'Head Scout D',
     },
     createdAt: '2026-05-01T15:00:00-04:00',
   });
@@ -490,8 +490,8 @@ test('meeting set call_log rows use source occurrence clock instead of lifecycle
       meeting_name: 'Bryce Hill Football 2026 PA',
       occurred_at: '2026-05-01T15:00:00-04:00',
       starts_at: '2026-05-04T19:00:00-04:00',
-      task_assigned_owner: 'Jerami Singleton',
-      booked_meeting_assigned_owner: 'Ryan Lietz',
+      task_assigned_owner: 'Primary Operator',
+      booked_meeting_assigned_owner: 'Head Scout D',
     },
     createdAt: '2026-06-02T12:07:00-04:00',
   });

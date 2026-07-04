@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-WORKSPACE_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 API_BASE="${API_BASE:-http://127.0.0.1:8000}"
 PYTHON_BIN="$WORKSPACE_ROOT/npid-api-layer/venv/bin/python"
 CLIENT_SCRIPT="$WORKSPACE_ROOT/src/python/npid_api_client.py"

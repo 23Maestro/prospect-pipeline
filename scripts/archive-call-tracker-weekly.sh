@@ -2,11 +2,13 @@
 
 set -euo pipefail
 
-PROJECT_ROOT="/Users/singleton23/Raycast/prospect-pipeline"
-LOG_DIR="${RAYCAST_LOG_DIR:-/Users/singleton23/raycast_logs}/call-tracker-weekly-archive"
+PROJECT_ROOT="${PROJECT_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+LOG_DIR="${RAYCAST_LOG_DIR:-${HOME}/raycast_logs}/call-tracker-weekly-archive"
 LOCK_DIR="/tmp/prospect-pipeline-call-tracker-weekly-archive.lock"
 
-export PATH="/Users/singleton23/.nvm/versions/node/v22.16.0/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+if [[ -n "${NODE_BIN_DIR:-}" ]]; then
+  export PATH="${NODE_BIN_DIR}:${PATH}"
+fi
 export TZ="${TZ:-America/New_York}"
 
 mkdir -p "${LOG_DIR}"

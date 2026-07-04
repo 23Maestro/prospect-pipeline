@@ -20,7 +20,7 @@ from app.invariants import Invariant, log_check
 logger = logging.getLogger(__name__)
 
 # Constants
-NPID_BASE_URL = os.getenv("NPID_BASE_URL", "https://dashboard.nationalpid.com")
+NPID_BASE_URL = os.getenv("NPID_BASE_URL", "https://legacy-dashboard.example.com")
 SESSION_FILE = str(Path.home() / '.npid_session.pkl')
 DEFAULT_SCOUT_API_KEY = "594168a28d26571785afcb83997cb8185f482e56"
 NPID_API_KEY = os.getenv("NPID_API_KEY", DEFAULT_SCOUT_API_KEY)

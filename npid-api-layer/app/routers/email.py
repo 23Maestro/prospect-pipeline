@@ -75,7 +75,7 @@ async def get_template_data(request: Request, payload: EmailTemplateDataRequest)
         logger.info(f"✅ Template data retrieved")
         return EmailTemplateDataResponse(
             sender_name=data.get("sender_name", "Video Team"),
-            sender_email=data.get("sender_email", "videoteam@prospectid.com"),
+            sender_email=data.get("sender_email", "video-team@example.com"),
             subject=data.get("templatesubject", ""),
             message=data.get("templatedescription", "")
         )

@@ -10,8 +10,8 @@ class NpidRestClient:
     def __init__(self, session_cookies):
         self.session = requests.Session()
         self.session.cookies.update(session_cookies)
-        self.base_url = 'https://dashboard.nationalpid.com'
-        self.owner_id = '1408164'  # Jerami Singleton
+        self.base_url = 'https://legacy-dashboard.example.com'
+        self.owner_id = '100001'  # Primary Operator
     
     def get_csrf_token(self):
         """Extract CSRF token from cookies"""
@@ -19,7 +19,7 @@ class NpidRestClient:
     
     def assign_thread(self, message_id, email, stage, status):
         """
-        Assign video team inbox thread to Jerami Singleton
+        Assign video team inbox thread to Primary Operator
         
         Flow:
         1. Check modal for pre-filled data (student email = instant)
@@ -114,7 +114,7 @@ class NpidRestClient:
     
     def _submit_assignment(self, message_id, contact_id, athlete_id, email, contact_for, stage, status):
         """
-        Submit assignment with Jerami Singleton as owner
+        Submit assignment with Primary Operator as owner
         
         Returns:
             dict: {'success': bool, 'contact_id': str, 'athlete_id': str}
@@ -130,7 +130,7 @@ class NpidRestClient:
                     'contacttask': contact_id,
                     'athletemainid': athlete_id,
                     'messageid': message_id,
-                    'videoscoutassignedto': self.owner_id,  # Jerami Singleton (IMPERATIVE)
+                    'videoscoutassignedto': self.owner_id,  # Primary Operator (IMPERATIVE)
                     'contactfor': contact_for,  # 'athlete' or 'parent'
                     'contact': email,
                     'videoprogressstage': stage,  # "In Queue", "On Hold", etc
