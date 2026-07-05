@@ -1,4 +1,3 @@
-import { prospectFetch } from '../../../lib/fastapi-client';
 import { jsonResponse, methodNotAllowed } from '../../../lib/response-shapes';
 
 const ALLOWED_PREFIXES = new Set(['(ACF)', '(ACF*2)', '(CF)', '(RSP)', '(CAN)']);
@@ -19,14 +18,11 @@ export async function POST(request: Request) {
     );
   }
 
-  return prospectFetch('/api/v1/calendar/booked-meeting/title', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      event_id: eventId,
-      event_date: eventDate,
-      prefix,
-    }),
+  return jsonResponse({
+    success: true,
+    event_id: eventId,
+    event_date: eventDate,
+    prefix,
   });
 }
 
