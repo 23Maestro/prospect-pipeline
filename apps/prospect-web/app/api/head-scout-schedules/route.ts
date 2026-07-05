@@ -1,11 +1,17 @@
-import { buildEasternWeekWindow, prospectFetch } from '../../../lib/fastapi-client';
-import { methodNotAllowed } from '../../../lib/response-shapes';
+import { getScoutSchedules } from '../../../lib/prospect-demo-data';
+import { jsonResponse, methodNotAllowed } from '../../../lib/response-shapes';
 
 export function GET(request: Request) {
   const url = new URL(request.url);
-  const weekWindow = buildEasternWeekWindow(url.searchParams.get('week') || 'this');
-  const endpoint = `/api/v1/mobile/calendar/head-scout-slots?start=${encodeURIComponent(weekWindow.start)}&end=${encodeURIComponent(weekWindow.end)}`;
-  return prospectFetch(endpoint);
+  const week = url.searchParams.get('week') === 'next' ? 'next' : 'this';
+  const scouts = getScoutSchedules(week);
+  return jsonResponse({
+    success: true,
+    source: 'local_roster',
+    week,
+    count: scouts.reduce((total, scout) => total + scout.slots.length, 0),
+    scouts,
+  });
 }
 
 export function POST(request: Request) {

@@ -1318,30 +1318,18 @@ async function rerenderSearchScope(scope) {
 }
 
 async function searchAthleteContactCache(query) {
-  const config = window.__PROSPECT_SUPABASE__ || {};
-  const supabaseUrl = String(config.url || '').replace(/\/+$/, '');
-  const anonKey = String(config.anonKey || '');
-  const schema = String(config.schema || 'public').trim() || 'public';
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Missing Supabase public config');
-  }
-
-  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/search_athlete_contact_cache`, {
+  const response = await fetch('/api/prospect-mobile/search', {
     method: 'POST',
     headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${anonKey}`,
-      'accept-profile': schema,
-      'content-profile': schema,
       'content-type': 'application/json',
     },
-    body: JSON.stringify({ input_query: query }),
+    body: JSON.stringify({ query }),
   });
-  const rows = await response.json().catch(() => []);
-  if (!response.ok) {
-    throw new Error(rows.message || rows.error || `Supabase ${response.status}`);
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error || payload.message || `Search ${response.status}`);
   }
-  return Array.isArray(rows) ? rows : [];
+  return Array.isArray(payload.rows) ? payload.rows : [];
 }
 
 async function searchProspectMobile(query) {

@@ -1,6 +1,10 @@
 import { LocalStorage } from '@raycast/api';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const CACHE_VERSION = 5;
+const FALLBACK_CACHE_DIR = path.join(os.homedir(), '.prospect-pipeline', 'raycast-cache');
 
 type StorageLike = {
   getItem<T extends string = string>(key: string): Promise<T | undefined>;
@@ -35,6 +39,62 @@ function buildSetMeetingsCacheKey(args: {
       .trim()
       .toLowerCase(),
   ].join(':');
+}
+
+function buildFallbackCachePath(args: {
+  weekStart: string;
+  weekEnd: string;
+  scoutName?: string | null;
+}): string {
+  const safeKey = buildSetMeetingsCacheKey(args).replace(/[^a-z0-9._-]+/gi, '_');
+  return path.join(FALLBACK_CACHE_DIR, `${safeKey}.json`);
+}
+
+async function readFallbackCache<TCandidate>(args: {
+  weekStart: string;
+  weekEnd: string;
+  scoutName?: string | null;
+  now?: Date;
+}): Promise<SetMeetingsCacheReadResult<TCandidate>> {
+  const filePath = buildFallbackCachePath(args);
+  if (!fs.existsSync(filePath)) return null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as Partial<SetMeetingsCacheSnapshot<TCandidate>>;
+    if (
+      parsed.version !== CACHE_VERSION ||
+      parsed.weekStart !== args.weekStart ||
+      parsed.weekEnd !== args.weekEnd ||
+      !parsed.cachedAt ||
+      !Array.isArray(parsed.candidates)
+    ) {
+      return null;
+    }
+    return {
+      snapshot: {
+        version: CACHE_VERSION,
+        cachedAt: parsed.cachedAt,
+        weekStart: parsed.weekStart,
+        weekEnd: parsed.weekEnd,
+        scoutName: parsed.scoutName || null,
+        candidates: parsed.candidates,
+      },
+      isDueForHourlyRefresh: isSetMeetingsCacheDueForHourlyRefresh(parsed.cachedAt, args.now),
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function writeFallbackCache<TCandidate>(snapshot: SetMeetingsCacheSnapshot<TCandidate>) {
+  fs.mkdirSync(FALLBACK_CACHE_DIR, { recursive: true });
+  fs.writeFileSync(
+    buildFallbackCachePath({
+      weekStart: snapshot.weekStart,
+      weekEnd: snapshot.weekEnd,
+      scoutName: snapshot.scoutName,
+    }),
+    JSON.stringify(snapshot),
+  );
 }
 
 function getLocalHourBucket(date: Date): string {
@@ -79,7 +139,7 @@ export async function getCachedSetMeetings<TCandidate = unknown>(args: {
     }),
   );
   if (!rawValue) {
-    return null;
+    return readFallbackCache<TCandidate>(args);
   }
 
   try {
@@ -91,7 +151,7 @@ export async function getCachedSetMeetings<TCandidate = unknown>(args: {
       !parsed.cachedAt ||
       !Array.isArray(parsed.candidates)
     ) {
-      return null;
+      return readFallbackCache<TCandidate>(args);
     }
 
     return {
@@ -106,7 +166,7 @@ export async function getCachedSetMeetings<TCandidate = unknown>(args: {
       isDueForHourlyRefresh: isSetMeetingsCacheDueForHourlyRefresh(parsed.cachedAt, args.now),
     };
   } catch {
-    return null;
+    return readFallbackCache<TCandidate>(args);
   }
 }
 
@@ -135,5 +195,6 @@ export async function setCachedSetMeetings<TCandidate = unknown>(args: {
     }),
     JSON.stringify(snapshot),
   );
+  await writeFallbackCache(snapshot);
   return snapshot;
 }
