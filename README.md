@@ -164,5 +164,3 @@ Strong public case-study surfaces:
 - `scripts/watch-ended-meeting-outcomes.mjs`
 - `src/domain/workflow-context.ts`
 - `src/lib/supabase-lifecycle.ts`
-
-Before using repo content in a public writeup, sanitize real names, contact details, private URLs, local session references, employment context, and production data snapshots.
