@@ -646,25 +646,31 @@ test('call tracker commission is a flat twenty percent of revenue', () => {
   assert.match(appText, /PAID_COMMISSION_SOURCES\.has\(row\.source\)/);
 });
 
-test('prospect mobile set meetings uses confirmation cache messages', () => {
+test('prospect mobile set meetings uses local July demo messages without Supabase fallback', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
   const utilitiesText = readFileSync(join(appRoot, 'public/prospect-mobile/set-meetings-utils.mjs'), 'utf8');
   const pageText = readFileSync(join(appRoot, 'app/prospect-mobile/page.tsx'), 'utf8');
+  const routeText = readFileSync(join(appRoot, 'app/api/prospect-mobile/set-meetings/route.ts'), 'utf8');
+  const demoText = readFileSync(join(appRoot, 'lib/prospect-demo-data.ts'), 'utf8');
   const setMeetingsRouteExists = existsSync(join(appRoot, 'app/api/set-meetings/route.ts'));
-  assert.match(pageText, /NEXT_PUBLIC_SUPABASE_URL/);
-  assert.match(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
-  assert.match(appText, /window\.__PROSPECT_SUPABASE__/);
-  assert.match(appText, /\/rest\/v1\/set_meeting_confirmation_cache/);
-  assert.match(appText, /isMissingServerSupabaseCredentials/);
-  assert.match(appText, /fetchSetMeetingsFromSupabase\(state\.week\)/);
+  assert.doesNotMatch(pageText, /NEXT_PUBLIC_SUPABASE_URL/);
+  assert.doesNotMatch(pageText, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+  assert.doesNotMatch(pageText, /window\.__PROSPECT_SUPABASE__/);
+  assert.doesNotMatch(appText, /window\.__PROSPECT_SUPABASE__/);
+  assert.doesNotMatch(appText, /\/rest\/v1\/set_meeting_confirmation_cache/);
+  assert.doesNotMatch(appText, /isMissingServerSupabaseCredentials/);
+  assert.doesNotMatch(appText, /fetchSetMeetingsFromSupabase/);
   assert.doesNotMatch(appText, /\/rest\/v1\/reminders/);
-  assert.match(appText, /supabase_confirmation_cache/);
+  assert.doesNotMatch(appText, /supabase_confirmation_cache/);
+  assert.match(routeText, /local_set_meetings_command_demo/);
+  assert.match(demoText, /2026-07-06T12:00:00-04:00/);
+  assert.match(demoText, /rest-of-july/);
   assert.match(appText, /event\.confirmation_1_message/);
   assert.match(appText, /event\.confirmation_2_message/);
-  assert.match(appText, /cache: 'no-store'/);
-  assert.match(appText, /'cache-control': 'no-cache'/);
-  assert.match(appText, /\.filter\(\(event\) => isCurrentCachedMeeting\(event\.start, week, new Date\(\), event\.end\)\)/);
-  assert.match(appText, /isCurrentCachedMeeting/);
+  assert.doesNotMatch(appText, /cache: 'no-store'/);
+  assert.doesNotMatch(appText, /'cache-control': 'no-cache'/);
+  assert.doesNotMatch(appText, /isCurrentCachedMeeting\(event\.start/);
+  assert.doesNotMatch(appText, /isCurrentCachedMeeting/);
   assert.match(appText, /parseCachedMeetingInstant\(value\)/);
   assert.match(utilitiesText, /function isCurrentCachedMeeting/);
   assert.match(utilitiesText, /function getCurrentCachedMeetingClock/);
@@ -811,7 +817,7 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.match(stylesText, /text-shadow: var\(--brand-title-shadow\)/);
   assert.equal(contactSearchPageExists, true);
   assert.match(appText, /'\/contact-search'/);
-  assert.match(appText, /search_athlete_contact_cache/);
+  assert.doesNotMatch(appText, /search_athlete_contact_cache/);
   assert.match(appText, /\/api\/prospect-mobile\/search/);
   assert.match(appText, /groupRawProspectRows/);
   assert.match(appText, /sourceLabel: 'Prospect'/);
@@ -840,9 +846,10 @@ test('prospect mobile exposes set meetings, scout schedules, and contact search 
   assert.doesNotMatch(appText, /\/api\/v1\/mobile/);
 });
 
-test('prospect mobile contact search keeps lookup and timezone matching on Supabase', () => {
+test('prospect mobile contact search keeps lookup and timezone matching through local API route', () => {
   const appText = readFileSync(join(appRoot, 'public/prospect-mobile/app.js'), 'utf8');
-  assert.match(appText, /\/rest\/v1\/rpc\/search_athlete_contact_cache/);
+  assert.doesNotMatch(appText, /\/rest\/v1\/rpc\/search_athlete_contact_cache/);
+  assert.match(appText, /\/api\/prospect-mobile\/search/);
   assert.match(appText, /formatSlotRangeForTimezone/);
   assert.match(appText, /naturalTimezoneLabel\(timezone, timezoneLabel\)/);
   assert.doesNotMatch(appText, /\$\{timezoneLabel \|\| 'Eastern'\}/);
@@ -854,7 +861,7 @@ test('prospect mobile contact search keeps lookup and timezone matching on Supab
   assert.match(appText, /findSelectedContactGroup\(state\.scheduleSearch\.results, state\.scheduleSearch\.selectedId\)/);
   assert.doesNotMatch(appText, /\/api\/contact-search/);
   assert.doesNotMatch(appText, /\/api\/contact-lookup/);
-  assert.match(appText, /scope === 'schedule'[\s\S]*searchAthleteContactCache/);
+  assert.match(appText, /scope === 'schedule'[\s\S]*runContactSearchQuery/);
 });
 
 test('prospect mobile scout schedules use short cache and modal schedule actions', () => {

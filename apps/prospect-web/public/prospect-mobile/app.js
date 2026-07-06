@@ -1,6 +1,5 @@
 import {
   cleanMeetingTitle,
-  isCurrentCachedMeeting,
   parseCachedMeetingInstant,
 } from '/prospect-mobile/set-meetings-utils.mjs';
 
@@ -175,32 +174,11 @@ async function loadRoute(options = {}) {
     setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
   } catch (error) {
     if (!isActiveRoute(renderContext)) return;
-    if (routeKey === '/set-meetings' && isMissingServerSupabaseCredentials(error)) {
-      try {
-        const payload = await fetchSetMeetingsFromSupabase(state.week);
-        if (!isActiveRoute(renderContext)) return;
-        setCachedRoutePayload(cacheKey, payload);
-        const renderedCount = await route.render(payload, renderContext);
-        if (!isActiveRoute(renderContext)) return;
-        const count = typeof renderedCount === 'number' ? renderedCount : payload.count ?? payload.events?.length ?? 0;
-        setStatus(`Updated ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} - ${count} found`);
-        return;
-      } catch (fallbackError) {
-        if (!isActiveRoute(renderContext)) return;
-        content.innerHTML = `<div class="error-state">${escapeHtml(fallbackError.message || String(fallbackError))}</div>`;
-        setStatus('Could not refresh');
-        return;
-      }
-    }
     content.innerHTML = `<div class="error-state">${escapeHtml(error.message || String(error))}</div>`;
     setStatus('Could not refresh');
   } finally {
     if (isActiveRoute(renderContext)) setLoading(false);
   }
-}
-
-function isMissingServerSupabaseCredentials(error) {
-  return /missing server supabase credentials/i.test(String(error?.message || error || ''));
 }
 
 function buildRouteCacheKey(routeKey, week) {
@@ -403,118 +381,6 @@ function bindRescheduleQueueActions() {
       await showRescheduleDrawer(event);
     });
   });
-}
-
-async function fetchSetMeetingsFromSupabase(week) {
-  const config = window.__PROSPECT_SUPABASE__ || {};
-  const supabaseUrl = String(config.url || '').replace(/\/+$/, '');
-  const anonKey = String(config.anonKey || '');
-  const schema = String(config.schema || 'public').trim() || 'public';
-  if (!supabaseUrl || !anonKey) {
-    throw new Error('Missing Supabase public config');
-  }
-
-  const weekWindow = buildMeetingWeekWindow(week);
-  const query = [
-    'select=appointment_id,athlete_id,athlete_main_id,athlete_name,recipient_name,recipient_phone,head_scout_name,meeting_starts_at,meeting_ends_at,meeting_timezone,message_body,admin_url,task_url,kind,payload_json',
-    'status=eq.cached',
-    'source=eq.set_meetings_confirmation',
-    'kind=in.(confirmation_1,confirmation_2)',
-    `meeting_starts_at=gte.${encodeURIComponent(`${weekWindow.start}T00:00:00-04:00`)}`,
-    `meeting_starts_at=lt.${encodeURIComponent(`${weekWindow.end}T00:00:00-04:00`)}`,
-    'order=meeting_starts_at.asc',
-  ].join('&');
-
-  const response = await fetch(`${supabaseUrl}/rest/v1/set_meeting_confirmation_cache?${query}`, {
-    cache: 'no-store',
-    headers: {
-      apikey: anonKey,
-      authorization: `Bearer ${anonKey}`,
-      'accept-profile': schema,
-      'cache-control': 'no-cache',
-      pragma: 'no-cache',
-    },
-  });
-  const rows = await response.json().catch(() => []);
-  if (!response.ok) {
-    throw new Error(rows.message || rows.error || `Supabase ${response.status}`);
-  }
-
-  const grouped = new Map();
-  for (const row of Array.isArray(rows) ? rows : []) {
-    const key = String(row.appointment_id || '').trim();
-    if (!key) continue;
-    const existing = grouped.get(key) || { base: row, recipient_contacts: [] };
-    if (row.kind === 'confirmation_1') existing.c1 = row.message_body || '';
-    if (row.kind === 'confirmation_2') existing.c2 = row.message_body || '';
-    for (const contact of buildConfirmationCacheContactOptions(row)) {
-      if (
-        contact.phone &&
-        !existing.recipient_contacts.some((candidate) => normalizePhoneForSms(candidate.phone) === normalizePhoneForSms(contact.phone))
-      ) {
-        existing.recipient_contacts.push(contact);
-      }
-    }
-    grouped.set(key, existing);
-  }
-
-  const events = Array.from(grouped.values())
-    .map((entry) => ({
-      key: entry.base.appointment_id,
-      appointment_id: entry.base.appointment_id,
-      athlete_id: entry.base.athlete_id,
-      athlete_main_id: entry.base.athlete_main_id,
-      athlete_name: entry.base.athlete_name,
-      head_scout_name: entry.base.head_scout_name,
-      current_meeting_label: entry.base.meeting_starts_at,
-      start: entry.base.meeting_starts_at,
-      end: entry.base.meeting_ends_at,
-      meeting_timezone: entry.base.meeting_timezone,
-      confirmation_recipient: {
-        name: entry.base.recipient_name,
-        phone: entry.base.recipient_phone,
-      },
-      recipient_contacts: entry.recipient_contacts,
-      confirmation_1_message: entry.c1 || '',
-      confirmation_2_message: entry.c2 || '',
-      admin_url: entry.base.admin_url,
-      task_url: entry.base.task_url,
-      source: 'supabase_confirmation_cache',
-    }))
-    .filter((event) => isCurrentCachedMeeting(event.start, week, new Date(), event.end));
-
-  return {
-    success: true,
-    source: 'supabase_confirmation_cache',
-    backend_required: false,
-    week_start: weekWindow.start,
-    week_end: weekWindow.end,
-    count: events.length,
-    events,
-  };
-}
-
-function buildConfirmationCacheContactOptions(row) {
-  const payload = row?.payload_json && typeof row.payload_json === 'object' ? row.payload_json : {};
-  const payloadContacts = Array.isArray(payload.recipient_contacts)
-    ? payload.recipient_contacts
-        .map((contact) => ({
-          name: String(contact?.name || '').trim(),
-          relationship: String(contact?.label || contact?.relationship || '').trim(),
-          phone: String(contact?.phone || '').trim(),
-        }))
-        .filter((contact) => contact.phone)
-    : [];
-  if (payloadContacts.length) return payloadContacts;
-
-  const phone = String(row?.recipient_phone || payload.recipient_phone || '').trim();
-  const name = String(row?.recipient_name || payload.recipient_name || '').trim();
-  const relationship = String(payload.relationship_label || payload.relationship || '').trim();
-  return [{
-    name: name || relationship || 'Contact',
-    relationship,
-    phone,
-  }];
 }
 
 async function renderContactSearch(_payload, renderContext) {

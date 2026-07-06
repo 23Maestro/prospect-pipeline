@@ -3,12 +3,6 @@ import Script from 'next/script';
 export const dynamic = 'force-dynamic';
 
 export default function ProspectMobilePage() {
-  const supabaseConfig = {
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-    anonKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
-    schema: process.env.NEXT_PUBLIC_SUPABASE_SCHEMA || 'public',
-  };
-
   return (
     <>
       <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
@@ -76,14 +70,7 @@ export default function ProspectMobilePage() {
         <section className="status-line" id="status-line" aria-live="polite" />
         <section className="content" id="content" />
       </main>
-      <Script
-        id="prospect-mobile-supabase-config"
-        strategy="beforeInteractive"
-        dangerouslySetInnerHTML={{
-          __html: `window.__PROSPECT_SUPABASE__ = ${JSON.stringify(supabaseConfig)};`,
-        }}
-      />
-      <Script type="module" src="/prospect-mobile/app.js?v=20260704-local-roster" strategy="afterInteractive" />
+      <Script type="module" src="/prospect-mobile/app.js?v=20260706-july-local-roster" strategy="afterInteractive" />
     </>
   );
 }

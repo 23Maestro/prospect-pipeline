@@ -1,4 +1,4 @@
-const BASE_NOW = new Date('2026-07-04T12:00:00-04:00');
+const BASE_NOW = new Date('2026-07-06T12:00:00-04:00');
 const EASTERN_ZONE = 'America/New_York';
 
 const firstNames = [
@@ -49,8 +49,13 @@ const scouts = [
   { scout_name: 'Coach Erin Moore', meeting_for: '200096', state: 'CO' },
 ];
 
-const meetingOffsets = [1, 2, 3, 4, 5, 8, 9, 10, 11, 12];
-const meetingHours = [16, 18, 19, 17, 20, 18, 19, 16, 17, 20];
+const meetingOffsets = [
+  0, 0, 1, 1, 2, 2, 3, 4, 5,
+  7, 7, 8, 9, 10, 11, 12,
+  14, 15, 16, 17, 18, 19,
+  21, 22, 23, 24, 25,
+];
+const meetingHours = [16, 18, 19, 17, 20, 18, 19, 16, 17, 20, 15, 18, 19, 16, 17, 20, 16, 18, 19, 17, 20, 18, 16, 19, 17, 20, 18];
 
 type Athlete = ReturnType<typeof buildAthlete>;
 
@@ -90,10 +95,6 @@ function zonedInstant(date: string, hour: number, timeZone: string) {
   return new Date(`${date}T${pad(hour)}:00:00${offsetByZone[timeZone] || '-04:00'}`).toISOString();
 }
 
-function localSlot(date: string, hour: number) {
-  return `${date}T${pad(hour)}:00`;
-}
-
 function buildAthlete(index: number) {
   const [city, state, timezone, timezoneLabel] = locations[index % locations.length];
   const first = firstNames[index % firstNames.length];
@@ -129,6 +130,16 @@ export function getAthletes(count = 100) {
   return Array.from({ length: count }, (_, index) => buildAthlete(index + 1));
 }
 
+export function getDemoMeetingWindow(week = 'this') {
+  if (week === 'rest-of-july' || week === 'month') {
+    return { start: '2026-07-06', end: '2026-08-01', week: 'rest-of-july' };
+  }
+
+  return week === 'next'
+    ? { start: '2026-07-13', end: '2026-07-20', week: 'next' }
+    : { start: '2026-07-06', end: '2026-07-13', week: 'this' };
+}
+
 function confirmationText(athlete: Athlete, scoutName: string, startLabel: string) {
   return {
     one: `Hi ${athlete.parent_name.split(' ')[0]}, confirming ${athlete.athlete_name}'s meeting with ${scoutName} for ${startLabel}.`,
@@ -148,7 +159,7 @@ function formatStartLabel(start: string, timeZone: string, timezoneLabel: string
 }
 
 export function getSetMeetingEvents(week = 'this') {
-  const athletes = getAthletes(20);
+  const athletes = getAthletes(40);
   const events = meetingOffsets.map((offset, index) => {
     const athlete = athletes[index];
     const scout = scouts[index % scouts.length];
@@ -185,31 +196,32 @@ export function getSetMeetingEvents(week = 'this') {
       confirmation_2_message: messages.two,
       admin_url: athlete.admin_url,
       task_url: `${athlete.admin_url}&tab=tasks`,
-      source: 'local_roster',
+      source: 'local_set_meetings_command_demo',
     };
   });
   return filterByWeek(events, week, (event) => event.start);
 }
 
 export function getScoutSchedules(week = 'this') {
-  return scouts.map((scout, scoutIndex) => ({
-    ...scout,
-    name: scout.scout_name,
-    slots: Array.from({ length: 8 }, (_, slotIndex) => {
-      const dayOffset = (week === 'next' ? 8 : 1) + slotIndex + (scoutIndex % 2);
-      const hour = [15, 16, 17, 18, 19, 20, 14, 13][(slotIndex + scoutIndex) % 8];
-      const date = localIsoDate(dayOffset);
-      return {
-        id: `open_${scoutIndex + 1}_${week}_${slotIndex + 1}`,
-        open_event_id: `open_${scoutIndex + 1}_${week}_${slotIndex + 1}`,
-        assigned_to: scout.meeting_for,
-        meeting_for: scout.meeting_for,
-        head_scout_name: scout.scout_name,
-        start: localSlot(date, hour),
-        end: localSlot(date, hour + 1),
-      };
-    }),
-  }));
+  const meetings = getSetMeetingEvents(week);
+  return scouts
+    .map((scout) => ({
+      ...scout,
+      name: scout.scout_name,
+      slots: meetings
+        .filter((event) => event.head_scout_name === scout.scout_name)
+        .map((event) => ({
+          id: event.appointment_id,
+          open_event_id: event.appointment_id,
+          assigned_to: scout.meeting_for,
+          meeting_for: scout.meeting_for,
+          head_scout_name: scout.scout_name,
+          athlete_name: event.athlete_name,
+          start: event.start,
+          end: event.end,
+        })),
+    }))
+    .filter((scout) => scout.slots.length);
 }
 
 export function getRescheduleEvents() {
@@ -352,11 +364,9 @@ export function getMeetingReadbackContract() {
 }
 
 function filterByWeek<T>(rows: T[], week: string, getStart: (row: T) => string) {
-  if (week === 'month') return rows;
-  const startOffset = week === 'next' ? 7 : 0;
-  const endOffset = week === 'next' ? 14 : 7;
-  const start = new Date(`${localIsoDate(startOffset)}T00:00:00-04:00`).getTime();
-  const end = new Date(`${localIsoDate(endOffset)}T00:00:00-04:00`).getTime();
+  const window = getDemoMeetingWindow(week);
+  const start = new Date(`${window.start}T00:00:00-04:00`).getTime();
+  const end = new Date(`${window.end}T00:00:00-04:00`).getTime();
   return rows.filter((row) => {
     const time = Date.parse(getStart(row));
     return Number.isFinite(time) && time >= start && time < end;

@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#050505">
+  <title>Scouting Coordinator: 5 Buckets</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #050505;
+      --panel: #070707;
+      --ink: #f4f0e8;
+      --muted: #8d8a84;
+      --soft: #161616;
+      --line: #292929;
+      --red: #ff4b55;
+      --orange: #ff9f0a;
+      --green: #35c46b;
+      --blue: #1e9bff;
+      --purple: #9b6cff;
+      --teal: #16d2b6;
+      --chalk: rgba(244, 240, 232, 0.72);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      background: var(--bg);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 22% 18%, rgba(255, 75, 85, 0.08), transparent 28%),
+        radial-gradient(circle at 78% 74%, rgba(30, 155, 255, 0.08), transparent 30%),
+        var(--bg);
+      color: var(--ink);
+      font-family: "Trebuchet MS", "Segoe UI", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    textarea {
+      font: inherit;
+    }
+
+    .page {
+      width: min(1220px, 100%);
+      min-height: 100vh;
+      margin: 0 auto;
+      padding: clamp(14px, 3vw, 34px);
+      display: grid;
+      place-items: center;
+    }
+
+    main {
+      width: 100%;
+    }
+
+    .canvas {
+      position: relative;
+      width: 100%;
+      min-height: 900px;
+      border: 2px solid #1f1f1f;
+      border-radius: 18px;
+      background:
+        linear-gradient(rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+        #030303;
+      background-size: 42px 42px;
+      overflow: hidden;
+      box-shadow: 0 18px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    .diagram {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    .node {
+      position: absolute;
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      width: 330px;
+      min-width: 0;
+      min-height: 136px;
+      padding: 18px 20px;
+      background: #030303;
+      color: var(--ink);
+      text-align: center;
+      border: 4px solid currentColor;
+      border-radius: 30px 24px 28px 22px;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+      transform: rotate(var(--tilt, 0deg));
+    }
+
+    .node::before {
+      content: "";
+      position: absolute;
+      inset: 5px -3px -4px 4px;
+      border: 2px solid currentColor;
+      border-radius: 25px 28px 23px 30px;
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .node h2,
+    .hub h2,
+    .context h2 {
+      margin: 0;
+      font-size: clamp(22px, 2vw, 32px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .node p,
+    .hub p,
+    .context p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.34;
+    }
+
+    .node .tag {
+      justify-self: center;
+      width: fit-content;
+      border: 1px dashed currentColor;
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: currentColor;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .hub {
+      position: absolute;
+      left: 50%;
+      top: 44%;
+      display: none;
+      align-content: center;
+      gap: 10px;
+      width: 270px;
+      min-height: 270px;
+      padding: 26px;
+      color: var(--orange);
+      background: #030303;
+      border: 5px solid var(--orange);
+      border-radius: 38px;
+      text-align: center;
+      transform: translate(-50%, -50%) rotate(45deg);
+      z-index: 3;
+    }
+
+    .hub-inner {
+      transform: rotate(-45deg);
+      display: grid;
+      gap: 9px;
+    }
+
+    .hub p {
+      color: rgba(244, 240, 232, 0.58);
+      font-weight: 700;
+    }
+
+    .context {
+      position: absolute;
+      left: 50%;
+      bottom: 28px;
+      display: grid;
+      align-content: center;
+      gap: 8px;
+      width: min(520px, calc(100% - 44px));
+      min-height: 118px;
+      padding: 18px 22px;
+      color: var(--green);
+      background: rgba(4, 4, 4, 0.9);
+      border: 4px solid var(--green);
+      border-radius: 999px;
+      text-align: center;
+      transform: translateX(-50%) rotate(-0.8deg);
+      z-index: 2;
+    }
+
+    .context h2 {
+      font-size: clamp(21px, 2.4vw, 31px);
+    }
+
+    .meetings {
+      left: 46px;
+      top: 58px;
+      color: var(--red);
+      --tilt: -1.3deg;
+    }
+
+    .premeeting {
+      right: 46px;
+      top: 58px;
+      color: var(--purple);
+      --tilt: 1.1deg;
+    }
+
+    .communication {
+      left: 46px;
+      top: 565px;
+      color: var(--blue);
+      --tilt: 1.2deg;
+    }
+
+    .lifecycle {
+      right: 46px;
+      top: 565px;
+      color: var(--teal);
+      --tilt: -1deg;
+    }
+
+    .outcomes {
+      left: 50%;
+      top: 286px;
+      width: 246px;
+      min-height: 246px;
+      color: var(--orange);
+      border-radius: 34px;
+      transform: translateX(-50%) rotate(45deg);
+      z-index: 4;
+      background: #030303;
+    }
+
+    .outcomes .node-inner {
+      transform: rotate(-45deg);
+      display: grid;
+      gap: 8px;
+    }
+
+    @media (max-width: 980px) {
+      .canvas {
+        min-height: auto;
+        padding: 16px;
+        display: grid;
+        gap: 13px;
+      }
+
+      .diagram {
+        display: none;
+      }
+
+      .hub,
+      .node,
+      .context {
+        position: relative;
+        left: auto;
+        right: auto;
+        top: auto;
+        bottom: auto;
+        width: 100%;
+        min-width: 0;
+        min-height: 124px;
+        transform: none;
+      }
+
+      .hub {
+        order: 0;
+      }
+
+      .hub-inner,
+      .outcomes .node-inner {
+        transform: none;
+      }
+
+      .meetings {
+        order: 1;
+      }
+
+      .premeeting {
+        order: 2;
+      }
+
+      .communication {
+        order: 3;
+      }
+
+      .lifecycle {
+        order: 4;
+      }
+
+      .outcomes {
+        order: 5;
+      }
+
+      .context {
+        order: 6;
+        border-radius: 24px;
+      }
+
+    }
+
+    @media print {
+      body {
+        background: #fff;
+        color: #111;
+      }
+
+      .page {
+        padding: 18px;
+      }
+
+      .canvas {
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <main>
+      <section class="canvas" aria-label="Five bucket architecture diagram">
+        <svg class="diagram" viewBox="0 0 1220 900" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#252525"></path>
+            </marker>
+            <filter id="rough">
+              <feTurbulence type="fractalNoise" baseFrequency="0.018" numOctaves="2" result="noise"></feTurbulence>
+              <feDisplacementMap in="SourceGraphic" in2="noise" scale="1.2"></feDisplacementMap>
+            </filter>
+          </defs>
+          <g fill="none" stroke="#252525" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#arrow)" filter="url(#rough)">
+            <path d="M 376 132 C 470 168, 500 265, 560 342"></path>
+            <path d="M 844 132 C 750 168, 720 265, 660 342"></path>
+            <path d="M 382 650 C 482 628, 520 520, 575 456"></path>
+            <path d="M 838 650 C 738 628, 700 520, 645 456"></path>
+            <path d="M 610 536 C 610 612, 610 682, 610 744"></path>
+            <path d="M 610 744 C 610 686, 610 614, 610 536"></path>
+          </g>
+        </svg>
+
+        <article class="node meetings">
+          <span class="tag">1</span>
+          <h2>Meetings & Scheduling</h2>
+          <p>Appointment truth, booked details, head scout openings, slots, reschedules, confirmations, timezone.</p>
+        </article>
+
+        <article class="node premeeting">
+          <span class="tag">2</span>
+          <h2>Pre-Meeting Work</h2>
+          <p>Call attempts, reminders, confirmation tasks, voicemail tasks, completion gates before the meeting.</p>
+        </article>
+
+        <article class="node outcomes">
+          <div class="node-inner">
+            <span class="tag">5</span>
+            <h2>Outcomes & Enrollments</h2>
+            <p>Close won/lost, no-show, follow-up results, pending-client review, post-meeting outcomes.</p>
+          </div>
+        </article>
+
+        <article class="hub">
+          <div class="hub-inner">
+            <h2>Scouting Coordinator</h2>
+            <p>Commands are buttons. Buckets are jobs. Domains own meaning.</p>
+          </div>
+        </article>
+
+        <article class="node communication">
+          <span class="tag">3</span>
+          <h2>Client Communication</h2>
+          <p>Outbound messages, voicemail follow-ups, confirmations, recipient selection, message context.</p>
+        </article>
+
+        <article class="node lifecycle">
+          <span class="tag">4</span>
+          <h2>Lifecycle & Reporting</h2>
+          <p>CRM sales stage, task status, lifecycle history, active state, reporting facts.</p>
+        </article>
+
+        <article class="context">
+          <h2>Shared Identity & Context</h2>
+          <p>Athlete identity, contact cache, admin URLs, notes, phone facts, Prospect Search, MaxPreps context.</p>
+        </article>
+      </section>
+    </main>
+  </div>
+</body>
+</html>

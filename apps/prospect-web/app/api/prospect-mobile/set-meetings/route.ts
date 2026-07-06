@@ -1,19 +1,17 @@
-import { getSetMeetingEvents } from '../../../../lib/prospect-demo-data';
+import { getDemoMeetingWindow, getSetMeetingEvents } from '../../../../lib/prospect-demo-data';
 import { jsonResponse, methodNotAllowed } from '../../../../lib/response-shapes';
 
 function weekWindow(week: string) {
-  return week === 'next'
-    ? { start: '2026-07-11', end: '2026-07-18', week: 'next' }
-    : { start: '2026-07-04', end: '2026-07-11', week: 'this' };
+  return getDemoMeetingWindow(week);
 }
 
 export function GET(request: Request) {
   const url = new URL(request.url);
-  const window = weekWindow(url.searchParams.get('week') || 'this');
+  const window = weekWindow(url.searchParams.get('range') || url.searchParams.get('week') || 'this');
   const events = getSetMeetingEvents(window.week);
   return jsonResponse({
     success: true,
-    source: 'local_roster',
+    source: 'local_set_meetings_command_demo',
     backend_required: false,
     week_start: window.start,
     week_end: window.end,

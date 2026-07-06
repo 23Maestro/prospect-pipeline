@@ -9,6 +9,7 @@ import { POST as prospectMobileSearchPOST } from '../app/api/prospect-mobile/sea
 import { GET as prospectMobileRescheduleQueueGET } from '../app/api/prospect-mobile/reschedule-queue/route';
 import { POST as prospectMobileReschedulePOST } from '../app/api/prospect-mobile/reschedule/route';
 import { GET as prospectMobileSetMeetingsGET } from '../app/api/prospect-mobile/set-meetings/route';
+import { GET as headScoutSchedulesGET } from '../app/api/head-scout-schedules/route';
 import { POST as setMeetingConfirmationPrefixPOST } from '../app/api/set-meeting-confirmation-prefix/route';
 import { createCoachRisnerSessionSetCookie } from '../app/api/tim-lite/access';
 import { POST as coachRisnerLoginPOST } from '../app/api/tim-lite/auth/login/route';
@@ -233,94 +234,36 @@ test('/api/tim-lite/meetings reads Tim cache through Tim support appointment sta
   assert.equal(headers.authorization, 'Bearer service-role');
 });
 
-test('/api/prospect-mobile/set-meetings filters confirmation cache through appointment truth', async () => {
-  process.env.SUPABASE_URL = 'https://supabase.example';
-  process.env.SUPABASE_SECRET_KEY = 'service-role';
-  process.env.SUPABASE_SCHEMA = 'public';
+test('/api/prospect-mobile/set-meetings serves local July demo data without remote fetches', async () => {
   const calls: Array<{ url: string; init?: RequestInit }> = [];
   globalThis.fetch = async (url, init) => {
     calls.push({ url: String(url), init });
-    if (String(url).includes('/appointments?')) {
-      return Response.json([
-        { id: 'appt_active', status: 'scheduled' },
-        { id: 'appt_baker', status: 'reschedule_pending' },
-        { id: 'appt_no_show', status: 'scheduled', post_meeting_result: 'no_show' },
-        { id: 'appt_expired', status: 'scheduled' },
-      ]);
-    }
-    return Response.json([
-      {
-        appointment_id: 'appt_active',
-        athlete_id: '149',
-        athlete_main_id: '953',
-        athlete_name: 'Active Meeting',
-        recipient_name: 'Parent One',
-        recipient_phone: '5551112222',
-        head_scout_name: 'Scout Name',
-        meeting_starts_at: '2099-06-03T18:00:00Z',
-        meeting_ends_at: '2099-06-03T19:00:00Z',
-        meeting_timezone: 'America/New_York',
-        message_body: 'Confirmation one',
-        kind: 'confirmation_1',
-      },
-      {
-        appointment_id: 'appt_baker',
-        athlete_id: '150',
-        athlete_main_id: '954',
-        athlete_name: 'Baker',
-        recipient_name: 'Parent Two',
-        recipient_phone: '5553334444',
-        head_scout_name: 'Scout Name',
-        meeting_starts_at: '2026-06-03T19:00:00Z',
-        meeting_timezone: 'America/New_York',
-        message_body: 'Pending one',
-        kind: 'confirmation_1',
-      },
-      {
-        appointment_id: 'appt_no_show',
-        athlete_id: '152',
-        athlete_main_id: '956',
-        athlete_name: 'No Show Active Status',
-        recipient_name: 'Parent Four',
-        recipient_phone: '5557778888',
-        head_scout_name: 'Scout Name',
-        meeting_starts_at: '2099-06-03T20:00:00Z',
-        meeting_ends_at: '2099-06-03T21:00:00Z',
-        meeting_timezone: 'America/New_York',
-        message_body: 'No show one',
-        kind: 'confirmation_1',
-      },
-      {
-        appointment_id: 'appt_expired',
-        athlete_id: '151',
-        athlete_main_id: '955',
-        athlete_name: 'Expired Active',
-        recipient_name: 'Parent Three',
-        recipient_phone: '5555556666',
-        head_scout_name: 'Scout Name',
-        meeting_starts_at: '2026-06-03T18:00:00Z',
-        meeting_ends_at: '2026-06-03T19:00:00Z',
-        meeting_timezone: 'America/New_York',
-        message_body: 'Expired one',
-        kind: 'confirmation_1',
-      },
-    ]);
+    throw new Error('remote fetch should not run for local demo data');
   };
 
   const response = await prospectMobileSetMeetingsGET(
-    new Request('https://example.test/api/prospect-mobile/set-meetings?week=this'),
+    new Request('https://example.test/api/prospect-mobile/set-meetings?range=rest-of-july'),
+  );
+  const schedulesResponse = headScoutSchedulesGET(
+    new Request('https://example.test/api/head-scout-schedules?range=rest-of-july'),
   );
 
   assert.equal(response.status, 200);
+  assert.equal(schedulesResponse.status, 200);
   const payload = await response.json();
+  const schedulesPayload = await schedulesResponse.json();
   assert.equal(payload.success, true);
-  assert.equal(payload.count, 1);
-  assert.equal(payload.events[0].appointment_id, 'appt_active');
-  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Baker'), false);
-  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'No Show Active Status'), false);
-  assert.equal(payload.events.some((event: { athlete_name?: string }) => event.athlete_name === 'Expired Active'), false);
-  assert.match(calls[0].url, /\/rest\/v1\/set_meeting_confirmation_cache\?/);
-  assert.match(calls[1].url, /\/rest\/v1\/appointments\?/);
+  assert.equal(payload.source, 'local_set_meetings_command_demo');
+  assert.equal(payload.week_start, '2026-07-06');
+  assert.equal(payload.week_end, '2026-08-01');
+  assert.equal(payload.count, payload.events.length);
+  assert.equal(payload.events.length, 27);
+  assert.equal(schedulesPayload.source, 'local_set_meetings_command_demo');
+  assert.equal(
+    schedulesPayload.scouts.reduce((sum: number, scout: { slots: unknown[] }) => sum + scout.slots.length, 0),
+    payload.events.length,
+  );
+  assert.deepEqual(calls, []);
 });
 
 test('/api/prospect-mobile/reschedule-queue reads recent RSP appointment outcomes', async () => {
